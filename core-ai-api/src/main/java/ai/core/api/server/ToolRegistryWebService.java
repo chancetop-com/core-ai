@@ -1,6 +1,8 @@
 package ai.core.api.server;
 
 import ai.core.api.server.tool.CreateMcpServerRequest;
+import ai.core.api.server.tool.ImportMcpServersRequest;
+import ai.core.api.server.tool.ImportMcpServersResponse;
 import ai.core.api.server.tool.ListApiAppServicesResponse;
 import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
@@ -38,6 +40,10 @@ public interface ToolRegistryWebService {
     @POST
     @Path("/api/tools/mcp-servers")
     ToolRegistryView createMcpServer(CreateMcpServerRequest request);
+
+    @POST
+    @Path("/api/tools/mcp-servers/import")
+    ImportMcpServersResponse importMcpServers(ImportMcpServersRequest request);
 
     @PUT
     @Path("/api/tools/mcp-servers/:id")

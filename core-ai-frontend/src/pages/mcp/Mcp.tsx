@@ -101,11 +101,17 @@ export default function Mcp() {
     }
   };
 
+  const handleImported = () => {
+    setEditing(null);
+    setCreating(false);
+    load();
+  };
+
   // Parse config keys for display
   const getConfigSummary = (config: Record<string, string>) => {
     const keys = Object.keys(config);
     if (keys.length === 0) return 'No config';
-    return keys.slice(0, 3).join(', ') + (keys.length > 3 ? ` +${keys.length - 3}` : '');
+    return keys.slice(0, 3).join(', ') + (keys.length > 3 ? ' +' + (keys.length - 3) : '');
   };
 
   return (
@@ -159,7 +165,7 @@ export default function Mcp() {
         ) : mcpServers.length === 0 ? (
           <div className="text-center py-12 rounded-xl border"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-            No MCP servers configured. Click "New MCP Server" to add one.
+            No MCP servers configured. Click &ldquo;New MCP Server&rdquo; to add one.
           </div>
         ) : pagedServers.map(s => (
           <div key={s.id}
@@ -217,7 +223,6 @@ export default function Mcp() {
                 </button>
               </div>
             </div>
-            {/* ml = Server icon width (18px) + gap-3 (12px) so description aligns under the name */}
             <div className="ml-[30px] mt-2 space-y-1">
               {s.description && (
                 <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{s.description}</p>
@@ -265,6 +270,7 @@ export default function Mcp() {
           server={editing}
           onChange={setEditing}
           onSave={handleSave}
+          onImported={handleImported}
           onClose={() => { setEditing(null); setCreating(false); }}
           saving={saving}
           creating={creating}
@@ -278,6 +284,7 @@ function McpServerModal({
   server,
   onChange,
   onSave,
+  onImported,
   onClose,
   saving,
   creating,
@@ -285,12 +292,29 @@ function McpServerModal({
   server: ToolRegistryView;
   onChange: (s: ToolRegistryView) => void;
   onSave: () => void;
+  onImported: () => void;
   onClose: () => void;
   saving: boolean;
   creating: boolean;
 }) {
   const [configKey, setConfigKey] = useState('');
   const [configValue, setConfigValue] = useState('');
+  const [mode, setMode] = useState<'manual' | 'import'>('manual');
+  const [importJson, setImportJson] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const handleImport = async () => {
+    if (!importJson.trim()) return;
+    setImportError(null);
+    try {
+      const result = await api.tools.importMcpServers({ config: importJson, category: server.category || undefined, enabled: server.enabled });
+      setImportJson('');
+      onImported();
+      alert('Imported ' + result.total + ' MCP server' + (result.total !== 1 ? 's' : '') + ' successfully.');
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed');
+    }
+  };
 
   const addConfigEntry = () => {
     if (!configKey.trim()) return;
@@ -308,6 +332,8 @@ function McpServerModal({
     onChange({ ...server, config: newConfig });
   };
 
+  const showImport = creating && mode === 'import';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.5)' }}
@@ -322,73 +348,119 @@ function McpServerModal({
           </button>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Name *</label>
-            <input type="text" value={server.name}
-              onChange={e => onChange({ ...server, name: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg border text-sm"
-              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+        {creating && (
+          <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: 'var(--color-bg-tertiary)' }}>
+            <button onClick={() => setMode('manual')}
+              className="flex-1 py-1.5 rounded-md text-xs font-medium cursor-pointer"
+              style={{
+                background: mode === 'manual' ? 'var(--color-bg)' : 'transparent',
+                color: mode === 'manual' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              }}>Manual</button>
+            <button onClick={() => setMode('import')}
+              className="flex-1 py-1.5 rounded-md text-xs font-medium cursor-pointer"
+              style={{
+                background: mode === 'import' ? 'var(--color-bg)' : 'transparent',
+                color: mode === 'import' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              }}>Import JSON</button>
           </div>
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Description</label>
-            <input type="text" value={server.description}
-              onChange={e => onChange({ ...server, description: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg border text-sm"
-              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
-          </div>
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Category</label>
-            <input type="text" value={server.category}
-              onChange={e => onChange({ ...server, category: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg border text-sm"
-              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
-          </div>
+        )}
 
-          {/* Config entries */}
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Configuration</label>
-            <div className="space-y-2 mb-2">
-              {Object.entries(server.config).map(([k, v]) => (
-                <div key={k} className="flex items-center gap-2">
-                  <span className="text-xs font-mono flex-1 px-2 py-1 rounded"
-                    style={{ background: 'var(--color-bg-tertiary)' }}>
-                    {k}: {v}
-                  </span>
-                  <button onClick={() => removeConfigEntry(k)}
-                    className="p-1 rounded cursor-pointer"
-                    style={{ color: '#f87171' }}>
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
+        {showImport ? (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>mcpServers JSON</label>
+              <textarea value={importJson} onChange={e => { setImportJson(e.target.value); setImportError(null); }}
+                placeholder={`{"mcpServers":{"MyServer":{"command":"npx","args":["-y","@scope/server"],"env":{"KEY":"value"}}}}`}
+                spellCheck={false}
+                className="w-full font-mono text-xs px-3 py-3 rounded-lg border resize-y"
+                style={{ minHeight: 200, borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              {importError && (
+                <div className="text-xs rounded p-2 mt-2" style={{ background: '#7f1d1d', color: '#fff' }}>{importError}</div>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Category</label>
+              <input type="text" value={server.category}
+                onChange={e => onChange({ ...server, category: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
             </div>
             <div className="flex items-center gap-2">
-              <input type="text" placeholder="Key" value={configKey}
-                onChange={e => setConfigKey(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') addConfigEntry(); }}
-                className="flex-1 px-2 py-1.5 rounded border text-xs"
-                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
-              <input type="text" placeholder="Value" value={configValue}
-                onChange={e => setConfigValue(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') addConfigEntry(); }}
-                className="flex-1 px-2 py-1.5 rounded border text-xs"
-                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
-              <button onClick={addConfigEntry}
-                className="px-2 py-1.5 rounded text-xs cursor-pointer"
-                style={{ background: 'var(--color-primary)', color: 'white' }}>
-                Add
-              </button>
+              <label className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Enabled</label>
+              <input type="checkbox" checked={server.enabled}
+                onChange={e => onChange({ ...server, enabled: e.target.checked })}
+                className="w-4 h-4" />
             </div>
           </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Name *</label>
+              <input type="text" value={server.name}
+                onChange={e => onChange({ ...server, name: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Description</label>
+              <input type="text" value={server.description}
+                onChange={e => onChange({ ...server, description: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Category</label>
+              <input type="text" value={server.category}
+                onChange={e => onChange({ ...server, category: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+            </div>
 
-          <div className="flex items-center gap-2">
-            <label className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Enabled</label>
-            <input type="checkbox" checked={server.enabled}
-              onChange={e => onChange({ ...server, enabled: e.target.checked })}
-              className="w-4 h-4" />
+            {/* Config entries */}
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Configuration</label>
+              <div className="space-y-2 mb-2">
+                {Object.entries(server.config).map(([k, v]) => (
+                  <div key={k} className="flex items-center gap-2">
+                    <span className="text-xs font-mono flex-1 px-2 py-1 rounded"
+                      style={{ background: 'var(--color-bg-tertiary)' }}>
+                      {k}: {v}
+                    </span>
+                    <button onClick={() => removeConfigEntry(k)}
+                      className="p-1 rounded cursor-pointer"
+                      style={{ color: '#f87171' }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="text" placeholder="Key" value={configKey}
+                  onChange={e => setConfigKey(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') addConfigEntry(); }}
+                  className="flex-1 px-2 py-1.5 rounded border text-xs"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+                <input type="text" placeholder="Value" value={configValue}
+                  onChange={e => setConfigValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') addConfigEntry(); }}
+                  className="flex-1 px-2 py-1.5 rounded border text-xs"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+                <button onClick={addConfigEntry}
+                  className="px-2 py-1.5 rounded text-xs cursor-pointer"
+                  style={{ background: 'var(--color-primary)', color: 'white' }}>
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Enabled</label>
+              <input type="checkbox" checked={server.enabled}
+                onChange={e => onChange({ ...server, enabled: e.target.checked })}
+                className="w-4 h-4" />
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex justify-end gap-2 mt-6">
           <button onClick={onClose}
@@ -396,11 +468,19 @@ function McpServerModal({
             style={{ borderColor: 'var(--color-border)' }}>
             Cancel
           </button>
-          <button onClick={onSave} disabled={saving || !server.name}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
-            style={{ background: 'var(--color-primary)' }}>
-            <Save size={14} /> {saving ? 'Saving...' : creating ? 'Create' : 'Save'}
-          </button>
+          {showImport ? (
+            <button onClick={handleImport} disabled={saving || !importJson.trim()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
+              style={{ background: 'var(--color-primary)' }}>
+              <Save size={14} /> {saving ? 'Importing...' : 'Import'}
+            </button>
+          ) : (
+            <button onClick={onSave} disabled={saving || !server.name}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
+              style={{ background: 'var(--color-primary)' }}>
+              <Save size={14} /> {saving ? 'Saving...' : creating ? 'Create' : 'Save'}
+            </button>
+          )}
         </div>
       </div>
     </div>

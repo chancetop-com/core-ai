@@ -20,6 +20,8 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -207,6 +209,52 @@ public class SandboxClient {
     public void close() {
     }
 
+    // ---- MCP server management ----
+
+    public String startMcpServer(String id, String command, List<String> args, Map<String, String> env) {
+        var request = new McpStartRequest();
+        request.id = id;
+        request.command = command;
+        request.args = args != null ? args : List.of();
+        request.env = env != null ? env : Map.of();
+
+        var url = baseUrl + "/mcp/start";
+        var req = new HTTPRequest(HTTPMethod.POST, url);
+        req.body(JSON.toJSON(request), ContentType.APPLICATION_JSON);
+        var response = httpClient.execute(req);
+
+        if (response.statusCode != 200) {
+            throw new RuntimeException("mcp start failed: status=" + response.statusCode
+                + ", body=" + response.text());
+        }
+        LOGGER.info("started mcp server in sandbox: id={}, command={}", id, command);
+        return id;
+    }
+
+    public void stopMcpServer(String id) {
+        var request = new McpStopRequest();
+        request.id = id;
+
+        var url = baseUrl + "/mcp/stop";
+        var req = new HTTPRequest(HTTPMethod.POST, url);
+        req.body(JSON.toJSON(request), ContentType.APPLICATION_JSON);
+        var response = httpClient.execute(req);
+
+        if (response.statusCode != 200) {
+            throw new RuntimeException("mcp stop failed: status=" + response.statusCode
+                + ", body=" + response.text());
+        }
+        LOGGER.info("stopped mcp server in sandbox: id={}", id);
+    }
+
+    public String getMcpEndpoint() {
+        return baseUrl + "/mcp";
+    }
+
+    public String getBaseUrl() {
+        return baseUrl;
+    }
+
     public static class ExecuteRequest {
         @Property(name = "tool")
         public String tool;
@@ -223,5 +271,21 @@ public class SandboxClient {
         public String taskId;
         @Property(name = "duration_ms")
         public Long durationMs;
+    }
+
+    public static class McpStartRequest {
+        @Property(name = "id")
+        public String id;
+        @Property(name = "command")
+        public String command;
+        @Property(name = "args")
+        public List<String> args;
+        @Property(name = "env")
+        public Map<String, String> env;
+    }
+
+    public static class McpStopRequest {
+        @Property(name = "id")
+        public String id;
     }
 }

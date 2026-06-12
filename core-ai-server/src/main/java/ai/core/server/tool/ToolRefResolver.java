@@ -40,6 +40,19 @@ public class ToolRefResolver {
     }
 
     public List<ToolCall> resolve(List<ToolRef> toolRefs) {
+        return resolve(toolRefs, null);
+    }
+
+    /**
+     * Resolve refs with an optional session-scoped MCP manager.
+     * <p>
+     * Sandbox-hosted MCP servers register themselves in this session manager before
+     * resolve() is called (see ToolRegistryService.prepareSessionMcpServers). For
+     * each MCP ref we prefer this session manager over the global one when it
+     * contains the target server — so the returned McpToolCall is bound to the
+     * session's sandbox bridge, isolating concurrent sessions from each other.
+     */
+    public List<ToolCall> resolve(List<ToolRef> toolRefs, McpClientManager sessionMcpManager) {
         if (toolRefs == null || toolRefs.isEmpty()) return List.of();
 
         var result = new ArrayList<ToolCall>();
@@ -49,13 +62,13 @@ public class ToolRefResolver {
             if (toolRef.type != null) {
                 switch (toolRef.type) {
                     case BUILTIN -> resolveBuiltinRef(toolRef, result);
-                    case MCP -> resolveMcpRef(toolRef, result);
+                    case MCP -> resolveMcpRef(toolRef, result, sessionMcpManager);
                     case API -> resolveApiRef(toolRef, result);
                     case AGENT -> LOGGER.debug("skipping AGENT tool ref at registry level, id={}", toolRef.id);
                     default -> LOGGER.warn("unknown tool type, id={}, type={}", toolRef.id, toolRef.type);
                 }
             } else {
-                resolveLegacyRef(toolRef, result);
+                resolveLegacyRef(toolRef, result, sessionMcpManager);
             }
         }
         return result;
@@ -85,10 +98,7 @@ public class ToolRefResolver {
     }
 
     @SuppressWarnings("checkstyle:NestedIfDepth")
-    private void resolveMcpRef(ToolRef toolRef, List<ToolCall> result) {
-        var mcpManager = McpClientManagerRegistry.getManager();
-        if (mcpManager == null) return;
-
+    private void resolveMcpRef(ToolRef toolRef, List<ToolCall> result, McpClientManager sessionMgr) {
         // Handle individual MCP tool: id=mcp-tool:{toolName} (source=serverId) or id=mcp-tool:{serverId}:{toolName}
         if (toolRef.id.startsWith(MCP_TOOL_PREFIX)) {
             var remaining = toolRef.id.substring(MCP_TOOL_PREFIX.length());
@@ -96,26 +106,29 @@ public class ToolRefResolver {
             String toolName;
             var colonIdx = remaining.indexOf(':');
             if (colonIdx > 0) {
-                // composite format: mcp-tool:{serverId}:{toolName}
                 serverId = remaining.substring(0, colonIdx);
                 toolName = remaining.substring(colonIdx + 1);
             } else {
-                // simple format: mcp-tool:{toolName} with source as serverId
                 serverId = toolRef.source;
                 toolName = remaining;
             }
-            if (serverId != null && mcpManager.hasServer(serverId)) {
-                result.addAll(loadMcpToolSafe(mcpManager, serverId, toolName));
-                return;
-            }
-            // fallback: try looking up the server by id in toolRegistry
             if (serverId != null) {
+                var mgr = pickManager(serverId, sessionMgr);
+                if (mgr != null && mgr.hasServer(serverId)) {
+                    result.addAll(loadMcpToolSafe(mgr, serverId, toolName));
+                    return;
+                }
+                // Fallback: try the registry entry's resolved name (for config:<name> entries the
+                // McpClientManager uses the trailing name, not the config: id).
                 var entry = toolRegistry.get(serverId);
                 if (entry != null) {
                     var resolvedServerName = resolveMcpServerName(entry);
-                    if (resolvedServerName != null && mcpManager.hasServer(resolvedServerName)) {
-                        result.addAll(loadMcpToolSafe(mcpManager, resolvedServerName, toolName));
-                        return;
+                    if (resolvedServerName != null) {
+                        var fallbackMgr = pickManager(resolvedServerName, sessionMgr);
+                        if (fallbackMgr != null && fallbackMgr.hasServer(resolvedServerName)) {
+                            result.addAll(loadMcpToolSafe(fallbackMgr, resolvedServerName, toolName));
+                            return;
+                        }
                     }
                 }
             }
@@ -123,16 +136,25 @@ public class ToolRefResolver {
             return;
         }
 
-        var serverName = toolRef.source != null ? toolRef.source : toolRef.id;
         var entry = toolRegistry.get(toolRef.id);
         if (entry != null) {
-            result.addAll(resolveMcpTools(entry));
+            result.addAll(resolveMcpTools(entry, sessionMgr));
             return;
         }
 
-        if (mcpManager.hasServer(serverName)) {
-            result.addAll(loadMcpToolsSafe(mcpManager, serverName));
+        var serverName = toolRef.source != null ? toolRef.source : toolRef.id;
+        var mgr = pickManager(serverName, sessionMgr);
+        if (mgr != null && mgr.hasServer(serverName)) {
+            result.addAll(loadMcpToolsSafe(mgr, serverName));
         }
+    }
+
+    // Prefer the session manager when it has the requested server (i.e. the session
+    // has adopted a sandbox-hosted MCP). Fall back to the global manager for normal
+    // STDIO/HTTP servers and for any sandbox-hosted server not in this session.
+    private McpClientManager pickManager(String serverName, McpClientManager sessionMgr) {
+        if (sessionMgr != null && serverName != null && sessionMgr.hasServer(serverName)) return sessionMgr;
+        return McpClientManagerRegistry.getManager();
     }
 
     private void resolveApiRef(ToolRef toolRef, List<ToolCall> result) {
@@ -152,7 +174,7 @@ public class ToolRefResolver {
         }
     }
 
-    private void resolveLegacyRef(ToolRef toolRef, List<ToolCall> result) {
+    private void resolveLegacyRef(ToolRef toolRef, List<ToolCall> result, McpClientManager sessionMgr) {
         var entry = toolRegistry.get(toolRef.id);
         if (entry == null) {
             // builtin tools are registered with "builtin:" prefix, e.g. "builtin:builtin-all"
@@ -161,7 +183,7 @@ public class ToolRefResolver {
         if (entry == null) return;
 
         switch (entry.type) {
-            case MCP -> result.addAll(resolveMcpTools(entry));
+            case MCP -> result.addAll(resolveMcpTools(entry, sessionMgr));
             case BUILTIN -> {
                 var setName = entry.config != null ? entry.config.get("set") : null;
                 var builtinSet = ToolRegistryService.BUILTIN_TOOL_SETS.get(setName);
@@ -172,14 +194,16 @@ public class ToolRefResolver {
         }
     }
 
-    private List<ToolCall> resolveMcpTools(ToolRegistry entry) {
-        var mcpManager = McpClientManagerRegistry.getManager();
-        if (mcpManager != null && mcpManager.hasServer(entry.id)) {
-            return loadMcpToolsSafe(mcpManager, entry.id);
-        } else if (entry.id.startsWith(CONFIG_PREFIX)) {
+    private List<ToolCall> resolveMcpTools(ToolRegistry entry, McpClientManager sessionMgr) {
+        var byEntryId = pickManager(entry.id, sessionMgr);
+        if (byEntryId != null && byEntryId.hasServer(entry.id)) {
+            return loadMcpToolsSafe(byEntryId, entry.id);
+        }
+        if (entry.id.startsWith(CONFIG_PREFIX)) {
             var serverName = entry.id.substring(CONFIG_PREFIX.length());
-            if (mcpManager != null && mcpManager.hasServer(serverName)) {
-                return loadMcpToolsSafe(mcpManager, serverName);
+            var byShortName = pickManager(serverName, sessionMgr);
+            if (byShortName != null && byShortName.hasServer(serverName)) {
+                return loadMcpToolsSafe(byShortName, serverName);
             }
         }
         return List.of();

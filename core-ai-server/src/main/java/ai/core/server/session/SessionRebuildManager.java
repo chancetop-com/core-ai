@@ -170,18 +170,35 @@ public class SessionRebuildManager {
             config.datasetId = findOutputDatasetId(snapshot.datasetConfig);
             datasetConfig = snapshot.datasetConfig;
         }
-        List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty()) ? toolRegistryService.resolveToolRefs(snapshot.tools) : List.of();
-        return doRebuild(sessionId, config, tools, userId, snapshot.agentName, state, snapshot.agentId, datasetConfig);
+        return doRebuild(sessionId, config, snapshot.tools, userId, snapshot.agentName, state, snapshot.agentId, datasetConfig);
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId, SessionState state) {
         return doRebuild(sessionId, config, null, userId, null, state, "default", null);
     }
 
-    private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ToolCall> tools, String userId, String agentName,
+    private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ai.core.server.domain.ToolRef> toolRefs, String userId, String agentName,
                                              SessionState state, String datasetAgentId, List<AgentDatasetConfig> datasetConfig) {
         var start = System.currentTimeMillis();
         var effectiveConfig = config != null ? config : new SessionConfig();
+        var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId)
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
+                .build() : null;
+        var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
+
+        // Sandbox must exist before resolveToolRefs so sandbox-hosted MCP refs see
+        // a session sandbox. The session itself is created after the agent — wire
+        // the event dispatcher through a holder.
+        var sessionRef = new InProcessAgentSession[1];
+        if (context != null) {
+            var sandbox = sandboxService.createSandbox(null, sessionId, userId,
+                    event -> { if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event); });
+            if (sandbox != null) context.sandbox(sandbox);
+        }
+
+        List<ToolCall> tools = (toolRefs != null && !toolRefs.isEmpty())
+                ? toolRegistryService.resolveToolRefs(toolRefs, sessionId)
+                : new ArrayList<>();
         tools = addDatasetTools(tools, datasetConfig, datasetAgentId, sessionId);
         Map<String, Object> extraVars = null;
         if (datasetConfig != null && !datasetConfig.isEmpty()) {
@@ -194,24 +211,17 @@ public class SessionRebuildManager {
         var dynamicToolCount = state != null && state.tools != null ? state.tools.size() : 0;
         logger.info("doRebuild start, sessionId={}, fromAgent={}, baseTools={}, dynamicTools={}, skills={}, subAgents={}",
                 sessionId, state != null && state.fromAgent, toolCount, dynamicToolCount, skillCount, subAgentCount);
-        var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId)
-                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
-                .build() : null;
-        var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
         var agent = subAgentManager.buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
                 sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools,
                 context, agentName, extraVars);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         session.onEvent(chatMessageService.listener(sessionId));
         if (eventPublisher != null) {
             session.onEvent(new SseEventBridge(sessionId, eventPublisher));
         }
         registerSessionFromDb(sessionId, userId);
-        if (context != null) {
-            var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
-            if (sandbox != null) context.sandbox(sandbox);
-        }
         restoreAgentHistory(agent, sessionId);
         restoreDynamicallyLoaded(state, sessionId, session);
         logger.info("doRebuild done, sessionId={}, elapsedMs={}", sessionId, System.currentTimeMillis() - start);
@@ -229,7 +239,7 @@ public class SessionRebuildManager {
         if (state.tools != null && !state.tools.isEmpty()) {
             try {
                 logger.info("restore tools: {} ref(s) to resolve for session {}, refs={}", state.tools.size(), sessionId, state.tools);
-                var resolved = toolRegistryService.resolveToolRefs(state.tools);
+                var resolved = toolRegistryService.resolveToolRefs(state.tools, sessionId);
                 if (!resolved.isEmpty()) {
                     session.loadTools(resolved);
                     logger.info("restored {} dynamically loaded tools for session {}", resolved.size(), sessionId);

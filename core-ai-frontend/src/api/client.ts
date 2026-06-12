@@ -908,6 +908,8 @@ export const api = {
       request<ToolRegistryView>(`/api/tools/mcp-servers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteMcpServer: (id: string) =>
       request<void>(`/api/tools/mcp-servers/${id}`, { method: 'DELETE' }),
+    importMcpServers: (data: { config: string; category?: string; enabled?: boolean }) =>
+      request<{ servers: ToolRegistryView[]; total: number }>('/api/tools/mcp-servers/import', { method: 'POST', body: JSON.stringify(data) }),
     enableMcpServer: (id: string) =>
       request<ToolRegistryView>(`/api/tools/mcp-servers/${id}/enable`, { method: 'PUT' }),
     disableMcpServer: (id: string) =>

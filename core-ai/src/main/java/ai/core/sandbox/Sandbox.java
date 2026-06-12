@@ -38,6 +38,10 @@ public interface Sandbox extends AutoCloseable {
         return null;
     }
 
+    default int port() {
+        return 0;
+    }
+
     default String image() {
         return null;
     }

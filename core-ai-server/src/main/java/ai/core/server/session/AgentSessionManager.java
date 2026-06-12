@@ -192,7 +192,6 @@ public class AgentSessionManager {
             if (overrides.systemPrompt != null) config.systemPrompt = overrides.systemPrompt;
             if (overrides.maxTurns != null) config.maxTurns = overrides.maxTurns;
         }
-        var tools = subAgentManager().resolveTools(definition);
         var sessionId = UUID.randomUUID().toString();
         var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
         // SessionConfig overrides: if datasetConfigs is set, use those instead of agent defaults
@@ -213,6 +212,16 @@ public class AgentSessionManager {
             datasetConfig = List.of(overridePerm);
             config.datasetId = overrides.datasetId;
         }
+        // Create the sandbox before resolving tools — sandbox-hosted MCP refs need
+        // the session's sandbox to register their child process. The session itself
+        // is built afterwards, so the event dispatcher is wired through a holder.
+        var sandboxConfig = sandboxService.getEffectiveConfig(definition);
+        var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
+        var sessionRef = new InProcessAgentSession[1];
+        var sandbox2 = sandboxService.createSandbox(sandboxConfig, sessionId, userId,
+                event -> { if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event); });
+
+        var tools = subAgentManager().resolveTools(definition, sessionId);
         tools = addDatasetTools(tools, datasetConfig, definition.id, sessionId);
         Map<String, Object> extraVars = null;
         if (datasetConfig != null && !datasetConfig.isEmpty()) {
@@ -222,17 +231,15 @@ public class AgentSessionManager {
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
                 .build();
-        var sandboxConfig = sandboxService.getEffectiveConfig(definition);
-        var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
+        if (sandbox2 != null) context.sandbox(sandbox2);
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn),
                 artifactSetup.withSubmitArtifactsTool(tools.isEmpty() ? null : tools, sessionId, userId, sandboxOn),
                 context, definition.name, extraVars);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, definition.id, source));
-        var sandbox2 = sandboxService.createSandbox(sandboxConfig, sessionId, userId, session::dispatchEvent);
-        if (sandbox2 != null) context.sandbox(sandbox2);
         sessions.put(sessionId, session);
         touchActivity(sessionId);
         claimOwnership(sessionId);
@@ -343,7 +350,7 @@ public class AgentSessionManager {
 
     public List<String> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {
         var session = getSession(sessionId);
-        var tools = toolRegistryService.resolveToolRefs(toolRefs);
+        var tools = toolRegistryService.resolveToolRefs(toolRefs, sessionId);
         if (tools.isEmpty()) {
             throw new NotFoundException("no tools found for refs: " + toolRefs);
         }

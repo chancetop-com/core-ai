@@ -65,7 +65,7 @@ public class SessionSubAgentManager {
             try {
                 var subAgentDef = agentDefinitionCollection.get(subAgentId)
                         .orElseThrow(() -> new RuntimeException("subagent not found, id=" + subAgentId));
-                var subAgent = buildSubAgent(subAgentDef);
+                var subAgent = buildSubAgent(subAgentDef, session.id());
                 var subAgentToolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
                 session.loadTools(List.of(subAgentToolCall));
                 names.add(subAgentDef.name);
@@ -80,7 +80,7 @@ public class SessionSubAgentManager {
     List<String> applySubAgentsToSession(InProcessAgentSession session, List<AgentDefinition> definitions) {
         var names = new ArrayList<String>();
         for (var definition : definitions) {
-            var subAgent = buildSubAgent(definition);
+            var subAgent = buildSubAgent(definition, session.id());
             var subAgentToolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
             session.loadTools(List.of(subAgentToolCall));
             names.add(definition.name);
@@ -88,17 +88,21 @@ public class SessionSubAgentManager {
         return names;
     }
 
-    private Agent buildSubAgent(AgentDefinition definition) {
+    private Agent buildSubAgent(AgentDefinition definition, String sessionId) {
         var config = toSessionConfig(definition);
-        var tools = resolveTools(definition);
+        var tools = resolveTools(definition, sessionId);
         return buildAgent(config, tools.isEmpty() ? null : tools, null, definition.name);
     }
 
     public List<ToolCall> resolveTools(AgentDefinition definition) {
+        return resolveTools(definition, null);
+    }
+
+    public List<ToolCall> resolveTools(AgentDefinition definition, String sessionId) {
         if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
-            return toolRegistryService.resolveToolRefs(definition.publishedConfig.tools);
+            return toolRegistryService.resolveToolRefs(definition.publishedConfig.tools, sessionId);
         } else if (definition.tools != null && !definition.tools.isEmpty()) {
-            return toolRegistryService.resolveToolRefs(definition.tools);
+            return toolRegistryService.resolveToolRefs(definition.tools, sessionId);
         }
         return List.of();
     }

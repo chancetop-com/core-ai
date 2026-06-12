@@ -95,6 +95,24 @@ public class LazySandbox implements Sandbox {
     }
 
     @Override
+    public String ip() {
+        var current = delegate;
+        return current != null ? current.ip() : null;
+    }
+
+    @Override
+    public int port() {
+        var current = delegate;
+        return current != null ? current.port() : 0;
+    }
+
+    @Override
+    public String image() {
+        var current = delegate;
+        return current != null ? current.image() : null;
+    }
+
+    @Override
     public void close() {
         synchronized (this) {
             if (delegate != null) {
@@ -109,7 +127,7 @@ public class LazySandbox implements Sandbox {
         }
     }
 
-    void ensureReady() {
+    public void ensureReady() {
         var current = delegate;
         if (current != null && current.getStatus() == SandboxStatus.READY) {
             return; // Fast path - sandbox is healthy, caller handles post-acquire actions

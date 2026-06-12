@@ -2,6 +2,8 @@ package ai.core.server.web;
 
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.tool.CreateMcpServerRequest;
+import ai.core.api.server.tool.ImportMcpServersRequest;
+import ai.core.api.server.tool.ImportMcpServersResponse;
 import ai.core.api.server.tool.ListApiAppServicesResponse;
 import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
@@ -51,6 +53,15 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     @Override
     public ToolRegistryView createMcpServer(CreateMcpServerRequest request) {
         return toView(toolRegistryService.createMcpServer(request.name, request.description, request.category, request.config, request.enabled));
+    }
+
+    @Override
+    public ImportMcpServersResponse importMcpServers(ImportMcpServersRequest request) {
+        var created = toolRegistryService.importMcpServers(request.config, request.category, request.enabled);
+        var response = new ImportMcpServersResponse();
+        response.servers = created.stream().map(this::toView).toList();
+        response.total = response.servers.size();
+        return response;
     }
 
     @Override

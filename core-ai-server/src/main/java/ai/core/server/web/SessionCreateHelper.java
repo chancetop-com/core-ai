@@ -100,7 +100,7 @@ public class SessionCreateHelper {
 
         if (toolRefs.isEmpty()) return null;
 
-        var loadedTools = toolRegistryService.resolveToolRefs(toolRefs);
+        var loadedTools = toolRegistryService.resolveToolRefs(toolRefs, sessionId);
         if (loadedTools.isEmpty()) {
             LOGGER.warn("no tools found for refs, skipping: {}", toolRefs);
             return null;

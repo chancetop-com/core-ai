@@ -1,6 +1,7 @@
 package ai.core.server.sandbox;
 
 import ai.core.api.server.session.SandboxEvent;
+import ai.core.mcp.client.McpClientManager;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageService;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -43,6 +45,13 @@ public class SandboxService {
     private final ScheduledExecutorService cleanupScheduler;
     private final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
     private final Map<String, List<PendingFile>> pendingFiles = new ConcurrentHashMap<>();
+    // Per-session McpClientManager + the MCP server ids started on that session's sandbox.
+    // Sandbox-hosted MCP servers live in these per-session managers (not the global one),
+    // so concurrent sessions don't collide on shared server ids.
+    private final Map<String, McpClientManager> sessionMcpManagers = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> sessionMcpServerIds = new ConcurrentHashMap<>();
+
+    private volatile LazySandbox discoverySandbox;
 
     private final boolean enabled;
     private ObjectStorageService storageService;
@@ -93,7 +102,7 @@ public class SandboxService {
         }
         return sessionSandboxes.computeIfAbsent(sessionId, sid -> {
             LOGGER.info("sandbox created (shared) for session: {}, config={}", sid, effectiveConfig);
-            return new LazySandbox(effectiveConfig, sandboxManager, null, sid, userId, () -> uploadPendingFiles(sid));
+            return new LazySandbox(effectiveConfig, sandboxManager, null, sid, userId, () -> onSandboxReady(sid));
         });
     }
 
@@ -108,7 +117,7 @@ public class SandboxService {
         }
 
         var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, sessionId, userId,
-                () -> uploadPendingFiles(sessionId));
+                () -> onSandboxReady(sessionId));
         sessionSandboxes.put(sessionId, lazySandbox);
 
         LOGGER.info("sandbox created for session: {}, config={}", sessionId, effectiveConfig);
@@ -213,6 +222,12 @@ public class SandboxService {
         return sessionSandboxes.get(sessionId);
     }
 
+    /** Force a LazySandbox for the session to materialize. No-op when there is no sandbox or it's already ready. */
+    public void ensureSandboxReady(String sessionId) {
+        var sandbox = sessionSandboxes.get(sessionId);
+        if (sandbox instanceof LazySandbox lazy) lazy.ensureReady();
+    }
+
     public void renewSandbox(String sessionId) {
         if (!enabled) return;
         var sandbox = sessionSandboxes.get(sessionId);
@@ -226,10 +241,88 @@ public class SandboxService {
         if (!enabled) return;
         var sandbox = sessionSandboxes.remove(sessionId);
         pendingFiles.remove(sessionId);
+        // Stop the MCP processes started in this session's sandbox (best-effort — the
+        // sandbox close that follows will reap them anyway, but explicit stop keeps the
+        // runtime's process map tidy when sandboxes are pooled/reused).
+        var startedIds = sessionMcpServerIds.remove(sessionId);
+        if (startedIds != null && !startedIds.isEmpty() && sandbox != null) {
+            stopSessionMcpProcesses(sessionId, sandbox, startedIds);
+        }
+        // Close the per-session McpClientManager — releases Java-side HTTP transports
+        // and stops the heartbeat monitor for this session's servers.
+        var sessionMgr = sessionMcpManagers.remove(sessionId);
+        if (sessionMgr != null) {
+            try {
+                sessionMgr.close();
+            } catch (Exception e) {
+                LOGGER.warn("failed to close session mcp manager for session {}", sessionId, e);
+            }
+        }
         if (sandbox != null) {
             sandbox.close();
             LOGGER.info("sandbox released for session: {}", sessionId);
         }
+    }
+
+    // ---- Per-session MCP manager ----
+
+    /** Returns the McpClientManager scoped to this session, creating it if needed. */
+    public McpClientManager getOrCreateSessionMcpManager(String sessionId) {
+        return sessionMcpManagers.computeIfAbsent(sessionId, sid -> new McpClientManager());
+    }
+
+    /** Record that an MCP server id was started on the session's sandbox so we can stop it on release. */
+    public void recordSessionMcpServer(String sessionId, String serverId) {
+        sessionMcpServerIds.computeIfAbsent(sessionId, k -> ConcurrentHashMap.newKeySet()).add(serverId);
+    }
+
+    private void stopSessionMcpProcesses(String sessionId, Sandbox sandbox, Set<String> serverIds) {
+        var ip = sandbox.ip();
+        var port = sandbox.port();
+        if (ip == null || port == 0) return;
+        var client = new SandboxClient(ip, port, 30);
+        for (var id : serverIds) {
+            try {
+                client.stopMcpServer(id);
+            } catch (Exception e) {
+                LOGGER.warn("failed to stop mcp server in session sandbox: session={}, serverId={}: {}", sessionId, id, e.getMessage());
+            }
+        }
+    }
+
+    // Called by LazySandbox post-acquire hook after the sandbox materializes.
+    // Uploads files queued before the sandbox existed. MCP processes are started
+    // lazily at resolveToolRefs time (per-session, on demand), not here.
+    private void onSandboxReady(String sessionId) {
+        uploadPendingFiles(sessionId);
+    }
+
+    // ---- Discovery sandbox (global, long-running) ----
+
+    public synchronized SandboxClient getDiscoverySandboxClient() {
+        if (!enabled) throw new IllegalStateException("sandbox is not enabled");
+        if (discoverySandbox == null) {
+            var discoveryConfig = createDiscoveryConfig();
+            discoverySandbox = new LazySandbox(discoveryConfig, sandboxManager, null, "discovery", "system", null);
+            LOGGER.info("discovery sandbox created");
+        }
+        discoverySandbox.ensureReady();
+        var ip = discoverySandbox.ip();
+        var port = discoverySandbox.port();
+        if (ip == null || port == 0) {
+            throw new IllegalStateException("discovery sandbox ip/port not available");
+        }
+        return new SandboxClient(ip, port, 60);
+    }
+
+    private static SandboxConfig createDiscoveryConfig() {
+        var config = new SandboxConfig();
+        config.enabled = true;
+        config.memoryLimitMb = 512;
+        config.cpuLimitMillicores = 500;
+        config.networkEnabled = false;
+        config.timeoutSeconds = 86_400; // 24 hours
+        return config;
     }
 
     public boolean hasSandbox(String sessionId) {
@@ -290,6 +383,24 @@ public class SandboxService {
         }
         sessionSandboxes.clear();
         pendingFiles.clear();
+        for (var mgr : sessionMcpManagers.values()) {
+            try {
+                mgr.close();
+            } catch (Exception e) {
+                LOGGER.warn("failed to close session mcp manager on shutdown", e);
+            }
+        }
+        sessionMcpManagers.clear();
+        sessionMcpServerIds.clear();
+
+        if (discoverySandbox != null) {
+            try {
+                discoverySandbox.close();
+            } catch (Exception e) {
+                LOGGER.warn("failed to close discovery sandbox", e);
+            }
+            discoverySandbox = null;
+        }
 
         // Shutdown cleanup scheduler
         cleanupScheduler.shutdown();

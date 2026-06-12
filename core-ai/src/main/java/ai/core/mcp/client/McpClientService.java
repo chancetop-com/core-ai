@@ -287,6 +287,9 @@ public class McpClientService implements AutoCloseable {
             case STDIO -> createStdioTransport(config);
             case STREAMABLE_HTTP -> createStreamableHttpTransport(config);
             case SSE -> createSseTransport(config);
+            case SANDBOX_HOSTED -> throw new IllegalStateException(
+                "SANDBOX_HOSTED transport must be resolved to STREAMABLE_HTTP before creating transport. " +
+                "The server module should transform the config with sandbox URL.");
         };
     }
 

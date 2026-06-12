@@ -34,6 +34,9 @@ public class ToolRegistry {
     @Field(name = "config")
     public Map<String, String> config;
 
+    @Field(name = "raw_config")
+    public String rawConfig;
+
     @NotNull
     @Field(name = "enabled")
     public Boolean enabled;

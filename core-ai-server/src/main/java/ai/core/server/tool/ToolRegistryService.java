@@ -3,11 +3,13 @@ package ai.core.server.tool;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.mcp.client.McpServerConfig;
+import ai.core.sandbox.Sandbox;
 import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
@@ -21,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +51,7 @@ public class ToolRegistryService {
 
     private final Map<String, ToolRegistry> tools = new ConcurrentHashMap<>();
     private final Map<String, List<ToolCall>> dynamicToolSets = new ConcurrentHashMap<>();
-    private final McpServerConnectionManager mcpConnectionManager = new McpServerConnectionManager();
+    private final McpServerConnectionManager mcpConnectionManager;
     private ToolRefResolver toolRefResolver;
 
     @Inject
@@ -57,7 +60,18 @@ public class ToolRegistryService {
     @Inject
     ApiDefinitionService apiDefinitionService;
 
+    private SandboxService sandboxService;
+
     private InternalApiToolLoader internalApiToolLoader;
+
+    public ToolRegistryService() {
+        this.mcpConnectionManager = new McpServerConnectionManager(null);
+    }
+
+    public void setSandboxService(SandboxService sandboxService) {
+        this.sandboxService = sandboxService;
+        this.mcpConnectionManager.setSandboxService(sandboxService);
+    }
 
     public void initialize(String mcpServersJson) {
         loadBuiltinTools();
@@ -215,6 +229,11 @@ public class ToolRegistryService {
     }
 
     public ToolRegistry createMcpServer(String name, String description, String category, Map<String, String> config, Boolean enabled) {
+        return createMcpServerInternal(name, description, category, config, enabled, null);
+    }
+
+    private ToolRegistry createMcpServerInternal(String name, String description, String category,
+                                                 Map<String, String> config, Boolean enabled, String rawConfig) {
         var configMap = new HashMap<String, Object>(config);
         McpServerConfig.fromMap(name, configMap);
 
@@ -225,6 +244,7 @@ public class ToolRegistryService {
         entity.category = category;
         entity.type = ToolType.MCP;
         entity.config = config;
+        entity.rawConfig = rawConfig;
         entity.enabled = enabled == null || enabled;
         entity.createdAt = ZonedDateTime.now();
         toolRegistryCollection.insert(entity);
@@ -236,6 +256,65 @@ public class ToolRegistryService {
         }
         LOGGER.info("created mcp server, id={}, name={}", entity.id, entity.name);
         return entity;
+    }
+
+    /**
+     * Import MCP servers from a standard mcpServers JSON (Claude Desktop format).
+     * Each server is automatically configured as sandbox-hosted.
+     */
+    @SuppressWarnings("unchecked")
+    public List<ToolRegistry> importMcpServers(String rawJson, String category, Boolean enabled) {
+        Map<String, Object> parsed = JsonUtil.fromJson(Map.class, rawJson);
+        var mcpServers = (Map<String, Object>) parsed.get("mcpServers");
+        if (mcpServers == null || mcpServers.isEmpty()) {
+            throw new IllegalArgumentException("missing or empty 'mcpServers' key in config");
+        }
+
+        var results = new ArrayList<ToolRegistry>();
+        for (var entry : mcpServers.entrySet()) {
+            String name = entry.getKey();
+            if (!(entry.getValue() instanceof Map<?, ?> serverConf)) {
+                LOGGER.warn("skipping invalid mcp server config for '{}', expected object", name);
+                continue;
+            }
+            var config = convertImportConfigToMap((Map<String, Object>) serverConf);
+            // Preserve the original JSON so users can review what they pasted.
+            var rawConfig = JsonUtil.toJson(serverConf);
+            var entity = createMcpServerInternal(name, null, category, config, enabled, rawConfig);
+            results.add(entity);
+        }
+        LOGGER.info("imported {} mcp servers, category={}, enabled={}", results.size(), category, enabled);
+        return results;
+    }
+
+    // Convert a single server config from the import JSON to Map<String,String>
+    // suitable for ToolRegistry.config storage. Container types (args/env/headers)
+    // are serialized as JSON so they can be parsed back by McpServerConfig helpers.
+    private Map<String, String> convertImportConfigToMap(Map<String, Object> serverConf) {
+        var result = new HashMap<String, String>();
+        result.put("transport", "sandbox_hosted");
+
+        var command = serverConf.get("command");
+        if (command instanceof String cmd && !cmd.isBlank()) {
+            result.put("command", cmd);
+        } else {
+            throw new IllegalArgumentException("command is required");
+        }
+
+        for (var e : serverConf.entrySet()) {
+            if (result.containsKey(e.getKey()) || e.getValue() == null) continue;
+            var value = e.getValue();
+            if (value instanceof String s) {
+                result.put(e.getKey(), s);
+            } else if (value instanceof Number || value instanceof Boolean) {
+                result.put(e.getKey(), value.toString());
+            } else {
+                // Map / List / other nested structures — store as JSON so downstream
+                // parsers (McpServerConfig.parseEnv / parseArgsList / parseHeadersJson) round-trip cleanly.
+                result.put(e.getKey(), JsonUtil.toJson(value));
+            }
+        }
+        return result;
     }
 
     public ToolRegistry updateMcpServer(String id, String name, String description, String category, Map<String, String> config, Boolean enabled) {
@@ -314,7 +393,91 @@ public class ToolRegistryService {
     }
 
     public List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs) {
-        return toolRefResolver != null ? toolRefResolver.resolve(toolRefs) : List.of();
+        return resolveToolRefs(toolRefs, null);
+    }
+
+    /**
+     * Resolve tool refs in the context of a specific session.
+     * <p>
+     * For SANDBOX_HOSTED MCP refs, this materializes the session sandbox (if not
+     * already ready), starts the MCP child process inside it, and registers the
+     * client in the session-scoped McpClientManager — so concurrent sessions don't
+     * collide on shared server ids. Non-sandbox MCP refs use the global manager.
+     * <p>
+     * The session's sandbox must already exist (via {@code sandboxService.createSandbox})
+     * before calling this. If it doesn't, sandbox-hosted refs fall back to the global
+     * manager, which won't have them registered (intentionally) — those tools will be
+     * unavailable until either this is re-called after the sandbox exists, or the
+     * caller invokes {@code AgentSessionManager.loadToolRefs} at runtime.
+     *
+     * @param sessionId the session/run id; pass {@code null} for non-session callers
+     *                  (LLMCallBuilderTools, AgentBuilderTools, etc.).
+     */
+    public List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs, String sessionId) {
+        if (toolRefResolver == null) return List.of();
+        McpClientManager sessionMgr = null;
+        if (sessionId != null && sandboxService != null && toolRefs != null && !toolRefs.isEmpty()) {
+            var sandbox = sandboxService.getSandbox(sessionId);
+            if (sandbox != null) {
+                sessionMgr = prepareSessionMcpServers(toolRefs, sessionId, sandbox);
+            }
+        }
+        return toolRefResolver.resolve(toolRefs, sessionMgr);
+    }
+
+    // Walk the refs, find sandbox-hosted MCP entries, and ensure each is registered
+    // in the session's McpClientManager (starts the MCP child process on the session
+    // sandbox the first time). Returns the session manager if any were registered,
+    // else null so the resolver falls through to the global manager.
+    private McpClientManager prepareSessionMcpServers(List<ToolRef> toolRefs, String sessionId, Sandbox sandbox) {
+        var sandboxHostedEntries = collectSandboxHostedEntries(toolRefs);
+        if (sandboxHostedEntries.isEmpty()) return null;
+
+        // MCP child processes need the sandbox's ip/port — force LazySandbox materialization.
+        if (sandboxService != null) sandboxService.ensureSandboxReady(sessionId);
+
+        var sessionMgr = sandboxService != null ? sandboxService.getOrCreateSessionMcpManager(sessionId) : null;
+        if (sessionMgr == null) return null;
+
+        for (var entry : sandboxHostedEntries) {
+            var registered = mcpConnectionManager.registerOnSession(entry, sessionMgr, sandbox);
+            if (registered && sandboxService != null) sandboxService.recordSessionMcpServer(sessionId, entry.id);
+        }
+        return sessionMgr;
+    }
+
+    private List<ToolRegistry> collectSandboxHostedEntries(List<ToolRef> toolRefs) {
+        var seen = new java.util.LinkedHashSet<String>();
+        var result = new ArrayList<ToolRegistry>();
+        for (var ref : toolRefs) {
+            if (ref == null || ref.id == null) continue;
+            var entry = findMcpEntryForRef(ref);
+            if (entry != null && "sandbox_hosted".equalsIgnoreCase(entry.config.get("transport")) && seen.add(entry.id)) {
+                result.add(entry);
+            }
+        }
+        return result;
+    }
+
+    private ToolRegistry findMcpEntryForRef(ToolRef ref) {
+        var entry = tools.get(ref.id);
+        if (entry != null && entry.type == ToolType.MCP) return entry;
+        // mcp-tool:<server>:<tool> or mcp-tool:<tool> with source=server — resolve to the server entry
+        if (ref.id.startsWith("mcp-tool:")) {
+            var remaining = ref.id.substring("mcp-tool:".length());
+            var colonIdx = remaining.indexOf(':');
+            String serverId = colonIdx > 0 ? remaining.substring(0, colonIdx) : ref.source;
+            if (serverId != null) {
+                var serverEntry = tools.get(serverId);
+                if (serverEntry != null && serverEntry.type == ToolType.MCP) return serverEntry;
+            }
+        }
+        // ref.source can also point at the entry id (e.g. config:<name>)
+        if (ref.source != null) {
+            var srcEntry = tools.get(ref.source);
+            if (srcEntry != null && srcEntry.type == ToolType.MCP) return srcEntry;
+        }
+        return null;
     }
 
     public List<String> extractAgentIds(List<ToolRef> toolRefs) {
@@ -356,6 +519,10 @@ public class ToolRegistryService {
 
     public List<McpSchema.Tool> listMcpServerToolDetails(String serverId) {
         var entity = requireMcpEntity(serverId);
+        if (isSandboxHosted(entity)) {
+            // Tool browsing for a sandbox-hosted server: lazily start on discovery.
+            mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
+        }
         var mcpManager = McpClientManagerRegistry.getManager();
         if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
             return List.of();
@@ -366,6 +533,10 @@ public class ToolRegistryService {
             LOGGER.warn("failed to list tool details from mcp server, id={}", serverId, e);
             return List.of();
         }
+    }
+
+    private static boolean isSandboxHosted(ToolRegistry entity) {
+        return entity.config != null && "sandbox_hosted".equalsIgnoreCase(entity.config.get("transport"));
     }
 
     public McpClientManager.ConnectionState getMcpServerState(String serverId) {
@@ -381,7 +552,11 @@ public class ToolRegistryService {
         var entity = requireMcpEntity(serverId);
         if (!Boolean.TRUE.equals(entity.enabled)) throw new RuntimeException("mcp server is disabled, id=" + serverId);
 
-        mcpConnectionManager.registerMcpServer(entity);
+        if (isSandboxHosted(entity)) {
+            mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
+        } else {
+            mcpConnectionManager.registerMcpServer(entity);
+        }
         var mcpManager = McpClientManagerRegistry.getManager();
         if (mcpManager == null) throw new RuntimeException("mcp manager not initialized");
 

@@ -184,6 +184,7 @@ public class ServerModule extends Module {
         this.sandboxService = sandboxModule.sandboxService;
         if (sandboxService != null) {
             sandboxService.setFileService(fileService);   // workflow artifact staging pulls bytes from FileRecord
+            toolRegistry.setSandboxService(sandboxService);
         }
 
         // ChannelRegistry and adapters must be bound before bindService() because

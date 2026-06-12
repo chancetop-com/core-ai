@@ -86,6 +86,11 @@ public class DockerSandbox implements Sandbox {
     }
 
     @Override
+    public int port() {
+        return runtimeClient.getPort();
+    }
+
+    @Override
     public String image() {
         return image;
     }

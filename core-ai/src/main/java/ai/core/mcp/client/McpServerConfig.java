@@ -22,6 +22,10 @@ public class McpServerConfig {
         return new HttpBuilder(url);
     }
     public static McpServerConfig fromMap(String serverName, Map<String, Object> config) {
+        String transport = (String) config.get("transport");
+        if ("sandbox_hosted".equalsIgnoreCase(transport) && config.containsKey("command")) {
+            return parseSandboxHostedConfig(serverName, config);
+        }
         if (config.containsKey("command")) {
             return parseStdioConfig(serverName, config);
         } else if (config.containsKey("url")) {
@@ -41,7 +45,6 @@ public class McpServerConfig {
         return result;
     }
 
-    @SuppressWarnings("unchecked")
     private static McpServerConfig parseStdioConfig(String serverName, Map<String, Object> config) {
         var builder = stdio((String) config.get("command")).name(serverName);
 
@@ -49,9 +52,23 @@ public class McpServerConfig {
             builder.args(argsList.stream().map(Object::toString).toList());
         }
 
-        if (config.get("env") instanceof Map<?, ?> envMap) {
-            builder.env((Map<String, String>) envMap);
+        var env = parseEnv(config.get("env"));
+        if (!env.isEmpty()) builder.env(env);
+
+        parseCommonConfig(builder, config);
+        return builder.build();
+    }
+
+    private static McpServerConfig parseSandboxHostedConfig(String serverName, Map<String, Object> config) {
+        var builder = stdio((String) config.get("command")).name(serverName);
+        builder.transportType(TransportType.SANDBOX_HOSTED);
+
+        if (config.get("args") instanceof List<?> argsList) {
+            builder.args(argsList.stream().map(Object::toString).toList());
         }
+
+        var env = parseEnv(config.get("env"));
+        if (!env.isEmpty()) builder.env(env);
 
         parseCommonConfig(builder, config);
         return builder.build();
@@ -123,6 +140,32 @@ public class McpServerConfig {
             LOGGER.warn("failed to parse headers json for server '{}', raw: {}", serverName, headersStr, e);
             return Map.of();
         }
+    }
+
+    // Accepts env as either a Map<String,String> or a JSON object string (the form it takes
+    // when stored in a Map<String,String> config from the database).
+    @SuppressWarnings("unchecked")
+    public static Map<String, String> parseEnv(Object envObj) {
+        if (envObj instanceof Map<?, ?> envMap) {
+            var result = new HashMap<String, String>();
+            for (var entry : envMap.entrySet()) {
+                result.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+            }
+            return result;
+        }
+        if (envObj instanceof String envStr && !envStr.isBlank()) {
+            try {
+                Map<String, Object> parsed = JsonUtil.fromJson(Map.class, envStr);
+                var result = new HashMap<String, String>();
+                for (var entry : parsed.entrySet()) {
+                    result.put(entry.getKey(), String.valueOf(entry.getValue()));
+                }
+                return result;
+            } catch (Exception e) {
+                LOGGER.warn("failed to parse env as JSON: {}", envStr, e);
+            }
+        }
+        return Map.of();
     }
     private String name;
     private TransportType transportType;
@@ -212,10 +255,14 @@ public class McpServerConfig {
     public boolean isHttp() {
         return transportType == TransportType.STREAMABLE_HTTP || transportType == TransportType.SSE;
     }
+    public boolean isSandboxHosted() {
+        return transportType == TransportType.SANDBOX_HOSTED;
+    }
     public enum TransportType {
         STDIO,
         STREAMABLE_HTTP,
-        SSE
+        SSE,
+        SANDBOX_HOSTED
     }
     private interface CommonConfigBuilder<T> {
         void enableHeartbeat(boolean enable);
@@ -265,6 +312,11 @@ public class McpServerConfig {
 
         public StdioBuilder envVar(String key, String value) {
             config.env.put(key, value);
+            return this;
+        }
+
+        public StdioBuilder transportType(TransportType transportType) {
+            config.transportType = transportType;
             return this;
         }
 

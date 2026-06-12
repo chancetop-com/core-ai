@@ -377,9 +377,9 @@ public class AgentRunner {
         var config = definition.publishedConfig;
         List<ToolCall> tools;
         if (config != null && config.tools != null && !config.tools.isEmpty()) {
-            tools = toolRegistryService.resolveToolRefs(config.tools);
+            tools = toolRegistryService.resolveToolRefs(config.tools, runEntity.id);
         } else if (definition.tools != null && !definition.tools.isEmpty()) {
-            tools = toolRegistryService.resolveToolRefs(definition.tools);
+            tools = toolRegistryService.resolveToolRefs(definition.tools, runEntity.id);
         } else {
             tools = List.of();
         }
