@@ -498,7 +498,7 @@ class VariablePool {
 
   | 消费方 | v2 行为 | 原决策处置 |
   |---|---|---|
-  | AGENT（有沙箱） | staging + **path-in-prompt**（`处理文件：{{ nodes.a.artifacts.0.path }}`），agent 直接读本地文件，内容不灌 context | 决策①修订；url-in-prompt 降级为回退 |
+  | AGENT（有沙箱） | staging + **path-in-prompt**（<code v-pre>处理文件：{{ nodes.a.artifacts.0.path }}</code>），agent 直接读本地文件，内容不灌 context | 决策①修订；url-in-prompt 降级为回退 |
   | LLM（无沙箱） | url-in-prompt（原决策①原样保留为回退路径） | 不变 |
   | CODE | staging 进 CODE 沙箱，脚本按 path 读。**不破坏「CODE 无状态」**：staged 文件是调用入参的一部分（同 JSON 入参），执行间不残留状态，契约仍是 JSON 进/出。**收益：CODE 取文件不再要求 `networkEnabled`/SSRF 放行 FileService——§5.3.1 唯一未决项消解** | 决策③⑥修订 |
   | HTTP / MCP_TOOL / API_TOOL | 传 url/file_id，不变 | 决策②保留 |
