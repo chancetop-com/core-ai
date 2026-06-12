@@ -12,6 +12,7 @@ import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.AuthManager;
+import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.hook.ScriptHookLifecycle;
@@ -80,6 +81,40 @@ public class CliApp {
             localProps.forEach((k, v) -> global.putProperty((String) k, (String) v));
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to load workspace-local config: " + localConfig, e);
+        }
+    }
+
+    /**
+     * If {@code litellm.api.base} is not in agent.properties, inject fallback
+     * values from saved auth credentials so the server's LiteLLM proxy is used
+     * without manual configuration.
+     */
+    private static void injectLiteLLMFallback(PropertiesFileSource props) {
+        if (props.property("litellm.api.base").isPresent()) return;
+        var auth = AuthConfig.load();
+        if (auth != null && auth.apiKey() != null) {
+            props.putProperty("litellm.api.base", auth.serverUrl() + "/api/litellm/v1");
+            props.putProperty("litellm.api.key", auth.apiKey());
+        }
+    }
+
+    /**
+     * Populate RuntimeAuthConfig from saved auth and register a listener that
+     * updates the LiteLLM provider when credentials change (login / server-switch).
+     */
+    private void registerAuthListener(BootstrapResult result) {
+        var auth = AuthConfig.load();
+        if (auth != null && auth.apiKey() != null) {
+            RuntimeAuthConfig.instance().update(auth.serverUrl() + "/api/litellm/v1", auth.apiKey());
+        }
+        if (result.liteLLMProvider != null) {
+            RuntimeAuthConfig.instance().addListener(() -> {
+                var rt = RuntimeAuthConfig.instance();
+                if (rt.isConfigured()) {
+                    // rt.serverUrl() already includes /api/litellm/v1 from AuthManager
+                    result.liteLLMProvider.updateCredentials(rt.serverUrl(), rt.apiKey());
+                }
+            });
         }
     }
 
@@ -225,11 +260,20 @@ public class CliApp {
         LOGGER.info("loading config from {}", configFile);
         var props = PropertiesFileSource.fromFile(configFile);
         mergeWorkspaceConfig(props, workspace);
+
+        // Inject LiteLLM fallback from saved auth credentials so logged-in
+        // users can call the server's LiteLLM proxy without configuring
+        // provider properties in agent.properties.
+        injectLiteLLMFallback(props);
+
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
         ConsoleWriter.clearLine();
         LOGGER.info("bootstrap initialized");
+
+        // Register listener so LiteLLM provider is updated on login / server-switch.
+        registerAuthListener(result);
         props.property("active.provider").ifPresent(name -> {
             var type = LLMProviderType.fromName(name);
             if (type != null && result.llmProviders.getProvider(type) != null) {
@@ -391,6 +435,7 @@ public class CliApp {
         // Save credentials so A2ARemoteConnector can resolve them via AuthService
         if (apiKey != null) {
             AuthConfig.login(serverUrl, apiKey).save();
+            RuntimeAuthConfig.instance().update(serverUrl + "/api/litellm/v1", apiKey);
         }
         var config = new RemoteConfig(serverUrl, agentId != null ? agentId : "default-assistant", null);
         var ui = new TerminalUI();

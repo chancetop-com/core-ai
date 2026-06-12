@@ -78,7 +78,7 @@ public class RemoteCommandHandler {
     private RemoteConfig handleNewLogin() {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote Server Setup" + AnsiTheme.RESET + "\n\n");
 
-        var promptDefault = defaultServerUrl != null ? defaultServerUrl : "https://core-ai-server.connexup-dev.net";
+        var promptDefault = defaultServerUrl != null ? defaultServerUrl : "https://core-ai-server.connexup-uat.net";
         var serverUrl = ui.readRawLine("  Server URL [" + promptDefault + "]: ");
         LOGGER.debug("serverUrl input: [{}] (null={})", serverUrl, serverUrl == null);
         if (serverUrl == null) return null;

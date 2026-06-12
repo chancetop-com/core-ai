@@ -9,6 +9,8 @@ import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.CliApp;
 import ai.core.cli.agent.CliAgent;
+import ai.core.cli.auth.AuthConfig;
+import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.SessionCloseExtractor;
@@ -99,10 +101,13 @@ public class AcpAgentRunner {
         var props = PropertiesFileSource.fromFile(configFile);
         CliApp.mergeWorkspaceConfig(props, workspace);
         mergeWorkspaceMcpConfig(props);
+        injectLiteLLMFallback(props);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
         LOGGER.info("ACP agent bootstrap initialized");
+
+        registerAuthListener(result);
 
         var ctx = new AgentContext(result,
                 props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(false),
@@ -394,6 +399,30 @@ public class AcpAgentRunner {
             LOGGER.info("merged workspace MCP config from {}: {} server(s)", mcpFile, merged.size());
         } catch (Exception e) {
             LOGGER.warn("failed to merge workspace MCP config from {}: {}", mcpFile, e.getMessage());
+        }
+    }
+
+    private static void injectLiteLLMFallback(PropertiesFileSource props) {
+        if (props.property("litellm.api.base").isPresent()) return;
+        var auth = AuthConfig.load();
+        if (auth != null && auth.apiKey() != null) {
+            props.putProperty("litellm.api.base", auth.serverUrl() + "/api/litellm/v1");
+            props.putProperty("litellm.api.key", auth.apiKey());
+        }
+    }
+
+    private void registerAuthListener(BootstrapResult result) {
+        var auth = AuthConfig.load();
+        if (auth != null && auth.apiKey() != null) {
+            RuntimeAuthConfig.instance().update(auth.serverUrl() + "/api/litellm/v1", auth.apiKey());
+        }
+        if (result.liteLLMProvider != null) {
+            RuntimeAuthConfig.instance().addListener(() -> {
+                var rt = RuntimeAuthConfig.instance();
+                if (rt.isConfigured()) {
+                    result.liteLLMProvider.updateCredentials(rt.serverUrl(), rt.apiKey());
+                }
+            });
         }
     }
 

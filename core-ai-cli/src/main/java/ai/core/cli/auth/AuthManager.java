@@ -34,7 +34,7 @@ public final class AuthManager {
     public static AuthConfig loginInteractive(TerminalUI ui, String defaultUrl) {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Login" + AnsiTheme.RESET + "\n\n");
 
-        var promptDefault = defaultUrl != null ? defaultUrl : "https://core-ai-server.connexup-dev.net";
+        var promptDefault = defaultUrl != null ? defaultUrl : "https://core-ai-server.connexup-uat.net";
         var serverUrl = ui.readRawLine("  Server URL [" + promptDefault + "]: ");
         if (serverUrl == null) return null;
         serverUrl = serverUrl.trim();
@@ -51,7 +51,11 @@ public final class AuthManager {
         var apiKey = AuthService.loginOrBrowser(ui, serverUrl);
         if (apiKey == null) return null;
 
-        return enrich(serverUrl, apiKey, ui);
+        var config = enrich(serverUrl, apiKey, ui);
+        if (config != null) {
+            RuntimeAuthConfig.instance().update(serverUrl + "/api/litellm/v1", apiKey);
+        }
+        return config;
     }
 
     /**
@@ -60,7 +64,11 @@ public final class AuthManager {
      */
     public static AuthConfig loginWithToken(String serverUrl, String apiKey) {
         AuthConfig.login(serverUrl, apiKey).save();
-        return enrich(serverUrl, apiKey, null);
+        var config = enrich(serverUrl, apiKey, null);
+        if (config != null) {
+            RuntimeAuthConfig.instance().update(serverUrl + "/api/litellm/v1", apiKey);
+        }
+        return config;
     }
 
     // ── Logout ─────────────────────────────────────────────────────────
@@ -69,6 +77,7 @@ public final class AuthManager {
     public static void logout() {
         var active = AuthConfig.load();
         if (active != null) AuthConfig.remove(active.serverUrl());
+        RuntimeAuthConfig.instance().clear();
     }
 
     // ── Server management ──────────────────────────────────────────────
@@ -83,7 +92,11 @@ public final class AuthManager {
      * Returns the activated config, or null if the server is not registered.
      */
     public static AuthConfig switchServer(String serverUrl) {
-        return AuthConfig.activate(serverUrl);
+        var config = AuthConfig.activate(serverUrl);
+        if (config != null) {
+            RuntimeAuthConfig.instance().update(serverUrl + "/api/litellm/v1", config.apiKey());
+        }
+        return config;
     }
 
     // ── Queries ────────────────────────────────────────────────────────

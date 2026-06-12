@@ -56,7 +56,6 @@ public class AgentSessionRunner {
     private final String sessionId;
     private final SessionManager sessionManager;
     private final ToolPermissionStore permissionStore;
-    private final ModelRegistry modelRegistry;
     private final MemoryCommandHandler memoryCommand;
     private final boolean memoryEnabled;
     private final boolean dailyLogsEnabled;
@@ -77,7 +76,7 @@ public class AgentSessionRunner {
         this.sessionId = config.sessionId;
         this.sessionManager = config.sessionManager;
         this.permissionStore = config.permissionStore;
-        this.modelRegistry = config.modelRegistry;
+        ModelRegistry modelRegistry = config.modelRegistry;
         this.workspace = Path.of((String) agent.getExecutionContext().getCustomVariables().get("workspace"));
         this.memoryCommand = config.memoryEnabled
                 ? new MemoryCommandHandler(ui, config.memory, MemoryTriggerService.getInstance())

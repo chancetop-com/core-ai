@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.agent.AgentBuilder;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.SubAgentConfig;
+import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.hook.ScriptHookRunner;
@@ -93,8 +94,10 @@ public class CliAgent {
             builder.multiModalModel(multiModalModel);
         }
         var agent = builder.build();
+        var auth = AuthConfig.load();
         var execCtx = ExecutionContext.builder()
                 .sessionId(config.sessionId)
+                .userId(auth != null ? auth.userId() : null)
                 .customVariables(Map.of("workspace", config.workspace.toAbsolutePath().toString()))
                 .persistenceProvider(config.persistenceProvider)
                 .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))

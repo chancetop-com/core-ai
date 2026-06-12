@@ -41,8 +41,8 @@ public class LiteLLMProvider extends LLMProvider {
     private static final int MAX_RETRIES = 3;
     private static final Duration RETRY_WAIT_TIME = Duration.ofSeconds(3);
 
-    private final String url;
-    private final String token;
+    private volatile String url;
+    private volatile String token;
     private final HTTPClient client;
 
     public LiteLLMProvider(LLMProviderConfig config, String url, String token) {
@@ -54,6 +54,15 @@ public class LiteLLMProvider extends LLMProvider {
                 .timeout(config.getTimeout())
                 .trustAll()
                 .build();
+    }
+
+    /**
+     * Update the provider's endpoint and auth token at runtime, e.g. when the
+     * active login session changes via {@code RuntimeAuthConfig}.
+     */
+    public void updateCredentials(String url, String token) {
+        this.url = stripTrailingSlashes(url);
+        this.token = token;
     }
 
     @Override
