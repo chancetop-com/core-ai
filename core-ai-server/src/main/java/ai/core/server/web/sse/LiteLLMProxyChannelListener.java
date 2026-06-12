@@ -3,6 +3,7 @@ package ai.core.server.web.sse;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.streaming.StreamingCallback;
+import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.sse.RawSseChannel;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
@@ -21,9 +22,12 @@ import java.nio.charset.StandardCharsets;
 public class LiteLLMProxyChannelListener implements ChannelListener<Object> {
     @Inject
     LLMProviders llmProviders;
+    @Inject
+    RequestAuthenticator requestAuthenticator;
 
     @Override
     public void onConnect(Request request, Channel<Object> channel, String lastEventId) {
+        requestAuthenticator.authenticate(request);
         var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
         var completionRequest = parseRequest(body);
         var model = completionRequest.model;

@@ -257,8 +257,14 @@ public class CliApp {
     }
 
     private BootstrapCore bootstrapCore() {
-        LOGGER.info("loading config from {}", configFile);
-        var props = PropertiesFileSource.fromFile(configFile);
+        PropertiesFileSource props;
+        if (Files.exists(configFile)) {
+            LOGGER.info("loading config from {}", configFile);
+            props = PropertiesFileSource.fromFile(configFile);
+        } else {
+            LOGGER.info("no config file at {}, using defaults", configFile);
+            props = new PropertiesFileSource(new Properties());
+        }
         mergeWorkspaceConfig(props, workspace);
 
         // Inject LiteLLM fallback from saved auth credentials so logged-in
