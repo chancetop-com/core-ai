@@ -48,7 +48,69 @@ var mcpManager = &McpProcessManager{
 	servers: make(map[string]*McpServerProcess),
 }
 
+const maxStartRetries = 3
+const startupGracePeriod = 90 * time.Second
+const retryBackoff = 5 * time.Second
+
 func (m *McpProcessManager) Start(req McpStartRequest) (*McpServerProcess, error) {
+	for attempt := 0; attempt <= maxStartRetries; attempt++ {
+		if attempt > 0 {
+			log.Printf("[mcp:%s] retrying start (attempt %d/%d) after %v...", req.ID, attempt, maxStartRetries, retryBackoff)
+			time.Sleep(retryBackoff)
+		}
+
+		proc, err := m.startOnce(req)
+		if err != nil {
+			return nil, err
+		}
+
+		// Wait a short period to see if the process dies during startup
+		// (e.g. npm download fails with ECONNRESET / ERR_SOCKET_TIMEOUT).
+		exitCh := make(chan error, 1)
+		go func() {
+			exitCh <- proc.Cmd.Wait()
+		}()
+
+		select {
+		case err := <-exitCh:
+			m.mu.Lock()
+			delete(m.servers, req.ID)
+			m.mu.Unlock()
+			if err != nil {
+				log.Printf("[mcp:%s] process exited on startup: %v", req.ID, err)
+			} else {
+				log.Printf("[mcp:%s] process exited cleanly on startup", req.ID)
+			}
+			if attempt < maxStartRetries {
+				continue
+			}
+			return nil, fmt.Errorf("mcp server exited immediately after %d attempts", maxStartRetries+1)
+
+		case <-time.After(startupGracePeriod):
+			// Process survived the grace period — startup successful.
+			// Transfer ownership to the normal exit-monitoring goroutine.
+		}
+
+		// Normal exit monitoring (after successful startup)
+		go func() {
+			err := <-exitCh
+			m.mu.Lock()
+			delete(m.servers, req.ID)
+			m.mu.Unlock()
+			if err != nil {
+				log.Printf("[mcp:%s] process exited: %v", req.ID, err)
+			} else {
+				log.Printf("[mcp:%s] process exited cleanly", req.ID)
+			}
+		}()
+
+		return proc, nil
+	}
+
+	return nil, fmt.Errorf("failed to start mcp server after %d attempts", maxStartRetries+1)
+}
+
+func (m *McpProcessManager) startOnce(req McpStartRequest) (*McpServerProcess, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -91,19 +153,6 @@ func (m *McpProcessManager) Start(req McpStartRequest) (*McpServerProcess, error
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			log.Printf("[mcp:%s stderr] %s", req.ID, scanner.Text())
-		}
-	}()
-
-	// monitor process exit
-	go func() {
-		err := cmd.Wait()
-		m.mu.Lock()
-		delete(m.servers, req.ID)
-		m.mu.Unlock()
-		if err != nil {
-			log.Printf("[mcp:%s] process exited: %v", req.ID, err)
-		} else {
-			log.Printf("[mcp:%s] process exited cleanly", req.ID)
 		}
 	}()
 
