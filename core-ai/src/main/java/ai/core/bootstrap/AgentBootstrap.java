@@ -277,6 +277,12 @@ public class AgentBootstrap {
     private LLMProviderConfig setupLLMProperties() {
         var config = new LLMProviderConfig(null, 0.7d, "text-embedding-3-large");
         applyConfigProperties(config, "llm");
+        if (config.getModel() == null) {
+            config.setModel("deepseek/deepseek-v4-flash");
+        }
+        if (config.getMultiModalModel() == null) {
+            config.setMultiModalModel("azure/responses/gpt-5-mini");
+        }
         return config;
     }
 
