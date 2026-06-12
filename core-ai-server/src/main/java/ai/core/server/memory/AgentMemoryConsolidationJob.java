@@ -36,8 +36,12 @@ import java.util.stream.Collectors;
 public class AgentMemoryConsolidationJob implements Job {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentMemoryConsolidationJob.class);
     private static final int MAX_TRACES_PER_AGENT = 50;
-    private static final int MIN_TRACES_FOR_EXTRACTION = 5;
-    private static final int IDLE_THRESHOLD_HOURS = 24;
+    // Allow single-run agents with deep interactions (e.g. 100+ turns) to generate memories.
+    // Previously required 5+ traces, which excluded agents that complete complex tasks in one run.
+    private static final int MIN_TRACES_FOR_EXTRACTION = 1;
+    // Reduce idle threshold so agents don't need to wait 24h before memory extraction.
+    // 1h is sufficient for UAT; can be increased for production if needed.
+    private static final int IDLE_THRESHOLD_HOURS = 1;
     private static final String EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
     private static final String EXTRACTION_PROMPT = """
             You maintain an agent's memory — a concise, stable set of reusable
