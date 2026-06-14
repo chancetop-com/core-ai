@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Chancetop 2026 Hackathon — AI 主题黑客松，6月15-17日，报名火热进行中" />
+  <title>Chancetop 2026 Hackathon | AI 黑客松</title>
+
+  <!-- Google Fonts: Inter + Press Start 2P -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet" />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <!-- ====== Navigation ====== -->
+  <nav class="navbar" id="navbar">
+    <div class="navbar-inner container">
+      <a href="#" class="navbar-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7V12C2 17.25 6.21 21.96 12 23C17.79 21.96 22 17.25 22 12V7L12 2Z" fill="url(#logo-gradient)"/>
+          <defs><linearGradient id="logo-gradient" x1="2" y1="2" x2="22" y2="23"><stop stop-color="#00d4ff"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>
+        </svg>
+        <span>Chancetop Hackathon</span>
+      </a>
+      <ul class="navbar-links" id="navLinks">
+        <li><a href="#schedule" class="nav-link">赛程</a></li>
+        <li><a href="#prizes" class="nav-link">奖项</a></li>
+        <li><a href="#register" class="nav-link">报名</a></li>
+      </ul>
+      <button class="hamburger" id="hamburger" aria-label="菜单">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ====== Hero ====== -->
+  <section class="hero" id="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-content container">
+      <h1 class="hero-title">
+        <span class="hero-title-line">CHANCETOP</span>
+        <span class="hero-title-line">2026 HACKATHON</span>
+      </h1>
+      <p class="hero-subtitle-pixel">AI HACKATHON</p>
+      <p class="hero-subtitle">6.15 – 6.17</p>
+      <p class="hero-desc">以 AI 为引擎，48 小时极限创造。与顶尖开发者同台，定义下一个可能性。</p>
+      <a href="#register" class="btn-primary hero-cta">
+        立即报名
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M4 10H16M16 10L11 5M16 10L11 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
+    </div>
+  </section>
+
+  <!-- ====== Schedule ====== -->
+  <section class="section schedule" id="schedule">
+    <div class="container">
+      <h2 class="section-title">赛程</h2>
+      <div class="section-divider"></div>
+      <div class="timeline" id="scheduleTimeline">
+        <div class="timeline-item reveal">
+          <div class="timeline-dot"></div>
+          <div class="timeline-content">
+            <span class="timeline-date">6/15</span>
+            <span class="timeline-event">全天开发日</span>
+          </div>
+        </div>
+        <div class="timeline-item reveal">
+          <div class="timeline-dot"></div>
+          <div class="timeline-content">
+            <span class="timeline-date">6/16</span>
+            <span class="timeline-event">全天开发日</span>
+          </div>
+        </div>
+        <div class="timeline-item reveal">
+          <div class="timeline-dot"></div>
+          <div class="timeline-content">
+            <span class="timeline-date">6/17</span>
+            <span class="timeline-event">答辩路演</span>
+          </div>
+        </div>
+      </div>
+      <!-- Empty state (shown when content not yet confirmed) -->
+      <div class="empty-state" id="scheduleEmpty" style="display:none;">
+        赛程即将公布，敬请期待
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== Prizes ====== -->
+  <section class="section prizes" id="prizes">
+    <div class="container">
+      <h2 class="section-title">奖项</h2>
+      <div class="section-divider"></div>
+      <div class="prizes-grid" id="prizesGrid">
+        <div class="prize-card prize-gold reveal">
+          <div class="prize-icon">🥇</div>
+          <h3 class="prize-name">一等奖 × 1</h3>
+          <p class="prize-amount">¥500,000</p>
+          <p class="prize-desc">现金奖励 + Chancetop 生态资源包 + 媒体专访</p>
+        </div>
+        <div class="prize-card prize-silver reveal">
+          <div class="prize-icon">🥈</div>
+          <h3 class="prize-name">二等奖 × 5</h3>
+          <p class="prize-amount">¥100,000</p>
+          <p class="prize-desc">现金奖励 + Chancetop 生态资源包</p>
+        </div>
+        <div class="prize-card prize-bronze reveal">
+          <div class="prize-icon">🥉</div>
+          <h3 class="prize-name">三等奖 × 20</h3>
+          <p class="prize-amount">¥10,000</p>
+          <p class="prize-desc">现金奖励 + Chancetop 周边礼包</p>
+        </div>
+      </div>
+      <!-- Empty state (shown when content not yet confirmed) -->
+      <div class="empty-state" id="prizesEmpty" style="display:none;">
+        奖项即将公布，敬请期待
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== Registration ====== -->
+  <section class="section register" id="register">
+    <div class="container">
+      <h2 class="section-title">报名参赛</h2>
+      <div class="section-divider"></div>
+      <p class="register-intro">现在就加入，用 AI 改变世界。填写下方表单，即可报名参与 Chancetop 2026 Hackathon。</p>
+      <div class="form-wrapper" id="formWrapper">
+        <div class="form-loading" id="formLoading">
+          <div class="spinner"></div>
+          <span>加载报名表单中…</span>
+        </div>
+        <iframe
+          class="form-iframe"
+          id="formIframe"
+          src=""
+          width="100%"
+          height="600"
+          frameborder="0"
+          marginheight="0"
+          marginwidth="0"
+          allowfullscreen
+          title="报名表单"
+        >
+          您的浏览器不支持 iframe，请使用下方链接报名。
+        </iframe>
+        <div class="form-fallback" id="formFallback" style="display: none;">
+          <p>表单加载失败。请<a href="#" id="fallbackLink" target="_blank" rel="noopener">点击此处在新窗口打开</a>报名。</p>
+        </div>
+      </div>
+      <p class="form-notice">提交后您将收到确认邮件，请确保邮箱地址正确。</p>
+    </div>
+  </section>
+
+  <!-- ====== Footer ====== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-links">
+        <a href="#">联系方式</a>
+        <a href="#">隐私政策</a>
+        <a href="#">关于我们</a>
+      </div>
+      <div class="footer-divider"></div>
+      <p class="footer-copy">Chancetop &copy; 2026. All rights reserved.</p>
+      <p class="footer-powered">Powered by Chancetop</p>
+    </div>
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
