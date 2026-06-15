@@ -34,6 +34,7 @@ import ai.core.api.server.blob.BlobUploadCredentialView;
 import ai.core.server.agentbuilder.AgentBuilderTools;
 import ai.core.server.llmcall.LLMCallBuilderTools;
 import ai.core.server.web.sse.LiteLLMProxyChannelListener;
+import ai.core.server.web.sse.SseAuthInterceptor;
 import ai.core.server.web.CorsInterceptor;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.web.auth.RequestAuthenticator;
@@ -218,6 +219,7 @@ public class ServerModule extends Module {
         registerCapabilities();
         registerForYou();
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
+        sseConfig.intercept(new SseAuthInterceptor(bean(RequestAuthenticator.class)));
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
         sseConfig.listen(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_STREAM, StreamResponse.class, bind(A2AStreamChannelListener.class));
         sseConfig.listen(HTTPMethod.POST, "/api/litellm/v1/chat/completions", Object.class, bind(LiteLLMProxyChannelListener.class));

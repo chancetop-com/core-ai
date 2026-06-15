@@ -1,16 +1,20 @@
 package ai.core.server.web.sse;
 
+import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.streaming.StreamingCallback;
-import ai.core.server.web.auth.RequestAuthenticator;
+import ai.core.server.web.auth.AuthContext;
 import ai.core.sse.RawSseChannel;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.web.Request;
+import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.sse.Channel;
 import core.framework.web.sse.ChannelListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 
@@ -20,14 +24,16 @@ import java.nio.charset.StandardCharsets;
 * createTime  2026/6/10
 **/
 public class LiteLLMProxyChannelListener implements ChannelListener<Object> {
+    private static final Logger LOGGER = LoggerFactory.getLogger(LiteLLMProxyChannelListener.class);
+
     @Inject
     LLMProviders llmProviders;
+
     @Inject
-    RequestAuthenticator requestAuthenticator;
+    WebContext webContext;
 
     @Override
     public void onConnect(Request request, Channel<Object> channel, String lastEventId) {
-        requestAuthenticator.authenticate(request);
         var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
         var completionRequest = parseRequest(body);
         var model = completionRequest.model;
@@ -45,7 +51,8 @@ public class LiteLLMProxyChannelListener implements ChannelListener<Object> {
                 rawChannel.sendRawData(sseData);
             }
         });
-
+        var userId = AuthContext.userId(webContext);
+        LOGGER.info(userId);
         rawChannel.sendRawData("[DONE]");
         channel.close();
     }

@@ -5,7 +5,8 @@ public enum HookEvent {
     SESSION_STOP("SessionStop"),
     USER_PROMPT_SUBMIT("UserPromptSubmit"),
     PRE_TOOL_USE("PreToolUse"),
-    POST_TOOL_USE("PostToolUse");
+    POST_TOOL_USE("PostToolUse"),
+    AFTER_AGENT_RUN("AfterAgentRun");
 
     private final String jsonName;
 

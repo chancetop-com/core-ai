@@ -1,10 +1,12 @@
 package ai.core.sse.internal;
 
+import ai.core.sse.SseChannelInterceptor;
 import core.framework.http.HTTPMethod;
 import core.framework.internal.async.VirtualThread;
 import core.framework.internal.log.ActionLog;
 import core.framework.internal.log.LogManager;
 import core.framework.internal.web.HTTPHandlerContext;
+import core.framework.internal.web.controller.WebContextImpl;
 import core.framework.internal.web.http.RateControl;
 import core.framework.internal.web.request.RequestImpl;
 import core.framework.internal.web.service.ErrorResponse;
@@ -24,6 +26,7 @@ import org.xnio.IoUtils;
 import org.xnio.channels.StreamSinkChannel;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +44,8 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
     private final SessionManager sessionManager;
     private final HTTPHandlerContext handlerContext;
     private final Map<String, PatchedChannelSupport<?>> supports = new HashMap<>();
+    private final List<SseChannelInterceptor> interceptors = new ArrayList<>();
+    public WebContextImpl webContext;
 
     public PatchedServerSentEventHandler(LogManager logManager, SessionManager sessionManager, HTTPHandlerContext handlerContext) {
         super(logManager, sessionManager, handlerContext);
@@ -132,6 +137,11 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
         }
     }
 
+    public void addInterceptor(SseChannelInterceptor interceptor) {
+        interceptors.add(interceptor);
+        logger.info("add sse interceptor, interceptor={}", interceptor.getClass().getCanonicalName());
+    }
+
     private void connect(HttpServerExchange exchange, StreamSinkChannel sink, ActionLog actionLog) {
         var request = new RequestImpl(exchange, handlerContext.requestBeanReader);
         PatchedChannelImpl<Object> channel = null;
@@ -168,7 +178,13 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
             if (lastEventId != null) actionLog.context("last_event_id", lastEventId);
 
             actionLog.context("listener", support.listener.getClass().getCanonicalName());
-            support.listener.onConnect(request, channel, lastEventId);
+            var finalChannel = channel;
+            webContext.run(request, () -> {
+                for (var interceptor : interceptors) {
+                    interceptor.onConnect(request, webContext);
+                }
+                support.listener.onConnect(request, finalChannel, lastEventId);
+            });
 
             if (!channel.groups.isEmpty()) actionLog.context("group", channel.groups.toArray()); // may join group onConnect
         } catch (Throwable e) {

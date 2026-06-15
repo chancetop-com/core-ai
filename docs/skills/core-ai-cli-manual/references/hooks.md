@@ -21,6 +21,7 @@ Deduplication key: `plugin:command` (plugin hooks) or `command` (workspace hooks
 | UserPromptSubmit | `"UserPromptSubmit"` | Before agent processes user input |
 | PreToolUse | `"PreToolUse"` | Before a tool executes |
 | PostToolUse | `"PostToolUse"` | After a tool executes |
+| AfterAgentRun | `"AfterAgentRun"` | After agent completes processing (a turn) |
 
 ## JSON Format
 
@@ -90,6 +91,7 @@ Available to hook commands based on event:
 | `UserPromptSubmit` | `CORE_AI_USER_QUERY` |
 | `PreToolUse` | `CORE_AI_TOOL_NAME`, `CORE_AI_TOOL_ARGUMENTS` |
 | `PostToolUse` | `CORE_AI_TOOL_NAME`, `CORE_AI_TOOL_OUTPUT` |
+| `AfterAgentRun` | `CORE_AI_QUERY`, `CORE_AI_RESULT` |
 
 SessionStart/SessionStop hooks have no additional environment variables.
 

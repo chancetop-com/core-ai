@@ -117,4 +117,18 @@ public class ScriptHookLifecycle extends AbstractLifecycle {
         }
     }
 
+    @Override
+    public void afterAgentRun(String query, AtomicReference<String> result, ExecutionContext executionContext) {
+        var hooks = config.getHooks(HookEvent.AFTER_AGENT_RUN);
+        if (hooks.isEmpty()) return;
+
+        var env = Map.of(
+                "CORE_AI_QUERY", query != null ? query : "",
+                "CORE_AI_RESULT", result.get() != null ? result.get() : "");
+
+        for (var hook : hooks) {
+            runner.run(hook.command(), env);
+        }
+    }
+
 }

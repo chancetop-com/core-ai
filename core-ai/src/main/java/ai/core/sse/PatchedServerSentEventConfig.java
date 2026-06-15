@@ -41,12 +41,7 @@ public class PatchedServerSentEventConfig extends Config {
 
         logger.info("sse, method={}, path={}, eventClass={}, listener={}", method, path, eventClass.getCanonicalName(), listener.getClass().getCanonicalName());
 
-        if (patchedServerSentEventHandler == null) {
-            patchedServerSentEventHandler = new PatchedServerSentEventHandler(context.logManager, context.httpServer.siteManager.sessionManager, context.httpServer.handlerContext);
-            context.httpServer.sseHandler = patchedServerSentEventHandler;
-            metrics = new PatchedServerSentEventMetrics();
-            context.collector.metrics.add(metrics);
-        }
+        ensureHandler();
 
         // todo: validate eventClass, it should be a simple POJO class, no interface, no abstract class, no generic type, and should have public no-arg constructor, and all fields should be public or have public getter/setter
         // context.beanClassValidator.validate(eventClass);
@@ -57,5 +52,26 @@ public class PatchedServerSentEventConfig extends Config {
         context.beanFactory.bind(Types.generic(ServerSentEventContext.class, eventClass), null, sseContext);
         metrics.contexts.add(sseContext);
         context.backgroundTask().scheduleWithFixedDelay(sseContext::keepAlive, Duration.ofSeconds(15));
+    }
+
+    /**
+     * Register an SSE channel interceptor that runs before all channel listeners' onConnect.
+     * Must be called before any {@link #listen} calls, or the handler will be lazily initialized.
+     */
+    public void intercept(SseChannelInterceptor interceptor) {
+        ensureHandler();
+        if (patchedServerSentEventHandler.webContext == null) {
+            patchedServerSentEventHandler.webContext = context.httpServer.httpHandler.webContext;
+        }
+        patchedServerSentEventHandler.addInterceptor(interceptor);
+    }
+
+    private void ensureHandler() {
+        if (patchedServerSentEventHandler == null) {
+            patchedServerSentEventHandler = new PatchedServerSentEventHandler(context.logManager, context.httpServer.siteManager.sessionManager, context.httpServer.handlerContext);
+            context.httpServer.sseHandler = patchedServerSentEventHandler;
+            metrics = new PatchedServerSentEventMetrics();
+            context.collector.metrics.add(metrics);
+        }
     }
 }
