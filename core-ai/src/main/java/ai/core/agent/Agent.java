@@ -39,6 +39,7 @@ import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
 import core.framework.util.Maps;
+import io.opentelemetry.api.trace.SpanContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +81,10 @@ public class Agent extends Node<Agent> {
     Compression compression;
     ReasoningEffort reasoningEffort;
     List<SubAgentToolCall> subAgents = new ArrayList<>();
+    // Span context of the LLM call whose response triggered the current tool execution, scoped to THIS agent.
+    // Kept per-agent (not on the shared ExecutionContext) so a parent agent and its sub-agents each track
+    // their own triggering LLM span and tool spans nest under the correct agent subtree.
+    private volatile SpanContext lastLLMSpanContext;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -268,10 +273,9 @@ public class Agent extends Node<Agent> {
     private Choice handLLM(List<Message> messages, List<Tool> tools) {
         var effectiveModel = resolveEffectiveModel(messages);
         var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), effectiveModel, this.getName(), null, null, reasoningEffort));
-        var ctx = getExecutionContext();
         // Reset before each LLM call; any tool spans triggered by this call will nest under it.
-        ctx.setLastLLMSpanContext(null);
-        return aroundLLM(r -> llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(getStreamingCallback()), ctx::setLastLLMSpanContext), req);
+        this.lastLLMSpanContext = null;
+        return aroundLLM(r -> llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(getStreamingCallback()), sc -> this.lastLLMSpanContext = sc), req);
     }
 
     private String resolveEffectiveModel(List<Message> messages) {
@@ -318,7 +322,7 @@ public class Agent extends Node<Agent> {
 
     private ToolExecutor getToolExecutor() {
         if (toolExecutor == null) {
-            toolExecutor = new ToolExecutor(agentLifecycles, getTracer(), this::updateNodeStatus);
+            toolExecutor = new ToolExecutor(agentLifecycles, getTracer(), this::updateNodeStatus, () -> this.lastLLMSpanContext);
         }
         toolExecutor.setAuthenticated(authenticated);
         return toolExecutor;

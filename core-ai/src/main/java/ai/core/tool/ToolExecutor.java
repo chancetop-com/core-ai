@@ -8,6 +8,7 @@ import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.context.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * @author stephen
@@ -29,12 +31,17 @@ public class ToolExecutor {
     private final List<AbstractLifecycle> lifecycles;
     private final AgentTracer tracer;
     private final Consumer<NodeStatus> statusUpdater;
+    // Supplies the span context of the LLM call that triggered the current tool batch, scoped to the owning agent.
+    // Provided by the agent so a sub-agent's tool spans nest under the sub-agent's own LLM span.
+    private final Supplier<SpanContext> llmSpanContextSupplier;
     private boolean authenticated = false;
 
-    public ToolExecutor(List<AbstractLifecycle> lifecycles, AgentTracer tracer, Consumer<NodeStatus> statusUpdater) {
+    public ToolExecutor(List<AbstractLifecycle> lifecycles, AgentTracer tracer, Consumer<NodeStatus> statusUpdater,
+                        Supplier<SpanContext> llmSpanContextSupplier) {
         this.lifecycles = lifecycles;
         this.tracer = tracer;
         this.statusUpdater = statusUpdater;
+        this.llmSpanContextSupplier = llmSpanContextSupplier;
     }
 
     public void setAuthenticated(boolean authenticated) {
@@ -102,7 +109,7 @@ public class ToolExecutor {
         var timeoutMs = tool.getTimeoutMs();
 
         var otelContext = Context.current();
-        var llmSpanContext = context.getLastLLMSpanContext();
+        var llmSpanContext = llmSpanContextSupplier != null ? llmSpanContextSupplier.get() : null;
 
         var threadRef = new AtomicReference<Thread>();
         var future = CompletableFuture.supplyAsync(() -> {

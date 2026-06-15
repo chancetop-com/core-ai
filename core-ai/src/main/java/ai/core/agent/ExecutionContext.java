@@ -13,7 +13,6 @@ import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import ai.core.tool.tools.TodoStoreFactory;
 import core.framework.util.Maps;
-import io.opentelemetry.api.trace.SpanContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,15 +57,6 @@ public final class ExecutionContext {
     private Consumer<Usage> tokenCostCallback;
     private Map<String, SubAgentConfig> subAgentConfigs;
     private ToolRegistry toolRegistry;
-    // Span context of the LLM call whose response triggered the current tool execution.
-    // Allows tool spans to be nested under their triggering LLM span (Langfuse-style causal chain).
-    //
-    // Concurrency contract:
-    //   - Single writer: Agent.handLLM resets to null then sets via LLMTracer callback on the agent main thread.
-    //   - Single reader: ToolExecutor.executeWithTimeout reads when submitting tool tasks, on the same agent thread.
-    // volatile guards visibility for future paths that may invoke read/write from different threads
-    // (e.g. parallel sub-agents sharing one ExecutionContext).
-    private volatile SpanContext lastLLMSpanContext;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
@@ -224,14 +214,6 @@ public final class ExecutionContext {
 
     public void setToolRegistry(ToolRegistry toolRegistry) {
         this.toolRegistry = toolRegistry;
-    }
-
-    public SpanContext getLastLLMSpanContext() {
-        return lastLLMSpanContext;
-    }
-
-    public void setLastLLMSpanContext(SpanContext lastLLMSpanContext) {
-        this.lastLLMSpanContext = lastLLMSpanContext;
     }
 
     public static class Builder {
