@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, ChevronDown, Download, ExternalLink, FileDown, FileText } from 'lucide-react';
+import { ChevronRight, ChevronDown, Download, ExternalLink, FileDown, FileText, RotateCcw } from 'lucide-react';
 import { RUN_STATUS_COLOR, TERMINAL_RUN_STATUS, type WorkflowRFNode } from './graph';
 import { type InputVar } from './configWidgets';
 import type { WorkflowArtifactView, WorkflowNodeRunView } from '../../api/client';
@@ -14,12 +14,14 @@ interface Props {
   nodeRuns: Record<string, WorkflowNodeRunView>;
   focusNodeId?: string | null;     // a node clicked on the canvas auto-expands in the trace
   onResume?: (nodeId: string, body: ResumeBody) => void;   // live test panel only; absent in read-only history
+  onResumeFromNode?: (nodeId: string) => void;   // rerun from an executed node of a terminal run; absent = read-only
+  resumedFrom?: { runId: string; nodeId: string };   // lineage banner when this run was itself a resume
   busy?: boolean;
 }
 
 /** Shared run trace: an overall status row, each node's execution (status, timing, input/output), and the final
  *  result. Used by the live test panel (RunPanel) and the run-history panel so both render runs identically. */
-export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNodeId, onResume, busy }: Props) {
+export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNodeId, onResume, onResumeFromNode, resumedFrom, busy }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   useEffect(() => { if (focusNodeId) setExpanded((s) => new Set(s).add(focusNodeId)); }, [focusNodeId]);
 
@@ -44,6 +46,11 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
         {!TERMINAL_RUN_STATUS.has(runStatus) && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>running…</span>}
       </div>
       {runError && <Field title="Error" body={runError} danger />}
+      {resumedFrom && (
+        <div style={lineageBanner}>
+          <RotateCcw size={12} /> Resumed from <strong>{nameOf(resumedFrom.nodeId)}</strong> of run #{resumedFrom.runId.slice(0, 8)}
+        </div>
+      )}
 
       <label style={label}>Trace</label>
       {runs.length === 0 && <div style={dim}>No node runs.</div>}
@@ -78,6 +85,14 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
                 )}
                 {r.child_run_id && (
                   <Link to={`/runs/${r.child_run_id}`} style={childLink}><ExternalLink size={12} /> open child run</Link>
+                )}
+                {onResumeFromNode && TERMINAL_RUN_STATUS.has(runStatus)
+                  && (r.status === 'COMPLETED' || r.status === 'FAILED_RETRYABLE')
+                  && typeOf(r.node_id) !== 'START' && typeOf(r.node_id) !== 'END' && (
+                  <button disabled={!!busy} onClick={() => onResumeFromNode(r.node_id)} style={resumeFromBtn}
+                    title="Start a new run from this node — upstream nodes are reused, this node and everything after it re-run">
+                    <RotateCcw size={12} /> Rerun from here
+                  </button>
                 )}
               </div>
             )}
@@ -231,6 +246,14 @@ const pre: CSSProperties = {
 };
 const dim: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)' };
 const childLink: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-primary)', textDecoration: 'none' };
+const lineageBanner: CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, padding: '6px 10px', fontSize: 12,
+  color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-bg-tertiary)',
+};
+const resumeFromBtn: CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, padding: '5px 11px', fontSize: 12, fontWeight: 500,
+  border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-bg)', color: 'var(--color-text)', cursor: 'pointer',
+};
 const resumeBox: CSSProperties = {
   marginBottom: 10, padding: 10, borderRadius: 8,
   background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.35)',

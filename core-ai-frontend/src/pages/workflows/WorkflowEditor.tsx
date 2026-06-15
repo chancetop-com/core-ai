@@ -50,6 +50,7 @@ export default function WorkflowEditor() {
   const [runId, setRunId] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState('');
   const [nodeRuns, setNodeRuns] = useState<Record<string, WorkflowNodeRunView>>({});
+  const [resumedFrom, setResumedFrom] = useState<{ runId: string; nodeId: string } | null>(null);   // lineage of a resumed run
   const [showRun, setShowRun] = useState(false);   // test panel open
   const [showApi, setShowApi] = useState(false);           // API-access panel open
   const [runError, setRunError] = useState('');
@@ -102,6 +103,8 @@ export default function WorkflowEditor() {
         consecutiveErrors = 0;
         setRunStatus(runView.status || 'RUNNING');
         setRunError(runView.error || '');
+        setResumedFrom(runView.resumed_from_run_id
+          ? { runId: runView.resumed_from_run_id, nodeId: runView.resume_from_node_id || '' } : null);
         const map: Record<string, WorkflowNodeRunView> = {};
         (nodeList.node_runs || []).forEach((nr) => { map[nr.node_id] = nr; });
         setNodeRuns(map);
@@ -265,6 +268,7 @@ export default function WorkflowEditor() {
       const res = await api.workflows.previewRun(id, input);
       setSelectedId(null);
       setNodeRuns({});
+      setResumedFrom(null);
       setRunStatus(res.status || 'PENDING');
       setRunId(res.run_id);
     } catch (e) {
@@ -284,11 +288,29 @@ export default function WorkflowEditor() {
     } finally { setBusy(false); }
   };
 
+  // Rerun from an executed node of a terminal run: the backend seeds the upstream prefix and returns a NEW run id;
+  // re-point the trace to it (the polling effect keys on runId, so setting it switches polling automatically).
+  const startResumeFromNode = async (nodeId: string) => {
+    if (!runId) return;
+    setBusy(true); setRunError('');
+    try {
+      const res = await api.workflows.resumeFromNode(runId, nodeId);
+      setSelectedId(null);
+      setNodeRuns({});
+      setResumedFrom(null);   // cleared now; the next poll repopulates it from the new run's own lineage
+      setRunStatus(res.status || 'PENDING');
+      setRunId(res.run_id);
+    } catch (e) {
+      setRunError(`Rerun from node failed: ${(e as Error).message}`);
+    } finally { setBusy(false); }
+  };
+
   const exitRun = () => {
     // setting runId to null triggers the polling effect's cleanup, which owns and stops the interval
     setRunId(null);
     setRunStatus('');
     setNodeRuns({});
+    setResumedFrom(null);
     setSelectedId(null);
     setShowRun(false);
     setShowApi(false);   // panels are mutually exclusive — closing Test must not resurrect a stale API panel
@@ -349,6 +371,8 @@ export default function WorkflowEditor() {
                 focusNodeId={selectedId}
                 onRun={startRun}
                 onResume={startResume}
+                onResumeFromNode={startResumeFromNode}
+                resumedFrom={resumedFrom ?? undefined}
                 onClose={exitRun}
               />
             ) : selectedNode ? (
