@@ -1,6 +1,7 @@
 package ai.core.server.agentbuilder;
 
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.domain.DefinitionType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -38,6 +39,12 @@ public final class PublishAgentDraftTool extends ToolCall {
 
             if (agentId == null || agentId.isBlank()) {
                 return ToolCallResult.failed("agent_id is required", null)
+                    .withDuration(System.currentTimeMillis() - startTime);
+            }
+
+            var entity = agentDefinitionService.getEntity(agentId);
+            if (entity.type != DefinitionType.AGENT) {
+                return ToolCallResult.failed("This tool only publishes AGENT type agents. For LLM_CALL type, use the LLM Call Builder.", null)
                     .withDuration(System.currentTimeMillis() - startTime);
             }
 
