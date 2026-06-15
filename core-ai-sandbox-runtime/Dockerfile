@@ -30,6 +30,7 @@ RUN pip install --no-cache-dir \
 
 # npm-installed node-gyp bundles its own gyp; replace Debian's hardcoded path
 RUN npm install -g node-gyp && \
+    mkdir -p /usr/share/nodejs && \
     rm -rf /usr/share/nodejs/node-gyp && \
     ln -s /usr/local/lib/node_modules/node-gyp /usr/share/nodejs/node-gyp
 
