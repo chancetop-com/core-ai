@@ -109,7 +109,7 @@ public class WorkflowRunService {
                 continue;   // re-run set carries no seed; container scopes are out of scope for P0
             }
             if (prior.status == NodeRunStatus.COMPLETED || prior.status == NodeRunStatus.SKIPPED) {
-                journal.seed(nextRunId, source.preview, prior);   // freeze: only settled facts feed the resumed frontier
+                journal.seed(nextRunId, Boolean.TRUE.equals(source.preview), prior);   // freeze: only settled facts feed the resumed frontier
             }
         }
         // Insert the run row LAST, after the frozen prefix is fully seeded. WorkflowRunnerJob claims runs by scanning
@@ -142,7 +142,7 @@ public class WorkflowRunService {
         run.triggeredBy = source.triggeredBy;
         run.status = RunStatus.PENDING;
         run.input = source.input;
-        run.preview = source.preview;   // a resume of a preview run is itself a preview run (co-expires)
+        run.preview = Boolean.TRUE.equals(source.preview);   // a resume of a preview run is itself a preview run (co-expires)
         run.resumedFromRunId = source.id;
         run.resumeFromNodeId = resumeNodeId;
         run.leaseUntil = now;   // claimable immediately by the runner job

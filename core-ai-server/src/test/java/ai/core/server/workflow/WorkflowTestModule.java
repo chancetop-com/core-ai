@@ -5,6 +5,7 @@ import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
 import core.framework.mongo.module.MongoConfig;
@@ -31,13 +32,16 @@ public class WorkflowTestModule extends AbstractTestModule {
 
         bind(WorkflowDefinitionService.class);
         bind(WorkflowPublishService.class);
-        bind(WorkflowRunService.class);
+        // bind the graph-loader seam before WorkflowRunService: the framework injects eagerly at bind() time, so a
+        // dependency must already be registered when its dependent is bound (matches ServerModule's ordering).
         var graphLoader = bind(MongoWorkflowGraphLoader.class);
         bind(WorkflowGraphLoader.class, graphLoader);
+        bind(WorkflowRunService.class);
         var registry = new NodeExecutorRegistry(Map.of(
             NodeType.START, new StartExecutor(),
             NodeType.END, new EndExecutor()));
         bind(NodeExecutor.class, registry);
+        bind(new SandboxService());   // disabled (enabled=false) — releaseSandbox no-ops; START -> END runs no CODE node
         bind(WorkflowRunner.class);
     }
 }

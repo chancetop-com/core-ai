@@ -47,7 +47,7 @@ public class WorkflowRun {
     // True for draft-preview ("Test") runs, whose pinned version is a throwaway preview snapshot. A TTL co-expires
     // these runs with that 1-day version snapshot so run history never shows a run whose graph snapshot is gone.
     @Field(name = "preview")
-    public boolean preview;
+    public Boolean preview;
 
     // ---- resume-from-node lineage: set only when this run was seeded from a source run's frozen prefix ----
     @Field(name = "resumed_from_run_id")
