@@ -44,6 +44,13 @@ public class WorkflowRun {
     @Field(name = "triggered_by")
     public TriggerType triggeredBy;
 
+    // ---- resume-from-node lineage: set only when this run was seeded from a source run's frozen prefix ----
+    @Field(name = "resumed_from_run_id")
+    public String resumedFromRunId;
+
+    @Field(name = "resume_from_node_id")
+    public String resumeFromNodeId;
+
     @NotNull
     @Field(name = "status")
     public RunStatus status;

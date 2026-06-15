@@ -80,4 +80,11 @@ public interface WorkflowWebService {
     @Path("/api/workflow-runs/:runId/resume")
     @ResponseStatus(HTTPStatus.ACCEPTED)
     CreateRunResponse resumeRun(@PathParam("runId") String runId, ResumeRunRequest request);
+
+    // Start a new run that resumes a finished/failed run from an intermediate node: the node and its forward cone
+    // re-run, everything upstream is reused from the source run. Returns the new run's id.
+    @POST
+    @Path("/api/workflow-runs/:runId/resume-from-node")
+    @ResponseStatus(HTTPStatus.ACCEPTED)
+    CreateRunResponse resumeRunFromNode(@PathParam("runId") String runId, ResumeFromNodeRequest request);
 }

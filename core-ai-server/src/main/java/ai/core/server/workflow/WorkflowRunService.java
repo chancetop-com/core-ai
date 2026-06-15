@@ -8,6 +8,7 @@ import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
@@ -23,6 +24,7 @@ import org.bson.conversions.Bson;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -32,6 +34,8 @@ import java.util.UUID;
  * @author Xander
  */
 public class WorkflowRunService {
+    private static final String ROOT_SCOPE_KEY = "";   // P0 drives root scope only; resume mirrors that
+
     @Inject
     MongoCollection<WorkflowDefinition> definitionCollection;
 
@@ -73,6 +77,73 @@ public class WorkflowRunService {
         }
         WorkflowPublishedVersion version = publishService.createPreviewVersion(workflowId, userId);
         return insertRun(definition, version, input, triggeredBy, userId);
+    }
+
+    /**
+     * Start a new run that resumes a source run from {@code resumeNodeId}: the node and its forward cone re-execute,
+     * while every other node is frozen and seeded from the source run's facts (outputs / artifacts / branch choices).
+     * Same pinned version as the source — the graph topology must match for the seeded facts to line up. The planner
+     * then derives the resume node as the only ready node, so driving the new run continues from exactly there.
+     */
+    public WorkflowRun resumeFromNode(String sourceRunId, String resumeNodeId, String userId) {
+        WorkflowRun source = getRun(sourceRunId, userId);   // ownership + existence
+        if (source.versionId == null) {
+            throw new BadRequestException("source run has no pinned version, cannot resume: " + sourceRunId);
+        }
+        WorkflowGraph graph = graphLoader.load(source.versionId);
+        if (graph.node(resumeNodeId) == null) {
+            throw new BadRequestException("node not found in run graph: " + resumeNodeId);
+        }
+        List<WorkflowNodeRun> priorRuns = nodeRunCollection.find(Filters.eq("run_id", sourceRunId));
+        requireExecuted(priorRuns, resumeNodeId, sourceRunId);
+
+        Set<String> rerun = graph.descendantsInclusive(resumeNodeId);   // resume node + its forward cone re-run fresh
+        String nextRunId = UUID.randomUUID().toString();
+        var journal = new MongoWorkflowJournal(nodeRunCollection);
+        for (WorkflowNodeRun prior : priorRuns) {
+            if (rerun.contains(prior.nodeId) || !ROOT_SCOPE_KEY.equals(prior.scopePathKey)) {
+                continue;   // re-run set carries no seed; container scopes are out of scope for P0
+            }
+            if (prior.status == NodeRunStatus.COMPLETED || prior.status == NodeRunStatus.SKIPPED) {
+                journal.seed(nextRunId, prior);   // freeze: only settled facts feed the resumed frontier
+            }
+        }
+        // Insert the run row LAST, after the frozen prefix is fully seeded. WorkflowRunnerJob claims runs by scanning
+        // workflow_runs; until this row exists the run is invisible/unclaimable, so no worker can drive a half-seeded
+        // journal (which would re-dispatch un-seeded frozen nodes and lose their facts to the seed duplicate-key path).
+        return insertResumedRun(nextRunId, source, resumeNodeId);
+    }
+
+    // The resume node must have actually executed in the source run (COMPLETED, or FAILED so a failed step can be
+    // retried). A SKIPPED / never-reached node has no executed prefix to resume from, so reject it up front.
+    private void requireExecuted(List<WorkflowNodeRun> priorRuns, String resumeNodeId, String sourceRunId) {
+        for (WorkflowNodeRun prior : priorRuns) {
+            if (resumeNodeId.equals(prior.nodeId) && ROOT_SCOPE_KEY.equals(prior.scopePathKey)
+                && (prior.status == NodeRunStatus.COMPLETED || prior.status == NodeRunStatus.FAILED_RETRYABLE)) {
+                return;
+            }
+        }
+        throw new BadRequestException("node was not executed in source run " + sourceRunId + ", cannot resume from it: " + resumeNodeId);
+    }
+
+    private WorkflowRun insertResumedRun(String runId, WorkflowRun source, String resumeNodeId) {
+        var now = ZonedDateTime.now();
+        var run = new WorkflowRun();
+        run.id = runId;
+        run.workflowId = source.workflowId;
+        run.versionId = source.versionId;
+        run.versionSha256 = source.versionSha256;
+        run.userId = source.userId;
+        run.mode = source.mode;
+        run.triggeredBy = source.triggeredBy;
+        run.status = RunStatus.PENDING;
+        run.input = source.input;
+        run.resumedFromRunId = source.id;
+        run.resumeFromNodeId = resumeNodeId;
+        run.leaseUntil = now;   // claimable immediately by the runner job
+        run.createdAt = now;
+        runCollection.insert(run);
+        return run;
     }
 
     private WorkflowRun insertRun(WorkflowDefinition definition, WorkflowPublishedVersion version, String input,

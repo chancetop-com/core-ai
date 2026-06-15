@@ -8,6 +8,7 @@ import ai.core.api.server.workflow.ListNodeRunsResponse;
 import ai.core.api.server.workflow.ListWorkflowRunsResponse;
 import ai.core.api.server.workflow.ListWorkflowsResponse;
 import ai.core.api.server.workflow.NodeRunView;
+import ai.core.api.server.workflow.ResumeFromNodeRequest;
 import ai.core.api.server.workflow.ResumeRunRequest;
 import ai.core.api.server.workflow.UpdateWorkflowRequest;
 import ai.core.api.server.workflow.ValidateWorkflowResponse;
@@ -201,6 +202,18 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         var response = new CreateRunResponse();
         response.runId = runId;
         response.status = RunStatus.PENDING.name();
+        return response;
+    }
+
+    @Override
+    public CreateRunResponse resumeRunFromNode(String runId, ResumeFromNodeRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("workflow_run_id", runId);
+        WorkflowRun run = runService.resumeFromNode(runId, request.nodeId, userId);
+        runner.submit(run.id);   // drive immediately; the runner job is the fallback, not the starter
+        var response = new CreateRunResponse();
+        response.runId = run.id;
+        response.status = run.status.name();
         return response;
     }
 

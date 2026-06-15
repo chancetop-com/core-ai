@@ -89,6 +89,41 @@ public class MongoWorkflowJournal implements WorkflowJournal {
         collection.replace(nodeRun);
     }
 
+    /**
+     * Seed a frozen prefix node-run into a new (resume) run: copy a source run's terminal fact verbatim under the
+     * target run's id, so the planner re-derives the exact same edge verdicts and the resume frontier lands on the
+     * chosen node. Only COMPLETED / SKIPPED facts are seeded (the re-run set carries no fact and runs fresh); the
+     * deterministic _id keeps it idempotent if a seed is retried.
+     */
+    public void seed(String targetRunId, WorkflowNodeRun prior) {
+        var now = ZonedDateTime.now();
+        var seeded = new WorkflowNodeRun();
+        seeded.id = targetRunId + "|" + prior.nodeId + "|" + prior.scopePathKey;
+        seeded.runId = targetRunId;
+        seeded.workflowId = prior.workflowId;
+        seeded.nodeId = prior.nodeId;
+        seeded.nodeType = prior.nodeType;
+        seeded.scopePath = prior.scopePath;
+        seeded.scopePathKey = prior.scopePathKey;
+        seeded.status = prior.status;
+        seeded.inputJson = prior.inputJson;
+        seeded.output = prior.output;
+        seeded.artifacts = prior.artifacts;
+        seeded.chosenEdgeIds = prior.chosenEdgeIds;
+        seeded.childRunId = prior.childRunId;
+        seeded.attempt = prior.attempt;
+        seeded.startedAt = now;
+        seeded.completedAt = now;
+        seeded.createdAt = now;
+        try {
+            collection.insert(seeded);
+        } catch (MongoWriteException e) {
+            if (e.getCode() != DUPLICATE_KEY) {
+                throw e;
+            }
+        }
+    }
+
     @Override
     public void appendSkipped(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath) {
         WorkflowNodeRun nodeRun = newNodeRun(run, node, scopePath, NodeRunStatus.SKIPPED);
