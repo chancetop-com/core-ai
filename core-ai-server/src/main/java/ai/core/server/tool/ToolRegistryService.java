@@ -183,12 +183,19 @@ public class ToolRegistryService {
             var memEntry = tools.get(dbEntry.id);
             if (memEntry == null) {
                 tools.put(dbEntry.id, dbEntry);
-                mcpConnectionManager.registerMcpServer(dbEntry);
-                mcpConnectionManager.warmupMcpServer(dbEntry.id);
+                if (isSandboxHosted(dbEntry)) {
+                    mcpConnectionManager.ensureRegisteredOnDiscovery(dbEntry);
+                } else {
+                    mcpConnectionManager.registerMcpServer(dbEntry);
+                    mcpConnectionManager.warmupMcpServer(dbEntry.id);
+                }
                 LOGGER.info("synced new mcp server from db, id={}, name={}", dbEntry.id, dbEntry.name);
             } else if (!dbEntry.enabled.equals(memEntry.enabled) || !dbEntry.config.equals(memEntry.config)) {
                 tools.put(dbEntry.id, dbEntry);
                 mcpConnectionManager.applyMcpServerState(dbEntry, !dbEntry.config.equals(memEntry.config));
+                if (isSandboxHosted(dbEntry) && dbEntry.enabled) {
+                    mcpConnectionManager.ensureRegisteredOnDiscovery(dbEntry);
+                }
                 LOGGER.info("synced updated mcp server from db, id={}, name={}", dbEntry.id, dbEntry.name);
             }
         }
@@ -251,8 +258,12 @@ public class ToolRegistryService {
 
         tools.put(entity.id, entity);
         if (entity.enabled) {
-            mcpConnectionManager.registerMcpServer(entity);
-            mcpConnectionManager.warmupMcpServer(entity.id);
+            if (isSandboxHosted(entity)) {
+                mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
+            } else {
+                mcpConnectionManager.registerMcpServer(entity);
+                mcpConnectionManager.warmupMcpServer(entity.id);
+            }
         }
         LOGGER.info("created mcp server, id={}, name={}", entity.id, entity.name);
         return entity;
@@ -371,8 +382,12 @@ public class ToolRegistryService {
 
         entity.enabled = true;
         toolRegistryCollection.replace(entity);
-        mcpConnectionManager.registerMcpServer(entity);
-        mcpConnectionManager.warmupMcpServer(entity.id);
+        if (isSandboxHosted(entity)) {
+            mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
+        } else {
+            mcpConnectionManager.registerMcpServer(entity);
+            mcpConnectionManager.warmupMcpServer(entity.id);
+        }
         LOGGER.info("enabled mcp server, id={}, name={}", entity.id, entity.name);
         return entity;
     }
@@ -573,6 +588,9 @@ public class ToolRegistryService {
 
     public ToolCallResult callMcpServerTool(String serverId, String toolName, String argumentsJson) {
         var entity = requireMcpEntity(serverId);
+        if (isSandboxHosted(entity)) {
+            mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
+        }
         var mcpManager = McpClientManagerRegistry.getManager();
         if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
             throw new RuntimeException("mcp server not connected, id=" + serverId);
