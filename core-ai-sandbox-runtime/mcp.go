@@ -184,9 +184,18 @@ func (m *McpProcessManager) List() []McpStartResponse {
 	return result
 }
 
+type readResult struct {
+	line string
+	err  error
+}
+
 // SendJSONRPC writes a JSON-RPC request to the process stdin and reads a
 // JSON-RPC response from stdout. It matches responses by the JSON-RPC id.
 // Notifications (messages without id) from the server are skipped.
+//
+// A goroutine is used for reading so that select can provide a real timeout.
+// If the timeout fires, the mutex is released (via defer) and the caller can
+// retry, avoiding the deadlock the original blocking-ReadString approach caused.
 func (p *McpServerProcess) SendJSONRPC(requestJSON []byte, timeout time.Duration) ([]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -203,32 +212,37 @@ func (p *McpServerProcess) SendJSONRPC(requestJSON []byte, timeout time.Duration
 	}
 
 	// read responses until we find one matching our request id
-	deadline := time.After(timeout)
-	for {
-		select {
-		case <-deadline:
-			return nil, fmt.Errorf("timeout waiting for response (id=%s)", reqID)
-		default:
+	resultCh := make(chan readResult, 1)
+	go func() {
+		for {
+			line, err := p.stdout.ReadString('\n')
+			if err != nil {
+				resultCh <- readResult{err: err}
+				return
+			}
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			// check if this line matches our request id
+			respID := extractJSONRPCID([]byte(line))
+			if respID == reqID {
+				resultCh <- readResult{line: line}
+				return
+			}
+			// notification or mismatched response - log and skip
+			log.Printf("[mcp:%s] skipping non-matching message: id=%s (waiting for %s)", p.ID, respID, reqID)
 		}
+	}()
 
-		line, err := p.stdout.ReadString('\n')
-		if err != nil {
-			return nil, fmt.Errorf("read from stdout: %w", err)
+	select {
+	case res := <-resultCh:
+		if res.err != nil {
+			return nil, fmt.Errorf("read from stdout: %w", res.err)
 		}
-
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// check if this line matches our request id
-		respID := extractJSONRPCID([]byte(line))
-		if respID == reqID {
-			return []byte(line), nil
-		}
-
-		// notification or mismatched response - log and skip
-		log.Printf("[mcp:%s] skipping non-matching message: id=%s (waiting for %s)", p.ID, respID, reqID)
+		return []byte(res.line), nil
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timeout waiting for response (id=%s)", reqID)
 	}
 }
 
