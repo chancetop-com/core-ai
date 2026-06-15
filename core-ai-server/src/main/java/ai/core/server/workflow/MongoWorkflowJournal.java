@@ -95,7 +95,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
      * chosen node. Only COMPLETED / SKIPPED facts are seeded (the re-run set carries no fact and runs fresh); the
      * deterministic _id keeps it idempotent if a seed is retried.
      */
-    public void seed(String targetRunId, WorkflowNodeRun prior) {
+    public void seed(String targetRunId, boolean preview, WorkflowNodeRun prior) {
         var now = ZonedDateTime.now();
         var seeded = new WorkflowNodeRun();
         seeded.id = targetRunId + "|" + prior.nodeId + "|" + prior.scopePathKey;
@@ -112,6 +112,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
         seeded.chosenEdgeIds = prior.chosenEdgeIds;
         seeded.childRunId = prior.childRunId;
         seeded.attempt = prior.attempt;
+        seeded.preview = preview;
         seeded.startedAt = now;
         seeded.completedAt = now;
         seeded.createdAt = now;
@@ -149,6 +150,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
         nodeRun.scopePathKey = ScopeFrame.canonicalKey(scopePath);
         nodeRun.status = status;
         nodeRun.attempt = 1;
+        nodeRun.preview = run.preview;
         nodeRun.startedAt = now;
         nodeRun.createdAt = now;
         return nodeRun;

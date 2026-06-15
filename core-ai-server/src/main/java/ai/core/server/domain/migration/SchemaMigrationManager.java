@@ -83,6 +83,7 @@ public class SchemaMigrationManager {
             new SchemaMigrationVWorkflowDefinitionIndexes(),
             new SchemaMigrationVWorkflowRunIndexes(),
             new SchemaMigrationVWorkflowPreviewIndexFix(),
+            new SchemaMigrationVWorkflowPreviewRunTTL(),
             new SchemaMigrationVBumpDefaultMaxTurns(),
             new SchemaMigrationVMemoryIndexes(),
             new SchemaMigrationVTraceAgentIdIndex(),

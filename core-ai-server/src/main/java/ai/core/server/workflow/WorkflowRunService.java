@@ -90,6 +90,10 @@ public class WorkflowRunService {
         if (source.versionId == null) {
             throw new BadRequestException("source run has no pinned version, cannot resume: " + sourceRunId);
         }
+        // A preview source run's version snapshot is TTL'd after a day; resuming it then has no graph to seed against.
+        if (versionCollection.get(source.versionId).isEmpty()) {
+            throw new BadRequestException("source run's version snapshot has expired, cannot resume: " + sourceRunId);
+        }
         WorkflowGraph graph = graphLoader.load(source.versionId);
         if (graph.node(resumeNodeId) == null) {
             throw new BadRequestException("node not found in run graph: " + resumeNodeId);
@@ -105,7 +109,7 @@ public class WorkflowRunService {
                 continue;   // re-run set carries no seed; container scopes are out of scope for P0
             }
             if (prior.status == NodeRunStatus.COMPLETED || prior.status == NodeRunStatus.SKIPPED) {
-                journal.seed(nextRunId, prior);   // freeze: only settled facts feed the resumed frontier
+                journal.seed(nextRunId, source.preview, prior);   // freeze: only settled facts feed the resumed frontier
             }
         }
         // Insert the run row LAST, after the frozen prefix is fully seeded. WorkflowRunnerJob claims runs by scanning
@@ -138,6 +142,7 @@ public class WorkflowRunService {
         run.triggeredBy = source.triggeredBy;
         run.status = RunStatus.PENDING;
         run.input = source.input;
+        run.preview = source.preview;   // a resume of a preview run is itself a preview run (co-expires)
         run.resumedFromRunId = source.id;
         run.resumeFromNodeId = resumeNodeId;
         run.leaseUntil = now;   // claimable immediately by the runner job
@@ -159,6 +164,7 @@ public class WorkflowRunService {
         run.triggeredBy = triggeredBy;
         run.status = RunStatus.PENDING;
         run.input = input;
+        run.preview = Boolean.TRUE.equals(version.preview);   // co-expire with the throwaway preview version
         run.leaseUntil = now;   // claimable immediately by the runner job
         run.createdAt = now;
         runCollection.insert(run);

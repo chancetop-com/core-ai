@@ -27,11 +27,20 @@ export default function WorkflowRuns() {
   const fetchTrace = useCallback(async (runId: string) => {
     setLoadingTrace(true);
     try {
-      const [graphRes, nodeRes] = await Promise.all([api.workflows.runGraph(runId), api.workflows.nodeRuns(runId)]);
-      const graph = JSON.parse(graphRes.graph) as WorkflowGraph;
-      const { nodes } = toReactFlow(graph);
+      const nodeRes = await api.workflows.nodeRuns(runId);
       const map: Record<string, WorkflowNodeRunView> = {};
       (nodeRes.node_runs || []).forEach((nr) => { map[nr.node_id] = nr; });
+      // The graph is the run's pinned version snapshot; for preview runs it is TTL'd after a day (404). The trace
+      // is the real content, so fall back to nodes reconstructed from the node-runs rather than failing the page.
+      let nodes: WorkflowRFNode[];
+      try {
+        nodes = toReactFlow(JSON.parse((await api.workflows.runGraph(runId)).graph) as WorkflowGraph).nodes;
+      } catch {
+        nodes = Object.values(map).map((nr, i) => ({
+          id: nr.node_id, type: 'workflowNode', position: { x: 0, y: i * 80 },
+          data: { nodeType: nr.node_type ?? '', name: nr.node_id, config: {} },
+        }));
+      }
       setLoaded((prev) => ({ ...prev, [runId]: { nodes, nodeRuns: map } }));
     } catch (e) {
       setError((e as Error).message);

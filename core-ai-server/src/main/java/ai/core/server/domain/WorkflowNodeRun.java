@@ -76,6 +76,10 @@ public class WorkflowNodeRun {
     @Field(name = "attempt")
     public Integer attempt;
 
+    // Mirrors the owning run's preview flag so a TTL can co-expire preview node-runs with their preview run/version.
+    @Field(name = "preview")
+    public boolean preview;
+
     @Field(name = "error")
     public String error;
 
