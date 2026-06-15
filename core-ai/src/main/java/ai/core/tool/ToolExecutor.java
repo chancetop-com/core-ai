@@ -74,7 +74,9 @@ public class ToolExecutor {
         ToolCallResult result;
         if (useSandbox) {
             LOGGER.debug("sandbox intercepting tool: {}", tool.getName());
-            result = sandbox.execute(tool.getName(), functionCall.function.arguments, context);
+            // Wrap sandbox execution in a tool span too, otherwise sandbox-intercepted tools (e.g. a sub-agent's
+            // file/bash operations) produce no TOOL span and never appear in the trace timeline.
+            result = traceToolSpan(functionCall, () -> sandbox.execute(tool.getName(), functionCall.function.arguments, context));
             result.withStats("executionMode", "sandbox");
             result.withStats("sandboxId", sandbox.getId());
         } else {
@@ -109,22 +111,12 @@ public class ToolExecutor {
         var timeoutMs = tool.getTimeoutMs();
 
         var otelContext = Context.current();
-        var llmSpanContext = llmSpanContextSupplier != null ? llmSpanContextSupplier.get() : null;
 
         var threadRef = new AtomicReference<Thread>();
         var future = CompletableFuture.supplyAsync(() -> {
             threadRef.set(Thread.currentThread());
             try (var scope = otelContext.makeCurrent()) {
-                if (tracer != null) {
-                    return tracer.traceToolCall(
-                            functionCall.function.name,
-                            functionCall.function.arguments,
-                            llmSpanContext,
-                            () -> tool.execute(functionCall.function.arguments, context)
-                    );
-                } else {
-                    return tool.execute(functionCall.function.arguments, context);
-                }
+                return traceToolSpan(functionCall, () -> tool.execute(functionCall.function.arguments, context));
             }
         }, AsyncToolTaskExecutor.getInstance().getExecutor());
 
@@ -146,6 +138,15 @@ public class ToolExecutor {
             var cause = e.getCause();
             return ToolCallResult.failed(Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(functionCall), cause != null ? cause.getMessage() : e.getMessage()), cause instanceof Exception ex ? ex : e);
         }
+    }
+
+    // Run the action inside a tool span nested under the triggering LLM span; runs the action directly when tracing is off.
+    private ToolCallResult traceToolSpan(FunctionCall functionCall, Supplier<ToolCallResult> action) {
+        if (tracer == null) {
+            return action.get();
+        }
+        var llmSpanContext = llmSpanContextSupplier != null ? llmSpanContextSupplier.get() : null;
+        return tracer.traceToolCall(functionCall.function.name, functionCall.function.arguments, llmSpanContext, action);
     }
 
     private void handleAsyncResult(ToolCallResult result, ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
