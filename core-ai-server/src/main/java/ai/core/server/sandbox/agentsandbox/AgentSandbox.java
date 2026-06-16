@@ -10,7 +10,7 @@ import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.ConnectException;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.time.Instant;
 
@@ -122,7 +122,7 @@ public class AgentSandbox implements Sandbox {
     private boolean isConnectionError(Throwable throwable) {
         var current = throwable;
         while (current != null) {
-            if (current instanceof ConnectException || current instanceof SocketTimeoutException) return true;
+            if (current instanceof SocketException || current instanceof SocketTimeoutException) return true;
             current = current.getCause();
         }
         return false;

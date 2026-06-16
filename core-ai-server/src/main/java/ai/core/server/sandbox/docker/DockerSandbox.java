@@ -112,7 +112,7 @@ public class DockerSandbox implements Sandbox {
     private boolean isConnectionError(Throwable throwable) {
         var current = throwable;
         while (current != null) {
-            if (current instanceof java.net.ConnectException || current instanceof java.net.SocketTimeoutException) return true;
+            if (current instanceof java.net.SocketException || current instanceof java.net.SocketTimeoutException) return true;
             current = current.getCause();
         }
         return false;
