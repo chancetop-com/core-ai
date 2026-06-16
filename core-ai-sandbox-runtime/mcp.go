@@ -316,7 +316,7 @@ func handleMcpBridge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, err := proc.SendJSONRPC(body, 60*time.Second)
+	response, err := proc.SendJSONRPC(body, 120*time.Second)
 	if err != nil {
 		log.Printf("[mcp:%s] bridge error: %v", serverID, err)
 		writeMcpJSON(w, http.StatusBadGateway, map[string]string{"error": "mcp bridge failed: " + err.Error()})
