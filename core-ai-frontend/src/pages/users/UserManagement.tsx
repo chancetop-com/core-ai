@@ -224,10 +224,10 @@ export default function UserManagement() {
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/30" onClick={closePanel} />
           <div className="relative w-full max-w-md h-full overflow-y-auto shadow-xl"
-            style={{ background: 'var(--color-bg-primary)' }}>
+            style={{ background: 'var(--color-bg-secondary)' }}>
             {/* Panel Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b"
-              style={{ background: 'var(--color-bg-primary)', borderColor: 'var(--color-border)' }}>
+              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
               <div className="flex items-center gap-3">
                 <button onClick={closePanel}
                   className="p-1 rounded hover:opacity-70 transition-opacity cursor-pointer"
@@ -266,7 +266,7 @@ export default function UserManagement() {
                 {newApiKey ? (
                   <div className="p-3 rounded-lg mb-2" style={{ background: '#22c55e10', border: '1px solid #22c55e30' }}>
                     <div className="text-xs font-medium mb-1" style={{ color: '#22c55e' }}>New API Key Generated</div>
-                    <code className="text-xs block break-all mb-2" style={{ color: 'var(--color-text-primary)' }}>
+                    <code className="text-xs block break-all mb-2" style={{ color: 'var(--color-text)' }}>
                       {newApiKey}
                     </code>
                     <button onClick={() => { navigator.clipboard.writeText(newApiKey); }}
@@ -287,7 +287,7 @@ export default function UserManagement() {
                       <span className="text-sm font-medium" style={{ color: '#22c55e' }}>Active</span>
                     </div>
                     <code className="text-xs block break-all mb-1 px-2 py-1 rounded"
-                      style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
+                      style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
                       {selectedUser.api_key}
                     </code>
                     {selectedUser.api_key_created_at && (
@@ -339,7 +339,7 @@ export default function UserManagement() {
                         onClick={() => handleGenerateApiKey(selectedUser.email)}
                         disabled={actionLoading}
                         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-colors disabled:opacity-50"
-                        style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>
+                        style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
                         <KeyRound size={14} />
                         {selectedUser.has_api_key ? 'Regenerate API Key' : 'Generate API Key'}
                       </button>
@@ -387,7 +387,7 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
     <div className="flex items-start justify-between py-1.5">
       <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
       <span className={`text-sm text-right ml-4 ${mono ? 'font-mono' : ''}`}
-        style={{ color: 'var(--color-text-primary)' }}>{value}</span>
+        style={{ color: 'var(--color-text)' }}>{value}</span>
     </div>
   );
 }
