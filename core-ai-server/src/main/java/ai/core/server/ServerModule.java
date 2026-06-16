@@ -262,6 +262,7 @@ public class ServerModule extends Module {
         bind(LLMCallExecutor.class);
         bind(DatasetService.class);
         bind(DatasetRecordService.class);
+        bind(ai.core.server.agent.SubAgentAssembler.class);
         bind(AgentRunner.class);
         bind(AgentScheduler.class);
         bind(ChannelService.class);
@@ -483,6 +484,7 @@ public class ServerModule extends Module {
         bind(SkillService.class);
         bind(MongoSkillProvider.class);
         bind(new SkillArchiveBuilder());
+        bind(ai.core.server.skill.SkillToolAssembler.class);
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/skills/upload", bind(SkillUploadController.class));
     }

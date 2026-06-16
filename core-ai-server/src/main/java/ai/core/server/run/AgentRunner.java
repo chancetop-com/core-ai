@@ -28,18 +28,13 @@ import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
-import ai.core.server.skill.MongoSkillProvider;
-import ai.core.server.skill.ServerSkillTool;
-import ai.core.server.skill.SkillArchiveBuilder;
-import ai.core.server.skill.SkillService;
+import ai.core.server.agent.SubAgentAssembler;
+import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
-import ai.core.server.util.IdLists;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.tool.ToolRegistryService;
-import ai.core.skill.SkillRegistry;
 import ai.core.telemetry.TelemetryConfig;
-import ai.core.tool.tools.ReadSkillResourceTool;
 import ai.core.tool.tools.InternalUrlResolver;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
@@ -56,7 +51,6 @@ import org.slf4j.LoggerFactory;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -115,13 +109,10 @@ public class AgentRunner {
     ToolRegistryService toolRegistryService;
 
     @Inject
-    MongoSkillProvider mongoSkillProvider;
+    SkillToolAssembler skillToolAssembler;
 
     @Inject
-    SkillService skillService;
-
-    @Inject
-    SkillArchiveBuilder skillArchiveBuilder;
+    SubAgentAssembler subAgentAssembler;
 
     @Inject
     SystemPromptService systemPromptService;
@@ -399,18 +390,8 @@ public class AgentRunner {
         var multiModalModel = config != null ? config.multiModalModel : definition.multiModalModel;
         var temperature = config != null ? config.temperature : definition.temperature;
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
-        var skillIds = IdLists.clean(config != null ? config.skillIds : definition.skillIds);
-        SkillRegistry skillRegistry = null;
-        if (!skillIds.isEmpty()) {
-            skillRegistry = new SkillRegistry();
-            skillRegistry.addProvider(mongoSkillProvider.scoped(new HashSet<>(skillIds)));
-            tools.add(ServerSkillTool.builder()
-                .registry(skillRegistry)
-                .skillService(skillService)
-                .archiveBuilder(skillArchiveBuilder)
-                .build());
-            tools.add(ReadSkillResourceTool.builder().registry(skillRegistry).build());
-        }
+        var skillRegistry = skillToolAssembler.attach(config != null ? config.skillIds : definition.skillIds, tools);
+        tools.addAll(subAgentAssembler.assemble(config != null ? config.subAgentIds : definition.subAgentIds, runEntity.id));
         var builder = Agent.builder()
             .name(safeNodeName(definition))
             .id(definition.id)

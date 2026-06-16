@@ -1,0 +1,144 @@
+package ai.core.server.agent;
+
+import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
+import ai.core.api.server.session.SessionConfig;
+import ai.core.llm.LLMProviders;
+import ai.core.persistence.PersistenceProviders;
+import ai.core.server.domain.AgentDefinition;
+import ai.core.server.skill.SkillToolAssembler;
+import ai.core.server.systemprompt.SystemPromptService;
+import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.util.IdLists;
+import ai.core.skill.SkillRegistry;
+import ai.core.tool.BuiltinTools;
+import ai.core.tool.ToolCall;
+import ai.core.tool.tools.SubAgentToolCall;
+import core.framework.inject.Inject;
+import core.framework.mongo.MongoCollection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Builds sub-agents (tools + skills included) from agent definitions.
+ * Shared by the run path (AgentRunner) and the session path (SessionSubAgentManager) so both assemble
+ * sub-agents identically — in particular both wire skills, which previously only the top-level agent did.
+ *
+ * @author Xander
+ */
+public class SubAgentAssembler {
+    private final Logger logger = LoggerFactory.getLogger(SubAgentAssembler.class);
+
+    @Inject
+    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    @Inject
+    ToolRegistryService toolRegistryService;
+    @Inject
+    SystemPromptService systemPromptService;
+    @Inject
+    LLMProviders llmProviders;
+    @Inject
+    PersistenceProviders persistenceProviders;
+    @Inject
+    SkillToolAssembler skillToolAssembler;
+
+    /**
+     * Loads sub-agent definitions by id and wraps each as a callable tool.
+     * A missing or broken sub-agent is logged and skipped so it never blocks the parent agent from starting.
+     */
+    public List<SubAgentToolCall> assemble(List<String> subAgentIds, String sessionId) {
+        var ids = IdLists.clean(subAgentIds);
+        if (ids.isEmpty()) return List.of();
+        var tools = new ArrayList<SubAgentToolCall>();
+        for (var id : ids) {
+            try {
+                var definition = agentDefinitionCollection.get(id)
+                        .orElseThrow(() -> new RuntimeException("subagent not found, id=" + id));
+                var subAgent = buildSubAgent(definition, sessionId);
+                tools.add(SubAgentToolCall.builder().subAgent(subAgent).build());
+                logger.info("assembled subagent {} (id={})", definition.name, id);
+            } catch (Exception e) {
+                logger.warn("failed to assemble subagent id={}: {}", id, e.getMessage());
+            }
+        }
+        return tools;
+    }
+
+    public Agent buildSubAgent(AgentDefinition definition, String sessionId) {
+        var config = toSessionConfig(definition);
+        var tools = new ArrayList<>(resolveTools(definition, sessionId));
+        var skillRegistry = skillToolAssembler.attach(resolveSkillIds(definition), tools);
+        return buildAgent(config, tools.isEmpty() ? null : tools, null, definition.name, null, skillRegistry);
+    }
+
+    private List<String> resolveSkillIds(AgentDefinition definition) {
+        var source = definition.publishedConfig;
+        return source != null && source.skillIds != null ? source.skillIds : definition.skillIds;
+    }
+
+    public List<ToolCall> resolveTools(AgentDefinition definition, String sessionId) {
+        if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
+            return toolRegistryService.resolveToolRefs(definition.publishedConfig.tools, sessionId);
+        } else if (definition.tools != null && !definition.tools.isEmpty()) {
+            return toolRegistryService.resolveToolRefs(definition.tools, sessionId);
+        }
+        return List.of();
+    }
+
+    public SessionConfig toSessionConfig(AgentDefinition definition) {
+        var config = new SessionConfig();
+        var source = definition.publishedConfig;
+        var hasSource = source != null;
+        var systemPromptId = hasSource && source.systemPromptId != null ? source.systemPromptId : definition.systemPromptId;
+        var inlineSystemPrompt = hasSource && source.systemPrompt != null ? source.systemPrompt : definition.systemPrompt;
+        config.systemPrompt = systemPromptId != null ? systemPromptService.resolveContent(systemPromptId) : inlineSystemPrompt;
+        config.model = hasSource && source.model != null ? source.model : definition.model;
+        config.multiModalModel = hasSource && source.multiModalModel != null ? source.multiModalModel : definition.multiModalModel;
+        config.temperature = hasSource && source.temperature != null ? source.temperature : definition.temperature;
+        config.maxTurns = hasSource && source.maxTurns != null ? source.maxTurns : definition.maxTurns;
+        return config;
+    }
+
+    @SuppressWarnings("checkstyle:NestedIfDepth")
+    public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName,
+                            Map<String, Object> extraSystemVars, SkillRegistry skillRegistry) {
+        var llmProvider = llmProviders.getProvider();
+        var builder = Agent.builder()
+                // same sanitization as AgentRunner.safeNodeName: node names must be tool-name-safe (^[^\s<|\\/>]+$)
+                .name(agentName != null && !agentName.isBlank() ? agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
+                .llmProvider(llmProvider)
+                .toolCalls(tools != null && !tools.isEmpty() ? tools : BuiltinTools.ALL)
+                .temperature(config != null && config.temperature != null ? config.temperature : 0.8);
+        if (config != null) {
+            if (config.systemPrompt != null) {
+                builder.systemPrompt(config.systemPrompt);
+            } else {
+                builder.systemPrompt("You are a helpful AI assistant.");
+            }
+            if (config.model != null) builder.model(config.model);
+            if (config.multiModalModel != null) {
+                builder.multiModalModel(config.multiModalModel);
+            } else if (config.model == null) {
+                var mmModel = llmProvider.config.getMultiModalModel();
+                if (mmModel != null) builder.multiModalModel(mmModel);
+            }
+            if (config.maxTurns != null) builder.maxTurn(config.maxTurns);
+        } else {
+            builder.systemPrompt("You are a helpful AI assistant.");
+            var mmModel = llmProvider.config.getMultiModalModel();
+            if (mmModel != null) builder.multiModalModel(mmModel);
+        }
+        if (context != null) builder.executionContext(context);
+        var provider = persistenceProviders.getDefaultPersistenceProvider();
+        if (provider != null) builder.persistenceProvider(provider);
+        if (extraSystemVars != null) {
+            extraSystemVars.forEach(builder::extraSystemVariable);
+        }
+        if (skillRegistry != null) builder.skillRegistry(skillRegistry);
+        return builder.build();
+    }
+}

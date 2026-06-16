@@ -15,6 +15,7 @@ import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
@@ -97,6 +98,8 @@ public class AgentSessionManager {
     SessionOwnershipRegistry ownershipRegistry;
     @Inject
     ChannelRegistry channelRegistry;
+    @Inject
+    SubAgentAssembler subAgentAssembler;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -119,8 +122,7 @@ public class AgentSessionManager {
 
     private SessionSubAgentManager subAgentManager() {
         if (subAgentManager == null) {
-            subAgentManager = new SessionSubAgentManager(agentDefinitionCollection, chatMessageService, toolRegistryService,
-                    systemPromptService, llmProviders, persistenceProviders);
+            subAgentManager = new SessionSubAgentManager(chatMessageService, subAgentAssembler);
         }
         return subAgentManager;
     }
