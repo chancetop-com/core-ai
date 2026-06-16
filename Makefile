@@ -74,3 +74,30 @@ release: cli
 	gh release create v$(VERSION) --repo $(REPO) --title "v$(VERSION)" --generate-notes || true
 	gh release upload v$(VERSION) $(CLI_BUILD_DIR)/$(CLI_BINARY) --repo $(REPO) --clobber
 	@echo "Uploaded $(CLI_BINARY) to release v$(VERSION)"
+
+.PHONY: benchmark cli-dist install-harbor jre25-linux
+
+JRE25_DIR ?= /tmp/jre25-linux
+
+# Run Harbor benchmarks against core-ai-cli
+# Usage: make benchmark DATASET=terminal-bench@2.0 TASK=write-compressor
+benchmark:
+	@command -v harbor >/dev/null 2>&1 || { echo "❌ harbor not installed. Run: make install-harbor"; exit 1; }
+	bash core-ai-benchmark/harbor/run.sh $(DATASET) $(TASK)
+
+# Build CLI install distribution (for Harbor benchmark)
+cli-dist:
+	$(GRADLEW) :core-ai-cli:installDist
+
+# Install Harbor CLI via uv
+install-harbor:
+	uv tool install harbor
+
+# Download and extract Linux JRE 25 for offline container use
+jre25-linux:
+	@echo "Downloading JRE 25 (Linux x64)..."
+	mkdir -p $(JRE25_DIR)
+	curl -sL "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jre/hotspot/normal/eclipse?project=jdk" -o $(JRE25_DIR)/jre.tar.gz
+	tar -xzf $(JRE25_DIR)/jre.tar.gz -C $(JRE25_DIR) --strip-components=1
+	rm -f $(JRE25_DIR)/jre.tar.gz
+	@echo "✅ JRE 25 installed to $(JRE25_DIR)"

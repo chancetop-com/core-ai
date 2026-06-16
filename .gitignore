@@ -62,3 +62,7 @@ QWEN.md
 # Demo files
 core-ai-frontend/demo/
 dashboard-action-demo.html
+
+# Harbor benchmark
+core-ai-benchmark/harbor/.env
+core-ai-benchmark/harbor/.harbor-jobs/
