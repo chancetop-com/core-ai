@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -30,13 +31,14 @@ type McpStartResponse struct {
 }
 
 type McpServerProcess struct {
-	ID      string
-	Config  McpStartRequest
-	Cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	stdout  *bufio.Reader
-	mu      sync.Mutex // protects stdin writes
-	started time.Time
+	ID         string
+	Config     McpStartRequest
+	Cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	stdout     *bufio.Reader
+	stdoutFile *os.File       // for SetReadDeadline (enables true read timeout)
+	mu         sync.Mutex    // serialises concurrent JSON-RPC exchanges
+	started    time.Time
 }
 
 type McpProcessManager struct {
@@ -112,6 +114,7 @@ func (m *McpProcessManager) startOnce(req McpStartRequest) (*McpServerProcess, e
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
+	stdoutFile, _ := stdout.(*os.File) // for SetReadDeadline support
 	// capture stderr for debugging
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -123,12 +126,13 @@ func (m *McpProcessManager) startOnce(req McpStartRequest) (*McpServerProcess, e
 	}
 
 	proc := &McpServerProcess{
-		ID:      req.ID,
-		Config:  req,
-		Cmd:     cmd,
-		stdin:   stdin,
-		stdout:  bufio.NewReader(stdout),
-		started: time.Now(),
+		ID:         req.ID,
+		Config:     req,
+		Cmd:        cmd,
+		stdin:      stdin,
+		stdout:     bufio.NewReader(stdout),
+		stdoutFile: stdoutFile,
+		started:    time.Now(),
 	}
 
 	// log stderr in background
@@ -193,9 +197,10 @@ type readResult struct {
 // JSON-RPC response from stdout. It matches responses by the JSON-RPC id.
 // Notifications (messages without id) from the server are skipped.
 //
-// A goroutine is used for reading so that select can provide a real timeout.
-// If the timeout fires, the mutex is released (via defer) and the caller can
-// retry, avoiding the deadlock the original blocking-ReadString approach caused.
+// A real read deadline is set on the underlying stdout file descriptor so that
+// ReadString can be interrupted when the timeout fires. This is much cleaner
+// than a goroutine+channel approach which would leak goroutines (the blocked
+// ReadString can not be woken up) and cause data races on the shared bufio.Reader.
 func (p *McpServerProcess) SendJSONRPC(requestJSON []byte, timeout time.Duration) ([]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -211,38 +216,34 @@ func (p *McpServerProcess) SendJSONRPC(requestJSON []byte, timeout time.Duration
 		return nil, fmt.Errorf("write newline to stdin: %w", err)
 	}
 
-	// read responses until we find one matching our request id
-	resultCh := make(chan readResult, 1)
-	go func() {
-		for {
-			line, err := p.stdout.ReadString('\n')
-			if err != nil {
-				resultCh <- readResult{err: err}
-				return
-			}
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			// check if this line matches our request id
-			respID := extractJSONRPCID([]byte(line))
-			if respID == reqID {
-				resultCh <- readResult{line: line}
-				return
-			}
-			// notification or mismatched response - log and skip
-			log.Printf("[mcp:%s] skipping non-matching message: id=%s (waiting for %s)", p.ID, respID, reqID)
-		}
-	}()
+	// set a real read deadline on the underlying pipe so ReadString will
+	// unblock when the timeout fires. Clear it on return.
+	if p.stdoutFile != nil {
+		p.stdoutFile.SetReadDeadline(time.Now().Add(timeout))
+		defer p.stdoutFile.SetReadDeadline(time.Time{})
+	}
 
-	select {
-	case res := <-resultCh:
-		if res.err != nil {
-			return nil, fmt.Errorf("read from stdout: %w", res.err)
+	// read responses until we find one matching our request id
+	for {
+		line, err := p.stdout.ReadString('\n')
+		if err != nil {
+			// A timeout from SetReadDeadline surfaces as an os.Timeout error.
+			if os.IsTimeout(err) {
+				return nil, fmt.Errorf("timeout waiting for response (id=%s)", reqID)
+			}
+			return nil, fmt.Errorf("read from stdout: %w", err)
 		}
-		return []byte(res.line), nil
-	case <-time.After(timeout):
-		return nil, fmt.Errorf("timeout waiting for response (id=%s)", reqID)
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// check if this line matches our request id
+		respID := extractJSONRPCID([]byte(line))
+		if respID == reqID {
+			return []byte(line), nil
+		}
+		// notification or mismatched response — log and skip
+		log.Printf("[mcp:%s] skipping non-matching message: id=%s (waiting for %s)", p.ID, respID, reqID)
 	}
 }
 
