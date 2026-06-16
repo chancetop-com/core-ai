@@ -195,7 +195,9 @@ type readResult struct {
 
 // SendJSONRPC writes a JSON-RPC request to the process stdin and reads a
 // JSON-RPC response from stdout. It matches responses by the JSON-RPC id.
-// Notifications (messages without id) from the server are skipped.
+// Notifications (JSON-RPC messages without an "id" field) are written to stdin
+// and return immediately — the server will not send a response to notifications.
+// Spontaneous notifications from the server (e.g. $/ping) are skipped.
 //
 // A real read deadline is set on the underlying stdout file descriptor so that
 // ReadString can be interrupted when the timeout fires. This is much cleaner
@@ -214,6 +216,12 @@ func (p *McpServerProcess) SendJSONRPC(requestJSON []byte, timeout time.Duration
 	}
 	if _, err := p.stdin.Write([]byte("\n")); err != nil {
 		return nil, fmt.Errorf("write newline to stdin: %w", err)
+	}
+
+	// JSON-RPC notifications have no "id" field — the server will not send a
+	// response. Return immediately to avoid blocking on ReadString forever.
+	if reqID == "" {
+		return nil, nil
 	}
 
 	// set a real read deadline on the underlying pipe so ReadString will
@@ -320,6 +328,14 @@ func handleMcpBridge(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[mcp:%s] bridge error: %v", serverID, err)
 		writeMcpJSON(w, http.StatusBadGateway, map[string]string{"error": "mcp bridge failed: " + err.Error()})
+		return
+	}
+
+	// nil response with nil error means the request was a JSON-RPC notification
+	// (no "id" field) — the server will not send a response. Return 202 Accepted
+	// per the Streamable HTTP transport spec.
+	if response == nil {
+		w.WriteHeader(http.StatusAccepted)
 		return
 	}
 
