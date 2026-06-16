@@ -765,10 +765,13 @@ export default function Chat() {
         });
       },
       () => {
-        // Only clear if this controller is still the active one,
-        // preventing a stale onClose from wiping a newer connection.
+        // Only act if this controller is still the active one,
+        // preventing a stale onClose from affecting a newer connection.
         if (sseControllerRef.current === controller) {
           sseControllerRef.current = null;
+          setStatus('idle');
+          setIsThinking(false);
+          setAwaitInfo(null);
         }
       },
     );
