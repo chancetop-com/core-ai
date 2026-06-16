@@ -18,6 +18,8 @@ import ai.core.cli.remote.A2ARemoteServerConfig;
 import ai.core.cli.remote.RemoteAgentToolProvider;
 import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
 import ai.core.cli.task.FileTodoStoreFactory;
+import ai.core.cli.trace.HttpTraceUploader;
+import ai.core.cli.trace.TraceCollectorLifecycle;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.PromptInject;
@@ -95,6 +97,10 @@ public class CliAgent {
         }
         var agent = builder.build();
         var auth = AuthConfig.load();
+        // Login-gated, best-effort trace upload. Not logged in -> not attached -> zero overhead.
+        if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
+            agent.addLifecycle(new TraceCollectorLifecycle(new HttpTraceUploader(auth.serverUrl(), auth.apiKey())));
+        }
         var execCtx = ExecutionContext.builder()
                 .sessionId(config.sessionId)
                 .userId(auth != null ? auth.userId() : null)
