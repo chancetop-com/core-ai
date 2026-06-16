@@ -37,6 +37,7 @@ const SOURCE_OPTIONS: { key: string; label: string }[] = [
   { key: 'api', label: 'API' },
   { key: 'scheduled', label: 'Scheduled' },
   { key: 'workflow', label: 'Workflow' },
+  { key: 'cli', label: 'CLI' },
 ];
 
 const STATUS_SEGMENTS: { key: string; label: string; dotColor?: string }[] = [
