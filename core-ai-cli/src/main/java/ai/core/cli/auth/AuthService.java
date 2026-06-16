@@ -6,13 +6,13 @@ import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.Desktop;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -80,7 +80,8 @@ public final class AuthService {
     }
 
     private static boolean browserSupported() {
-        return Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE);
+        var os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
+        return os.contains("mac") || os.contains("win") || os.contains("nix") || os.contains("nux");
     }
 
     private static String loginViaBrowser(TerminalUI ui, String serverUrl) {
@@ -132,7 +133,16 @@ public final class AuthService {
 
     private static void openBrowserIgnoreErrors(String url) {
         try {
-            Desktop.getDesktop().browse(URI.create(url));
+            var os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
+            ProcessBuilder pb;
+            if (os.contains("win")) {
+                pb = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url);
+            } else if (os.contains("mac")) {
+                pb = new ProcessBuilder("open", url);
+            } else {
+                pb = new ProcessBuilder("xdg-open", url);
+            }
+            pb.start();
         } catch (Exception e) {
             LOGGER.debug("Failed to open browser: {}", e.getMessage());
         }

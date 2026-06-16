@@ -322,9 +322,25 @@ public class AgentSessionRunner {
             return;
         }
         try {
-            var selection = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
-            selection.setContents(new java.awt.datatransfer.StringSelection(lastAssistant), null);
-            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Copied to clipboard (" + lastAssistant.length() + " chars)\n\n");
+            var os = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT);
+            ProcessBuilder pb;
+            if (os.contains("win")) {
+                pb = new ProcessBuilder("clip");
+            } else if (os.contains("mac")) {
+                pb = new ProcessBuilder("pbcopy");
+            } else {
+                // Linux: prefer wl-copy (Wayland), fall back to xclip
+                pb = new ProcessBuilder("sh", "-c", "if command -v wl-copy >/dev/null 2>&1; then wl-copy; elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard; else echo 'No clipboard tool found' >&2; exit 1; fi");
+            }
+            var process = pb.start();
+            try (var out = process.getOutputStream()) {
+                out.write(lastAssistant.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            process.waitFor();
+            if (process.exitValue() != 0) {
+                throw new java.io.IOException("Clipboard command exited with " + process.exitValue());
+            }
+            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "\u2713" + AnsiTheme.RESET + " Copied to clipboard (" + lastAssistant.length() + " chars)\n\n");
         } catch (Exception e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to copy: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
