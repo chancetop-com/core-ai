@@ -84,8 +84,15 @@ export default function WorkflowEditor() {
   }, [id, setNodes, setEdges]);
 
   useEffect(() => {
-    api.agents.list(true)
-      .then((res) => setAgents((res.agents || []).filter((a) => a.status === 'PUBLISHED').map((a) => ({ id: a.id, name: a.name }))))
+    // Load both my agents and other users' agents so any published agent can be selected for a node.
+    Promise.all([api.agents.list(true), api.agents.list(false)])
+      .then(([mine, others]) => {
+        const seen = new Set<string>();
+        const published = [...(mine.agents || []), ...(others.agents || [])]
+          .filter((a) => a.status === 'PUBLISHED')
+          .filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)));
+        setAgents(published.map((a) => ({ id: a.id, name: a.name })));
+      })
       .catch(() => { /* agents are optional for non-agent workflows */ });
   }, []);
 
