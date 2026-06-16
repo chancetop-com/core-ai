@@ -44,6 +44,12 @@ public class IngestService {
     MongoCollection<Span> spanCollection;
 
     public void ingest(IngestRequest request) {
+        ingest(request, null, null);
+    }
+
+    // authUserId: when non-null (authenticated endpoint), it OVERRIDES any client-supplied user.id (route B).
+    // source: when non-null, stamps Trace.source (e.g. "cli"); legacy anonymous path passes null.
+    public void ingest(IngestRequest request, String authUserId, String source) {
         if (request.spans == null || request.spans.isEmpty()) return;
 
         // Prefer root spans for trace metadata initialization (parentSpanId == null).
@@ -59,18 +65,23 @@ public class IngestService {
         for (var spanReq : request.spans) {
             if (ensuredTraces.add(spanReq.traceId)) {
                 var representative = rootByTrace.getOrDefault(spanReq.traceId, spanReq);
-                ensureTrace(spanReq.traceId, representative, request);
+                ensureTrace(spanReq.traceId, representative, request, authUserId, source);
             }
         }
 
         for (var spanReq : request.spans) {
-            saveSpan(spanReq);
+            saveSpan(spanReq, authUserId);
         }
 
         LOGGER.debug("ingested {} spans for {} traces", request.spans.size(), ensuredTraces.size());
     }
 
-    private void ensureTrace(String traceId, IngestSpanRequest rootSpan, IngestRequest request) {
+    static String resolveUserId(String authUserId, Map<String, String> attributes) {
+        if (authUserId != null && !authUserId.isBlank()) return authUserId;
+        return attributes != null ? attributes.get("user.id") : null;
+    }
+
+    private void ensureTrace(String traceId, IngestSpanRequest rootSpan, IngestRequest request, String authUserId, String source) {
         var existing = traceCollection.find(Filters.eq("trace_id", traceId));
         if (!existing.isEmpty()) {
             updateTrace(traceId, rootSpan);
@@ -82,7 +93,11 @@ public class IngestService {
         trace.traceId = traceId;
         trace.name = rootSpan.name;
         trace.sessionId = rootSpan.attributes != null ? rootSpan.attributes.get("session.id") : null;
-        trace.userId = rootSpan.attributes != null ? rootSpan.attributes.get("user.id") : null;
+        trace.userId = resolveUserId(authUserId, rootSpan.attributes);
+        trace.source = source;
+        // Trace-level type from the root span. Without this the frontend falls back to "llm_call" for any
+        // trace that has a model (backfilled from an LLM child span), mislabeling agent runs as LLM calls.
+        trace.type = mapTraceType(rootSpan.type);
         trace.status = mapTraceStatus(rootSpan.status, rootSpan.attributes);
         trace.input = rootSpan.input;
         trace.output = rootSpan.output;
@@ -99,9 +114,10 @@ public class IngestService {
         trace.outputTokens = 0L;
         trace.totalTokens = 0L;
         trace.cachedTokens = 0L;
-        // costUsd starts null so traces with no priced LLM call render as "—" instead of "$0.00".
-        // Mongo $inc on a null field treats it as 0, so accumulation still works correctly.
-        trace.costUsd = null;
+        // costUsd must start as numeric 0.0, NOT null: MongoDB $inc fails on an existing null field
+        // ("Cannot apply $inc to a value of non-numeric type"), which would 400 every ingest carrying a
+        // priced LLM span. $inc treats a MISSING field as 0, but the codec writes null as a present field.
+        trace.costUsd = 0.0;
 
         // Race-safe: rely on the unique index on traces.trace_id. If another ingest created
         // the trace concurrently, fall through to the $set update path.
@@ -117,6 +133,8 @@ public class IngestService {
     }
 
     private void updateTrace(String traceId, IngestSpanRequest rootSpan) {
+        // First-write-wins on identity: userId/source are set only at insert (ensureTrace) and never
+        // overwritten here, so a later anonymous re-ingest of the same trace cannot blank attribution.
         // Use targeted $set updates instead of full document replace so concurrent $inc
         // operations on token/cost counters aren't overwritten with a stale snapshot.
         List<Bson> updates = new ArrayList<>();
@@ -130,11 +148,11 @@ public class IngestService {
         traceCollection.update(Filters.eq("trace_id", traceId), Updates.combine(updates));
     }
 
-    private void saveSpan(IngestSpanRequest spanReq) {
+    private void saveSpan(IngestSpanRequest spanReq, String authUserId) {
         var span = new Span();
         span.id = UUID.randomUUID().toString();
         span.traceId = spanReq.traceId;
-        span.userId = spanReq.attributes != null ? spanReq.attributes.get("user.id") : null;
+        span.userId = resolveUserId(authUserId, spanReq.attributes);
         span.spanId = spanReq.spanId;
         span.parentSpanId = spanReq.parentSpanId;
         span.name = spanReq.name;
@@ -273,6 +291,13 @@ public class IngestService {
         if ("ERROR".equals(status)) return TraceStatus.ERROR;
         if ("OK".equals(status)) return TraceStatus.COMPLETED;
         return TraceStatus.RUNNING;
+    }
+
+    // Trace-level type (agent | llm_call | external) derived from the root span. An LLM-rooted trace is an
+    // llm_call; agent/flow/group roots (and unknowns) are agent runs.
+    private String mapTraceType(String rootSpanType) {
+        if ("LLM".equals(rootSpanType)) return "llm_call";
+        return "agent";
     }
 
     private boolean isCancelled(String status, Map<String, String> attributes) {

@@ -582,6 +582,9 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.POST, "/v1/traces", otlpController::receive);
         http().route(HTTPMethod.POST, "/api/public/otel/v1/traces", otlpController::receive);
         http().route(HTTPMethod.POST, "/api/ingest/spans", ingestController::ingestSpans);
+        // Authenticated ingest for CLI/SDK: AuthInterceptor resolves userId from Bearer (not whitelisted),
+        // server overrides user attribution and stamps source=cli. Distinct HTTP method from GET /api/traces/:traceId.
+        http().route(HTTPMethod.POST, "/api/traces/ingest", ingestController::ingestAuthed);
     }
 
     private void registerForYou() {
