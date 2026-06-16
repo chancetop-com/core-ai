@@ -2,6 +2,7 @@
 
 Run [Harbor](https://github.com/harbor-framework/harbor) benchmarks against `core-ai-cli`.
 
+> **Windows users:** Requires WSL2 or Git Bash. Harbor depends on Docker, and Docker itself runs on WSL2 on Windows, so bash scripts can be used directly.
 ## Quick Start
 
 ```bash
