@@ -115,12 +115,18 @@ public class DynamicApiCaller {
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> new AbstractMap.SimpleEntry<>(entry.getValue(), entry.getValue().getClass())
                 ));
         var paramMap = mapper.buildParamsMap(type, typedArgsMap);
-        return paramMap.entrySet().stream()
-                .filter(entry -> entry.getValue() != null)
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> QueryParamHelper.toString(entry.getValue().getKey(), entry.getValue().getValue())
-                ));
+        var params = new HashMap<String, String>();
+        for (var entry : paramMap.entrySet()) {
+            if (entry.getValue() == null) {
+                continue;
+            }
+            // omit params whose value resolves to null/empty instead of failing the whole call (Collectors.toMap rejects null values)
+            var paramValue = QueryParamHelper.toString(entry.getValue().getKey(), entry.getValue().getValue());
+            if (paramValue != null) {
+                params.put(entry.getKey(), paramValue);
+            }
+        }
+        return params;
     }
 
     private String setupBody(ApiDefinition apiDefinition, ApiDefinitionType type, Map<String, Object> argsMap) {

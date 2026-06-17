@@ -143,6 +143,28 @@ class ExecutionContextInjectionTest {
     }
 
     @Test
+    void testBlankCustomVariableDoesNotOverrideProvidedArgument() throws Exception {
+        // a blank agent template variable (e.g. site="") must not clobber the argument provided by the model
+        var method = ContextAwareService.class.getMethod("echoDynamicArgs", String.class, String.class);
+        var function = Function.builder()
+                .name("echoDynamicArgs")
+                .description("echo dynamic args json")
+                .object(service)
+                .method(method)
+                .dynamicArguments(true)
+                .build();
+
+        var context = ExecutionContext.builder()
+                .customVariable("site", "")
+                .build();
+
+        var result = function.execute("{\"site\":\"choicebrooklyn.com\"}", context);
+
+        assertTrue(result.isCompleted());
+        assertTrue(result.getResult().contains("choicebrooklyn.com"));
+    }
+
+    @Test
     void testExecutionContextCustomVariables() {
         var functions = Functions.from(service, "useCustomVariable");
         var function = functions.getFirst();

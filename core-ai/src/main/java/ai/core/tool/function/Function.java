@@ -32,11 +32,16 @@ public class Function extends ToolCall {
     private String executeSupport(String text, ExecutionContext context) throws InvocationTargetException, IllegalAccessException {
         var argsMap = parseArguments(text);
         if (context != null && context.getCustomVariables() != null) {
-            // skip internal runtime objects (e.g. the URL resolver); they are not serializable tool arguments
-            context.getCustomVariables().forEach((key, value_) -> {
-                if (!key.startsWith(ExecutionContext.INTERNAL_VARIABLE_PREFIX)) {
-                    argsMap.put(key, value_);
+            context.getCustomVariables().forEach((key, customValue) -> {
+                // skip internal runtime objects (e.g. the URL resolver); they are not serializable tool arguments
+                if (key.startsWith(ExecutionContext.INTERNAL_VARIABLE_PREFIX)) {
+                    return;
                 }
+                // skip null/blank values so empty agent variables do not overwrite arguments provided by the model
+                if (customValue == null || (customValue instanceof String strValue && strValue.isBlank())) {
+                    return;
+                }
+                argsMap.put(key, customValue);
             });
         }
         if (dynamicArguments != null && dynamicArguments) {
@@ -82,8 +87,10 @@ public class Function extends ToolCall {
             var result = executeSupport(text, context);
             return ToolCallResult.completed(result).withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
         } catch (IllegalAccessException | InvocationTargetException e) {
+            // InvocationTargetException.getMessage() is null; surface the underlying cause so the trace shows a real error
+            var cause = e instanceof InvocationTargetException invocation && invocation.getCause() != null ? invocation.getCause() : e;
             logger.error(Markers.errorCode("FUNCTION_EXECUTE_FAILED"), "function<{}.{}> execute failed, params: {}", object.toString(), getName(), text, e);
-            return ToolCallResult.failed(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), text, e.getMessage()), e)
+            return ToolCallResult.failed(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), text, cause.toString()), e)
                     .withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
         }
     }
