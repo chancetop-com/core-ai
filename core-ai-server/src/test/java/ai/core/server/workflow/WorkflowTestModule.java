@@ -1,6 +1,7 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.ToolRegistry;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
@@ -29,8 +30,10 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(WorkflowRun.class);
         mongo.collection(WorkflowNodeRun.class);
         mongo.collection(AgentDefinition.class);   // injected by WorkflowPublishService; unused for START -> END
+        mongo.collection(ToolRegistry.class);      // injected by WorkflowPortService for MCP reference resolution
 
         bind(WorkflowDefinitionService.class);
+        bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
         bind(WorkflowPublishService.class);
         // bind the graph-loader seam before WorkflowRunService: the framework injects eagerly at bind() time, so a
         // dependency must already be registered when its dependent is bound (matches ServerModule's ordering).

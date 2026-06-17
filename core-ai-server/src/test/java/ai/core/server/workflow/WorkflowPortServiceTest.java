@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @EnabledIf("mongoReachable")
 @ExtendWith(IntegrationExtension.class)
-@Context(module = WorkflowPortTestModule.class)
+@Context(module = WorkflowTestModule.class)
 class WorkflowPortServiceTest {
     static boolean mongoReachable() {
         try (var socket = new Socket()) {
