@@ -1,6 +1,7 @@
 package ai.core.api.server;
 
 import ai.core.api.server.user.ApiKeyView;
+import ai.core.api.server.user.ChangePasswordRequest;
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.api.server.user.UserView;
 import core.framework.api.http.HTTPStatus;
@@ -25,4 +26,8 @@ public interface UserWebService {
     @Path("/api/user/api-key")
     @ResponseStatus(HTTPStatus.OK)
     GenerateApiKeyResponse generateApiKey();
+
+    @POST
+    @Path("/api/user/change-password")
+    void changePassword(ChangePasswordRequest request);
 }

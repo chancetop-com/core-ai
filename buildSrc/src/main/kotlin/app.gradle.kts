@@ -39,6 +39,10 @@ tasks.named<CreateStartScripts>("startScripts") {
 }
 
 tasks.named<JavaExec>("run") {
+    val debugProp = System.getProperty("core.debug")
+    if ("true" == debugProp) {
+        jvmArgs("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005")
+    }
     // assign all system properties to application, e.g. ./gradlew -Dkey=value :some-service:run
     for ((key, value) in System.getProperties()) {
         if (key != "user.dir" && key != "java.endorsed.dirs") {

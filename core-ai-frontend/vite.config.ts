@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-const API_TARGET = 'https://localhost:8443'
+const API_TARGET = 'http://localhost:8080'
 const ROUTE_ONLY_PRELOADS = [
   'react-markdown',
   'recharts',
@@ -27,10 +27,31 @@ export default defineConfig({
       '/api': {
         target: API_TARGET,
         secure: false,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('X-Forwarded-Proto', 'https');
+          });
+          // SSE passthrough: preserve Content-Type and prevent buffering
+          proxy.on('proxyRes', (proxyRes, _req, res) => {
+            const ct = proxyRes.headers['content-type'];
+            if (ct && ct.startsWith('text/event-stream')) {
+              // Explicitly re-set header – http-proxy may strip it before pipe
+              res.setHeader('Content-Type', ct);
+              res.setHeader('Cache-Control', 'no-cache');
+              res.setHeader('Connection', 'keep-alive');
+              res.flushHeaders();
+            }
+          });
+        },
       },
       '/.well-known': {
         target: API_TARGET,
         secure: false,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('X-Forwarded-Proto', 'https');
+          });
+        },
       }
     },
   },

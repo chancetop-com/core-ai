@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, MessageCircle, Search, UserCircle, X, Zap } from 'lucide-react';
-import { api } from '../../api/client';
-import type { SessionSummary, Trace, TraceFacet, TraceFilter } from '../../api/client';
+import { api, adminApi, type SessionSummary, type Trace, type TraceFacet, type TraceFilter, type UserStatus } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
 import TraceDetailPanel from './TraceDetailPanel';
@@ -96,6 +95,14 @@ export default function TraceList() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const [userList, setUserList] = useState<UserStatus[]>([]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      adminApi.listUsers().then(res => setUserList(res.users)).catch(() => {});
+    }
+  }, [isAdmin]);
+
   const [result, setResult] = useState<TraceListState>({ requestKey: '', traces: [], total: 0 });
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(PAGE_SIZES[0]);
@@ -328,13 +335,16 @@ export default function TraceList() {
                 style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
               />
               {isAdmin && (
-                <input
+                <select
                   value={filters.userId || ''}
                   onChange={event => updateFilter({ userId: event.target.value })}
-                  placeholder="User ID (exact)"
-                  className="px-3 py-2 rounded-md border text-sm"
-                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
-                />
+                  className="px-3 py-2 rounded-md border text-sm cursor-pointer"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                  <option value="">All users</option>
+                  {userList.map(u => (
+                    <option key={u.email} value={u.email}>{u.name || u.email} ({u.email})</option>
+                  ))}
+                </select>
               )}
               <input
                 value={filters.name || ''}

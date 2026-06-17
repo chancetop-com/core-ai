@@ -55,6 +55,9 @@ export const userApi = {
     requestWithAuth<ApiKeyInfo>('/api/user/api-key'),
   generateApiKey: () =>
     requestWithAuth<GenerateApiKeyResponse>('/api/user/api-key', { method: 'POST' }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    requestWithAuth<void>('/api/user/change-password',
+      { method: 'POST', body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }),
 };
 
 export interface UserStatus {
@@ -108,8 +111,6 @@ export const adminApi = {
     requestWithAuth<ListUsersResponse>('/api/auth/users'),
   updateUserStatus: (email: string, status: string) =>
     requestWithAuth<void>('/api/auth/users/update-status', { method: 'POST', body: JSON.stringify({ email, status }) }),
-  resetAdminPassword: () =>
-    requestWithAuth<void>('/api/auth/users/reset-admin-password', { method: 'POST' }),
   deleteUser: (email: string) =>
     requestWithAuth<void>('/api/auth/users/delete', { method: 'POST', body: JSON.stringify({ email }) }),
   generateApiKeyForUser: (email: string) =>
@@ -118,6 +119,12 @@ export const adminApi = {
   revokeApiKey: (email: string) =>
     requestWithAuth<void>('/api/auth/users/revoke-api-key',
       { method: 'POST', body: JSON.stringify({ email }) }),
+  updateUserRole: (email: string, role: string) =>
+    requestWithAuth<void>('/api/auth/users/update-role',
+      { method: 'POST', body: JSON.stringify({ email, role }) }),
+  resetUserPassword: (email: string, password: string) =>
+    requestWithAuth<void>('/api/auth/users/reset-password',
+      { method: 'POST', body: JSON.stringify({ email, password }) }),
 };
 
 export interface Trace {

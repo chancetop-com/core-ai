@@ -137,18 +137,6 @@ public class AuthService {
         LOGGER.info("user status updated, email={}, newStatus={}", normalizedEmail, newStatus);
     }
 
-    public void resetAdminPassword(String adminUserId) {
-        requireAdmin(adminUserId);
-
-        var adminEmailLower = this.adminEmail.toLowerCase(Locale.getDefault());
-        var user = userCollection.get(adminEmailLower)
-            .orElseThrow(() -> new BadRequestException("admin user not found"));
-
-        user.passwordHash = hashPassword(this.adminPassword);
-        userCollection.replace(user);
-        LOGGER.info("admin password reset to configured value");
-    }
-
     public void deleteUser(String adminUserId, String targetEmail) {
         requireAdmin(adminUserId);
 
@@ -196,6 +184,42 @@ public class AuthService {
         user.apiKeyCreatedAt = null;
         userCollection.replace(user);
         LOGGER.info("api key revoked for user, email={}", normalizedEmail);
+    }
+
+    public void updateUserRole(String adminUserId, String targetEmail, String newRole) {
+        requireAdmin(adminUserId);
+
+        if (adminUserId.equals(targetEmail.toLowerCase(Locale.getDefault()))) {
+            throw new BadRequestException("cannot change your own role");
+        }
+
+        if (!"user".equals(newRole) && !"admin".equals(newRole)) {
+            throw new BadRequestException("invalid role, must be 'user' or 'admin'");
+        }
+
+        var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
+        var user = userCollection.get(normalizedEmail)
+            .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
+
+        user.role = newRole;
+        userCollection.replace(user);
+        LOGGER.info("user role updated, email={}, newRole={}", normalizedEmail, newRole);
+    }
+
+    public void resetUserPassword(String adminUserId, String targetEmail, String newPassword) {
+        requireAdmin(adminUserId);
+
+        if (newPassword == null || newPassword.length() < 6) {
+            throw new BadRequestException("password must be at least 6 characters");
+        }
+
+        var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
+        var user = userCollection.get(normalizedEmail)
+            .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
+
+        user.passwordHash = hashPassword(newPassword);
+        userCollection.replace(user);
+        LOGGER.info("password reset for user, email={}", normalizedEmail);
     }
 
     public void invite(String adminUserId, String email) {

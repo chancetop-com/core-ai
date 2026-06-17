@@ -9,7 +9,9 @@ import ai.core.api.server.auth.LoginRequest;
 import ai.core.api.server.auth.LoginResponse;
 import ai.core.api.server.auth.RegisterRequest;
 import ai.core.api.server.auth.RegisterResponse;
+import ai.core.api.server.auth.ResetUserPasswordRequest;
 import ai.core.api.server.auth.RevokeApiKeyRequest;
+import ai.core.api.server.auth.UpdateUserRoleRequest;
 import ai.core.api.server.auth.UpdateUserStatusRequest;
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.server.auth.AuthService;
@@ -59,12 +61,6 @@ public class AuthWebServiceImpl implements AuthWebService {
     }
 
     @Override
-    public void resetAdminPassword() {
-        var userId = AuthContext.userId(webContext);
-        authService.resetAdminPassword(userId);
-    }
-
-    @Override
     public void deleteUser(DeleteUserRequest request) {
         var userId = AuthContext.userId(webContext);
         authService.deleteUser(userId, request.email);
@@ -80,5 +76,17 @@ public class AuthWebServiceImpl implements AuthWebService {
     public void revokeApiKey(RevokeApiKeyRequest request) {
         var userId = AuthContext.userId(webContext);
         authService.revokeApiKey(userId, request.email);
+    }
+
+    @Override
+    public void updateUserRole(UpdateUserRoleRequest request) {
+        var userId = AuthContext.userId(webContext);
+        authService.updateUserRole(userId, request.email, request.role);
+    }
+
+    @Override
+    public void resetUserPassword(ResetUserPasswordRequest request) {
+        var userId = AuthContext.userId(webContext);
+        authService.resetUserPassword(userId, request.email, request.password);
     }
 }

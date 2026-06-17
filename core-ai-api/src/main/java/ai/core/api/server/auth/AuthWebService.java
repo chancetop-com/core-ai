@@ -33,10 +33,6 @@ public interface AuthWebService {
     void updateUserStatus(UpdateUserStatusRequest request);
 
     @POST
-    @Path("/api/auth/users/reset-admin-password")
-    void resetAdminPassword();
-
-    @POST
     @Path("/api/auth/users/delete")
     void deleteUser(DeleteUserRequest request);
 
@@ -47,4 +43,12 @@ public interface AuthWebService {
     @POST
     @Path("/api/auth/users/revoke-api-key")
     void revokeApiKey(RevokeApiKeyRequest request);
+
+    @POST
+    @Path("/api/auth/users/update-role")
+    void updateUserRole(UpdateUserRoleRequest request);
+
+    @POST
+    @Path("/api/auth/users/reset-password")
+    void resetUserPassword(ResetUserPasswordRequest request);
 }

@@ -1,4 +1,4 @@
-import { Activity, Key, User } from 'lucide-react';
+import { Activity, Shield, User } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
 
@@ -22,8 +22,8 @@ export default function Settings() {
               color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
               fontWeight: isActive ? 500 : 400,
             })}>
-            <Key size={16} />
-            API Keys
+            <Shield size={16} />
+            Security
           </NavLink>
           {user?.role === 'admin' && (
             <>

@@ -6,6 +6,8 @@ import ai.core.api.server.user.UserView;
 import ai.core.server.domain.User;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.BadRequestException;
+import org.bouncycastle.crypto.generators.OpenBSDBCrypt;
 
 import java.security.SecureRandom;
 import java.time.ZonedDateTime;
@@ -17,6 +19,7 @@ import java.util.Base64;
 public class UserService {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int API_KEY_BYTES = 32;
+    private static final int BCRYPT_COST = 10;
 
     @Inject
     MongoCollection<User> userCollection;
@@ -52,6 +55,32 @@ public class UserService {
         var response = new GenerateApiKeyResponse();
         response.apiKey = apiKey;
         return response;
+    }
+
+    public void changePassword(String userId, String currentPassword, String newPassword) {
+        var user = userCollection.get(userId)
+            .orElseThrow(() -> new RuntimeException("user not found, id=" + userId));
+
+        if (user.passwordHash == null || !verifyPassword(currentPassword, user.passwordHash)) {
+            throw new BadRequestException("current password is incorrect");
+        }
+
+        if (newPassword == null || newPassword.length() < 6) {
+            throw new BadRequestException("new password must be at least 6 characters");
+        }
+
+        user.passwordHash = hashPassword(newPassword);
+        userCollection.replace(user);
+    }
+
+    private String hashPassword(String password) {
+        byte[] salt = new byte[16];
+        RANDOM.nextBytes(salt);
+        return OpenBSDBCrypt.generate(password.toCharArray(), salt, BCRYPT_COST);
+    }
+
+    private boolean verifyPassword(String password, String hash) {
+        return OpenBSDBCrypt.checkPassword(hash, password.toCharArray());
     }
 
     private UserView toView(User entity) {

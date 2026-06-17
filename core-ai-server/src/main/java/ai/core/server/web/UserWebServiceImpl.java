@@ -2,6 +2,7 @@ package ai.core.server.web;
 
 import ai.core.api.server.UserWebService;
 import ai.core.api.server.user.ApiKeyView;
+import ai.core.api.server.user.ChangePasswordRequest;
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.api.server.user.UserView;
 import ai.core.server.web.auth.AuthContext;
@@ -36,5 +37,12 @@ public class UserWebServiceImpl implements UserWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         return userService.generateApiKey(userId);
+    }
+
+    @Override
+    public void changePassword(ChangePasswordRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        userService.changePassword(userId, request.currentPassword, request.newPassword);
     }
 }

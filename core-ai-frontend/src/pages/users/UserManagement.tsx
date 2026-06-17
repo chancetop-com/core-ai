@@ -9,6 +9,9 @@ export default function UserManagement() {
   const [actionLoading, setActionLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserStatus | null>(null);
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
+  const [roleLoading, setRoleLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [generatedPassword, setGeneratedPassword] = useState('');
 
   const loadUsers = useCallback(async () => {
     try {
@@ -44,16 +47,6 @@ export default function UserManagement() {
       setError(err instanceof Error ? err.message : 'Failed to update user');
     } finally {
       setActionLoading(false);
-    }
-  };
-
-  const handleResetAdminPassword = async () => {
-    if (!confirm('Reset admin password to the value configured in environment?')) return;
-    try {
-      await adminApi.resetAdminPassword();
-      alert('Admin password has been reset. Restart the server to apply changes.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset admin password');
     }
   };
 
@@ -98,9 +91,46 @@ export default function UserManagement() {
     }
   };
 
+  const handleUpdateRole = async (email: string, newRole: string) => {
+    setRoleLoading(true);
+    try {
+      await adminApi.updateUserRole(email, newRole);
+      await refreshUser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update role');
+    } finally {
+      setRoleLoading(false);
+    }
+  };
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%';
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    let result = '';
+    for (let i = 0; i < 16; i++) {
+      result += chars[bytes[i] % chars.length];
+    }
+    return result;
+  };
+
+  const handleResetPassword = async (email: string) => {
+    const password = generateRandomPassword();
+    setResetLoading(true);
+    try {
+      await adminApi.resetUserPassword(email, password);
+      setGeneratedPassword(password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset password');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const closePanel = () => {
     setSelectedUser(null);
     setNewApiKey(null);
+    setGeneratedPassword('');
   };
 
   const getStatusBadge = (status: string) => {
@@ -146,12 +176,6 @@ export default function UserManagement() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleResetAdminPassword}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
-            style={{ background: '#8b5cf620', color: '#8b5cf6' }}>
-            <Key size={14} />
-            Reset Admin Password
-          </button>
           <button onClick={loadUsers}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
             style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
@@ -195,7 +219,7 @@ export default function UserManagement() {
                   style={{ borderColor: 'var(--color-border)', background: idx % 2 === 0 ? 'transparent' : 'var(--color-bg-secondary)' }}>
                   <td className="px-4 py-3 text-sm font-mono">
                     <button
-                      onClick={() => { setSelectedUser(user); setNewApiKey(null); }}
+                      onClick={() => { setSelectedUser(user); setNewApiKey(null); setGeneratedPassword(''); }}
                       className="text-left cursor-pointer hover:underline"
                       style={{ color: 'var(--color-primary)' }}>
                       {user.email}
@@ -252,7 +276,18 @@ export default function UserManagement() {
                 <div className="space-y-2">
                   <InfoRow label="Email" value={selectedUser.email} mono />
                   <InfoRow label="Name" value={selectedUser.name || '-'} />
-                  <InfoRow label="Role" value={selectedUser.role} />
+                  <div className="flex items-start justify-between py-1.5">
+                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Role</span>
+                    <select
+                      value={selectedUser.role}
+                      onChange={(e) => handleUpdateRole(selectedUser.email, e.target.value)}
+                      disabled={roleLoading}
+                      className="text-sm text-right ml-4 rounded px-2 py-0.5 cursor-pointer border-0 outline-none"
+                      style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                      <option value="user">user</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  </div>
                   <InfoRow label="Status" value={selectedUser.status} />
                   <InfoRow label="Created"
                     value={selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleString() : '-'} />
@@ -311,9 +346,7 @@ export default function UserManagement() {
                 <h3 className="text-xs font-medium uppercase tracking-wider mb-3"
                   style={{ color: 'var(--color-text-secondary)' }}>Actions</h3>
                 <div className="space-y-3">
-                  {selectedUser.role !== 'admin' && (
-                    <>
-                      {selectedUser.status === 'pending' ? (
+                  {selectedUser.status === 'pending' ? (
                         <button
                           onClick={() => handleUpdateStatus(selectedUser.email, 'active')}
                           disabled={actionLoading}
@@ -365,13 +398,36 @@ export default function UserManagement() {
                         <Trash2 size={14} />
                         Delete User
                       </button>
-                    </>
-                  )}
-                  {selectedUser.role === 'admin' && (
-                    <div className="text-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                      Admin user — managed via server configuration
-                    </div>
-                  )}
+
+                      <div className="h-px" style={{ background: 'var(--color-border)' }} />
+
+                      {generatedPassword ? (
+                        <div className="p-3 rounded-lg" style={{ background: '#22c55e10', border: '1px solid #22c55e30' }}>
+                          <div className="text-xs font-medium mb-1" style={{ color: '#22c55e' }}>New Password Generated</div>
+                          <code className="text-xs block break-all mb-2 font-mono" style={{ color: 'var(--color-text)' }}>
+                            {generatedPassword}
+                          </code>
+                          <button onClick={() => { navigator.clipboard.writeText(generatedPassword); }}
+                            className="text-xs underline cursor-pointer mr-3"
+                            style={{ color: 'var(--color-text-secondary)' }}>
+                            copy
+                          </button>
+                          <button onClick={() => setGeneratedPassword('')}
+                            className="text-xs underline cursor-pointer"
+                            style={{ color: 'var(--color-text-secondary)' }}>
+                            dismiss
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleResetPassword(selectedUser.email)}
+                          disabled={resetLoading || actionLoading}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-colors disabled:opacity-50"
+                          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                          <Key size={14} />
+                          {resetLoading ? 'Generating...' : 'Reset Password'}
+                        </button>
+                      )}
                 </div>
               </section>
             </div>
