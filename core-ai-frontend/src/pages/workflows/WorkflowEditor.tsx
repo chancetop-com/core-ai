@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ReactFlow, Background, Controls, addEdge,
   useNodesState, useEdgesState,
   type Connection, type Edge, type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ArrowLeft, Rocket, FlaskConical, Code2 } from 'lucide-react';
-import { api, type WorkflowNodeRunView } from '../../api/client';
+import { ArrowLeft, Rocket, FlaskConical, Code2, Save, Download, FileUp } from 'lucide-react';
+import { api, type WorkflowNodeRunView, type UnresolvedReferenceView } from '../../api/client';
 import { useTheme } from '../../hooks/useTheme';
 import WorkflowNode from './WorkflowNode';
 import NodePalette from './NodePalette';
@@ -35,8 +35,10 @@ function elapsedMs(nr: WorkflowNodeRunView): number | undefined {
 export default function WorkflowEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { dark } = useTheme();
   const rfRef = useRef<ReactFlowInstance<WorkflowRFNode, Edge> | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
   const [status, setStatus] = useState('DRAFT');
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowRFNode>([]);
@@ -248,6 +250,70 @@ export default function WorkflowEditor() {
     return () => clearTimeout(timer);
   }, [nodes, edges, name, loading, showRun, id, persistDraft]);
 
+  // Surface unresolved references handed over from the list page's import, then clear the router state so a
+  // refresh or back-navigation doesn't replay the notice.
+  useEffect(() => {
+    const notice = (location.state as { importNotice?: UnresolvedReferenceView[] } | null)?.importNotice;
+    if (notice && notice.length > 0) {
+      setMsg(`Imported with ${notice.length} unresolved reference(s) — fix before publishing.`);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
+
+  // Manual save (the draft also auto-saves on change; this is an explicit flush).
+  const manualSave = async () => {
+    if (!id || busy) return;
+    setBusy(true); setMsg('');
+    try {
+      setMsg((await saveDraft()) ? 'Saved' : 'Save failed');
+    } finally { setBusy(false); }
+  };
+
+  // Export the current canvas: flush the draft first so the downloaded envelope matches what is on screen.
+  const exportCurrent = async () => {
+    if (!id || busy) return;
+    setBusy(true); setMsg('');
+    try {
+      if (!(await saveDraft())) { setMsg('Save failed; export aborted'); return; }
+      const envelope = await api.workflows.export(id);
+      const json = JSON.stringify(envelope, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${(name || 'workflow').replace(/\s+/g, '-').toLowerCase()}.workflow.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setMsg(`Export failed: ${(e as Error).message}`);
+    } finally { setBusy(false); }
+  };
+
+  // Import replaces the current canvas with the file's graph (in place); the auto-save then persists it. Accepts
+  // either a full export envelope ({ format, graph, ... }) or a raw graph ({ nodes, edges }).
+  const importFromFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || busy) return;
+    if (!window.confirm('Importing will replace the current canvas. Continue?')) return;
+    setBusy(true); setMsg('');
+    try {
+      const parsed = JSON.parse(await file.text());
+      let graph: WorkflowGraph;
+      if (typeof parsed.graph === 'string') graph = JSON.parse(parsed.graph);
+      else if (Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) graph = parsed;
+      else throw new Error('not a workflow export file');
+      if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) throw new Error('invalid graph shape');
+      const { nodes: rfNodes, edges: rfEdges } = toReactFlow(graph);
+      setNodes(ensureEnd(ensureStart(rfNodes)));
+      setEdges(rfEdges);
+      setSelectedId(null);
+      setMsg('Imported. Review and Publish when ready.');
+    } catch (err) {
+      setMsg(`Import failed: ${(err as Error).message}`);
+    } finally { setBusy(false); }
+  };
+
   const publish = async () => {
     if (!id || busy) return;
     setBusy(true); setMsg('');
@@ -337,6 +403,10 @@ export default function WorkflowEditor() {
         </span>
         <div style={{ flex: 1 }} />
         {msg && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginRight: 8 }}>{msg}</span>}
+        <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={importFromFile} />
+        <button onClick={() => importInputRef.current?.click()} disabled={busy || preview} style={btn} title="Import a workflow file into the canvas"><FileUp size={15} /> Import</button>
+        <button onClick={exportCurrent} disabled={busy || preview} style={btn} title="Export this workflow"><Download size={15} /> Export</button>
+        <button onClick={manualSave} disabled={busy || preview} style={btn} title="Save draft"><Save size={15} /> Save</button>
         <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
         <button onClick={publish} disabled={busy || preview} style={btn}><Rocket size={15} /> Publish</button>
         <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>

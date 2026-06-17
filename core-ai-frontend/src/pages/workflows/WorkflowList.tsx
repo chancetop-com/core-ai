@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, History, Download, FileUp, Workflow as WorkflowIcon } from 'lucide-react';
 import { api, type WorkflowView } from '../../api/client';
@@ -10,7 +10,6 @@ export default function WorkflowList() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
@@ -74,12 +73,8 @@ export default function WorkflowList() {
     try {
       const text = await file.text();
       const res = await api.workflows.import(text);
-      const unresolved = res.unresolved_references || [];
-      if (unresolved.length > 0) {
-        alert(`Imported with ${unresolved.length} unresolved reference(s). Fix them before publishing:\n` +
-          unresolved.map((u) => `• ${u.node_id} (${u.ref_type}): ${u.message}`).join('\n'));
-      }
-      navigate(`/workflows/${res.workflow.id}`);
+      // Hand any unresolved references to the editor, which surfaces them inline where the user lands.
+      navigate(`/workflows/${res.workflow.id}`, { state: { importNotice: res.unresolved_references || [] } });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -97,7 +92,7 @@ export default function WorkflowList() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <label style={{ ...btnSecondary, opacity: importing ? 0.5 : 1 }}>
             <FileUp size={16} /> {importing ? 'Importing…' : 'Import'}
-            <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={importWorkflow} disabled={importing} />
+            <input type="file" accept=".json" style={{ display: 'none' }} onChange={importWorkflow} disabled={importing} />
           </label>
           <button onClick={create} disabled={creating} style={btnPrimary}>
             <Plus size={16} /> New workflow

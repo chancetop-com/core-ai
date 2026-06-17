@@ -112,6 +112,8 @@ public class WorkflowPortService {
         return unresolved;
     }
 
+    // Both AGENT and LLM nodes reference an agent via agent_id, so the reference category (refType) is always
+    // "AGENT" per the AGENT|MCP_TOOL vocabulary; the originating node type is still carried in nodeType (node.type()).
     private void checkAgent(WorkflowNode node, String userId, List<UnresolvedReference> unresolved) {
         Object agentId = node.config().get("agent_id");
         if (agentId == null) {
