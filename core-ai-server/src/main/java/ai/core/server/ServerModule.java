@@ -320,10 +320,11 @@ public class ServerModule extends Module {
             Map.entry(NodeType.CODE, new CodeExecutor(sandboxService, fileService))));
         bind(NodeExecutor.class, registry);
 
+        // WorkflowDefinitionService must be bound before WorkflowPortService, which injects it
+        bind(WorkflowDefinitionService.class);
         bind(WorkflowPublishService.class);
         bind(WorkflowPortService.class);
         bind(WorkflowRunner.class);
-        bind(WorkflowDefinitionService.class);
         bind(WorkflowRunService.class);
         // Pure recovery/fallback: every creation path submits immediately, so this only catches hard crashes
         // (OOM/SIGKILL/node loss) that leave a stale lease — a slow tick is enough. (No shutdown-time DB hand-off:
