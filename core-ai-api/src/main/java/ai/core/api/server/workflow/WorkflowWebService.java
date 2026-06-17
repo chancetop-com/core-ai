@@ -25,6 +25,14 @@ public interface WorkflowWebService {
     @Path("/api/workflows/:id")
     WorkflowView get(@PathParam("id") String id);
 
+    @GET
+    @Path("/api/workflows/:id/export")
+    ExportWorkflowResponse export(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/workflows/import")
+    ImportWorkflowResponse importWorkflow(ImportWorkflowRequest request);
+
     @PUT
     @Path("/api/workflows/:id")
     WorkflowView update(@PathParam("id") String id, UpdateWorkflowRequest request);

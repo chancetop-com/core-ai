@@ -4,12 +4,16 @@ import ai.core.api.server.workflow.ArtifactView;
 import ai.core.api.server.workflow.CreateRunRequest;
 import ai.core.api.server.workflow.CreateRunResponse;
 import ai.core.api.server.workflow.CreateWorkflowRequest;
+import ai.core.api.server.workflow.ExportWorkflowResponse;
+import ai.core.api.server.workflow.ImportWorkflowRequest;
+import ai.core.api.server.workflow.ImportWorkflowResponse;
 import ai.core.api.server.workflow.ListNodeRunsResponse;
 import ai.core.api.server.workflow.ListWorkflowRunsResponse;
 import ai.core.api.server.workflow.ListWorkflowsResponse;
 import ai.core.api.server.workflow.NodeRunView;
 import ai.core.api.server.workflow.ResumeFromNodeRequest;
 import ai.core.api.server.workflow.ResumeRunRequest;
+import ai.core.api.server.workflow.UnresolvedReferenceView;
 import ai.core.api.server.workflow.UpdateWorkflowRequest;
 import ai.core.api.server.workflow.ValidateWorkflowResponse;
 import ai.core.api.server.workflow.WorkflowRunGraphResponse;
@@ -24,6 +28,7 @@ import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.workflow.WorkflowDefinitionService;
+import ai.core.server.workflow.WorkflowPortService;
 import ai.core.server.workflow.WorkflowPublishService;
 import ai.core.server.workflow.WorkflowRunService;
 import ai.core.server.workflow.WorkflowRunner;
@@ -55,6 +60,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     @Inject
     WorkflowRunner runner;
 
+    @Inject
+    WorkflowPortService portService;
+
     @Override
     public ListWorkflowsResponse list() {
         var userId = AuthContext.userId(webContext);
@@ -73,6 +81,22 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     public WorkflowView get(String id) {
         var userId = AuthContext.userId(webContext);
         return toView(definitionService.get(id, userId));
+    }
+
+    @Override
+    public ExportWorkflowResponse export(String id) {
+        var userId = AuthContext.userId(webContext);
+        return portService.export(id, userId);
+    }
+
+    @Override
+    public ImportWorkflowResponse importWorkflow(ImportWorkflowRequest request) {
+        var userId = AuthContext.userId(webContext);
+        WorkflowPortService.WorkflowImportResult result = portService.importWorkflow(request.content, request.name, userId);
+        var response = new ImportWorkflowResponse();
+        response.workflow = toView(result.definition());
+        response.unresolvedReferences = result.unresolved().stream().map(WorkflowWebServiceImpl::toUnresolvedView).toList();
+        return response;
     }
 
     @Override
@@ -215,6 +239,16 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         response.runId = run.id;
         response.status = run.status.name();
         return response;
+    }
+
+    private static UnresolvedReferenceView toUnresolvedView(WorkflowPortService.UnresolvedReference ref) {
+        var view = new UnresolvedReferenceView();
+        view.nodeId = ref.nodeId();
+        view.nodeType = ref.nodeType();
+        view.refType = ref.refType();
+        view.refId = ref.refId();
+        view.message = ref.message();
+        return view;
     }
 
     private static WorkflowView toView(WorkflowDefinition definition) {

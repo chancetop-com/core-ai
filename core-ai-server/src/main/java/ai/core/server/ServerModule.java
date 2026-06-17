@@ -62,6 +62,7 @@ import ai.core.server.workflow.NodeExecutorRegistry;
 import ai.core.server.workflow.NodeType;
 import ai.core.server.workflow.WorkflowDefinitionService;
 import ai.core.server.workflow.WorkflowGraphLoader;
+import ai.core.server.workflow.WorkflowPortService;
 import ai.core.server.workflow.WorkflowPublishService;
 import ai.core.server.workflow.WorkflowRunService;
 import ai.core.server.workflow.WorkflowRunner;
@@ -320,6 +321,7 @@ public class ServerModule extends Module {
         bind(NodeExecutor.class, registry);
 
         bind(WorkflowPublishService.class);
+        bind(WorkflowPortService.class);
         bind(WorkflowRunner.class);
         bind(WorkflowDefinitionService.class);
         bind(WorkflowRunService.class);

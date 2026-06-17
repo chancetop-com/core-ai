@@ -681,6 +681,28 @@ export interface ListWorkflowsResponse {
   workflows: WorkflowView[];
 }
 
+export interface ExportWorkflowResponse {
+  format: string;
+  exported_at?: string;
+  name: string;
+  mode?: string;
+  description?: string;
+  graph: string;
+}
+
+export interface UnresolvedReferenceView {
+  node_id: string;
+  node_type: string;
+  ref_type: string;
+  ref_id?: string;
+  message: string;
+}
+
+export interface ImportWorkflowResponse {
+  workflow: WorkflowView;
+  unresolved_references?: UnresolvedReferenceView[];
+}
+
 export interface WorkflowArtifactView {
   file_id?: string;
   file_name?: string;
@@ -849,6 +871,9 @@ export const api = {
     // returns a NEW run id — the caller must re-point polling to it.
     resumeFromNode: (runId: string, nodeId: string) =>
       request<CreateRunResponse>(`/api/workflow-runs/${runId}/resume-from-node`, { method: 'POST', body: JSON.stringify({ node_id: nodeId }) }),
+    export: (id: string) => request<ExportWorkflowResponse>(`/api/workflows/${id}/export`),
+    import: (content: string, name?: string) =>
+      request<ImportWorkflowResponse>('/api/workflows/import', { method: 'POST', body: JSON.stringify({ content, name }) }),
   },
   utils: {
     generate: (data: { system_prompt: string; user_prompt: string }) =>
