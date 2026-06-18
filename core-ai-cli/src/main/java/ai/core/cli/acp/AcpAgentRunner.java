@@ -277,6 +277,8 @@ public class AcpAgentRunner {
         // Consistent with how InProcessAgentSession.sendMessage() handles cancellation.
         acpSession.agent().resetCancellation();
 
+        var token = acpSession.agent().getExecutionContext().getCancellationToken();
+        var threadUnbind = token != null ? token.bindThread(Thread.currentThread()) : null;
         try {
             String resultText = acpSession.agent().run(promptText);
             if (thoughtRef.get() != null && !thoughtRef.get().isEmpty()) {
@@ -294,6 +296,8 @@ public class AcpAgentRunner {
             promptCtx.sendMessage("Error: " + e.getMessage());
             persistSession(acpSession);
             return AcpSchema.PromptResponse.endTurn();
+        } finally {
+            if (threadUnbind != null) threadUnbind.run();
         }
     }
 

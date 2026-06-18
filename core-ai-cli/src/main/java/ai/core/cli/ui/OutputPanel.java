@@ -375,6 +375,7 @@ public class OutputPanel {
     }
 
     public void cancelled() {
+        stopSpinnerIfActive();
         writer.println("\n" + INDENT + AnsiTheme.WARNING + "[Cancelled]" + AnsiTheme.RESET);
         writer.flush();
     }
