@@ -91,19 +91,21 @@ public class CliApp {
     }
 
     private static void mergeWorkspaceMcpConfig(PropertiesFileSource props, Path workspace) {
-        Path mcpFile = workspace.resolve(".core-ai").resolve("MCP.json");
+        Path mcpFile = resolveWorkspaceMcpFile(workspace);
         if (!Files.exists(mcpFile)) return;
         try {
             String localJson = Files.readString(mcpFile);
             @SuppressWarnings("unchecked")
-            var localServers = (Map<String, Object>) JsonUtil.fromJson(Map.class, localJson);
+            var parsedLocal = (Map<String, Object>) JsonUtil.fromJson(Map.class, localJson);
+            var localServers = normalizeMcpServers(parsedLocal);
             if (localServers == null || localServers.isEmpty()) return;
 
             var globalJson = props.property("mcp.servers.json");
             Map<String, Object> merged;
             if (globalJson.isPresent()) {
                 @SuppressWarnings("unchecked")
-                var globalServers = (Map<String, Object>) JsonUtil.fromJson(Map.class, globalJson.get());
+                var parsedGlobal = (Map<String, Object>) JsonUtil.fromJson(Map.class, globalJson.get());
+                var globalServers = normalizeMcpServers(parsedGlobal);
                 merged = globalServers;
                 merged.putAll(localServers);
             } else {
@@ -114,6 +116,23 @@ public class CliApp {
         } catch (Exception e) {
             LOGGER.warn("failed to merge workspace MCP config from {}: {}", mcpFile, e.getMessage());
         }
+    }
+
+    private static Path resolveWorkspaceMcpFile(Path workspace) {
+        var coreAiDir = workspace.resolve(".core-ai");
+        var canonical = coreAiDir.resolve("MCP.json");
+        if (Files.exists(canonical)) return canonical;
+        return coreAiDir.resolve("mcp.json");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> normalizeMcpServers(Map<String, Object> config) {
+        if (config == null || config.isEmpty()) return config;
+        var mcpServers = config.get("mcpServers");
+        if (mcpServers instanceof Map<?, ?> servers) {
+            return (Map<String, Object>) servers;
+        }
+        return config;
     }
 
     /**
