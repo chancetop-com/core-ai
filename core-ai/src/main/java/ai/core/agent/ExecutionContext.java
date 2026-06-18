@@ -49,6 +49,7 @@ public final class ExecutionContext {
     private final List<PromptInject> promptSections;
     private Sandbox sandbox;
     private BackgroundTaskManager backgroundTaskManager;
+    private CancellationToken cancellationToken;
     private LLMProvider llmProvider;
     private String model;
     private String multiModalModel;
@@ -73,6 +74,7 @@ public final class ExecutionContext {
         this.promptSections = new ArrayList<>(builder.promptSections);
         this.sandbox = builder.sandbox;
         this.backgroundTaskManager = builder.backgroundTaskManager;
+        this.cancellationToken = builder.cancellationToken;
     }
 
     public String getSessionId() {
@@ -129,6 +131,22 @@ public final class ExecutionContext {
 
     public void setTaskManager(BackgroundTaskManager backgroundTaskManager) {
         this.backgroundTaskManager = backgroundTaskManager;
+    }
+
+    public CancellationToken getCancellationToken() {
+        return cancellationToken;
+    }
+
+    public void setCancellationToken(CancellationToken cancellationToken) {
+        this.cancellationToken = cancellationToken;
+    }
+
+    public void throwIfCancelled() {
+        if (cancellationToken != null) cancellationToken.throwIfCancelled();
+    }
+
+    public boolean isCancelled() {
+        return cancellationToken != null && cancellationToken.isCancelled();
     }
 
     public Object getCustomVariable(String key) {
@@ -229,6 +247,7 @@ public final class ExecutionContext {
         private final List<PromptInject> promptSections = new ArrayList<>();
         private Sandbox sandbox;
         private BackgroundTaskManager backgroundTaskManager;
+        private CancellationToken cancellationToken;
         private final Map<String, Object> customVariables = Maps.newHashMap();
 
         public Builder sessionId(String sessionId) {
@@ -301,6 +320,11 @@ public final class ExecutionContext {
 
         public Builder taskManager(BackgroundTaskManager backgroundTaskManager) {
             this.backgroundTaskManager = backgroundTaskManager;
+            return this;
+        }
+
+        public Builder cancellationToken(CancellationToken cancellationToken) {
+            this.cancellationToken = cancellationToken;
             return this;
         }
 

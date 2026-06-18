@@ -63,7 +63,7 @@ public class Agent extends Node<Agent> {
     }
 
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
-    private volatile boolean cancelled = false;
+    private CancellationToken rootToken;
     String systemPrompt;
     String promptTemplate;
     LLMProvider llmProvider;
@@ -164,6 +164,7 @@ public class Agent extends Node<Agent> {
         if (reflectionListener != null)
             reflectionListener.onReflectionStart(this, getInput(), reflectionConfig.evaluationCriteria());
         while (currentRound <= reflectionConfig.maxRound()) {
+            throwIfCancelled();
             setRound(currentRound);
             Instant roundStart = Instant.now();
             String solutionToEvaluate = getOutput();
@@ -228,14 +229,14 @@ public class Agent extends Node<Agent> {
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
-            if (cancelled) break;
+            if (isCancelled()) break;
             var mat = toolRegistry.materialize();
             var turnMsgList = turn(getMessages(), mat, constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining("")));
             currentIteCount++;
-        } while (!cancelled
+        } while (!isCancelled()
                 && AgentHelper.lastIsToolMsg(getMessages())
                 && currentIteCount < maxTurnNumber);
 
@@ -315,7 +316,7 @@ public class Agent extends Node<Agent> {
     }
 
     public List<Message> handleFunc(Message funcMsg, Map<String, ToolCall> dispatchMap) {
-        if (cancelled) return List.of();
+        if (isCancelled()) return List.of();
         var orchestration = new ToolOrchestration(dispatchMap, agentLifecycles, getToolExecutor(), getExecutionContext());
         return orchestration.execute(funcMsg.toolCalls);
     }
@@ -329,6 +330,8 @@ public class Agent extends Node<Agent> {
     }
 
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
+        normalizeMessages();
+
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
         }
@@ -471,6 +474,11 @@ public class Agent extends Node<Agent> {
     // restore prior conversation messages on session rebuild — only user/assistant text, skip thinking/tools
     public void restoreHistory(List<Message> messages) {
         if (messages == null || messages.isEmpty()) return;
+
+        if (isInterruptionMarker(messages.getLast())) {
+            logger.debug("detected persisted interruption marker in history");
+        }
+
         addMessages(messages);
     }
 
@@ -478,25 +486,98 @@ public class Agent extends Node<Agent> {
         return runTurnsLoop(this::handLLM);
     }
 
+    public CancellationToken getCancellationToken() {
+        if (rootToken == null) {
+            rootToken = CancellationToken.create();
+        }
+        return rootToken;
+    }
+
     public void cancel() {
-        this.cancelled = true;
-        var cb = getStreamingCallback();
-        if (cb != null) cb.cancelConnection();
+        getCancellationToken().cancel();
+        injectInterruptionMarker();
+        persistInterruptionMarkerIfExists();
     }
 
     public void resetCancellation() {
-        this.cancelled = false;
-        var cb = getStreamingCallback();
-        if (cb != null) cb.reset();
+        getCancellationToken().reset();
     }
 
     public boolean isCancelled() {
-        return cancelled;
+        return getExecutionContext().isCancelled();
+    }
+
+    private void throwIfCancelled() {
+        getExecutionContext().throwIfCancelled();
+    }
+
+    private void injectInterruptionMarker() {
+        var token = getCancellationToken();
+        var reason = token.getReason();
+        if (!shouldInjectMarker(reason)) return;
+
+        var marker = reason == CancelReason.USER_CANCELLED
+                ? "<system-reminder>The user interrupted the previous action. Do not continue what you were doing.</system-reminder>"
+                : reason == CancelReason.REPLACED
+                ? "<system-reminder>The previous turn was replaced by a new request. The results above may be incomplete.</system-reminder>"
+                : "<system-reminder>The previous action was cancelled (reason: " + reason.name().toLowerCase() + ").</system-reminder>";
+
+        addMessage(Message.of(RoleType.USER, marker));
+    }
+
+    private static boolean shouldInjectMarker(CancelReason reason) {
+        return reason == CancelReason.USER_CANCELLED
+                || reason == CancelReason.REPLACED
+                || reason == CancelReason.TIMEOUT;
+    }
+
+    private void persistInterruptionMarkerIfExists() {
+        if (!hasPersistenceProvider()) return;
+        var sessionId = getExecutionContext().getSessionId();
+        if (sessionId != null) {
+            save(sessionId);
+        }
+    }
+
+    private static boolean isInterruptionMarker(Message msg) {
+        if (msg.role != RoleType.USER) return false;
+        var text = msg.getTextContent();
+        return text != null && text.startsWith("<system-reminder>The previous");
+    }
+
+    private void normalizeMessages() {
+        var messages = getMessages();
+        java.util.Set<String> toolResultIds = new java.util.HashSet<>();
+        java.util.Set<String> orphanToolUses = new java.util.LinkedHashSet<>();
+
+        for (var msg : messages) {
+            if (msg.role == RoleType.TOOL && msg.toolCallId != null) {
+                toolResultIds.add(msg.toolCallId);
+            }
+        }
+        for (var msg : messages) {
+            if (msg.role == RoleType.ASSISTANT && msg.toolCalls != null) {
+                for (var tc : msg.toolCalls) {
+                    if (!toolResultIds.contains(tc.id)) {
+                        orphanToolUses.add(tc.id);
+                    }
+                }
+            }
+        }
+
+        for (var orphanId : orphanToolUses) {
+            addMessage(Message.of(RoleType.TOOL,
+                    "Error: Tool execution was cancelled or interrupted.",
+                    "system", orphanId, null));
+        }
     }
 
     @Override
     public ExecutionContext getExecutionContext() {
         var context = super.getExecutionContext();
+        if (context.getCancellationToken() == null) {
+            context.setCancellationToken(getCancellationToken());
+        }
         context.setLlmProvider(llmProvider);
         context.setModel(model);
         context.setMultiModalModel(multiModalModel);
