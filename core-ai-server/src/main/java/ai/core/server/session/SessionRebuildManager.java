@@ -180,6 +180,7 @@ public class SessionRebuildManager {
     private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ai.core.server.domain.ToolRef> toolRefs, String userId, String agentName,
                                              SessionState state, String datasetAgentId, List<AgentDatasetConfig> datasetConfig) {
         var start = System.currentTimeMillis();
+        var agentId = state != null && state.fromAgent && state.agentConfig != null ? state.agentConfig.agentId : null;
         var effectiveConfig = config != null ? config : new SessionConfig();
         var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
@@ -199,7 +200,7 @@ public class SessionRebuildManager {
         List<ToolCall> tools = (toolRefs != null && !toolRefs.isEmpty())
                 ? toolRegistryService.resolveToolRefs(toolRefs, sessionId)
                 : new ArrayList<>();
-        tools = addDatasetTools(tools, datasetConfig, datasetAgentId, sessionId);
+        tools = addDatasetTools(tools, datasetConfig, agentId, sessionId);
         Map<String, Object> extraVars = null;
         if (datasetConfig != null && !datasetConfig.isEmpty()) {
             effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
@@ -213,7 +214,7 @@ public class SessionRebuildManager {
                 sessionId, state != null && state.fromAgent, toolCount, dynamicToolCount, skillCount, subAgentCount);
         var agent = subAgentManager.buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
                 sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools,
-                context, agentName, extraVars);
+                context, agentName, extraVars, agentId);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));

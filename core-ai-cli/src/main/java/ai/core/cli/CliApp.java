@@ -29,6 +29,7 @@ import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.utils.PathUtils;
 import ai.core.llm.LLMProvider;
+import ai.core.utils.JsonUtil;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManager;
@@ -74,13 +75,44 @@ public class CliApp {
 
     public static void mergeWorkspaceConfig(PropertiesFileSource global, Path workspace) {
         Path localConfig = workspace.resolve(".core-ai").resolve("agent.properties");
-        if (!Files.exists(localConfig)) return;
-        try (var is = Files.newInputStream(localConfig)) {
-            var localProps = new Properties();
-            localProps.load(is);
-            localProps.forEach((k, v) -> global.putProperty((String) k, (String) v));
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to load workspace-local config: " + localConfig, e);
+        if (Files.exists(localConfig)) {
+            try (var is = Files.newInputStream(localConfig)) {
+                var localProps = new Properties();
+                localProps.load(is);
+                localProps.forEach((k, v) -> global.putProperty((String) k, (String) v));
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to load workspace-local config: " + localConfig, e);
+            }
+        }
+
+        // Merge workspace MCP.json into mcp.servers.json so both
+        // STDIO and HTTP MCP servers are auto-loaded on startup.
+        mergeWorkspaceMcpConfig(global, workspace);
+    }
+
+    private static void mergeWorkspaceMcpConfig(PropertiesFileSource props, Path workspace) {
+        Path mcpFile = workspace.resolve(".core-ai").resolve("MCP.json");
+        if (!Files.exists(mcpFile)) return;
+        try {
+            String localJson = Files.readString(mcpFile);
+            @SuppressWarnings("unchecked")
+            var localServers = (Map<String, Object>) JsonUtil.fromJson(Map.class, localJson);
+            if (localServers == null || localServers.isEmpty()) return;
+
+            var globalJson = props.property("mcp.servers.json");
+            Map<String, Object> merged;
+            if (globalJson.isPresent()) {
+                @SuppressWarnings("unchecked")
+                var globalServers = (Map<String, Object>) JsonUtil.fromJson(Map.class, globalJson.get());
+                merged = globalServers;
+                merged.putAll(localServers);
+            } else {
+                merged = localServers;
+            }
+            props.putProperty("mcp.servers.json", JsonUtil.toJson(merged));
+            LOGGER.info("merged workspace MCP config from {}: {} server(s)", mcpFile, merged.size());
+        } catch (Exception e) {
+            LOGGER.warn("failed to merge workspace MCP config from {}: {}", mcpFile, e.getMessage());
         }
     }
 

@@ -72,7 +72,7 @@ public class SubAgentAssembler {
         var config = toSessionConfig(definition);
         var tools = new ArrayList<>(resolveTools(definition, sessionId));
         var skillRegistry = skillToolAssembler.attach(resolveSkillIds(definition), tools);
-        return buildAgent(config, tools.isEmpty() ? null : tools, null, definition.name, null, skillRegistry);
+        return buildAgent(config, tools.isEmpty() ? null : tools, null, definition.name, null, skillRegistry, definition.id);
     }
 
     private List<String> resolveSkillIds(AgentDefinition definition) {
@@ -103,9 +103,9 @@ public class SubAgentAssembler {
         return config;
     }
 
-    @SuppressWarnings("checkstyle:NestedIfDepth")
+    @SuppressWarnings({"checkstyle:NestedIfDepth", "checkstyle:ParameterNumber"})
     public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName,
-                            Map<String, Object> extraSystemVars, SkillRegistry skillRegistry) {
+                            Map<String, Object> extraSystemVars, SkillRegistry skillRegistry, String agentId) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
                 // same sanitization as AgentRunner.safeNodeName: node names must be tool-name-safe (^[^\s<|\\/>]+$)
@@ -113,6 +113,9 @@ public class SubAgentAssembler {
                 .llmProvider(llmProvider)
                 .toolCalls(tools != null && !tools.isEmpty() ? tools : BuiltinTools.ALL)
                 .temperature(config != null && config.temperature != null ? config.temperature : 0.8);
+        if (agentId != null && !agentId.isBlank()) {
+            builder.id(agentId);
+        }
         if (config != null) {
             if (config.systemPrompt != null) {
                 builder.systemPrompt(config.systemPrompt);

@@ -168,7 +168,7 @@ public class AgentSessionManager {
             extraVars = buildDatasetSystemVars(datasetConfig);
         }
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
-                artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, sandboxOn), context, null, extraVars);
+                artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, sandboxOn), context, null, extraVars, null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
@@ -236,7 +236,7 @@ public class AgentSessionManager {
         if (sandbox2 != null) context.sandbox(sandbox2);
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn),
                 artifactSetup.withSubmitArtifactsTool(tools.isEmpty() ? null : tools, sessionId, userId, sandboxOn),
-                context, definition.name, extraVars);
+                context, definition.name, extraVars, definition.id);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));

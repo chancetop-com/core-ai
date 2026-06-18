@@ -36,7 +36,6 @@ import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WebFetchTool;
 import ai.core.tool.tools.WebSearchTool;
 import ai.core.tool.tools.WriteTodosTool;
-import ai.core.utils.JsonUtil;
 import com.agentclientprotocol.sdk.agent.AcpAgent;
 import com.agentclientprotocol.sdk.agent.AcpSyncAgent;
 import com.agentclientprotocol.sdk.agent.SyncPromptContext;
@@ -45,7 +44,6 @@ import com.agentclientprotocol.sdk.spec.AcpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
@@ -100,7 +98,6 @@ public class AcpAgentRunner {
 
         var props = PropertiesFileSource.fromFile(configFile);
         CliApp.mergeWorkspaceConfig(props, workspace);
-        mergeWorkspaceMcpConfig(props);
         injectLiteLLMFallback(props);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
@@ -376,34 +373,6 @@ public class AcpAgentRunner {
         acpAgent.sendSessionUpdate(sessionId,
                 new AvailableCommandsUpdate("available_commands_update", commands));
         LOGGER.debug("Broadcast {} available commands to session {}", commands.size(), sessionId);
-    }
-
-    private void mergeWorkspaceMcpConfig(PropertiesFileSource props) {
-        Path mcpFile = workspace.resolve(".core-ai").resolve("MCP.json");
-        if (!Files.exists(mcpFile)) {
-            return;
-        }
-        try {
-            String localJson = Files.readString(mcpFile);
-            @SuppressWarnings("unchecked")
-            var localServers = (Map<String, Object>) JsonUtil.fromJson(Map.class, localJson);
-            if (localServers == null || localServers.isEmpty()) return;
-
-            var globalJson = props.property("mcp.servers.json");
-            Map<String, Object> merged;
-            if (globalJson.isPresent()) {
-                @SuppressWarnings("unchecked")
-                var globalServers = (Map<String, Object>) JsonUtil.fromJson(Map.class, globalJson.get());
-                merged = globalServers;
-                merged.putAll(localServers);
-            } else {
-                merged = localServers;
-            }
-            props.putProperty("mcp.servers.json", JsonUtil.toJson(merged));
-            LOGGER.info("merged workspace MCP config from {}: {} server(s)", mcpFile, merged.size());
-        } catch (Exception e) {
-            LOGGER.warn("failed to merge workspace MCP config from {}: {}", mcpFile, e.getMessage());
-        }
     }
 
     private static void injectLiteLLMFallback(PropertiesFileSource props) {

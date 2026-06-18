@@ -68,11 +68,11 @@ public class SessionSubAgentManager {
         return subAgentAssembler.toSessionConfig(definition);
     }
 
-    public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName) {
-        return subAgentAssembler.buildAgent(config, tools, context, agentName, null, null);
+    public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName, String agentId) {
+        return subAgentAssembler.buildAgent(config, tools, context, agentName, null, null, agentId);
     }
 
-    public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName, Map<String, Object> extraSystemVars) {
-        return subAgentAssembler.buildAgent(config, tools, context, agentName, extraSystemVars, null);
+    public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName, Map<String, Object> extraSystemVars, String agentId) {
+        return subAgentAssembler.buildAgent(config, tools, context, agentName, extraSystemVars, null, agentId);
     }
 }
