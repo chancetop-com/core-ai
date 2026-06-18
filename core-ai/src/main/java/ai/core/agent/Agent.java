@@ -334,6 +334,9 @@ public class Agent extends Node<Agent> {
 
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
+        } else if (getMessages().getFirst().role != RoleType.SYSTEM) {
+            // history restored without a system message (e.g. session rebuilt from DB) — prepend it
+            addMessageToFront(buildSystemMessage(variables));
         }
 
         if (isUseGroupContext() && getParentNode() != null) {

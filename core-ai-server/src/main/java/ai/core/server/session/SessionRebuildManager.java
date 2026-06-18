@@ -170,15 +170,15 @@ public class SessionRebuildManager {
             config.datasetId = findOutputDatasetId(snapshot.datasetConfig);
             datasetConfig = snapshot.datasetConfig;
         }
-        return doRebuild(sessionId, config, snapshot.tools, userId, snapshot.agentName, state, snapshot.agentId, datasetConfig);
+        return doRebuild(sessionId, config, snapshot.tools, userId, snapshot.agentName, state, snapshot.agentId, datasetConfig, snapshot.variables);
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId, SessionState state) {
-        return doRebuild(sessionId, config, null, userId, null, state, "default", null);
+        return doRebuild(sessionId, config, null, userId, null, state, "default", null, null);
     }
 
     private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ai.core.server.domain.ToolRef> toolRefs, String userId, String agentName,
-                                             SessionState state, String datasetAgentId, List<AgentDatasetConfig> datasetConfig) {
+                                             SessionState state, String datasetAgentId, List<AgentDatasetConfig> datasetConfig, Map<String, String> configVars) {
         var start = System.currentTimeMillis();
         var agentId = state != null && state.fromAgent && state.agentConfig != null ? state.agentConfig.agentId : null;
         var effectiveConfig = config != null ? config : new SessionConfig();
@@ -205,6 +205,15 @@ public class SessionRebuildManager {
         if (datasetConfig != null && !datasetConfig.isEmpty()) {
             effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
             extraVars = buildDatasetSystemVars(datasetConfig);
+        }
+        // Inject the agent's configured variables so the system prompt template renders correctly
+        // on rebuild (history is restored as user/assistant only, so the system message is rebuilt here).
+        // Skip null keys/values: they end up in a ConcurrentHashMap during rendering, which rejects nulls.
+        if (configVars != null && !configVars.isEmpty()) {
+            if (extraVars == null) extraVars = new HashMap<>();
+            for (var entry : configVars.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) extraVars.put(entry.getKey(), entry.getValue());
+            }
         }
         var toolCount = tools != null ? tools.size() : 0;
         var skillCount = state != null && state.skillIds != null ? state.skillIds.size() : 0;

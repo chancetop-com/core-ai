@@ -338,6 +338,9 @@ public abstract class Node<T extends Node<T>> {
     void addMessages(List<Message> messages) {
         this.messages.addAll(messages);
     }
+    void addMessageToFront(Message message) {
+        this.messages.add(0, message);
+    }
     void removeMessage(Message message) {
         this.messages.remove(message);
     }
