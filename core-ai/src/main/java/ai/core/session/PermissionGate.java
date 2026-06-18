@@ -31,9 +31,10 @@ public class PermissionGate {
             return ApprovalDecision.DENY;
         }
         logger.debug("waiting for tool approval, callId={}", callId);
+        CancellationToken childToken = null;
         if (parentToken != null) {
             parentTokens.put(callId, parentToken);
-            var childToken = parentToken.createChild();
+            childToken = parentToken.createChild();
             childToken.onCancel(() -> {
                 future.complete(ApprovalDecision.DENY);
             });
@@ -49,12 +50,15 @@ public class PermissionGate {
         } finally {
             pending.remove(callId);
             parentTokens.remove(callId);
+            if (childToken != null) {
+                childToken.disconnect();
+            }
         }
     }
 
     public void respond(String callId, ApprovalDecision decision) {
-        var parentToken = parentTokens.get(callId);
-        var future = pending.get(callId);
+        var parentToken = parentTokens.remove(callId);
+        var future = pending.remove(callId);
         if (future != null) {
             logger.debug("received tool approval response, callId={}, decision={}", callId, decision);
             future.complete(decision);

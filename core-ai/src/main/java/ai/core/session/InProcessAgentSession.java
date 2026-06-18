@@ -139,6 +139,7 @@ public class InProcessAgentSession implements AgentSession {
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
         } finally {
             threadUnbind.run();
+            turnToken.disconnect();
             executingThread = null;
         }
     }

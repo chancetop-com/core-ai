@@ -110,6 +110,7 @@ public class SubAgentToolCall extends ToolCall {
             } finally {
                 if (childToken != null) {
                     context.setCancellationToken(parentToken);
+                    childToken.disconnect();
                 }
             }
         } catch (Exception e) {

@@ -39,8 +39,11 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <h3>Per-turn reuse</h3>
  * The root token lives for the lifetime of the agent. Each turn creates a child subtree
- * via {@code rootToken.createChild()}. When the turn ends the child tree becomes unreachable
- * and is garbage collected. The root token stays clean for the next turn.
+ * via {@code rootToken.createChild()}. When the turn ends, callers MUST call
+ * {@link #disconnect()} on the child to release the parent's strong reference; otherwise
+ * children accumulate in the parent's list causing a memory leak. Alternatively,
+ * {@link #reset()} clears both phase actions and the children list so the root token
+ * is clean for the next turn.
  *
  * @author lim
  */
@@ -91,7 +94,7 @@ public class CancellationToken {
         return child;
     }
 
-    void disconnect() {
+    public void disconnect() {
         if (parent != null) {
             parent.children.remove(this);
         }
@@ -175,6 +178,7 @@ public class CancellationToken {
         for (var list : phaseActions.values()) {
             list.clear();
         }
+        children.clear();
     }
 
     public Runnable onCancel(Runnable action) {
@@ -225,24 +229,18 @@ public class CancellationToken {
         throwIfCancelled();
         var deregister = onCancel(CancelPhase.INTERRUPT, () -> future.cancel(true));
         try {
-            var result = future.get(timeoutMs, TimeUnit.MILLISECONDS);
-            deregister.run();
-            return result;
-        } catch (CancellationException e) {
-            deregister.run();
-            throw e;
+            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
-            deregister.run();
             Thread.currentThread().interrupt();
             var r = getReason();
             throw r != null ? new CancellationException(r) : new CancellationException();
         } catch (java.util.concurrent.CancellationException e) {
-            deregister.run();
             var r = getReason();
             throw r != null ? new CancellationException(r) : new CancellationException();
         } catch (TimeoutException | ExecutionException e) {
-            deregister.run();
             throw e;
+        } finally {
+            deregister.run();
         }
     }
 
@@ -250,6 +248,9 @@ public class CancellationToken {
         var list = phaseActions.get(phase);
         list.add(action);
         if (isCancelled()) {
+            // Remove from list first to prevent double execution — cancel() might have already
+            // iterated this phase and run the action. Then run it exactly once ourselves.
+            list.remove(action);
             boolean skipCloseAndAbort = getReason() == CancelReason.NEW_MESSAGE_INTERRUPT;
             if (!skipCloseAndAbort || (phase != CancelPhase.CLOSE && phase != CancelPhase.ABORT)) {
                 try {
