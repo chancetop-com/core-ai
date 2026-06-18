@@ -43,14 +43,16 @@ public class BackgroundTaskManager {
                 result = agentRunner.get();
                 sink.write(result != null ? result : "");
                 status = "completed";
-            } catch (java.util.concurrent.CancellationException ce) {
-                status = "cancelled";
-                error = ce.getMessage();
-                LOGGER.debug("background task cancelled, taskId={}", taskId);
             } catch (Exception e) {
-                status = "failed";
-                error = e.getMessage();
-                LOGGER.warn("background task failed, taskId={}, error={}", taskId, e.getMessage());
+                if (Thread.currentThread().isInterrupted()) {
+                    status = "cancelled";
+                    error = e.getMessage();
+                    LOGGER.debug("background task interrupted, taskId={}", taskId);
+                } else {
+                    status = "failed";
+                    error = e.getMessage();
+                    LOGGER.warn("background task failed, taskId={}, error={}", taskId, e.getMessage());
+                }
             } finally {
                 sink.close();
             }
@@ -63,6 +65,10 @@ public class BackgroundTaskManager {
             token.onCancel(() -> {
                 LOGGER.debug("token cancelled for background task, taskId={}", taskId);
                 future.cancel(true);
+                // Send cancellation notification immediately. The executor lambda also
+                // sends a "cancelled" status when it detects the interruption, but if the
+                // task hasn't started yet, future.cancel(true) prevents execution entirely
+                // and the lambda never runs. The notified CAS ensures exactly one notification.
                 if (notified.compareAndSet(false, true)) {
                     commandQueue.enqueueTaskNotification(
                             buildNotificationXml(taskId, "cancelled", outputRef, null, "cancelled by user"));
@@ -80,6 +86,10 @@ public class BackgroundTaskManager {
     public void cancelAll() {
         LOGGER.debug("cancelling all tasks, count={}", tasks.size());
         tasks.forEach(Task::cancel);
+    }
+
+    public BackgroundTaskManager createChild() {
+        return new BackgroundTaskManager(commandQueue, sinkFactory);
     }
 
     public List<Task> getTasks() {

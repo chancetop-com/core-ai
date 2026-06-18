@@ -75,6 +75,11 @@ public class SessionStreamingCallback implements StreamingCallback {
 
     @Override
     public void cancelConnection() {
+        // Cancel the entire token tree — this is intentionally broader than the old
+        // targeted connection-close. Agent.cancel() no longer calls this method; it
+        // calls token.cancel() directly. This method exists for StreamingCallback
+        // interface compatibility and any external callers that need to trigger a
+        // full cancellation via the callback.
         var token = context.getCancellationToken();
         if (token != null) token.cancel();
     }

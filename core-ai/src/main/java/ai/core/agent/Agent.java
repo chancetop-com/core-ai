@@ -494,9 +494,12 @@ public class Agent extends Node<Agent> {
     }
 
     public void cancel() {
+        boolean alreadyCancelled = getCancellationToken().isCancelled();
         getCancellationToken().cancel();
-        injectInterruptionMarker();
-        persistInterruptionMarkerIfExists();
+        if (!alreadyCancelled) {
+            injectInterruptionMarker();
+            persistInterruptionMarkerIfExists();
+        }
     }
 
     public void resetCancellation() {
