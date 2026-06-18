@@ -7,7 +7,9 @@ import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.AgentSession;
 import ai.core.api.server.session.ApprovalDecision;
+import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.CompressionEvent;
+import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.OnToolEvent;
 import ai.core.api.server.session.PlanUpdateEvent;
@@ -18,8 +20,6 @@ import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
-import ai.core.api.server.session.EnvironmentOutputChunkEvent;
-import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
@@ -56,7 +56,7 @@ public class InProcessAgentSession implements AgentSession {
         if (context.getSubagentOutputSinkFactory() != null) {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
-        agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
+        agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context));
         permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
         agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
@@ -77,7 +77,7 @@ public class InProcessAgentSession implements AgentSession {
         if (context.getSubagentOutputSinkFactory() != null) {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
-        agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
+        agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context));
         permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
         agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
@@ -107,7 +107,9 @@ public class InProcessAgentSession implements AgentSession {
 
     private void executeCommands(SessionCommandQueue.CommandBatch batch) {
         executingThread = Thread.currentThread();
-        agent.resetCancellation();
+        var turnToken = agent.getCancellationToken().createChild();
+        agent.getExecutionContext().setCancellationToken(turnToken);
+        var threadUnbind = turnToken.bindThread(executingThread);
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
 
         var usageBefore = agent.getCurrentTokenUsage();
@@ -136,6 +138,7 @@ public class InProcessAgentSession implements AgentSession {
             dispatch(ErrorEvent.of(sessionId, e.getMessage(), ""));
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
         } finally {
+            threadUnbind.run();
             executingThread = null;
         }
     }
@@ -223,10 +226,19 @@ public class InProcessAgentSession implements AgentSession {
     @Override
     public void cancelTurn() {
         debug("cancelling current turn");
-        agent.cancel();
-        Thread t = executingThread;
-        if (t != null) {
-            t.interrupt();
+        var token = agent.getExecutionContext().getCancellationToken();
+        if (token != null) {
+            token.cancel();
+        } else {
+            agent.cancel();
+        }
+    }
+
+    public void interruptTurn() {
+        debug("interrupting current turn");
+        var token = agent.getExecutionContext().getCancellationToken();
+        if (token != null) {
+            token.interrupt();
         }
     }
 

@@ -1,5 +1,6 @@
 package ai.core.session;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.EnvironmentOutputChunkEvent;
@@ -15,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -26,12 +26,12 @@ public class SessionStreamingCallback implements StreamingCallback {
 
     private final String sessionId;
     private final Consumer<AgentEvent> dispatcher;
-    private final AtomicReference<AutoCloseable> activeConnection = new AtomicReference<>();
-    private volatile boolean cancelled;
+    private final ExecutionContext context;
 
-    public SessionStreamingCallback(String sessionId, Consumer<AgentEvent> dispatcher) {
+    public SessionStreamingCallback(String sessionId, Consumer<AgentEvent> dispatcher, ExecutionContext context) {
         this.sessionId = sessionId;
         this.dispatcher = dispatcher;
+        this.context = context;
     }
 
     @Override
@@ -69,30 +69,18 @@ public class SessionStreamingCallback implements StreamingCallback {
 
     @Override
     public void setActiveConnection(AutoCloseable connection) {
-        activeConnection.set(connection);
+        var token = context.getCancellationToken();
+        if (token != null) token.bindResource(connection);
     }
 
     @Override
     public void cancelConnection() {
-        cancelled = true;
-        var conn = activeConnection.getAndSet(null);
-        if (conn != null) {
-            try {
-                conn.close();
-            } catch (Exception e) {
-                LOGGER.debug("close active connection, error={}", e.getMessage());
-            }
-        }
+        var token = context.getCancellationToken();
+        if (token != null) token.cancel();
     }
 
     @Override
     public boolean isCancelled() {
-        return cancelled;
-    }
-
-    @Override
-    public void reset() {
-        cancelled = false;
-        activeConnection.set(null);
+        return context.isCancelled();
     }
 }

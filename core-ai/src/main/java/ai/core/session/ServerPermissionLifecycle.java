@@ -130,7 +130,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         dispatcher.accept(ToolApprovalRequestEvent.of(sessionId, callId, toolName, arguments, pattern));
 
         logger.debug("waiting for approval: tool={}, callId={}", toolName, callId);
-        var decision = permissionGate.waitForApproval(callId, 300_000);
+        var decision = permissionGate.waitForApproval(callId, 300_000, executionContext.getCancellationToken());
         logger.debug("approval received: tool={}, callId={}, decision={}", toolName, callId, decision);
         applyDecision(decision, toolName, pattern);
     }

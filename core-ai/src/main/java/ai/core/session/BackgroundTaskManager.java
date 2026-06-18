@@ -1,17 +1,23 @@
 package ai.core.session;
 
+import ai.core.agent.CancellationToken;
 import ai.core.agent.Task;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 public class BackgroundTaskManager {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(BackgroundTaskManager.class);
 
     private final List<Task> tasks = new CopyOnWriteArrayList<>();
     private final SessionCommandQueue commandQueue;
@@ -24,9 +30,11 @@ public class BackgroundTaskManager {
         this.executor = AsyncToolTaskExecutor.getInstance().getExecutor();
     }
 
-    public TaskHandle submit(String taskId, Supplier<String> agentRunner) {
+    public TaskHandle submit(String taskId, Supplier<String> agentRunner, CancellationToken token) {
+        LOGGER.debug("submitting background task, taskId={}", taskId);
         var sink = sinkFactory.create(taskId);
         var outputRef = sink.getReference();
+        var notified = new AtomicBoolean(false);
         var future = executor.submit(() -> {
             String status;
             String result = null;
@@ -34,32 +42,48 @@ public class BackgroundTaskManager {
             try {
                 result = agentRunner.get();
                 sink.write(result != null ? result : "");
-                sink.close();
                 status = "completed";
+            } catch (java.util.concurrent.CancellationException ce) {
+                status = "cancelled";
+                error = ce.getMessage();
+                LOGGER.debug("background task cancelled, taskId={}", taskId);
             } catch (Exception e) {
-                sink.close();
                 status = "failed";
                 error = e.getMessage();
+                LOGGER.warn("background task failed, taskId={}, error={}", taskId, e.getMessage());
+            } finally {
+                sink.close();
             }
-            commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error));
+            LOGGER.debug("background task finished, taskId={}, status={}", taskId, status);
+            if (notified.compareAndSet(false, true)) {
+                commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error));
+            }
         });
+        if (token != null) {
+            token.onCancel(() -> {
+                LOGGER.debug("token cancelled for background task, taskId={}", taskId);
+                future.cancel(true);
+                if (notified.compareAndSet(false, true)) {
+                    commandQueue.enqueueTaskNotification(
+                            buildNotificationXml(taskId, "cancelled", outputRef, null, "cancelled by user"));
+                }
+            });
+        }
         return new TaskHandle(outputRef, future);
     }
 
     public void register(Task task) {
+        LOGGER.debug("registering task, taskId={}", task.taskId);
         tasks.add(task);
     }
 
     public void cancelAll() {
+        LOGGER.debug("cancelling all tasks, count={}", tasks.size());
         tasks.forEach(Task::cancel);
     }
 
     public List<Task> getTasks() {
         return Collections.unmodifiableList(tasks);
-    }
-
-    public BackgroundTaskManager createChild() {
-        return new BackgroundTaskManager(commandQueue, sinkFactory);
     }
 
     private String buildNotificationXml(String taskId, String status, String outputRef, String result, String error) {
@@ -76,5 +100,6 @@ public class BackgroundTaskManager {
                 """.formatted(taskId, status, outputRefXml, resultXml);
     }
 
-    public record TaskHandle(String outputRef, Future<?> future) { }
+    public record TaskHandle(String outputRef, Future<?> future) {
+    }
 }

@@ -1,5 +1,6 @@
 package ai.core.session;
 
+import ai.core.agent.CancellationToken;
 import ai.core.api.server.session.ApprovalDecision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,22 +17,27 @@ import java.util.concurrent.TimeoutException;
 public class PermissionGate {
     private final Logger logger = LoggerFactory.getLogger(PermissionGate.class);
     private final ConcurrentMap<String, CompletableFuture<ApprovalDecision>> pending = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, CancellationToken> parentTokens = new ConcurrentHashMap<>();
 
-    // Called by Agent thread BEFORE dispatching the approval event,
-    // so that respond() can find the future even if dispatch is synchronous
     public void prepare(String callId) {
         logger.debug("preparing approval future, callId={}", callId);
         pending.put(callId, new CompletableFuture<>());
     }
 
-    // Called by Agent thread - blocks until client responds or timeout
-    public ApprovalDecision waitForApproval(String callId, long timeoutMs) {
+    public ApprovalDecision waitForApproval(String callId, long timeoutMs, CancellationToken parentToken) {
         var future = pending.get(callId);
         if (future == null) {
             logger.error("no prepared future for callId={}, this should not happen", callId);
             return ApprovalDecision.DENY;
         }
         logger.debug("waiting for tool approval, callId={}", callId);
+        if (parentToken != null) {
+            parentTokens.put(callId, parentToken);
+            var childToken = parentToken.createChild();
+            childToken.onCancel(() -> {
+                future.complete(ApprovalDecision.DENY);
+            });
+        }
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
@@ -42,17 +48,21 @@ public class PermissionGate {
             return ApprovalDecision.DENY;
         } finally {
             pending.remove(callId);
+            parentTokens.remove(callId);
         }
     }
 
-    // Called by API/Client thread - unblocks the agent thread
     public void respond(String callId, ApprovalDecision decision) {
+        var parentToken = parentTokens.get(callId);
         var future = pending.get(callId);
         if (future != null) {
             logger.debug("received tool approval response, callId={}, decision={}", callId, decision);
             future.complete(decision);
         } else {
             logger.warn("received response for unknown or expired callId, callId={}", callId);
+        }
+        if ((decision == ApprovalDecision.DENY || decision == ApprovalDecision.DENY_ALWAYS) && parentToken != null) {
+            parentToken.cancel();
         }
     }
 }
