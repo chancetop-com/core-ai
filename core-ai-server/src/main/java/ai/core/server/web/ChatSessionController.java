@@ -62,6 +62,31 @@ public class ChatSessionController {
         return jsonResponse(Map.of("deleted", true));
     }
 
+    public Response update(Request request) {
+        var userId = AuthContext.userId(webContext);
+        if (userId == null) return Response.text("unauthorized").status(HTTPStatus.UNAUTHORIZED);
+        var sessionId = request.pathParam("sessionId");
+        var title = parseTitle(request);
+        if (title == null || title.isBlank()) return Response.text("title required").status(HTTPStatus.BAD_REQUEST);
+        var ok = chatMessageService.updateSessionTitle(userId, sessionId, title);
+        if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
+        return jsonResponse(Map.of("updated", true));
+    }
+
+    private String parseTitle(Request request) {
+        try {
+            var body = request.body();
+            if (body.isEmpty()) return null;
+            var bytes = body.get();
+            if (bytes.length == 0) return null;
+            var map = MAPPER.readValue(bytes, Map.class);
+            var title = map.get("title");
+            return title == null ? null : title.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private Map<String, Object> toSummary(ChatSession s) {
         var m = new LinkedHashMap<String, Object>();
         m.put("id", s.id);

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { MessageSquare, Plus, Loader2, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { MessageSquare, Plus, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { sessionApi } from '../../api/session';
 import type { ChatSessionSummary } from '../../api/session';
 
@@ -25,18 +25,12 @@ function formatTime(iso?: string): string {
 export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOpen, onNewChat, onDeleted }: Props) {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (!confirm('Delete this conversation? (messages will remain in audit log)')) return;
-    try {
-      await sessionApi.deleteChatSession(id);
-      setSessions(prev => prev.filter(s => s.id !== id));
-      onDeleted?.(id);
-    } catch (err) {
-      console.warn('failed to delete chat session', err);
-    }
-  };
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [renameError, setRenameError] = useState('');
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,6 +45,61 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
   }, []);
 
   useEffect(() => { load(); }, [load, refreshKey]);
+
+  // close the hover menu when clicking outside of it
+  useEffect(() => {
+    if (!menuId) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuId(null);
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [menuId]);
+
+  const handleDelete = async (id: string) => {
+    setMenuId(null);
+    if (!confirm('Delete this conversation? (messages will remain in audit log)')) return;
+    try {
+      await sessionApi.deleteChatSession(id);
+      setSessions(prev => prev.filter(s => s.id !== id));
+      onDeleted?.(id);
+    } catch (err) {
+      console.warn('failed to delete chat session', err);
+    }
+  };
+
+  const openRename = (s: ChatSessionSummary) => {
+    setMenuId(null);
+    setRenameId(s.id);
+    setRenameValue(s.title || '');
+    setRenameError('');
+  };
+
+  const closeRename = () => {
+    if (saving) return;
+    setRenameId(null);
+    setRenameValue('');
+    setRenameError('');
+  };
+
+  const submitRename = async () => {
+    const id = renameId;
+    const title = renameValue.trim().replace(/\s+/g, ' ');
+    if (!id || !title) return;
+    setSaving(true);
+    setRenameError('');
+    try {
+      await sessionApi.renameChatSession(id, title);
+      setSessions(prev => prev.map(s => (s.id === id ? { ...s, title } : s)));
+      setRenameId(null);
+      setRenameValue('');
+    } catch (err) {
+      console.warn('failed to rename chat session', err);
+      setRenameError('Failed to rename. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="flex flex-col border-r h-full w-60 shrink-0"
@@ -77,7 +126,7 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
           const active = s.id === currentSessionId;
           return (
             <div key={s.id} onClick={() => onOpen(s)}
-              className="group w-full text-left px-3 py-2 flex items-start gap-2 cursor-pointer border-l-2 transition-colors"
+              className="group relative w-full text-left px-3 py-2 flex items-start gap-2 cursor-pointer border-l-2 transition-colors"
               style={{
                 borderColor: active ? 'var(--color-primary)' : 'transparent',
                 background: active ? 'var(--color-bg-tertiary)' : 'transparent',
@@ -93,16 +142,70 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
                   {s.message_count ? ` · ${s.message_count} msg` : ''}
                 </div>
               </div>
-              <button onClick={e => handleDelete(e, s.id)}
+              <button onClick={e => { e.stopPropagation(); setMenuId(menuId === s.id ? null : s.id); }}
                 className="opacity-0 group-hover:opacity-100 mt-0.5 p-1 rounded cursor-pointer transition-opacity"
                 style={{ color: 'var(--color-text-secondary)' }}
-                title="Delete conversation">
-                <Trash2 size={14} />
+                title="More actions">
+                <MoreHorizontal size={14} />
               </button>
+              {menuId === s.id && (
+                <div ref={menuRef} onClick={e => e.stopPropagation()}
+                  className="absolute right-2 top-8 z-10 py-1 rounded-md border shadow-md text-sm"
+                  style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+                  <button onClick={() => openRename(s)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:opacity-80"
+                    style={{ color: 'var(--color-text)' }}>
+                    <Pencil size={13} /> Rename
+                  </button>
+                  <button onClick={() => handleDelete(s.id)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:opacity-80"
+                    style={{ color: 'var(--color-danger, #e5484d)' }}>
+                    <Trash2 size={13} /> Delete
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
+
+      {renameId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.4)' }}
+          onClick={closeRename}>
+          <div onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rename conversation"
+            className="w-80 p-4 rounded-lg border shadow-lg"
+            style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+            <div className="text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>Rename conversation</div>
+            <input autoFocus value={renameValue} maxLength={100}
+              onChange={e => setRenameValue(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') submitRename();
+                if (e.key === 'Escape') closeRename();
+              }}
+              className="w-full px-2 py-1.5 rounded border text-sm outline-none"
+              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
+            {renameError && (
+              <div className="text-xs mt-1" style={{ color: 'var(--color-danger, #e5484d)' }}>{renameError}</div>
+            )}
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={closeRename} disabled={saving}
+                className="px-3 py-1.5 rounded text-sm cursor-pointer"
+                style={{ color: 'var(--color-text-secondary)' }}>
+                Cancel
+              </button>
+              <button onClick={submitRename} disabled={saving || !renameValue.trim()}
+                className="px-3 py-1.5 rounded text-sm cursor-pointer disabled:opacity-50"
+                style={{ background: 'var(--color-primary)', color: 'white' }}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

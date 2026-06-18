@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class ChatMessageService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatMessageService.class);
     private static final int TITLE_MAX_LENGTH = 40;
+    private static final int MANUAL_TITLE_MAX_LENGTH = 100;
 
     @Inject
     MongoCollection<ChatMessage> chatMessageCollection;
@@ -119,6 +120,20 @@ public class ChatMessageService {
         if (userId != null && meta.userId != null && !userId.equals(meta.userId)) return false;
         chatSessionCollection.update(Filters.eq("_id", sessionId), Updates.set("deleted_at", ZonedDateTime.now()));
         onSessionClosed(sessionId);
+        return true;
+    }
+
+    // user-initiated rename: trims/collapses whitespace, caps length, enforces ownership.
+    // returns true if updated; false if not found, not owned, or blank after trimming.
+    public boolean updateSessionTitle(String userId, String sessionId, String title) {
+        var meta = chatSessionCollection.get(sessionId).orElse(null);
+        if (meta == null) return false;
+        if (meta.deletedAt != null) return false;
+        if (userId != null && meta.userId != null && !userId.equals(meta.userId)) return false;
+        var cleaned = title == null ? "" : title.replaceAll("\\s+", " ").trim();
+        if (cleaned.isEmpty()) return false;
+        if (cleaned.length() > MANUAL_TITLE_MAX_LENGTH) cleaned = cleaned.substring(0, MANUAL_TITLE_MAX_LENGTH);
+        chatSessionCollection.update(Filters.eq("_id", sessionId), Updates.set("title", cleaned));
         return true;
     }
 

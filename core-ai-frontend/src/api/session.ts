@@ -246,6 +246,12 @@ export const sessionApi = {
   deleteChatSession: (sessionId: string) =>
     request<{ deleted: boolean }>(`/api/chat/sessions/${sessionId}`, { method: 'DELETE' }),
 
+  renameChatSession: (sessionId: string, title: string) =>
+    request<{ updated: boolean }>(`/api/chat/sessions/${sessionId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title }),
+    }),
+
   loadTools: (sessionId: string, tools: ToolRef[]) =>
     request<LoadToolsResponse>(`/api/sessions/${sessionId}/tools`, {
       method: 'POST',

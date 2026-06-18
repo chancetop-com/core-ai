@@ -337,6 +337,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/api/chat/sessions", chatSessionController::list);
         http().route(HTTPMethod.GET, "/api/chat/sessions/:sessionId", chatSessionController::get);
         http().route(HTTPMethod.DELETE, "/api/chat/sessions/:sessionId", chatSessionController::delete);
+        http().route(HTTPMethod.PUT, "/api/chat/sessions/:sessionId", chatSessionController::update);
 
         // Speech token exchange for browser-side Azure Speech SDK
         var speechController = bind(SpeechController.class);
