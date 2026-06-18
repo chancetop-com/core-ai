@@ -110,7 +110,7 @@ public class TaskTool extends ToolCall {
                     subAgent.run(prompt, subContext);
                     var lastContent = subAgent.getMessages().getLast().content;
                     return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
-                });
+                }, context.getCancellationToken());
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), subContext));
                 return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, subagentType, model))
                         .withDuration(System.currentTimeMillis() - startTime);
@@ -161,7 +161,7 @@ public class TaskTool extends ToolCall {
                 .asyncTaskManager(context.getAsyncTaskManager())
                 .attachedContent(context.getAttachedContent())
                 .persistenceProvider(context.getPersistenceProvider())
-                .taskManager(context.getTaskManager() != null ? context.getTaskManager().createChild() : null)
+                .taskManager(context.getTaskManager())
                 .promptSections(context.getPromptSections())
                 .sandbox(context.getSandbox())
                 .taskId(taskId)

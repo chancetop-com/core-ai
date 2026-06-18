@@ -2,14 +2,22 @@ package ai.core.tool.tools;
 
 import ai.core.AgentRuntimeException;
 import ai.core.agent.Agent;
+import ai.core.agent.CancelReason;
+import ai.core.agent.CancellationException;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.NodeStatus;
+import ai.core.llm.domain.RoleType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.async.AsyncToolTaskExecutor;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 /**
@@ -35,37 +43,115 @@ public class SubAgentToolCall extends ToolCall {
                 return ToolCallResult.failed("Parameter 'query' is required for subagent " + getName());
             }
 
+            var parentToken = context.getCancellationToken();
+
             Agent agent = resolveAgent();
 
             // isolate: prevent message bubbling to parent
             // setting parent to null is sufficient — useGroupContext also checks parent != null
             agent.setParentNode(null);
 
-            var result = agent.run(query, context);
+            // create child token so parent cancel propagates but child cancel stays local
+            var childToken = parentToken != null ? parentToken.createChild() : null;
+            if (childToken != null) {
+                context.setCancellationToken(childToken);
+            }
 
-            // Handle subagent status propagation
-            var subAgentStatus = agent.getNodeStatus();
+            var executor = AsyncToolTaskExecutor.getInstance().getExecutor();
+            var future = CompletableFuture.supplyAsync(() -> agent.run(query, context), executor);
 
-            if (subAgentStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
-                return ToolCallResult.waitingForInput(agent.getId(), result)
+            try {
+                var result = childToken != null
+                        ? childToken.orCancel(future, getTimeoutMs())
+                        : future.get(getTimeoutMs(), TimeUnit.MILLISECONDS);
+
+                // Handle subagent status propagation
+                var subAgentStatus = agent.getNodeStatus();
+
+                if (subAgentStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
+                    return ToolCallResult.waitingForInput(agent.getId(), result)
+                            .withToolName(getName())
+                            .withStats("subagent_name", agent.getName())
+                            .withStats("subagent_status", subAgentStatus.name());
+                }
+
+                if (subAgentStatus == NodeStatus.FAILED) {
+                    return ToolCallResult.failed("Subagent '" + getName() + "' failed: " + result)
+                            .withToolName(getName());
+                }
+
+                return ToolCallResult.completed(result)
                         .withToolName(getName())
                         .withStats("subagent_name", agent.getName())
-                        .withStats("subagent_status", subAgentStatus.name());
-            }
+                        .withStats("subagent_token_usage", agent.getCurrentTokenUsage());
 
-            if (subAgentStatus == NodeStatus.FAILED) {
-                return ToolCallResult.failed("Subagent '" + getName() + "' failed: " + result)
+            } catch (CancellationException e) {
+                future.cancel(true);
+                cancelChildBackgroundTasks(agent);
+                return buildPartialOrCancelledResult(agent);
+            } catch (TimeoutException e) {
+                future.cancel(true);
+                if (childToken != null) childToken.cancel(CancelReason.TIMEOUT);
+                cancelChildBackgroundTasks(agent);
+                return buildPartialOrCancelledResult(agent);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                future.cancel(true);
+                cancelChildBackgroundTasks(agent);
+                return buildPartialOrCancelledResult(agent);
+            } catch (ExecutionException e) {
+                var cause = e.getCause();
+                if (cause instanceof Exception ex) {
+                    return ToolCallResult.failed("Subagent '" + getName() + "' execution error: " + ex.getMessage(), ex)
+                            .withToolName(getName());
+                }
+                return ToolCallResult.failed("Subagent '" + getName() + "' execution error: " + e.getMessage(), e)
                         .withToolName(getName());
+            } finally {
+                if (childToken != null) {
+                    context.setCancellationToken(parentToken);
+                }
             }
-
-            return ToolCallResult.completed(result)
-                    .withToolName(getName())
-                    .withStats("subagent_name", agent.getName())
-                    .withStats("subagent_token_usage", agent.getCurrentTokenUsage());
-
         } catch (Exception e) {
             return ToolCallResult.failed("Subagent '" + getName() + "' execution error: " + e.getMessage(), e)
                     .withToolName(getName());
+        }
+    }
+
+    private ToolCallResult buildPartialOrCancelledResult(Agent agent) {
+        var partialOutput = agent.getOutput();
+
+        if (partialOutput != null && !partialOutput.isBlank()) {
+            return ToolCallResult.completed(partialOutput)
+                    .withToolName(getName())
+                    .withStats("subagent_name", agent.getName())
+                    .withStats("subagent_status", "cancelled_with_partial_result")
+                    .withStats("subagent_token_usage", agent.getCurrentTokenUsage());
+        }
+
+        var toolResultCount = agent.getMessages().stream()
+                .filter(m -> m.role == RoleType.TOOL).count();
+        if (toolResultCount > 0) {
+            return ToolCallResult.completed("(cancelled, but produced " + toolResultCount + " tool results)")
+                    .withToolName(getName())
+                    .withStats("subagent_name", agent.getName())
+                    .withStats("subagent_status", "cancelled_with_tool_results");
+        }
+
+        return ToolCallResult.failed("subagent '" + getName() + "' cancelled")
+                .withToolName(getName());
+    }
+
+    private void cancelChildBackgroundTasks(Agent agent) {
+        var ctx = agent.getExecutionContext();
+        if (ctx != null) {
+            var taskManager = ctx.getTaskManager();
+            if (taskManager != null) {
+                taskManager.cancelAll();
+            }
+        }
+        for (var subAgent : agent.getSubAgents()) {
+            subAgent.getSubAgent().cancel();
         }
     }
 

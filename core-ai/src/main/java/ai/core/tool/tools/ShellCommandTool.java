@@ -305,7 +305,7 @@ public class ShellCommandTool extends ToolCall {
             if (runInBackground && taskManager != null) {
                 var taskId = UUID.randomUUID().toString().replace("-", "");
                 var description = getStringValue(argsMap, "description");
-                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds, null));
+                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds, null), context.getCancellationToken());
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), context));
                 return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description))
                         .withDuration(System.currentTimeMillis() - startTime);

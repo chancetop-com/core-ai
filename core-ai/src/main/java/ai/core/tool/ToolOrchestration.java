@@ -61,6 +61,7 @@ public class ToolOrchestration {
         var batches = partition(toolCalls);
         List<Message> allMessages = new ArrayList<>();
         for (var batch : batches) {
+            context.throwIfCancelled();
             allMessages.addAll(executeBatch(batch));
         }
         return allMessages;
@@ -125,7 +126,14 @@ public class ToolOrchestration {
         var semaphore = new Semaphore(maxConcurrency);
         var errored = new AtomicBoolean(false);
         var futures = batch.stream()
-                .map(tc -> submitTool(semaphore, errored, group, tc))
+                .map(tc -> {
+                    if (context.isCancelled()) {
+                        var token = context.getCancellationToken();
+                        return CompletableFuture.completedFuture(
+                                ToolCallResult.failed("cancelled: " + (token != null ? token.getReason() : "unknown")));
+                    }
+                    return submitTool(semaphore, errored, group, tc);
+                })
                 .toList();
 
         var results = new ArrayList<ToolCallResult>();
