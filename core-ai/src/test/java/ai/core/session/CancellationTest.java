@@ -1,6 +1,7 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
+import ai.core.agent.CancellationToken;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
@@ -67,14 +68,16 @@ class CancellationTest {
         var provider = new MockLLMProvider();
         provider.addResponse(simpleResponse("hello"));
 
-        var closed = new boolean[]{false};
-        var callback = new SessionStreamingCallback("test", event -> { });
-        callback.setActiveConnection(() -> closed[0] = true);
-
         var agent = Agent.builder()
                 .llmProvider(provider)
-                .streamingCallback(callback)
                 .build();
+
+        var closed = new boolean[]{false};
+        var context = agent.getExecutionContext();
+        context.setCancellationToken(agent.getCancellationToken().createChild());
+        var callback = new SessionStreamingCallback("test", event -> { }, context);
+        callback.setActiveConnection(() -> closed[0] = true);
+        agent.setStreamingCallback(callback);
 
         agent.cancel();
 
@@ -83,13 +86,14 @@ class CancellationTest {
     }
 
     @Test
-    void sessionStreamingCallbackResetClearsCancelledState() {
-        var callback = new SessionStreamingCallback("test", event -> { });
+    void callbackCancelPropagatesToContext() {
+        var context = ai.core.agent.ExecutionContext.builder().build();
+        context.setCancellationToken(CancellationToken.create());
+        var callback = new SessionStreamingCallback("test", event -> { }, context);
+
         callback.cancelConnection();
         assertTrue(callback.isCancelled());
-
-        callback.reset();
-        assertFalse(callback.isCancelled());
+        assertTrue(context.isCancelled());
     }
 
     @Test
