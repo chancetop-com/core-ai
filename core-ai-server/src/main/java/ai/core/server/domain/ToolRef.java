@@ -43,15 +43,18 @@ public class ToolRef {
 
     public void inferTypeFromId() {
         if (id == null) return;
-        if (id.startsWith("builtin-")) {
+        if ("builtin-service-api".equals(id)
+                || id.startsWith("api-app:")
+                || id.startsWith("api-service:")
+                || id.startsWith("api-operation:")) {
+            type = ToolSourceType.API;
+        } else if (id.startsWith("builtin-")) {
             type = ToolSourceType.BUILTIN;
         } else if (id.startsWith("mcp-tool:")) {
             type = ToolSourceType.MCP;
         } else if (id.startsWith("config:")) {
             type = ToolSourceType.MCP;
             source = id.substring("config:".length());
-        } else if (id.startsWith("api-app:") || "builtin-service-api".equals(id)) {
-            type = ToolSourceType.API;
         }
     }
 

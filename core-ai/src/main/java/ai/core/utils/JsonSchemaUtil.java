@@ -153,6 +153,7 @@ public class JsonSchemaUtil {
         schema.required = expandedParams.stream()
                 .filter(v -> v.isRequired() != null && v.isRequired() && v.getName() != null)
                 .map(ToolCallParameter::getName)
+                .distinct()
                 .toList();
         schema.properties = expandedParams.stream()
                 .filter(v -> v.getName() != null)

@@ -22,6 +22,19 @@ import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 const VoiceTranscriberSidebar = lazy(() => import('./components/VoiceTranscriberSidebar'));
 const ArtifactDrawer = lazy(() => import('./components/ArtifactDrawer'));
 
+function toToolRef(id: string): ToolRef {
+  if (id.startsWith('api-app:') || id.startsWith('api-service:') || id.startsWith('api-operation:') || id === 'builtin-service-api') {
+    return { id, type: 'API' };
+  }
+  if (id.startsWith('mcp-tool:')) {
+    return { id, type: 'MCP' };
+  }
+  if (id.startsWith('config:')) {
+    return { id, type: 'MCP', source: id.substring('config:'.length) };
+  }
+  return { id, type: 'BUILTIN' };
+}
+
 function hasAnySegments(segments?: MessageSegment[]): boolean {
   return segments != null && segments.length > 0;
 }
@@ -800,7 +813,7 @@ export default function Chat() {
     }
 
     // Pass pre-selected tools/skills to session creation
-    const preToolIdsArr = Array.from(preToolIds).map(id => ({ id } as ToolRef));
+    const preToolIdsArr = Array.from(preToolIds).map(toToolRef);
     const preSkillIdsArr = Array.from(preSkillIds);
     const preSubAgentIdsArr = Array.from(preSubAgentIds);
     const res = await sessionApi.create(selectedAgentId, {
@@ -842,7 +855,7 @@ export default function Chat() {
     // Wait for SSE to connect
     await new Promise(resolve => setTimeout(resolve, 500));
     return id;
-  }, [doConnectSSE, preSkillIds, preSubAgentIds, preToolIds, selectedAgentId, sessionId, showToast]);
+  }, [doConnectSSE, draftDatasetConfigs, preSkillIds, preSubAgentIds, preToolIds, selectedAgentId, sessionId, showToast]);
 
   const handleSend = useCallback(async (text: string, attachments: ComposerAttachment[]) => {
     if ((!text && attachments.length === 0) || status !== 'idle' || !selectedAgentId) return;
@@ -1122,7 +1135,7 @@ export default function Chat() {
     }
 
     try {
-      const res = await sessionApi.loadTools(sessionId, Array.from(selectedToolIds).map(id => ({ id } as ToolRef)));
+      const res = await sessionApi.loadTools(sessionId, Array.from(selectedToolIds).map(toToolRef));
       if (res.loaded_tools && res.loaded_tools.length > 0) {
         setLoadedToolIds(prev => {
           const next = new Set(prev);

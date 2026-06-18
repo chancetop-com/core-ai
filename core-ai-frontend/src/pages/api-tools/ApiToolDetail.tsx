@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ChevronDown, ChevronRight, Save, ArrowLeft, RefreshCw,
   Power, PowerOff, Settings, Type, Code, Key,
   FileText, Shield, Info, Edit2, Check, X,
+  Play, Loader2,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ServiceApiView, ServiceAdditionalView, TypeAdditionalView } from '../../api/client';
@@ -76,6 +77,8 @@ type EditableOperation = {
   example: string;
   needAuth: boolean;
   deprecated?: boolean;
+  requestType?: string;
+  responseType?: string;
   pathParams: EditablePathParam[];
 };
 
@@ -88,12 +91,14 @@ type EditablePathParam = {
 
 type EditableType = {
   name: string;
+  type?: string;
   description: string;
   fields: EditableField[];
 };
 
 type EditableField = {
   name: string;
+  type?: string;
   description: string;
   example: string;
 };
@@ -112,6 +117,7 @@ export default function ApiToolDetail() {
   const [expandedOps, setExpandedOps] = useState<Set<string>>(new Set());
   const [services, setServices] = useState<EditableService[]>([]);
   const [types, setTypes] = useState<EditableType[]>([]);
+  const [apiAppName, setApiAppName] = useState('');
   const [activeTab, setActiveTab] = useState<'services' | 'types'>('services');
   const [dirty, setDirty] = useState(false);
 
@@ -124,9 +130,11 @@ export default function ApiToolDetail() {
         const payload = res.payload ? JSON.parse(res.payload) as Record<string, unknown> : null;
         if (payload) {
           const parsedData = parsePayload(payload);
+          setApiAppName(parsedData.app || res.name);
           setServices(buildEditableServices(parsedData.services, res.service_additional || []));
           setTypes(buildEditableTypes(parsedData.types, res.type_additional || []));
         } else {
+          setApiAppName(res.name);
           setServices([]);
           setTypes([]);
         }
@@ -400,6 +408,8 @@ export default function ApiToolDetail() {
               onToggle={() => toggleServiceExpand(svc.name)}
               onUpdate={(update) => updateService(svc.name, update)}
               expandedOps={expandedOps}
+              apiAppName={apiAppName}
+              types={types}
               onToggleOp={toggleOpExpand}
               onUpdateOp={(opName, update) => updateOperation(svc.name, opName, update)}
               onUpdatePathParam={(opName, ppName, update) => updatePathParam(svc.name, opName, ppName, update)}
@@ -439,6 +449,8 @@ function ServiceSection({
   onToggle,
   onUpdate,
   expandedOps,
+  apiAppName,
+  types,
   onToggleOp,
   onUpdateOp,
   onUpdatePathParam,
@@ -448,6 +460,8 @@ function ServiceSection({
   onToggle: () => void;
   onUpdate: (update: Partial<EditableService>) => void;
   expandedOps: Set<string>;
+  apiAppName: string;
+  types: EditableType[];
   onToggleOp: (opName: string) => void;
   onUpdateOp: (opName: string, update: Partial<EditableOperation>) => void;
   onUpdatePathParam: (opName: string, ppName: string, update: Partial<EditablePathParam>) => void;
@@ -525,7 +539,10 @@ function ServiceSection({
           {service.operations.map(op => (
             <OperationRow
               key={op.name}
+              serviceName={service.name}
+              apiAppName={apiAppName}
               operation={op}
+              types={types}
               expanded={expandedOps.has(op.name)}
               onToggle={() => onToggleOp(op.name)}
               onUpdate={(update) => onUpdateOp(op.name, update)}
@@ -540,13 +557,19 @@ function ServiceSection({
 
 // --- Operation Row ---
 function OperationRow({
+  serviceName,
+  apiAppName,
   operation,
+  types,
   expanded,
   onToggle,
   onUpdate,
   onUpdatePathParam,
 }: {
+  serviceName: string;
+  apiAppName: string;
   operation: EditableOperation;
+  types: EditableType[];
   expanded: boolean;
   onToggle: () => void;
   onUpdate: (update: Partial<EditableOperation>) => void;
@@ -554,6 +577,34 @@ function OperationRow({
 }) {
   const methodColors: Record<string, string> = {
     GET: '#065f46', POST: '#1e40af', PUT: '#78350f', DELETE: '#991b1b', PATCH: '#581c87',
+  };
+  const initialArgs = useMemo(() => buildApiArgsTemplate(operation, types), [operation, types]);
+  const [args, setArgs] = useState(initialArgs);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; result: string; duration_ms: number } | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setArgs(initialArgs);
+    setResult(null);
+    setCallError(null);
+  }, [initialArgs]);
+
+  const handleRun = async () => {
+    setRunning(true);
+    setCallError(null);
+    setResult(null);
+    try {
+      try { JSON.parse(args); } catch { throw new Error('Arguments must be valid JSON'); }
+      if (!apiAppName) throw new Error('API app name is missing');
+      const toolId = `api-operation:${apiAppName}:${serviceName}:${operation.name}`;
+      const res = await api.tools.testServiceApiTool(toolId, args);
+      setResult(res);
+    } catch (e) {
+      setCallError(e instanceof Error ? e.message : 'API tool call failed');
+    } finally {
+      setRunning(false);
+    }
   };
 
   return (
@@ -576,6 +627,11 @@ function OperationRow({
           )}
         </div>
         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+          <button onClick={() => { if (!expanded) onToggle(); }}
+            className="p-1 rounded cursor-pointer" title="Test operation"
+            style={{ color: 'var(--color-primary)' }}>
+            <Play size={12} />
+          </button>
           <button onClick={() => onUpdate({ enabled: !operation.enabled })}
             className="p-1 rounded cursor-pointer" title={operation.enabled ? 'Disable' : 'Enable'}
             style={{ color: operation.enabled ? '#34d399' : '#f87171' }}>
@@ -617,6 +673,56 @@ function OperationRow({
             <input type="checkbox" checked={operation.needAuth || false}
               onChange={e => onUpdate({ needAuth: e.target.checked })}
               className="w-3.5 h-3.5" />
+          </div>
+
+          {/* Test */}
+          <div className="rounded-lg border p-3 space-y-2"
+            style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                <Play size={10} className="inline mr-1" /> Test Arguments (JSON)
+              </label>
+              <button onClick={() => setArgs(initialArgs)}
+                className="text-xs underline cursor-pointer"
+                style={{ color: 'var(--color-text-secondary)' }}>
+                Reset
+              </button>
+            </div>
+            <textarea value={args} rows={5} spellCheck={false}
+              onChange={e => setArgs(e.target.value)}
+              className="w-full px-2 py-1.5 rounded border text-xs font-mono"
+              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)' }} />
+            <div className="flex items-center gap-2">
+              <button onClick={handleRun} disabled={running || !operation.enabled || !apiAppName}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-white cursor-pointer disabled:opacity-40"
+                style={{ background: 'var(--color-primary)' }}>
+                {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                Run
+              </button>
+              {result && (
+                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {result.duration_ms} ms
+                </span>
+              )}
+            </div>
+            {callError && (
+              <div className="text-xs rounded p-2" style={{ background: '#7f1d1d', color: '#fff' }}>{callError}</div>
+            )}
+            {result && (
+              <div>
+                <div className="text-xs mb-1 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Result
+                  <span className="px-1.5 py-0.5 rounded text-[10px]"
+                    style={result.success
+                      ? { background: '#065f46', color: '#fff' }
+                      : { background: '#7f1d1d', color: '#fff' }}>
+                    {result.success ? 'success' : 'failed'}
+                  </span>
+                </div>
+                <pre className="text-xs font-mono p-2 rounded overflow-auto max-h-72 whitespace-pre-wrap"
+                  style={{ background: 'var(--color-bg)' }}>{formatResult(result.result)}</pre>
+              </div>
+            )}
           </div>
 
           {/* Path Params */}
@@ -788,6 +894,8 @@ function buildEditableServices(parsed: ParsedService[], additional: ServiceAddit
             example: opAdd?.example || '',
             needAuth: opAdd?.need_auth ?? false,
             deprecated: op.deprecated,
+            requestType: op.requestType,
+            responseType: op.responseType,
             pathParams: op.pathParams.map(pp => {
               const ppAdd = opAdd?.path_param_additional?.find(p => p.name === pp.name);
               return {
@@ -809,15 +917,51 @@ function buildEditableTypes(parsed: ParsedType[], additional: TypeAdditionalView
     const add = addMap.get(t.name);
     return {
       name: t.name,
+      type: t.type,
       description: add?.description || t.description || '',
       fields: t.fields.map(f => {
         const fAdd = add?.field_additional?.find(ff => ff.name === f.name);
         return {
           name: f.name,
+          type: f.type,
           description: fAdd?.description || f.description || '',
           example: fAdd?.example || f.example || '',
         };
       }),
     };
   });
+}
+
+function buildApiArgsTemplate(operation: EditableOperation, types: EditableType[]): string {
+  const sample: Record<string, unknown> = {};
+  for (const param of operation.pathParams) {
+    sample[param.name] = param.example || defaultValueForType(param.type);
+  }
+
+  if (operation.requestType) {
+    const requestType = types.find(t => t.name === operation.requestType);
+    for (const field of requestType?.fields || []) {
+      if (sample[field.name] !== undefined) continue;
+      sample[field.name] = field.example || defaultValueForType(field.type);
+    }
+  }
+
+  return JSON.stringify(sample, null, 2);
+}
+
+function defaultValueForType(type?: string): unknown {
+  const normalized = (type || '').toLowerCase();
+  if (['int', 'integer', 'long', 'short', 'byte', 'number', 'double', 'float', 'bigdecimal'].includes(normalized)) return 0;
+  if (['bool', 'boolean'].includes(normalized)) return false;
+  if (['list', 'array', 'set'].includes(normalized)) return [];
+  if (['map', 'object'].includes(normalized)) return {};
+  return '';
+}
+
+function formatResult(result: string): string {
+  try {
+    return JSON.stringify(JSON.parse(result), null, 2);
+  } catch {
+    return result;
+  }
 }

@@ -78,6 +78,20 @@ class JsonSchemaUtilTest {
     }
 
     @Test
+    void duplicateRequiredParameterNamesShouldBeDeduplicated() {
+        var params = List.of(
+            ToolCallParameter.builder().name("id").classType(String.class).required(true).build(),
+            ToolCallParameter.builder().name("id").classType(String.class).required(true).build()
+        );
+
+        var schema = JsonSchemaUtil.toJsonSchema(params);
+
+        assertEquals(List.of("id"), schema.required);
+        assertEquals(1, schema.properties.size());
+        assertTrue(schema.properties.containsKey("id"));
+    }
+
+    @Test
     void nestedArrayWithObjectsFromItemsShouldGenerateProperties() {
         // Simulates how ApiDefinitionTypeSchemaBuilder builds List<SomeObject>
         // by setting classType=List.class and using items for nested fields

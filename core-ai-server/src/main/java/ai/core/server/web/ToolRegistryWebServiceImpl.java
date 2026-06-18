@@ -11,6 +11,8 @@ import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.api.server.tool.ListToolsResponse;
 import ai.core.api.server.tool.McpServerStatusResponse;
 import ai.core.api.server.tool.McpServerToolsResponse;
+import ai.core.api.server.tool.TestApiToolRequest;
+import ai.core.api.server.tool.TestApiToolResponse;
 import ai.core.api.server.tool.TestMcpToolRequest;
 import ai.core.api.server.tool.TestMcpToolResponse;
 import ai.core.api.server.tool.ToolRegistryView;
@@ -162,6 +164,20 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
             }).toList();
             return view;
         }).toList();
+        return response;
+    }
+
+    @Override
+    public TestApiToolResponse testServiceApiTool(TestApiToolRequest request) {
+        if (request == null || request.toolId == null || request.toolId.isBlank()) {
+            throw new IllegalArgumentException("tool_id is required");
+        }
+        var start = System.currentTimeMillis();
+        var result = toolRegistryService.callServiceApiTool(request.toolId, request.arguments);
+        var response = new TestApiToolResponse();
+        response.success = result.getStatus() == ToolCallResult.Status.COMPLETED;
+        response.result = result.toResultForLLM();
+        response.durationMs = System.currentTimeMillis() - start;
         return response;
     }
 

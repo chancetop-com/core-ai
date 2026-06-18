@@ -10,6 +10,8 @@ import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.api.server.tool.ListToolsResponse;
 import ai.core.api.server.tool.McpServerStatusResponse;
 import ai.core.api.server.tool.McpServerToolsResponse;
+import ai.core.api.server.tool.TestApiToolRequest;
+import ai.core.api.server.tool.TestApiToolResponse;
 import ai.core.api.server.tool.TestMcpToolRequest;
 import ai.core.api.server.tool.TestMcpToolResponse;
 import ai.core.api.server.tool.ToolRegistryView;
@@ -84,4 +86,8 @@ public interface ToolRegistryWebService {
     @GET
     @Path("/api/tools/service-api/apps/:appName/services")
     ListApiAppServicesResponse listApiAppServices(@PathParam("appName") String appName);
+
+    @POST
+    @Path("/api/tools/service-api/test-tool")
+    TestApiToolResponse testServiceApiTool(TestApiToolRequest request);
 }

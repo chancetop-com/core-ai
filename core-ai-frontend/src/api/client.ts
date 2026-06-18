@@ -473,6 +473,12 @@ export interface TestMcpToolResponse {
   duration_ms: number;
 }
 
+export interface TestApiToolResponse {
+  success: boolean;
+  result: string;
+  duration_ms: number;
+}
+
 export interface ApiAppView {
   name: string;
   base_url: string;
@@ -966,6 +972,11 @@ export const api = {
       request<TestMcpToolResponse>(`/api/tools/mcp-servers/${serverId}/test-tool`, {
         method: 'POST',
         body: JSON.stringify({ tool_name: toolName, arguments: args }),
+      }),
+    testServiceApiTool: (toolId: string, args: string) =>
+      request<TestApiToolResponse>('/api/tools/service-api/test-tool', {
+        method: 'POST',
+        body: JSON.stringify({ tool_id: toolId, arguments: args }),
       }),
   },
   serviceApis: {

@@ -599,6 +599,24 @@ public class ToolRegistryService {
         return mcpManager.safeCallTool(entity.id, toolName, payload);
     }
 
+    public ToolCallResult callServiceApiTool(String toolId, String argumentsJson) {
+        if (internalApiToolLoader == null) {
+            throw new RuntimeException("service API tools are not initialized");
+        }
+        if (!InternalApiToolLoader.isApiToolId(toolId)) {
+            throw new IllegalArgumentException("unsupported service API tool id: " + toolId);
+        }
+        var tools = internalApiToolLoader.loadByToolId(toolId);
+        if (tools.isEmpty()) {
+            throw new RuntimeException("service API tool not found, id=" + toolId);
+        }
+        if (tools.size() != 1) {
+            throw new IllegalArgumentException("test requires a single service API operation, id=" + toolId);
+        }
+        var payload = argumentsJson == null || argumentsJson.isBlank() ? "{}" : argumentsJson;
+        return tools.getFirst().execute(payload);
+    }
+
     private ToolRegistry requireMcpEntity(String serverId) {
         var entity = tools.get(serverId);
         if (entity == null || entity.type != ToolType.MCP) {
