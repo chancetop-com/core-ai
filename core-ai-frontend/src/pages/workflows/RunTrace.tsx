@@ -28,13 +28,6 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<WorkflowArtifactView | null>(null);
   useEffect(() => { if (focusNodeId) setExpanded((s) => new Set(s).add(focusNodeId)); }, [focusNodeId]);
-  // Lock body scroll while the preview overlay is open; restore the prior value on close/unmount.
-  useEffect(() => {
-    if (!active) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [active]);
 
   const nameOf = (id: string) => nodes.find((n) => n.id === id)?.data.name ?? id;
   const typeOf = (id: string) => nodes.find((n) => n.id === id)?.data.nodeType ?? '';
@@ -48,6 +41,15 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
+  // Drop the open preview if the underlying run changed (rerun/reset) and the artifact left deliverables.
+  const activeArtifact = active && deliverables.some((d) => d.file_id === active.file_id) ? active : null;
+  // Lock body scroll while the preview overlay is open; restore the prior value on close/unmount.
+  useEffect(() => {
+    if (!activeArtifact) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [activeArtifact]);
 
   return (
     <>
@@ -122,10 +124,10 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
           )}
         </>
       )}
-      {active && createPortal(
+      {activeArtifact && createPortal(
         <div style={overlayBackdrop} onClick={() => setActive(null)}>
           <div style={overlayPanel} onClick={(e) => e.stopPropagation()}>
-            <ArtifactDrawer artifact={toSpec(active)} hideShare onClose={() => setActive(null)} />
+            <ArtifactDrawer artifact={toSpec(activeArtifact)} hideShare onClose={() => setActive(null)} />
           </div>
         </div>,
         document.body,
