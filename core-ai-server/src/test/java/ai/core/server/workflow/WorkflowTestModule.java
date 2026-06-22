@@ -8,6 +8,7 @@ import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.workflow.executor.EndExecutor;
+import ai.core.server.workflow.executor.HumanInputExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
 import core.framework.mongo.module.MongoConfig;
 import core.framework.test.module.AbstractTestModule;
@@ -42,9 +43,11 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(WorkflowRunService.class);
         var registry = new NodeExecutorRegistry(Map.of(
             NodeType.START, new StartExecutor(),
-            NodeType.END, new EndExecutor()));
+            NodeType.END, new EndExecutor(),
+            NodeType.HUMAN_INPUT, new HumanInputExecutor()));
         bind(NodeExecutor.class, registry);
         bind(new SandboxService());   // disabled (enabled=false) — releaseSandbox no-ops; START -> END runs no CODE node
         bind(WorkflowRunner.class);
+        bind(WorkflowRunnerJob.class);   // claim sweep + stranded-PAUSED recovery, exercised by the resume tests
     }
 }

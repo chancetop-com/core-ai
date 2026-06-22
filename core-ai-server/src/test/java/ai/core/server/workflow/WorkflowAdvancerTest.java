@@ -285,11 +285,109 @@ class WorkflowAdvancerTest {
         assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "end"));
     }
 
+    @Test
+    void siblingFailureWhileHumanWaitingPausesNotFails() {
+        // start fans out to a failing branch and a human-input branch, both feeding a join END. A sibling failure
+        // must NOT finalize the run FAILED while the human node is still WAITING — the run must stay resumable.
+        WorkflowGraph graph = graph(
+            List.of(node("start"), node("bad"), node("ask"), node("end")),
+            List.of(edge("e0", "start", "bad"), edge("e1", "start", "ask"),
+                edge("e2", "bad", "end"), edge("e3", "ask", "end")));
+        var journal = new InMemoryWorkflowJournal();
+        NodeExecutor executor = ctx -> switch (ctx.node().id()) {
+            case "bad" -> new NodeOutcome.Fail("boom", false);
+            case "ask" -> new NodeOutcome.Waiting("{\"mode\":\"approval\"}");
+            default -> new NodeOutcome.Normal("{}");
+        };
+
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+
+        assertEquals(RunStatus.PAUSED, status);   // a still-WAITING human node keeps the run resumable past a sibling failure
+        assertEquals(NodeRunStatus.WAITING, journal.status("run-1", "ask"));
+        assertEquals(NodeRunStatus.FAILED_RETRYABLE, journal.status("run-1", "bad"));
+    }
+
+    @Test
+    void humanResumeWhileSiblingRunningDrivesApprovedBranchConcurrently() throws Exception {
+        // start fans out to a slow agent (blocked) and a human-input node. While the slow agent is still RUNNING,
+        // the approval is settled out-of-band (as the resume endpoint does). The driver must re-fold and drive the
+        // approved branch CONCURRENTLY — without waiting for the slow sibling to finish.
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        var slowStarted = new CountDownLatch(1);
+        var slowRelease = new CountDownLatch(1);
+        try {
+            WorkflowGraph graph = graph(
+                List.of(node("start"), node("slow"), node("ask"), node("approved"), node("end")),
+                List.of(edge("e0", "start", "slow"), edge("e1", "start", "ask"),
+                    edge("eApprove", "ask", "approved"), edge("e2", "slow", "end"), edge("e3", "approved", "end")));
+            var journal = new InMemoryWorkflowJournal();
+            NodeExecutor executor = ctx -> {
+                switch (ctx.node().id()) {
+                    case "slow" -> {
+                        slowStarted.countDown();
+                        awaitLong(slowRelease);   // hold the sibling in flight far longer than the approved-branch window
+                        return new NodeOutcome.Normal("{}");
+                    }
+                    case "ask" -> {
+                        return new NodeOutcome.Waiting("{\"mode\":\"approval\"}");
+                    }
+                    default -> {
+                        return new NodeOutcome.Normal("{}");
+                    }
+                }
+            };
+
+            CompletableFuture<RunStatus> driving = CompletableFuture.supplyAsync(
+                () -> WorkflowAdvancer.drive(graph, run(), journal, executor, pool, () -> false));
+
+            assertTrue(slowStarted.await(2, TimeUnit.SECONDS));                 // slow sibling is in flight
+            assertTrue(awaitUntil(() -> journal.status("run-1", "ask") == NodeRunStatus.WAITING));   // human node parked
+            Thread.sleep(400);   // let the driver settle into awaitAny({slow}); now only a poll can re-fold it
+
+            journal.seedCompleted("run-1", "ask");   // the resume endpoint settles the WAITING node mid-run
+
+            // the approved branch must run while the slow sibling is STILL blocked — proves concurrent re-fold
+            assertTrue(awaitUntil(() -> journal.status("run-1", "approved") == NodeRunStatus.COMPLETED),
+                "approved branch should drive while the slow sibling is still running");
+
+            slowRelease.countDown();
+            assertEquals(RunStatus.COMPLETED, driving.get(5, TimeUnit.SECONDS));
+            assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "end"));
+        } finally {
+            slowRelease.countDown();
+            pool.shutdownNow();
+        }
+    }
+
     // ---- helpers ----
+
+    private static boolean awaitUntil(java.util.function.BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return condition.getAsBoolean();
+    }
 
     private static void await(CountDownLatch latch) {
         try {
             latch.await(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void awaitLong(CountDownLatch latch) {
+        try {
+            latch.await(30, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

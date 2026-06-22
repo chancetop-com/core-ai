@@ -17,7 +17,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -36,6 +39,10 @@ public final class WorkflowAdvancer {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkflowAdvancer.class);
     private static final String ROOT_SCOPE_KEY = "";
     private static final int COMMIT_RETRIES = 3;
+    // While a node is parked WAITING on human input AND sibling branches are still in flight, a human resume settling
+    // that node is an out-of-band journal write the awaitAny(inflight) block would otherwise miss until a sibling
+    // finishes. Bounding the wait makes the driver re-fold periodically so the approved branch runs concurrently.
+    private static final long PARKED_HUMAN_POLL_MILLIS = 500;
 
     private WorkflowAdvancer() {
     }
@@ -63,7 +70,8 @@ public final class WorkflowAdvancer {
                 if (cancelled.getAsBoolean()) {
                     return RunStatus.CANCELLED;
                 }
-                RunState state = RunStateAssembler.toRunState(journal.nodeRuns(run.id), ROOT_SCOPE_KEY);
+                List<WorkflowNodeRun> nodeRuns = journal.nodeRuns(run.id);
+                RunState state = RunStateAssembler.toRunState(nodeRuns, ROOT_SCOPE_KEY);
                 Frontier frontier = Planner.plan(graph, state);
 
                 boolean progressed = false;
@@ -83,18 +91,26 @@ public final class WorkflowAdvancer {
                     continue;   // re-plan immediately on any new ready/skip
                 }
                 if (!inflight.isEmpty()) {
-                    awaitAny(inflight);   // block until an in-flight node completes, then re-plan
+                    // a parked human node + in-flight siblings -> bound the wait so an out-of-band resume is re-folded
+                    // promptly (concurrent approve); otherwise block until an in-flight node completes, then re-plan
+                    if (hasWaitingNode(nodeRuns)) {
+                        awaitAny(inflight, PARKED_HUMAN_POLL_MILLIS);
+                    } else {
+                        awaitAny(inflight);
+                    }
                     continue;
                 }
                 // inflight is empty -> the journal is now stable (recordOutcome happens-before each inflight
                 // remove). Re-plan from a fresh read: a node may have completed between the plan above and this
-                // check, so classifying from the stale frontier could wrongly report FAILED.
-                RunState finalState = RunStateAssembler.toRunState(journal.nodeRuns(run.id), ROOT_SCOPE_KEY);
+                // check, so classifying from the stale frontier could wrongly report FAILED. finalState AND the
+                // waiting check must come from ONE snapshot so a concurrent settle can't make them disagree.
+                List<WorkflowNodeRun> finalRuns = journal.nodeRuns(run.id);
+                RunState finalState = RunStateAssembler.toRunState(finalRuns, ROOT_SCOPE_KEY);
                 Frontier finalFrontier = Planner.plan(graph, finalState);
                 if (finalFrontier.hasProgress()) {
                     continue;   // a just-missed completion opened new work
                 }
-                return classify(finalState, finalFrontier, hasWaitingNode(journal, run));
+                return classify(finalState, finalFrontier, hasWaitingNode(finalRuns));
             }
         } finally {
             awaitAll(inflight);   // drain in-flight tasks on cancel / exception / normal exit before returning
@@ -163,9 +179,13 @@ public final class WorkflowAdvancer {
         }
     }
 
-    // Terminal classification. Order: a real failure -> FAILED; else output reached -> COMPLETED; else parked on a
-    // HUMAN_INPUT node -> PAUSED (the run resumes when the human responds); else genuinely stuck -> FAILED.
+    // Terminal classification. A still-WAITING root-scope HUMAN_INPUT node wins first: the run must stay PAUSED and
+    // resumable even if a sibling branch failed, so a parallel failure can never strand a pending human approval.
+    // Then the original order: a real failure -> FAILED; else output reached -> COMPLETED; else genuinely stuck -> FAILED.
     private static RunStatus classify(RunState state, Frontier frontier, boolean hasWaiting) {
+        if (hasWaiting) {
+            return RunStatus.PAUSED;
+        }
         boolean anyFailed = state.facts().values().stream().anyMatch(fact -> fact.status() == NodeFactStatus.FAILED);
         if (anyFailed) {
             return RunStatus.FAILED;
@@ -173,13 +193,14 @@ public final class WorkflowAdvancer {
         if (frontier.outputReached()) {
             return RunStatus.COMPLETED;
         }
-        return hasWaiting ? RunStatus.PAUSED : RunStatus.FAILED;
+        return RunStatus.FAILED;
     }
 
-    // A WAITING node-run at the root scope means the run is parked on human input, not stuck. Read straight from
-    // the journal: WAITING projects to a RUNNING fact for edge purposes, so the planner can't distinguish it.
-    private static boolean hasWaitingNode(WorkflowJournal journal, WorkflowRun run) {
-        for (WorkflowNodeRun nodeRun : journal.nodeRuns(run.id)) {
+    // A WAITING node-run at the root scope means the run is parked on human input, not stuck. Derived from the same
+    // node-run snapshot the caller classified from: WAITING projects to a RUNNING fact for edge purposes, so the
+    // planner can't distinguish it, and a separate read could disagree with finalState under a concurrent settle.
+    private static boolean hasWaitingNode(List<WorkflowNodeRun> nodeRuns) {
+        for (WorkflowNodeRun nodeRun : nodeRuns) {
             if (nodeRun.status == NodeRunStatus.WAITING && ROOT_SCOPE_KEY.equals(nodeRun.scopePathKey)) {
                 return true;
             }
@@ -191,6 +212,26 @@ public final class WorkflowAdvancer {
         CompletableFuture<?>[] futures = inflight.values().toArray(CompletableFuture[]::new);
         if (futures.length > 0) {
             CompletableFuture.anyOf(futures).join();
+        }
+    }
+
+    // Bounded variant: wake on the first in-flight completion OR the poll deadline, so the loop re-folds and observes
+    // out-of-band journal writes (a human resume settling a WAITING node, possibly on another replica) without
+    // waiting for a still-running sibling. A node task never completes exceptionally (dispatch wraps every throwable
+    // into a Fail commit), so the ExecutionException arm is defensive only.
+    private static void awaitAny(Map<String, CompletableFuture<Void>> inflight, long timeoutMillis) {
+        CompletableFuture<?>[] futures = inflight.values().toArray(CompletableFuture[]::new);
+        if (futures.length == 0) {
+            return;
+        }
+        try {
+            CompletableFuture.anyOf(futures).get(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            // poll tick: fall through to re-plan
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException e) {
+            LOGGER.warn("in-flight node future completed exceptionally during bounded wait", e);
         }
     }
 

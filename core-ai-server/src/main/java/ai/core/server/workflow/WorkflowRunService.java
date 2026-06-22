@@ -192,14 +192,20 @@ public class WorkflowRunService {
     }
 
     /**
-     * Settle a HUMAN_INPUT node a paused run is waiting on, then wake the run. For mode=approval the human's
-     * approve/reject picks the node's approve/reject out-edge (Branch); for mode=input the human's value becomes
-     * the node output. Flips the run PAUSED -> PENDING so the runner (caller submits) re-folds and drives downstream.
+     * Settle a HUMAN_INPUT node a run is waiting on, then make sure the run gets driven. For mode=approval the
+     * human's approve/reject picks the node's approve/reject out-edge (Branch); for mode=input the human's value
+     * becomes the node output.
+     *
+     * <p>Accepts both PAUSED and RUNNING runs. A run with parallel branches still in flight stays RUNNING while a
+     * HUMAN_INPUT node is already WAITING, so requiring PAUSED would reject the approve with a 409 (the node-level
+     * WAITING the UI shows precedes the run-level PAUSED). The settle is a node-status-guarded CAS that is safe
+     * regardless of run status; the active driver re-folds it on its next poll. The wake below flips a PAUSED run
+     * (no driver) back to PENDING; it no-ops on a RUNNING run, whose live driver already owns the re-fold.
      */
     public void resume(String runId, String nodeId, Boolean approve, String input, String userId) {
         WorkflowRun run = getRun(runId, userId);   // ownership
-        if (run.status != RunStatus.PAUSED) {
-            throw new ConflictException("workflow run is not paused: " + runId);
+        if (run.status != RunStatus.PAUSED && run.status != RunStatus.RUNNING) {
+            throw new ConflictException("workflow run is not awaiting input (status=" + run.status + "): " + runId);
         }
         WorkflowNode node = resolveHumanNode(run, nodeId);
         HumanInputProtocol.validate(node, approve, input);   // mode + form schema enforced before settling
@@ -209,7 +215,8 @@ public class WorkflowRunService {
         if (settled == 0) {
             throw new ConflictException("node is not awaiting human input (already settled by a concurrent resume?): " + nodeId);
         }
-        // wake: PAUSED -> PENDING, claimable now (guarded on PAUSED so a concurrent resume only wakes once)
+        // wake: PAUSED -> PENDING, claimable now (guarded on PAUSED so a concurrent resume only wakes once, and so a
+        // RUNNING run's live driver is left to re-fold the settle itself)
         runCollection.update(
             Filters.and(Filters.eq("_id", runId), Filters.eq("status", RunStatus.PAUSED)),
             Updates.combine(Updates.set("status", RunStatus.PENDING), Updates.set("lease_until", ZonedDateTime.now())));
