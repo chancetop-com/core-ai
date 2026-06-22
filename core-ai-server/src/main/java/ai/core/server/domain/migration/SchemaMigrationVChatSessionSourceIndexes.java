@@ -20,7 +20,7 @@ public class SchemaMigrationVChatSessionSourceIndexes implements SchemaMigration
 
     @Override
     public void migrate(Mongo mongo) {
-        // primary Chat sidebar path: user + source filter + recency sort
+        // For You recent-activity path: user + source filter + recency sort (Chat sidebar now sorts by created_at)
         mongo.createIndex("chat_sessions",
             Indexes.compoundIndex(
                 Indexes.ascending("user_id"),

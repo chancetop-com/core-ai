@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageSquare, Plus, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { sessionApi } from '../../api/session';
 import type { ChatSessionSummary } from '../../api/session';
+import { formatMessageTimeFull } from './utils';
 
 interface Props {
   currentSessionId: string | null;
@@ -137,8 +138,9 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
                 <div className="text-sm truncate" title={s.title || s.id}>
                   {s.title || '(untitled)'}
                 </div>
-                <div className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-                  {formatTime(s.last_message_at)}
+                <div className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}
+                  title={formatMessageTimeFull(s.last_message_at || s.created_at)}>
+                  {formatTime(s.last_message_at || s.created_at)}
                   {s.message_count ? ` · ${s.message_count} msg` : ''}
                 </div>
               </div>

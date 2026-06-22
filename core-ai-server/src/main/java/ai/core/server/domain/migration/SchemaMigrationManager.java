@@ -88,7 +88,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVMemoryIndexes(),
             new SchemaMigrationVTraceAgentIdIndex(),
             new SchemaMigrationVTraceListFilterIndexes(),
-            new SchemaMigrationVAgentRunTraceIndex()
+            new SchemaMigrationVAgentRunTraceIndex(),
+            new SchemaMigrationVChatSessionCreatedAtIndex()
         );
     }
 }

@@ -37,7 +37,8 @@ public class ChatSessionController {
         var sources = sourcesParam != null && !sourcesParam.isEmpty()
             ? Arrays.asList(sourcesParam.split(","))
             : null;
-        var sessions = chatMessageService.listSessions(userId, sources, offset, limit).stream()
+        // stable creation-order sort so an active session keeps its position instead of jumping to the top
+        var sessions = chatMessageService.listSessions(userId, sources, offset, limit, "created_at").stream()
             .map(this::toSummary)
             .toList();
         return jsonResponse(Map.of("sessions", sessions));

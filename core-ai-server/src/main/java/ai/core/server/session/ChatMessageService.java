@@ -88,6 +88,12 @@ public class ChatMessageService {
     }
 
     public List<ChatSession> listSessions(String userId, List<String> sources, int offset, int limit) {
+        return listSessions(userId, sources, offset, limit, "last_message_at");
+    }
+
+    // sortField controls the recency vs. stable ordering: the Chat sidebar passes "created_at" so active
+    // sessions keep their position instead of jumping to the top, while the For You widget keeps "last_message_at".
+    public List<ChatSession> listSessions(String userId, List<String> sources, int offset, int limit, String sortField) {
         var query = new Query();
         var filters = new java.util.ArrayList<org.bson.conversions.Bson>();
         filters.add(Filters.eq("user_id", userId));
@@ -106,7 +112,7 @@ public class ChatMessageService {
             }
         }
         query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("last_message_at");
+        query.sort = Sorts.descending(sortField);
         query.skip = offset;
         query.limit = limit;
         return chatSessionCollection.find(query);
