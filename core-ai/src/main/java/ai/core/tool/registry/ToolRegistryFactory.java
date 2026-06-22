@@ -4,6 +4,7 @@ import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -41,15 +42,22 @@ public final class ToolRegistryFactory {
         var mat = source.materialize();
         var dispatchMap = mat.getDispatchMap();
         var individualTools = new ArrayList<ToolCall>();
+        var foundProviderIds = new HashSet<String>();
 
         for (var name : names) {
             var provider = source.getProvider(name);
             if (provider != null) {
                 derived.registerProvider(provider);
+                foundProviderIds.add(name);
             } else {
                 var tool = dispatchMap.get(name);
                 if (tool != null) {
                     individualTools.add(tool);
+                } else {
+                    tool = searchAcrossProviders(source, name);
+                    if (tool != null) {
+                        individualTools.add(tool);
+                    }
                 }
             }
         }
@@ -58,7 +66,26 @@ public final class ToolRegistryFactory {
             derived.registerProvider(ListToolProvider.of(individualTools));
         }
 
+        if (derived.getToolCalls().isEmpty() && !dispatchMap.isEmpty()) {
+            for (var entry : source.providers().entrySet()) {
+                if (!foundProviderIds.contains(entry.getKey())) {
+                    derived.registerProvider(entry.getValue());
+                }
+            }
+        }
+
         return derived;
+    }
+
+    private static ToolCall searchAcrossProviders(ToolRegistry source, String name) {
+        for (var entry : source.providers().entrySet()) {
+            var tools = entry.getValue().provide();
+            var tool = tools.get(name);
+            if (tool != null) {
+                return tool;
+            }
+        }
+        return null;
     }
 
     private static List<ToolCall> planningTools(FactoryContext context) {

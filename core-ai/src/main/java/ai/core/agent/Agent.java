@@ -49,7 +49,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -467,7 +466,9 @@ public class Agent extends Node<Agent> {
             logger.warn("No tools to register");
             return;
         }
-        toolRegistry.registerProvider(ListToolProvider.of("add-tools-" + UUID.randomUUID().toString().substring(0, 8), tools));
+        for (var tc : tools) {
+            toolRegistry.registerProvider(ListToolProvider.of(tc.getName(), List.of(tc)));
+        }
     }
 
     public void injectUserMessage(String content) {

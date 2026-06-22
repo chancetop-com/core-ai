@@ -91,4 +91,8 @@ public class ToolRegistry {
     public ToolProvider getProvider(String providerId) {
         return providers.get(providerId);
     }
+
+    public Map<String, ToolProvider> providers() {
+        return Map.copyOf(providers);
+    }
 }

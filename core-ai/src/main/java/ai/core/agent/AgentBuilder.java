@@ -371,7 +371,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (toolRegistry == null) {
             toolRegistry = ToolRegistryFactory.createEmpty();
         }
-        toolRegistry.registerProvider(ListToolProvider.of(toolCalls));
+        for (var tc : toolCalls) {
+            toolRegistry.registerProvider(ListToolProvider.of(tc.getName(), List.of(tc)));
+        }
     }
 
     private void beforeAgentBuildLifecycle() {
