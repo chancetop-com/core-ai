@@ -18,11 +18,20 @@ function authedFileUrl(fileId: string): string {
   return `/api/files/${fileId}/content`;
 }
 
-async function fetchFileBlob(fileId: string): Promise<Blob> {
-  const apiKey = localStorage.getItem('apiKey');
+async function fetchBlobFrom(source: { contentUrl?: string; fileId?: string }): Promise<Blob> {
   const headers: Record<string, string> = {};
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-  const res = await fetch(authedFileUrl(fileId), { headers });
+  let url: string;
+  if (source.contentUrl) {
+    // Public artifact endpoint is auth-exempt — must NOT send Authorization.
+    url = source.contentUrl;
+  } else if (source.fileId) {
+    url = authedFileUrl(source.fileId);
+    const apiKey = localStorage.getItem('apiKey');
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+  } else {
+    throw new Error('no file source');
+  }
+  const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.blob();
 }
@@ -30,6 +39,7 @@ async function fetchFileBlob(fileId: string): Promise<Blob> {
 interface Props {
   artifact: ArtifactSpec;
   onClose: () => void;
+  hideShare?: boolean;
 }
 
 type ViewMode = 'preview' | 'source';
@@ -113,7 +123,7 @@ function loadStoredWidth(): number {
   }
 }
 
-export default function ArtifactDrawer({ artifact, onClose }: Props) {
+export default function ArtifactDrawer({ artifact, onClose, hideShare = false }: Props) {
   const canPreview = supportsPreview(artifact);
   const canSource = supportsSource(artifact);
   const [mode, setMode] = useState<ViewMode>(canPreview ? 'preview' : 'source');
@@ -166,7 +176,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   }, [artifact.fileId]);
 
   useEffect(() => {
-    if (artifact.kind !== 'file' || !artifact.fileId) {
+    if (artifact.kind !== 'file' || (!artifact.fileId && !artifact.contentUrl)) {
       setFileBlobUrl(null);
       setFileText(null);
       setFileError(null);
@@ -179,7 +189,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
     setFileBlobUrl(null);
     setFileText(null);
     const wantText = isTextFile(artifact);
-    fetchFileBlob(artifact.fileId).then(async blob => {
+    fetchBlobFrom({ contentUrl: artifact.contentUrl, fileId: artifact.fileId }).then(async blob => {
       if (cancelled) return;
       createdUrl = URL.createObjectURL(blob);
       setFileBlobUrl(createdUrl);
@@ -202,9 +212,9 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
       cancelled = true;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [artifact.kind, artifact.fileId, artifact.contentType, artifact.fileName]);
+  }, [artifact.kind, artifact.fileId, artifact.contentUrl, artifact.contentType, artifact.fileName]);
 
-  const downloadUrl = useMemo(() => fileDownloadUrl(artifact), [artifact]);
+  const downloadUrl = useMemo(() => artifact.contentUrl ?? fileDownloadUrl(artifact), [artifact]);
 
   const copy = () => {
     if (!artifact.content) return;
@@ -215,9 +225,9 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   };
 
   const handleDownload = async () => {
-    if (!artifact.fileId) return;
+    if (!artifact.fileId && !artifact.contentUrl) return;
     try {
-      const blob = await fetchFileBlob(artifact.fileId);
+      const blob = await fetchBlobFrom({ contentUrl: artifact.contentUrl, fileId: artifact.fileId });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -312,7 +322,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
               <Download size={14} />
             </button>
           )}
-          {downloadUrl && (
+          {!hideShare && downloadUrl && (
             <div className="relative">
               <button onClick={handleShare}
                 disabled={shareStatus === 'loading'}
@@ -425,7 +435,7 @@ function renderPreview(spec: ArtifactSpec, state: FileState & FileSourceState) {
       </div>
     );
   }
-  if (spec.kind === 'file' && spec.fileId) {
+  if (spec.kind === 'file' && (spec.fileId || spec.contentUrl)) {
     if (state.fileLoading) {
       return (
         <div className="p-6 flex items-center justify-center gap-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>

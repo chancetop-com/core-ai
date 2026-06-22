@@ -12,6 +12,8 @@ export interface ArtifactSpec {
   fileName?: string;
   contentType?: string;
   size?: number;
+  // For kind='file': public same-origin content URL (no auth); takes precedence over fileId
+  contentUrl?: string;
 }
 
 const LONG_MD_CHAR_THRESHOLD = 800;

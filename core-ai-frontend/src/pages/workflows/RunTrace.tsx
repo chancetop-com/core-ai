@@ -1,9 +1,12 @@
 import { useEffect, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { ChevronRight, ChevronDown, Download, ExternalLink, FileDown, FileText, RotateCcw } from 'lucide-react';
 import { RUN_STATUS_COLOR, TERMINAL_RUN_STATUS, type WorkflowRFNode } from './graph';
 import { type InputVar } from './configWidgets';
 import type { WorkflowArtifactView, WorkflowNodeRunView } from '../../api/client';
+import ArtifactDrawer from '../chat/components/ArtifactDrawer';
+import type { ArtifactSpec } from '../chat/components/artifactTypes';
 
 export interface ResumeBody { approve?: boolean; input?: string }
 
@@ -23,7 +26,15 @@ interface Props {
  *  result. Used by the live test panel (RunPanel) and the run-history panel so both render runs identically. */
 export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNodeId, onResume, onResumeFromNode, resumedFrom, busy }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [active, setActive] = useState<WorkflowArtifactView | null>(null);
   useEffect(() => { if (focusNodeId) setExpanded((s) => new Set(s).add(focusNodeId)); }, [focusNodeId]);
+  // Lock body scroll while the preview overlay is open; restore the prior value on close/unmount.
+  useEffect(() => {
+    if (!active) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [active]);
 
   const nameOf = (id: string) => nodes.find((n) => n.id === id)?.data.name ?? id;
   const typeOf = (id: string) => nodes.find((n) => n.id === id)?.data.nodeType ?? '';
@@ -106,22 +117,30 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
           {result && <pre style={pre}>{fmt(result)}</pre>}
           {deliverables.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: result ? 6 : 0 }}>
-              {deliverables.map((a, i) => <ArtifactCard key={a.file_id ?? i} artifact={a} />)}
+              {deliverables.map((a, i) => <ArtifactCard key={a.file_id ?? i} artifact={a} onOpen={setActive} />)}
             </div>
           )}
         </>
+      )}
+      {active && createPortal(
+        <div style={overlayBackdrop} onClick={() => setActive(null)}>
+          <div style={overlayPanel} onClick={(e) => e.stopPropagation()}>
+            <ArtifactDrawer artifact={toSpec(active)} hideShare onClose={() => setActive(null)} />
+          </div>
+        </div>,
+        document.body,
       )}
     </>
   );
 }
 
-/** A deliverable file of the run: type icon (inline preview for images), name, size, download link. */
-function ArtifactCard({ artifact }: { artifact: WorkflowArtifactView }) {
+/** A deliverable file of the run: type icon (inline preview for images), name, size; click to preview, download link. */
+function ArtifactCard({ artifact, onOpen }: { artifact: WorkflowArtifactView; onOpen: (a: WorkflowArtifactView) => void }) {
   const isImage = (artifact.content_type ?? '').startsWith('image/') && !!artifact.url;
   const name = artifact.file_name || artifact.title || artifact.file_id || 'file';
   const meta = [artifact.content_type, fmtSize(artifact.size)].filter(Boolean).join(' · ');
   return (
-    <div style={artifactCard} title={artifact.description || artifact.title || name}>
+    <div style={{ ...artifactCard, cursor: 'pointer' }} title={artifact.description || artifact.title || name} onClick={() => onOpen(artifact)}>
       {isImage
         ? <img src={artifact.url} alt={name} style={artifactThumb} />
         : <span style={artifactIcon}><FileText size={18} /></span>}
@@ -130,7 +149,7 @@ function ArtifactCard({ artifact }: { artifact: WorkflowArtifactView }) {
         {meta && <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{meta}</div>}
       </div>
       {artifact.url && (
-        <a href={artifact.url} target="_blank" rel="noopener noreferrer" style={artifactDownload} title="Download">
+        <a href={artifact.url} target="_blank" rel="noopener noreferrer" style={artifactDownload} title="Download" onClick={(e) => e.stopPropagation()}>
           <Download size={14} />
         </a>
       )}
@@ -143,6 +162,30 @@ function fmtSize(size?: number): string {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Workflow artifact URLs are absolute (built from SYS_PUBLIC_URL). Fetch them as a same-origin
+// relative path so the drawer's fetch() avoids CORS; the path is auth-exempt so no Bearer is sent.
+function toRelative(url?: string): string | undefined {
+  if (!url) return undefined;
+  try {
+    const u = new URL(url, window.location.origin);
+    return u.pathname + u.search;
+  } catch {
+    return url;
+  }
+}
+
+function toSpec(a: WorkflowArtifactView): ArtifactSpec {
+  return {
+    kind: 'file',
+    title: a.title || a.file_name || a.file_id || 'file',
+    fileName: a.file_name,
+    contentType: a.content_type,
+    size: a.size,
+    contentUrl: toRelative(a.url),
+    fileId: a.file_id,
+  };
 }
 
 function Field({ title, body, danger }: { title: string; body?: string; danger?: boolean }) {
@@ -284,3 +327,9 @@ const artifactDownload: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, flexShrink: 0,
   borderRadius: 6, color: 'var(--color-primary)', textDecoration: 'none',
 };
+// zIndex 40 stays below the drawer's own maximize portal (z-50) so maximizing floats above this backdrop.
+const overlayBackdrop: CSSProperties = {
+  position: 'fixed', inset: 0, zIndex: 40,
+  background: 'rgba(0,0,0,0.35)', display: 'flex', justifyContent: 'flex-end',
+};
+const overlayPanel: CSSProperties = { height: '100vh' };
