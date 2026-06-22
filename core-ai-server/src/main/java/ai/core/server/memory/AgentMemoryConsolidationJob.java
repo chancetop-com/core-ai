@@ -133,6 +133,7 @@ public class AgentMemoryConsolidationJob implements Job {
                 Filters.ne("agent_id", ""),
                 Filters.lte("started_at", cutoff)
         );
+        query.sort = Sorts.descending("started_at");
         query.limit = 500;
         var traces = traceCollection.find(query);
         var ids = new HashSet<String>();
