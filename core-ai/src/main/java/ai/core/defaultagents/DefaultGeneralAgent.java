@@ -5,6 +5,7 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.prompt.PromptInject;
+import ai.core.skill.SkillToolProvider;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.PythonScriptTool;
@@ -21,7 +22,7 @@ public class DefaultGeneralAgent {
             """;
 
     private static final List<String> TOOL_NAMES = List.of(
-            ToolProvider.BUILTIN_FILES, ToolProvider.BUILTIN_BASH, ToolProvider.BUILTIN_WEB
+            ToolProvider.BUILTIN_FILES, ToolProvider.BUILTIN_BASH, ToolProvider.BUILTIN_WEB, SkillToolProvider.SKILL
     );
 
     public static Agent of(ToolRegistry toolRegistry, LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects, Integer maxTurnNumber) {
