@@ -208,15 +208,35 @@ export function computeDominators(nodes: WorkflowRFNode[], edges: Edge[]): Map<s
   return dom;
 }
 
-// The node ids whose variables a node may reference — its dominators, matching the publish-time dominator check
-// (a node reading a non-dominator is a publish error). END/AGGREGATOR are exempt on the backend (they may read any
-// branch, rendering empty if skipped), so the picker still offers them every node.
+// The node ids whose variables a node may reference. A normal node sees its DOMINATORS (matching the publish-time
+// dominator check — reading a non-dominator is a publish error). END/AGGREGATOR are exempt from dominance on the
+// backend (they may read a conditional branch that renders empty if skipped), so they see their ANCESTORS — every
+// upstream node that can reach them, including mutually-exclusive branch arms — but NOT downstream/unrelated nodes
+// (referencing those is always empty and only clutters the picker).
 export function visibleSourceIds(nodes: WorkflowRFNode[], edges: Edge[], selfId: string): Set<string> {
   const self = nodes.find((n) => n.id === selfId);
   if (self && (self.data.nodeType === 'AGGREGATOR' || self.data.nodeType === 'END')) {
-    return new Set(nodes.map((n) => n.id));
+    return ancestorIds(edges, selfId);
   }
   return computeDominators(nodes, edges).get(selfId) ?? new Set([selfId]);
+}
+
+// Transitive predecessors of selfId (every node that can reach it via directed edges), excluding selfId. Cycle-safe.
+function ancestorIds(edges: Edge[], selfId: string): Set<string> {
+  const preds = new Map<string, string[]>();
+  for (const e of edges) {
+    const list = preds.get(e.target);
+    if (list) list.push(e.source); else preds.set(e.target, [e.source]);
+  }
+  const seen = new Set<string>();
+  const stack = [...(preds.get(selfId) ?? [])];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const p of preds.get(id) ?? []) if (!seen.has(p)) stack.push(p);
+  }
+  return seen;
 }
 
 export function toReactFlow(graph: WorkflowGraph): { nodes: WorkflowRFNode[]; edges: Edge[] } {
