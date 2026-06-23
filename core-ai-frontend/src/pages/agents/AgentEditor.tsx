@@ -16,6 +16,7 @@ const NEW_AGENT_SKELETON: AgentDefinition = {
   created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',
   subagent_ids: [], skill_ids: [],
   dataset_config: [],
+  enable_memory: false,
 };
 
 export default function AgentEditor() {
@@ -425,6 +426,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           skill_ids: agent.skill_ids,
           dataset_config: agent.dataset_config,
           sandbox_config: agent.sandbox_config,
+          enable_memory: agent.enable_memory,
         } as any);
         navigate(`/agents/${created.id}`);
         return;
@@ -449,6 +451,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           skill_ids: agent.skill_ids,
           dataset_config: agent.dataset_config,
           sandbox_config: agent.sandbox_config,
+          enable_memory: agent.enable_memory,
         } as any);
         setAgent(updated);
       setSaveSuccess(true);
@@ -648,7 +651,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
   };
 
   const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'multi_modal_model', 'temperature',
-    'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema', 'subagent_ids', 'skill_ids'] as const;
+    'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema', 'subagent_ids', 'skill_ids', 'enable_memory'] as const;
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -694,6 +697,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
       input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
       subagent_ids: a.subagent_ids,
       skill_ids: a.skill_ids,
+      enable_memory: a.enable_memory,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -978,6 +982,19 @@ The system prompt should define how this agent behaves, its capabilities, and it
                         placeholder="e.g. gpt-4o" />
                     </div>
                   )}
+                </div>
+
+                <div className="mt-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox"
+                      checked={agent.enable_memory !== false}
+                      onChange={e => update('enable_memory', e.target.checked)}
+                      className="w-4 h-4 rounded accent-[var(--color-accent)]" />
+                    <span className="text-sm font-medium">Enable memory</span>
+                  </label>
+                  <p className="text-xs mt-1 ml-6" style={{ color: 'var(--color-text-tertiary)' }}>
+                    When on, the agent learns from completed runs and reuses that experience in later runs. Publish to apply changes to live runs.
+                  </p>
                 </div>
               </div>
             )}

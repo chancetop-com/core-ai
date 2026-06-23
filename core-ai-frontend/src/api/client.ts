@@ -313,6 +313,7 @@ export interface AgentDefinition {
   skills?: { id: string; name: string }[];
   sandbox_config?: SandboxConfig;
   dataset_config?: AgentDatasetConfig[];
+  enable_memory?: boolean;
 }
 
 export interface AgentMemoryView {

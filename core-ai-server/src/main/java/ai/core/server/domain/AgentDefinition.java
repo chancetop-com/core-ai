@@ -67,6 +67,9 @@ public class AgentDefinition {
     @Field(name = "system_default")
     public Boolean systemDefault;
 
+    @Field(name = "enable_memory")
+    public Boolean enableMemory;
+
     @NotNull
     @Field(name = "type")
     public DefinitionType type;

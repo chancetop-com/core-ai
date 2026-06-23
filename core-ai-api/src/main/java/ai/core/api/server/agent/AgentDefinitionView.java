@@ -57,6 +57,9 @@ public class AgentDefinitionView {
     @Property(name = "system_default")
     public Boolean systemDefault;
 
+    @Property(name = "enable_memory")
+    public Boolean enableMemory;
+
     @Property(name = "type")
     public String type;
 

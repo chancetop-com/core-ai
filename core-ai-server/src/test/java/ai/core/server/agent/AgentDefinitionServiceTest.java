@@ -46,4 +46,23 @@ class AgentDefinitionServiceTest {
         verify(service.skillService).get("skill-1");
         verifyNoMoreInteractions(service.skillService);
     }
+
+    @Test
+    void toViewMapsEnableMemory() {
+        var service = new AgentDefinitionService();
+        service.skillService = mock(SkillService.class);
+
+        var entity = new AgentDefinition();
+        entity.id = "agent-1";
+        entity.name = "Agent One";
+        entity.type = DefinitionType.AGENT;
+        entity.status = AgentStatus.DRAFT;
+        entity.enableMemory = false;
+        entity.createdAt = ZonedDateTime.now();
+        entity.updatedAt = entity.createdAt;
+
+        var view = service.toView(entity);
+
+        assertEquals(Boolean.FALSE, view.enableMemory);
+    }
 }

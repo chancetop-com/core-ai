@@ -48,6 +48,9 @@ public class AgentPublishedConfig {
     @Field(name = "response_schema")
     public String responseSchema;
 
+    @Field(name = "enable_memory")
+    public Boolean enableMemory;
+
     @Field(name = "sandbox_config")
     public AgentSandboxConfig sandboxConfig;
 

@@ -84,6 +84,7 @@ public class AgentDefinitionService {
         entity.responseSchema = request.responseSchema;
         entity.sandboxConfig = request.sandboxConfig != null ? fromSandboxConfigView(request.sandboxConfig) : null;
         entity.datasetConfig = toDatasetConfigs(request.datasetConfig);
+        entity.enableMemory = Boolean.TRUE.equals(request.enableMemory);
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -202,6 +203,7 @@ public class AgentDefinitionService {
         if (request.skillIds != null) entity.skillIds = IdLists.cleanOrNull(request.skillIds);
         if (request.sandboxConfig != null) entity.sandboxConfig = fromSandboxConfigView(request.sandboxConfig);
         if (request.datasetConfig != null) entity.datasetConfig = toDatasetConfigs(request.datasetConfig);
+        if (request.enableMemory != null) entity.enableMemory = request.enableMemory;
         entity.updatedAt = ZonedDateTime.now();
 
         agentDefinitionCollection.replace(entity);
@@ -231,6 +233,7 @@ public class AgentDefinitionService {
         config.skillIds = IdLists.cleanOrNull(entity.skillIds);
         config.sandboxConfig = entity.sandboxConfig;
         config.datasetConfig = entity.datasetConfig;
+        config.enableMemory = entity.enableMemory;
 
         entity.publishedConfig = config;
         entity.status = AgentStatus.PUBLISHED;
@@ -261,6 +264,7 @@ public class AgentDefinitionService {
                 .toList();
         entity.inputTemplate = request.inputTemplate;
         entity.type = DefinitionType.AGENT;
+        entity.enableMemory = false;
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -314,6 +318,7 @@ public class AgentDefinitionService {
         view.inputTemplate = entity.inputTemplate;
         view.variables = entity.variables;
         view.systemDefault = entity.systemDefault;
+        view.enableMemory = entity.enableMemory;
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema;
         view.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);

@@ -4,6 +4,7 @@ import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanType;
@@ -104,6 +105,9 @@ public class AgentMemoryConsolidationJob implements Job {
     MongoCollection<Span> spanCollection;
 
     @Inject
+    MongoCollection<AgentDefinition> agentDefinitionCollection;
+
+    @Inject
     AgentMemoryService agentMemoryService;
 
     @Override
@@ -147,6 +151,14 @@ public class AgentMemoryConsolidationJob implements Job {
     }
 
     private void processAgent(String agentId) {
+        var definition = agentDefinitionCollection.get(agentId).orElse(null);
+        if (definition != null) {
+            var enableMemory = definition.publishedConfig != null ? definition.publishedConfig.enableMemory : definition.enableMemory;
+            if (!AgentMemoryService.memoryEnabled(enableMemory)) {
+                LOGGER.debug("agent={} memory disabled, skipping extraction", agentId);
+                return;
+            }
+        }
         var cursor = agentMemoryService.getCursor(agentId);
         var since = cursor != null ? cursor.lastProcessedAt : ZonedDateTime.now().minusYears(10);
 

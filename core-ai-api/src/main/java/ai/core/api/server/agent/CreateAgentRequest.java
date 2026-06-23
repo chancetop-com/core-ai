@@ -39,6 +39,9 @@ public class CreateAgentRequest {
     @Property(name = "timeout_seconds")
     public Integer timeoutSeconds;
 
+    @Property(name = "enable_memory")
+    public Boolean enableMemory;
+
     @Property(name = "tools")
     public List<ToolRefView> tools;
 

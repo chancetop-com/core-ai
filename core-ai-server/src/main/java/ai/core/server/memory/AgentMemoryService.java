@@ -22,6 +22,11 @@ public class AgentMemoryService {
 
             """;
 
+    // Memory is opt-out: null (legacy agents) and true both enable it; only an explicit false disables it.
+    public static boolean memoryEnabled(Boolean enableMemory) {
+        return !Boolean.FALSE.equals(enableMemory);
+    }
+
     @Inject
     MongoCollection<AgentMemory> memoryCollection;
 

@@ -411,8 +411,11 @@ public class AgentRunner {
         if (maxTurns != null) builder.maxTurn(maxTurns);
         if (skillRegistry != null) builder.skillRegistry(skillRegistry);
         injectDatasetSystemVars(builder, config, definition);
-        var memoryInject = agentMemoryService.buildMemoryPromptInject(definition.id);
-        if (memoryInject != null) builder.systemPromptSection(memoryInject);
+        var enableMemory = config != null ? config.enableMemory : definition.enableMemory;
+        if (AgentMemoryService.memoryEnabled(enableMemory)) {
+            var memoryInject = agentMemoryService.buildMemoryPromptInject(definition.id);
+            if (memoryInject != null) builder.systemPromptSection(memoryInject);
+        }
         var agent = builder.build();
         agent.setAuthenticated(true);
         return agent;
