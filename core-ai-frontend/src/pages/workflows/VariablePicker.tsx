@@ -1,13 +1,14 @@
 import { type CSSProperties } from 'react';
 import { variableGroups } from './variables';
 import type { WorkflowRFNode } from './graph';
+import type { Edge } from '@xyflow/react';
 
-/** A grouped variable dropdown: upstream nodes (by name) -> their output fields (by name + type). Picking one
- *  calls onPick with the dotted selector; the host (chip field / map row) decides how to embed it. */
-export default function VariablePicker({ nodes, selfId, onPick, label, style }: {
-  nodes: WorkflowRFNode[]; selfId: string; onPick: (selector: string) => void; label?: string; style?: CSSProperties;
+/** A grouped variable dropdown: the nodes that dominate selfId (by name) -> their output fields (by name + type).
+ *  Picking one calls onPick with the dotted selector; the host (chip field / map row) decides how to embed it. */
+export default function VariablePicker({ nodes, edges, selfId, onPick, label, style }: {
+  nodes: WorkflowRFNode[]; edges: Edge[]; selfId: string; onPick: (selector: string) => void; label?: string; style?: CSSProperties;
 }) {
-  const groups = variableGroups(nodes, selfId);
+  const groups = variableGroups(nodes, edges, selfId);
   return (
     <select
       value=""

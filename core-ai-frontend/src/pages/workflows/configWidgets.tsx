@@ -1,6 +1,6 @@
 import { type CSSProperties } from 'react';
 import type { Edge } from '@xyflow/react';
-import type { WorkflowRFNode } from './graph';
+import { visibleSourceIds, type WorkflowRFNode } from './graph';
 
 // Operators mirror the backend IfElseExecutor; unary ones compare against no value.
 export const OPERATORS: { value: string; label: string; unary?: boolean }[] = [
@@ -39,13 +39,15 @@ export function startInputVars(nodes: WorkflowRFNode[]): InputVar[] {
 
 // Base variable selectors a node can read: the run input (and each declared input field) plus every other
 // node's output.
-export function availableVariables(nodes: WorkflowRFNode[], selfId: string): { selector: string; label: string }[] {
+export function availableVariables(nodes: WorkflowRFNode[], edges: Edge[], selfId: string): { selector: string; label: string }[] {
+  const visible = visibleSourceIds(nodes, edges, selfId);
   const vars = [{ selector: 'sys.input', label: 'Run input' }];
   for (const iv of startInputVars(nodes)) {
     if (iv.name) vars.push({ selector: `sys.input.${iv.name}`, label: `Input · ${iv.label || iv.name}` });
   }
   for (const n of nodes) {
-    if (n.id === selfId || n.data.nodeType === 'END' || n.data.nodeType === 'NOTE' || n.data.nodeType === 'START') continue;
+    if (n.id === selfId || !visible.has(n.id)) continue;
+    if (n.data.nodeType === 'END' || n.data.nodeType === 'NOTE' || n.data.nodeType === 'START') continue;
     vars.push({ selector: `nodes.${n.id}.output`, label: `${n.data.name} · output` });
   }
   return vars;
@@ -87,10 +89,10 @@ export function EdgeSelect({ edges, nodes, value, onChange }: {
 
 // A text template field with an "insert variable" dropdown — the user picks an upstream variable and a
 // {{ selector }} token is appended, so the template syntax never has to be typed or memorized.
-export function TemplateField({ value, onChange, nodes, selfId, placeholder, rows }: {
-  value: string; onChange: (next: string) => void; nodes: WorkflowRFNode[]; selfId: string; placeholder?: string; rows?: number;
+export function TemplateField({ value, onChange, nodes, edges, selfId, placeholder, rows }: {
+  value: string; onChange: (next: string) => void; nodes: WorkflowRFNode[]; edges: Edge[]; selfId: string; placeholder?: string; rows?: number;
 }) {
-  const vars = availableVariables(nodes, selfId);
+  const vars = availableVariables(nodes, edges, selfId);
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>

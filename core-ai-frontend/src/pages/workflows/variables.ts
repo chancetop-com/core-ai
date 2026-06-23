@@ -1,5 +1,6 @@
-import { nodeMeta, type WorkflowRFNode } from './graph';
+import { nodeMeta, visibleSourceIds, type WorkflowRFNode } from './graph';
 import { startInputVars } from './configWidgets';
+import type { Edge } from '@xyflow/react';
 
 export interface OutputField { selector: string; label: string; type: string; }
 export interface VarGroup { key: string; nodeName: string; color: string; fields: OutputField[]; }
@@ -41,11 +42,13 @@ export function runInputFields(nodes: WorkflowRFNode[]): OutputField[] {
   return fields;
 }
 
-// Grouped variables a node can reference: the run input, then every other usable node's output fields.
-export function variableGroups(nodes: WorkflowRFNode[], selfId: string): VarGroup[] {
+// Grouped variables a node can reference: the run input, then each node that DOMINATES this node (so the picker
+// only offers references the publish-time dominator check will accept — END/AGGREGATOR see every node).
+export function variableGroups(nodes: WorkflowRFNode[], edges: Edge[], selfId: string): VarGroup[] {
+  const visible = visibleSourceIds(nodes, edges, selfId);
   const groups: VarGroup[] = [{ key: 'sys', nodeName: 'Run input', color: '#16a34a', fields: runInputFields(nodes) }];
   for (const n of nodes) {
-    if (n.id === selfId) continue;
+    if (n.id === selfId || !visible.has(n.id)) continue;
     const t = n.data.nodeType;
     if (t === 'START' || t === 'END' || t === 'NOTE') continue;
     groups.push({ key: n.id, nodeName: n.data.name, color: nodeMeta(t).color, fields: nodeOutputFields(n) });

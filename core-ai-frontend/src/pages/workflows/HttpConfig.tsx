@@ -2,11 +2,13 @@ import { useState, type CSSProperties } from 'react';
 import { Plus, X } from 'lucide-react';
 import VariableChipField from './VariableChipField';
 import type { WorkflowRFNode } from './graph';
+import type { Edge } from '@xyflow/react';
 
 interface Props {
   config: Record<string, unknown>;
   onConfig: (partial: Record<string, unknown>) => void;
   nodes: WorkflowRFNode[];
+  edges: Edge[];
   selfId: string;
 }
 
@@ -15,7 +17,7 @@ const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 interface Header { key: string; value: string; }
 
 /** HTTP node config: method, templated url, header rows, and a templated body (for methods that send one). */
-export default function HttpConfig({ config, onConfig, nodes, selfId }: Props) {
+export default function HttpConfig({ config, onConfig, nodes, edges, selfId }: Props) {
   const method = String(config.method ?? 'GET');
   const sendsBody = method !== 'GET' && method !== 'DELETE';
 
@@ -43,6 +45,7 @@ export default function HttpConfig({ config, onConfig, nodes, selfId }: Props) {
         value={String(config.url ?? '')}
         onChange={(v) => onConfig({ url: v })}
         nodes={nodes}
+        edges={edges}
         selfId={selfId}
         placeholder="https://api.example.com/v1/…"
       />
@@ -64,6 +67,7 @@ export default function HttpConfig({ config, onConfig, nodes, selfId }: Props) {
             value={String(config.body ?? '')}
             onChange={(v) => onConfig({ body: v })}
             nodes={nodes}
+            edges={edges}
             selfId={selfId}
             placeholder='{"q": "…"}'
             multiline

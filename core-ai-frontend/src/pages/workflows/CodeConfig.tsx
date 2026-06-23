@@ -7,19 +7,21 @@ import type { WorkflowNodeData, WorkflowRFNode } from './graph';
 import { widgetInput, smallBtn, iconBtnSmall } from './configWidgets';
 import VariablePicker from './VariablePicker';
 import { selectorMeta } from './variables';
+import type { Edge } from '@xyflow/react';
 
 interface Row { name: string; selector: string; }
 
 interface Props {
   node: WorkflowRFNode;
   nodes: WorkflowRFNode[];
+  edges: Edge[];
   onChange: (partial: Partial<WorkflowNodeData>) => void;
 }
 
 /** CODE node form: a Python editor plus named inputs (each a variable selector). Local state keyed off node.id
  *  avoids re-deriving rows from the config map on every keystroke (which would remap keys and fight the cursor);
  *  the config (code + inputs map the backend reads) is synced on every edit. */
-export default function CodeConfig({ node, nodes, onChange }: Props) {
+export default function CodeConfig({ node, nodes, edges, onChange }: Props) {
   // The panel is keyed by node.id at the call site, so this remounts per node and seeds once in the initializers
   // below — local state never desyncs from a different node and there is no stale-render window.
   const [code, setCode] = useState<string>(() => {
@@ -89,7 +91,7 @@ export default function CodeConfig({ node, nodes, onChange }: Props) {
           ) : (
             <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--color-text-secondary)' }}>no variable</span>
           )}
-          <VariablePicker nodes={nodes} selfId={node.id} label="var" onPick={(sel) => sync(code, rows.map((r, j) => (j === i ? { ...r, selector: sel } : r)))} />
+          <VariablePicker nodes={nodes} edges={edges} selfId={node.id} label="var" onPick={(sel) => sync(code, rows.map((r, j) => (j === i ? { ...r, selector: sel } : r)))} />
           <button onClick={() => sync(code, rows.filter((_, j) => j !== i))} style={iconBtnSmall} title="Remove input"><X size={12} /></button>
         </div>
       ))}

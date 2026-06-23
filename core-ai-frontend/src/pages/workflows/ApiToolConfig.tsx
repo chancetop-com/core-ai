@@ -2,11 +2,13 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { api, type ApiAppView, type ApiServiceView } from '../../api/client';
 import VariableMapEditor from './VariableMapEditor';
 import type { WorkflowRFNode } from './graph';
+import type { Edge } from '@xyflow/react';
 
 interface Props {
   config: Record<string, unknown>;
   onConfig: (partial: Record<string, unknown>) => void;
   nodes: WorkflowRFNode[];
+  edges: Edge[];
   selfId: string;
 }
 
@@ -18,7 +20,7 @@ function toolCallName(appName: string, service: string, operation: string): stri
 }
 
 /** API tool node config: pick a Service-API app, then one of its operations, then the JSON arguments. */
-export default function ApiToolConfig({ config, onConfig, nodes, selfId }: Props) {
+export default function ApiToolConfig({ config, onConfig, nodes, edges, selfId }: Props) {
   const [apps, setApps] = useState<ApiAppView[]>([]);
   const [ops, setOps] = useState<Op[]>([]);
   const [loadingOps, setLoadingOps] = useState(false);
@@ -66,7 +68,7 @@ export default function ApiToolConfig({ config, onConfig, nodes, selfId }: Props
 
       <label style={label}>Arguments</label>
       {/* key forces a fresh editor per operation so rows reseed cleanly when the operation changes */}
-      <VariableMapEditor key={appName + ':' + toolName} value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} selfId={selfId} />
+      <VariableMapEditor key={appName + ':' + toolName} value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} edges={edges} selfId={selfId} />
     </>
   );
 }

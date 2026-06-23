@@ -2,11 +2,13 @@ import { useEffect, useRef, type CSSProperties, type ClipboardEvent as ReactClip
 import VariablePicker from './VariablePicker';
 import { parseSegments, selectorMeta } from './variables';
 import type { WorkflowRFNode } from './graph';
+import type { Edge } from '@xyflow/react';
 
 interface Props {
   value: string;
   onChange: (next: string) => void;
   nodes: WorkflowRFNode[];
+  edges: Edge[];
   selfId: string;
   placeholder?: string;
   multiline?: boolean;
@@ -15,7 +17,7 @@ interface Props {
 /** Inline variable field: free text with variables rendered as name-labeled chips (Dify-style). The user never
  *  sees the raw {{ nodes.<id>... }} / node ids; chips resolve their label live from the node name. Stored value
  *  stays the id-based template string. Uncontrolled contentEditable so the caret survives edits. */
-export default function VariableChipField({ value, onChange, nodes, selfId, placeholder, multiline }: Props) {
+export default function VariableChipField({ value, onChange, nodes, edges, selfId, placeholder, multiline }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const range = useRef<Range | null>(null);
 
@@ -106,7 +108,7 @@ export default function VariableChipField({ value, onChange, nodes, selfId, plac
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-        <VariablePicker nodes={nodes} selfId={selfId} onPick={insert} />
+        <VariablePicker nodes={nodes} edges={edges} selfId={selfId} onPick={insert} />
       </div>
       <div
         ref={ref}
@@ -143,13 +145,17 @@ function chipEl(selector: string, nodes: WorkflowRFNode[]): HTMLElement {
   span.contentEditable = 'false';
   span.dataset.sel = selector;
   span.textContent = label;
-  span.style.cssText = `display:inline-flex;align-items:center;padding:0 6px;margin:0 1px;border-radius:5px;`
+  span.title = label;   // long names truncate to an ellipsis; the full selector label stays on hover
+  // inline-block (not inline-flex) + vertical margin keeps chips from overlapping the next wrapped line — the
+  // editor's tall line-height gives each row room; max-width caps a long name so one chip can't blow out the field.
+  span.style.cssText = `display:inline-block;vertical-align:middle;line-height:1.5;padding:1px 6px;margin:2px 1px;`
+    + `max-width:220px;overflow:hidden;text-overflow:ellipsis;border-radius:5px;`
     + `font-size:12px;font-family:system-ui,sans-serif;white-space:nowrap;background:${color}22;color:${color};border:1px solid ${color}55;`;
   return span;
 }
 
 const box: CSSProperties = {
-  width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 13, lineHeight: 1.7,
+  width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 13, lineHeight: 2.1,
   border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-bg)', color: 'var(--color-text)',
   outline: 'none', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
 };

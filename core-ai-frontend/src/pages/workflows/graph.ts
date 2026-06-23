@@ -169,6 +169,56 @@ export const TERMINAL_RUN_STATUS = new Set(['COMPLETED', 'FAILED', 'TIMEOUT', 'C
 // Terminal NODE statuses (NodeRunStatus) — count toward progress.
 export const TERMINAL_NODE_STATUS = new Set(['COMPLETED', 'SKIPPED', 'FAILED_RETRYABLE']);
 
+// Iterative dominator sets, mirroring the backend DominatorValidator: Dom(entry) = {entry};
+// Dom(n) = {n} ∪ ⋂ Dom(preds). X dominates Y iff every path from an entry to Y passes through X.
+// Memoized by (nodes, edges) reference identity: every variable picker in one render pass shares the live
+// nodes/edges arrays, so the whole-graph fixpoint runs once per render instead of once per picker.
+let domCache: { nodes: WorkflowRFNode[]; edges: Edge[]; result: Map<string, Set<string>> } | null = null;
+export function computeDominators(nodes: WorkflowRFNode[], edges: Edge[]): Map<string, Set<string>> {
+  if (domCache && domCache.nodes === nodes && domCache.edges === edges) return domCache.result;
+  const ids = nodes.map((n) => n.id);
+  const all = new Set(ids);
+  const preds = new Map<string, string[]>(ids.map((id) => [id, [] as string[]]));
+  for (const e of edges) preds.get(e.target)?.push(e.source);
+  const dom = new Map<string, Set<string>>(
+    ids.map((id) => [id, preds.get(id)!.length === 0 ? new Set([id]) : new Set(all)]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const id of ids) {
+      const ps = preds.get(id)!;
+      if (ps.length === 0) continue;
+      let inter: Set<string> | null = null;
+      for (const p of ps) {
+        const pd = dom.get(p);
+        if (!pd) continue;
+        if (inter === null) {
+          inter = new Set(pd);
+        } else {
+          const prev: Set<string> = inter;
+          inter = new Set([...prev].filter((x) => pd.has(x)));
+        }
+      }
+      const next = new Set<string>([id, ...(inter ?? [])]);
+      const cur = dom.get(id)!;
+      if (next.size !== cur.size || [...next].some((x) => !cur.has(x))) { dom.set(id, next); changed = true; }
+    }
+  }
+  domCache = { nodes, edges, result: dom };
+  return dom;
+}
+
+// The node ids whose variables a node may reference — its dominators, matching the publish-time dominator check
+// (a node reading a non-dominator is a publish error). END/AGGREGATOR are exempt on the backend (they may read any
+// branch, rendering empty if skipped), so the picker still offers them every node.
+export function visibleSourceIds(nodes: WorkflowRFNode[], edges: Edge[], selfId: string): Set<string> {
+  const self = nodes.find((n) => n.id === selfId);
+  if (self && (self.data.nodeType === 'AGGREGATOR' || self.data.nodeType === 'END')) {
+    return new Set(nodes.map((n) => n.id));
+  }
+  return computeDominators(nodes, edges).get(selfId) ?? new Set([selfId]);
+}
+
 export function toReactFlow(graph: WorkflowGraph): { nodes: WorkflowRFNode[]; edges: Edge[] } {
   const nodes: WorkflowRFNode[] = graph.nodes.map((n, i) => ({
     id: n.id,

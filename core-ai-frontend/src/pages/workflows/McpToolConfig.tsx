@@ -2,16 +2,18 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { api, type ToolRegistryView, type McpToolInfo } from '../../api/client';
 import VariableMapEditor, { parseMcpSchema } from './VariableMapEditor';
 import type { WorkflowRFNode } from './graph';
+import type { Edge } from '@xyflow/react';
 
 interface Props {
   config: Record<string, unknown>;
   onConfig: (partial: Record<string, unknown>) => void;
   nodes: WorkflowRFNode[];
+  edges: Edge[];
   selfId: string;
 }
 
 /** MCP tool node config: pick an MCP server, then one of its tools, then the JSON arguments (template-aware). */
-export default function McpToolConfig({ config, onConfig, nodes, selfId }: Props) {
+export default function McpToolConfig({ config, onConfig, nodes, edges, selfId }: Props) {
   const [servers, setServers] = useState<ToolRegistryView[]>([]);
   const [tools, setTools] = useState<McpToolInfo[]>([]);
   const [loadingTools, setLoadingTools] = useState(false);
@@ -56,7 +58,7 @@ export default function McpToolConfig({ config, onConfig, nodes, selfId }: Props
 
       <label style={label}>Arguments</label>
       {/* key forces a fresh editor per tool so rows reseed from the new tool's params, not the previous tool's */}
-      <VariableMapEditor key={serverId + ':' + toolName} value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} selfId={selfId} params={params} />
+      <VariableMapEditor key={serverId + ':' + toolName} value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} edges={edges} selfId={selfId} params={params} />
     </>
   );
 }

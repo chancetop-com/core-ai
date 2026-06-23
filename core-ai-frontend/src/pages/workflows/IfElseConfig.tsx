@@ -57,7 +57,7 @@ export default function IfElseConfig({ node, nodes, edges, onChange }: Props) {
                     <button onClick={() => patchCondition(ci, ki, { selector: '' })} style={chipX} title="Clear">×</button>
                   </span>
                 ) : (
-                  <VariablePicker nodes={nodes} selfId={node.id} label="— variable —" onPick={(sel) => patchCondition(ci, ki, { selector: sel })} style={{ flex: 1, minWidth: 0 }} />
+                  <VariablePicker nodes={nodes} edges={edges} selfId={node.id} label="— variable —" onPick={(sel) => patchCondition(ci, ki, { selector: sel })} style={{ flex: 1, minWidth: 0 }} />
                 )}
                 <select value={cond.operator} onChange={(e) => patchCondition(ci, ki, { operator: e.target.value })} style={{ ...widgetInput, width: 96 }}>
                   {OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}

@@ -96,24 +96,25 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
             value={String(config.input ?? '')}
             onChange={(v) => onConfig({ input: v })}
             nodes={nodes}
+            edges={edges}
             selfId={node.id}
             placeholder="defaults to the run input"
             multiline
           />
         </>
       ) : isMcpTool ? (
-        <McpToolConfig config={config} onConfig={onConfig} nodes={nodes} selfId={node.id} />
+        <McpToolConfig config={config} onConfig={onConfig} nodes={nodes} edges={edges} selfId={node.id} />
       ) : isApiTool ? (
-        <ApiToolConfig config={config} onConfig={onConfig} nodes={nodes} selfId={node.id} />
+        <ApiToolConfig config={config} onConfig={onConfig} nodes={nodes} edges={edges} selfId={node.id} />
       ) : isHttp ? (
-        <HttpConfig config={config} onConfig={onConfig} nodes={nodes} selfId={node.id} />
+        <HttpConfig config={config} onConfig={onConfig} nodes={nodes} edges={edges} selfId={node.id} />
       ) : isIfElse ? (
         <>
           <label style={label}>Branches</label>
           <IfElseConfig node={node} nodes={nodes} edges={edges} onChange={onChange} />
         </>
       ) : isCode ? (
-        <CodeConfig node={node} nodes={nodes} onChange={onChange} />
+        <CodeConfig node={node} nodes={nodes} edges={edges} onChange={onChange} />
       ) : isHumanInput ? (
         <HumanInputConfig node={node} nodes={nodes} edges={edges} onChange={onChange} />
       ) : isTemplate ? (
@@ -123,6 +124,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
             value={String(config.template ?? '')}
             onChange={(v) => onConfig({ template: v })}
             nodes={nodes}
+            edges={edges}
             selfId={node.id}
             placeholder="fixed text, or mix in {{ variables }}"
             multiline
@@ -138,6 +140,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
             value={String(config.output ?? '')}
             onChange={(v) => onConfig({ output: v })}
             nodes={nodes}
+            edges={edges}
             selfId={node.id}
             placeholder="leave empty to auto-pass the branch / merge parallel inputs"
             multiline
@@ -151,6 +154,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
             value={String(config.output ?? '')}
             onChange={(v) => onConfig({ output: v })}
             nodes={nodes}
+            edges={edges}
             selfId={node.id}
             placeholder="combine inputs, e.g. A: {{a}} B: {{b}}"
             multiline

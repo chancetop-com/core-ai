@@ -36,6 +36,7 @@ export default function HumanInputConfig({ node, nodes, edges, onChange }: Props
         value={String(config.prompt ?? '')}
         onChange={(v) => set({ prompt: v })}
         nodes={nodes}
+        edges={edges}
         selfId={node.id}
         placeholder="what the reviewer sees, e.g. Confirm sending {{ draft.output }}"
         multiline

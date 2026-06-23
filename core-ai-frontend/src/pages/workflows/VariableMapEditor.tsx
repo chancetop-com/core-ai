@@ -3,6 +3,7 @@ import { Plus, X } from 'lucide-react';
 import VariablePicker from './VariablePicker';
 import { selectorMeta } from './variables';
 import type { WorkflowRFNode } from './graph';
+import type { Edge } from '@xyflow/react';
 
 // A declared parameter from a tool's input schema — drives auto-filled rows so users don't type param names.
 export interface ParamSpec { name: string; type: string; required: boolean; description?: string }
@@ -35,6 +36,7 @@ interface Props {
   value: string;
   onChange: (next: string) => void;
   nodes: WorkflowRFNode[];
+  edges: Edge[];
   selfId: string;
   params?: ParamSpec[];   // when set, every declared param shows as a row (locked key, required marker, type hint)
 }
@@ -44,7 +46,7 @@ interface Row { key: string; value: string; } // value is either a {{ selector }
 /** Structured argument editor: each named param is bound to a variable (chip) or a typed literal, producing a
  *  flat JSON-object template string. With `params`, declared tool params are pre-listed so the user only fills
  *  values; extra params can still be added free-form. Falls back to no rows if the stored value isn't a flat object. */
-export default function VariableMapEditor({ value, onChange, nodes, selfId, params }: Props) {
+export default function VariableMapEditor({ value, onChange, nodes, edges, selfId, params }: Props) {
   const [rows, setRows] = useState<Row[]>(() => parse(value));
   const specByName = useMemo(() => new Map((params ?? []).map((p) => [p.name, p])), [params]);
 
@@ -85,7 +87,7 @@ export default function VariableMapEditor({ value, onChange, nodes, selfId, para
             ) : (
               <input value={row.value} placeholder={spec ? spec.type : 'value or pick a variable →'} onChange={(e) => setRow(i, { value: e.target.value })} style={{ ...input, flex: 1.4 }} />
             )}
-            <VariablePicker nodes={nodes} selfId={selfId} label="var" onPick={(sel) => setRow(i, { value: `{{ ${sel} }}` })} style={{ flexShrink: 0 }} />
+            <VariablePicker nodes={nodes} edges={edges} selfId={selfId} label="var" onPick={(sel) => setRow(i, { value: `{{ ${sel} }}` })} style={{ flexShrink: 0 }} />
             {spec ? <span style={{ width: 30, flexShrink: 0 }} /> : (
               <button onClick={() => sync(displayRows.filter((_, j) => j !== i))} style={delBtn} title="Remove"><X size={14} /></button>
             )}
