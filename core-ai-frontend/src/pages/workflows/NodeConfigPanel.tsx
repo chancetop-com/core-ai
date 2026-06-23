@@ -12,6 +12,7 @@ import ApiToolConfig from './ApiToolConfig';
 import HttpConfig from './HttpConfig';
 import RetryFields from './RetryFields';
 import VariableChipField from './VariableChipField';
+import DeliverablesField from './DeliverablesField';
 
 interface AgentOption { id: string; name: string; }
 
@@ -146,6 +147,15 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
             multiline
           />
           <div style={hint}>Empty = pass through the single completed input, or merge multiple parallel inputs into an object.</div>
+          <label style={label}>Deliverables</label>
+          <DeliverablesField
+            nodes={nodes}
+            edges={edges}
+            selfId={node.id}
+            value={Array.isArray(config.artifacts) ? (config.artifacts as string[]) : []}
+            onChange={(v) => onConfig({ artifacts: v })}
+          />
+          <div style={hint}>Files the run hands back as downloads. Empty = the END's direct inputs plus any referenced in Output above. Checking any node delivers exactly the checked ones (Output references are not auto-added).</div>
         </>
       ) : isAggregator ? (
         <>

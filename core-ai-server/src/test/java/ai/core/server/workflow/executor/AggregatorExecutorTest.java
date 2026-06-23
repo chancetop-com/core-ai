@@ -41,11 +41,28 @@ class AggregatorExecutorTest {
         assertTrue(assertInstanceOf(NodeOutcome.Normal.class, outcome).artifacts().isEmpty());
     }
 
+    @Test
+    void outputTemplateLiftsReferencedNonPredecessorArtifacts() {
+        // an aggregator output template that references an ancestor's files (not a direct predecessor) lifts them,
+        // so they propagate downstream instead of being dropped at the aggregator boundary.
+        var pool = new VariablePool(Map.of(), Map.of(
+            "a", List.of(ref("f1", "a.pdf")),
+            "scratch", List.of(ref("tmp", "scratch.csv"))), "{}");
+        var outcome = new AggregatorExecutor().execute(ctx(pool, Map.of("output", "see {{ nodes.scratch.artifacts }}")));
+
+        var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
+        assertEquals(List.of("f1", "tmp"), normal.artifacts().stream().map(r -> r.fileId).toList());
+    }
+
     private static NodeContext ctx(VariablePool pool) {
+        return ctx(pool, Map.of());
+    }
+
+    private static NodeContext ctx(VariablePool pool, Map<String, Object> config) {
         var run = new WorkflowRun();
         run.id = "run-1";
         run.input = "{}";
-        return new NodeContext(GRAPH, run, new WorkflowNode("agg", "AGGREGATOR"), List.of(), pool);
+        return new NodeContext(GRAPH, run, new WorkflowNode("agg", "AGGREGATOR", List.of(), config), List.of(), pool);
     }
 
     private static ArtifactRef ref(String fileId, String fileName) {

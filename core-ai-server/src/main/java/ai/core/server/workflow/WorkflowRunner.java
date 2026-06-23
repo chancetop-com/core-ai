@@ -260,8 +260,9 @@ public class WorkflowRunner {
     }
 
     // The run's output and delivered files both come from the single COMPLETED END node-run (single-END is
-    // enforced at publish). END declares the deliverables (EndExecutor.composeDeliverables); intermediate nodes'
-    // files stay visible per node-run in the trace but are not lifted to the run result.
+    // enforced at publish). END declares the deliverables (EndExecutor.composeDeliverables); an intermediate
+    // node's file is lifted to the run result only when END's output/artifacts references it — otherwise it
+    // stays visible per node-run in the trace only.
     private WorkflowNodeRun endNodeRun(String runId) {
         for (WorkflowNodeRun nodeRun : nodeRunCollection.find(Filters.and(
             Filters.eq("run_id", runId),

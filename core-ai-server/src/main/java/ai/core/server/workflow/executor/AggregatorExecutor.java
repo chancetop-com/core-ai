@@ -11,6 +11,9 @@ import ai.core.server.workflow.NodeOutcome;
  * node can reference a single variable; for pure parallel a downstream template can already pull each branch, so
  * the aggregator there is just convenience.
  *
+ * <p>Its artifacts ({@link OutputComposer#composeArtifacts}) are the predecessor union plus any files its
+ * {@code output} template references, so files pulled through an aggregator propagate downstream too.
+ *
  * @author Xander
  */
 public class AggregatorExecutor implements NodeExecutor {

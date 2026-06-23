@@ -67,6 +67,47 @@ class EndExecutorTest {
         assertTrue(assertInstanceOf(NodeOutcome.Normal.class, outcome).artifacts().isEmpty());
     }
 
+    @Test
+    void outputTemplateReferencingUpstreamArtifactsLiftsThemIntoDeliverables() {
+        // the END output template pulls an upstream (non-adjacent) node's files in -> they become deliverables,
+        // unioned on top of the predecessor default. Reproduces "files in result text but no deliverable cards".
+        var pool = new VariablePool(Map.of("draft", "d", "report", "r"), Map.of(
+            "scratch", List.of(ref("tmp", "scratch.csv")),
+            "draft", List.of(ref("f1", "draft.md")),
+            "report", List.of(ref("f2", "report.pdf"))), "{}");
+        var outcome = new EndExecutor().execute(ctx(pool, Map.of("output", "files: {{ nodes.scratch.artifacts }}")));
+
+        var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
+        assertEquals(List.of("f1", "f2", "tmp"), normal.artifacts().stream().map(r -> r.fileId).toList());
+    }
+
+    @Test
+    void explicitArtifactsSelectorsSuppressOutputTemplateLift() {
+        // an explicit deliverables list is authoritative: files the output template references are NOT auto-added,
+        // so the user can narrow deliverables even while showing other nodes' files as text/links in the output.
+        var pool = new VariablePool(Map.of("report", "r"), Map.of(
+            "draft", List.of(ref("f1", "draft.md")),
+            "report", List.of(ref("f2", "report.pdf"))), "{}");
+        var outcome = new EndExecutor().execute(ctx(pool, Map.of(
+            "artifacts", List.of("nodes.report.artifacts"),
+            "output", "drafts: {{ nodes.draft.artifacts }}")));
+
+        var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
+        assertEquals(List.of("f2"), normal.artifacts().stream().map(r -> r.fileId).toList());
+    }
+
+    @Test
+    void outputTemplateMetadataOnlyReferenceDoesNotLiftTheFile() {
+        // a .url / metadata reference is link forwarding, not delivery -> the file is NOT added to deliverables.
+        var pool = new VariablePool(Map.of("report", "r"), Map.of(
+            "scratch", List.of(ref("tmp", "scratch.csv")),
+            "report", List.of(ref("f2", "report.pdf"))), "{}");
+        var outcome = new EndExecutor().execute(ctx(pool, Map.of("output", "see {{ nodes.scratch.artifacts.0.url }}")));
+
+        var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
+        assertEquals(List.of("f2"), normal.artifacts().stream().map(r -> r.fileId).toList());
+    }
+
     private static NodeContext ctx(VariablePool pool, Map<String, Object> config) {
         var run = new WorkflowRun();
         run.id = "run-1";

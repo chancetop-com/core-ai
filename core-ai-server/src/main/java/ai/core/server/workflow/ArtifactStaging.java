@@ -3,6 +3,7 @@ package ai.core.server.workflow;
 import ai.core.server.domain.ArtifactRef;
 import ai.core.server.sandbox.SandboxService;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,26 +62,49 @@ public final class ArtifactStaging {
         return List.copyOf(staged.values());
     }
 
+    /**
+     * The artifact references a {@code {{ … }}} template delivers — its {@code nodes.<id>.artifacts} mentions
+     * resolved to {@link ArtifactRef}s with the same file-consuming granularity as staging (whole-array /
+     * whole-object / {@code .path} -> the file(s); a metadata-only reference such as {@code .url} -> none, its
+     * intent is link forwarding). Lets an END node lift the files its {@code output} template actually delivers
+     * into the run deliverables instead of them surfacing only as text. Duplicates by file_id are left for the
+     * caller's {@link ArtifactRef#union} to fold.
+     */
+    public static List<ArtifactRef> referencedFiles(String template, VariablePool pool) {
+        if (template == null || template.isBlank()) {
+            return List.of();
+        }
+        var refs = new ArrayList<ArtifactRef>();
+        Matcher matcher = TEMPLATE_REFERENCE.matcher(template);
+        while (matcher.find()) {
+            refs.addAll(referencedRefs(matcher.group(1), matcher.group(2), pool));
+        }
+        return refs;
+    }
+
     private static void collect(String nodeId, String suffix, VariablePool pool, Map<String, SandboxService.StagedFile> out) {
+        for (ArtifactRef ref : referencedRefs(nodeId, suffix, pool)) {
+            add(nodeId, ref, out);
+        }
+    }
+
+    // The artifact refs a "nodes.<id>.artifacts<suffix>" reference points at, with file-consuming granularity:
+    // whole-array / whole-object ({{ ….artifacts.0 }}) / local-path ({{ ….artifacts.0.path }}) -> the file(s);
+    // a metadata-only reference ({{ ….artifacts.0.url }}, .file_name, …) -> none (its intent is link forwarding).
+    private static List<ArtifactRef> referencedRefs(String nodeId, String suffix, VariablePool pool) {
         List<ArtifactRef> refs = pool.artifactsOf(nodeId);
         if (refs.isEmpty()) {
-            return;
+            return List.of();
         }
         String[] tokens = suffix.isEmpty() ? new String[0] : suffix.substring(1).split("\\.");
         if (tokens.length == 0) {
-            for (ArtifactRef ref : refs) {
-                add(nodeId, ref, out);
-            }
-            return;
+            return refs;
         }
         int index = parseIndex(tokens[0]);
         if (index < 0 || index >= refs.size()) {
-            return;   // not an indexed reference (or out of range) — nothing to stage
+            return List.of();   // not an indexed reference (or out of range)
         }
-        // whole-object ({{ ….artifacts.0 }}) or local-path ({{ ….artifacts.0.path }}) -> stage; metadata-only -> skip
-        if (tokens.length == 1 || "path".equals(tokens[1])) {
-            add(nodeId, refs.get(index), out);
-        }
+        return tokens.length == 1 || "path".equals(tokens[1]) ? List.of(refs.get(index)) : List.of();
     }
 
     private static void add(String nodeId, ArtifactRef ref, Map<String, SandboxService.StagedFile> out) {

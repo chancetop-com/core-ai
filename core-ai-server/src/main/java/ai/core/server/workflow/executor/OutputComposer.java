@@ -1,6 +1,7 @@
 package ai.core.server.workflow.executor;
 
 import ai.core.server.domain.ArtifactRef;
+import ai.core.server.workflow.ArtifactStaging;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.engine.WorkflowEdge;
 import core.framework.json.JSON;
@@ -56,24 +57,32 @@ public final class OutputComposer {
     }
 
     /**
-     * Union the artifact references of this node's COMPLETED immediate predecessors, de-duplicated by file_id.
-     * Lets an AGGREGATOR coalesce parallel branches' files into one {@code nodes.<id>.artifacts} a downstream
-     * node can reference (mirrors how {@link #compose} coalesces their outputs).
+     * The artifacts this node produces for downstream / delivery: the union of its COMPLETED immediate
+     * predecessors' files PLUS any files its own {@code output} template references via
+     * {@code {{ nodes.<id>.artifacts }}} (file-consuming granularity, see {@link ArtifactStaging#referencedFiles}),
+     * de-duplicated by file_id. The output-template lift lives here — the operation END and AGGREGATOR share — so
+     * a file an aggregator's output references propagates downstream instead of being dropped at its boundary, and
+     * END's default deliverables behave the same. Mirrors how {@link #compose} coalesces their outputs.
      */
     public static List<ArtifactRef> composeArtifacts(NodeContext ctx) {
         var lists = new ArrayList<List<ArtifactRef>>();
         for (String predId : predecessorIds(ctx)) {
             lists.add(ctx.pool().artifactsOf(predId));
         }
+        if (ctx.node().config().get("output") instanceof String output) {
+            lists.add(ArtifactStaging.referencedFiles(output, ctx.pool()));
+        }
         return ArtifactRef.union(lists);
     }
 
     /**
-     * The deliverable files of a terminal node: an explicit {@code artifacts} selector list in the config
-     * (each entry {@code nodes.<id>.artifacts}) declares them, mirroring how an {@code output} template
-     * overrides the pass-through; with no declaration, default to the predecessor union of
-     * {@link #composeArtifacts}. Non-artifact selector entries are ignored — the dominator check already
-     * rejected unreadable nodes at publish time.
+     * The deliverable files of a terminal node. An explicit {@code artifacts} selector list in the config (each
+     * entry {@code nodes.<id>.artifacts}) is AUTHORITATIVE — exactly those nodes' files are delivered, so a user
+     * can narrow the set even while the {@code output} template shows other files as text. With no explicit list,
+     * default to {@link #composeArtifacts}: the immediate predecessors' files plus whatever the output template
+     * references (the auto-lift), so an upstream node's files don't surface only as result text. De-duplicated by
+     * file_id. Non-artifact selector entries are ignored — the dominator check already rejected unreadable nodes
+     * at publish time.
      */
     public static List<ArtifactRef> composeDeliverables(NodeContext ctx) {
         Object declared = ctx.node().config().get("artifacts");
