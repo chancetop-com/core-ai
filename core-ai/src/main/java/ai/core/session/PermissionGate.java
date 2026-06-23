@@ -58,7 +58,7 @@ public class PermissionGate {
 
     public void respond(String callId, ApprovalDecision decision) {
         var parentToken = parentTokens.remove(callId);
-        var future = pending.remove(callId);
+        var future = pending.get(callId);
         if (future != null) {
             logger.debug("received tool approval response, callId={}, decision={}", callId, decision);
             future.complete(decision);
