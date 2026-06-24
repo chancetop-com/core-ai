@@ -46,7 +46,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
         if (request.myAgents != null) {
             myAgentsFilter = "true".equalsIgnoreCase(request.myAgents) || "1".equals(request.myAgents);
         }
-        return agentDefinitionService.list(userId, myAgentsFilter);
+        return agentDefinitionService.list(userId, myAgentsFilter, request.query, request.page, request.limit);
     }
 
     @Override

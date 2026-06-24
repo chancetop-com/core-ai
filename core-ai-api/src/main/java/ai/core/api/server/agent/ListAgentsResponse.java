@@ -13,4 +13,10 @@ public class ListAgentsResponse {
 
     @Property(name = "total")
     public Long total;
+
+    @Property(name = "page")
+    public Integer page;
+
+    @Property(name = "limit")
+    public Integer limit;
 }

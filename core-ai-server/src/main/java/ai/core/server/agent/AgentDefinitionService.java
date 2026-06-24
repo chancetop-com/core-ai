@@ -26,6 +26,7 @@ import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.util.Strings;
+import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -34,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * @author stephen
@@ -94,33 +96,72 @@ public class AgentDefinitionService {
     }
 
     public ListAgentsResponse list(String userId) {
-        return list(userId, null);
+        return list(userId, null, null, null, null);
     }
 
-    public ListAgentsResponse list(String userId, Boolean myAgents) {
-        List<AgentDefinition> entities;
-        if (myAgents != null && myAgents) {
-            entities = agentDefinitionCollection.find(Filters.or(
-                Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
-                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
-            ));
-        } else if (myAgents != null) {
-            entities = agentDefinitionCollection.find(Filters.and(
-                Filters.ne(AIRAGENT_USER_ID_FIELD, userId),
-                Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
-            ));
-        } else {
-            entities = agentDefinitionCollection.find(Filters.empty());
-        }
-        // Batch-resolve names to avoid N+1 queries over high-latency connections
-        var userNameMap = resolveUserNames(entities);
-        var subAgentNameMap = resolveSubAgentNames(entities);
-        var skillNameMap = resolveSkillNames(entities);
+    public ListAgentsResponse list(String userId, Boolean myAgents, String query, Integer page, Integer limit) {
+        var accessFilter = buildAccessFilter(userId, myAgents);
+        var searchFilter = buildSearchFilter(query);
+        var combinedFilter = combineFilters(accessFilter, searchFilter);
+
+        var entities = agentDefinitionCollection.find(combinedFilter);
+
+        int total = entities.size();
+        boolean paginated = page != null || limit != null;
+        int pageNum = page != null && page > 0 ? page : 1;
+        int pageSize = limit != null && limit > 0 ? Math.min(limit, 200) : 20;
+        int skip = (pageNum - 1) * pageSize;
+        var paged = paginated ? entities.stream().skip(skip).limit(pageSize).toList() : entities;
+
+        var userNameMap = resolveUserNames(paged);
+        var subAgentNameMap = resolveSubAgentNames(paged);
+        var skillNameMap = resolveSkillNames(paged);
 
         var response = new ListAgentsResponse();
-        response.agents = entities.stream().map(e -> toView(e, userNameMap, subAgentNameMap, skillNameMap)).toList();
-        response.total = (long) response.agents.size();
+        response.agents = paged.stream().map(e -> toView(e, userNameMap, subAgentNameMap, skillNameMap)).toList();
+        response.total = (long) total;
+        response.page = paginated ? pageNum : null;
+        response.limit = paginated ? pageSize : null;
         return response;
+    }
+
+    private Bson buildAccessFilter(String userId, Boolean myAgents) {
+        if (myAgents != null && myAgents) {
+            return Filters.or(
+                Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
+                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+            );
+        } else if (myAgents != null) {
+            return Filters.and(
+                Filters.ne(AIRAGENT_USER_ID_FIELD, userId),
+                Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+            );
+        }
+        return Filters.empty();
+    }
+
+    private Bson buildSearchFilter(String query) {
+        if (query == null || query.isBlank()) return Filters.empty();
+        var pattern = "(?i)" + Pattern.quote(query.trim());
+        return Filters.or(
+            Filters.regex("name", pattern),
+            Filters.regex("description", pattern)
+        );
+    }
+
+    private Bson combineFilters(Bson first, Bson second) {
+        var firstEmpty = isFilterEmpty(first);
+        var secondEmpty = isFilterEmpty(second);
+        if (firstEmpty && secondEmpty) return Filters.empty();
+        if (firstEmpty) return second;
+        if (secondEmpty) return first;
+        return Filters.and(first, second);
+    }
+
+    private boolean isFilterEmpty(Bson filter) {
+        return filter == null
+            || filter.getClass().getSimpleName().startsWith("Empty")
+            || filter.toBsonDocument().isEmpty();
     }
 
     private Map<String, String> resolveUserNames(List<AgentDefinition> entities) {

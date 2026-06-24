@@ -36,23 +36,29 @@ public class RemoteAgentToolProvider implements ToolProvider {
                 servers.add(auto);
             }
         }
-        var catalog = new A2ARemoteAgentDiscovery().discoverCatalog(remoteAgents, servers);
+        var discovery = new A2ARemoteAgentDiscovery();
+        var catalog = discovery.discoverCatalog(remoteAgents, servers);
         if (!catalog.isEmpty()) {
             LOGGER.info("Discovered {} remote A2A agent(s) from {} server(s)", catalog.size(), servers.size());
         }
-        return new RemoteAgentToolProvider(catalog);
+        return new RemoteAgentToolProvider(catalog, discovery, servers);
     }
 
     private final Map<String, ToolCall> tools;
 
-    public RemoteAgentToolProvider(RemoteAgentCatalog catalog) {
+    public RemoteAgentToolProvider(RemoteAgentCatalog catalog, A2ARemoteAgentDiscovery discovery,
+                                   List<A2ARemoteServerConfig> serverConfigs) {
         if (catalog.isEmpty()) {
             this.tools = Map.of();
             return;
         }
         var map = new LinkedHashMap<String, ToolCall>();
         var remoteTools = List.of(
-                SearchRemoteAgentsToolCall.builder().catalog(catalog).build(),
+                SearchRemoteAgentsToolCall.builder()
+                        .catalog(catalog)
+                        .discovery(discovery)
+                        .serverConfigs(serverConfigs)
+                        .build(),
                 DelegateToRemoteAgentToolCall.builder().catalog(catalog).build());
         for (var tc : remoteTools) {
             map.put(tc.getName(), tc);

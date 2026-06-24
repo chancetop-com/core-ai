@@ -6,6 +6,8 @@ import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -73,6 +75,16 @@ public class A2ARemoteAgentDiscovery {
         return new RemoteApiClient(server.url, apiKey, DISCOVERY_TIMEOUT).getRequired("/api/agents");
     }
 
+    public List<A2ARemoteAgentConfig> searchOnServer(A2ARemoteServerConfig server, String query, int limit) {
+        if (server == null || !server.enabled || query == null || query.isBlank()) return List.of();
+        var apiKey = server.resolvedApiKey();
+        var path = "/api/agents?query=" + URLEncoder.encode(query, StandardCharsets.UTF_8)
+                + "&limit=" + limit;
+        var json = new RemoteApiClient(server.url, apiKey, DISCOVERY_TIMEOUT).getRequired(path);
+        if (json == null || json.isBlank()) return List.of();
+        return fromJson(server, json);
+    }
+
     List<A2ARemoteAgentConfig> fromJson(A2ARemoteServerConfig server, String json) {
         var response = JsonUtil.fromJson(ListAgentsResponse.class, json);
         if (response.agents == null || response.agents.isEmpty()) return List.of();
@@ -101,21 +113,21 @@ public class A2ARemoteAgentDiscovery {
         }
     }
 
-    private void addEntry(List<RemoteAgentCatalogEntry> entries, Set<String> connectionKeys,
-                          A2ARemoteAgentConfig config) {
+    void addEntry(List<RemoteAgentCatalogEntry> entries, Set<String> connectionKeys,
+                  A2ARemoteAgentConfig config) {
         var key = connectionKey(config);
         if (!connectionKeys.add(key)) return;
         entries.add(toEntry(config));
     }
 
-    private RemoteAgentCatalogEntry toEntry(A2ARemoteAgentConfig config) {
+    RemoteAgentCatalogEntry toEntry(A2ARemoteAgentConfig config) {
         var id = config.id != null && !config.id.isBlank() ? config.id : config.agentId;
         var serverId = config.serverId != null && !config.serverId.isBlank() ? config.serverId : "manual";
         var name = firstNonBlank(config.displayName, config.name, config.agentId, id);
         return new RemoteAgentCatalogEntry(id, serverId, config.agentId, name, config.description, config.status, config);
     }
 
-    private String connectionKey(A2ARemoteAgentConfig config) {
+    String connectionKey(A2ARemoteAgentConfig config) {
         return normalizeKey(config.url) + "|" + normalizeKey(config.agentId);
     }
 
