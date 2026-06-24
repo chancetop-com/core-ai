@@ -339,7 +339,10 @@ The system prompt should define how this agent behaves, its capabilities, and it
       setExpandedMcpServer(null);
     } else {
       setExpandedMcpServer(serverId);
-      loadMcpServerTools(serverId);
+      const server = allTools.find(t => t.id === serverId);
+      if (server?.config?.transport !== 'sandbox_hosted') {
+        loadMcpServerTools(serverId);
+      }
     }
   };
 
@@ -1280,7 +1283,12 @@ The system prompt should define how this agent behaves, its capabilities, and it
                     </div>
                     {expandedMcpServer === server.id && (
                       <div className="pl-6 pb-1">
-                        {!mcpServerTools[server.id] ? (
+                        {server.config?.transport === 'sandbox_hosted' ? (
+                          <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                            Dynamic MCP — individual tools are not listed here.
+                            Use <strong>Add All</strong> to add the entire server.
+                          </div>
+                        ) : !mcpServerTools[server.id] ? (
                           <div className="px-3 py-1 text-xs flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
                             <Loader2 size={10} className="animate-spin" /> Loading...
                           </div>
