@@ -46,4 +46,10 @@ public sealed interface NodeOutcome {
      *  settles this node. {@code ask} is a rendered JSON snapshot (mode + prompt) the UI shows the human. */
     record Waiting(String ask) implements NodeOutcome {
     }
+
+    /** The node submitted a decoupled child WorkflowRun and parked. The run pauses (out-edges stay PENDING) like
+     *  {@link Waiting}, but the waker is the child run's terminal callback, not a human resume. {@code childRunId}
+     *  links the two-layer run and is the handle for cascade-cancel. */
+    record Suspended(String childRunId) implements NodeOutcome {
+    }
 }

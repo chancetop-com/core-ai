@@ -57,6 +57,7 @@ import ai.core.server.run.AgentRunner;
 import ai.core.server.workflow.AgentRunGateway;
 import ai.core.server.workflow.MongoAgentRunGateway;
 import ai.core.server.workflow.MongoWorkflowGraphLoader;
+import ai.core.server.workflow.MongoWorkflowRunGateway;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeExecutorRegistry;
 import ai.core.server.workflow.NodeType;
@@ -65,6 +66,7 @@ import ai.core.server.workflow.WorkflowGraphLoader;
 import ai.core.server.workflow.WorkflowPortService;
 import ai.core.server.workflow.WorkflowPublishService;
 import ai.core.server.workflow.WorkflowRunService;
+import ai.core.server.workflow.WorkflowRunGateway;
 import ai.core.server.workflow.WorkflowRunner;
 import ai.core.server.workflow.WorkflowRunnerJob;
 import ai.core.server.workflow.executor.AgentExecutor;
@@ -79,6 +81,7 @@ import ai.core.server.workflow.executor.McpToolExecutor;
 import ai.core.server.workflow.executor.RetryingNodeExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
 import ai.core.server.workflow.executor.TemplateExecutor;
+import ai.core.server.workflow.executor.WorkflowExecutor;
 
 import java.util.Map;
 import ai.core.server.schedule.AgentScheduleService;
@@ -305,6 +308,9 @@ public class ServerModule extends Module {
         var mcpToolExecutor = new RetryingNodeExecutor(new McpToolExecutor(toolRegistryService));
         var apiToolExecutor = new RetryingNodeExecutor(new ApiToolExecutor(toolRegistryService));
         var httpExecutor = new RetryingNodeExecutor(new HttpExecutor());
+        var workflowRunGateway = bind(MongoWorkflowRunGateway.class);
+        bind(WorkflowRunGateway.class, workflowRunGateway);
+        var workflowExecutor = new WorkflowExecutor(workflowRunGateway, 5);   // depth cap 5 (design default)
         var registry = new NodeExecutorRegistry(Map.ofEntries(
             Map.entry(NodeType.START, new StartExecutor()),
             Map.entry(NodeType.END, new EndExecutor()),
@@ -317,6 +323,7 @@ public class ServerModule extends Module {
             Map.entry(NodeType.AGGREGATOR, new AggregatorExecutor()),
             Map.entry(NodeType.TEMPLATE, new TemplateExecutor()),
             Map.entry(NodeType.HUMAN_INPUT, new HumanInputExecutor()),
+            Map.entry(NodeType.WORKFLOW, workflowExecutor),
             Map.entry(NodeType.CODE, new CodeExecutor(sandboxService, fileService))));
         bind(NodeExecutor.class, registry);
 

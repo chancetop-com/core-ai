@@ -60,6 +60,11 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
                 nodeRun.status = NodeRunStatus.WAITING;
                 nodeRun.inputJson = waiting.ask();
             }
+            case NodeOutcome.Suspended suspended -> {
+                // park like Waiting but keep the child run id linking the two-layer run.
+                nodeRun.status = NodeRunStatus.WAITING;
+                nodeRun.childRunId = suspended.childRunId();
+            }
         }
     }
 

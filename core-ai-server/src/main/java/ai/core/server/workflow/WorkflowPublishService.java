@@ -101,7 +101,55 @@ public class WorkflowPublishService {
         WorkflowGraph graph = WorkflowGraphParser.parse(definition.draftGraph);
         List<String> errors = new ArrayList<>(WorkflowValidator.validate(graph));
         captureAgentSnapshots(graph, definition.userId, errors, snapshots);
+        captureWorkflowNodeErrors(graph, definition.id, errors);
         return errors;
+    }
+
+    // A WORKFLOW node calls a child workflow's pinned published version. Two cases are not publishable: a direct
+    // self-reference (infinite recursion) and a child whose published graph contains a HUMAN_INPUT node — a parked
+    // human input in the child would suspend and strand the parent's WORKFLOW node forever. A missing version_id is
+    // left to the required-config error path elsewhere, so we only run the human-input check when it is present.
+    private void captureWorkflowNodeErrors(WorkflowGraph graph, String workflowId, List<String> errors) {
+        //todo: indirect/transitive cycle detection (A->B->A across published versions) is deferred to a
+        // best-effort UI hint per design §5.2; the runtime child-depth cap is the backstop for now.
+        for (WorkflowNode node : graph.nodes()) {
+            if (!"WORKFLOW".equals(node.type())) {
+                continue;
+            }
+            String sourceWorkflowId = configValue(node, "source_workflow_id");
+            if (workflowId.equals(sourceWorkflowId)) {
+                errors.add("node " + node.id() + " (WORKFLOW) cannot reference its own workflow");
+                continue;
+            }
+            String versionId = configValue(node, "version_id");
+            if (versionId == null) {
+                continue;
+            }
+            WorkflowPublishedVersion childVersion = versionCollection.get(versionId).orElse(null);
+            if (childVersion != null && childRequiresHumanInput(childVersion)) {
+                errors.add("node " + node.id() + " (WORKFLOW) references a workflow that requires human input, which is not callable");
+            }
+        }
+    }
+
+    private boolean childRequiresHumanInput(WorkflowPublishedVersion childVersion) {
+        WorkflowGraph childGraph = WorkflowGraphParser.parse(childVersion.graph);
+        for (WorkflowNode childNode : childGraph.nodes()) {
+            if ("HUMAN_INPUT".equals(childNode.type())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Read a node config value as a non-blank String, treating null/blank/"null" as absent.
+    private static String configValue(WorkflowNode node, String key) {
+        Object raw = node.config().get(key);
+        if (raw == null) {
+            return null;
+        }
+        String value = String.valueOf(raw);
+        return value.isBlank() || "null".equals(value) ? null : value;
     }
 
     // Embed each AGENT/LLM node's referenced Agent published config; referencing an unknown, inaccessible or

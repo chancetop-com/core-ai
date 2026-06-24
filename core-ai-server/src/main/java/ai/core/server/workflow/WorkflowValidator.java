@@ -88,6 +88,10 @@ public final class WorkflowValidator {
                 requireConfig(node, "app_name", errors);
                 requireConfig(node, "tool_name", errors);
             }
+            case WORKFLOW -> {
+                requireConfig(node, "source_workflow_id", errors);
+                requireConfig(node, "version_id", errors);
+            }
             default -> { /* other types carry no publish-time required config here */ }
         }
     }

@@ -84,6 +84,12 @@ public class MongoWorkflowJournal implements WorkflowJournal {
                 nodeRun.status = NodeRunStatus.WAITING;
                 nodeRun.inputJson = waiting.ask();
             }
+            case NodeOutcome.Suspended suspended -> {
+                // park exactly like Waiting (WAITING projects to a running fact -> run PAUSED), but keep the child
+                // run id so the child's terminal callback can settle this node and cascade-cancel can reach it.
+                nodeRun.status = NodeRunStatus.WAITING;
+                nodeRun.childRunId = suspended.childRunId();
+            }
         }
         nodeRun.completedAt = ZonedDateTime.now();
         collection.replace(nodeRun);
