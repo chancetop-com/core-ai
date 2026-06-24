@@ -22,7 +22,7 @@ export interface WorkflowGraph {
 }
 
 export const NODE_TYPES = [
-  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR', 'TEMPLATE', 'HUMAN_INPUT',
+  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR', 'TEMPLATE', 'HUMAN_INPUT', 'WORKFLOW',
 ] as const;
 // ANSWER removed (workflow-only, single END). NOTE removed (not needed yet).
 export type NodeType = typeof NODE_TYPES[number];
@@ -45,6 +45,7 @@ export const NODE_TYPE_META: Record<string, NodeTypeMeta> = {
   AGGREGATOR: { label: 'Aggregator', color: '#0d9488', description: 'Merges parallel branches into one value.', outputHint: 'the merged object / template' },
   TEMPLATE: { label: 'Text', color: '#475569', description: 'Outputs fixed or templated text — no LLM, no sandbox.', outputHint: 'the rendered text' },
   HUMAN_INPUT: { label: 'Human Input', color: '#ca8a04', description: 'Pauses the run for human approval or input.', outputHint: 'the collected input (input mode)' },
+  WORKFLOW: { label: 'Workflow', color: '#c026d3', description: 'Calls another published workflow and waits for its result.', outputHint: 'the sub-workflow output' },
 };
 export function nodeMeta(type: string): NodeTypeMeta {
   return NODE_TYPE_META[type] ?? { label: type, color: '#64748b', description: '' };
@@ -60,6 +61,7 @@ result = {"message": "hello, " + str(inputs.get("name", "world"))}
 export function defaultNodeConfig(nodeType: string): Record<string, unknown> {
   if (nodeType === 'CODE') return { code: DEFAULT_CODE };
   if (nodeType === 'HUMAN_INPUT') return { mode: 'approval' };
+  if (nodeType === 'WORKFLOW') return { input_mappings: {} };
   return {};
 }
 
@@ -124,6 +126,8 @@ export function nodeSummary(nodeType: string, config: Record<string, unknown>): 
       return str(config.output) ? 'mapped output' : 'auto-merge inputs';
     case 'HUMAN_INPUT':
       return str(config.mode) === 'input' ? 'human input' : 'human approval';
+    case 'WORKFLOW':
+      return str(config.source_workflow_name) || str(config.source_workflow_id) || 'no workflow selected';
     case 'TEMPLATE': {
       const t = str(config.template).trim();
       return t ? (t.length > 24 ? t.slice(0, 24) + '…' : t) : 'empty';

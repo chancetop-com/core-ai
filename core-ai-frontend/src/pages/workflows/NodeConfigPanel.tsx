@@ -13,6 +13,7 @@ import HttpConfig from './HttpConfig';
 import RetryFields from './RetryFields';
 import VariableChipField from './VariableChipField';
 import DeliverablesField from './DeliverablesField';
+import WorkflowNodeConfig, { type SubWorkflowOption } from './WorkflowNodeConfig';
 
 interface AgentOption { id: string; name: string; }
 
@@ -21,12 +22,13 @@ interface Props {
   nodes: WorkflowRFNode[];
   edges: Edge[];
   agents: AgentOption[];
+  workflows?: SubWorkflowOption[];   // selectable published workflows for a WORKFLOW node (empty when none loaded)
   onChange: (partial: Partial<WorkflowNodeData>) => void;
   onDelete: () => void;
   onClose: () => void;
 }
 
-export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, onDelete, onClose }: Props) {
+export default function NodeConfigPanel({ node, nodes, edges, agents, workflows, onChange, onDelete, onClose }: Props) {
   const meta = nodeMeta(node.data.nodeType);
   const isAgentNode = node.data.nodeType === 'AGENT' || node.data.nodeType === 'LLM';
   const isMcpTool = node.data.nodeType === 'MCP_TOOL';
@@ -39,6 +41,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
   const isStart = node.data.nodeType === 'START';
   const isHumanInput = node.data.nodeType === 'HUMAN_INPUT';
   const isTemplate = node.data.nodeType === 'TEMPLATE';
+  const isWorkflow = node.data.nodeType === 'WORKFLOW';
   const config = (node.data.config ?? {}) as Record<string, unknown>;
   const onConfig = (partial: Record<string, unknown>) => onChange({ config: { ...config, ...partial } });
   const hasRetry = isAgentNode || isMcpTool || isApiTool || isHttp;
@@ -171,6 +174,8 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
           />
           <div style={hint}>Combine its inputs into one value for downstream. Empty = auto-merge; a template is preferred for parallel inputs.</div>
         </>
+      ) : isWorkflow ? (
+        <WorkflowNodeConfig node={node} nodes={nodes} edges={edges} workflows={workflows ?? []} onChange={onChange} />
       ) : (
         <>
           <label style={label}>Config (JSON)</label>

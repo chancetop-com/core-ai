@@ -48,6 +48,10 @@ export function nodeIssues(node: WorkflowRFNode, nodes: WorkflowRFNode[], edges:
     case 'HUMAN_INPUT':
       humanInputIssues(cfg, node.id, edges, issues);
       break;
+    case 'WORKFLOW':
+      if (!str('source_workflow_id')) issues.push('Select a workflow to call.');
+      else if (!str('version_id')) issues.push('The selected workflow has no published version.');
+      break;
     default:
       break;
   }
