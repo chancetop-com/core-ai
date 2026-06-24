@@ -110,8 +110,15 @@ const ChatMessageRow = memo(function ChatMessageRow({
   const textSeg = msg.segments?.find(s => s.type === 'text');
   const msgArtifacts = msg.role === 'agent' ? getMessageArtifacts(msg, sessionArtifacts) : [];
 
+  // content-visibility: auto skips paint for off-screen elements, but the browser
+  // heuristic can incorrectly flag a streaming message as off-screen when its
+  // content grows rapidly (e.g. TEXT_CHUNK arrives while scrollIntoView is in
+  // flight).  That causes the symptom "SSE has events but UI never paints them".
+  // Keep the optimization only for completed (non-streaming) messages.
+  const messageStyle = isStreamingLast ? undefined : OFFSCREEN_MESSAGE_STYLE;
+
   return (
-    <div className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`} style={OFFSCREEN_MESSAGE_STYLE}>
+    <div className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`} style={messageStyle}>
       {msg.role === 'agent' && (
         <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
           style={{ background: 'var(--color-primary)', color: 'white' }}>
