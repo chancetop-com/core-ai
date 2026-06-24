@@ -8,6 +8,29 @@ import java.util.Objects;
  * @author stephen
  */
 public class ToolRef {
+    private static final String MCP_TOOL_PREFIX = "mcp-tool:";
+
+    /** Parsed serverId and toolName of an individual MCP tool ref. */
+    public record McpToolId(String serverId, String toolName) {
+    }
+
+    /**
+     * Parse an individual MCP tool ref id of the form "mcp-tool:{serverId}:{toolName}",
+     * or "mcp-tool:{toolName}" with the serverId supplied via the source field.
+     * The serverId may itself contain colons (config-file servers use "config:{name}"),
+     * so split on the LAST colon to keep the server prefix intact.
+     * Returns null when the id is not an individual MCP tool ref.
+     */
+    public static McpToolId parseMcpToolId(String id, String source) {
+        if (id == null || !id.startsWith(MCP_TOOL_PREFIX)) return null;
+        var remaining = id.substring(MCP_TOOL_PREFIX.length());
+        var colonIdx = remaining.lastIndexOf(':');
+        if (colonIdx > 0) {
+            return new McpToolId(remaining.substring(0, colonIdx), remaining.substring(colonIdx + 1));
+        }
+        return new McpToolId(source, remaining);
+    }
+
     public static ToolRef fromLegacyToolId(String toolId) {
         if (toolId == null) return null;
 

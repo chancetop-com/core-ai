@@ -104,10 +104,12 @@ export default function ToolPickerModal({
 
   const getMcpDisplayName = (id: string): string => {
     if (id.startsWith('mcp-tool:')) {
-      const parts = id.substring('mcp-tool:'.length).split(':');
-      if (parts.length >= 2) {
-        const serverId = parts[0];
-        const toolName = parts[1];
+      // Server id may contain colons (config servers use config:{name}), so split on the last colon.
+      const rest = id.substring('mcp-tool:'.length);
+      const lastColon = rest.lastIndexOf(':');
+      if (lastColon > 0) {
+        const serverId = rest.substring(0, lastColon);
+        const toolName = rest.substring(lastColon + 1);
         const server = mcpTools.find(t => t.id === serverId);
         return server ? `${server.name} > ${toolName}` : `${serverId} > ${toolName}`;
       }

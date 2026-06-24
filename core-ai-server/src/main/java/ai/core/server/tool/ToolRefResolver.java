@@ -25,7 +25,6 @@ public class ToolRefResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRefResolver.class);
     private static final String CONFIG_PREFIX = "config:";
     private static final String API_TOOL_ID = "builtin-service-api";
-    private static final String MCP_TOOL_PREFIX = "mcp-tool:";
 
     private final Map<String, ToolRegistry> toolRegistry;
     private final InternalApiToolLoader apiToolLoader;
@@ -100,18 +99,10 @@ public class ToolRefResolver {
     @SuppressWarnings("checkstyle:NestedIfDepth")
     private void resolveMcpRef(ToolRef toolRef, List<ToolCall> result, McpClientManager sessionMgr) {
         // Handle individual MCP tool: id=mcp-tool:{toolName} (source=serverId) or id=mcp-tool:{serverId}:{toolName}
-        if (toolRef.id.startsWith(MCP_TOOL_PREFIX)) {
-            var remaining = toolRef.id.substring(MCP_TOOL_PREFIX.length());
-            String serverId;
-            String toolName;
-            var colonIdx = remaining.indexOf(':');
-            if (colonIdx > 0) {
-                serverId = remaining.substring(0, colonIdx);
-                toolName = remaining.substring(colonIdx + 1);
-            } else {
-                serverId = toolRef.source;
-                toolName = remaining;
-            }
+        var parsed = ToolRef.parseMcpToolId(toolRef.id, toolRef.source);
+        if (parsed != null) {
+            var serverId = parsed.serverId();
+            var toolName = parsed.toolName();
             if (serverId != null) {
                 var mgr = pickManager(serverId, sessionMgr);
                 if (mgr != null && mgr.hasServer(serverId)) {

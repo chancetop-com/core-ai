@@ -478,14 +478,10 @@ public class ToolRegistryService {
         var entry = tools.get(ref.id);
         if (entry != null && entry.type == ToolType.MCP) return entry;
         // mcp-tool:<server>:<tool> or mcp-tool:<tool> with source=server — resolve to the server entry
-        if (ref.id.startsWith("mcp-tool:")) {
-            var remaining = ref.id.substring("mcp-tool:".length());
-            var colonIdx = remaining.indexOf(':');
-            String serverId = colonIdx > 0 ? remaining.substring(0, colonIdx) : ref.source;
-            if (serverId != null) {
-                var serverEntry = tools.get(serverId);
-                if (serverEntry != null && serverEntry.type == ToolType.MCP) return serverEntry;
-            }
+        var parsed = ToolRef.parseMcpToolId(ref.id, ref.source);
+        if (parsed != null && parsed.serverId() != null) {
+            var serverEntry = tools.get(parsed.serverId());
+            if (serverEntry != null && serverEntry.type == ToolType.MCP) return serverEntry;
         }
         // ref.source can also point at the entry id (e.g. config:<name>)
         if (ref.source != null) {
