@@ -10,6 +10,7 @@ import ai.core.server.sandbox.SandboxService;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.HumanInputExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
+import ai.core.server.workflow.executor.WorkflowExecutor;
 import core.framework.mongo.module.MongoConfig;
 import core.framework.test.module.AbstractTestModule;
 
@@ -41,10 +42,14 @@ public class WorkflowTestModule extends AbstractTestModule {
         var graphLoader = bind(MongoWorkflowGraphLoader.class);
         bind(WorkflowGraphLoader.class, graphLoader);
         bind(WorkflowRunService.class);
+        // bind the sub-workflow gateway before the executor/runner that depend on it (eager injection, mirrors ServerModule)
+        var workflowRunGateway = bind(MongoWorkflowRunGateway.class);
+        bind(WorkflowRunGateway.class, workflowRunGateway);
         var registry = new NodeExecutorRegistry(Map.of(
             NodeType.START, new StartExecutor(),
             NodeType.END, new EndExecutor(),
-            NodeType.HUMAN_INPUT, new HumanInputExecutor()));
+            NodeType.HUMAN_INPUT, new HumanInputExecutor(),
+            NodeType.WORKFLOW, new WorkflowExecutor(workflowRunGateway, 5)));
         bind(NodeExecutor.class, registry);
         bind(new SandboxService());   // disabled (enabled=false) — releaseSandbox no-ops; START -> END runs no CODE node
         bind(WorkflowRunner.class);
