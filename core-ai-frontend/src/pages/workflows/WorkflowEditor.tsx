@@ -47,7 +47,7 @@ export default function WorkflowEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowRFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [agents, setAgents] = useState<{ id: string; name: string; type?: string }[]>([]);
   const [subWorkflows, setSubWorkflows] = useState<SubWorkflowOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -99,7 +99,7 @@ export default function WorkflowEditor() {
         const published = [...(mine.agents || []), ...(others.agents || [])]
           .filter((a) => a.status === 'PUBLISHED')
           .filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)));
-        setAgents(published.map((a) => ({ id: a.id, name: a.name })));
+        setAgents(published.map((a) => ({ id: a.id, name: a.name, type: a.type })));
       })
       .catch(() => { /* agents are optional for non-agent workflows */ });
   }, []);

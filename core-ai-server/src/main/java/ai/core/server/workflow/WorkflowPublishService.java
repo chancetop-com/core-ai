@@ -178,9 +178,14 @@ public class WorkflowPublishService {
         }
     }
 
-    // Mirror AgentDefinitionService's own-OR-system_default access rule.
+    // A node may reference: its owner's agents, any system-default agent, OR any PUBLISHED agent (published == public,
+    // matching the Explore/clone sharing model). The published config is then frozen into the workflow snapshot
+    // (anti-drift). Referencing another user's UNPUBLISHED/private agent stays disallowed (falls through to "you do
+    // not own"), and an owner referencing their own still-unpublished agent is caught by the publishedConfig == null check.
     private static boolean isAccessible(AgentDefinition agent, String ownerUserId) {
-        return Boolean.TRUE.equals(agent.systemDefault) || (agent.userId != null && agent.userId.equals(ownerUserId));
+        return Boolean.TRUE.equals(agent.systemDefault)
+            || (agent.userId != null && agent.userId.equals(ownerUserId))
+            || agent.publishedConfig != null;
     }
 
     private int nextVersion(String workflowId) {

@@ -80,7 +80,7 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
             </div>
             {open && (
               <div style={nodeBody}>
-                {r.status === 'WAITING' && onResume && (
+                {r.status === 'WAITING' && onResume && typeOf(r.node_id) === 'HUMAN_INPUT' && (
                   <ResumeForm node={nodes.find((n) => n.id === r.node_id)} ask={r.input} busy={!!busy} onSubmit={(body) => onResume(r.node_id, body)} />
                 )}
                 {r.error && <Field title="Error" body={r.error} danger />}
