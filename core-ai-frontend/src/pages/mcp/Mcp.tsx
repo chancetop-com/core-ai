@@ -184,6 +184,12 @@ export default function Mcp() {
                   <div className="flex flex-wrap items-center gap-2 mt-1.5">
                     <EnabledBadge enabled={s.enabled} />
                     {s.enabled && <ConnectionStateBadge state={statusMap[s.id]} />}
+                    {s.config?.transport === 'sandbox_hosted' && (
+                      <span className="px-2 py-0.5 rounded text-xs font-medium"
+                        style={{ background: '#1e3a5f', color: '#93c5fd' }}>
+                        Dynamic MCP
+                      </span>
+                    )}
                     {s.category && (
                       <span className="px-2 py-0.5 rounded text-xs"
                         style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Server, RefreshCw, Plug, Play, ChevronDown, ChevronRight, Wrench, Loader2 } from 'lucide-react';
+import { ArrowLeft, Server, RefreshCw, Plug, Play, ChevronDown, ChevronRight, Wrench, Loader2, Zap } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ToolRegistryView, McpToolInfo, McpConnectionState } from '../../api/client';
 import { ConnectionStateBadge, EnabledBadge } from './badges';
@@ -22,15 +22,31 @@ export default function McpDetail() {
     setLoading(true);
     setError(null);
     try {
-      const [s, t, st] = await Promise.all([
-        api.tools.get(id),
-        api.tools.listMcpServerTools(id),
-        api.tools.getMcpServerStatus(id),
-      ]);
+      const s = await api.tools.get(id);
       setServer(s);
-      setTools(t.tools || []);
-      setState(st.state);
-      setStateMessage(st.message);
+      const isDynamic = s.config?.transport === 'sandbox_hosted';
+
+      const stPromise = api.tools.getMcpServerStatus(id);
+
+      if (isDynamic) {
+        // Dynamic MCP: don't auto-list tools on first visit — triggers slow sandbox startup.
+        // But if already connected (e.g., page refresh), load tools normally.
+        const st = await stPromise;
+        setState(st.state);
+        setStateMessage(st.message);
+        if (st.state === 'CONNECTED') {
+          const t = await api.tools.listMcpServerTools(id);
+          setTools(t.tools || []);
+        }
+      } else {
+        const [t, st] = await Promise.all([
+          api.tools.listMcpServerTools(id),
+          stPromise,
+        ]);
+        setTools(t.tools || []);
+        setState(st.state);
+        setStateMessage(st.message);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load MCP server');
     } finally {
@@ -91,6 +107,18 @@ export default function McpDetail() {
         style={{ color: 'var(--color-text-secondary)' }}>
         <ArrowLeft size={14} /> Back to MCP Servers
       </button>
+
+      {server.config?.transport === 'sandbox_hosted' && (
+        <div className="flex items-start gap-3 mb-4 px-4 py-3 rounded-lg border text-sm"
+          style={{ background: '#1e3a5f', borderColor: '#2563eb', color: '#93c5fd' }}>
+          <Zap size={16} className="shrink-0 mt-0.5" />
+          <div>
+            <span className="font-medium">Dynamic MCP</span> — this server runs in a sandbox environment.
+            Click <strong>Connect</strong> to start the sandbox and discover available tools.
+            Sandbox startup may take several seconds.
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl border p-4 mb-4"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
