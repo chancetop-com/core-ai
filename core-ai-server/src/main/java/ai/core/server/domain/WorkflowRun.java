@@ -56,6 +56,17 @@ public class WorkflowRun {
     @Field(name = "resume_from_node_id")
     public String resumeFromNodeId;
 
+    // ---- Sub-workflow lineage (WORKFLOW node): set when this run is a child started by a parent run's WORKFLOW node ----
+    @Field(name = "parent_run_id")
+    public String parentRunId;
+
+    @Field(name = "parent_node_id")
+    public String parentNodeId;
+
+    // nesting depth from the top-level run (top-level = 0). The runtime recursion backstop caps this.
+    @Field(name = "depth")
+    public Integer depth;
+
     @NotNull
     @Field(name = "status")
     public RunStatus status;

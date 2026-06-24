@@ -60,6 +60,9 @@ public class WorkflowRunner {
     WorkflowGraphLoader graphLoader;
 
     @Inject
+    WorkflowRunGateway workflowRunGateway;
+
+    @Inject
     SandboxService sandboxService;
 
     /** Drive a run on a background thread. The claim is idempotent — a concurrent claim elsewhere just no-ops. */
@@ -102,9 +105,15 @@ public class WorkflowRunner {
             }
             boolean completed = status == RunStatus.COMPLETED;
             WorkflowNodeRun endRun = completed ? endNodeRun(runId) : null;
-            terminate(runId, status, status == RunStatus.FAILED ? failureSummary(runId) : null,
+            boolean finalized = terminate(runId, status, status == RunStatus.FAILED ? failureSummary(runId) : null,
                 endRun != null ? endRun.output : null,
                 endRun != null && endRun.artifacts != null ? endRun.artifacts : List.of());
+            if (finalized && run.parentRunId != null) {
+                wakeParent(run, status, endRun);   // sub-workflow: settle the parent's WORKFLOW node and resume it
+            }
+            if (finalized && status == RunStatus.CANCELLED) {
+                cancelChildren(runId);   // a cancelled parent takes its decoupled sub-workflow runs down with it
+            }
             return true;
         } catch (RuntimeException e) {
             if (lostLease.get()) {
@@ -211,7 +220,7 @@ public class WorkflowRunner {
     // Guarded terminal transition: only the owning worker may settle a not-yet-finalized run (completed_at == null).
     // Guarding on completed_at (rather than status == RUNNING) also lets a CANCELLED run be finalized with a
     // completed_at, while still no-op'ing on a stolen lease (claimed_by changed) or a double-finalize.
-    private void terminate(String runId, RunStatus status, String error, String output, List<ArtifactRef> artifacts) {
+    private boolean terminate(String runId, RunStatus status, String error, String output, List<ArtifactRef> artifacts) {
         var now = ZonedDateTime.now();
         var sets = new ArrayList<Bson>();
         sets.add(Updates.set("status", status));
@@ -233,8 +242,55 @@ public class WorkflowRunner {
             Updates.combine(sets));
         if (updated == 0) {
             LOGGER.warn("workflow run not finalized (lost claim or already terminal), runId={}, status={}", runId, status);
+            return false;
+        }
+        LOGGER.info("workflow run finished, runId={}, status={}", runId, status);
+        return true;
+    }
+
+    // A child sub-workflow run reached a terminal status: settle the parent's parked WORKFLOW node-run with the
+    // child's result, then flip the parent PAUSED -> PENDING so the runner job re-claims and continues past the
+    // node. Mirrors WorkflowRunService.resume() (the human-input waker), with the child terminal as the trigger.
+    private void wakeParent(WorkflowRun child, RunStatus childStatus, WorkflowNodeRun endRun) {
+        var now = ZonedDateTime.now();
+        var settle = new ArrayList<Bson>();
+        settle.add(Updates.set("completed_at", now));
+        if (childStatus == RunStatus.COMPLETED) {
+            settle.add(Updates.set("status", NodeRunStatus.COMPLETED));
+            settle.add(Updates.set("output", endRun != null ? endRun.output : null));
+            if (endRun != null && endRun.artifacts != null && !endRun.artifacts.isEmpty()) {
+                settle.add(Updates.set("artifacts", endRun.artifacts));
+            }
         } else {
-            LOGGER.info("workflow run finished, runId={}, status={}", runId, status);
+            // child FAILED / CANCELLED / TIMEOUT -> the parent WORKFLOW node fails (run fails), per design no auto re-run
+            settle.add(Updates.set("status", NodeRunStatus.FAILED_RETRYABLE));
+            settle.add(Updates.set("error", "sub-workflow " + childStatus + " (child run " + child.id + ")"));
+        }
+        long settled = nodeRunCollection.update(
+            Filters.and(
+                Filters.eq("run_id", child.parentRunId),
+                Filters.eq("node_id", child.parentNodeId),
+                Filters.eq("status", NodeRunStatus.WAITING)),
+            Updates.combine(settle));
+        if (settled == 0) {
+            LOGGER.warn("parent WORKFLOW node not settled (already settled or gone), parentRunId={}, nodeId={}",
+                child.parentRunId, child.parentNodeId);
+            return;
+        }
+        // wake: PAUSED -> PENDING, claimable now. Guarded on PAUSED so a concurrent waker only wakes once.
+        runCollection.update(
+            Filters.and(Filters.eq("_id", child.parentRunId), Filters.eq("status", RunStatus.PAUSED)),
+            Updates.combine(Updates.set("status", RunStatus.PENDING), Updates.set("lease_until", now)));
+        LOGGER.info("woke parent run on sub-workflow terminal, parentRunId={}, childRunId={}, status={}",
+            child.parentRunId, child.id, childStatus);
+    }
+
+    // Cascade cancel: a cancelled parent run must take its decoupled sub-workflow child runs down with it, else
+    // they finish as orphaned RUNNING. Each direct child is found by parent_run_id; the gateway recurses into its
+    // own descendants. cancelSubtree no-ops on already-terminal children.
+    private void cancelChildren(String runId) {
+        for (WorkflowRun child : runCollection.find(Filters.eq("parent_run_id", runId))) {
+            workflowRunGateway.cancelSubtree(child.id);
         }
     }
 

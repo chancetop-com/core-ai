@@ -139,6 +139,39 @@ class WorkflowValidatorTest {
         assertTrue(WorkflowValidator.validate(graph).isEmpty());
     }
 
+    @Test
+    void workflowNodeWithRequiredConfigPasses() {
+        // a WORKFLOW node carrying both source_workflow_id and version_id has no missing-config error
+        WorkflowGraph graph = WorkflowGraphParser.parse("""
+            {"nodes": [
+               {"id": "start", "type": "START"},
+               {"id": "wf", "type": "WORKFLOW", "config": {"source_workflow_id": "child-1", "version_id": "child-1:v3"}},
+               {"id": "end", "type": "END"}],
+             "edges": [
+               {"id": "e0", "source": "start", "target": "wf"},
+               {"id": "e1", "source": "wf", "target": "end"}]}
+            """);
+
+        assertFalse(has(WorkflowValidator.validate(graph), "is missing required config"));
+    }
+
+    @Test
+    void workflowNodeMissingVersionIdRejected() {
+        // omitting version_id on a WORKFLOW node is a publish-time required-config error naming that node
+        WorkflowGraph graph = WorkflowGraphParser.parse("""
+            {"nodes": [
+               {"id": "start", "type": "START"},
+               {"id": "wf", "type": "WORKFLOW", "config": {"source_workflow_id": "child-1"}},
+               {"id": "end", "type": "END"}],
+             "edges": [
+               {"id": "e0", "source": "start", "target": "wf"},
+               {"id": "e1", "source": "wf", "target": "end"}]}
+            """);
+
+        assertTrue(has(WorkflowValidator.validate(graph),
+            "node wf (WORKFLOW) is missing required config: version_id"));
+    }
+
     private static boolean has(List<String> errors, String fragment) {
         return errors.stream().anyMatch(error -> error.contains(fragment));
     }

@@ -235,7 +235,10 @@ public class WorkflowRunService {
             return List.of();
         }
         var graph = graphLoader.load(run.versionId);
-        return waiting.stream().map(nodeRun -> HumanInputProtocol.describe(graph.node(nodeRun.nodeId), nodeRun)).toList();
+        return waiting.stream()
+            .filter(nodeRun -> "HUMAN_INPUT".equals(graph.node(nodeRun.nodeId).type()))   // WORKFLOW-waiting nodes are not human inputs
+            .map(nodeRun -> HumanInputProtocol.describe(graph.node(nodeRun.nodeId), nodeRun))
+            .toList();
     }
 
     private WorkflowNode resolveHumanNode(WorkflowRun run, String nodeId) {
