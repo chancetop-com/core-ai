@@ -2,6 +2,7 @@ package ai.core.server.workflow;
 
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowMode;
+import ai.core.server.domain.WorkflowPublishedVersion;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -20,6 +21,9 @@ import java.util.UUID;
 public class WorkflowDefinitionService {
     @Inject
     MongoCollection<WorkflowDefinition> definitionCollection;
+
+    @Inject
+    MongoCollection<WorkflowPublishedVersion> versionCollection;
 
     public WorkflowDefinition create(String name, String mode, String graph, String userId) {
         var now = ZonedDateTime.now();
@@ -44,8 +48,78 @@ public class WorkflowDefinitionService {
         return definition;
     }
 
+    // Read for VIEW/RUN (not edit): the owner gets the editable draft; any other user may open a PUBLISHED workflow
+    // read-only, rendered from the frozen published graph (never the owner's unpublished draft). The non-owner gets a
+    // DETACHED copy with the published graph, so the published graph can never be persisted back over the owner's draft.
+    public WorkflowDefinition getReadable(String id, String userId) {
+        var definition = definitionCollection.get(id)
+            .orElseThrow(() -> new NotFoundException("workflow not found: " + id));
+        if (definition.userId.equals(userId)) {
+            return definition;
+        }
+        if (definition.publishedVersionId == null) {
+            throw new ForbiddenException("workflow does not belong to the current user: " + id);
+        }
+        var published = versionCollection.get(definition.publishedVersionId)
+            .orElseThrow(() -> new NotFoundException("published version not found: " + definition.publishedVersionId));
+        return readOnlyCopy(definition, published.graph);
+    }
+
+    // A detached read-only projection of another user's published workflow: same identity/metadata, but the graph is
+    // the frozen published one. Never inserted/replaced, so it can never overwrite the owner's real draft.
+    private static WorkflowDefinition readOnlyCopy(WorkflowDefinition source, String publishedGraph) {
+        var copy = new WorkflowDefinition();
+        copy.id = source.id;
+        copy.userId = source.userId;
+        copy.name = source.name;
+        copy.description = source.description;
+        copy.mode = source.mode;
+        copy.draftGraph = publishedGraph;
+        copy.publishedVersionId = source.publishedVersionId;
+        copy.publishedVersion = source.publishedVersion;
+        copy.createdAt = source.createdAt;
+        copy.updatedAt = source.updatedAt;
+        return copy;
+    }
+
     public List<WorkflowDefinition> list(String userId) {
+        return list(userId, null);
+    }
+
+    // myWorkflows: null/true -> the caller's own workflows (draft + published); false -> other users' published
+    // workflows for the discover list. "Published == public": publishedVersionId is the queryable public signal.
+    public List<WorkflowDefinition> list(String userId, Boolean myWorkflows) {
+        if (myWorkflows != null && !myWorkflows) {
+            return definitionCollection.find(Filters.and(
+                Filters.ne("user_id", userId),
+                Filters.ne("published_version_id", null)));
+        }
         return definitionCollection.find(Filters.eq("user_id", userId));
+    }
+
+    // Copy another user's published workflow into a fresh draft owned by the caller. Clones the frozen published
+    // graph (not the owner's live draft), so the caller gets exactly what was published. The cloned graph still
+    // references the original author's agents; the caller must swap in their own agents before they can republish.
+    public WorkflowDefinition clone(String sourceId, String userId) {
+        var source = definitionCollection.get(sourceId)
+            .orElseThrow(() -> new NotFoundException("workflow not found: " + sourceId));
+        if (source.publishedVersionId == null) {
+            throw new ForbiddenException("workflow is not published and cannot be cloned: " + sourceId);
+        }
+        var published = versionCollection.get(source.publishedVersionId)
+            .orElseThrow(() -> new NotFoundException("published version not found: " + source.publishedVersionId));
+        var now = ZonedDateTime.now();
+        var definition = new WorkflowDefinition();
+        definition.id = UUID.randomUUID().toString();
+        definition.userId = userId;
+        definition.name = source.name;
+        definition.description = source.description;
+        definition.mode = source.mode;
+        definition.draftGraph = published.graph;
+        definition.createdAt = now;
+        definition.updatedAt = now;
+        definitionCollection.insert(definition);
+        return definition;
     }
 
     public void delete(String id, String userId) {

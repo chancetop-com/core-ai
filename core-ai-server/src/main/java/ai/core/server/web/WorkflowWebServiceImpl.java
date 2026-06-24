@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.api.server.workflow.ArtifactView;
+import ai.core.api.server.workflow.CloneWorkflowResponse;
 import ai.core.api.server.workflow.CreateRunRequest;
 import ai.core.api.server.workflow.CreateRunResponse;
 import ai.core.api.server.workflow.CreateWorkflowRequest;
@@ -9,6 +10,7 @@ import ai.core.api.server.workflow.ImportWorkflowRequest;
 import ai.core.api.server.workflow.ImportWorkflowResponse;
 import ai.core.api.server.workflow.ListNodeRunsResponse;
 import ai.core.api.server.workflow.ListWorkflowRunsResponse;
+import ai.core.api.server.workflow.ListWorkflowsRequest;
 import ai.core.api.server.workflow.ListWorkflowsResponse;
 import ai.core.api.server.workflow.NodeRunView;
 import ai.core.api.server.workflow.ResumeFromNodeRequest;
@@ -23,6 +25,7 @@ import ai.core.api.server.workflow.WorkflowWebService;
 import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
+import ai.core.server.domain.User;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
@@ -32,11 +35,18 @@ import ai.core.server.workflow.WorkflowPortService;
 import ai.core.server.workflow.WorkflowPublishService;
 import ai.core.server.workflow.WorkflowRunService;
 import ai.core.server.workflow.WorkflowRunner;
+import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
+import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * @author Xander
@@ -52,6 +62,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     WorkflowDefinitionService definitionService;
 
     @Inject
+    MongoCollection<User> userCollection;
+
+    @Inject
     WorkflowPublishService publishService;
 
     @Inject
@@ -64,10 +77,44 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     WorkflowPortService portService;
 
     @Override
-    public ListWorkflowsResponse list() {
+    public ListWorkflowsResponse list(ListWorkflowsRequest request) {
         var userId = AuthContext.userId(webContext);
+        Boolean myWorkflows = null;
+        if (request != null && request.myWorkflows != null) {
+            myWorkflows = "true".equalsIgnoreCase(request.myWorkflows) || "1".equals(request.myWorkflows);
+        }
+        var definitions = definitionService.list(userId, myWorkflows);
+        var userNames = resolveUserNames(definitions);
         var response = new ListWorkflowsResponse();
-        response.workflows = definitionService.list(userId).stream().map(WorkflowWebServiceImpl::toView).toList();
+        response.workflows = definitions.stream().map(d -> {
+            var view = toView(d, userNames.get(d.userId));
+            view.editable = userId.equals(d.userId);   // caller userId is non-null; tolerates a null d.userId row
+            view.draftGraph = null;   // the list UI never reads the graph — and must never ship another owner's draft
+            return view;
+        }).toList();
+        return response;
+    }
+
+    // Batch-resolve owner display names so the discover list can show the author without an N+1 query.
+    private Map<String, String> resolveUserNames(List<WorkflowDefinition> definitions) {
+        Set<String> userIds = definitions.stream().map(d -> d.userId).filter(Objects::nonNull).collect(Collectors.toSet());
+        if (userIds.isEmpty()) return Map.of();
+        var map = new HashMap<String, String>();
+        for (User user : userCollection.find(Filters.in("_id", userIds))) {
+            map.put(user.id, user.name);
+        }
+        return map;
+    }
+
+    @Override
+    public CloneWorkflowResponse clone(String id) {
+        var userId = AuthContext.userId(webContext);
+        var definition = definitionService.clone(id, userId);
+        var response = new CloneWorkflowResponse();
+        response.workflow = toView(definition);
+        // Validate the clone AS THE CALLER: a previously-valid published graph only fails on agent ownership now,
+        // so this surfaces exactly the AGENT/LLM nodes the caller must replace before they can Test/Publish.
+        response.warnings = publishService.validate(definition);
         return response;
     }
 
@@ -80,7 +127,12 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     @Override
     public WorkflowView get(String id) {
         var userId = AuthContext.userId(webContext);
-        return toView(definitionService.get(id, userId));
+        var definition = definitionService.getReadable(id, userId);   // owner: editable draft; other user: read-only published
+        boolean editable = definition.userId.equals(userId);
+        var ownerName = editable ? null : userCollection.get(definition.userId).map(u -> u.name).orElse(null);
+        var view = toView(definition, ownerName);
+        view.editable = editable;
+        return view;
     }
 
     @Override
@@ -252,8 +304,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     private static WorkflowView toView(WorkflowDefinition definition) {
+        return toView(definition, null);
+    }
+
+    private static WorkflowView toView(WorkflowDefinition definition, String userName) {
         var view = new WorkflowView();
         view.id = definition.id;
+        view.userId = definition.userId;
+        view.userName = userName;
         view.name = definition.name;
         view.mode = definition.mode != null ? definition.mode.name() : null;
         view.status = definition.publishedVersionId != null ? "PUBLISHED" : "DRAFT";

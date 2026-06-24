@@ -1,23 +1,45 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, History, Download, FileUp, Workflow as WorkflowIcon } from 'lucide-react';
+import { Plus, Trash2, History, Download, FileUp, Copy, Workflow as WorkflowIcon } from 'lucide-react';
 import { api, type WorkflowView } from '../../api/client';
 import { newGraph } from './graph';
 
 export default function WorkflowList() {
   const [workflows, setWorkflows] = useState<WorkflowView[]>([]);
+  const [discoverWorkflows, setDiscoverWorkflows] = useState<WorkflowView[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [cloningId, setCloningId] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
-    api.workflows.list()
-      .then((res) => setWorkflows(res.workflows || []))
-      .catch((e) => setError((e as Error).message))
+    // Two independent calls (mirror the agent list): my=true = the caller's own, my=false = other users' published.
+    // allSettled, not all: a discover-side failure must NOT wipe the caller's own workflows from the page.
+    Promise.allSettled([api.workflows.list(true), api.workflows.list(false)])
+      .then(([mine, others]) => {
+        if (mine.status === 'fulfilled') setWorkflows(mine.value.workflows || []);
+        else setError((mine.reason as Error).message);
+        if (others.status === 'fulfilled') setDiscoverWorkflows(others.value.workflows || []);
+        // discover failure is non-fatal: own workflows still render, discover section stays empty
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  const cloneWorkflow = async (e: ReactMouseEvent, wf: WorkflowView) => {
+    e.stopPropagation();
+    setCloningId(wf.id);
+    setError('');
+    try {
+      const res = await api.workflows.clone(wf.id);
+      navigate(`/workflows/${res.workflow.id}`, { state: { cloneWarnings: res.warnings || [] } });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCloningId('');
+    }
+  };
 
   const create = async () => {
     setCreating(true);
@@ -102,23 +124,55 @@ export default function WorkflowList() {
       {error && <div style={{ color: '#dc2626', marginBottom: 12 }}>{error}</div>}
       {loading ? (
         <div style={{ color: 'var(--color-text-secondary)' }}>Loading…</div>
-      ) : workflows.length === 0 ? (
-        <div style={{ color: 'var(--color-text-secondary)' }}>No workflows yet. Create one to get started.</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-          {workflows.map((wf) => (
-            <div key={wf.id} onClick={() => navigate(`/workflows/${wf.id}`)} style={card}>
-              <button onClick={(e) => exportWorkflow(e, wf)} style={exportBtn} title="Export workflow"><Download size={14} /></button>
-              <button onClick={(e) => openRuns(e, wf)} style={histBtn} title="Run history"><History size={14} /></button>
-              <button onClick={(e) => del(e, wf)} style={delBtn} title="Delete workflow"><Trash2 size={14} /></button>
-              <div style={{ fontWeight: 600, color: 'var(--color-text)', paddingRight: 92 }}>{wf.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
-                {wf.mode} · {wf.status}
-                {wf.published_version ? ` · v${wf.published_version}` : ''}
-              </div>
+        <>
+          {workflows.length === 0 ? (
+            <div style={{ color: 'var(--color-text-secondary)' }}>No workflows yet. Create one to get started.</div>
+          ) : (
+            <div style={grid}>
+              {workflows.map((wf) => (
+                <div key={wf.id} onClick={() => navigate(`/workflows/${wf.id}`)} style={card}>
+                  <button onClick={(e) => exportWorkflow(e, wf)} style={exportBtn} title="Export workflow"><Download size={14} /></button>
+                  <button onClick={(e) => openRuns(e, wf)} style={histBtn} title="Run history"><History size={14} /></button>
+                  <button onClick={(e) => del(e, wf)} style={delBtn} title="Delete workflow"><Trash2 size={14} /></button>
+                  <div style={{ fontWeight: 600, color: 'var(--color-text)', paddingRight: 92 }}>{wf.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
+                    {wf.mode} · {wf.status}
+                    {wf.published_version ? ` · v${wf.published_version}` : ''}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+
+          {discoverWorkflows.length > 0 && (
+            <>
+              <h2 style={{ fontSize: 15, fontWeight: 600, margin: '28px 0 12px', color: 'var(--color-text)' }}>
+                Discover · published by others
+              </h2>
+              <div style={grid}>
+                {discoverWorkflows.map((wf) => (
+                  <div key={wf.id} onClick={() => navigate(`/workflows/${wf.id}`)} style={card} title="Open read-only to run">
+                    <button
+                      onClick={(e) => cloneWorkflow(e, wf)}
+                      style={cloneBtn}
+                      disabled={cloningId === wf.id}
+                      title="Clone to my workflows"
+                    >
+                      <Copy size={14} /> {cloningId === wf.id ? 'Cloning…' : 'Clone'}
+                    </button>
+                    <div style={{ fontWeight: 600, color: 'var(--color-text)', paddingRight: 92 }}>{wf.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
+                      {wf.mode}
+                      {wf.published_version ? ` · v${wf.published_version}` : ''}
+                      {wf.user_name ? ` · by ${wf.user_name}` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </>
       )}
     </div>
   );
@@ -133,8 +187,16 @@ const btnSecondary: CSSProperties = {
   background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)',
   borderRadius: 8, cursor: 'pointer', fontWeight: 500,
 };
+const grid: CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12,
+};
 const card: CSSProperties = {
   position: 'relative', border: '1px solid var(--color-border)', borderRadius: 10, padding: 16, cursor: 'pointer', background: 'var(--color-bg-secondary)',
+};
+const cloneBtn: CSSProperties = {
+  position: 'absolute', top: 10, right: 10, display: 'flex', alignItems: 'center', gap: 4,
+  padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 6,
+  background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer', fontSize: 12,
 };
 const delBtn: CSSProperties = {
   position: 'absolute', top: 10, right: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',

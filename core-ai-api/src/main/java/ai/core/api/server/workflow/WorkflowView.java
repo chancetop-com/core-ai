@@ -9,6 +9,15 @@ public class WorkflowView {
     @Property(name = "id")
     public String id;
 
+    @Property(name = "user_id")
+    public String userId;   // owner; lets the discover list show the author and distinguish from the caller
+
+    @Property(name = "user_name")
+    public String userName;   // resolved owner display name; populated on list, null elsewhere
+
+    @Property(name = "editable")
+    public Boolean editable;   // true when the caller owns it; false = read-only (other user's published). null = unknown
+
     @Property(name = "name")
     public String name;
 

@@ -6,7 +6,7 @@ import {
   type Connection, type Edge, type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ArrowLeft, Rocket, FlaskConical, Code2, Save, Download, FileUp } from 'lucide-react';
+import { ArrowLeft, Rocket, FlaskConical, Code2, Save, Download, FileUp, Copy, Lock } from 'lucide-react';
 import { api, type WorkflowNodeRunView, type UnresolvedReferenceView } from '../../api/client';
 import { useTheme } from '../../hooks/useTheme';
 import WorkflowNode from './WorkflowNode';
@@ -41,6 +41,8 @@ export default function WorkflowEditor() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
   const [status, setStatus] = useState('DRAFT');
+  const [readOnly, setReadOnly] = useState(false);   // viewing another user's published workflow: run-only, no edits
+  const [authorName, setAuthorName] = useState('');
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowRFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -69,6 +71,8 @@ export default function WorkflowEditor() {
     api.workflows.get(id).then((wf) => {
       setName(wf.name);
       setStatus(wf.status || 'DRAFT');
+      setReadOnly(wf.editable === false);
+      setAuthorName(wf.user_name || '');
       let graph: WorkflowGraph;
       try {
         graph = wf.draft_graph ? JSON.parse(wf.draft_graph) : newGraph();
@@ -128,18 +132,21 @@ export default function WorkflowEditor() {
     return () => { stopped = true; if (timer) clearInterval(timer); };
   }, [runId]);
 
-  const onConnect = useCallback((c: Connection) => setEdges((eds) => {
-    const exists = eds.some((e) =>
-      e.source === c.source && e.target === c.target
-      && (e.sourceHandle ?? null) === (c.sourceHandle ?? null)
-      && (e.targetHandle ?? null) === (c.targetHandle ?? null));
-    return exists ? eds : addEdge({ ...c, id: `e_${crypto.randomUUID()}` }, eds);
-  }), [setEdges]);
+  const onConnect = useCallback((c: Connection) => {
+    if (readOnly) return;   // defense-in-depth: never mutate a non-owner's read-only canvas
+    setEdges((eds) => {
+      const exists = eds.some((e) =>
+        e.source === c.source && e.target === c.target
+        && (e.sourceHandle ?? null) === (c.sourceHandle ?? null)
+        && (e.targetHandle ?? null) === (c.targetHandle ?? null));
+      return exists ? eds : addEdge({ ...c, id: `e_${crypto.randomUUID()}` }, eds);
+    });
+  }, [setEdges, readOnly]);
 
   const onDragOver = useCallback((e: DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }, []);
   const onDrop = useCallback((e: DragEvent) => {
     e.preventDefault();
-    if (runId) return; // canvas is read-only during a run
+    if (runId || readOnly) return; // canvas is read-only during a run, and for non-owner viewers
     const type = e.dataTransfer.getData('application/workflow-node');
     const inst = rfRef.current;
     if (!type || !inst) return;
@@ -152,7 +159,7 @@ export default function WorkflowEditor() {
       data: { nodeType: type, name: uniqueNodeName(type, nds), config: defaultNodeConfig(type) },
     }));
     setSelectedId(nodeId);
-  }, [setNodes, runId]);
+  }, [setNodes, runId, readOnly]);
 
   const updateNodeData = useCallback((nodeId: string, partial: Partial<WorkflowNodeData>) => {
     setNodes((nds) => nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...partial } } : n)));
@@ -240,7 +247,7 @@ export default function WorkflowEditor() {
 
   // debounced auto-save of the draft on any content change — Dify-style, no manual Save button
   useEffect(() => {
-    if (loading || showRun || !id) return;
+    if (loading || showRun || !id || readOnly) return;   // read-only viewers never persist (update is owner-only)
     const graph = JSON.stringify(fromReactFlow(nodes, edges));
     const snapshot = name + '\n' + graph;
     if (!initSaveRef.current) { initSaveRef.current = true; lastSavedRef.current = snapshot; return; }
@@ -248,14 +255,20 @@ export default function WorkflowEditor() {
     setSaveState('dirty');
     const timer = setTimeout(() => { void persistDraft(name, graph, snapshot); }, 1200);
     return () => clearTimeout(timer);
-  }, [nodes, edges, name, loading, showRun, id, persistDraft]);
+  }, [nodes, edges, name, loading, showRun, id, readOnly, persistDraft]);
 
   // Surface unresolved references handed over from the list page's import, then clear the router state so a
   // refresh or back-navigation doesn't replay the notice.
   useEffect(() => {
-    const notice = (location.state as { importNotice?: UnresolvedReferenceView[] } | null)?.importNotice;
-    if (notice && notice.length > 0) {
-      setMsg(`Imported with ${notice.length} unresolved reference(s) — fix before publishing.`);
+    const state = location.state as { importNotice?: UnresolvedReferenceView[]; cloneWarnings?: string[] } | null;
+    const importNotice = state?.importNotice;
+    const cloneWarnings = state?.cloneWarnings;
+    if (importNotice && importNotice.length > 0) {
+      setMsg(`Imported with ${importNotice.length} unresolved reference(s) — fix before publishing.`);
+      navigate(location.pathname, { replace: true, state: null });
+    } else if (cloneWarnings && cloneWarnings.length > 0) {
+      // The cloned graph references agents the caller doesn't own — replace those nodes before Test/Publish.
+      setMsg(`Cloned — replace the agent nodes you don't own before Test/Publish: ${cloneWarnings.join('; ')}`);
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location.pathname, location.state, navigate]);
@@ -335,10 +348,15 @@ export default function WorkflowEditor() {
     if (!id || runId) return;
     setBusy(true); setMsg(''); setRunError('');
     try {
-      if (!(await saveDraft())) { setRunError('Save failed'); return; }
-      const validation = await api.workflows.validate(id);
-      if (!validation.valid) { setRunError(`Cannot run: ${validation.errors.join('; ')}`); return; }
-      const res = await api.workflows.previewRun(id, input);
+      // read-only viewer: run the PUBLISHED version directly (there's no draft to save/validate, and both are owner-only)
+      const res = readOnly
+        ? await api.workflows.createRun(id, input)
+        : await (async () => {
+            if (!(await saveDraft())) throw new Error('Save failed');
+            const validation = await api.workflows.validate(id);
+            if (!validation.valid) throw new Error(`Cannot run: ${validation.errors.join('; ')}`);
+            return api.workflows.previewRun(id, input);
+          })();
       setSelectedId(null);
       setNodeRuns({});
       setResumedFrom(null);
@@ -346,6 +364,18 @@ export default function WorkflowEditor() {
       setRunId(res.run_id);
     } catch (e) {
       setRunError(`Run failed: ${(e as Error).message}`);
+    } finally { setBusy(false); }
+  };
+
+  // Clone this (another user's published) workflow into a fresh draft owned by the caller, then open it.
+  const cloneAndOpen = async () => {
+    if (!id || busy) return;
+    setBusy(true); setMsg('');
+    try {
+      const res = await api.workflows.clone(id);
+      navigate(`/workflows/${res.workflow.id}`, { state: { cloneWarnings: res.warnings || [] } });
+    } catch (e) {
+      setMsg(`Clone failed: ${(e as Error).message}`);
     } finally { setBusy(false); }
   };
 
@@ -396,24 +426,39 @@ export default function WorkflowEditor() {
     <div style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column' }}>
       <div style={toolbar}>
         <button onClick={() => navigate('/workflows')} style={iconBtn} title="Back"><ArrowLeft size={16} /></button>
-        <input value={name} onChange={(e) => setName(e.target.value)} disabled={preview} style={nameInput} />
+        <input value={name} onChange={(e) => setName(e.target.value)} disabled={preview || readOnly} style={nameInput} />
         <span style={statusBadge(status)}>{status}</span>
-        <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-          {saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved changes' : savedAt ? `Saved ${savedAt}` : 'Saved'}
-        </span>
+        {readOnly ? (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-text-secondary)' }}>
+            <Lock size={12} /> Read-only{authorName ? ` · by ${authorName}` : ''}
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+            {saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved changes' : savedAt ? `Saved ${savedAt}` : 'Saved'}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         {msg && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginRight: 8 }}>{msg}</span>}
-        <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={importFromFile} />
-        <button onClick={() => importInputRef.current?.click()} disabled={busy || preview} style={btn} title="Import a workflow file into the canvas"><FileUp size={15} /> Import</button>
-        <button onClick={exportCurrent} disabled={busy || preview} style={btn} title="Export this workflow"><Download size={15} /> Export</button>
-        <button onClick={manualSave} disabled={busy || preview} style={btn} title="Save draft"><Save size={15} /> Save</button>
-        <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
-        <button onClick={publish} disabled={busy || preview} style={btn}><Rocket size={15} /> Publish</button>
-        <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>
+        {readOnly ? (
+          <>
+            <button onClick={cloneAndOpen} disabled={busy} style={btn} title="Clone into my workflows to edit"><Copy size={15} /> Clone to edit</button>
+            <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Run</button>
+          </>
+        ) : (
+          <>
+            <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={importFromFile} />
+            <button onClick={() => importInputRef.current?.click()} disabled={busy || preview} style={btn} title="Import a workflow file into the canvas"><FileUp size={15} /> Import</button>
+            <button onClick={exportCurrent} disabled={busy || preview} style={btn} title="Export this workflow"><Download size={15} /> Export</button>
+            <button onClick={manualSave} disabled={busy || preview} style={btn} title="Save draft"><Save size={15} /> Save</button>
+            <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
+            <button onClick={publish} disabled={busy || preview} style={btn}><Rocket size={15} /> Publish</button>
+            <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>
+          </>
+        )}
       </div>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        {!preview && <NodePalette />}
+        {!preview && !readOnly && <NodePalette />}
         <div style={{ flex: 1 }} onDragOver={onDragOver} onDrop={onDrop}>
           <ReactFlow
             colorMode={dark ? 'dark' : 'light'}
@@ -423,11 +468,11 @@ export default function WorkflowEditor() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onInit={(inst) => { rfRef.current = inst; }}
-            onNodeClick={(_, node) => setSelectedId(node.id)}
-            onPaneClick={() => { if (!preview) setSelectedId(null); }}
-            nodesDraggable={!preview}
-            nodesConnectable={!preview}
-            deleteKeyCode={preview ? null : 'Backspace'}
+            onNodeClick={(_, node) => { if (preview || !readOnly) setSelectedId(node.id); }}
+            onPaneClick={() => { if (!preview && !readOnly) setSelectedId(null); }}
+            nodesDraggable={!preview && !readOnly}
+            nodesConnectable={!preview && !readOnly}
+            deleteKeyCode={preview || readOnly ? null : 'Backspace'}
             nodeTypes={nodeTypes}
             fitView
           >
@@ -452,7 +497,7 @@ export default function WorkflowEditor() {
                 resumedFrom={resumedFrom ?? undefined}
                 onClose={exitRun}
               />
-            ) : selectedNode ? (
+            ) : selectedNode && !readOnly ? (
               <NodeConfigPanel
                 key={selectedNode.id}
                 node={selectedNode}

@@ -164,6 +164,79 @@ public class WorkflowPublishedVersion {
 }
 ```
 
+### 3.2.1 公开发现 + 运行 + 克隆（discover + run + clone）
+
+**决策 D2：publish 即 public，不引入独立可见性字段。** `published_version_id != null` 本身就是持久化、可查询的"已公开"信号——草稿私有，一旦发布即对全体可见，与 `AgentDefinition.status = PUBLISHED` 同构。无需新增 `is_public`/`visibility` 字段；视图层的 `status` 由 `publishedVersionId != null` 算出。
+
+**访问分层（对已发布 workflow，非 owner 能 run/clone，不能改）：**
+
+| 动作 | owner | 其他用户（仅当已发布） | 落点 |
+|---|---|---|---|
+| list / discover | 自己的全部 | 见 `my=false` 分支 | `list(userId, myWorkflows)` |
+| open / view | 可编辑草稿 | **只读**，渲染冻结的已发布 graph | `getReadable(id, userId)` |
+| run | ✓（含 draft preview） | ✓ 跑已发布版本，**run 归属调用者** | `createRun`（run.userId = caller） |
+| clone | ✓ | ✓ 复制到自己名下 | `clone(sourceId, userId)` |
+| update / publish / delete | ✓ | ✗ `ForbiddenException` | `get(id, userId)`（严格 owner） |
+
+**列表查询对照 `AgentDefinitionService.list(userId, myAgents)` 的分支：**
+
+```java
+public List<WorkflowDefinition> list(String userId, Boolean myWorkflows) {
+    if (myWorkflows != null && !myWorkflows) {                 // discover：别人的已发布
+        return definitionCollection.find(Filters.and(
+            Filters.ne("user_id", userId),
+            Filters.ne("published_version_id", null)));         // ne null = 存在且非空 = 已发布
+    }
+    return definitionCollection.find(Filters.eq("user_id", userId));  // null/true：自己的（草稿 + 已发布）
+}
+```
+
+前端两次拉取（`my=true` 我的 + `my=false` 发现区），与 Chat 页对 agent 的 `list(true)+list(false)` 合并同构。`published_version_id` 单独建索引（migration `20260624001`），否则 notablescan 环境下跨用户查询走 COLLSCAN 报 500。
+
+**运行：非 owner 直接跑已发布版本，run 归属调用者。** `createRun` 放开归属校验——只要已发布，任何用户都能跑；run 行的 `user_id` 是调用者，因此 `getRun`/`listRuns`/`listNodeRuns`/`resume` 这些 run 级 owner 校验天然只让调用者看见自己的 run（无需改）。未发布仍私有：非 owner → `ForbiddenException`，owner → `BadRequestException("not published")`。owner 的 draft preview（`createPreviewRun`）保持 owner-only。
+
+```java
+public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
+    var definition = definitionCollection.get(workflowId).orElseThrow(...);
+    if (definition.publishedVersionId == null) {                // 未发布 = 私有
+        if (!definition.userId.equals(userId)) throw new ForbiddenException(...);
+        throw new BadRequestException("workflow is not published");
+    }
+    var version = versionCollection.get(definition.publishedVersionId).orElseThrow(...);
+    return insertRun(definition, version, input, triggeredBy, userId);   // run.userId = 调用者
+}
+```
+
+**只读打开：** `getReadable` 让非 owner 用已发布 graph 渲染只读画布（前端据 `WorkflowView.editable=false` 锁掉拖拽/连线/Save/Publish/配置面板，只留 Run + Clone）；owner 仍拿可编辑草稿。**永不**把 owner 未发布的实时草稿暴露给他人：
+
+```java
+public WorkflowDefinition getReadable(String id, String userId) {
+    var d = definitionCollection.get(id).orElseThrow(...);
+    if (d.userId.equals(userId)) return d;                      // owner：可编辑草稿
+    if (d.publishedVersionId == null) throw new ForbiddenException(...);
+    d.draftGraph = versionCollection.get(d.publishedVersionId).orElseThrow(...).graph;  // 只读：换成冻结的已发布 graph（仅内存，不回写）
+    return d;
+}
+```
+
+**克隆：** 复制**冻结的已发布版本**到调用者名下的全新草稿——复制语义与 discover「只暴露已发布」一致，永不泄露未发布改动：
+
+```java
+public WorkflowDefinition clone(String sourceId, String userId) {
+    var source = definitionCollection.get(sourceId).orElseThrow(...);
+    if (source.publishedVersionId == null) throw new ForbiddenException(...);   // 只能克隆已公开的
+    var published = versionCollection.get(source.publishedVersionId).orElseThrow(...);
+    var copy = new WorkflowDefinition();
+    copy.id = UUID.randomUUID().toString();
+    copy.userId = userId;                                       // 归属转移到调用者
+    copy.draftGraph = published.graph;
+    definitionCollection.insert(copy);
+    return copy;
+}
+```
+
+> **遗留丑陋（性质同 §12.2）：** 克隆出的 graph 仍引用原作者的 `agent_id`。克隆者重新发布时，`WorkflowPublishService.captureAgentSnapshots` 校验 agent 归属（`own ∨ system_default`）会失败——克隆是可用的起点，但克隆者需先把 AGENT/LLM 节点换成自己的 agent 才能 republish。后续可选：连引用的 agent 一起克隆 / 放开已发布 agent 的跨用户访问 / run 时直接用版本内嵌的 `agent_snapshots`。
+
 ### 3.3 WorkflowRun（Cursor + run 级 CAS；对照 AgentRun + AgentSchedule.nextRunAt）
 
 ```java
@@ -474,6 +547,8 @@ class VariablePool {
 ### 5.3.2 文件流转 v2（2026-06 修订）：入向 staging + END 交付物
 
 > **实现状态：A + B 已落地（2026-06-11）。** A：`ArtifactStaging`（引用闭包推导 + 路径约定 + 文件名消毒）/ `VariablePool.stagedView()` 注入瞬态 `path` / `SandboxService.addStagedFile` + `PendingFile` 双源（blob / FileRecord）/ `AgentRunner.WorkflowRunContext`（trace + stagedFiles，agent loop 前 `ensurePendingFilesUploaded` 同步确保、失败即 run FAILED）/ `AgentExecutor`（AGENT 节点 staging + path 渲染，LLM 回退 url）/ `CodeExecutor`（同通道，执行前 uploadFile，失败 Fail(retryable)）。B：`EndExecutor` 调 `OutputComposer.composeDeliverables`（默认前驱并集 + 显式 `artifacts` 选择器覆盖）/ `WorkflowRunner` 改取 END node-run 的 output+artifacts（删除全图 union `collectArtifacts`）/ 前端 RunTrace 交付物卡片（图标/大小/下载/图片预览）+ WorkflowRuns 文件数徽标。测试：`ArtifactStagingTest`（8）+ `EndExecutorTest`（4）。注意：staging 失败的确定性依赖 `ensurePendingFilesUploaded` 的同步调用路径——`LazySandbox.runPostAcquireHook` 会吞异常，不能只靠 onReady 钩子。
+>
+> **→ 2026-06-23 修订（交付物 v2.1）：** (1) **output 引用即交付**——把 `output` 模板里 `{{ nodes.<id>.artifacts }}` 引用到的文件按同款粒度（整数组/整对象/`.path` → 交付；`.url`/元数据 → 不交付）抬进交付物，粒度判定抽进 `ArtifactStaging.referencedFiles`（与入向 staging 共用一套规则）；(2) **提升下沉 `composeArtifacts`**——END 默认交付与 AGGREGATOR 共用同一操作，aggregator `output` 引用的非前驱文件也随之传播下游，消除两者不对称；(3) **显式 `artifacts` 清单恢复权威**——非空即「就这些」，不再被 output 引用强行扩宽，用户可收窄；(4) **END 配置面板暴露交付物选择器**（前端 `DeliverablesField`，写 `config.artifacts`，按 `nodes.<id>.artifacts` 形状过滤、残留项可删）。测试增量：`EndExecutorTest`（4→7）+ `AggregatorExecutorTest`（+1）。
 
 **修订动机（两处实践暴露的问题）**：
 
@@ -514,19 +589,19 @@ class VariablePool {
 
 - **过程产物（trace 层）**：`WorkflowNodeRun.artifacts`，节点详情展示，调试/审计用——不变。
 - **交付产物（result 层）**：END 节点的 artifacts 即交付物。
-  1. `EndExecutor` 补调 `OutputComposer.composeArtifacts(ctx)`（默认 = 直接前驱 artifacts 的 `file_id` 去重并集，与 `compose` 的输出语义镜像，修掉与 AGGREGATOR 的不对称）；
-  2. END config 支持可选 `artifacts` 选择器列表（如 `["nodes.report.artifacts"]`）显式声明交付物，覆盖默认并集——与 `output` 模板覆盖 pass-through 同构；
-  3. `WorkflowRun.artifacts` 改为 = END node-run 的 artifacts，**取代** `collectArtifacts` 的全图 union。全图信息不丢——trace 层逐节点已有，只是不再冒充交付物。
+  1. `EndExecutor` 调 `OutputComposer.composeDeliverables(ctx)`；默认（无显式声明）= `composeArtifacts(ctx)` = **直接前驱 artifacts 的 `file_id` 去重并集 ∪ END `output` 模板引用到的文件**（2026-06-23 增量：output 引用即交付，粒度同入向 staging；提升逻辑下沉到 END/AGGREGATOR 共用的 `composeArtifacts`，修掉与 AGGREGATOR 的不对称）；
+  2. END config 可选 `artifacts` 选择器列表（如 `["nodes.report.artifacts"]`）显式声明交付物——**权威**：就这些、可收窄，**不叠加** output 引用（2026-06-23 修订：早期 v2.1 会强行叠加 output 引用，导致显式清单无法收窄，已改为权威）；
+  3. `WorkflowRun.artifacts` = END node-run 的 artifacts，**取代** `collectArtifacts` 的全图 union。全图信息不丢——trace 层逐节点已有，只是不再冒充交付物。
 
-**前端联动**：run 结果面板（RunPanel/RunTrace）在 output 文本下方渲染 artifact 卡片——按 `content_type` 的文件图标、文件名、大小、下载按钮，`image/*` 内联缩略预览；WorkflowRuns 列表卡片加文件数徽标；节点详情继续展示该节点自己的过程产物，与结果面板区分。
+**前端联动**：run 结果面板（RunPanel/RunTrace）在 output 文本下方渲染 artifact 卡片——按 `content_type` 的文件图标、文件名、大小、下载按钮，`image/*` 内联缩略预览；WorkflowRuns 列表卡片加文件数徽标；节点详情继续展示该节点自己的过程产物，与结果面板区分。**END 配置面板新增 Deliverables 多选**（`DeliverablesField`）：候选 = 支配 END 且产文件的上游节点（按 `nodes.<id>.artifacts` 形状过滤，避开同名 `sys.input.artifacts`），勾选写 `config.artifacts`；空 = 默认（前驱 ∪ output 引用），勾选 = 权威清单；已删/断连节点的残留选择器以虚线项展示、可勾掉移除。
 
 #### C. 对称缺口（记录在案，本次不做）
 
 workflow 的**文件输入**：`WorkflowRun.input` 是纯 string，START 节点无文件入口（agent run 经 job 创建已支持文件，workflow 不对称）。将来点亮时直接复用本节机制：启动载荷带文件 → 挂为 `nodes.start.artifacts` → 同一 staging 通道进首个消费节点，零新概念。待有真实场景再做。
 
-**测试要点（v2 增量）**：(a) `SelectorScanner` 提取 artifacts 选择器 → staging 集正确（含 `.0.path` 单文件、整数组、`.url`-only 不 stage 三种粒度）；(b) staged path 渲染与实际上传路径一致（纯函数性）；(c) staging 失败 → 节点 `FAILED_RETRYABLE`；(d) 无沙箱 LLM 节点回退 url 渲染（无 `path` 字段）；(e) END 默认并集 = 直接前驱、显式 `artifacts` 选择器覆盖；(f) `run.artifacts` = END artifacts，中间文件不再泄漏进交付物；(g) CODE 沙箱关网时仍能读 staged 文件。
+**测试要点（v2 增量）**：(a) `SelectorScanner` 提取 artifacts 选择器 → staging 集正确（含 `.0.path` 单文件、整数组、`.url`-only 不 stage 三种粒度）；(b) staged path 渲染与实际上传路径一致（纯函数性）；(c) staging 失败 → 节点 `FAILED_RETRYABLE`；(d) 无沙箱 LLM 节点回退 url 渲染（无 `path` 字段）；(e) END 默认 = 直接前驱并集 ∪ output 引用文件、显式 `artifacts` 选择器为**权威**（压制 output 引用、可收窄）、AGGREGATOR `output` 引用的非前驱文件被提升；(f) `run.artifacts` = END artifacts，中间文件不被 output 引用时不泄漏进交付物；(g) CODE 沙箱关网时仍能读 staged 文件。
 
-**已定决策（v2）**：⑦ Agent 收文件 → 平台 staging + path-in-prompt（无沙箱回退 url）；⑧ CODE 收文件 → 同一 staging 通道（无状态契约不破）；⑨ staging 集 → 按引用自动推导（非手工 `stage_artifacts` 配置）；⑩ 交付物 → END 声明（默认前驱并集 + 可选显式选择器），`WorkflowRun.artifacts` 不再全图 union；⑪ `path` 为渲染期瞬态字段，不落库。
+**已定决策（v2）**：⑦ Agent 收文件 → 平台 staging + path-in-prompt（无沙箱回退 url）；⑧ CODE 收文件 → 同一 staging 通道（无状态契约不破）；⑨ staging 集 → 按引用自动推导（非手工 `stage_artifacts` 配置）；⑩ 交付物 → END 声明（默认前驱并集 + 可选显式选择器），`WorkflowRun.artifacts` 不再全图 union；⑪ `path` 为渲染期瞬态字段，不落库；⑫（2026-06-23）交付物 = 前驱并集 ∪ output 模板引用文件（粒度同 staging，提升逻辑下沉 `composeArtifacts`，与 AGGREGATOR 共用并传播下游）；显式 `artifacts` 清单为**权威**（可收窄、不叠加 output 引用）；END 配置面板暴露交付物选择器（`DeliverablesField`）。
 
 ### 5.4 HUMAN_INPUT 的 API 交互契约（2026-06 修订）
 

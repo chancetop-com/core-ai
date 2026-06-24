@@ -674,8 +674,16 @@ export interface UpdateScheduleRequest {
   concurrency_policy?: string;
 }
 
+export interface CloneWorkflowResponse {
+  workflow: WorkflowView;
+  warnings?: string[];   // publish-blocking issues the clone already has (e.g. agent nodes the caller doesn't own)
+}
+
 export interface WorkflowView {
   id: string;
+  user_id?: string;
+  user_name?: string;
+  editable?: boolean;   // false = read-only (another user's published workflow); undefined/true = editable
   name: string;
   mode?: string;
   status?: string;
@@ -851,7 +859,9 @@ export const api = {
       request<ListAgentMemoriesResponse>(`/api/agents/${agentId}/memories`),
   },
   workflows: {
-    list: () => request<ListWorkflowsResponse>('/api/workflows'),
+    list: (my?: boolean) =>
+      request<ListWorkflowsResponse>(`/api/workflows${my !== undefined ? `?my=${my}` : ''}`),
+    clone: (id: string) => request<CloneWorkflowResponse>(`/api/workflows/${id}/clone`, { method: 'POST' }),
     create: (data: { name: string; mode?: string; graph: string }) =>
       request<WorkflowView>('/api/workflows', { method: 'POST', body: JSON.stringify(data) }),
     get: (id: string) => request<WorkflowView>(`/api/workflows/${id}`),

@@ -57,10 +57,12 @@ public class WorkflowRunService {
     public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
         WorkflowDefinition definition = definitionCollection.get(workflowId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + workflowId));
-        if (!definition.userId.equals(userId)) {
-            throw new ForbiddenException("workflow does not belong to the current user: " + workflowId);
-        }
+        // published == public: any user may run the published version (the run is attributed to the caller). An
+        // unpublished workflow stays private — only its owner can see it, and even they must publish it first.
         if (definition.publishedVersionId == null) {
+            if (!definition.userId.equals(userId)) {
+                throw new ForbiddenException("workflow does not belong to the current user: " + workflowId);
+            }
             throw new BadRequestException("workflow is not published: " + workflowId);
         }
         WorkflowPublishedVersion version = versionCollection.get(definition.publishedVersionId)

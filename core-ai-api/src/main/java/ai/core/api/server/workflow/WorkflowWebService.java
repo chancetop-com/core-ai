@@ -15,7 +15,7 @@ import core.framework.api.web.service.ResponseStatus;
 public interface WorkflowWebService {
     @GET
     @Path("/api/workflows")
-    ListWorkflowsResponse list();
+    ListWorkflowsResponse list(ListWorkflowsRequest request);
 
     @POST
     @Path("/api/workflows")
@@ -48,6 +48,11 @@ public interface WorkflowWebService {
     @POST
     @Path("/api/workflows/:id/publish")
     WorkflowView publish(@PathParam("id") String id);
+
+    // Clone another user's published workflow into a fresh draft owned by the caller (discover -> copy to mine).
+    @POST
+    @Path("/api/workflows/:id/clone")
+    CloneWorkflowResponse clone(@PathParam("id") String id);
 
     @POST
     @Path("/api/workflows/:id/runs")
