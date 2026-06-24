@@ -50,10 +50,18 @@ var mcpManager = &McpProcessManager{
 	servers: make(map[string]*McpServerProcess),
 }
 
-// crashDetectWindow is how long Start blocks to catch an immediate crash before
-// returning success to the caller. Kept short so HTTP responses don't stall —
-// longer survival monitoring is asynchronous (see exitWatcher).
+// crashDetectWindow is how long Start blocks to catch an immediate crash (e.g.
+// missing binary, syntax error). After surviving this window the process is
+// considered "not dead", but for npx-based servers the actual MCP server may
+// still be downloading/installing packages. Phase 2 (readiness probe) follows.
 const crashDetectWindow = 3 * time.Second
+
+// mcpStartupTimeout is how long Start waits for the child process to respond to
+// a readiness ping after it has survived the crash-detection window. This covers
+// the cold-start scenario where npx needs to download and install packages before
+// the real MCP server starts listening on stdin. MCP spec says servers SHOULD
+// respond to ping at any time, including pre-initialization.
+const mcpStartupTimeout = 120 * time.Second
 
 func (m *McpProcessManager) Start(req McpStartRequest) (*McpServerProcess, error) {
 	proc, err := m.startOnce(req)
@@ -66,6 +74,7 @@ func (m *McpProcessManager) Start(req McpStartRequest) (*McpServerProcess, error
 		exitCh <- proc.Cmd.Wait()
 	}()
 
+	// Phase 1: quick crash detection (binary missing, syntax error, etc.)
 	select {
 	case waitErr := <-exitCh:
 		m.mu.Lock()
@@ -76,8 +85,45 @@ func (m *McpProcessManager) Start(req McpStartRequest) (*McpServerProcess, error
 		}
 		return nil, fmt.Errorf("mcp server exited cleanly on startup before serving any request")
 	case <-time.After(crashDetectWindow):
-		// Process survived the short crash-detection window. Hand off to the
-		// async watcher so the HTTP response can return now.
+		// survived — proceed to readiness probe
+	}
+
+	// Phase 2: readiness probe via MCP ping.
+	// The MCP spec (2024-11-05 §3.6) says servers SHOULD respond to ping at any
+	// time, even before initialization. For servers that don't support pre-init
+	// ping, SendJSONRPC will time out after mcpStartupTimeout and we surface a
+	// clear error (instead of returning "running" prematurely and forcing the
+	// caller to discover the problem later through a chain of timeouts).
+	readyCh := make(chan error, 1)
+	go func() {
+		_, err := proc.SendJSONRPC(
+			[]byte(`{"jsonrpc":"2.0","id":"sandbox-ready-probe","method":"ping","params":{}}`),
+			mcpStartupTimeout,
+		)
+		readyCh <- err
+	}()
+
+	select {
+	case waitErr := <-exitCh:
+		// process died before becoming ready — clean up and report
+		m.mu.Lock()
+		delete(m.servers, req.ID)
+		m.mu.Unlock()
+		if waitErr != nil {
+			return nil, fmt.Errorf("mcp server exited before becoming ready: %w", waitErr)
+		}
+		return nil, fmt.Errorf("mcp server exited cleanly before becoming ready")
+	case probeErr := <-readyCh:
+		if probeErr != nil {
+			// ping failed (timeout or I/O error) — the server is not ready.
+			// Kill the process to avoid leaking a half-started child.
+			proc.Cmd.Process.Kill()
+			m.mu.Lock()
+			delete(m.servers, req.ID)
+			m.mu.Unlock()
+			return nil, fmt.Errorf("mcp server not ready within %v: %w", mcpStartupTimeout, probeErr)
+		}
+		// ready — hand off to async exit watcher
 		go m.exitWatcher(req.ID, exitCh)
 		return proc, nil
 	}

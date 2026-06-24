@@ -52,6 +52,11 @@ public final class SandboxConstants {
 
     public static final int DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS = 60;
 
+    // HTTP timeout for MCP server start-up calls (startMcpServer). Must be long enough
+    // to cover the sandbox runtime's readiness probe (120 s) plus network / serialisation
+    // overhead. Once the server is ready the normal tool / request timeouts apply.
+    public static final int MCP_STARTUP_TIMEOUT_SECONDS = 180;
+
     private SandboxConstants() {
     }
 }

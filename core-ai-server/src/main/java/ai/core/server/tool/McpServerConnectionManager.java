@@ -4,6 +4,7 @@ import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.mcp.client.McpServerConfig;
 import ai.core.sandbox.Sandbox;
+import ai.core.sandbox.SandboxConstants;
 import ai.core.server.domain.ToolRegistry;
 import ai.core.server.sandbox.SandboxClient;
 import ai.core.server.sandbox.SandboxService;
@@ -80,7 +81,7 @@ class McpServerConnectionManager {
             LOGGER.warn("session sandbox ip/port not available for mcp server {}", entry.id);
             return false;
         }
-        var sandboxClient = new SandboxClient(ip, port, 30);
+        var sandboxClient = new SandboxClient(ip, port, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
         try {
             var serverConfig = buildSandboxBackedConfig(entry, sandboxClient);
             sessionManager.addServer(serverConfig);

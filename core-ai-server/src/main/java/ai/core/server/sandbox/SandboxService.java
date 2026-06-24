@@ -2,12 +2,13 @@ package ai.core.server.sandbox;
 
 import ai.core.api.server.session.SandboxEvent;
 import ai.core.mcp.client.McpClientManager;
+import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConfig;
+import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.file.FileService;
-import ai.core.sandbox.Sandbox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -312,7 +313,7 @@ public class SandboxService {
         if (ip == null || port == 0) {
             throw new IllegalStateException("discovery sandbox ip/port not available");
         }
-        return new SandboxClient(ip, port, 60);
+        return new SandboxClient(ip, port, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
     }
 
     private static SandboxConfig createDiscoveryConfig() {
