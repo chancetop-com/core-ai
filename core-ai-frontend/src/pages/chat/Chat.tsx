@@ -6,7 +6,6 @@ import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import type { IdName } from '../../api/session';
 import ResourcePicker from './ResourcePicker';
-import ToolPickerModal from './ToolPickerModal';
 import ChatConfigModal, { type DatasetConfigDraft } from './ChatConfigModal';
 import ChatSessionsSidebar from './ChatSessionsSidebar';
 import type { ArtifactSpec } from './components/artifactTypes';
@@ -72,7 +71,6 @@ export default function Chat() {
   const [availableSkills, setAvailableSkills] = useState<SkillDefinition[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
   const [skillsLoading, setSkillsLoading] = useState(false);
-  const [showToolPicker, setShowToolPicker] = useState(false);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [showAgentPicker, setShowAgentPicker] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -341,19 +339,15 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Load agents (my agents + others for chat)
+  // Load my agents for agent selector
   useEffect(() => {
-    Promise.all([
-      api.agents.list(true),
-      api.agents.list(false),
-    ]).then(([myRes, otherRes]) => {
-      setMyAgents(myRes.agents || []);
-      setOtherAgents(otherRes.agents || []);
+    api.agents.list(true).then(res => {
+      setMyAgents(res.agents || []);
       // Auto-select first published agent if none selected
-      const allAgents = [...(myRes.agents || []), ...(otherRes.agents || [])]
+      const chatAgents = (res.agents || [])
         .filter(a => a.status === 'PUBLISHED' || a.type === 'local');
-      if (allAgents.length > 0) {
-        setSelectedAgentId(prev => prev || allAgents[0].id);
+      if (chatAgents.length > 0) {
+        setSelectedAgentId(prev => prev || chatAgents[0].id);
       }
     }).catch(console.error);
   }, []);
@@ -962,10 +956,16 @@ export default function Chat() {
     sessionStorage.removeItem('chat_artifacts');
   }, []);
 
-  const handleSelectAgent = useCallback((id: string) => {
+  const handleSelectAgent = useCallback((id: string, agent?: AgentDefinition) => {
+    if (agent && !agents.find(a => a.id === agent.id)) {
+      setOtherAgents(prev => {
+        if (prev.find(a => a.id === agent.id)) return prev;
+        return [...prev, agent];
+      });
+    }
     handleNewChat();
     setSelectedAgentId(id);
-  }, [handleNewChat]);
+  }, [handleNewChat, agents]);
 
   const skillNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -1119,16 +1119,13 @@ export default function Chat() {
   // Confirm tool selection — save as pre-session or call API directly
   const loadSelectedTools = useCallback(async () => {
     if (selectedToolIds.size === 0) {
-      setShowToolPicker(false);
       setShowConfigModal(false);
       return;
     }
 
     if (!sessionId) {
-      // No session yet — save as pre-session selections
       setPreToolIds(new Set(selectedToolIds));
       showToast(`Selected ${selectedToolIds.size} tool(s), will load on first message`);
-      setShowToolPicker(false);
       setShowConfigModal(false);
       setSelectedToolIds(new Set());
       return;
@@ -1149,7 +1146,6 @@ export default function Chat() {
         });
         showToast(`Loaded ${res.loaded_tools.length} tool(s)`);
       }
-      setShowToolPicker(false);
       setShowConfigModal(false);
       setSelectedToolIds(new Set());
     } catch (err) {
@@ -1238,7 +1234,6 @@ export default function Chat() {
       <AgentSelector
         status={status}
         myAgents={myAgents}
-        otherAgents={otherAgents}
         selectedAgentId={selectedAgentId}
         selectedAgent={selectedAgent}
         onSelectAgent={handleSelectAgent}
@@ -1302,20 +1297,6 @@ export default function Chat() {
           style={{ background: 'var(--color-bg)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
           {toast}
         </div>
-      )}
-
-      {/* Tool Picker Modal */}
-      {showToolPicker && (
-        <ToolPickerModal
-          availableTools={availableTools}
-          loading={toolsLoading}
-          loadedIds={loadedToolIds}
-          pendingIds={preToolIds}
-          selectedIds={selectedToolIds}
-          onToggle={toggleTool}
-          onLoad={loadSelectedTools}
-          onClose={() => setShowToolPicker(false)}
-        />
       )}
 
       {/* Skill Picker Modal */}

@@ -1,16 +1,16 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Check, ChevronDown, Search, Star } from 'lucide-react';
 import type { AgentDefinition } from '../../../api/client';
+import { api } from '../../../api/client';
 
 type ChatStatus = 'idle' | 'running';
 
 interface AgentSelectorProps {
   status: ChatStatus;
   myAgents: AgentDefinition[];
-  otherAgents: AgentDefinition[];
   selectedAgentId: string;
   selectedAgent?: AgentDefinition;
-  onSelectAgent: (id: string) => void;
+  onSelectAgent: (id: string, agent?: AgentDefinition) => void;
 }
 
 function canChatWithAgent(agent: AgentDefinition): boolean {
@@ -20,13 +20,13 @@ function canChatWithAgent(agent: AgentDefinition): boolean {
 const AgentSelector = memo(function AgentSelector({
   status,
   myAgents,
-  otherAgents,
   selectedAgentId,
   selectedAgent,
   onSelectAgent,
 }: AgentSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchedAgents, setSearchedAgents] = useState<AgentDefinition[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const defaultAgents = useMemo(
@@ -37,13 +37,26 @@ const AgentSelector = memo(function AgentSelector({
     () => myAgents.filter(agent => !agent.system_default && canChatWithAgent(agent)),
     [myAgents],
   );
-  const searchedSharedAgents = useMemo(
-    () => otherAgents.filter(agent =>
-      canChatWithAgent(agent)
-      && agent.name.toLowerCase().includes(searchQuery.toLowerCase())
-    ),
-    [otherAgents, searchQuery],
-  );
+
+  // Debounced server-side search for shared agents
+  useEffect(() => {
+    if (searchQuery.trim().length === 0) {
+      setSearchedAgents([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api.agents.list(false, searchQuery.trim(), 20).then(res => {
+        if (!cancelled) setSearchedAgents(res.agents || []);
+      }).catch(() => {
+        if (!cancelled) setSearchedAgents([]);
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   useEffect(() => {
     if (!open) return;
@@ -55,6 +68,7 @@ const AgentSelector = memo(function AgentSelector({
       if (!dropdown.contains(target)) {
         setOpen(false);
         setSearchQuery('');
+        setSearchedAgents([]);
       }
     };
 
@@ -64,10 +78,11 @@ const AgentSelector = memo(function AgentSelector({
     };
   }, [open]);
 
-  const handleSelect = (id: string) => {
-    onSelectAgent(id);
+  const handleSelect = (id: string, agent?: AgentDefinition) => {
+    onSelectAgent(id, agent);
     setOpen(false);
     setSearchQuery('');
+    setSearchedAgents([]);
   };
 
   const renderAgentButton = (agent: AgentDefinition, icon: 'bot' | 'star') => (
@@ -154,12 +169,27 @@ const AgentSelector = memo(function AgentSelector({
                 </div>
                 {searchQuery.length > 0 && (
                   <div className="max-h-[200px] overflow-auto">
-                    {searchedSharedAgents.length === 0 ? (
+                    {searchedAgents.length === 0 ? (
                       <div className="text-center py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                         No agents found
                       </div>
                     ) : (
-                      searchedSharedAgents.map(agent => renderAgentButton(agent, 'star'))
+                      searchedAgents.map(agent => (
+                        <button key={agent.id}
+                          onClick={() => handleSelect(agent.id, agent)}
+                          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
+                          style={{
+                            background: selectedAgentId === agent.id ? 'var(--color-bg-tertiary)' : 'transparent',
+                            color: 'var(--color-text)',
+                          }}
+                          onMouseEnter={event => { if (selectedAgentId !== agent.id) event.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
+                          onMouseLeave={event => { if (selectedAgentId !== agent.id) event.currentTarget.style.background = 'transparent'; }}>
+                          <Star size={14} style={{ color: 'var(--color-text-secondary)' }} />
+                          <span className="flex-1 truncate">{agent.name}</span>
+                          <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{agent.created_by}</span>
+                          {selectedAgentId === agent.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
+                        </button>
+                      ))
                     )}
                   </div>
                 )}

@@ -838,8 +838,14 @@ export const api = {
       request<PromptTemplate>(`/api/prompts/${id}/publish`, { method: 'POST' }),
   },
   agents: {
-    list: (my?: boolean) =>
-      request<ListAgentsResponse>(`/api/agents${my !== undefined ? `?my=${my}` : ''}`),
+    list: (my?: boolean, query?: string, limit?: number) => {
+      const params = new URLSearchParams();
+      if (my !== undefined) params.set('my', String(my));
+      if (query) params.set('query', query);
+      if (limit) params.set('limit', String(limit));
+      const qs = params.toString();
+      return request<ListAgentsResponse>(`/api/agents${qs ? `?${qs}` : ''}`);
+    },
     get: (id: string) =>
       request<AgentDefinition>(`/api/agents/${id}`),
     create: (data: Partial<AgentDefinition>) =>

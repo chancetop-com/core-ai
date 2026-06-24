@@ -250,7 +250,13 @@ function ToolsTab(props: ChatConfigModalProps) {
             <div key={server.id} className="border-t first:border-t-0" style={{ borderColor: 'var(--color-border)' }}>
               <div className="flex items-center px-3 py-1.5">
                 <button className="flex-1 flex items-center gap-2 text-xs cursor-pointer text-left"
-                  onClick={() => { setExpandedMcpServer(expandedMcpServer === server.id ? null : server.id); if (expandedMcpServer !== server.id) loadMcpServerTools(server.id); }}>
+                  onClick={() => {
+                    const nextExpanded = expandedMcpServer === server.id ? null : server.id;
+                    setExpandedMcpServer(nextExpanded);
+                    if (nextExpanded && server.config?.transport !== 'sandbox_hosted') {
+                      loadMcpServerTools(server.id);
+                    }
+                  }}>
                   {expandedMcpServer === server.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   <span className="font-medium truncate">{server.name}</span>
                 </button>
@@ -263,7 +269,12 @@ function ToolsTab(props: ChatConfigModalProps) {
               </div>
               {expandedMcpServer === server.id && (
                 <div className="pl-6 pb-1">
-                  {!mcpServerTools[server.id] ? (
+                  {server.config?.transport === 'sandbox_hosted' ? (
+                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                      Dynamic MCP — individual tools are not listed here.
+                      Use <strong>Add All</strong> to add the entire server.
+                    </div>
+                  ) : !mcpServerTools[server.id] ? (
                     <div className="px-3 py-1 text-xs flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
                       <Loader2 size={10} className="animate-spin" /> Loading...
                     </div>
