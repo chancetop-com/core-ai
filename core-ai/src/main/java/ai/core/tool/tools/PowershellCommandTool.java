@@ -20,7 +20,7 @@ public class PowershellCommandTool extends ShellCommandTool {
 
             All commands run in the current working directory by default. Use the `workspace` parameter if you need to run a command in a different directory. AVOID using `Set-Location <directory>; <command>` patterns — use `workspace` instead.
 
-            IMPORTANT: Avoid using this tool to run `Get-ChildItem`, `Select-String`, `Get-Content`, or `Write-Output` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:
+            IMPORTANT: For FILE operations, prefer dedicated tools:
 
              - Read files: Use ${tool_read_file} (NOT Get-Content/cat/type)
              - Edit files: Use ${tool_edit_file} (NOT Set-Content/Out-File)
@@ -29,6 +29,7 @@ public class PowershellCommandTool extends ShellCommandTool {
              - Write files: Use ${tool_write_file} (NOT Out-File/Set-Content)
              - Communication: Output text directly (NOT Write-Output/echo)
             While the ${tool_shell} tool can do similar things, it's better to use the built-in tools as they provide a better user experience and make it easier to review tool calls and give permission.
+            HOWEVER, for processing the OUTPUT of native commands (kubectl, docker, git, etc.), you WILL need PowerShell cmdlets like Select-String, Out-String, ForEach-Object, Where-Object. These are the correct tools for filtering pipeline data — the dedicated file tools cannot do this.
 
             # Instructions
              - If your command will create new directories or files, first use this tool to run `Get-ChildItem` to verify the parent directory exists and is the correct location.
