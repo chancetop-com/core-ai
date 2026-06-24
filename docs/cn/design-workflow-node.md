@@ -89,17 +89,17 @@ public interface WorkflowRunGateway {
 - 这是**唯一可靠**兜住所有环的防线,包括"孙子 workflow 在快照之后被重新发布、引回一个环"这类保存期看不见的环。
 
 ### 5.2 保存期检测(降级为尽力而为)
-- **直接自引用**(节点 `sourceWorkflowId == 当前 workflow id`):保存期**硬拒**,抛 `WorkflowValidationException`。
+- **直接自引用**(节点 <code v-pre>sourceWorkflowId == 当前 workflow id</code>):保存期**硬拒**,抛 `WorkflowValidationException`。
 - **间接环**:遍历内嵌快照引用树做静态检测,发现疑似环 → **UI 提示**,不作为安全保证(快照只冻结可见层,保证不了发布后引入的环)。
 
 ## 6. 输入 / 输出映射
 
 ### 6.1 输入
-- 节点 config:`inputMappings: { <childStartField>: <模板表达式串> }`。
+- 节点 config:<code v-pre>inputMappings: { &lt;childStartField&gt;: &lt;模板表达式串&gt; }</code>。
 - 运行时逐字段用现有 `VariablePool.render()`(AgentExecutor 已在用)渲染父侧变量池,组装成子 START 的 `input`(JSON)。
 
 ### 6.2 输出
-- 子 END 的结构化 output 整体收进 `NodeOutcome.Normal.output`;下游用 `{{ nodes.<workflowNodeId>.output.<field> }}` 取字段。
+- 子 END 的结构化 output 整体收进 `NodeOutcome.Normal.output`;下游用 <code v-pre>{{ nodes.&lt;workflowNodeId&gt;.output.&lt;field&gt; }}</code> 取字段。
 - deliverables/artifacts 沿用 AGENT 节点的 `artifacts` 通道(`NodeOutcome.Normal.artifacts`)。
 
 ### 6.3 里程碑拆分
