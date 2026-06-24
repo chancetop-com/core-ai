@@ -5,6 +5,8 @@ import ai.core.api.server.workflow.CloneWorkflowResponse;
 import ai.core.api.server.workflow.CreateRunRequest;
 import ai.core.api.server.workflow.CreateRunResponse;
 import ai.core.api.server.workflow.CreateWorkflowRequest;
+import ai.core.api.server.workflow.ExploreWorkflowsRequest;
+import ai.core.api.server.workflow.ExploreWorkflowsResponse;
 import ai.core.api.server.workflow.ExportWorkflowResponse;
 import ai.core.api.server.workflow.ImportWorkflowRequest;
 import ai.core.api.server.workflow.ImportWorkflowResponse;
@@ -54,6 +56,7 @@ import java.util.stream.Collectors;
 public class WorkflowWebServiceImpl implements WorkflowWebService {
     private static final long SYNC_TIMEOUT_MS = 120_000;        // cap a synchronous external run at 2 minutes
     private static final long SYNC_POLL_INTERVAL_MS = 400;
+    private static final int EXPLORE_DEFAULT_LIMIT = 24;
 
     @Inject
     WebContext webContext;
@@ -92,6 +95,26 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
             view.draftGraph = null;   // the list UI never reads the graph — and must never ship another owner's draft
             return view;
         }).toList();
+        return response;
+    }
+
+    @Override
+    public ExploreWorkflowsResponse explore(ExploreWorkflowsRequest request) {
+        var userId = AuthContext.userId(webContext);
+        var keyword = request == null ? null : request.keyword;
+        int offset = request != null && request.offset != null ? request.offset : 0;
+        int limit = request != null && request.limit != null ? request.limit : EXPLORE_DEFAULT_LIMIT;
+
+        var definitions = definitionService.explore(userId, keyword, offset, limit);
+        var userNames = resolveUserNames(definitions);
+        var response = new ExploreWorkflowsResponse();
+        response.workflows = definitions.stream().map(d -> {
+            var view = toView(d, userNames.get(d.userId));
+            view.editable = false;       // explore only ever returns other users' published workflows
+            view.draftGraph = null;      // list payload never carries the graph
+            return view;
+        }).toList();
+        response.total = definitionService.exploreCount(userId, keyword);
         return response;
     }
 

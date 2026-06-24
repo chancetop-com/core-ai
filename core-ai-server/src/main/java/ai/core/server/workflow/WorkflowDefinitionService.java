@@ -4,14 +4,19 @@ import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowMode;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
+import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * CRUD for workflow drafts. Users only edit the draft; {@link WorkflowPublishService} freezes it on publish.
@@ -95,6 +100,33 @@ public class WorkflowDefinitionService {
                 Filters.ne("published_version_id", null)));
         }
         return definitionCollection.find(Filters.eq("user_id", userId));
+    }
+
+    // Other users' PUBLISHED workflows for the Explore page: optional case-insensitive substring match on name,
+    // newest-updated first, paged. The filter rides the published_version_id index (IXSCAN, notablescan-safe) and the
+    // name regex is a residual filter; the updated_at sort is an in-memory sort (no covering index — fine at current
+    // scale, a known scale follow-up). offset/limit are clamped.
+    public List<WorkflowDefinition> explore(String userId, String keyword, int offset, int limit) {
+        var query = new Query();
+        query.filter = exploreFilter(userId, keyword);
+        query.sort = Sorts.descending("updated_at");
+        query.skip = Math.max(0, offset);
+        query.limit = Math.min(Math.max(limit, 1), 100);
+        return definitionCollection.find(query);
+    }
+
+    public long exploreCount(String userId, String keyword) {
+        return definitionCollection.count(exploreFilter(userId, keyword));
+    }
+
+    private static Bson exploreFilter(String userId, String keyword) {
+        var conditions = new ArrayList<Bson>();
+        conditions.add(Filters.ne("user_id", userId));
+        conditions.add(Filters.ne("published_version_id", null));
+        if (keyword != null && !keyword.isBlank()) {
+            conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
+        }
+        return Filters.and(conditions);
     }
 
     // Copy another user's published workflow into a fresh draft owned by the caller. Clones the frozen published

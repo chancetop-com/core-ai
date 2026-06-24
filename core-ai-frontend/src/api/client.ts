@@ -679,6 +679,11 @@ export interface CloneWorkflowResponse {
   warnings?: string[];   // publish-blocking issues the clone already has (e.g. agent nodes the caller doesn't own)
 }
 
+export interface ExploreWorkflowsResponse {
+  workflows: WorkflowView[];
+  total: number;
+}
+
 export interface WorkflowView {
   id: string;
   user_id?: string;
@@ -862,6 +867,10 @@ export const api = {
     list: (my?: boolean) =>
       request<ListWorkflowsResponse>(`/api/workflows${my !== undefined ? `?my=${my}` : ''}`),
     clone: (id: string) => request<CloneWorkflowResponse>(`/api/workflows/${id}/clone`, { method: 'POST' }),
+    explore: (keyword: string, offset: number, limit: number) =>
+      request<ExploreWorkflowsResponse>(
+        `/api/explore/workflows?keyword=${encodeURIComponent(keyword)}&offset=${offset}&limit=${limit}`,
+      ),
     create: (data: { name: string; mode?: string; graph: string }) =>
       request<WorkflowView>('/api/workflows', { method: 'POST', body: JSON.stringify(data) }),
     get: (id: string) => request<WorkflowView>(`/api/workflows/${id}`),

@@ -15,6 +15,7 @@ const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
 const AgentList = lazy(() => import('./pages/agents/AgentList'));
 const AgentEditor = lazy(() => import('./pages/agents/AgentEditor'));
 const WorkflowList = lazy(() => import('./pages/workflows/WorkflowList'));
+const WorkflowExplore = lazy(() => import('./pages/workflows/WorkflowExplore'));
 const WorkflowEditor = lazy(() => import('./pages/workflows/WorkflowEditor'));
 const WorkflowRuns = lazy(() => import('./pages/workflows/WorkflowRuns'));
 const AgentMemory = lazy(() => import('./pages/agents/AgentMemory'));
@@ -131,6 +132,7 @@ export default function App() {
                     <Route path="/agents/:id" element={<AgentEditor />} />
                     <Route path="/agents/:id/memories" element={<AgentMemory />} />
                     <Route path="/runs/:id" element={<RunDetail />} />
+                    <Route path="/workflows/explore" element={<WorkflowExplore />} />
                     <Route path="/workflows" element={<WorkflowList />} />
                     <Route path="/workflows/:id/runs" element={<WorkflowRuns />} />
                     <Route path="/workflows/:id" element={<WorkflowEditor />} />

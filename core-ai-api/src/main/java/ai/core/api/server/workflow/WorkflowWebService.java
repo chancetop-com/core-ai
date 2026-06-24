@@ -17,6 +17,10 @@ public interface WorkflowWebService {
     @Path("/api/workflows")
     ListWorkflowsResponse list(ListWorkflowsRequest request);
 
+    @GET
+    @Path("/api/explore/workflows")
+    ExploreWorkflowsResponse explore(ExploreWorkflowsRequest request);
+
     @POST
     @Path("/api/workflows")
     WorkflowView create(CreateWorkflowRequest request);

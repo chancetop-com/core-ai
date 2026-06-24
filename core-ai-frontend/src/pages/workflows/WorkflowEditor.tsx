@@ -6,7 +6,7 @@ import {
   type Connection, type Edge, type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ArrowLeft, Rocket, FlaskConical, Code2, Save, Download, FileUp, Copy, Lock } from 'lucide-react';
+import { ArrowLeft, Rocket, FlaskConical, Code2, Save, Download, FileUp, Copy, Lock, History } from 'lucide-react';
 import { api, type WorkflowNodeRunView, type UnresolvedReferenceView } from '../../api/client';
 import { useTheme } from '../../hooks/useTheme';
 import WorkflowNode from './WorkflowNode';
@@ -441,6 +441,7 @@ export default function WorkflowEditor() {
         {msg && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginRight: 8 }}>{msg}</span>}
         {readOnly ? (
           <>
+            <button onClick={() => navigate(`/workflows/${id}/runs`)} disabled={busy} style={btn} title="View your run history"><History size={15} /> Run history</button>
             <button onClick={cloneAndOpen} disabled={busy} style={btn} title="Clone into my workflows to edit"><Copy size={15} /> Clone to edit</button>
             <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Run</button>
           </>

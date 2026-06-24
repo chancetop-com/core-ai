@@ -125,6 +125,37 @@ class WorkflowDiscoverCloneTest {
     }
 
     @Test
+    void exploreReturnsOtherUsersPublishedFilteredAndPaged() {
+        // Unique tag isolates this test's rows from other tests sharing the wftest DB.
+        String tag = "explorekw";
+        publishOwned("explore-owner", tag + " alpha");
+        publishOwned("explore-owner", tag + " beta");
+        publishOwned("explore-owner", tag + " gamma");
+        publishOwned("explore-viewer", tag + " mine");                       // caller's own -> excluded
+        definitionService.create(tag + " draft", "WORKFLOW", GRAPH, "explore-owner");   // unpublished -> excluded
+
+        var hits = definitionService.explore("explore-viewer", tag, 0, 50);
+        assertEquals(3, hits.size());
+        assertTrue(hits.stream().noneMatch(d -> d.userId.equals("explore-viewer")), "excludes the caller's own");
+        assertTrue(hits.stream().allMatch(d -> d.publishedVersionId != null), "only published");
+        assertEquals(3, definitionService.exploreCount("explore-viewer", tag));
+
+        assertEquals(3, definitionService.explore("explore-viewer", tag.toUpperCase(), 0, 50).size(), "case-insensitive");
+
+        // paging: limit 2 -> page 1 = 2, page 2 = 1
+        assertEquals(2, definitionService.explore("explore-viewer", tag, 0, 2).size());
+        assertEquals(1, definitionService.explore("explore-viewer", tag, 2, 2).size());
+
+        // clamps: negative offset -> 0, oversized limit -> capped (still returns the 3 matches)
+        assertEquals(3, definitionService.explore("explore-viewer", tag, -10, 1000).size());
+    }
+
+    private void publishOwned(String userId, String name) {
+        var wf = definitionService.create(name, "WORKFLOW", GRAPH, userId);
+        publishService.publish(wf.id, userId);
+    }
+
+    @Test
     void getReadableServesPublishedGraphToOtherUsersButForbidsDrafts() {
         WorkflowDefinition published = definitionService.create("viewable", "WORKFLOW", GRAPH, "owner-1");
         publishService.publish(published.id, "owner-1");
