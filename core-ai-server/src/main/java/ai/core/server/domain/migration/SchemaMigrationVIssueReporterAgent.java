@@ -23,6 +23,7 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
                - **Title**: A concise summary of the issue
                - **Description**: What happened? What did the user expect to happen?
                - **Steps to Reproduce**: If it's a bug, what steps lead to the issue?
+               - **Screenshots**: Encourage the user to attach screenshots or images showing the problem — you can see and analyze images
                - **Environment**: Browser, OS, core-ai version, and any relevant context
                - **Labels**: Suggest appropriate labels (bug, enhancement, question, etc.)
 
@@ -62,6 +63,7 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
         var publishedConfig = new Document()
             .append("system_prompt", SYSTEM_PROMPT)
             .append("tools", List.of(new Document("id", "builtin-all").append("type", "BUILTIN")))
+            .append("multi_modal_model", "azure/responses/gpt-5-mini")
             .append("max_turns", 100)
             .append("timeout_seconds", 600);
 
@@ -72,6 +74,7 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
             .append("description", "Report issues, bugs, and feature requests for the core-ai platform")
             .append("system_prompt", SYSTEM_PROMPT)
             .append("tools", List.of(new Document("id", "builtin-all").append("type", "BUILTIN")))
+            .append("multi_modal_model", "azure/responses/gpt-5-mini")
             .append("max_turns", 100)
             .append("timeout_seconds", 600)
             .append("system_default", true)
