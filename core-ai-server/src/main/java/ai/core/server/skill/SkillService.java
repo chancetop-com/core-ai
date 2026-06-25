@@ -113,18 +113,31 @@ public class SkillService {
     }
 
     public List<SkillDefinition> list(String namespace, String sourceType, String userId, String query, Integer offset, Integer limit) {
-        var dbQuery = new Query();
-        dbQuery.filter = filter(namespace, sourceType, userId, query);
-        dbQuery.sort = Sorts.descending("updated_at");
-        if (offset != null || limit != null) {
-            dbQuery.skip = Math.max(0, offset != null ? offset : 0);
-            dbQuery.limit = Math.min(Math.max(limit != null ? limit : 20, 1), 100);
+        var indexedFilter = indexedFilter(namespace, sourceType);
+        if (!hasInMemoryFilters(userId, query)) {
+            var dbQuery = sortedQuery(indexedFilter);
+            applyPaging(dbQuery, offset, limit);
+            return skillCollection.find(dbQuery);
         }
-        return skillCollection.find(dbQuery);
+
+        var candidates = skillCollection.find(sortedQuery(indexedFilter));
+        var filtered = candidates.stream()
+            .filter(skill -> matchesUserId(skill, userId))
+            .filter(skill -> matchesQuery(skill, query))
+            .toList();
+        return page(filtered, offset, limit);
     }
 
     public long count(String namespace, String sourceType, String userId, String query) {
-        return skillCollection.count(filter(namespace, sourceType, userId, query));
+        var indexedFilter = indexedFilter(namespace, sourceType);
+        if (!hasInMemoryFilters(userId, query)) {
+            return skillCollection.count(indexedFilter);
+        }
+
+        return skillCollection.find(sortedQuery(indexedFilter)).stream()
+            .filter(skill -> matchesUserId(skill, userId))
+            .filter(skill -> matchesQuery(skill, query))
+            .count();
     }
 
     public SkillDefinition get(String id) {
@@ -200,7 +213,7 @@ public class SkillService {
         return get(id);
     }
 
-    private Bson filter(String namespace, String sourceType, String userId, String query) {
+    private Bson indexedFilter(String namespace, String sourceType) {
         var filters = new ArrayList<Bson>();
         if (namespace != null && !namespace.isBlank()) {
             filters.add(Filters.eq("namespace", namespace));
@@ -208,23 +221,81 @@ public class SkillService {
         if (sourceType != null && !sourceType.isBlank()) {
             filters.add(Filters.eq("source_type", SkillSourceType.valueOf(sourceType)));
         }
-        if (userId != null && !userId.isBlank()) {
-            filters.add(Filters.regex("user_id", Pattern.quote(userId), "i"));
-        }
-        if (query != null && !query.isBlank()) {
-            var pattern = Pattern.quote(query.trim());
-            filters.add(Filters.or(
-                Filters.regex("name", pattern, "i"),
-                Filters.regex("qualified_name", pattern, "i"),
-                Filters.regex("description", pattern, "i"),
-                Filters.regex("namespace", pattern, "i"),
-                Filters.regex("source_type", pattern, "i"),
-                Filters.regex("user_id", pattern, "i"),
-                Filters.regex("version", pattern, "i"),
-                Filters.regex("allowed_tools", pattern, "i")
-            ));
-        }
         return filters.isEmpty() ? Filters.empty() : Filters.and(filters);
+    }
+
+    private Query sortedQuery(Bson filter) {
+        var dbQuery = new Query();
+        dbQuery.filter = filter;
+        dbQuery.sort = Sorts.descending("updated_at");
+        return dbQuery;
+    }
+
+    private void applyPaging(Query dbQuery, Integer offset, Integer limit) {
+        if (offset != null || limit != null) {
+            dbQuery.skip = Math.max(0, offset != null ? offset : 0);
+            dbQuery.limit = normalizedLimit(limit);
+        }
+    }
+
+    private int normalizedLimit(Integer limit) {
+        return Math.min(Math.max(limit != null ? limit : 20, 1), 100);
+    }
+
+    private List<SkillDefinition> page(List<SkillDefinition> skills, Integer offset, Integer limit) {
+        if (offset == null && limit == null) {
+            return skills;
+        }
+
+        int start = Math.max(0, offset != null ? offset : 0);
+        if (start >= skills.size()) {
+            return List.of();
+        }
+
+        int end = Math.min(skills.size(), start + normalizedLimit(limit));
+        return skills.subList(start, end);
+    }
+
+    private boolean hasInMemoryFilters(String userId, String query) {
+        return hasText(userId) || hasText(query);
+    }
+
+    private boolean matchesUserId(SkillDefinition skill, String userId) {
+        if (!hasText(userId)) return true;
+        return containsIgnoreCase(skill.userId, userId.trim());
+    }
+
+    private boolean matchesQuery(SkillDefinition skill, String query) {
+        if (!hasText(query)) return true;
+
+        var needle = query.trim();
+        if (containsIgnoreCase(skill.name, needle)) return true;
+        if (containsIgnoreCase(skill.qualifiedName, needle)) return true;
+        if (containsIgnoreCase(skill.description, needle)) return true;
+        if (containsIgnoreCase(skill.namespace, needle)) return true;
+        if (skill.sourceType != null && containsIgnoreCase(skill.sourceType.name(), needle)) return true;
+        if (containsIgnoreCase(skill.userId, needle)) return true;
+        if (containsIgnoreCase(skill.version, needle)) return true;
+        if (skill.allowedTools != null) {
+            for (var tool : skill.allowedTools) {
+                if (containsIgnoreCase(tool, needle)) return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private boolean containsIgnoreCase(String value, String needle) {
+        if (value == null || needle.isEmpty() || needle.length() > value.length()) return false;
+        for (int i = 0; i <= value.length() - needle.length(); i++) {
+            if (value.regionMatches(true, i, needle, 0, needle.length())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public Map<String, String> batchResolve(Set<String> skillIds) {
