@@ -20,6 +20,9 @@ public class UpdateMcpServerRequest {
     @Property(name = "config")
     public Map<String, String> config;
 
+    @Property(name = "raw_config")
+    public String rawConfig;
+
     @Property(name = "enabled")
     public Boolean enabled;
 }

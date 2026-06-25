@@ -975,7 +975,7 @@ export const api = {
       request<ToolRegistryView>(`/api/tools/${id}`),
     createMcpServer: (data: { name: string; description?: string; category?: string; config: Record<string, string>; enabled?: boolean }) =>
       request<ToolRegistryView>('/api/tools/mcp-servers', { method: 'POST', body: JSON.stringify(data) }),
-    updateMcpServer: (id: string, data: { name?: string; description?: string; category?: string; config?: Record<string, string>; enabled?: boolean }) =>
+    updateMcpServer: (id: string, data: { name?: string; description?: string; category?: string; config?: Record<string, string>; raw_config?: string; enabled?: boolean }) =>
       request<ToolRegistryView>(`/api/tools/mcp-servers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteMcpServer: (id: string) =>
       request<void>(`/api/tools/mcp-servers/${id}`, { method: 'DELETE' }),

@@ -328,7 +328,7 @@ public class ToolRegistryService {
         return result;
     }
 
-    public ToolRegistry updateMcpServer(String id, String name, String description, String category, Map<String, String> config, Boolean enabled) {
+    public ToolRegistry updateMcpServer(String id, String name, String description, String category, Map<String, String> config, Boolean enabled, String rawConfig) {
         var entity = tools.get(id);
         if (entity == null) throw new RuntimeException("mcp server not found, id=" + id);
         if (entity.type != ToolType.MCP) throw new RuntimeException("tool is not an mcp server, id=" + id);
@@ -344,6 +344,9 @@ public class ToolRegistryService {
             McpServerConfig.fromMap(entity.name, configMap);
             entity.config = config;
             configChanged = true;
+        }
+        if (rawConfig != null) {
+            entity.rawConfig = rawConfig;
         }
         if (enabled != null && !enabled.equals(entity.enabled)) {
             entity.enabled = enabled;

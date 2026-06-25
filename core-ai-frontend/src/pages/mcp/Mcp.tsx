@@ -109,14 +109,46 @@ export default function Mcp() {
     setRefreshTick(t => t + 1);
   };
 
-  // Pretty-print raw_config JSON for Dynamic MCP display
-  const getRawConfigDisplay = (rawConfig?: string) => {
-    if (!rawConfig) return null;
+  // Convert a Dynamic MCP JSON config object to Record<string,string> (mirrors backend convertImportConfigToMap)
+  const parseJsonToConfigMap = (jsonStr: string): Record<string, string> => {
+    const obj = JSON.parse(jsonStr) as Record<string, unknown>;
+    const result: Record<string, string> = { transport: 'sandbox_hosted' };
+    if (typeof obj.command === 'string' && obj.command) result.command = obj.command;
+    if (Array.isArray(obj.args)) result.args = JSON.stringify(obj.args);
+    if (obj.env && typeof obj.env === 'object') result.env = JSON.stringify(obj.env);
+    if (typeof obj.url === 'string' && obj.url) result.url = obj.url;
+    return result;
+  };
+
+  const handleSaveDynamicMcp = async (rawJson: string) => {
+    if (!editing) return;
+    setSaving(true);
     try {
-      return JSON.stringify(JSON.parse(rawConfig), null, 2);
-    } catch {
-      return rawConfig;
+      const configMap = parseJsonToConfigMap(rawJson);
+      await api.tools.updateMcpServer(editing.id, {
+        name: editing.name,
+        description: editing.description,
+        category: editing.category,
+        config: configMap,
+        raw_config: rawJson,
+        enabled: editing.enabled,
+      });
+      setEditing(null);
+      setCreating(false);
+      setRefreshTick(t => t + 1);
+    } catch (err) {
+      console.error('Failed to save MCP server:', err);
+      alert('Failed to save. Check console for details.');
+    } finally {
+      setSaving(false);
     }
+  };
+
+  // Parse config keys for display
+  const getConfigSummary = (config: Record<string, string>) => {
+    const keys = Object.keys(config);
+    if (keys.length === 0) return 'No config';
+    return keys.slice(0, 3).join(', ') + (keys.length > 3 ? ' +' + (keys.length - 3) : '');
   };
 
   return (
@@ -238,16 +270,9 @@ export default function Mcp() {
               {s.description && (
                 <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{s.description}</p>
               )}
-              {s.config?.transport === 'sandbox_hosted' ? (
-                <pre className="text-xs font-mono p-2 rounded overflow-auto max-h-40"
-                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                  {getRawConfigDisplay(s.raw_config) || 'No raw config'}
-                </pre>
-              ) : (
-                <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                  Config keys: {Object.keys(s.config).slice(0, 3).join(', ') + (Object.keys(s.config).length > 3 ? ' +' + (Object.keys(s.config).length - 3) : '') || 'No config'}
-                </div>
-              )}
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                Config keys: {getConfigSummary(s.config)}
+              </div>
             </div>
           </div>
         ))}
@@ -288,6 +313,7 @@ export default function Mcp() {
           server={editing}
           onChange={setEditing}
           onSave={handleSave}
+          onSaveDynamicMcp={handleSaveDynamicMcp}
           onImported={handleImported}
           onClose={() => { setEditing(null); setCreating(false); }}
           saving={saving}
@@ -302,6 +328,7 @@ function McpServerModal({
   server,
   onChange,
   onSave,
+  onSaveDynamicMcp,
   onImported,
   onClose,
   saving,
@@ -310,6 +337,7 @@ function McpServerModal({
   server: ToolRegistryView;
   onChange: (s: ToolRegistryView) => void;
   onSave: () => void;
+  onSaveDynamicMcp: (rawJson: string) => void;
   onImported: () => void;
   onClose: () => void;
   saving: boolean;
@@ -320,6 +348,27 @@ function McpServerModal({
   const [mode, setMode] = useState<'manual' | 'import'>('manual');
   const [importJson, setImportJson] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+
+  // Dynamic MCP editing state
+  const isDynamicEdit = !creating && server.config?.transport === 'sandbox_hosted' && !!server.raw_config;
+  const prettyRawConfig = (() => {
+    if (!server.raw_config) return '';
+    try { return JSON.stringify(JSON.parse(server.raw_config), null, 2); }
+    catch { return server.raw_config; }
+  })();
+  const [editJson, setEditJson] = useState(prettyRawConfig);
+  const [editJsonError, setEditJsonError] = useState<string | null>(null);
+
+  const handleDynamicSave = () => {
+    if (!editJson.trim()) return;
+    setEditJsonError(null);
+    try {
+      JSON.parse(editJson); // validate JSON
+      onSaveDynamicMcp(editJson);
+    } catch {
+      setEditJsonError('Invalid JSON');
+    }
+  };
 
   const handleImport = async () => {
     if (!importJson.trim()) return;
@@ -410,6 +459,46 @@ function McpServerModal({
                 className="w-4 h-4" />
             </div>
           </div>
+        ) : isDynamicEdit ? (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Name *</label>
+              <input type="text" value={server.name}
+                onChange={e => onChange({ ...server, name: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Description</label>
+              <input type="text" value={server.description}
+                onChange={e => onChange({ ...server, description: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Category</label>
+              <input type="text" value={server.category}
+                onChange={e => onChange({ ...server, category: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Configuration (JSON)</label>
+              <textarea value={editJson} onChange={e => { setEditJson(e.target.value); setEditJsonError(null); }}
+                spellCheck={false}
+                className="w-full font-mono text-xs px-3 py-3 rounded-lg border resize-y"
+                style={{ minHeight: 200, borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              {editJsonError && (
+                <div className="text-xs rounded p-2 mt-2" style={{ background: '#7f1d1d', color: '#fff' }}>{editJsonError}</div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Enabled</label>
+              <input type="checkbox" checked={server.enabled}
+                onChange={e => onChange({ ...server, enabled: e.target.checked })}
+                className="w-4 h-4" />
+            </div>
+          </div>
         ) : (
           <div className="space-y-4">
             <div>
@@ -491,6 +580,12 @@ function McpServerModal({
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
               style={{ background: 'var(--color-primary)' }}>
               <Save size={14} /> {saving ? 'Importing...' : 'Import'}
+            </button>
+          ) : isDynamicEdit ? (
+            <button onClick={handleDynamicSave} disabled={saving || !server.name || !editJson.trim()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
+              style={{ background: 'var(--color-primary)' }}>
+              <Save size={14} /> {saving ? 'Saving...' : 'Save'}
             </button>
           ) : (
             <button onClick={onSave} disabled={saving || !server.name}
