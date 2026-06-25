@@ -20,10 +20,11 @@ public class AgentBuilderTools {
     ToolRegistryService toolRegistryService;
 
     public void initialize() {
+        var listTool = ListAgentsTool.create(agentDefinitionService);
         var createTool = CreateAgentDraftTool.create(agentDefinitionService);
         var updateTool = UpdateAgentDraftTool.create(agentDefinitionService);
         var publishTool = PublishAgentDraftTool.create(agentDefinitionService);
-        toolRegistryService.registerToolSet("builtin-agent-builder", List.of(createTool, updateTool, publishTool));
+        toolRegistryService.registerToolSet("builtin-agent-builder", List.of(listTool, createTool, updateTool, publishTool));
     }
 
     public List<ToolCall> tools() {
