@@ -17,6 +17,7 @@ export default function Mcp() {
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [statusMap, setStatusMap] = useState<Record<string, McpConnectionState>>({});
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -33,6 +34,7 @@ export default function Mcp() {
   }, [categoryFilter]);
 
   useEffect(load, [load]);
+  useEffect(() => { if (refreshTick > 0) load(); }, [refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mcpServers = tools.filter(t => t.type === 'MCP');
   const pagedServers = mcpServers.slice(offset, offset + limit);
@@ -92,7 +94,7 @@ export default function Mcp() {
       }
       setEditing(null);
       setCreating(false);
-      load();
+      setRefreshTick(t => t + 1);
     } catch (err) {
       console.error('Failed to save MCP server:', err);
       alert('Failed to save. Check console for details.');
@@ -104,7 +106,7 @@ export default function Mcp() {
   const handleImported = () => {
     setEditing(null);
     setCreating(false);
-    load();
+    setRefreshTick(t => t + 1);
   };
 
   // Pretty-print raw_config JSON for Dynamic MCP display
