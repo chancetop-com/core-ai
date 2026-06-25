@@ -45,7 +45,7 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
 
     @Override
     public String version() {
-        return "20260625001";
+        return "20260625002";
     }
 
     @Override

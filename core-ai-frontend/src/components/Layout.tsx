@@ -1,9 +1,10 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Bug, Calendar, ChevronRight, Database, Files, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Database, Files, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
+import QuickActionDialog from './QuickActionDialog';
 
 interface NavItem {
   to: string;
@@ -95,7 +96,6 @@ export default function Layout() {
     ]},
     { to: '/skills', icon: Sparkles, label: 'Skills', show: true },
     { to: '/datasets', icon: Database, label: 'Datasets', show: true },
-    { to: '/report-issue', icon: Bug, label: 'Report Issue', show: true },
   ].filter(item => item.show);
 
   return (
@@ -224,6 +224,7 @@ export default function Layout() {
       <main className="flex-1 overflow-auto" style={{ background: 'var(--color-bg)' }}>
         <Outlet />
       </main>
+      <QuickActionDialog />
     </div>
   );
 }
