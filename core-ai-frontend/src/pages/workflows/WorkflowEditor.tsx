@@ -565,68 +565,71 @@ export default function WorkflowEditor() {
   const publication = publicationLabel(status, visibility, publishedVersion);
   const draftOptionLabel = latestVersion && versionDirty ? `Draft · changed since v${latestVersion.version}` : 'Draft';
   return (
-    <div style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
       <div style={toolbar}>
-        <button onClick={() => navigate('/workflows')} style={iconBtn} title="Back"><ArrowLeft size={16} /></button>
-        <input value={name} onChange={(e) => setName(e.target.value)} disabled={preview || canvasReadOnly} style={nameInput} />
-        <span style={statusBadge(status, visibility)}>{publication}</span>
-        <select
-          value={selectedVersionId}
-          onChange={(e) => { void selectVersion(e.target.value); }}
-          disabled={busy || preview}
-          style={versionSelect}
-          title="Select workflow version">
-          <option value={DRAFT_VERSION_VALUE}>{draftOptionLabel}</option>
-          {versions.map((version) => (
-            <option key={version.id} value={version.id}>{versionOptionLabel(version, latestVersion?.id, publishedVersionId)}</option>
-          ))}
-        </select>
-        {readOnly ? (
-          <span style={readOnlyIndicator}>
-            <Lock size={12} /> Read-only{authorName ? ` · by ${authorName}` : ''}
-          </span>
-        ) : viewingVersion ? (
-          <span style={saveIndicator}>Viewing v{selectedVersion?.version ?? '?'}</span>
-        ) : (
-          <span style={saveIndicator}>
-            {saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved changes' : savedAt ? `Saved ${savedAt}` : 'Saved'}
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        <span style={{ ...messageSlot, visibility: msg ? 'visible' : 'hidden' }}>{msg || 'Ready'}</span>
-        {readOnly ? (
-          <>
-            <button onClick={() => navigate(`/workflows/${id}/runs`)} disabled={busy} style={btn} title="View your run history"><History size={15} /> Run history</button>
-            <button onClick={cloneAndOpen} disabled={busy} style={btn} title="Clone into my workflows to edit"><Copy size={15} /> Clone to edit</button>
-            <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Run</button>
-          </>
-        ) : (
-          <>
-            <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={importFromFile} />
-            <button onClick={() => importInputRef.current?.click()} disabled={busy || preview || viewingVersion} style={btn} title="Import a workflow file into the draft"><FileUp size={15} /> Import</button>
-            <button onClick={exportCurrent} disabled={busy || preview || viewingVersion} style={btn} title="Export the draft workflow"><Download size={15} /> Export</button>
-            <button onClick={saveVersion} disabled={busy || preview || viewingVersion} style={btn} title="Save current draft as the next version"><Save size={15} /> Save</button>
-            {viewingVersion && <button onClick={restoreSelectedVersion} disabled={busy || preview} style={btn}><History size={15} /> Restore as draft</button>}
-            <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview || viewingVersion} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
-            <button onClick={publishVersion} disabled={busy || preview || (viewingVersion ? !selectedVersion : !latestVersion)} style={btn}><Rocket size={15} /> Publish</button>
-            {visibility === 'PUBLIC' && (
-              <div ref={moreMenuRef} style={moreMenuWrap}>
-                <button onClick={() => setShowMore((v) => !v)} disabled={busy || preview} style={iconBtn} title="More actions"><MoreHorizontal size={16} /></button>
-                {showMore && (
-                  <div style={moreMenu}>
-                    <button onClick={makePrivate} style={menuItem}>Make private</button>
-                  </div>
-                )}
-              </div>
-            )}
-            <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview || viewingVersion} style={btnPrimary}><FlaskConical size={15} /> Test</button>
-          </>
-        )}
+        <div style={toolbarMeta}>
+          <button onClick={() => navigate('/workflows')} style={iconBtn} title="Back"><ArrowLeft size={16} /></button>
+          <input value={name} onChange={(e) => setName(e.target.value)} disabled={preview || canvasReadOnly} style={nameInput} />
+          <span style={statusBadge(status, visibility)}>{publication}</span>
+          <select
+            value={selectedVersionId}
+            onChange={(e) => { void selectVersion(e.target.value); }}
+            disabled={busy || preview}
+            style={versionSelect}
+            title="Select workflow version">
+            <option value={DRAFT_VERSION_VALUE}>{draftOptionLabel}</option>
+            {versions.map((version) => (
+              <option key={version.id} value={version.id}>{versionOptionLabel(version, latestVersion?.id, publishedVersionId)}</option>
+            ))}
+          </select>
+          {readOnly ? (
+            <span style={readOnlyIndicator}>
+              <Lock size={12} /> Read-only{authorName ? ` · by ${authorName}` : ''}
+            </span>
+          ) : viewingVersion ? (
+            <span style={saveIndicator}>Viewing v{selectedVersion?.version ?? '?'}</span>
+          ) : (
+            <span style={saveIndicator}>
+              {saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved changes' : savedAt ? `Saved ${savedAt}` : 'Saved'}
+            </span>
+          )}
+          <span style={{ ...messageSlot, visibility: msg ? 'visible' : 'hidden' }}>{msg || 'Ready'}</span>
+        </div>
+        <div style={toolbarActions}>
+          {readOnly ? (
+            <>
+              <button onClick={() => navigate(`/workflows/${id}/runs`)} disabled={busy} style={btn} title="View your run history"><History size={15} /> Run history</button>
+              <button onClick={cloneAndOpen} disabled={busy} style={btn} title="Clone into my workflows to edit"><Copy size={15} /> Clone to edit</button>
+              <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Run</button>
+            </>
+          ) : (
+            <>
+              <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={importFromFile} />
+              <button onClick={() => importInputRef.current?.click()} disabled={busy || preview || viewingVersion} style={btn} title="Import a workflow file into the draft"><FileUp size={15} /> Import</button>
+              <button onClick={exportCurrent} disabled={busy || preview || viewingVersion} style={btn} title="Export the draft workflow"><Download size={15} /> Export</button>
+              <button onClick={saveVersion} disabled={busy || preview || viewingVersion} style={btn} title="Save current draft as the next version"><Save size={15} /> Save</button>
+              {viewingVersion && <button onClick={restoreSelectedVersion} disabled={busy || preview} style={btn}><History size={15} /> Restore as draft</button>}
+              <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview || viewingVersion} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
+              <button onClick={publishVersion} disabled={busy || preview || (viewingVersion ? !selectedVersion : !latestVersion)} style={btn}><Rocket size={15} /> Publish</button>
+              {visibility === 'PUBLIC' && (
+                <div ref={moreMenuRef} style={moreMenuWrap}>
+                  <button onClick={() => setShowMore((v) => !v)} disabled={busy || preview} style={iconBtn} title="More actions"><MoreHorizontal size={16} /></button>
+                  {showMore && (
+                    <div style={moreMenu}>
+                      <button onClick={makePrivate} style={menuItem}>Make private</button>
+                    </div>
+                  )}
+                </div>
+              )}
+              <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview || viewingVersion} style={btnPrimary}><FlaskConical size={15} /> Test</button>
+            </>
+          )}
+        </div>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
         {!preview && !canvasReadOnly && <NodePalette />}
-        <div style={{ flex: 1 }} onDragOver={onDragOver} onDrop={onDrop}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }} onDragOver={onDragOver} onDrop={onDrop}>
           <ReactFlow
             colorMode={dark ? 'dark' : 'light'}
             nodes={displayNodes}
@@ -691,8 +694,29 @@ const BRANCH_LABEL: CSSProperties = { fontSize: 10, fontWeight: 700, fill: 'var(
 const BRANCH_LABEL_BG: CSSProperties = { fill: 'var(--color-bg-secondary)' };
 
 const toolbar: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
+  display: 'flex', alignItems: 'center', gap: 10, rowGap: 8, padding: '8px 16px',
   borderBottom: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)',
+  flexWrap: 'wrap',
+  minWidth: 0,
+  overflow: 'hidden',
+};
+const toolbarMeta: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  flex: '1 1 420px',
+  minWidth: 0,
+};
+const toolbarActions: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'flex-end',
+  gap: 8,
+  rowGap: 6,
+  flex: '0 1 auto',
+  maxWidth: '100%',
+  minWidth: 0,
+  flexWrap: 'wrap',
 };
 function statusBadge(status: string, visibility: string): CSSProperties {
   const published = visibility === 'PUBLIC' && status !== 'ARCHIVED' && status !== 'DISABLED';
@@ -701,15 +725,20 @@ function statusBadge(status: string, visibility: string): CSSProperties {
     fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
     background: published ? 'rgba(22,163,74,0.14)' : archived ? 'rgba(220,38,38,0.1)' : 'var(--color-bg-tertiary)',
     color: published ? '#16a34a' : archived ? '#dc2626' : 'var(--color-text-secondary)',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
   };
 }
 const nameInput: CSSProperties = {
   fontSize: 15, fontWeight: 600, border: '1px solid transparent', borderRadius: 6,
-  padding: '4px 8px', outline: 'none', minWidth: 200, background: 'transparent', color: 'var(--color-text)',
+  padding: '4px 8px', outline: 'none', minWidth: 120, maxWidth: 280, flex: '1 1 180px',
+  background: 'transparent', color: 'var(--color-text)',
 };
 const versionSelect: CSSProperties = {
   height: 28,
-  minWidth: 176,
+  minWidth: 140,
+  maxWidth: 220,
+  flex: '0 1 176px',
   padding: '2px 8px',
   border: '1px solid var(--color-border)',
   borderRadius: 8,
@@ -749,7 +778,7 @@ const messageSlot: CSSProperties = {
 const iconBtn: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32,
   border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-bg-secondary)',
-  color: 'var(--color-text)', cursor: 'pointer',
+  color: 'var(--color-text)', cursor: 'pointer', flexShrink: 0,
 };
 const moreMenuWrap: CSSProperties = {
   position: 'relative',
@@ -781,14 +810,15 @@ const menuItem: CSSProperties = {
 const btn: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
   border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-bg-secondary)',
-  color: 'var(--color-text)', cursor: 'pointer', fontWeight: 500,
+  color: 'var(--color-text)', cursor: 'pointer', fontWeight: 500, flexShrink: 0, whiteSpace: 'nowrap',
 };
 const btnActive: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
   border: '1px solid var(--color-primary)', borderRadius: 8, background: 'var(--color-bg-tertiary)',
-  color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 500,
+  color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 500, flexShrink: 0, whiteSpace: 'nowrap',
 };
 const btnPrimary: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
   border: 'none', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', cursor: 'pointer', fontWeight: 500,
+  flexShrink: 0, whiteSpace: 'nowrap',
 };
