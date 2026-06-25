@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Paperclip, RefreshCw, History, Clock, CheckCircle2, XCircle, Hash } from 'lucide-react';
 import { api, type WorkflowRunView, type WorkflowNodeRunView } from '../../api/client';
 import { RUN_STATUS_COLOR, toReactFlow, type WorkflowGraph, type WorkflowRFNode } from './graph';
@@ -16,6 +16,7 @@ interface Loaded {
 export default function WorkflowRuns() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [name, setName] = useState('');
   const [runs, setRuns] = useState<WorkflowRunView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,12 +65,17 @@ export default function WorkflowRuns() {
     load();
   }, [id, load]);
 
-  // auto-open the latest run so the detail pane is never empty when history exists
+  // Open the linked run on first load, then keep manual selection stable.
   useEffect(() => {
     if (runs.length === 0) { setSelected(null); return; }
+    const requested = searchParams.get('run');
     if (selected && runs.some((r) => r.id === selected)) return;
+    if (requested && runs.some((r) => r.id === requested)) {
+      setSelected(requested);
+      return;
+    }
     setSelected(runs[0].id);
-  }, [runs, selected]);
+  }, [runs, searchParams, selected]);
 
   useEffect(() => {
     if (selected && !loaded[selected]) void fetchTrace(selected);

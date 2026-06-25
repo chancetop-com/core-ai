@@ -92,6 +92,11 @@ public interface WorkflowWebService {
     @Path("/api/workflow-runs/:runId/graph")
     WorkflowRunGraphResponse runGraph(@PathParam("runId") String runId);
 
+    // The immutable graph for a selected published workflow version, used by WORKFLOW-node input mapping.
+    @GET
+    @Path("/api/workflow-versions/:versionId/graph")
+    WorkflowRunGraphResponse versionGraph(@PathParam("versionId") String versionId);
+
     // Resume a paused run by providing a human decision/input for the HUMAN_INPUT node it is waiting on.
     @POST
     @Path("/api/workflow-runs/:runId/resume")

@@ -13,7 +13,7 @@ import HttpConfig from './HttpConfig';
 import RetryFields from './RetryFields';
 import VariableChipField from './VariableChipField';
 import DeliverablesField from './DeliverablesField';
-import WorkflowNodeConfig, { type SubWorkflowOption } from './WorkflowNodeConfig';
+import WorkflowNodeConfig from './WorkflowNodeConfig';
 
 interface AgentOption { id: string; name: string; type?: string; }   // type: 'AGENT' | 'LLM_CALL' (the published definition's kind)
 
@@ -22,13 +22,13 @@ interface Props {
   nodes: WorkflowRFNode[];
   edges: Edge[];
   agents: AgentOption[];
-  workflows?: SubWorkflowOption[];   // selectable published workflows for a WORKFLOW node (empty when none loaded)
+  currentWorkflowId?: string;
   onChange: (partial: Partial<WorkflowNodeData>) => void;
   onDelete: () => void;
   onClose: () => void;
 }
 
-export default function NodeConfigPanel({ node, nodes, edges, agents, workflows, onChange, onDelete, onClose }: Props) {
+export default function NodeConfigPanel({ node, nodes, edges, agents, currentWorkflowId, onChange, onDelete, onClose }: Props) {
   const meta = nodeMeta(node.data.nodeType);
   const isAgentNode = node.data.nodeType === 'AGENT' || node.data.nodeType === 'LLM';
   const isMcpTool = node.data.nodeType === 'MCP_TOOL';
@@ -186,7 +186,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, workflows,
           <div style={hint}>Combine its inputs into one value for downstream. Empty = auto-merge; a template is preferred for parallel inputs.</div>
         </>
       ) : isWorkflow ? (
-        <WorkflowNodeConfig node={node} nodes={nodes} edges={edges} workflows={workflows ?? []} onChange={onChange} />
+        <WorkflowNodeConfig node={node} nodes={nodes} edges={edges} currentWorkflowId={currentWorkflowId} onChange={onChange} />
       ) : (
         <>
           <label style={label}>Config (JSON)</label>

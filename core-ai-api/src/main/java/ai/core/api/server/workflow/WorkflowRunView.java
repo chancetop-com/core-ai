@@ -36,6 +36,18 @@ public class WorkflowRunView {
     @Property(name = "completed_at")
     public ZonedDateTime completedAt;
 
+    @Property(name = "resumed_from_run_id")
+    public String resumedFromRunId;
+
+    @Property(name = "resume_from_node_id")
+    public String resumeFromNodeId;
+
+    @Property(name = "parent_run_id")
+    public String parentRunId;
+
+    @Property(name = "parent_node_id")
+    public String parentNodeId;
+
     // present only when status is PAUSED on single-run reads: the human waits blocking the run, with the
     // contract needed to resume each (mode, prompt, fields)
     @Property(name = "pending_inputs")

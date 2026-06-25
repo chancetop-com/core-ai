@@ -12,7 +12,6 @@ import { useTheme } from '../../hooks/useTheme';
 import WorkflowNode from './WorkflowNode';
 import NodePalette from './NodePalette';
 import NodeConfigPanel from './NodeConfigPanel';
-import type { SubWorkflowOption } from './WorkflowNodeConfig';
 import RunPanel from './RunPanel';
 import ApiAccessPanel from './ApiAccessPanel';
 import ResizablePanel from './ResizablePanel';
@@ -48,7 +47,6 @@ export default function WorkflowEditor() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [agents, setAgents] = useState<{ id: string; name: string; type?: string }[]>([]);
-  const [subWorkflows, setSubWorkflows] = useState<SubWorkflowOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -103,23 +101,6 @@ export default function WorkflowEditor() {
       })
       .catch(() => { /* agents are optional for non-agent workflows */ });
   }, []);
-
-  useEffect(() => {
-    // Selectable sub-workflows for a WORKFLOW node: my published workflows + other users' published ones, minus self.
-    let cancelled = false;
-    Promise.all([api.workflows.list(true), api.workflows.explore('', 0, 200)])
-      .then(([mine, others]) => {
-        if (cancelled) return;
-        const seen = new Set<string>();
-        const options = [...(mine.workflows || []), ...(others.workflows || [])]
-          .filter((w) => w.published_version_id && w.id !== id)
-          .filter((w) => (seen.has(w.id) ? false : (seen.add(w.id), true)))
-          .map((w) => ({ id: w.id, name: w.name, versionId: w.published_version_id, version: w.published_version }));
-        setSubWorkflows(options);
-      })
-      .catch(() => { /* sub-workflows are optional for non-WORKFLOW workflows */ });
-    return () => { cancelled = true; };
-  }, [id]);
 
   // poll the active run until it reaches a terminal status. The interval handle is local to this effect run,
   // so each runId owns exactly one interval and cleanup can never clear the wrong one.
@@ -524,7 +505,7 @@ export default function WorkflowEditor() {
                 nodes={nodes}
                 edges={edges}
                 agents={agents}
-                workflows={subWorkflows}
+                currentWorkflowId={id}
                 onChange={(partial) => updateNodeData(selectedNode.id, partial)}
                 onDelete={() => deleteNode(selectedNode.id)}
                 onClose={() => setSelectedId(null)}

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { ChevronRight, ChevronDown, Download, ExternalLink, FileDown, FileText, RotateCcw } from 'lucide-react';
@@ -27,11 +27,17 @@ interface Props {
 export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNodeId, onResume, onResumeFromNode, resumedFrom, busy }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<WorkflowArtifactView | null>(null);
-  useEffect(() => { if (focusNodeId) setExpanded((s) => new Set(s).add(focusNodeId)); }, [focusNodeId]);
 
   const nameOf = (id: string) => nodes.find((n) => n.id === id)?.data.name ?? id;
   const typeOf = (id: string) => nodes.find((n) => n.id === id)?.data.nodeType ?? '';
   const runs = Object.values(nodeRuns).sort((a, b) => (a.started_at ?? '').localeCompare(b.started_at ?? ''));
+  const visibleExpanded = useMemo(() => {
+    if (!focusNodeId || expanded.has(focusNodeId)) return expanded;
+    const next = new Set(expanded);
+    next.add(focusNodeId);
+    return next;
+  }, [expanded, focusNodeId]);
+  const waitingWorkflow = runs.some((r) => r.status === 'WAITING' && typeOf(r.node_id) === 'WORKFLOW');
   // the END node-run carries the run's result AND its deliverable files (per-node artifacts above are trace-level)
   const endRun = runs.find((r) => (typeOf(r.node_id) === 'END' || typeOf(r.node_id) === 'ANSWER') && (r.output || (r.artifacts?.length ?? 0) > 0));
   const result = endRun?.output;
@@ -56,7 +62,11 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
       <div style={statusRow}>
         <span style={{ width: 9, height: 9, borderRadius: '50%', background: RUN_STATUS_COLOR[runStatus] ?? 'var(--color-text-secondary)' }} />
         <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{runStatus || 'PENDING'}</span>
-        {!TERMINAL_RUN_STATUS.has(runStatus) && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>running…</span>}
+        {!TERMINAL_RUN_STATUS.has(runStatus) && (
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+            {waitingWorkflow ? 'waiting for sub-workflow...' : 'running...'}
+          </span>
+        )}
       </div>
       {runError && <Field title="Error" body={runError} danger />}
       {resumedFrom && (
@@ -68,15 +78,19 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
       <label style={label}>Trace</label>
       {runs.length === 0 && <div style={dim}>No node runs.</div>}
       {runs.map((r) => {
-        const open = expanded.has(r.node_id);
+        const open = visibleExpanded.has(r.node_id);
         const color = r.status ? RUN_STATUS_COLOR[r.status] : 'var(--color-text-secondary)';
+        const isWorkflowChild = typeOf(r.node_id) === 'WORKFLOW' && r.child_run_type === 'WORKFLOW';
+        const childHref = isWorkflowChild && r.child_workflow_id
+          ? `/workflows/${r.child_workflow_id}/runs?run=${r.child_run_id}`
+          : `/runs/${r.child_run_id}`;
         return (
           <div key={r.node_id} style={nodeCard}>
             <div style={nodeHead} onClick={() => toggle(r.node_id)}>
               {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />
               <span style={{ fontWeight: 500, color: 'var(--color-text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameOf(r.node_id)}</span>
-              <span style={dim}>{r.status === 'SKIPPED' ? 'skipped' : elapsed(r)}</span>
+              <span style={dim}>{r.status === 'WAITING' && typeOf(r.node_id) === 'WORKFLOW' ? 'waiting for workflow' : r.status === 'SKIPPED' ? 'skipped' : elapsed(r)}</span>
             </div>
             {open && (
               <div style={nodeBody}>
@@ -97,7 +111,7 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
                   </div>
                 )}
                 {r.child_run_id && (
-                  <Link to={`/runs/${r.child_run_id}`} style={childLink}><ExternalLink size={12} /> open child run</Link>
+                  <Link to={childHref} style={childLink}><ExternalLink size={12} /> open child {isWorkflowChild ? 'workflow ' : ''}run</Link>
                 )}
                 {onResumeFromNode && TERMINAL_RUN_STATUS.has(runStatus)
                   && (r.status === 'COMPLETED' || r.status === 'FAILED_RETRYABLE')

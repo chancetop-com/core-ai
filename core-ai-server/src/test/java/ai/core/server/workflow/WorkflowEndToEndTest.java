@@ -5,8 +5,10 @@ import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
+import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.test.Context;
@@ -18,6 +20,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.time.ZonedDateTime;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -56,6 +61,9 @@ class WorkflowEndToEndTest {
     WorkflowRunner runner;
 
     @Inject
+    WorkflowRunnerJob runnerJob;
+
+    @Inject
     MongoCollection<WorkflowRun> runCollection;
 
     @Inject
@@ -90,5 +98,123 @@ class WorkflowEndToEndTest {
         assertTrue(publishService.validate(definitionService.get(definition.id, "user-1")).isEmpty());
         assertTrue(runService.listRuns(definition.id, "user-1").stream().anyMatch(r -> r.id.equals(created.id)));
         assertEquals(2, runService.listNodeRuns(created.id, "user-1").size());
+    }
+
+    @Test
+    void workflowNodeRunsChildWorkflowAndResumesParent() {
+        WorkflowDefinition child = definitionService.create("child-workflow", "WORKFLOW", """
+            {"nodes": [{"id": "start", "type": "START"}, {"id": "end", "type": "END"}],
+             "edges": [{"id": "e0", "source": "start", "target": "end"}]}
+            """, "user-1");
+        WorkflowPublishedVersion childVersion = publishService.publish(child.id, "user-1");
+        String parentGraph = """
+            {"nodes": [
+               {"id": "start", "type": "START"},
+               {"id": "call_child", "type": "WORKFLOW",
+                "config": {"source_workflow_id": "%s", "version_id": "%s",
+                           "input_mappings": {"q": "{{ sys.input.q }}"}}},
+               {"id": "end", "type": "END"}],
+             "edges": [
+               {"id": "e0", "source": "start", "target": "call_child"},
+               {"id": "e1", "source": "call_child", "target": "end"}]}
+            """.formatted(child.id, childVersion.id);
+        WorkflowDefinition parent = definitionService.create("parent-workflow", "WORKFLOW", parentGraph, "user-1");
+        publishService.publish(parent.id, "user-1");
+
+        WorkflowRun parentRun = runService.createRun(parent.id, "{\"q\":\"hello\"}", TriggerType.API, "user-1");
+        assertTrue(runner.advance(parentRun.id));
+        WorkflowRun pausedParent = runCollection.get(parentRun.id).orElseThrow();
+        assertEquals(RunStatus.PAUSED, pausedParent.status);
+
+        WorkflowRun childRun = runCollection.find(Filters.eq("parent_run_id", parentRun.id)).getFirst();
+        assertNotNull(childRun);
+        assertEquals(1, childRun.depth);
+        assertEquals("{\"q\":\"hello\"}", childRun.input);
+
+        assertTrue(runner.advance(childRun.id));
+        WorkflowRun wokenParent = runCollection.get(parentRun.id).orElseThrow();
+        assertEquals(RunStatus.PENDING, wokenParent.status);
+
+        assertTrue(runner.advance(parentRun.id));
+        WorkflowRun finishedParent = runCollection.get(parentRun.id).orElseThrow();
+        assertEquals(RunStatus.COMPLETED, finishedParent.status);
+        assertEquals("{\"q\":\"hello\"}", finishedParent.output);
+    }
+
+    @Test
+    void jobRecoversTerminalChildWorkflowWaitIfWakeWasMissed() {
+        WorkflowDefinition child = definitionService.create("child-workflow-recovery", "WORKFLOW", """
+            {"nodes": [{"id": "start", "type": "START"}, {"id": "end", "type": "END"}],
+             "edges": [{"id": "e0", "source": "start", "target": "end"}]}
+            """, "user-1");
+        WorkflowPublishedVersion childVersion = publishService.publish(child.id, "user-1");
+        String parentGraph = """
+            {"nodes": [
+               {"id": "start", "type": "START"},
+               {"id": "call_child", "type": "WORKFLOW",
+                "config": {"source_workflow_id": "%s", "version_id": "%s",
+                           "input_mappings": {"q": "{{ sys.input.q }}"}}},
+               {"id": "end", "type": "END"}],
+             "edges": [
+               {"id": "e0", "source": "start", "target": "call_child"},
+               {"id": "e1", "source": "call_child", "target": "end"}]}
+            """.formatted(child.id, childVersion.id);
+        WorkflowDefinition parent = definitionService.create("parent-workflow-recovery", "WORKFLOW", parentGraph, "user-1");
+        publishService.publish(parent.id, "user-1");
+
+        WorkflowRun parentRun = runService.createRun(parent.id, "{\"q\":\"hello\"}", TriggerType.API, "user-1");
+        assertTrue(runner.advance(parentRun.id));
+        assertEquals(RunStatus.PAUSED, runCollection.get(parentRun.id).orElseThrow().status);
+
+        WorkflowRun childRun = runCollection.find(Filters.eq("parent_run_id", parentRun.id)).getFirst();
+        assertNotNull(childRun);
+
+        var now = ZonedDateTime.now();
+        var childEnd = new WorkflowNodeRun();
+        childEnd.id = childRun.id + ":end";
+        childEnd.runId = childRun.id;
+        childEnd.workflowId = child.id;
+        childEnd.nodeId = "end";
+        childEnd.nodeType = "END";
+        childEnd.scopePathKey = "";
+        childEnd.status = NodeRunStatus.COMPLETED;
+        childEnd.inputJson = "{\"q\":\"hello\"}";
+        childEnd.output = "{\"q\":\"hello\"}";
+        childEnd.startedAt = now;
+        childEnd.completedAt = now;
+        childEnd.createdAt = now;
+        nodeRunCollection.insert(childEnd);
+        runCollection.update(
+            Filters.eq("_id", childRun.id),
+            Updates.combine(Updates.set("status", RunStatus.COMPLETED), Updates.set("completed_at", now)));
+        runCollection.update(
+            Filters.eq("_id", parentRun.id),
+            Updates.set("lease_until", now.minusSeconds(1)));
+
+        runnerJob.execute(null);
+
+        assertTrue(awaitUntil(() -> runCollection.get(parentRun.id).map(r -> r.status == RunStatus.COMPLETED).orElse(false)),
+            "terminal child wait should be recovered and parent should continue");
+        WorkflowNodeRun callChild = nodeRunCollection.find(Filters.and(
+            Filters.eq("run_id", parentRun.id),
+            Filters.eq("node_id", "call_child"))).stream().findFirst().orElseThrow();
+        assertEquals(NodeRunStatus.COMPLETED, callChild.status);
+        assertEquals("{\"q\":\"hello\"}", callChild.output);
+    }
+
+    private static boolean awaitUntil(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return condition.getAsBoolean();
     }
 }

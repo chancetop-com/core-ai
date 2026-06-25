@@ -27,6 +27,7 @@ class WorkflowExecutorTest {
         var suspended = assertInstanceOf(NodeOutcome.Suspended.class, outcome);
         assertEquals("wfrun-child-1", suspended.childRunId());
         assertEquals(1, gateway.submittedDepth);   // child depth = parent 0 + 1
+        assertEquals("{\"city\":\"shanghai\"}", gateway.submittedInput);
     }
 
     @Test
@@ -64,6 +65,7 @@ class WorkflowExecutorTest {
         private final String childRunId;
         int submitCount;
         int submittedDepth = -1;
+        String submittedInput;
 
         FakeWorkflowGateway(String childRunId) {
             this.childRunId = childRunId;
@@ -73,6 +75,7 @@ class WorkflowExecutorTest {
         public String submitChildRun(WorkflowRun parent, WorkflowNode node, String input, int childDepth) {
             submitCount++;
             submittedDepth = childDepth;
+            submittedInput = input;
             return childRunId;
         }
 

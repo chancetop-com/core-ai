@@ -77,6 +77,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     WorkflowRunner runner;
 
     @Inject
+    MongoCollection<WorkflowRun> runCollection;
+
+    @Inject
     WorkflowPortService portService;
 
     @Override
@@ -233,7 +236,10 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         WorkflowRun latest = run;
         while (System.currentTimeMillis() < deadline) {
             latest = runService.getRun(run.id, userId);
-            if (latest.status != RunStatus.PENDING && latest.status != RunStatus.RUNNING) {
+            if (latest.status == RunStatus.PAUSED && runService.pendingInputs(latest).isEmpty()) {
+                // WORKFLOW-node waits park the parent run as PAUSED while the child workflow runs; keep sync callers
+                // blocked until the child terminal callback wakes the parent, or until the sync timeout is reached.
+            } else if (latest.status != RunStatus.PENDING && latest.status != RunStatus.RUNNING) {
                 break;   // terminal: COMPLETED / FAILED / TIMEOUT / CANCELLED
             }
             try {
@@ -286,7 +292,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     public ListNodeRunsResponse listNodeRuns(String runId) {
         var userId = AuthContext.userId(webContext);
         var response = new ListNodeRunsResponse();
-        response.nodeRuns = runService.listNodeRuns(runId, userId).stream().map(WorkflowWebServiceImpl::toNodeRunView).toList();
+        response.nodeRuns = runService.listNodeRuns(runId, userId).stream().map(this::toNodeRunView).toList();
         return response;
     }
 
@@ -295,6 +301,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         var userId = AuthContext.userId(webContext);
         var response = new WorkflowRunGraphResponse();
         response.graph = runService.getRunGraph(runId, userId);
+        return response;
+    }
+
+    @Override
+    public WorkflowRunGraphResponse versionGraph(String versionId) {
+        var userId = AuthContext.userId(webContext);
+        var response = new WorkflowRunGraphResponse();
+        response.graph = definitionService.getVersionGraph(versionId, userId);
         return response;
     }
 
@@ -361,10 +375,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         view.error = run.error;
         view.startedAt = run.startedAt;
         view.completedAt = run.completedAt;
+        view.resumedFromRunId = run.resumedFromRunId;
+        view.resumeFromNodeId = run.resumeFromNodeId;
+        view.parentRunId = run.parentRunId;
+        view.parentNodeId = run.parentNodeId;
         return view;
     }
 
-    private static NodeRunView toNodeRunView(WorkflowNodeRun nodeRun) {
+    private NodeRunView toNodeRunView(WorkflowNodeRun nodeRun) {
         var view = new NodeRunView();
         view.nodeId = nodeRun.nodeId;
         view.nodeType = nodeRun.nodeType;
@@ -374,6 +392,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         view.artifacts = toArtifactViews(nodeRun.artifacts);
         view.error = nodeRun.error;
         view.childRunId = nodeRun.childRunId;
+        if (nodeRun.childRunId != null && !nodeRun.childRunId.isBlank()) {
+            if ("WORKFLOW".equals(nodeRun.nodeType)) {
+                view.childRunType = "WORKFLOW";
+                runCollection.get(nodeRun.childRunId).ifPresent(child -> view.childWorkflowId = child.workflowId);
+            } else {
+                view.childRunType = "AGENT";
+            }
+        }
         view.startedAt = nodeRun.startedAt;
         view.completedAt = nodeRun.completedAt;
         return view;

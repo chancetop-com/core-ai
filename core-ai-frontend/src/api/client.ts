@@ -766,6 +766,8 @@ export interface WorkflowRunView {
   completed_at?: string;
   resumed_from_run_id?: string;   // set when this run was resumed from an intermediate node of another run
   resume_from_node_id?: string;
+  parent_run_id?: string;
+  parent_node_id?: string;
   pending_inputs?: PendingInputView[];
 }
 
@@ -782,6 +784,8 @@ export interface WorkflowNodeRunView {
   artifacts?: WorkflowArtifactView[];
   error?: string;
   child_run_id?: string;
+  child_run_type?: string;
+  child_workflow_id?: string;
   started_at?: string;
   completed_at?: string;
 }
@@ -912,6 +916,7 @@ export const api = {
     getRun: (runId: string) => request<WorkflowRunView>(`/api/workflow-runs/${runId}`),
     nodeRuns: (runId: string) => request<ListNodeRunsResponse>(`/api/workflow-runs/${runId}/nodes`),
     runGraph: (runId: string) => request<WorkflowRunGraphResponse>(`/api/workflow-runs/${runId}/graph`),
+    versionGraph: (versionId: string) => request<WorkflowRunGraphResponse>(`/api/workflow-versions/${versionId}/graph`),
     resume: (runId: string, body: { node_id: string; approve?: boolean; input?: string }) =>
       request<CreateRunResponse>(`/api/workflow-runs/${runId}/resume`, { method: 'POST', body: JSON.stringify(body) }),
     // resume a finished/failed run from an intermediate node: upstream is reused, the node + its forward cone re-run.

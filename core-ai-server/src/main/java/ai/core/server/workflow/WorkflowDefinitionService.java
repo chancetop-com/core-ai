@@ -70,6 +70,20 @@ public class WorkflowDefinitionService {
         return readOnlyCopy(definition, published.graph);
     }
 
+    public String getVersionGraph(String versionId, String userId) {
+        WorkflowPublishedVersion version = versionCollection.get(versionId)
+            .orElseThrow(() -> new NotFoundException("workflow version not found: " + versionId));
+        if (Boolean.TRUE.equals(version.preview)) {
+            throw new ForbiddenException("preview workflow versions are not callable: " + versionId);
+        }
+        WorkflowDefinition definition = definitionCollection.get(version.workflowId)
+            .orElseThrow(() -> new NotFoundException("workflow not found: " + version.workflowId));
+        if (!definition.userId.equals(userId) && definition.publishedVersionId == null) {
+            throw new ForbiddenException("workflow version is not readable: " + versionId);
+        }
+        return version.graph;
+    }
+
     // A detached read-only projection of another user's published workflow: same identity/metadata, but the graph is
     // the frozen published one. Never inserted/replaced, so it can never overwrite the owner's real draft.
     private static WorkflowDefinition readOnlyCopy(WorkflowDefinition source, String publishedGraph) {

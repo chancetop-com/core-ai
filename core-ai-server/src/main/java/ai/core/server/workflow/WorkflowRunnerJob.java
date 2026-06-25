@@ -60,6 +60,9 @@ public class WorkflowRunnerJob implements Job {
             Filters.eq("status", RunStatus.PAUSED),
             Filters.lte("lease_until", now)));
         for (WorkflowRun run : stalePaused) {
+            if (recoverTerminalChildWaits(run)) {
+                continue;
+            }
             if (hasWaitingNode(run.id)) {
                 continue;   // a genuine human gate is still open — leave it parked
             }
@@ -73,9 +76,36 @@ public class WorkflowRunnerJob implements Job {
         }
     }
 
+    // If a child workflow finished but the process died before wakeParent completed, the parent is PAUSED with a
+    // WAITING WORKFLOW node forever. Replaying the wake is idempotent and settles that parked node.
+    private boolean recoverTerminalChildWaits(WorkflowRun parent) {
+        boolean recovered = false;
+        var waits = nodeRunCollection.find(Filters.and(
+            Filters.eq("run_id", parent.id),
+            Filters.eq("status", NodeRunStatus.WAITING)));
+        for (WorkflowNodeRun wait : waits) {
+            if (wait.childRunId == null || wait.childRunId.isBlank()) {
+                continue;
+            }
+            WorkflowRun child = runCollection.get(wait.childRunId).orElse(null);
+            if (child == null || !isTerminal(child.status) || child.completedAt == null) {
+                continue;
+            }
+            if (workflowRunner.wakeParent(child)) {
+                recovered = true;
+                workflowRunner.submit(parent.id);
+            }
+        }
+        return recovered;
+    }
+
     private boolean hasWaitingNode(String runId) {
         return !nodeRunCollection.find(Filters.and(
             Filters.eq("run_id", runId),
             Filters.eq("status", NodeRunStatus.WAITING))).isEmpty();
+    }
+
+    private static boolean isTerminal(RunStatus status) {
+        return status == RunStatus.COMPLETED || status == RunStatus.FAILED || status == RunStatus.TIMEOUT || status == RunStatus.CANCELLED;
     }
 }

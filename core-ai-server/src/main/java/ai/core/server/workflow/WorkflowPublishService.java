@@ -101,7 +101,7 @@ public class WorkflowPublishService {
         WorkflowGraph graph = WorkflowGraphParser.parse(definition.draftGraph);
         List<String> errors = new ArrayList<>(WorkflowValidator.validate(graph));
         captureAgentSnapshots(graph, definition.userId, errors, snapshots);
-        captureWorkflowNodeErrors(graph, definition.id, errors);
+        captureWorkflowNodeErrors(graph, definition.id, definition.userId, errors);
         return errors;
     }
 
@@ -109,7 +109,7 @@ public class WorkflowPublishService {
     // self-reference (infinite recursion) and a child whose published graph contains a HUMAN_INPUT node — a parked
     // human input in the child would suspend and strand the parent's WORKFLOW node forever. A missing version_id is
     // left to the required-config error path elsewhere, so we only run the human-input check when it is present.
-    private void captureWorkflowNodeErrors(WorkflowGraph graph, String workflowId, List<String> errors) {
+    private void captureWorkflowNodeErrors(WorkflowGraph graph, String workflowId, String ownerUserId, List<String> errors) {
         //todo: indirect/transitive cycle detection (A->B->A across published versions) is deferred to a
         // best-effort UI hint per design §5.2; the runtime child-depth cap is the backstop for now.
         for (WorkflowNode node : graph.nodes()) {
@@ -117,8 +117,20 @@ public class WorkflowPublishService {
                 continue;
             }
             String sourceWorkflowId = configValue(node, "source_workflow_id");
+            if (sourceWorkflowId == null) {
+                continue;
+            }
             if (workflowId.equals(sourceWorkflowId)) {
                 errors.add("node " + node.id() + " (WORKFLOW) cannot reference its own workflow");
+                continue;
+            }
+            WorkflowDefinition childDefinition = definitionCollection.get(sourceWorkflowId).orElse(null);
+            if (childDefinition == null) {
+                errors.add("node " + node.id() + " (WORKFLOW) references an unknown workflow: " + sourceWorkflowId);
+                continue;
+            }
+            if (!isWorkflowAccessible(childDefinition, ownerUserId)) {
+                errors.add("node " + node.id() + " (WORKFLOW) references a workflow that is not published or not accessible: " + sourceWorkflowId);
                 continue;
             }
             String versionId = configValue(node, "version_id");
@@ -126,6 +138,18 @@ public class WorkflowPublishService {
                 continue;
             }
             WorkflowPublishedVersion childVersion = versionCollection.get(versionId).orElse(null);
+            if (childVersion == null) {
+                errors.add("node " + node.id() + " (WORKFLOW) references an unknown workflow version: " + versionId);
+                continue;
+            }
+            if (!sourceWorkflowId.equals(childVersion.workflowId)) {
+                errors.add("node " + node.id() + " (WORKFLOW) version does not belong to workflow: " + sourceWorkflowId);
+                continue;
+            }
+            if (Boolean.TRUE.equals(childVersion.preview)) {
+                errors.add("node " + node.id() + " (WORKFLOW) cannot reference a preview workflow version: " + versionId);
+                continue;
+            }
             if (childVersion != null && childRequiresHumanInput(childVersion)) {
                 errors.add("node " + node.id() + " (WORKFLOW) references a workflow that requires human input, which is not callable");
             }
@@ -186,6 +210,11 @@ public class WorkflowPublishService {
         return Boolean.TRUE.equals(agent.systemDefault)
             || (agent.userId != null && agent.userId.equals(ownerUserId))
             || agent.publishedConfig != null;
+    }
+
+    private static boolean isWorkflowAccessible(WorkflowDefinition definition, String ownerUserId) {
+        return (definition.userId != null && definition.userId.equals(ownerUserId))
+            || definition.publishedVersionId != null;
     }
 
     private int nextVersion(String workflowId) {
