@@ -87,6 +87,10 @@ public class ChatMessageService {
         return chatSessionCollection.get(sessionId).map(s -> s.artifacts).orElse(null);
     }
 
+    public long countSessions(String userId, List<String> sources) {
+        return chatSessionCollection.count(buildSessionFilter(userId, sources));
+    }
+
     public List<ChatSession> listSessions(String userId, List<String> sources, int offset, int limit) {
         return listSessions(userId, sources, offset, limit, "last_message_at");
     }
@@ -95,6 +99,14 @@ public class ChatMessageService {
     // sessions keep their position instead of jumping to the top, while the For You widget keeps "last_message_at".
     public List<ChatSession> listSessions(String userId, List<String> sources, int offset, int limit, String sortField) {
         var query = new Query();
+        query.filter = buildSessionFilter(userId, sources);
+        query.sort = Sorts.descending(sortField);
+        query.skip = offset;
+        query.limit = limit;
+        return chatSessionCollection.find(query);
+    }
+
+    private org.bson.conversions.Bson buildSessionFilter(String userId, List<String> sources) {
         var filters = new java.util.ArrayList<org.bson.conversions.Bson>();
         filters.add(Filters.eq("user_id", userId));
         filters.add(Filters.or(
@@ -111,11 +123,7 @@ public class ChatMessageService {
                 filters.add(Filters.in("source", sources));
             }
         }
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending(sortField);
-        query.skip = offset;
-        query.limit = limit;
-        return chatSessionCollection.find(query);
+        return Filters.and(filters);
     }
 
     // soft-delete: mark session as deleted, but keep chat_messages rows for audit/trace.

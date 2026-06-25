@@ -37,11 +37,14 @@ public class ChatSessionController {
         var sources = sourcesParam != null && !sourcesParam.isEmpty()
             ? Arrays.asList(sourcesParam.split(","))
             : null;
-        // stable creation-order sort so an active session keeps its position instead of jumping to the top
+        long total = chatMessageService.countSessions(userId, sources);
         var sessions = chatMessageService.listSessions(userId, sources, offset, limit, "created_at").stream()
             .map(this::toSummary)
             .toList();
-        return jsonResponse(Map.of("sessions", sessions));
+        var result = new LinkedHashMap<String, Object>();
+        result.put("sessions", sessions);
+        result.put("total", total);
+        return jsonResponse(result);
     }
 
     public Response get(Request request) {

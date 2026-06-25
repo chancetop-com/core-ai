@@ -23,21 +23,28 @@ function formatTime(iso?: string): string {
   return d.toLocaleDateString();
 }
 
+const PAGE_SIZE = 50;
+
 export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOpen, onNewChat, onDeleted }: Props) {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [renameError, setRenameError] = useState('');
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
 
-  const load = useCallback(async () => {
+  const loadInitial = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await sessionApi.listChatSessions(0, 50);
+      const res = await sessionApi.listChatSessions(0, PAGE_SIZE);
       setSessions(res.sessions || []);
+      setTotal(res.total);
     } catch (e) {
       console.warn('failed to load chat sessions', e);
     } finally {
@@ -45,7 +52,21 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
     }
   }, []);
 
-  useEffect(() => { load(); }, [load, refreshKey]);
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true);
+    try {
+      const offset = sessionsRef.current.length;
+      const res = await sessionApi.listChatSessions(offset, PAGE_SIZE);
+      setSessions(prev => [...prev, ...(res.sessions || [])]);
+      setTotal(res.total);
+    } catch (e) {
+      console.warn('failed to load more chat sessions', e);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, []);
+
+  useEffect(() => { loadInitial(); }, [loadInitial, refreshKey]);
 
   // close the hover menu when clicking outside of it
   useEffect(() => {
@@ -169,6 +190,17 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
             </div>
           );
         })}
+        {sessions.length < total && (
+          <button onClick={loadMore} disabled={loadingMore}
+            className="w-full flex items-center justify-center gap-1.5 py-2 text-xs cursor-pointer disabled:opacity-50 hover:opacity-80 transition-opacity"
+            style={{ color: 'var(--color-text-secondary)' }}>
+            {loadingMore ? (
+              <><Loader2 size={12} className="animate-spin" /> Loading…</>
+            ) : (
+              'More'
+            )}
+          </button>
+        )}
       </div>
 
       {renameId && (

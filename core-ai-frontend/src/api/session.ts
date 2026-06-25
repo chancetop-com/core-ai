@@ -237,7 +237,7 @@ export const sessionApi = {
   listChatSessions: (offset = 0, limit = 50, sources?: string[]) => {
     const qs = [`offset=${offset}`, `limit=${limit}`];
     if (sources && sources.length > 0) qs.push(`sources=${sources.join(',')}`);
-    return request<{ sessions: ChatSessionSummary[] }>(`/api/chat/sessions?${qs.join('&')}`);
+    return request<{ sessions: ChatSessionSummary[]; total: number }>(`/api/chat/sessions?${qs.join('&')}`);
   },
 
   getSession: (sessionId: string) =>
