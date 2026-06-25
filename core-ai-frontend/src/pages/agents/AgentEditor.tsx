@@ -425,7 +425,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           timeout_seconds: agent.timeout_seconds,
           tools: agent.tools,
           input_template: agent.input_template,
-          variables: agent.variables,
+          variables: agent.variables || {},
           response_schema: agent.response_schema,
           subagent_ids: agent.subagent_ids,
           skill_ids: agent.skill_ids,
@@ -450,7 +450,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
         timeout_seconds: agent.timeout_seconds,
         tools: agent.tools,
         input_template: agent.input_template,
-        variables: agent.variables,
+        variables: agent.variables || {},
         response_schema: agent.response_schema,
           subagent_ids: agent.subagent_ids,
           skill_ids: agent.skill_ids,
@@ -1051,7 +1051,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                 </p>
                 <KeyValueVariablesEditor
                   value={agent.variables}
-                  onChange={value => update('variables', value)}
+                  onChange={value => update('variables', value || {})}
                   keyPlaceholder="Variable key"
                   valuePlaceholder="Default value"
                 />
