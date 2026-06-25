@@ -56,6 +56,30 @@ class VariablePoolTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void renderJsonInjectsWholeTokenAsStructuredValue() {
+        var pool = new VariablePool(Map.of("a", "{\"items\":[{\"name\":\"Choice Brooklyn\"}],\"meta\":{\"city\":\"NYC\"}}"), "{}");
+
+        String rendered = pool.renderJson("{\"location_names\":\"{{ nodes.a.output.items }}\",\"meta\":\"{{ nodes.a.output.meta }}\"}");
+
+        Map<String, Object> parsed = JSON.fromJSON(Map.class, rendered);
+        var locations = (List<Map<String, Object>>) parsed.get("location_names");
+        assertEquals("Choice Brooklyn", locations.getFirst().get("name"));
+        assertEquals("NYC", ((Map<String, Object>) parsed.get("meta")).get("city"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void renderJsonEmbeddedTokenStaysStringEscaped() {
+        var pool = new VariablePool(Map.of("a", "{\"items\":[{\"name\":\"Choice Brooklyn\"}]}"), "{}");
+
+        String rendered = pool.renderJson("{\"message\":\"locations={{ nodes.a.output.items }}\"}");
+
+        Map<String, Object> parsed = JSON.fromJSON(Map.class, rendered);
+        assertEquals("locations=[{\"name\":\"Choice Brooklyn\"}]", parsed.get("message"));
+    }
+
+    @Test
     void plainRenderDoesNotEscape() {
         var pool = new VariablePool(Map.of("a", "{\"v\":\"a\\\"b\"}"), "{}");
         assertEquals("x=a\"b", pool.render("x={{ nodes.a.output.v }}"));   // render stays raw (non-JSON contexts)

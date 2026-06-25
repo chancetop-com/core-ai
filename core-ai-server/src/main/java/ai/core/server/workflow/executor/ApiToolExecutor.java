@@ -58,7 +58,7 @@ public class ApiToolExecutor implements NodeExecutor {
         if (!(arguments instanceof String template) || template.isBlank()) {
             return "{}";
         }
-        return ctx.pool().renderJson(template);   // values land in JSON string positions -> escape, don't inject
+        return ctx.pool().renderJson(template);
     }
 
     private static String str(Object value) {

@@ -60,6 +60,57 @@ class ApiDefinitionTypeMapperTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void testStringifiedJsonListFieldIsRestoredAndSingleObjectIsWrapped() {
+        var mapper = new ApiDefinitionTypeMapper(brandProfileTypes());
+        var input = Map.<String, Object>of(
+                "locations", "{\"name\":\"loc1\",\"ghost\":\"x\"}");
+
+        var body = mapper.buildMap(rootType(), input);
+
+        var locations = assertInstanceOf(List.class, body.get("locations"));
+        assertEquals(1, locations.size());
+        var location = assertInstanceOf(Map.class, locations.getFirst());
+        assertEquals("loc1", location.get("name"));
+        assertFalse(location.containsKey("ghost"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testStringifiedJsonArrayFieldIsRestored() {
+        var mapper = new ApiDefinitionTypeMapper(brandProfileTypes());
+        var input = Map.<String, Object>of(
+                "locations", "[{\"name\":\"loc1\"},{\"name\":\"loc2\"}]");
+
+        var body = mapper.buildMap(rootType(), input);
+
+        var locations = assertInstanceOf(List.class, body.get("locations"));
+        assertEquals(2, locations.size());
+        assertEquals("loc2", ((Map<String, Object>) locations.get(1)).get("name"));
+    }
+
+    @Test
+    void testStringifiedJsonObjectForPrimitiveListUsesValues() {
+        var mapper = new ApiDefinitionTypeMapper(brandProfileTypes());
+        var input = Map.<String, Object>of(
+                "location_names", "{\"location name\":\"Choice Brooklyn - Upper West Side\"}");
+
+        var body = mapper.buildMap(rootType(), input);
+
+        assertEquals(List.of("Choice Brooklyn - Upper West Side"), body.get("location_names"));
+    }
+
+    @Test
+    void testPrimitiveStringFieldKeepsJsonLikeString() {
+        var mapper = new ApiDefinitionTypeMapper(brandProfileTypes());
+        var jsonLike = "{\"name\":\"Choice Brooklyn\"}";
+
+        var body = mapper.buildMap(rootType(), Map.of("merchant_id", jsonLike));
+
+        assertEquals(jsonLike, body.get("merchant_id"));
+    }
+
+    @Test
     void testBuildParamsMapDescendsIntoNestedObject() {
         var mapper = new ApiDefinitionTypeMapper(brandProfileTypes());
         var typed = Map.<String, AbstractMap.SimpleEntry<Object, Class<?>>>of(
@@ -77,7 +128,8 @@ class ApiDefinitionTypeMapperTest {
         return bean("CreateRequest",
                 field("merchant_id", "String", null),
                 field("brand", "Brand", null),
-                listField("locations", "Location"));
+                listField("locations", "Location"),
+                listField("location_names", "String"));
     }
 
     private List<ApiDefinitionType> brandProfileTypes() {

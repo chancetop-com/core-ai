@@ -3,6 +3,7 @@ package ai.core.server.workflow;
 import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.WorkflowNodeRun;
+import ai.core.utils.JsonUtil;
 import core.framework.json.JSON;
 
 import java.util.ArrayList;
@@ -180,12 +181,52 @@ public final class VariablePool {
     }
 
     /**
-     * Render for a JSON-string context: each substituted value is JSON-string-escaped, so a resolved value
-     * containing {@code "}, {@code \} or control chars cannot break out of the surrounding JSON string literal
-     * or inject structure. Used for tool arguments / HTTP body templates the editor emits as {@code "{{ … }}"}.
+     * Render a JSON template. A string value that is exactly one selector token adopts the resolved value's JSON
+     * shape (object/array/scalar); embedded tokens remain plain string interpolation and are escaped by JSON.toJSON.
      */
     public String renderJson(String template) {
-        return render(template, true);
+        if (template == null) {
+            return null;
+        }
+        try {
+            return JsonUtil.toJson(renderJsonValue(JsonUtil.fromJson(Object.class, template)));
+        } catch (RuntimeException | Error e) {
+            return render(template, true);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object renderJsonValue(Object value) {
+        if (value instanceof String string) {
+            Matcher matcher = TEMPLATE.matcher(string);
+            if (matcher.matches()) {
+                return resolve(matcher.group(1)).map(VariablePool::jsonValue).orElse("");
+            }
+            return render(string, false);
+        }
+        if (value instanceof Map<?, ?> map) {
+            var rendered = new LinkedHashMap<String, Object>();
+            ((Map<String, Object>) map).forEach((key, child) -> rendered.put(key, renderJsonValue(child)));
+            return rendered;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(this::renderJsonValue).toList();
+        }
+        return value;
+    }
+
+    private static Object jsonValue(Object value) {
+        if (value instanceof String string) {
+            String trimmed = string.trim();
+            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                try {
+                    return JsonUtil.fromJson(Object.class, trimmed);
+                } catch (RuntimeException | Error ignored) {
+                    return string;
+                }
+            }
+        }
+        return value;
     }
 
     private String render(String template, boolean jsonEscape) {
