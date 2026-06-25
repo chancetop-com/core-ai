@@ -161,6 +161,10 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                         att.container, att.blobName);
                 continue;
             }
+            if ("multimodal".equals(att.category)) {
+                LOGGER.info("[ENQUEUE] multimodal attachment, skipping sandbox upload, fileName={}", att.fileName);
+                continue;
+            }
             // Handle attachments with blob storage URL (front-end sends url instead of container/blobName)
             if (att.url != null) {
                 var blobInfo = parseBlobUrl(att.url);
@@ -206,7 +210,10 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var sandboxPaths = new ArrayList<String>();
         var urlParts = new ArrayList<String>();
         for (var att : request.attachments) {
-            if ("sandbox".equals(att.category)) {
+            if ("multimodal".equals(att.category) && att.url != null) {
+                // multimodal images/PDFs: pass blob URL directly so AI can use caption_image/summarize_pdf
+                urlParts.add(att.url);
+            } else if ("sandbox".equals(att.category)) {
                 var name = att.fileName != null ? att.fileName : att.blobName;
                 sandboxPaths.add("/tmp/" + name);
             } else if (att.url != null && parseBlobUrl(att.url) != null) {
