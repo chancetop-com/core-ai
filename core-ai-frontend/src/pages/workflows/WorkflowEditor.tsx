@@ -480,16 +480,16 @@ export default function WorkflowEditor() {
         {latestVersion && !publishedVersionIsLatest && <span style={versionBadge}>Latest v{latestVersion.version}</span>}
         {latestVersion && versionDirty && <span style={versionBadge}>Draft changed since v{latestVersion.version}</span>}
         {readOnly ? (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-text-secondary)' }}>
+          <span style={readOnlyIndicator}>
             <Lock size={12} /> Read-only{authorName ? ` · by ${authorName}` : ''}
           </span>
         ) : (
-          <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+          <span style={saveIndicator}>
             {saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved changes' : savedAt ? `Saved ${savedAt}` : 'Saved'}
           </span>
         )}
         <div style={{ flex: 1 }} />
-        {msg && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginRight: 8 }}>{msg}</span>}
+        <span style={{ ...messageSlot, visibility: msg ? 'visible' : 'hidden' }}>{msg || 'Ready'}</span>
         {readOnly ? (
           <>
             <button onClick={() => navigate(`/workflows/${id}/runs`)} disabled={busy} style={btn} title="View your run history"><History size={15} /> Run history</button>
@@ -597,6 +597,34 @@ const versionBadge: CSSProperties = {
 const nameInput: CSSProperties = {
   fontSize: 15, fontWeight: 600, border: '1px solid transparent', borderRadius: 6,
   padding: '4px 8px', outline: 'none', minWidth: 200, background: 'transparent', color: 'var(--color-text)',
+};
+const saveIndicator: CSSProperties = {
+  fontSize: 11,
+  color: 'var(--color-text-secondary)',
+  width: 112,
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+};
+const readOnlyIndicator: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  fontSize: 11,
+  color: 'var(--color-text-secondary)',
+  minWidth: 112,
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+};
+const messageSlot: CSSProperties = {
+  fontSize: 12,
+  color: 'var(--color-text-secondary)',
+  marginRight: 8,
+  width: 128,
+  flexShrink: 0,
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
 };
 const iconBtn: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32,
