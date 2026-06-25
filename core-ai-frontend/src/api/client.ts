@@ -430,6 +430,7 @@ export interface ToolRegistryView {
   type: string;
   category: string;
   config: Record<string, string>;
+  raw_config?: string;
   enabled: boolean;
 }
 

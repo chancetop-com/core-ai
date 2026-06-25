@@ -107,11 +107,14 @@ export default function Mcp() {
     load();
   };
 
-  // Parse config keys for display
-  const getConfigSummary = (config: Record<string, string>) => {
-    const keys = Object.keys(config);
-    if (keys.length === 0) return 'No config';
-    return keys.slice(0, 3).join(', ') + (keys.length > 3 ? ' +' + (keys.length - 3) : '');
+  // Pretty-print raw_config JSON for Dynamic MCP display
+  const getRawConfigDisplay = (rawConfig?: string) => {
+    if (!rawConfig) return null;
+    try {
+      return JSON.stringify(JSON.parse(rawConfig), null, 2);
+    } catch {
+      return rawConfig;
+    }
   };
 
   return (
@@ -233,9 +236,16 @@ export default function Mcp() {
               {s.description && (
                 <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{s.description}</p>
               )}
-              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                Config keys: {getConfigSummary(s.config)}
-              </div>
+              {s.config?.transport === 'sandbox_hosted' ? (
+                <pre className="text-xs font-mono p-2 rounded overflow-auto max-h-40"
+                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                  {getRawConfigDisplay(s.raw_config) || 'No raw config'}
+                </pre>
+              ) : (
+                <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  Config keys: {Object.keys(s.config).slice(0, 3).join(', ') + (Object.keys(s.config).length > 3 ? ' +' + (Object.keys(s.config).length - 3) : '') || 'No config'}
+                </div>
+              )}
             </div>
           </div>
         ))}

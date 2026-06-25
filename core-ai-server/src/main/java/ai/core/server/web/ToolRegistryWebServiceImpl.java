@@ -198,6 +198,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
         view.type = entity.type.name();
         view.category = entity.category;
         view.config = entity.config;
+        view.rawConfig = entity.rawConfig;
         view.enabled = entity.enabled;
         return view;
     }
