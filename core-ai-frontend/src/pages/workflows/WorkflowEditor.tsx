@@ -56,6 +56,7 @@ export default function WorkflowEditor() {
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const draftGraphRef = useRef<WorkflowGraph | null>(null);
   const [name, setName] = useState('');
+  const [mode, setMode] = useState<string | undefined>();
   const [status, setStatus] = useState('PRIVATE');
   const [visibility, setVisibility] = useState('PRIVATE');
   const [publishedVersion, setPublishedVersion] = useState<number | undefined>();
@@ -100,6 +101,7 @@ export default function WorkflowEditor() {
     if (!id) return;
     api.workflows.get(id).then((wf) => {
       setName(wf.name);
+      setMode(wf.mode);
       setStatus(wf.status || 'PRIVATE');
       setVisibility(wf.visibility || (wf.status === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE'));
       setPublishedVersion(wf.published_version);
@@ -323,19 +325,31 @@ export default function WorkflowEditor() {
     }
   }, [location.pathname, location.state, navigate]);
 
-  // Export the current canvas: flush the draft first so the downloaded envelope matches what is on screen.
+  // Export the current canvas. Draft exports use the server envelope so unresolved-reference import behavior stays
+  // identical; historical version previews export the selected version graph that is currently on screen.
   const exportCurrent = async () => {
     if (!id || busy) return;
     setBusy(true); setMsg('');
     try {
-      if (!(await saveDraft())) { setMsg('Save failed; export aborted'); return; }
-      const envelope = await api.workflows.export(id);
+      const envelope = viewingVersion && selectedVersion?.id
+        ? {
+            format: 'core-ai-workflow-export/v1',
+            exported_at: new Date().toISOString(),
+            name: `${name || 'workflow'} v${selectedVersion.version ?? 'version'}`,
+            mode,
+            graph: (await api.workflows.versionGraph(selectedVersion.id)).graph,
+          }
+        : await (async () => {
+            if (!(await saveDraft())) throw new Error('Save failed');
+            return api.workflows.export(id);
+          })();
       const json = JSON.stringify(envelope, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
+      const suffix = viewingVersion && selectedVersion?.version ? `-v${selectedVersion.version}` : '';
       link.href = url;
-      link.download = `${(name || 'workflow').replace(/\s+/g, '-').toLowerCase()}.workflow.json`;
+      link.download = `${(name || 'workflow').replace(/\s+/g, '-').toLowerCase()}${suffix}.workflow.json`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -442,6 +456,7 @@ export default function WorkflowEditor() {
     try {
       const wf = await api.workflows.restoreVersion(id, selectedVersion.id);
       setName(wf.name);
+      setMode(wf.mode);
       setStatus(wf.status || 'PRIVATE');
       setVisibility(wf.visibility || (wf.status === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE'));
       setPublishedVersion(wf.published_version);
@@ -606,7 +621,7 @@ export default function WorkflowEditor() {
             <>
               <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={importFromFile} />
               <button onClick={() => importInputRef.current?.click()} disabled={busy || preview || viewingVersion} style={btn} title="Import a workflow file into the draft"><FileUp size={15} /> Import</button>
-              <button onClick={exportCurrent} disabled={busy || preview || viewingVersion} style={btn} title="Export the draft workflow"><Download size={15} /> Export</button>
+              <button onClick={exportCurrent} disabled={busy || preview} style={btn} title={viewingVersion ? 'Export this workflow version' : 'Export the draft workflow'}><Download size={15} /> Export</button>
               <button onClick={saveVersion} disabled={busy || preview || viewingVersion} style={btn} title="Save current draft as the next version"><Save size={15} /> Save</button>
               {viewingVersion && <button onClick={restoreSelectedVersion} disabled={busy || preview} style={btn}><History size={15} /> Restore as draft</button>}
               <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview || viewingVersion} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
