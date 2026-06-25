@@ -23,12 +23,26 @@ import {
 import { nodeIssues } from './validation';
 
 const nodeTypes = { workflowNode: WorkflowNode };
+const DRAFT_VERSION_VALUE = 'draft';
 
 function elapsedMs(nr: WorkflowNodeRunView): number | undefined {
   if (!nr.started_at) return undefined;
   const end = nr.completed_at ? new Date(nr.completed_at).getTime() : Date.now();
   const ms = end - new Date(nr.started_at).getTime();
   return Number.isNaN(ms) || ms < 0 ? undefined : ms;
+}
+
+function publicationLabel(status: string, visibility: string, publishedVersion?: number): string {
+  if (status === 'ARCHIVED' || status === 'DISABLED') return status;
+  if (visibility === 'PUBLIC') return publishedVersion ? `Public · v${publishedVersion}` : 'Public';
+  return publishedVersion ? `Private · last public v${publishedVersion}` : 'Private';
+}
+
+function versionOptionLabel(version: WorkflowVersionView, latestId?: string, publishedId?: string): string {
+  const tags = [];
+  if (version.id === publishedId && version.current_public) tags.push('Published');
+  if (version.id === latestId) tags.push('Latest');
+  return `v${version.version ?? '?'}${tags.length ? ` · ${tags.join(' · ')}` : ''}`;
 }
 
 
@@ -40,12 +54,14 @@ export default function WorkflowEditor() {
   const rfRef = useRef<ReactFlowInstance<WorkflowRFNode, Edge> | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const draftGraphRef = useRef<WorkflowGraph | null>(null);
   const [name, setName] = useState('');
   const [status, setStatus] = useState('PRIVATE');
   const [visibility, setVisibility] = useState('PRIVATE');
   const [publishedVersion, setPublishedVersion] = useState<number | undefined>();
   const [publishedVersionId, setPublishedVersionId] = useState<string | undefined>();
   const [versions, setVersions] = useState<WorkflowVersionView[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState(DRAFT_VERSION_VALUE);
   const [versionDirty, setVersionDirty] = useState(false);
   const [readOnly, setReadOnly] = useState(false);   // viewing another user's published workflow: run-only, no edits
   const [authorName, setAuthorName] = useState('');
@@ -73,6 +89,13 @@ export default function WorkflowEditor() {
   const saveGenRef = useRef(0);                       // generation of the latest intended save
   const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());   // serializes writes so they can't land out of order
 
+  const applyGraph = useCallback((graph: WorkflowGraph) => {
+    const { nodes: rfNodes, edges: rfEdges } = toReactFlow(graph);
+    setNodes(ensureEnd(ensureStart(rfNodes)));
+    setEdges(rfEdges);
+    setSelectedId(null);
+  }, [setNodes, setEdges]);
+
   useEffect(() => {
     if (!id) return;
     api.workflows.get(id).then((wf) => {
@@ -91,14 +114,14 @@ export default function WorkflowEditor() {
         graph = newGraph();
         setMsg('Draft graph was invalid; loaded an empty workflow.');
       }
-      const { nodes: rfNodes, edges: rfEdges } = toReactFlow(graph);
-      setNodes(ensureEnd(ensureStart(rfNodes)));
-      setEdges(rfEdges);
+      draftGraphRef.current = graph;
+      setSelectedVersionId(DRAFT_VERSION_VALUE);
+      applyGraph(graph);
       api.workflows.versions(id).then((res) => setVersions(res.versions || [])).catch(() => { /* versions are non-critical */ });
     }).catch((e) => {
       setMsg(`Failed to load workflow: ${(e as Error).message}`);
     }).finally(() => setLoading(false));
-  }, [id, setNodes, setEdges]);
+  }, [id, applyGraph]);
 
   useEffect(() => {
     if (!showMore) return;
@@ -152,8 +175,16 @@ export default function WorkflowEditor() {
     return () => { stopped = true; if (timer) clearInterval(timer); };
   }, [runId]);
 
+  const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) ?? null, [nodes, selectedId]);
+  const viewingVersion = selectedVersionId !== DRAFT_VERSION_VALUE;
+  const selectedVersion = useMemo(
+    () => versions.find((v) => v.id === selectedVersionId),
+    [versions, selectedVersionId]
+  );
+  const canvasReadOnly = readOnly || viewingVersion;
+
   const onConnect = useCallback((c: Connection) => {
-    if (readOnly) return;   // defense-in-depth: never mutate a non-owner's read-only canvas
+    if (canvasReadOnly) return;   // defense-in-depth: never mutate read-only canvases or version previews
     setEdges((eds) => {
       const exists = eds.some((e) =>
         e.source === c.source && e.target === c.target
@@ -161,12 +192,12 @@ export default function WorkflowEditor() {
         && (e.targetHandle ?? null) === (c.targetHandle ?? null));
       return exists ? eds : addEdge({ ...c, id: `e_${crypto.randomUUID()}` }, eds);
     });
-  }, [setEdges, readOnly]);
+  }, [setEdges, canvasReadOnly]);
 
   const onDragOver = useCallback((e: DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }, []);
   const onDrop = useCallback((e: DragEvent) => {
     e.preventDefault();
-    if (runId || readOnly) return; // canvas is read-only during a run, and for non-owner viewers
+    if (runId || canvasReadOnly) return; // canvas is read-only during a run, for non-owner viewers, and for version previews
     const type = e.dataTransfer.getData('application/workflow-node');
     const inst = rfRef.current;
     if (!type || !inst) return;
@@ -179,7 +210,7 @@ export default function WorkflowEditor() {
       data: { nodeType: type, name: uniqueNodeName(type, nds), config: defaultNodeConfig(type) },
     }));
     setSelectedId(nodeId);
-  }, [setNodes, runId, readOnly]);
+  }, [setNodes, runId, canvasReadOnly]);
 
   const updateNodeData = useCallback((nodeId: string, partial: Partial<WorkflowNodeData>) => {
     setNodes((nds) => nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...partial } } : n)));
@@ -192,8 +223,6 @@ export default function WorkflowEditor() {
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
     setSelectedId(null);
   }, [nodes, setNodes, setEdges]);
-
-  const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) ?? null, [nodes, selectedId]);
 
   // during a run, tint each node with its run status (display-only, never persisted). Preserve object identity
   // for nodes whose status is unchanged so React Flow doesn't re-diff every node each poll.
@@ -267,7 +296,7 @@ export default function WorkflowEditor() {
 
   // debounced auto-save of the draft on any content change — Dify-style, no manual Save button
   useEffect(() => {
-    if (loading || showRun || !id || readOnly) return;   // read-only viewers never persist (update is owner-only)
+    if (loading || showRun || !id || canvasReadOnly) return;   // read-only viewers and version previews never persist
     const graph = JSON.stringify(fromReactFlow(nodes, edges));
     const snapshot = name + '\n' + graph;
     if (!initSaveRef.current) { initSaveRef.current = true; lastSavedRef.current = snapshot; return; }
@@ -276,7 +305,7 @@ export default function WorkflowEditor() {
     setVersionDirty(true);
     const timer = setTimeout(() => { void persistDraft(name, graph, snapshot); }, 1200);
     return () => clearTimeout(timer);
-  }, [nodes, edges, name, loading, showRun, id, readOnly, persistDraft]);
+  }, [nodes, edges, name, loading, showRun, id, canvasReadOnly, persistDraft]);
 
   // Surface unresolved references handed over from the list page's import, then clear the router state so a
   // refresh or back-navigation doesn't replay the notice.
@@ -293,15 +322,6 @@ export default function WorkflowEditor() {
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location.pathname, location.state, navigate]);
-
-  // Manual save (the draft also auto-saves on change; this is an explicit flush).
-  const manualSave = async () => {
-    if (!id || busy) return;
-    setBusy(true); setMsg('');
-    try {
-      setMsg((await saveDraft()) ? 'Saved' : 'Save failed');
-    } finally { setBusy(false); }
-  };
 
   // Export the current canvas: flush the draft first so the downloaded envelope matches what is on screen.
   const exportCurrent = async () => {
@@ -358,17 +378,17 @@ export default function WorkflowEditor() {
       const version = await api.workflows.saveVersion(id);
       setVersions((prev) => [version].concat(prev.filter((v) => v.id !== version.id)));
       setVersionDirty(false);
-      setMsg(`Saved v${version.version}`);
+      setMsg('Saved');
     } catch (e) {
-      setMsg(`Save version failed: ${(e as Error).message}`);
+      setMsg(`Save failed: ${(e as Error).message}`);
     } finally { setBusy(false); }
   };
 
   const publishVersion = async () => {
     if (!id || busy) return;
-    const version = versions[0];
+    const version = viewingVersion ? selectedVersion : versions[0];
     if (!version?.id) { setMsg('Save a version before publishing.'); return; }
-    if (saveState === 'dirty' || saveState === 'saving' || versionDirty) { setMsg('Save a version first; the draft has changes.'); return; }
+    if (!viewingVersion && (saveState === 'dirty' || saveState === 'saving' || versionDirty)) { setMsg('Save first; the draft has changes.'); return; }
     setBusy(true); setMsg('');
     try {
       const wf = await api.workflows.publishVersion(id, version.id);
@@ -377,9 +397,69 @@ export default function WorkflowEditor() {
       setPublishedVersion(wf.published_version);
       setPublishedVersionId(wf.published_version_id);
       setVersions((prev) => prev.map((v) => ({ ...v, current_public: v.id === wf.published_version_id })));
-      setMsg(`Published v${wf.published_version}`);
+      setMsg('Published');
     } catch (e) {
       setMsg(`Publish failed: ${(e as Error).message}`);
+    } finally { setBusy(false); }
+  };
+
+  const selectVersion = async (versionId: string) => {
+    if (!id || busy || versionId === selectedVersionId) return;
+    setMsg('');
+    if (versionId === DRAFT_VERSION_VALUE) {
+      const graph = draftGraphRef.current;
+      if (graph) applyGraph(graph);
+      setSelectedVersionId(DRAFT_VERSION_VALUE);
+      setShowApi(false);
+      return;
+    }
+
+    if (!viewingVersion) {
+      const draftGraph = fromReactFlow(nodes, edges);
+      draftGraphRef.current = draftGraph;
+      if ((saveState === 'dirty' || saveState === 'saving') && !(await saveDraft())) return;
+    }
+
+    setBusy(true);
+    try {
+      const response = await api.workflows.versionGraph(versionId);
+      const graph = JSON.parse(response.graph || '{}') as WorkflowGraph;
+      if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) throw new Error('invalid version graph');
+      applyGraph(graph);
+      setSelectedVersionId(versionId);
+      setShowApi(false);
+    } catch (e) {
+      setMsg(`Load version failed: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreSelectedVersion = async () => {
+    if (!id || busy || !selectedVersion?.id) return;
+    if (!window.confirm(`Restore v${selectedVersion.version ?? '?'} as the editable draft?`)) return;
+    setBusy(true); setMsg('');
+    try {
+      const wf = await api.workflows.restoreVersion(id, selectedVersion.id);
+      setName(wf.name);
+      setStatus(wf.status || 'PRIVATE');
+      setVisibility(wf.visibility || (wf.status === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE'));
+      setPublishedVersion(wf.published_version);
+      setPublishedVersionId(wf.published_version_id);
+      const graph = wf.draft_graph ? JSON.parse(wf.draft_graph) as WorkflowGraph : newGraph();
+      if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) throw new Error('invalid restored draft graph');
+      draftGraphRef.current = graph;
+      applyGraph(graph);
+      setSelectedVersionId(DRAFT_VERSION_VALUE);
+      setVersionDirty(false);
+      lastSavedRef.current = wf.name + '\n' + JSON.stringify(graph);
+      setSaveState('saved');
+      setSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      const list = await api.workflows.versions(id);
+      setVersions(list.versions || []);
+      setMsg('Restored');
+    } catch (e) {
+      setMsg(`Restore failed: ${(e as Error).message}`);
     } finally { setBusy(false); }
   };
 
@@ -393,6 +473,7 @@ export default function WorkflowEditor() {
       setVisibility(wf.visibility || 'PRIVATE');
       setPublishedVersion(wf.published_version);
       setPublishedVersionId(wf.published_version_id);
+      setVersions((prev) => prev.map((v) => ({ ...v, current_public: false })));
       setShowMore(false);
       setMsg('Made private');
     } catch (e) {
@@ -481,20 +562,31 @@ export default function WorkflowEditor() {
   if (loading) return <div style={{ padding: 24, color: 'var(--color-text-secondary)' }}>Loading…</div>;
   const preview = showRun;   // run/preview mode: canvas read-only, palette hidden, run panel on the right
   const latestVersion = versions[0];
-  const publishedVersionIsLatest = latestVersion?.id === publishedVersionId;
+  const publication = publicationLabel(status, visibility, publishedVersion);
+  const draftOptionLabel = latestVersion && versionDirty ? `Draft · changed since v${latestVersion.version}` : 'Draft';
   return (
     <div style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column' }}>
       <div style={toolbar}>
         <button onClick={() => navigate('/workflows')} style={iconBtn} title="Back"><ArrowLeft size={16} /></button>
-        <input value={name} onChange={(e) => setName(e.target.value)} disabled={preview || readOnly} style={nameInput} />
-        <span style={statusBadge(status)}>{status}</span>
-        {publishedVersion && <span style={versionBadge}>{visibility === 'PUBLIC' ? `Public v${publishedVersion}` : `Last public v${publishedVersion}`}</span>}
-        {latestVersion && !publishedVersionIsLatest && <span style={versionBadge}>Latest v{latestVersion.version}</span>}
-        {latestVersion && versionDirty && <span style={versionBadge}>Draft changed since v{latestVersion.version}</span>}
+        <input value={name} onChange={(e) => setName(e.target.value)} disabled={preview || canvasReadOnly} style={nameInput} />
+        <span style={statusBadge(status, visibility)}>{publication}</span>
+        <select
+          value={selectedVersionId}
+          onChange={(e) => { void selectVersion(e.target.value); }}
+          disabled={busy || preview}
+          style={versionSelect}
+          title="Select workflow version">
+          <option value={DRAFT_VERSION_VALUE}>{draftOptionLabel}</option>
+          {versions.map((version) => (
+            <option key={version.id} value={version.id}>{versionOptionLabel(version, latestVersion?.id, publishedVersionId)}</option>
+          ))}
+        </select>
         {readOnly ? (
           <span style={readOnlyIndicator}>
             <Lock size={12} /> Read-only{authorName ? ` · by ${authorName}` : ''}
           </span>
+        ) : viewingVersion ? (
+          <span style={saveIndicator}>Viewing v{selectedVersion?.version ?? '?'}</span>
         ) : (
           <span style={saveIndicator}>
             {saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved changes' : savedAt ? `Saved ${savedAt}` : 'Saved'}
@@ -511,12 +603,12 @@ export default function WorkflowEditor() {
         ) : (
           <>
             <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={importFromFile} />
-            <button onClick={() => importInputRef.current?.click()} disabled={busy || preview} style={btn} title="Import a workflow file into the canvas"><FileUp size={15} /> Import</button>
-            <button onClick={exportCurrent} disabled={busy || preview} style={btn} title="Export this workflow"><Download size={15} /> Export</button>
-            <button onClick={manualSave} disabled={busy || preview} style={btn} title="Save draft"><Save size={15} /> Save</button>
-            <button onClick={saveVersion} disabled={busy || preview} style={btn} title="Save current draft as a manual version"><History size={15} /> Save version</button>
-            <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
-            <button onClick={publishVersion} disabled={busy || preview || !latestVersion} style={btn}><Rocket size={15} /> Publish version</button>
+            <button onClick={() => importInputRef.current?.click()} disabled={busy || preview || viewingVersion} style={btn} title="Import a workflow file into the draft"><FileUp size={15} /> Import</button>
+            <button onClick={exportCurrent} disabled={busy || preview || viewingVersion} style={btn} title="Export the draft workflow"><Download size={15} /> Export</button>
+            <button onClick={saveVersion} disabled={busy || preview || viewingVersion} style={btn} title="Save current draft as the next version"><Save size={15} /> Save</button>
+            {viewingVersion && <button onClick={restoreSelectedVersion} disabled={busy || preview} style={btn}><History size={15} /> Restore as draft</button>}
+            <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview || viewingVersion} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
+            <button onClick={publishVersion} disabled={busy || preview || (viewingVersion ? !selectedVersion : !latestVersion)} style={btn}><Rocket size={15} /> Publish</button>
             {visibility === 'PUBLIC' && (
               <div ref={moreMenuRef} style={moreMenuWrap}>
                 <button onClick={() => setShowMore((v) => !v)} disabled={busy || preview} style={iconBtn} title="More actions"><MoreHorizontal size={16} /></button>
@@ -527,13 +619,13 @@ export default function WorkflowEditor() {
                 )}
               </div>
             )}
-            <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>
+            <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview || viewingVersion} style={btnPrimary}><FlaskConical size={15} /> Test</button>
           </>
         )}
       </div>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        {!preview && !readOnly && <NodePalette />}
+        {!preview && !canvasReadOnly && <NodePalette />}
         <div style={{ flex: 1 }} onDragOver={onDragOver} onDrop={onDrop}>
           <ReactFlow
             colorMode={dark ? 'dark' : 'light'}
@@ -543,11 +635,11 @@ export default function WorkflowEditor() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onInit={(inst) => { rfRef.current = inst; }}
-            onNodeClick={(_, node) => { if (preview || !readOnly) setSelectedId(node.id); }}
-            onPaneClick={() => { if (!preview && !readOnly) setSelectedId(null); }}
-            nodesDraggable={!preview && !readOnly}
-            nodesConnectable={!preview && !readOnly}
-            deleteKeyCode={preview || readOnly ? null : 'Backspace'}
+            onNodeClick={(_, node) => { if (preview || !canvasReadOnly) setSelectedId(node.id); }}
+            onPaneClick={() => { if (!preview && !canvasReadOnly) setSelectedId(null); }}
+            nodesDraggable={!preview && !canvasReadOnly}
+            nodesConnectable={!preview && !canvasReadOnly}
+            deleteKeyCode={preview || canvasReadOnly ? null : 'Backspace'}
             nodeTypes={nodeTypes}
             fitView
           >
@@ -572,7 +664,7 @@ export default function WorkflowEditor() {
                 resumedFrom={resumedFrom ?? undefined}
                 onClose={exitRun}
               />
-            ) : selectedNode && !readOnly ? (
+            ) : selectedNode && !canvasReadOnly ? (
               <NodeConfigPanel
                 key={selectedNode.id}
                 node={selectedNode}
@@ -602,8 +694,8 @@ const toolbar: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
   borderBottom: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)',
 };
-function statusBadge(status: string): CSSProperties {
-  const published = status === 'PUBLIC';
+function statusBadge(status: string, visibility: string): CSSProperties {
+  const published = visibility === 'PUBLIC' && status !== 'ARCHIVED' && status !== 'DISABLED';
   const archived = status === 'ARCHIVED' || status === 'DISABLED';
   return {
     fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
@@ -611,13 +703,20 @@ function statusBadge(status: string): CSSProperties {
     color: published ? '#16a34a' : archived ? '#dc2626' : 'var(--color-text-secondary)',
   };
 }
-const versionBadge: CSSProperties = {
-  fontSize: 11, padding: '2px 8px', borderRadius: 10,
-  background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)',
-};
 const nameInput: CSSProperties = {
   fontSize: 15, fontWeight: 600, border: '1px solid transparent', borderRadius: 6,
   padding: '4px 8px', outline: 'none', minWidth: 200, background: 'transparent', color: 'var(--color-text)',
+};
+const versionSelect: CSSProperties = {
+  height: 28,
+  minWidth: 176,
+  padding: '2px 8px',
+  border: '1px solid var(--color-border)',
+  borderRadius: 8,
+  background: 'var(--color-bg-secondary)',
+  color: 'var(--color-text)',
+  fontSize: 12,
+  outline: 'none',
 };
 const saveIndicator: CSSProperties = {
   fontSize: 11,
