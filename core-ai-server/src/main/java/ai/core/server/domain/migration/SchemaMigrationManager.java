@@ -92,7 +92,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVChatSessionCreatedAtIndex(),
             new SchemaMigrationVWorkflowPublicIndex(),
             new SchemaMigrationVWorkflowParentRunIndex(),
-            new SchemaMigrationVWorkflowVisibilityStatusIndex()
+            new SchemaMigrationVWorkflowVisibilityStatusIndex(),
+            new SchemaMigrationVIssueReporterAgent()
         );
     }
 }

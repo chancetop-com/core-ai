@@ -144,6 +144,7 @@ export default function App() {
                     <Route path="/triggers" element={<Navigate to="/triggers/webhook" replace />} />
                     {/* Backward compat: old /scheduler redirects to /triggers/schedule */}
                     <Route path="/scheduler" element={<Navigate to="/triggers/schedule" replace />} />
+                    <Route path="/report-issue" element={<Navigate to="/chat?agent=core-ai-issue-reporter&auto=help&message=I%20want%20to%20report%20issue%20of%20core-ai!" replace />} />
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/mcp" element={<Mcp />} />
                     <Route path="/mcp/:id" element={<McpDetail />} />

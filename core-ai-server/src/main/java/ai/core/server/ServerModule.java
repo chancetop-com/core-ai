@@ -454,7 +454,7 @@ public class ServerModule extends Module {
             "/", "/login", "/register", "/authorize", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",
             "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools",
-            "/triggers", "/datasets", "/for-you", "/for-you/artifacts", "/workflows", "/workflows/explore"
+            "/triggers", "/datasets", "/for-you", "/for-you/artifacts", "/workflows", "/workflows/explore", "/report-issue"
         };
         for (var path : spaRoutes) {
             http().route(HTTPMethod.GET, path, controller::serve);

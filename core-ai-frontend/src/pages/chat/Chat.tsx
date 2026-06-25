@@ -390,6 +390,7 @@ export default function Chat() {
   useEffect(() => {
     const agentParam = searchParams.get('agent');
     const autoParam = searchParams.get('auto');
+    const messageParam = searchParams.get('message');
     if (!agentParam || !autoParam) return;
 
     const allAgents = [...myAgents, ...otherAgents]
@@ -404,8 +405,9 @@ export default function Chat() {
       // Clear URL params via history API to avoid triggering effect re-run
       window.history.replaceState({}, '', window.location.pathname);
       const targetId = agentParam;
+      const autoMessage = messageParam || 'help';
       const timer = setTimeout(async () => {
-        setMessages([{ role: 'user' as const, segments: [{ type: 'text' as const, content: 'help' }], timestamp: new Date().toISOString() }]);
+        setMessages([{ role: 'user' as const, segments: [{ type: 'text' as const, content: autoMessage }], timestamp: new Date().toISOString() }]);
         setStatus('running');
         streamingContentRef.current = '';
         streamingThinkingRef.current = '';
@@ -436,7 +438,7 @@ export default function Chat() {
           setPreSkillIds(new Set());
           setPreSubAgentIds(new Set());
           await new Promise(resolve => setTimeout(resolve, 500));
-          await sessionApi.sendMessage(sid, 'help', {});
+          await sessionApi.sendMessage(sid, autoMessage, {});
           setSidebarRefreshKey(k => k + 1);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
