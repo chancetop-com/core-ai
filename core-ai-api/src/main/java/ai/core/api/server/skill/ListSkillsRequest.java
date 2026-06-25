@@ -18,6 +18,9 @@ public class ListSkillsRequest {
     @QueryParam(name = "q")
     public String query;
 
+    @QueryParam(name = "search_in")
+    public String searchIn;
+
     @QueryParam(name = "offset")
     public Integer offset;
 

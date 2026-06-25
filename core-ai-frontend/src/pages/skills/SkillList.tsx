@@ -4,6 +4,15 @@ import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, FileUp, X } fro
 import { api } from '../../api/client';
 import type { SkillDefinition } from '../../api/client';
 
+const DEFAULT_SEARCH_IN = 'name_description';
+
+const SEARCH_IN_OPTIONS = [
+  { value: DEFAULT_SEARCH_IN, label: 'Name & description', placeholder: 'Search names and descriptions...' },
+  { value: 'name', label: 'Name only', placeholder: 'Search skill names...' },
+  { value: 'metadata', label: 'All metadata', placeholder: 'Search metadata...' },
+  { value: 'content', label: 'Content', placeholder: 'Search SKILL.md content...' },
+];
+
 export default function SkillList() {
   const [skills, setSkills] = useState<SkillDefinition[]>([]);
   const [total, setTotal] = useState(0);
@@ -11,6 +20,7 @@ export default function SkillList() {
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
+  const [searchIn, setSearchIn] = useState(DEFAULT_SEARCH_IN);
   const [sourceFilter, setSourceFilter] = useState<string>('');
   const [ownerFilter, setOwnerFilter] = useState<string>('');
   const [uploading, setUploading] = useState(false);
@@ -28,7 +38,8 @@ export default function SkillList() {
       search.trim() || undefined,
       ownerFilter.trim() || undefined,
       offset,
-      limit
+      limit,
+      search.trim() ? searchIn : undefined
     )
       .then(res => {
         if (requestId !== reqIdRef.current) return;
@@ -44,7 +55,7 @@ export default function SkillList() {
       .finally(() => {
         if (requestId === reqIdRef.current) setLoading(false);
       });
-  }, [sourceFilter, search, ownerFilter, offset, limit]);
+  }, [sourceFilter, search, searchIn, ownerFilter, offset, limit]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -60,7 +71,9 @@ export default function SkillList() {
     }
   }, [total, limit, offset]);
 
-  const hasActiveFilters = Boolean(search || sourceFilter || ownerFilter);
+  const hasSearch = Boolean(search.trim());
+  const hasActiveFilters = Boolean(hasSearch || sourceFilter || ownerFilter);
+  const searchOption = SEARCH_IN_OPTIONS.find(option => option.value === searchIn) || SEARCH_IN_OPTIONS[0];
 
   const formatTime = (iso: string) => {
     if (!iso) return '-';
@@ -96,6 +109,7 @@ export default function SkillList() {
 
   const clearFilters = () => {
     setSearch('');
+    setSearchIn(DEFAULT_SEARCH_IN);
     setSourceFilter('');
     setOwnerFilter('');
     setOffset(0);
@@ -170,7 +184,7 @@ export default function SkillList() {
             style={{ color: 'var(--color-text-secondary)' }} />
           <input
             type="text"
-            placeholder="Search skills..."
+            placeholder={searchOption.placeholder}
             value={search}
             onChange={e => { setSearch(e.target.value); setOffset(0); }}
             className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm"
@@ -180,6 +194,13 @@ export default function SkillList() {
               color: 'var(--color-text)',
             }} />
         </div>
+        <select
+          value={searchIn}
+          onChange={e => { setSearchIn(e.target.value); setOffset(0); }}
+          className="px-3 py-2 rounded-lg border text-sm min-w-48"
+          style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+          {SEARCH_IN_OPTIONS.map(option => <option key={option.value} value={option.value}>Search in: {option.label}</option>)}
+        </select>
         <select
           value={sourceFilter}
           onChange={e => { setSourceFilter(e.target.value); setOffset(0); }}

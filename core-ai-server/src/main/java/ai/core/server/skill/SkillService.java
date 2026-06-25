@@ -39,6 +39,10 @@ public class SkillService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillService.class);
     private static final int MAX_SKILL_FILE_SIZE = 10 * 1024 * 1024;
     private static final Pattern REPO_OWNER_PATTERN = Pattern.compile("https?://[^/]+/([^/]+)/");
+    private static final String SEARCH_IN_NAME_DESCRIPTION = "name_description";
+    private static final String SEARCH_IN_NAME = "name";
+    private static final String SEARCH_IN_METADATA = "metadata";
+    private static final String SEARCH_IN_CONTENT = "content";
 
     @Inject
     MongoCollection<SkillDefinition> skillCollection;
@@ -112,7 +116,7 @@ public class SkillService {
         }
     }
 
-    public List<SkillDefinition> list(String namespace, String sourceType, String userId, String query, Integer offset, Integer limit) {
+    public List<SkillDefinition> list(String namespace, String sourceType, String userId, String query, String searchIn, Integer offset, Integer limit) {
         var indexedFilter = indexedFilter(namespace, sourceType);
         if (!hasInMemoryFilters(userId, query)) {
             var dbQuery = sortedQuery(indexedFilter);
@@ -121,22 +125,24 @@ public class SkillService {
         }
 
         var candidates = skillCollection.find(sortedQuery(indexedFilter));
+        var searchScope = normalizedSearchIn(searchIn);
         var filtered = candidates.stream()
             .filter(skill -> matchesUserId(skill, userId))
-            .filter(skill -> matchesQuery(skill, query))
+            .filter(skill -> matchesQuery(skill, query, searchScope))
             .toList();
         return page(filtered, offset, limit);
     }
 
-    public long count(String namespace, String sourceType, String userId, String query) {
+    public long count(String namespace, String sourceType, String userId, String query, String searchIn) {
         var indexedFilter = indexedFilter(namespace, sourceType);
         if (!hasInMemoryFilters(userId, query)) {
             return skillCollection.count(indexedFilter);
         }
 
+        var searchScope = normalizedSearchIn(searchIn);
         return skillCollection.find(sortedQuery(indexedFilter)).stream()
             .filter(skill -> matchesUserId(skill, userId))
-            .filter(skill -> matchesQuery(skill, query))
+            .filter(skill -> matchesQuery(skill, query, searchScope))
             .count();
     }
 
@@ -265,23 +271,49 @@ public class SkillService {
         return containsIgnoreCase(skill.userId, userId.trim());
     }
 
-    private boolean matchesQuery(SkillDefinition skill, String query) {
+    private boolean matchesQuery(SkillDefinition skill, String query, String searchIn) {
         if (!hasText(query)) return true;
 
         var needle = query.trim();
-        if (containsIgnoreCase(skill.name, needle)) return true;
-        if (containsIgnoreCase(skill.qualifiedName, needle)) return true;
+        return switch (searchIn) {
+            case SEARCH_IN_NAME -> matchesName(skill, needle);
+            case SEARCH_IN_METADATA -> matchesMetadata(skill, needle);
+            case SEARCH_IN_CONTENT -> containsIgnoreCase(skill.content, needle);
+            default -> matchesName(skill, needle) || containsIgnoreCase(skill.description, needle);
+        };
+    }
+
+    private boolean matchesName(SkillDefinition skill, String needle) {
+        return containsIgnoreCase(skill.name, needle) || containsIgnoreCase(skill.qualifiedName, needle);
+    }
+
+    private boolean matchesMetadata(SkillDefinition skill, String needle) {
+        if (matchesName(skill, needle)) return true;
         if (containsIgnoreCase(skill.description, needle)) return true;
         if (containsIgnoreCase(skill.namespace, needle)) return true;
         if (skill.sourceType != null && containsIgnoreCase(skill.sourceType.name(), needle)) return true;
         if (containsIgnoreCase(skill.userId, needle)) return true;
         if (containsIgnoreCase(skill.version, needle)) return true;
+        if (skill.metadata != null) {
+            for (var entry : skill.metadata.entrySet()) {
+                if (containsIgnoreCase(entry.getKey(), needle) || containsIgnoreCase(entry.getValue(), needle)) return true;
+            }
+        }
         if (skill.allowedTools != null) {
             for (var tool : skill.allowedTools) {
                 if (containsIgnoreCase(tool, needle)) return true;
             }
         }
         return false;
+    }
+
+    private String normalizedSearchIn(String searchIn) {
+        if (!hasText(searchIn)) return SEARCH_IN_NAME_DESCRIPTION;
+        var value = searchIn.trim().toLowerCase();
+        return switch (value) {
+            case SEARCH_IN_NAME, SEARCH_IN_NAME_DESCRIPTION, SEARCH_IN_METADATA, SEARCH_IN_CONTENT -> value;
+            default -> SEARCH_IN_NAME_DESCRIPTION;
+        };
     }
 
     private boolean hasText(String value) {

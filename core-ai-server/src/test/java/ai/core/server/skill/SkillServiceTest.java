@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,7 +30,7 @@ class SkillServiceTest {
         var matchingName = skill("1", "Admin", "seo-audit", null);
         when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName));
 
-        var result = service.list(null, null, null, null, 20, 10);
+        var result = service.list(null, null, null, null, null, 20, 10);
 
         assertEquals(List.of(matchingName), result);
         var query = ArgumentCaptor.forClass(Query.class);
@@ -48,7 +49,7 @@ class SkillServiceTest {
         var matchingDescription = skill("3", "Admin", "content-helper", "Run SEO audit checks");
         when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName, notMatching, matchingDescription));
 
-        var result = service.list(null, null, null, "audit", 1, 1);
+        var result = service.list(null, null, null, "audit", null, 1, 1);
 
         assertEquals(List.of(matchingDescription), result);
         verify(service.skillCollection).find(any(Query.class));
@@ -65,7 +66,7 @@ class SkillServiceTest {
         notMatching.userId = "bob@example.com";
         when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingCreator, notMatching));
 
-        var result = service.list(null, null, "ali", null, 0, 10);
+        var result = service.list(null, null, "ali", null, null, 0, 10);
 
         assertEquals(List.of(matchingCreator), result);
         verify(service.skillCollection).find(any(Query.class));
@@ -80,13 +81,45 @@ class SkillServiceTest {
         var notMatching = skill("2", "Admin", "prompt-pack", "Prompt templates");
         var matchingTool = skill("3", "Admin", "content-helper", null);
         matchingTool.allowedTools = List.of("audit-tool");
-        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName, notMatching, matchingTool));
+        var matchingMetadata = skill("4", "Admin", "report-helper", null);
+        matchingMetadata.metadata = Map.of("category", "audit");
+        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName, notMatching, matchingTool, matchingMetadata));
 
-        var result = service.count(null, null, null, "audit");
+        var result = service.count(null, null, null, "audit", "metadata");
 
-        assertEquals(2, result);
+        assertEquals(3, result);
         verify(service.skillCollection).find(any(Query.class));
         verify(service.skillCollection, never()).count(any(Bson.class));
+    }
+
+    @Test
+    void defaultQuerySearchesNameAndDescriptionOnly() {
+        var service = new SkillService();
+        service.skillCollection = skillCollection();
+
+        var matchingDescription = skill("1", "Admin", "content-helper", "Run SEO audit checks");
+        var metadataOnly = skill("2", "Admin", "prompt-pack", null);
+        metadataOnly.allowedTools = List.of("audit-tool");
+        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingDescription, metadataOnly));
+
+        var result = service.list(null, null, null, "audit", null, 0, 10);
+
+        assertEquals(List.of(matchingDescription), result);
+    }
+
+    @Test
+    void contentSearchSearchesSkillMdContentOnly() {
+        var service = new SkillService();
+        service.skillCollection = skillCollection();
+
+        var contentMatch = skill("1", "Admin", "review-helper", "Review pull requests");
+        contentMatch.content = "Use this skill when auditing database migrations.";
+        var descriptionMatch = skill("2", "Admin", "db-helper", "Audit database migrations");
+        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(contentMatch, descriptionMatch));
+
+        var result = service.list(null, null, null, "auditing", "content", 0, 10);
+
+        assertEquals(List.of(contentMatch), result);
     }
 
     @Test

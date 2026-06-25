@@ -44,6 +44,7 @@ public class SkillWebServiceImpl implements SkillWebService {
             effectiveRequest.sourceType,
             effectiveRequest.userId,
             effectiveRequest.query,
+            effectiveRequest.searchIn,
             effectiveRequest.offset,
             effectiveRequest.limit
         );
@@ -53,7 +54,8 @@ public class SkillWebServiceImpl implements SkillWebService {
             effectiveRequest.namespace,
             effectiveRequest.sourceType,
             effectiveRequest.userId,
-            effectiveRequest.query
+            effectiveRequest.query,
+            effectiveRequest.searchIn
         );
         return response;
     }

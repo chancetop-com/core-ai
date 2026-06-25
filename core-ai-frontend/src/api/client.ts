@@ -976,11 +976,12 @@ export const api = {
       request<SystemPromptTestResult>(`/api/system-prompts/${promptId}/test`, { method: 'POST', body: JSON.stringify(data) }),
   },
   skills: {
-    list: (namespace?: string, sourceType?: string, q?: string, userId?: string, offset?: number, limit?: number) => {
+    list: (namespace?: string, sourceType?: string, q?: string, userId?: string, offset?: number, limit?: number, searchIn?: string) => {
       const params = new URLSearchParams();
       if (namespace) params.set('namespace', namespace);
       if (sourceType) params.set('source_type', sourceType);
       if (q) params.set('q', q);
+      if (searchIn) params.set('search_in', searchIn);
       if (userId) params.set('user_id', userId);
       if (offset !== undefined) params.set('offset', String(offset));
       if (limit !== undefined) params.set('limit', String(limit));
