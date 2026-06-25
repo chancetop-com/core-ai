@@ -10,4 +10,13 @@ import java.util.List;
 public class ListWorkflowsResponse {
     @Property(name = "workflows")
     public List<WorkflowView> workflows;
+
+    @Property(name = "total")
+    public Long total;
+
+    @Property(name = "offset")
+    public Integer offset;
+
+    @Property(name = "limit")
+    public Integer limit;
 }

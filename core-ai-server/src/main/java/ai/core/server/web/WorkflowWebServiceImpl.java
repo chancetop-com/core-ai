@@ -86,7 +86,10 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         if (request != null && request.myWorkflows != null) {
             myWorkflows = "true".equalsIgnoreCase(request.myWorkflows) || "1".equals(request.myWorkflows);
         }
-        var definitions = definitionService.list(userId, myWorkflows);
+        var keyword = request == null ? null : request.keyword;
+        var offset = request == null ? null : request.offset;
+        var limit = request == null ? null : request.limit;
+        var definitions = definitionService.list(userId, myWorkflows, keyword, offset, limit);
         var userNames = resolveUserNames(definitions);
         var response = new ListWorkflowsResponse();
         response.workflows = definitions.stream().map(d -> {
@@ -95,6 +98,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
             view.draftGraph = null;   // the list UI never reads the graph — and must never ship another owner's draft
             return view;
         }).toList();
+        response.total = definitionService.listCount(userId, myWorkflows, keyword);
+        response.offset = offset;
+        response.limit = limit;
         return response;
     }
 

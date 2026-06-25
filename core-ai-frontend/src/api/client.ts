@@ -702,6 +702,9 @@ export interface WorkflowView {
 
 export interface ListWorkflowsResponse {
   workflows: WorkflowView[];
+  total?: number;
+  offset?: number;
+  limit?: number;
 }
 
 export interface ExportWorkflowResponse {
@@ -876,8 +879,14 @@ export const api = {
       request<ListAgentMemoriesResponse>(`/api/agents/${agentId}/memories`),
   },
   workflows: {
-    list: (my?: boolean) =>
-      request<ListWorkflowsResponse>(`/api/workflows${my !== undefined ? `?my=${my}` : ''}`),
+    list: (my?: boolean, keyword?: string, offset?: number, limit?: number) => {
+      const params = new URLSearchParams();
+      if (my !== undefined) params.set('my', String(my));
+      if (keyword) params.set('keyword', keyword);
+      if (offset !== undefined) params.set('offset', String(offset));
+      if (limit !== undefined) params.set('limit', String(limit));
+      return request<ListWorkflowsResponse>(`/api/workflows${params.toString() ? `?${params}` : ''}`);
+    },
     clone: (id: string) => request<CloneWorkflowResponse>(`/api/workflows/${id}/clone`, { method: 'POST' }),
     explore: (keyword: string, offset: number, limit: number) =>
       request<ExploreWorkflowsResponse>(

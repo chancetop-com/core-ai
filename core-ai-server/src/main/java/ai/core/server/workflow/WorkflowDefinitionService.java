@@ -94,12 +94,22 @@ public class WorkflowDefinitionService {
     // myWorkflows: null/true -> the caller's own workflows (draft + published); false -> other users' published
     // workflows for the discover list. "Published == public": publishedVersionId is the queryable public signal.
     public List<WorkflowDefinition> list(String userId, Boolean myWorkflows) {
-        if (myWorkflows != null && !myWorkflows) {
-            return definitionCollection.find(Filters.and(
-                Filters.ne("user_id", userId),
-                Filters.ne("published_version_id", null)));
+        return list(userId, myWorkflows, null, null, null);
+    }
+
+    public List<WorkflowDefinition> list(String userId, Boolean myWorkflows, String keyword, Integer offset, Integer limit) {
+        var query = new Query();
+        query.filter = listFilter(userId, myWorkflows, keyword);
+        query.sort = Sorts.descending("updated_at");
+        if (offset != null || limit != null) {
+            query.skip = Math.max(0, offset != null ? offset : 0);
+            query.limit = Math.min(Math.max(limit != null ? limit : 20, 1), 100);
         }
-        return definitionCollection.find(Filters.eq("user_id", userId));
+        return definitionCollection.find(query);
+    }
+
+    public long listCount(String userId, Boolean myWorkflows, String keyword) {
+        return definitionCollection.count(listFilter(userId, myWorkflows, keyword));
     }
 
     // Other users' PUBLISHED workflows for the Explore page: optional case-insensitive substring match on name,
@@ -120,13 +130,30 @@ public class WorkflowDefinitionService {
     }
 
     private static Bson exploreFilter(String userId, String keyword) {
-        var conditions = new ArrayList<Bson>();
-        conditions.add(Filters.ne("user_id", userId));
-        conditions.add(Filters.ne("published_version_id", null));
+        var conditions = baseListFilters(userId, false);
         if (keyword != null && !keyword.isBlank()) {
             conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
         }
         return Filters.and(conditions);
+    }
+
+    private static Bson listFilter(String userId, Boolean myWorkflows, String keyword) {
+        var conditions = baseListFilters(userId, myWorkflows);
+        if (keyword != null && !keyword.isBlank()) {
+            conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
+        }
+        return Filters.and(conditions);
+    }
+
+    private static ArrayList<Bson> baseListFilters(String userId, Boolean myWorkflows) {
+        var conditions = new ArrayList<Bson>();
+        if (myWorkflows != null && !myWorkflows) {
+            conditions.add(Filters.ne("user_id", userId));
+            conditions.add(Filters.ne("published_version_id", null));
+        } else {
+            conditions.add(Filters.eq("user_id", userId));
+        }
+        return conditions;
     }
 
     // Copy another user's published workflow into a fresh draft owned by the caller. Clones the frozen published
