@@ -6,7 +6,7 @@ import {
   type Connection, type Edge, type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ArrowLeft, Rocket, FlaskConical, Code2, Save, Download, FileUp, Copy, Lock, History } from 'lucide-react';
+import { ArrowLeft, Rocket, FlaskConical, Code2, Save, Download, FileUp, Copy, Lock, History, MoreHorizontal } from 'lucide-react';
 import { api, type WorkflowNodeRunView, type UnresolvedReferenceView, type WorkflowVersionView } from '../../api/client';
 import { useTheme } from '../../hooks/useTheme';
 import WorkflowNode from './WorkflowNode';
@@ -39,6 +39,7 @@ export default function WorkflowEditor() {
   const { dark } = useTheme();
   const rfRef = useRef<ReactFlowInstance<WorkflowRFNode, Edge> | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   const [name, setName] = useState('');
   const [status, setStatus] = useState('PRIVATE');
   const [visibility, setVisibility] = useState('PRIVATE');
@@ -62,6 +63,7 @@ export default function WorkflowEditor() {
   const [resumedFrom, setResumedFrom] = useState<{ runId: string; nodeId: string } | null>(null);   // lineage of a resumed run
   const [showRun, setShowRun] = useState(false);   // test panel open
   const [showApi, setShowApi] = useState(false);           // API-access panel open
+  const [showMore, setShowMore] = useState(false);
   const [runError, setRunError] = useState('');
   const [panelWidth, setPanelWidth] = useState(320);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'dirty'>('saved');
@@ -97,6 +99,15 @@ export default function WorkflowEditor() {
       setMsg(`Failed to load workflow: ${(e as Error).message}`);
     }).finally(() => setLoading(false));
   }, [id, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!showMore) return;
+    const close = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) setShowMore(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [showMore]);
 
   useEffect(() => {
     // Load both my agents and other users' agents so any published agent can be selected for a node.
@@ -372,9 +383,9 @@ export default function WorkflowEditor() {
     } finally { setBusy(false); }
   };
 
-  const unpublish = async () => {
+  const makePrivate = async () => {
     if (!id || busy) return;
-    if (!window.confirm('Unpublish this workflow? Existing pinned sub-workflow references keep using their saved version.')) return;
+    if (!window.confirm('Make this workflow private? It will leave Shared Workflows, while existing pinned sub-workflow references keep using their saved version.')) return;
     setBusy(true); setMsg('');
     try {
       const wf = await api.workflows.unpublish(id);
@@ -382,9 +393,10 @@ export default function WorkflowEditor() {
       setVisibility(wf.visibility || 'PRIVATE');
       setPublishedVersion(wf.published_version);
       setPublishedVersionId(wf.published_version_id);
-      setMsg('Unpublished');
+      setShowMore(false);
+      setMsg('Made private');
     } catch (e) {
-      setMsg(`Unpublish failed: ${(e as Error).message}`);
+      setMsg(`Make private failed: ${(e as Error).message}`);
     } finally { setBusy(false); }
   };
 
@@ -505,7 +517,16 @@ export default function WorkflowEditor() {
             <button onClick={saveVersion} disabled={busy || preview} style={btn} title="Save current draft as a manual version"><History size={15} /> Save version</button>
             <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
             <button onClick={publishVersion} disabled={busy || preview || !latestVersion} style={btn}><Rocket size={15} /> Publish version</button>
-            {visibility === 'PUBLIC' && <button onClick={unpublish} disabled={busy || preview} style={btn}>Unpublish</button>}
+            {visibility === 'PUBLIC' && (
+              <div ref={moreMenuRef} style={moreMenuWrap}>
+                <button onClick={() => setShowMore((v) => !v)} disabled={busy || preview} style={iconBtn} title="More actions"><MoreHorizontal size={16} /></button>
+                {showMore && (
+                  <div style={moreMenu}>
+                    <button onClick={makePrivate} style={menuItem}>Make private</button>
+                  </div>
+                )}
+              </div>
+            )}
             <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>
           </>
         )}
@@ -630,6 +651,33 @@ const iconBtn: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32,
   border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-bg-secondary)',
   color: 'var(--color-text)', cursor: 'pointer',
+};
+const moreMenuWrap: CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+};
+const moreMenu: CSSProperties = {
+  position: 'absolute',
+  right: 0,
+  top: 38,
+  zIndex: 20,
+  minWidth: 148,
+  padding: '4px 0',
+  border: '1px solid var(--color-border)',
+  borderRadius: 8,
+  background: 'var(--color-bg)',
+  boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
+};
+const menuItem: CSSProperties = {
+  width: '100%',
+  padding: '8px 12px',
+  border: 'none',
+  background: 'transparent',
+  color: 'var(--color-text)',
+  textAlign: 'left',
+  cursor: 'pointer',
+  fontSize: 13,
 };
 const btn: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
