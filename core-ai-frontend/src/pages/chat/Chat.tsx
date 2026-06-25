@@ -51,6 +51,27 @@ function hasAnySegments(segments?: MessageSegment[]): boolean {
   return segments != null && segments.length > 0;
 }
 
+function cleanIdSet(ids: Array<string | null | undefined>): Set<string> {
+  const set = new Set<string>();
+  for (const id of ids) {
+    const clean = id?.trim();
+    if (clean) set.add(clean);
+  }
+  return set;
+}
+
+function configuredSkillIds(agent?: AgentDefinition): string[] {
+  if (!agent) return [];
+  if (agent.skill_ids != null) return agent.skill_ids;
+  return agent.skills?.map(skill => skill.id) || [];
+}
+
+function configuredSubAgentIds(agent?: AgentDefinition): string[] {
+  if (!agent) return [];
+  if (agent.subagent_ids != null) return agent.subagent_ids;
+  return agent.sub_agents?.map(subAgent => subAgent.id) || [];
+}
+
 export default function Chat() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -255,14 +276,14 @@ export default function Chat() {
     const agent = agents.find(a => a.id === selectedAgentId);
     if (!agent) return;
 
-    const skills = agent.skills;
-    if (skills && skills.length > 0) {
-      setLoadedSkillIds(new Set(skills.map(s => s.id)));
+    const skills = agent.skills || [];
+    setLoadedSkillIds(cleanIdSet(configuredSkillIds(agent)));
+    if (skills.length > 0) {
       setLoadedNames(prev => { const m = new Map(prev); for (const s of skills) m.set(s.id, s.name); return m; });
     }
-    const subAgents = agent.sub_agents;
-    if (subAgents && subAgents.length > 0) {
-      setLoadedSubAgentIds(new Set(subAgents.map(a => a.id)));
+    const subAgents = agent.sub_agents || [];
+    setLoadedSubAgentIds(cleanIdSet(configuredSubAgentIds(agent)));
+    if (subAgents.length > 0) {
       setLoadedNames(prev => { const m = new Map(prev); for (const a of subAgents) m.set(a.id, a.name); return m; });
     }
 
@@ -1059,15 +1080,15 @@ export default function Chat() {
     fetchTools();
 
     // Skills
-    const agentSkillIds = selectedAgent?.skill_ids || [];
+    const agentSkillIds = configuredSkillIds(selectedAgent);
     const sessionSkillIds = sessionId ? loadedSkillIds : preSkillIds;
-    setSelectedSkillIds(new Set([...agentSkillIds, ...sessionSkillIds]));
+    setSelectedSkillIds(cleanIdSet([...agentSkillIds, ...sessionSkillIds]));
     fetchSkills();
 
     // Subagents
-    const agentSubAgentIds = selectedAgent?.subagent_ids || [];
+    const agentSubAgentIds = configuredSubAgentIds(selectedAgent);
     const sessionSubAgentIds = sessionId ? loadedSubAgentIds : preSubAgentIds;
-    setSelectedAgentIds(new Set([...agentSubAgentIds, ...sessionSubAgentIds]));
+    setSelectedAgentIds(cleanIdSet([...agentSubAgentIds, ...sessionSubAgentIds]));
 
     setShowConfigModal(true);
   }, [sessionId, selectedAgent, loadedToolIds, preToolIds, loadedSkillIds, preSkillIds, loadedSubAgentIds, preSubAgentIds, fetchTools, fetchSkills]);
@@ -1084,7 +1105,10 @@ export default function Chat() {
 
   // Confirm agent selection — save as pre-session or call API directly
   const loadSelectedAgents = useCallback(async () => {
-    if (selectedAgentIds.size === 0) {
+    const agentSubAgentIds = cleanIdSet(configuredSubAgentIds(selectedAgent));
+    const activeAgentIds = new Set([...agentSubAgentIds, ...loadedSubAgentIds, ...preSubAgentIds]);
+    const agentIdsToLoad = Array.from(selectedAgentIds).filter(id => !activeAgentIds.has(id));
+    if (agentIdsToLoad.length === 0) {
       setShowAgentPicker(false);
       setShowConfigModal(false);
       return;
@@ -1092,8 +1116,8 @@ export default function Chat() {
 
     if (!sessionId) {
       // No session yet — save as pre-session selections
-      setPreSubAgentIds(new Set(selectedAgentIds));
-      showToast(`Selected ${selectedAgentIds.size} agent(s), will load as subagent on first message`);
+      setPreSubAgentIds(prev => new Set([...prev, ...agentIdsToLoad]));
+      showToast(`Selected ${agentIdsToLoad.length} agent(s), will load as subagent on first message`);
       setShowAgentPicker(false);
       setShowConfigModal(false);
       setSelectedAgentIds(new Set());
@@ -1101,7 +1125,7 @@ export default function Chat() {
     }
 
     try {
-      const res = await sessionApi.loadSubAgents(sessionId, Array.from(selectedAgentIds));
+      const res = await sessionApi.loadSubAgents(sessionId, agentIdsToLoad);
       if (res.loaded_sub_agents && res.loaded_sub_agents.length > 0) {
         setLoadedSubAgentIds(prev => {
           const next = new Set(prev);
@@ -1122,7 +1146,7 @@ export default function Chat() {
       console.error('Failed to load subagents:', err);
       showToast('Failed to load subagents');
     }
-  }, [sessionId, selectedAgentIds, showToast]);
+  }, [loadedSubAgentIds, preSubAgentIds, selectedAgent, selectedAgentIds, sessionId, showToast]);
 
   // Toggle tool selection
   const toggleTool = useCallback((id: string) => {
@@ -1188,7 +1212,10 @@ export default function Chat() {
 
   // Confirm skill selection — save as pre-session or call API directly
   const loadSelectedSkills = useCallback(async () => {
-    if (selectedSkillIds.size === 0) {
+    const agentSkillIds = cleanIdSet(configuredSkillIds(selectedAgent));
+    const activeSkillIds = new Set([...agentSkillIds, ...loadedSkillIds, ...preSkillIds]);
+    const skillIdsToLoad = Array.from(selectedSkillIds).filter(id => !activeSkillIds.has(id));
+    if (skillIdsToLoad.length === 0) {
       setShowSkillPicker(false);
       setShowConfigModal(false);
       return;
@@ -1196,8 +1223,8 @@ export default function Chat() {
 
     if (!sessionId) {
       // No session yet — save as pre-session selections
-      setPreSkillIds(new Set(selectedSkillIds));
-      showToast(`Selected ${selectedSkillIds.size} skill(s), will load on first message`);
+      setPreSkillIds(prev => new Set([...prev, ...skillIdsToLoad]));
+      showToast(`Selected ${skillIdsToLoad.length} skill(s), will load on first message`);
       setShowSkillPicker(false);
       setShowConfigModal(false);
       setSelectedSkillIds(new Set());
@@ -1205,7 +1232,7 @@ export default function Chat() {
     }
 
     try {
-      const res = await sessionApi.loadSkills(sessionId, Array.from(selectedSkillIds));
+      const res = await sessionApi.loadSkills(sessionId, skillIdsToLoad);
       if (res.loaded_skills && res.loaded_skills.length > 0) {
         setLoadedSkillIds(prev => {
           const next = new Set(prev);
@@ -1226,7 +1253,7 @@ export default function Chat() {
       console.error('Failed to load skills:', err);
       showToast('Failed to load skills');
     }
-  }, [sessionId, selectedSkillIds, showToast]);
+  }, [loadedSkillIds, preSkillIds, selectedAgent, selectedSkillIds, sessionId, showToast]);
 
   const handleVoiceLanguageChange = useCallback((lang: string) => {
     setVoiceLanguage(lang);

@@ -53,6 +53,14 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; color: string; 
   { key: 'dataset', label: 'Dataset', icon: <Database size={16} />, color: '#3b82f6', count: 0 },
 ];
 
+function countUniqueIds(...sets: Set<string>[]): number {
+  const ids = new Set<string>();
+  for (const set of sets) {
+    for (const id of set) ids.add(id);
+  }
+  return ids.size;
+}
+
 export default function ChatConfigModal(props: ChatConfigModalProps) {
   const { onClose } = props;
   const [activeTab, setActiveTab] = useState<TabKey>('tools');
@@ -64,9 +72,9 @@ export default function ChatConfigModal(props: ChatConfigModalProps) {
   }, [onClose]);
 
   const tabCounts: Record<TabKey, number> = {
-    tools: props.loadedToolIds.size + props.preToolIds.size + props.selectedToolIds.size,
-    skills: props.loadedSkillIds.size + props.preSkillIds.size + props.selectedSkillIds.size,
-    subagents: props.loadedSubAgentIds.size + props.preSubAgentIds.size + props.selectedAgentIds.size,
+    tools: countUniqueIds(props.loadedToolIds, props.preToolIds, props.selectedToolIds),
+    skills: countUniqueIds(props.loadedSkillIds, props.preSkillIds, props.selectedSkillIds),
+    subagents: countUniqueIds(props.loadedSubAgentIds, props.preSubAgentIds, props.selectedAgentIds),
     dataset: props.draftDatasetConfigs.length,
   };
 
