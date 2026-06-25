@@ -7,7 +7,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { ArrowLeft, Rocket, FlaskConical, Code2, Save, Download, FileUp, Copy, Lock, History } from 'lucide-react';
-import { api, type WorkflowNodeRunView, type UnresolvedReferenceView } from '../../api/client';
+import { api, type WorkflowNodeRunView, type UnresolvedReferenceView, type WorkflowVersionView } from '../../api/client';
 import { useTheme } from '../../hooks/useTheme';
 import WorkflowNode from './WorkflowNode';
 import NodePalette from './NodePalette';
@@ -40,7 +40,12 @@ export default function WorkflowEditor() {
   const rfRef = useRef<ReactFlowInstance<WorkflowRFNode, Edge> | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
-  const [status, setStatus] = useState('DRAFT');
+  const [status, setStatus] = useState('PRIVATE');
+  const [visibility, setVisibility] = useState('PRIVATE');
+  const [publishedVersion, setPublishedVersion] = useState<number | undefined>();
+  const [publishedVersionId, setPublishedVersionId] = useState<string | undefined>();
+  const [versions, setVersions] = useState<WorkflowVersionView[]>([]);
+  const [versionDirty, setVersionDirty] = useState(false);
   const [readOnly, setReadOnly] = useState(false);   // viewing another user's published workflow: run-only, no edits
   const [authorName, setAuthorName] = useState('');
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowRFNode>([]);
@@ -70,7 +75,10 @@ export default function WorkflowEditor() {
     if (!id) return;
     api.workflows.get(id).then((wf) => {
       setName(wf.name);
-      setStatus(wf.status || 'DRAFT');
+      setStatus(wf.status || 'PRIVATE');
+      setVisibility(wf.visibility || (wf.status === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE'));
+      setPublishedVersion(wf.published_version);
+      setPublishedVersionId(wf.published_version_id);
       setReadOnly(wf.editable === false);
       setAuthorName(wf.user_name || '');
       let graph: WorkflowGraph;
@@ -84,6 +92,7 @@ export default function WorkflowEditor() {
       const { nodes: rfNodes, edges: rfEdges } = toReactFlow(graph);
       setNodes(ensureEnd(ensureStart(rfNodes)));
       setEdges(rfEdges);
+      api.workflows.versions(id).then((res) => setVersions(res.versions || [])).catch(() => { /* versions are non-critical */ });
     }).catch((e) => {
       setMsg(`Failed to load workflow: ${(e as Error).message}`);
     }).finally(() => setLoading(false));
@@ -253,6 +262,7 @@ export default function WorkflowEditor() {
     if (!initSaveRef.current) { initSaveRef.current = true; lastSavedRef.current = snapshot; return; }
     if (snapshot === lastSavedRef.current) return;
     setSaveState('dirty');
+    setVersionDirty(true);
     const timer = setTimeout(() => { void persistDraft(name, graph, snapshot); }, 1200);
     return () => clearTimeout(timer);
   }, [nodes, edges, name, loading, showRun, id, readOnly, persistDraft]);
@@ -327,18 +337,54 @@ export default function WorkflowEditor() {
     } finally { setBusy(false); }
   };
 
-  const publish = async () => {
+  const saveVersion = async () => {
     if (!id || busy) return;
     setBusy(true); setMsg('');
     try {
       if (!(await saveDraft())) return;
       const result = await api.workflows.validate(id);
-      if (!result.valid) { setMsg(`Cannot publish: ${result.errors.join('; ')}`); return; }
-      const wf = await api.workflows.publish(id);
-      setStatus(wf.status || 'PUBLISHED');
+      if (!result.valid) { setMsg(`Cannot save version: ${result.errors.join('; ')}`); return; }
+      const version = await api.workflows.saveVersion(id);
+      setVersions((prev) => [version].concat(prev.filter((v) => v.id !== version.id)));
+      setVersionDirty(false);
+      setMsg(`Saved v${version.version}`);
+    } catch (e) {
+      setMsg(`Save version failed: ${(e as Error).message}`);
+    } finally { setBusy(false); }
+  };
+
+  const publishVersion = async () => {
+    if (!id || busy) return;
+    const version = versions[0];
+    if (!version?.id) { setMsg('Save a version before publishing.'); return; }
+    if (saveState === 'dirty' || saveState === 'saving' || versionDirty) { setMsg('Save a version first; the draft has changes.'); return; }
+    setBusy(true); setMsg('');
+    try {
+      const wf = await api.workflows.publishVersion(id, version.id);
+      setStatus(wf.status || 'PUBLIC');
+      setVisibility(wf.visibility || 'PUBLIC');
+      setPublishedVersion(wf.published_version);
+      setPublishedVersionId(wf.published_version_id);
+      setVersions((prev) => prev.map((v) => ({ ...v, current_public: v.id === wf.published_version_id })));
       setMsg(`Published v${wf.published_version}`);
     } catch (e) {
       setMsg(`Publish failed: ${(e as Error).message}`);
+    } finally { setBusy(false); }
+  };
+
+  const unpublish = async () => {
+    if (!id || busy) return;
+    if (!window.confirm('Unpublish this workflow? Existing pinned sub-workflow references keep using their saved version.')) return;
+    setBusy(true); setMsg('');
+    try {
+      const wf = await api.workflows.unpublish(id);
+      setStatus(wf.status || 'PRIVATE');
+      setVisibility(wf.visibility || 'PRIVATE');
+      setPublishedVersion(wf.published_version);
+      setPublishedVersionId(wf.published_version_id);
+      setMsg('Unpublished');
+    } catch (e) {
+      setMsg(`Unpublish failed: ${(e as Error).message}`);
     } finally { setBusy(false); }
   };
 
@@ -422,12 +468,17 @@ export default function WorkflowEditor() {
 
   if (loading) return <div style={{ padding: 24, color: 'var(--color-text-secondary)' }}>Loading…</div>;
   const preview = showRun;   // run/preview mode: canvas read-only, palette hidden, run panel on the right
+  const latestVersion = versions[0];
+  const publishedVersionIsLatest = latestVersion?.id === publishedVersionId;
   return (
     <div style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column' }}>
       <div style={toolbar}>
         <button onClick={() => navigate('/workflows')} style={iconBtn} title="Back"><ArrowLeft size={16} /></button>
         <input value={name} onChange={(e) => setName(e.target.value)} disabled={preview || readOnly} style={nameInput} />
         <span style={statusBadge(status)}>{status}</span>
+        {publishedVersion && <span style={versionBadge}>{visibility === 'PUBLIC' ? `Public v${publishedVersion}` : `Last public v${publishedVersion}`}</span>}
+        {latestVersion && !publishedVersionIsLatest && <span style={versionBadge}>Latest v{latestVersion.version}</span>}
+        {latestVersion && versionDirty && <span style={versionBadge}>Draft changed since v{latestVersion.version}</span>}
         {readOnly ? (
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-text-secondary)' }}>
             <Lock size={12} /> Read-only{authorName ? ` · by ${authorName}` : ''}
@@ -451,8 +502,10 @@ export default function WorkflowEditor() {
             <button onClick={() => importInputRef.current?.click()} disabled={busy || preview} style={btn} title="Import a workflow file into the canvas"><FileUp size={15} /> Import</button>
             <button onClick={exportCurrent} disabled={busy || preview} style={btn} title="Export this workflow"><Download size={15} /> Export</button>
             <button onClick={manualSave} disabled={busy || preview} style={btn} title="Save draft"><Save size={15} /> Save</button>
+            <button onClick={saveVersion} disabled={busy || preview} style={btn} title="Save current draft as a manual version"><History size={15} /> Save version</button>
             <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
-            <button onClick={publish} disabled={busy || preview} style={btn}><Rocket size={15} /> Publish</button>
+            <button onClick={publishVersion} disabled={busy || preview || !latestVersion} style={btn}><Rocket size={15} /> Publish version</button>
+            {visibility === 'PUBLIC' && <button onClick={unpublish} disabled={busy || preview} style={btn}>Unpublish</button>}
             <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>
           </>
         )}
@@ -529,13 +582,18 @@ const toolbar: CSSProperties = {
   borderBottom: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)',
 };
 function statusBadge(status: string): CSSProperties {
-  const published = status === 'PUBLISHED';
+  const published = status === 'PUBLIC';
+  const archived = status === 'ARCHIVED' || status === 'DISABLED';
   return {
     fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-    background: published ? 'rgba(22,163,74,0.14)' : 'var(--color-bg-tertiary)',
-    color: published ? '#16a34a' : 'var(--color-text-secondary)',
+    background: published ? 'rgba(22,163,74,0.14)' : archived ? 'rgba(220,38,38,0.1)' : 'var(--color-bg-tertiary)',
+    color: published ? '#16a34a' : archived ? '#dc2626' : 'var(--color-text-secondary)',
   };
 }
+const versionBadge: CSSProperties = {
+  fontSize: 11, padding: '2px 8px', borderRadius: 10,
+  background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)',
+};
 const nameInput: CSSProperties = {
   fontSize: 15, fontWeight: 600, border: '1px solid transparent', borderRadius: 6,
   padding: '4px 8px', outline: 'none', minWidth: 200, background: 'transparent', color: 'var(--color-text)',

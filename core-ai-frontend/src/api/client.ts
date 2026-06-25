@@ -695,9 +695,26 @@ export interface WorkflowView {
   name: string;
   mode?: string;
   status?: string;
+  visibility?: string;
   published_version?: number;
   published_version_id?: string;
   draft_graph?: string;
+}
+
+export interface WorkflowVersionView {
+  id: string;
+  workflow_id?: string;
+  version?: number;
+  preview?: boolean;
+  status?: string;
+  sha256?: string;
+  published_by?: string;
+  published_at?: string;
+  current_public?: boolean;
+}
+
+export interface ListWorkflowVersionsResponse {
+  versions: WorkflowVersionView[];
 }
 
 export interface ListWorkflowsResponse {
@@ -906,6 +923,15 @@ export const api = {
       request<ValidateWorkflowResponse>(`/api/workflows/${id}/validate`, { method: 'POST' }),
     publish: (id: string) =>
       request<WorkflowView>(`/api/workflows/${id}/publish`, { method: 'POST' }),
+    versions: (id: string) => request<ListWorkflowVersionsResponse>(`/api/workflows/${id}/versions`),
+    saveVersion: (id: string) =>
+      request<WorkflowVersionView>(`/api/workflows/${id}/versions`, { method: 'POST' }),
+    publishVersion: (id: string, versionId: string) =>
+      request<WorkflowView>(`/api/workflows/${id}/versions/${versionId}/publish`, { method: 'POST' }),
+    restoreVersion: (id: string, versionId: string) =>
+      request<WorkflowView>(`/api/workflows/${id}/versions/${versionId}/restore`, { method: 'POST' }),
+    unpublish: (id: string) =>
+      request<WorkflowView>(`/api/workflows/${id}/unpublish`, { method: 'POST' }),
     createRun: (id: string, input: string) =>
       request<CreateRunResponse>(`/api/workflows/${id}/runs`, { method: 'POST', body: JSON.stringify({ input }) }),
     runSync: (id: string, input: string) =>

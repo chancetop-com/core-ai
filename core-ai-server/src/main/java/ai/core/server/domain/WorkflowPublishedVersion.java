@@ -9,9 +9,9 @@ import java.time.ZonedDateTime;
 import java.util.Map;
 
 /**
- * An immutable published snapshot — the authoritative config a WorkflowRun pins and the engine loads. The
- * frozen graph JSON is sha256-verified on load. Referenced Agent snapshots are embedded here (not by agent_id)
- * so a later Agent re-publish cannot drift an already-published workflow version. Mirrors AgentPublishedConfig.
+ * An immutable workflow snapshot. Non-preview rows are manual versions (v1/v2/...) created by an explicit user save;
+ * preview rows are throwaway snapshots used only for Test. Publishing a workflow moves the definition's public
+ * pointer to one manual version; it does not mutate the version itself.
  *
  * @author Xander
  */
@@ -31,6 +31,9 @@ public class WorkflowPublishedVersion {
     // a throwaway snapshot created to run the draft (preview); not promoted to the definition's published version
     @Field(name = "preview")
     public Boolean preview;
+
+    @Field(name = "status")
+    public WorkflowVersionStatus status;
 
     @Field(name = "sha256")
     public String sha256;

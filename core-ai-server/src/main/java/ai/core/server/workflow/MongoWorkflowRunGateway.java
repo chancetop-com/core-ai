@@ -3,6 +3,7 @@ package ai.core.server.workflow;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowPublishedVersion;
+import ai.core.server.domain.WorkflowVersionStatus;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.engine.WorkflowNode;
 import com.mongodb.client.model.Filters;
@@ -38,6 +39,9 @@ public class MongoWorkflowRunGateway implements WorkflowRunGateway {
         String versionId = String.valueOf(node.config().get("version_id"));
         WorkflowPublishedVersion version = versionCollection.get(versionId)
             .orElseThrow(() -> new IllegalStateException("referenced workflow version not found: " + versionId));
+        if (version.status == WorkflowVersionStatus.DISABLED) {
+            throw new IllegalStateException("referenced workflow version is disabled: " + versionId);
+        }
         String sourceWorkflowId = String.valueOf(node.config().get("source_workflow_id"));
         if (!version.workflowId.equals(sourceWorkflowId)) {
             throw new IllegalStateException("workflow node version " + versionId + " does not belong to workflow " + sourceWorkflowId);

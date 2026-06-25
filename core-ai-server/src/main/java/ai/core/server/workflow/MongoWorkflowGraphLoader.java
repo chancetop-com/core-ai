@@ -1,6 +1,7 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.WorkflowPublishedVersion;
+import ai.core.server.domain.WorkflowVersionStatus;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -20,6 +21,9 @@ public class MongoWorkflowGraphLoader implements WorkflowGraphLoader {
     public WorkflowGraph load(String versionId) {
         WorkflowPublishedVersion version = versionCollection.get(versionId)
             .orElseThrow(() -> new IllegalStateException("published workflow version not found: " + versionId));
+        if (version.status == WorkflowVersionStatus.DISABLED) {
+            throw new IllegalStateException("workflow version is disabled: " + versionId);
+        }
         if (!WorkflowSha.hex(version.graph).equals(version.sha256)) {
             throw new IllegalStateException("graph sha256 mismatch for version " + versionId);
         }

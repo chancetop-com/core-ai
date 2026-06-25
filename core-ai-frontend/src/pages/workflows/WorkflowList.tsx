@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, History, Download, FileUp, Copy, ChevronLeft, ChevronRight, Search, Star, Workflow as WorkflowIcon } from 'lucide-react';
 import { api, type WorkflowView } from '../../api/client';
+import { AuthContext } from '../../api/auth';
 import { newGraph } from './graph';
 
 const PAGE_SIZE = 10;
@@ -30,6 +31,8 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
   const [myOffset, setMyOffset] = useState(0);
   const [sharedOffset, setSharedOffset] = useState(0);
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+  const isAdmin = user?.role === 'admin';
   const [importing, setImporting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const myReqIdRef = useRef(0);
@@ -137,14 +140,28 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
 
   const del = async (e: ReactMouseEvent, wf: WorkflowView) => {
     e.stopPropagation();
-    if (!window.confirm(`Delete "${wf.name}"? This cannot be undone.`)) return;
+    const archived = wf.published_version || wf.status === 'PUBLIC';
+    const action = archived ? 'Archive' : 'Delete';
+    const detail = archived
+      ? 'It will leave public/shared lists and existing pinned sub-workflow references keep using their saved version.'
+      : 'This cannot be undone.';
+    if (!window.confirm(`${action} "${wf.name}"? ${detail}`)) return;
     try {
       await api.workflows.delete(wf.id);
-      setMyTotal((total) => Math.max(0, total - 1));
-      if (myWorkflows.length === 1 && myOffset > 0) {
-        setMyOffset(Math.max(0, myOffset - PAGE_SIZE));
+      if (activeTab === 'my') {
+        setMyTotal((total) => Math.max(0, total - 1));
+        if (myWorkflows.length === 1 && myOffset > 0) {
+          setMyOffset(Math.max(0, myOffset - PAGE_SIZE));
+        } else {
+          setMyWorkflows((ws) => ws.filter((w) => w.id !== wf.id));
+        }
       } else {
-        setMyWorkflows((ws) => ws.filter((w) => w.id !== wf.id));
+        setSharedTotal((total) => Math.max(0, total - 1));
+        if (sharedWorkflows.length === 1 && sharedOffset > 0) {
+          setSharedOffset(Math.max(0, sharedOffset - PAGE_SIZE));
+        } else {
+          setSharedWorkflows((ws) => ws.filter((w) => w.id !== wf.id));
+        }
       }
     } catch (err) {
       setError((err as Error).message);
@@ -304,18 +321,20 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
                 <>
                   <button onClick={(e) => exportWorkflow(e, wf)} style={exportBtn} title="Export workflow"><Download size={14} /></button>
                   <button onClick={(e) => openRuns(e, wf)} style={histBtn} title="Run history"><History size={14} /></button>
-                  <button onClick={(e) => del(e, wf)} style={delBtn} title="Delete workflow"><Trash2 size={14} /></button>
+                  <button onClick={(e) => del(e, wf)} style={delBtn} title={wf.published_version ? 'Archive workflow' : 'Delete workflow'}><Trash2 size={14} /></button>
                 </>
               ) : (
-                <button onClick={(e) => cloneWorkflow(e, wf)} style={cloneBtn} disabled={cloningId === wf.id} title="Clone to my workflows">
-                  <Copy size={14} /> {cloningId === wf.id ? 'Cloning...' : 'Clone'}
-                </button>
+                <>
+                  {isAdmin && <button onClick={(e) => del(e, wf)} style={adminDelBtn} title="Admin archive public workflow"><Trash2 size={14} /></button>}
+                  <button onClick={(e) => cloneWorkflow(e, wf)} style={cloneBtn} disabled={cloningId === wf.id} title="Clone to my workflows">
+                    <Copy size={14} /> {cloningId === wf.id ? 'Cloning...' : 'Clone'}
+                  </button>
+                </>
               )}
               <div style={{ fontWeight: 600, color: 'var(--color-text)', paddingRight: activeTab === 'my' ? 92 : 84 }}>{wf.name}</div>
               <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
                 {wf.mode}
-                {wf.status ? ` · ${wf.status}` : ''}
-                {wf.published_version ? ` · v${wf.published_version}` : ''}
+                {wf.status ? ` · ${statusLabel(wf)}` : ''}
                 {activeTab === 'shared' && wf.user_name ? ` · by ${wf.user_name}` : ''}
               </div>
             </div>
@@ -344,6 +363,12 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
       )}
     </div>
   );
+}
+
+function statusLabel(wf: WorkflowView): string {
+  if (wf.status === 'PUBLIC') return `Public${wf.published_version ? ` v${wf.published_version}` : ''}`;
+  if (wf.status === 'ARCHIVED' || wf.status === 'DISABLED') return wf.status;
+  return wf.published_version ? `Private · last public v${wf.published_version}` : 'Private';
 }
 
 const btnPrimary: CSSProperties = {
@@ -381,4 +406,8 @@ const cloneBtn: CSSProperties = {
   position: 'absolute', top: 10, right: 10, display: 'flex', alignItems: 'center', gap: 4,
   padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 6,
   background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer', fontSize: 12,
+};
+const adminDelBtn: CSSProperties = {
+  position: 'absolute', top: 10, right: 84, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  width: 26, height: 26, border: 'none', borderRadius: 6, background: 'transparent', color: '#dc2626', cursor: 'pointer',
 };

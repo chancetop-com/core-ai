@@ -25,7 +25,10 @@ public class WorkflowView {
     public String mode;
 
     @Property(name = "status")
-    public String status;   // DRAFT | PUBLISHED
+    public String status;   // PRIVATE | PUBLIC | ARCHIVED | DISABLED
+
+    @Property(name = "visibility")
+    public String visibility;   // PRIVATE | PUBLIC
 
     @Property(name = "published_version")
     public Integer publishedVersion;

@@ -1,13 +1,18 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.WorkflowDefinition;
+import ai.core.server.domain.WorkflowDefinitionStatus;
 import ai.core.server.domain.WorkflowMode;
 import ai.core.server.domain.WorkflowPublishedVersion;
+import ai.core.server.domain.WorkflowRun;
+import ai.core.server.domain.WorkflowVersionStatus;
+import ai.core.server.domain.WorkflowVisibility;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
@@ -30,6 +35,9 @@ public class WorkflowDefinitionService {
     @Inject
     MongoCollection<WorkflowPublishedVersion> versionCollection;
 
+    @Inject
+    MongoCollection<WorkflowRun> runCollection;
+
     public WorkflowDefinition create(String name, String mode, String graph, String userId) {
         var now = ZonedDateTime.now();
         var definition = new WorkflowDefinition();
@@ -38,6 +46,8 @@ public class WorkflowDefinitionService {
         definition.name = name;
         definition.mode = "CHATFLOW".equals(mode) ? WorkflowMode.CHATFLOW : WorkflowMode.WORKFLOW;
         definition.draftGraph = graph;
+        definition.visibility = WorkflowVisibility.PRIVATE;
+        definition.status = WorkflowDefinitionStatus.ACTIVE;
         definition.createdAt = now;
         definition.updatedAt = now;
         definitionCollection.insert(definition);
@@ -62,7 +72,7 @@ public class WorkflowDefinitionService {
         if (definition.userId.equals(userId)) {
             return definition;
         }
-        if (definition.publishedVersionId == null) {
+        if (!isPublicActive(definition)) {
             throw new ForbiddenException("workflow does not belong to the current user: " + id);
         }
         var published = versionCollection.get(definition.publishedVersionId)
@@ -78,7 +88,10 @@ public class WorkflowDefinitionService {
         }
         WorkflowDefinition definition = definitionCollection.get(version.workflowId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + version.workflowId));
-        if (!definition.userId.equals(userId) && definition.publishedVersionId == null) {
+        if (version.status == WorkflowVersionStatus.DISABLED) {
+            throw new ForbiddenException("workflow version is disabled: " + versionId);
+        }
+        if (!definition.userId.equals(userId) && !isPublicActive(definition)) {
             throw new ForbiddenException("workflow version is not readable: " + versionId);
         }
         return version.graph;
@@ -94,6 +107,8 @@ public class WorkflowDefinitionService {
         copy.description = source.description;
         copy.mode = source.mode;
         copy.draftGraph = publishedGraph;
+        copy.visibility = source.visibility;
+        copy.status = source.status;
         copy.publishedVersionId = source.publishedVersionId;
         copy.publishedVersion = source.publishedVersion;
         copy.createdAt = source.createdAt;
@@ -105,8 +120,7 @@ public class WorkflowDefinitionService {
         return list(userId, null);
     }
 
-    // myWorkflows: null/true -> the caller's own workflows (draft + published); false -> other users' published
-    // workflows for the discover list. "Published == public": publishedVersionId is the queryable public signal.
+    // myWorkflows: null/true -> the caller's active workflows; false -> other users' active public workflows.
     public List<WorkflowDefinition> list(String userId, Boolean myWorkflows) {
         return list(userId, myWorkflows, null, null, null);
     }
@@ -126,10 +140,9 @@ public class WorkflowDefinitionService {
         return definitionCollection.count(listFilter(userId, myWorkflows, keyword));
     }
 
-    // Other users' PUBLISHED workflows for the Explore page: optional case-insensitive substring match on name,
-    // newest-updated first, paged. The filter rides the published_version_id index (IXSCAN, notablescan-safe) and the
-    // name regex is a residual filter; the updated_at sort is an in-memory sort (no covering index — fine at current
-    // scale, a known scale follow-up). offset/limit are clamped.
+    // Other users' public workflows for the Explore page: optional case-insensitive substring match on name,
+    // newest-updated first, paged. Null visibility/status are treated as legacy PUBLIC/ACTIVE when a published
+    // pointer exists, so existing published workflows remain discoverable until they are touched.
     public List<WorkflowDefinition> explore(String userId, String keyword, int offset, int limit) {
         var query = new Query();
         query.filter = exploreFilter(userId, keyword);
@@ -164,9 +177,12 @@ public class WorkflowDefinitionService {
         if (myWorkflows != null && !myWorkflows) {
             conditions.add(Filters.ne("user_id", userId));
             conditions.add(Filters.ne("published_version_id", null));
+            conditions.add(Filters.or(Filters.eq("visibility", WorkflowVisibility.PUBLIC), Filters.eq("visibility", null)));
         } else {
             conditions.add(Filters.eq("user_id", userId));
         }
+        conditions.add(Filters.ne("status", WorkflowDefinitionStatus.ARCHIVED));
+        conditions.add(Filters.ne("status", WorkflowDefinitionStatus.DISABLED));
         return conditions;
     }
 
@@ -176,7 +192,7 @@ public class WorkflowDefinitionService {
     public WorkflowDefinition clone(String sourceId, String userId) {
         var source = definitionCollection.get(sourceId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + sourceId));
-        if (source.publishedVersionId == null) {
+        if (!isPublicActive(source)) {
             throw new ForbiddenException("workflow is not published and cannot be cloned: " + sourceId);
         }
         var published = versionCollection.get(source.publishedVersionId)
@@ -195,13 +211,34 @@ public class WorkflowDefinitionService {
         return definition;
     }
 
+    public void delete(String id, String userId, boolean admin) {
+        var definition = definitionCollection.get(id)
+            .orElseThrow(() -> new NotFoundException("workflow not found: " + id));
+        boolean owner = definition.userId.equals(userId);
+        if (!owner && !(admin && isPublicActive(definition))) {
+            throw new ForbiddenException("workflow does not belong to the current user: " + id);
+        }
+        if (canHardDelete(definition)) {
+            definitionCollection.delete(id);
+            return;
+        }
+        definition.status = WorkflowDefinitionStatus.ARCHIVED;
+        definition.visibility = WorkflowVisibility.PRIVATE;
+        definition.archivedAt = ZonedDateTime.now();
+        definition.archivedBy = userId;
+        definition.updatedAt = definition.archivedAt;
+        definitionCollection.replace(definition);
+    }
+
     public void delete(String id, String userId) {
-        get(id, userId);   // ownership check; published versions and runs are left as harmless orphans
-        definitionCollection.delete(id);
+        delete(id, userId, false);
     }
 
     public WorkflowDefinition update(String id, String name, String graph, String userId) {
         var definition = get(id, userId);
+        if (statusOf(definition) != WorkflowDefinitionStatus.ACTIVE) {
+            throw new ConflictException("workflow is not editable (status=" + statusOf(definition) + "): " + id);
+        }
         if (name != null) {
             definition.name = name;
         }
@@ -211,5 +248,34 @@ public class WorkflowDefinitionService {
         definition.updatedAt = ZonedDateTime.now();
         definitionCollection.replace(definition);
         return definition;
+    }
+
+    private boolean canHardDelete(WorkflowDefinition definition) {
+        if (definition.publishedVersionId != null) {
+            return false;
+        }
+        if (!versionCollection.find(Filters.and(
+            Filters.eq("workflow_id", definition.id),
+            Filters.ne("preview", true))).isEmpty()) {
+            return false;
+        }
+        return runCollection.find(Filters.eq("workflow_id", definition.id)).isEmpty();
+    }
+
+    public static WorkflowDefinitionStatus statusOf(WorkflowDefinition definition) {
+        return definition.status != null ? definition.status : WorkflowDefinitionStatus.ACTIVE;
+    }
+
+    public static WorkflowVisibility visibilityOf(WorkflowDefinition definition) {
+        if (definition.visibility != null) {
+            return definition.visibility;
+        }
+        return definition.publishedVersionId != null ? WorkflowVisibility.PUBLIC : WorkflowVisibility.PRIVATE;
+    }
+
+    public static boolean isPublicActive(WorkflowDefinition definition) {
+        return definition.publishedVersionId != null
+            && statusOf(definition) == WorkflowDefinitionStatus.ACTIVE
+            && visibilityOf(definition) == WorkflowVisibility.PUBLIC;
     }
 }

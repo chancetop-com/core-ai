@@ -91,7 +91,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVAgentRunTraceIndex(),
             new SchemaMigrationVChatSessionCreatedAtIndex(),
             new SchemaMigrationVWorkflowPublicIndex(),
-            new SchemaMigrationVWorkflowParentRunIndex()
+            new SchemaMigrationVWorkflowParentRunIndex(),
+            new SchemaMigrationVWorkflowVisibilityStatusIndex()
         );
     }
 }

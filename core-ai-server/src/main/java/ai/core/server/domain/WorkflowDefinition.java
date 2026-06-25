@@ -8,9 +8,9 @@ import core.framework.mongo.Id;
 import java.time.ZonedDateTime;
 
 /**
- * The editable draft of a workflow. Users only mutate the draft; publish() captures it into an immutable
- * WorkflowPublishedVersion. Mirrors AgentDefinition's draft/published split. The graph is stored as canvas
- * JSON (includes NOTE nodes); the executable graph is parsed from it at publish/run time.
+ * The editable draft of a workflow. Auto-save overwrites {@link #draftGraph}; an explicit "save version" captures
+ * that draft into an immutable {@link WorkflowPublishedVersion}. The public workflow is only a pointer to one
+ * saved version, so editing the draft never changes what API callers or WORKFLOW nodes run.
  *
  * @author Xander
  */
@@ -36,6 +36,12 @@ public class WorkflowDefinition {
     @Field(name = "draft_graph")
     public String draftGraph;
 
+    @Field(name = "visibility")
+    public WorkflowVisibility visibility;
+
+    @Field(name = "status")
+    public WorkflowDefinitionStatus status;
+
     @Field(name = "published_version_id")
     public String publishedVersionId;
 
@@ -47,4 +53,10 @@ public class WorkflowDefinition {
 
     @Field(name = "updated_at")
     public ZonedDateTime updatedAt;
+
+    @Field(name = "archived_at")
+    public ZonedDateTime archivedAt;
+
+    @Field(name = "archived_by")
+    public String archivedBy;
 }

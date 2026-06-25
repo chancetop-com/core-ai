@@ -12,6 +12,7 @@ import ai.core.api.server.workflow.ImportWorkflowRequest;
 import ai.core.api.server.workflow.ImportWorkflowResponse;
 import ai.core.api.server.workflow.ListNodeRunsResponse;
 import ai.core.api.server.workflow.ListWorkflowRunsResponse;
+import ai.core.api.server.workflow.ListWorkflowVersionsResponse;
 import ai.core.api.server.workflow.ListWorkflowsRequest;
 import ai.core.api.server.workflow.ListWorkflowsResponse;
 import ai.core.api.server.workflow.NodeRunView;
@@ -22,6 +23,7 @@ import ai.core.api.server.workflow.UpdateWorkflowRequest;
 import ai.core.api.server.workflow.ValidateWorkflowResponse;
 import ai.core.api.server.workflow.WorkflowRunGraphResponse;
 import ai.core.api.server.workflow.WorkflowRunView;
+import ai.core.api.server.workflow.WorkflowVersionView;
 import ai.core.api.server.workflow.WorkflowView;
 import ai.core.api.server.workflow.WorkflowWebService;
 import ai.core.server.domain.ArtifactRef;
@@ -30,7 +32,9 @@ import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.User;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
+import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.domain.WorkflowVisibility;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.workflow.WorkflowDefinitionService;
 import ai.core.server.workflow.WorkflowPortService;
@@ -138,6 +142,10 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         return map;
     }
 
+    private boolean isAdmin(String userId) {
+        return userCollection.get(userId).map(user -> "admin".equals(user.role)).orElse(false);
+    }
+
     @Override
     public CloneWorkflowResponse clone(String id) {
         var userId = AuthContext.userId(webContext);
@@ -193,7 +201,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     public void delete(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_id", id);
-        definitionService.delete(id, userId);
+        definitionService.delete(id, userId, isAdmin(userId));
     }
 
     @Override
@@ -212,6 +220,43 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         definitionService.get(id, userId);   // ownership check before publishing
         publishService.publish(id, userId);
         return toView(definitionService.get(id, userId));
+    }
+
+    @Override
+    public ListWorkflowVersionsResponse listVersions(String id) {
+        var userId = AuthContext.userId(webContext);
+        WorkflowDefinition definition = definitionService.getReadable(id, userId);
+        var response = new ListWorkflowVersionsResponse();
+        response.versions = publishService.listVersions(id, userId).stream()
+            .map(version -> toVersionView(version, definition.publishedVersionId, WorkflowDefinitionService.isPublicActive(definition)))
+            .toList();
+        return response;
+    }
+
+    @Override
+    public WorkflowVersionView saveVersion(String id) {
+        var userId = AuthContext.userId(webContext);
+        WorkflowPublishedVersion version = publishService.saveVersion(id, userId);
+        WorkflowDefinition definition = definitionService.get(id, userId);
+        return toVersionView(version, definition.publishedVersionId, WorkflowDefinitionService.isPublicActive(definition));
+    }
+
+    @Override
+    public WorkflowView publishVersion(String id, String versionId) {
+        var userId = AuthContext.userId(webContext);
+        return toView(publishService.publishVersion(id, versionId, userId));
+    }
+
+    @Override
+    public WorkflowView restoreVersion(String id, String versionId) {
+        var userId = AuthContext.userId(webContext);
+        return toView(publishService.restoreVersionToDraft(id, versionId, userId));
+    }
+
+    @Override
+    public WorkflowView unpublish(String id) {
+        var userId = AuthContext.userId(webContext);
+        return toView(publishService.unpublish(id, userId));
     }
 
     @Override
@@ -357,10 +402,30 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         view.userName = userName;
         view.name = definition.name;
         view.mode = definition.mode != null ? definition.mode.name() : null;
-        view.status = definition.publishedVersionId != null ? "PUBLISHED" : "DRAFT";
+        var status = WorkflowDefinitionService.statusOf(definition);
+        var visibility = WorkflowDefinitionService.visibilityOf(definition);
+        view.visibility = visibility.name();
+        view.status = status.name();
+        if ("ACTIVE".equals(view.status)) {
+            view.status = visibility == WorkflowVisibility.PUBLIC && definition.publishedVersionId != null ? "PUBLIC" : "PRIVATE";
+        }
         view.publishedVersion = definition.publishedVersion;
         view.publishedVersionId = definition.publishedVersionId;
         view.draftGraph = definition.draftGraph;
+        return view;
+    }
+
+    private static WorkflowVersionView toVersionView(WorkflowPublishedVersion version, String currentPublicVersionId, boolean publicActive) {
+        var view = new WorkflowVersionView();
+        view.id = version.id;
+        view.workflowId = version.workflowId;
+        view.version = version.version;
+        view.preview = version.preview;
+        view.status = version.status != null ? version.status.name() : "ACTIVE";
+        view.sha256 = version.sha256;
+        view.publishedBy = version.publishedBy;
+        view.publishedAt = version.publishedAt;
+        view.currentPublic = publicActive && version.id.equals(currentPublicVersionId);
         return view;
     }
 

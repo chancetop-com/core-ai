@@ -3,10 +3,14 @@ package ai.core.server.workflow;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowDefinition;
+import ai.core.server.domain.WorkflowDefinitionStatus;
+import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.domain.WorkflowVisibility;
 import core.framework.inject.Inject;
 import core.framework.test.Context;
 import core.framework.test.IntegrationExtension;
+import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -122,6 +126,74 @@ class WorkflowDiscoverCloneTest {
     void runningAnUnpublishedWorkflowByOtherUserIsForbidden() {
         WorkflowDefinition draft = definitionService.create("private-draft", "WORKFLOW", GRAPH, "owner-1");
         assertThrows(ForbiddenException.class, () -> runService.createRun(draft.id, "{}", TriggerType.API, "viewer-2"));
+    }
+
+    @Test
+    void manualSaveVersionDoesNotPublishUntilExplicitPublish() {
+        WorkflowDefinition definition = definitionService.create("manual-version", "WORKFLOW", GRAPH, "owner-1");
+        WorkflowPublishedVersion version = publishService.saveVersion(definition.id, "owner-1");
+
+        WorkflowDefinition savedOnly = definitionService.get(definition.id, "owner-1");
+        assertNull(savedOnly.publishedVersionId, "saving a version must not make the workflow public");
+        assertEquals(1, version.version);
+        assertFalse(definitionService.explore("viewer-2", "manual-version", 0, 10).stream().anyMatch(d -> d.id.equals(definition.id)));
+        assertThrows(BadRequestException.class, () -> runService.createRun(definition.id, "{}", TriggerType.API, "owner-1"));
+
+        WorkflowDefinition published = publishService.publishVersion(definition.id, version.id, "owner-1");
+        assertEquals(version.id, published.publishedVersionId);
+        assertEquals(WorkflowVisibility.PUBLIC, WorkflowDefinitionService.visibilityOf(published));
+        assertTrue(definitionService.explore("viewer-2", "manual-version", 0, 10).stream().anyMatch(d -> d.id.equals(definition.id)));
+    }
+
+    @Test
+    void unpublishHidesWorkflowButKeepsSavedVersionHistory() {
+        WorkflowDefinition definition = definitionService.create("unpublish-me", "WORKFLOW", GRAPH, "owner-1");
+        WorkflowPublishedVersion version = publishService.publish(definition.id, "owner-1");
+
+        WorkflowDefinition unpublished = publishService.unpublish(definition.id, "owner-1");
+        assertEquals(version.id, unpublished.publishedVersionId, "unpublish keeps the last public pointer for history");
+        assertEquals(WorkflowVisibility.PRIVATE, WorkflowDefinitionService.visibilityOf(unpublished));
+        assertFalse(definitionService.explore("viewer-2", "unpublish-me", 0, 10).stream().anyMatch(d -> d.id.equals(definition.id)));
+        assertThrows(BadRequestException.class, () -> runService.createRun(definition.id, "{}", TriggerType.API, "owner-1"));
+        assertThrows(ForbiddenException.class, () -> definitionService.getVersionGraph(version.id, "viewer-2"));
+        assertTrue(definitionService.getVersionGraph(version.id, "owner-1").contains("\"START\""));
+        assertEquals(1, publishService.listVersions(definition.id, "owner-1").size());
+    }
+
+    @Test
+    void publishingSavedVersionRechecksWorkflowNodeVisibility() {
+        WorkflowDefinition child = definitionService.create("child-unpublished-before-parent-publish", "WORKFLOW", GRAPH, "owner-1");
+        WorkflowPublishedVersion childVersion = publishService.publish(child.id, "owner-1");
+        String parentGraph = """
+            {"nodes": [
+              {"id": "start", "type": "START"},
+              {"id": "call_child", "type": "WORKFLOW",
+               "config": {"source_workflow_id": "%s", "version_id": "%s"}},
+              {"id": "end", "type": "END"}],
+             "edges": [
+              {"id": "e1", "source": "start", "target": "call_child"},
+              {"id": "e2", "source": "call_child", "target": "end"}]}
+            """.formatted(child.id, childVersion.id);
+        WorkflowDefinition parent = definitionService.create("parent-after-child-unpublish", "WORKFLOW", parentGraph, "owner-1");
+        WorkflowPublishedVersion parentVersion = publishService.saveVersion(parent.id, "owner-1");
+
+        publishService.unpublish(child.id, "owner-1");
+
+        assertThrows(WorkflowValidationException.class,
+            () -> publishService.publishVersion(parent.id, parentVersion.id, "owner-1"));
+    }
+
+    @Test
+    void adminDeletePublicWorkflowArchivesInsteadOfHardDelete() {
+        WorkflowDefinition definition = definitionService.create("admin-archive-public", "WORKFLOW", GRAPH, "owner-1");
+        publishService.publish(definition.id, "owner-1");
+
+        definitionService.delete(definition.id, "admin-1", true);
+
+        WorkflowDefinition archived = definitionService.get(definition.id, "owner-1");
+        assertEquals(WorkflowDefinitionStatus.ARCHIVED, WorkflowDefinitionService.statusOf(archived));
+        assertEquals(WorkflowVisibility.PRIVATE, WorkflowDefinitionService.visibilityOf(archived));
+        assertFalse(definitionService.explore("viewer-2", "admin-archive-public", 0, 10).stream().anyMatch(d -> d.id.equals(definition.id)));
     }
 
     @Test

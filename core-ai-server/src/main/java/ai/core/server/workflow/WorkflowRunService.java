@@ -8,6 +8,7 @@ import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.domain.WorkflowVersionStatus;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import com.mongodb.client.model.Filters;
@@ -57,16 +58,19 @@ public class WorkflowRunService {
     public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
         WorkflowDefinition definition = definitionCollection.get(workflowId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + workflowId));
-        // published == public: any user may run the published version (the run is attributed to the caller). An
-        // unpublished workflow stays private — only its owner can see it, and even they must publish it first.
-        if (definition.publishedVersionId == null) {
+        // Only active public workflows expose the external run API. Unpublishing keeps the pinned version available
+        // for existing parent workflows, but removes this direct entry point.
+        if (!WorkflowDefinitionService.isPublicActive(definition)) {
             if (!definition.userId.equals(userId)) {
                 throw new ForbiddenException("workflow does not belong to the current user: " + workflowId);
             }
-            throw new BadRequestException("workflow is not published: " + workflowId);
+            throw new BadRequestException("workflow is not public: " + workflowId);
         }
         WorkflowPublishedVersion version = versionCollection.get(definition.publishedVersionId)
             .orElseThrow(() -> new IllegalStateException("published version missing: " + definition.publishedVersionId));
+        if (version.status == WorkflowVersionStatus.DISABLED) {
+            throw new ForbiddenException("workflow version is disabled: " + version.id);
+        }
         return insertRun(definition, version, input, triggeredBy, userId);
     }
 
@@ -281,6 +285,9 @@ public class WorkflowRunService {
         WorkflowRun run = getRun(runId, userId);
         WorkflowPublishedVersion version = versionCollection.get(run.versionId)
             .orElseThrow(() -> new NotFoundException("workflow version not found for run: " + runId));
+        if (version.status == WorkflowVersionStatus.DISABLED) {
+            throw new ForbiddenException("workflow version is disabled: " + version.id);
+        }
         return version.graph;
     }
 }

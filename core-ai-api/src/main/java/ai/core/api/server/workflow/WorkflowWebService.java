@@ -53,6 +53,26 @@ public interface WorkflowWebService {
     @Path("/api/workflows/:id/publish")
     WorkflowView publish(@PathParam("id") String id);
 
+    @GET
+    @Path("/api/workflows/:id/versions")
+    ListWorkflowVersionsResponse listVersions(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/workflows/:id/versions")
+    WorkflowVersionView saveVersion(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/workflows/:id/versions/:versionId/publish")
+    WorkflowView publishVersion(@PathParam("id") String id, @PathParam("versionId") String versionId);
+
+    @POST
+    @Path("/api/workflows/:id/versions/:versionId/restore")
+    WorkflowView restoreVersion(@PathParam("id") String id, @PathParam("versionId") String versionId);
+
+    @POST
+    @Path("/api/workflows/:id/unpublish")
+    WorkflowView unpublish(@PathParam("id") String id);
+
     // Clone another user's published workflow into a fresh draft owned by the caller (discover -> copy to mine).
     @POST
     @Path("/api/workflows/:id/clone")

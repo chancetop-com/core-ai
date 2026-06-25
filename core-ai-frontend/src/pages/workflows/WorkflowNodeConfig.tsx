@@ -5,7 +5,7 @@ import type { WorkflowNodeData, WorkflowRFNode } from './graph';
 import { TemplateField, type InputVar } from './configWidgets';
 
 // A published workflow the WORKFLOW node can call. versionId pins the immutable published version (the snapshot).
-export interface SubWorkflowOption { id: string; name: string; versionId?: string; version?: number; userName?: string; }
+export interface SubWorkflowOption { id: string; name: string; versionId?: string; version?: number; visibility?: string; userName?: string; }
 
 interface Props {
   node: WorkflowRFNode;
@@ -62,6 +62,7 @@ export default function WorkflowNodeConfig({ node, nodes, edges, currentWorkflow
             name: w.name,
             versionId: w.published_version_id,
             version: w.published_version,
+            visibility: w.visibility,
             userName: w.user_name,
           })));
         setTotal(res.total ?? workflows.length);
@@ -171,7 +172,7 @@ export default function WorkflowNodeConfig({ node, nodes, edges, currentWorkflow
         ) : (
           options.map((wf) => {
             const selected = sourceId === wf.id && versionId === wf.versionId;
-            const callable = !!wf.versionId;
+            const callable = !!wf.versionId && (wf.visibility === 'PUBLIC' || tab === 'shared');
             return (
               <button
                 type="button"
@@ -182,7 +183,7 @@ export default function WorkflowNodeConfig({ node, nodes, edges, currentWorkflow
               >
                 <span style={optionName}>{wf.name}</span>
                 <span style={optionMeta}>
-                  {wf.userName ? `${wf.userName} · ` : ''}{callable ? `v${wf.version ?? '?'}` : 'draft only'}
+                  {wf.userName ? `${wf.userName} · ` : ''}{callable ? `Public v${wf.version ?? '?'}` : wf.versionId ? `Private · last v${wf.version ?? '?'}` : 'draft only'}
                 </span>
               </button>
             );

@@ -5,7 +5,7 @@ import { startInputVars } from './configWidgets';
 
 interface Props {
   workflowId: string;
-  status: string;                   // DRAFT | PUBLISHED — the API only serves the published version
+  status: string;                   // PUBLIC workflows expose the API run endpoints
   nodes: WorkflowRFNode[];          // to derive the input schema and human-input contract from the graph
   onClose: () => void;
 }
@@ -14,7 +14,7 @@ interface Props {
  *  example derived from THIS graph (input schema, human-input nodes). */
 export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: Props) {
   const origin = window.location.origin;
-  const published = status === 'PUBLISHED';
+  const published = status === 'PUBLIC';
   const vars = startInputVars(nodes).filter((v) => v.name);
   const humanNodes = nodes.filter((n) => n.data.nodeType === 'HUMAN_INPUT');
   const inputObj: Record<string, unknown> | null = vars.length
@@ -47,7 +47,7 @@ export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: P
 
       {!published && (
         <div style={notice}><Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-          Publish this workflow first (toolbar → Publish) — the API serves the latest published version.</div>
+          Publish this workflow first from the toolbar — the API serves the public version.</div>
       )}
 
       <Section icon={<KeyRound size={13} />} title="Authentication" defaultOpen>
