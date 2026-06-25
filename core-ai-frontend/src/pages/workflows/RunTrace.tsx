@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { ChevronRight, ChevronDown, Download, ExternalLink, FileDown, FileText, RotateCcw } from 'lucide-react';
-import { RUN_STATUS_COLOR, TERMINAL_RUN_STATUS, type WorkflowRFNode } from './graph';
+import { RUN_STATUS_COLOR, TERMINAL_RUN_STATUS, toReactFlow, type WorkflowGraph, type WorkflowRFNode } from './graph';
 import { type InputVar } from './configWidgets';
-import type { WorkflowArtifactView, WorkflowNodeRunView } from '../../api/client';
+import { api, type WorkflowArtifactView, type WorkflowNodeRunView, type WorkflowRunView } from '../../api/client';
 import ArtifactDrawer from '../chat/components/ArtifactDrawer';
 import type { ArtifactSpec } from '../chat/components/artifactTypes';
 
@@ -20,11 +20,15 @@ interface Props {
   onResumeFromNode?: (nodeId: string) => void;   // rerun from an executed node of a terminal run; absent = read-only
   resumedFrom?: { runId: string; nodeId: string };   // lineage banner when this run was itself a resume
   busy?: boolean;
+  depth?: number;          // nested WORKFLOW trace depth; root = 0
+  maxDepth?: number;       // cap recursive inline expansion
 }
 
 /** Shared run trace: an overall status row, each node's execution (status, timing, input/output), and the final
  *  result. Used by the live test panel (RunPanel) and the run-history panel so both render runs identically. */
-export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNodeId, onResume, onResumeFromNode, resumedFrom, busy }: Props) {
+export default function RunTrace({
+  nodes, runStatus, runError, nodeRuns, focusNodeId, onResume, onResumeFromNode, resumedFrom, busy, depth = 0, maxDepth = 4,
+}: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<WorkflowArtifactView | null>(null);
 
@@ -113,6 +117,13 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
                 {r.child_run_id && (
                   <Link to={childHref} style={childLink}><ExternalLink size={12} /> open child {isWorkflowChild ? 'workflow ' : ''}run</Link>
                 )}
+                {isWorkflowChild && r.child_run_id && (
+                  <ChildWorkflowTrace
+                    runId={r.child_run_id}
+                    depth={depth + 1}
+                    maxDepth={maxDepth}
+                  />
+                )}
                 {onResumeFromNode && TERMINAL_RUN_STATUS.has(runStatus)
                   && (r.status === 'COMPLETED' || r.status === 'FAILED_RETRYABLE')
                   && typeOf(r.node_id) !== 'START' && typeOf(r.node_id) !== 'END' && (
@@ -147,6 +158,104 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
         document.body,
       )}
     </>
+  );
+}
+
+function ChildWorkflowTrace({ runId, depth, maxDepth }: { runId: string; depth: number; maxDepth: number }) {
+  const [run, setRun] = useState<WorkflowRunView | null>(null);
+  const [graphNodes, setGraphNodes] = useState<WorkflowRFNode[] | null>(null);
+  const [nodeRuns, setNodeRuns] = useState<Record<string, WorkflowNodeRunView>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const fallbackNodes = useMemo(() => Object.values(nodeRuns).map((nr, i) => ({
+    id: nr.node_id,
+    type: 'workflowNode',
+    position: { x: 0, y: i * 80 },
+    data: { nodeType: nr.node_type ?? '', name: nr.node_id, config: {} },
+  } satisfies WorkflowRFNode)), [nodeRuns]);
+  const nodes = graphNodes ?? fallbackNodes;
+
+  useEffect(() => {
+    if (depth > maxDepth) return;
+    let stopped = false;
+    setGraphNodes(null);
+
+    api.workflows.runGraph(runId)
+      .then((wf) => {
+        if (!stopped) setGraphNodes(toReactFlow(JSON.parse(wf.graph) as WorkflowGraph).nodes);
+      })
+      .catch(() => {
+        // Preview graph snapshots can expire; node-runs still give enough shape to render a readable fallback trace.
+      });
+
+    return () => { stopped = true; };
+  }, [depth, maxDepth, runId]);
+
+  useEffect(() => {
+    if (depth > maxDepth) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    setRun(null);
+    setNodeRuns({});
+    setLoading(true);
+    setError('');
+
+    const load = async () => {
+      try {
+        const [runView, nodeRes] = await Promise.all([api.workflows.getRun(runId), api.workflows.nodeRuns(runId)]);
+        if (stopped) return;
+        const map: Record<string, WorkflowNodeRunView> = {};
+        (nodeRes.node_runs || []).forEach((nr) => { map[nr.node_id] = nr; });
+
+        setRun(runView);
+        setNodeRuns(map);
+        setError('');
+        if (TERMINAL_RUN_STATUS.has(runView.status || '') && timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+      } catch (e) {
+        if (!stopped) setError((e as Error).message);
+      } finally {
+        if (!stopped) setLoading(false);
+      }
+    };
+
+    void load();
+    timer = setInterval(load, 1000);
+    return () => {
+      stopped = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [depth, maxDepth, runId]);
+
+  if (depth > maxDepth) {
+    return <div style={childTraceBox}><div style={dim}>Inline child trace depth limit reached. Open the child run to inspect deeper workflow calls.</div></div>;
+  }
+
+  return (
+    <div style={childTraceBox}>
+      <div style={childTraceHead}>
+        <span style={childTraceTitle}>Child workflow</span>
+        <span style={dim}>#{runId.slice(0, 8)}</span>
+      </div>
+      {loading && !run ? (
+        <div style={dim}>Loading child workflow trace...</div>
+      ) : error ? (
+        <div style={{ ...dim, color: '#dc2626' }}>{error}</div>
+      ) : run ? (
+        <RunTrace
+          nodes={nodes}
+          runStatus={run.status || 'PENDING'}
+          runError={run.error}
+          nodeRuns={nodeRuns}
+          depth={depth}
+          maxDepth={maxDepth}
+        />
+      ) : (
+        <div style={dim}>No child workflow trace.</div>
+      )}
+    </div>
   );
 }
 
@@ -305,6 +414,14 @@ const pre: CSSProperties = {
 };
 const dim: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)' };
 const childLink: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-primary)', textDecoration: 'none' };
+const childTraceBox: CSSProperties = {
+  marginTop: 10,
+  padding: '8px 8px 8px 10px',
+  borderLeft: '2px solid var(--color-primary)',
+  background: 'var(--color-bg-secondary)',
+};
+const childTraceHead: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 };
+const childTraceTitle: CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--color-text)' };
 const lineageBanner: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, padding: '6px 10px', fontSize: 12,
   color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-bg-tertiary)',
