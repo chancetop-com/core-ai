@@ -21,12 +21,25 @@ import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 const VoiceTranscriberSidebar = lazy(() => import('./components/VoiceTranscriberSidebar'));
 const ArtifactDrawer = lazy(() => import('./components/ArtifactDrawer'));
 
-function toToolRef(id: string): ToolRef {
+function toToolRef(id: string, availableTools: ToolRegistryView[] = []): ToolRef {
+  const registeredTool = availableTools.find(t => t.id === id);
+  if (registeredTool?.type === 'MCP') {
+    return { id, type: 'MCP', source: id.startsWith('config:') ? id.substring('config:'.length) : undefined };
+  }
+  if (registeredTool?.type === 'BUILTIN') {
+    return { id, type: 'BUILTIN', source: registeredTool.category };
+  }
+  if (registeredTool?.type === 'API') {
+    return { id, type: 'API' };
+  }
   if (id.startsWith('api-app:') || id.startsWith('api-service:') || id.startsWith('api-operation:') || id === 'builtin-service-api') {
     return { id, type: 'API' };
   }
   if (id.startsWith('mcp-tool:')) {
-    return { id, type: 'MCP' };
+    const rest = id.substring('mcp-tool:'.length);
+    const colonIdx = rest.lastIndexOf(':');
+    const source = colonIdx > 0 ? rest.substring(0, colonIdx) : undefined;
+    return { id, type: 'MCP', source };
   }
   if (id.startsWith('config:')) {
     return { id, type: 'MCP', source: id.substring('config:'.length) };
@@ -807,7 +820,7 @@ export default function Chat() {
     }
 
     // Pass pre-selected tools/skills to session creation
-    const preToolIdsArr = Array.from(preToolIds).map(toToolRef);
+    const preToolIdsArr = Array.from(preToolIds).map(id => toToolRef(id, availableTools));
     const preSkillIdsArr = Array.from(preSkillIds);
     const preSubAgentIdsArr = Array.from(preSubAgentIds);
     const res = await sessionApi.create(selectedAgentId, {
@@ -849,7 +862,7 @@ export default function Chat() {
     // Wait for SSE to connect
     await new Promise(resolve => setTimeout(resolve, 500));
     return id;
-  }, [doConnectSSE, draftDatasetConfigs, preSkillIds, preSubAgentIds, preToolIds, selectedAgentId, sessionId, showToast]);
+  }, [availableTools, doConnectSSE, draftDatasetConfigs, preSkillIds, preSubAgentIds, preToolIds, selectedAgentId, sessionId, showToast]);
 
   const handleSend = useCallback(async (text: string, attachments: ComposerAttachment[]) => {
     if ((!text && attachments.length === 0) || status !== 'idle' || !selectedAgentId) return;
@@ -892,6 +905,7 @@ export default function Chat() {
         return updated;
       });
       setStatus('idle');
+      setIsThinking(false);
       showToast(`Send failed: ${msg}. Please retry.`);
     }
   }, [ensureSession, selectedAgentId, showToast, status, variableValues]);
@@ -981,6 +995,20 @@ export default function Chat() {
 
   const getSkillChipName = useCallback((id: string) => loadedNames.get(id) || skillNameMap.get(id) || id, [loadedNames, skillNameMap]);
   const getAgentChipName = useCallback((id: string) => loadedNames.get(id) || agentNameMap.get(id) || id, [agentNameMap, loadedNames]);
+  const getToolChipName = useCallback((id: string) => {
+    const known = loadedNames.get(id) || availableTools.find(t => t.id === id)?.name;
+    if (known) return known;
+    if (id.startsWith('mcp-tool:')) {
+      const rest = id.substring('mcp-tool:'.length);
+      const colonIdx = rest.lastIndexOf(':');
+      return colonIdx >= 0 ? rest.substring(colonIdx + 1) : rest;
+    }
+    if (id.startsWith('api-operation:')) return id.substring(id.lastIndexOf(':') + 1);
+    if (id.startsWith('api-app:')) return id.substring('api-app:'.length);
+    if (id.startsWith('api-service:')) return id.substring('api-service:'.length);
+    if (id.startsWith('builtin:')) return id.substring('builtin:'.length);
+    return id;
+  }, [availableTools, loadedNames]);
 
   // Merge IdName pairs from API into id set and name map
   const mergeIdNames = (idNames: IdName[]): { ids: Set<string>; names: Map<string, string> } => {
@@ -1118,21 +1146,24 @@ export default function Chat() {
 
   // Confirm tool selection — save as pre-session or call API directly
   const loadSelectedTools = useCallback(async () => {
-    if (selectedToolIds.size === 0) {
+    const agentToolIds = new Set(selectedAgent?.tools?.map(t => t.id) || []);
+    const activeToolIds = new Set([...agentToolIds, ...loadedToolIds, ...preToolIds]);
+    const toolIdsToLoad = Array.from(selectedToolIds).filter(id => !activeToolIds.has(id));
+    if (toolIdsToLoad.length === 0) {
       setShowConfigModal(false);
       return;
     }
 
     if (!sessionId) {
-      setPreToolIds(new Set(selectedToolIds));
-      showToast(`Selected ${selectedToolIds.size} tool(s), will load on first message`);
+      setPreToolIds(prev => new Set([...prev, ...toolIdsToLoad]));
+      showToast(`Selected ${toolIdsToLoad.length} tool(s), will load on first message`);
       setShowConfigModal(false);
       setSelectedToolIds(new Set());
       return;
     }
 
     try {
-      const res = await sessionApi.loadTools(sessionId, Array.from(selectedToolIds).map(toToolRef));
+      const res = await sessionApi.loadTools(sessionId, toolIdsToLoad.map(id => toToolRef(id, availableTools)));
       if (res.loaded_tools && res.loaded_tools.length > 0) {
         setLoadedToolIds(prev => {
           const next = new Set(prev);
@@ -1150,9 +1181,10 @@ export default function Chat() {
       setSelectedToolIds(new Set());
     } catch (err) {
       console.error('Failed to load tools:', err);
-      showToast('Failed to load tools');
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(`Failed to load tools: ${msg}`);
     }
-  }, [sessionId, selectedToolIds, showToast]);
+  }, [availableTools, loadedToolIds, preToolIds, selectedAgent, selectedToolIds, sessionId, showToast]);
 
   // Confirm skill selection — save as pre-session or call API directly
   const loadSelectedSkills = useCallback(async () => {
@@ -1282,6 +1314,7 @@ export default function Chat() {
           return { dataset_id: c.dataset_id, permission: c.permission, is_output: c.is_output, name: ds?.name };
         })}
         showVoiceSidebar={showVoiceSidebar}
+        getToolChipName={getToolChipName}
         getSkillChipName={getSkillChipName}
         getAgentChipName={getAgentChipName}
         onOpenConfig={openConfigModal}

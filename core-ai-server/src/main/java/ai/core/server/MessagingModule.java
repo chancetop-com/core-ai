@@ -19,6 +19,7 @@ import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.sse.SessionChannelService;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -66,6 +67,8 @@ class MessagingModule extends Module {
         handlerDependencies.serverA2AService = bean(ServerA2AService.class);
         handlerDependencies.jedisPool = jedisPool;
         handlerDependencies.sandboxService = bean(SandboxService.class);
+        handlerDependencies.eventPublisher = bean(EventPublisher.class);
+        handlerDependencies.toolRegistryService = bean(ToolRegistryService.class);
         var commandHandler = new InProcessCommandHandler(handlerDependencies);
         commandPublisher.setCommandHandler(commandHandler);
         var commandConsumer = new CommandConsumer(jedisPool, commandHandler, ownershipRegistry);

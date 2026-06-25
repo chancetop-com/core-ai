@@ -350,15 +350,26 @@ public class AgentSessionManager {
         return closed;
     }
 
-    public List<String> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {
+    public List<ToolRef> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {
         var session = getSession(sessionId);
-        var tools = toolRegistryService.resolveToolRefs(toolRefs, sessionId);
-        if (tools.isEmpty()) {
-            throw new NotFoundException("no tools found for refs: " + toolRefs);
+        var tools = new ArrayList<ToolCall>();
+        var loadedRefs = new ArrayList<ToolRef>();
+        var missingRefs = new ArrayList<ToolRef>();
+        for (var ref : toolRefs) {
+            var resolved = toolRegistryService.resolveToolRefs(List.of(ref), sessionId);
+            if (resolved.isEmpty()) {
+                missingRefs.add(ref);
+            } else {
+                tools.addAll(resolved);
+                loadedRefs.add(ref);
+            }
+        }
+        if (!missingRefs.isEmpty()) {
+            throw new NotFoundException("no tools found for refs: " + missingRefs);
         }
         session.loadTools(tools);
-        chatMessageService.addLoadedTools(sessionId, toolRefs);
-        return tools.stream().map(ToolCall::getName).toList();
+        chatMessageService.addLoadedTools(sessionId, loadedRefs);
+        return loadedRefs;
     }
 
     public List<String> unloadSkills(String sessionId, List<String> skillIds) {

@@ -33,6 +33,7 @@ import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
 import ai.core.server.skill.SkillService;
+import ai.core.server.tool.LoadedToolRefNames;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import ai.core.server.web.sse.SessionChannelService;
@@ -111,7 +112,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         }
         state.sessionId = sessionId;
 
-        var loadedTools = createHelper.loadToolsOnSessionCreate(sessionId, request, resolveSessionState(sessionId));
+        var loadedTools = createHelper.loadToolsOnSessionCreate(sessionId, request);
         var extraLoadedSkills = createHelper.loadSkillsOnSessionCreate(sessionId, request);
         if (extraLoadedSkills != null) {
             for (var skill : extraLoadedSkills) {
@@ -335,13 +336,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                             if (ref.type == null) ref.inferTypeFromId();
                             return ref;
                         }).toList();
-                var names = sessionManager.loadToolRefs(sessionId, toolRefs);
-                loadedTools = names.stream().map(n -> {
-                    var v = new IdName();
-                    v.id = n;
-                    v.name = n;
-                    return v;
-                }).toList();
+                var loadedRefs = sessionManager.loadToolRefs(sessionId, toolRefs);
+                loadedTools = LoadedToolRefNames.toIdNames(loadedRefs, toolRegistryService);
             } else {
                 loadedTools = List.of();
             }

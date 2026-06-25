@@ -6,6 +6,7 @@ import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.tool.ToolRegistryService;
 import redis.clients.jedis.JedisPool;
 
 /**
@@ -22,4 +23,6 @@ public class InProcessCommandHandlerDependencies {
     public ServerA2AService serverA2AService;
     public JedisPool jedisPool;
     public SandboxService sandboxService;
+    public EventPublisher eventPublisher;
+    public ToolRegistryService toolRegistryService;
 }

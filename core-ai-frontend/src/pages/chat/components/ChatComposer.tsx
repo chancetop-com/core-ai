@@ -58,6 +58,7 @@ interface ChatComposerProps {
   preSubAgentIds: Set<string>;
   datasetConfigs: { dataset_id: string; permission: string; is_output?: boolean; name?: string }[];
   showVoiceSidebar: boolean;
+  getToolChipName: (id: string) => string;
   getSkillChipName: (id: string) => string;
   getAgentChipName: (id: string) => string;
   onOpenConfig: () => void;
@@ -110,6 +111,7 @@ interface ComposerConfigChipsProps {
   preSkillIds: Set<string>;
   preSubAgentIds: Set<string>;
   datasetConfigs: { dataset_id: string; permission: string; is_output?: boolean; name?: string }[];
+  getToolChipName: (id: string) => string;
   getSkillChipName: (id: string) => string;
   getAgentChipName: (id: string) => string;
 }
@@ -123,6 +125,7 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
   preSkillIds,
   preSubAgentIds,
   datasetConfigs,
+  getToolChipName,
   getSkillChipName,
   getAgentChipName,
 }: ComposerConfigChipsProps) {
@@ -151,8 +154,8 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
       )}
       {!collapsed && (
         <div className="flex flex-wrap gap-1.5 min-h-[24px]">
-          {Array.from(loadedToolIds).map(name => (
-            <span key={`t-${name}`}
+          {Array.from(loadedToolIds).map(id => (
+            <span key={`t-${id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
               style={{
                 background: 'var(--color-primary)' + '18',
@@ -160,11 +163,11 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
                 border: '1px solid var(--color-primary)' + '30',
               }}>
               <Wrench size={10} />
-              {name}
+              {getToolChipName(id)}
             </span>
           ))}
-          {Array.from(preToolIds).map(name => (
-            <span key={`pt-${name}`}
+          {Array.from(preToolIds).map(id => (
+            <span key={`pt-${id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
               style={{
                 background: 'var(--color-primary)' + '08',
@@ -172,7 +175,7 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
                 border: '1px dashed var(--color-border)',
               }}>
               <Wrench size={10} />
-              {name}
+              {getToolChipName(id)}
               <span className="ml-0.5 opacity-60">(pending)</span>
             </span>
           ))}
@@ -260,6 +263,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
   preSubAgentIds,
   datasetConfigs,
   showVoiceSidebar,
+  getToolChipName,
   getSkillChipName,
   getAgentChipName,
   onOpenConfig,
@@ -429,6 +433,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
           preSkillIds={preSkillIds}
           preSubAgentIds={preSubAgentIds}
           datasetConfigs={datasetConfigs}
+          getToolChipName={getToolChipName}
           getSkillChipName={getSkillChipName}
           getAgentChipName={getAgentChipName}
         />

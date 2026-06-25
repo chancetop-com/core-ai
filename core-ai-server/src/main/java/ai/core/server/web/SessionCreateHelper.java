@@ -6,9 +6,9 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.session.AgentSessionManager;
-import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
 import ai.core.server.skill.SkillService;
+import ai.core.server.tool.LoadedToolRefNames;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import core.framework.inject.Inject;
@@ -36,8 +36,6 @@ public class SessionCreateHelper {
     ToolRegistryService toolRegistryService;
     @Inject
     SkillService skillService;
-    @Inject
-    ChatMessageService chatMessageService;
 
     String createSessionFromAgent(String agentId, SessionState state, String userId,
                                   List<IdName> loadedSubAgents, List<IdName> loadedSkills) {
@@ -84,7 +82,7 @@ public class SessionCreateHelper {
         return snapshot;
     }
 
-    List<IdName> loadToolsOnSessionCreate(String sessionId, CreateSessionRequest request, SessionState sessionState) {
+    List<IdName> loadToolsOnSessionCreate(String sessionId, CreateSessionRequest request) {
         if (request.tools == null || request.tools.isEmpty()) return null;
 
         var toolRefs = request.tools.stream()
@@ -100,21 +98,8 @@ public class SessionCreateHelper {
 
         if (toolRefs.isEmpty()) return null;
 
-        var loadedTools = toolRegistryService.resolveToolRefs(toolRefs, sessionId);
-        if (loadedTools.isEmpty()) {
-            LOGGER.warn("no tools found for refs, skipping: {}", toolRefs);
-            return null;
-        }
-
-        var session = sessionManager.getSession(sessionId, sessionState);
-        session.loadTools(loadedTools);
-        chatMessageService.addLoadedTools(sessionId, toolRefs);
-        return loadedTools.stream().map(t -> {
-            var v = new IdName();
-            v.id = t.getName();
-            v.name = t.getName();
-            return v;
-        }).toList();
+        var loadedRefs = sessionManager.loadToolRefs(sessionId, toolRefs);
+        return LoadedToolRefNames.toIdNames(loadedRefs, toolRegistryService);
     }
 
     List<IdName> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request) {

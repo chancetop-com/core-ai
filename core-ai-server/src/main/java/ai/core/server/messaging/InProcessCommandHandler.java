@@ -3,12 +3,17 @@ package ai.core.server.messaging;
 import ai.core.api.a2a.Message;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.IdName;
+import ai.core.api.server.session.SessionStatus;
+import ai.core.api.server.session.sse.SseErrorEvent;
+import ai.core.api.server.session.sse.SseStatusChangeEvent;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.tool.LoadedToolRefNames;
+import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
@@ -34,6 +39,8 @@ public class InProcessCommandHandler {
     private final ServerA2AService serverA2AService;
     private final JedisPool jedisPool;
     private final SandboxService sandboxService;
+    private final EventPublisher eventPublisher;
+    private final ToolRegistryService toolRegistryService;
 
     public InProcessCommandHandler(InProcessCommandHandlerDependencies dependencies) {
         this.sessionManager = dependencies.sessionManager;
@@ -44,6 +51,8 @@ public class InProcessCommandHandler {
         this.serverA2AService = dependencies.serverA2AService;
         this.jedisPool = dependencies.jedisPool;
         this.sandboxService = dependencies.sandboxService;
+        this.eventPublisher = dependencies.eventPublisher;
+        this.toolRegistryService = dependencies.toolRegistryService;
     }
 
     /**
@@ -52,12 +61,12 @@ public class InProcessCommandHandler {
     @SuppressWarnings("checkstyle:NestedTryDepth")
     public void handle(SessionCommand command) {
         LOGGER.info("processing command: type={}, sessionId={}", command.type(), command.sessionId());
-        // any command for a session counts as activity — keeps idle-session sweeper from
-        // closing a session while turns are still being driven through it.
-        if (command.sessionId() != null && command.type() != CommandType.CLOSE_SESSION) {
-            sessionManager.touchActivity(command.sessionId());
-        }
         try {
+            // any command for a session counts as activity — keeps idle-session sweeper from
+            // closing a session while turns are still being driven through it.
+            if (command.sessionId() != null && command.type() != CommandType.CLOSE_SESSION) {
+                sessionManager.touchActivity(command.sessionId());
+            }
             switch (command.type()) {
                 case SEND_MESSAGE -> handleSendMessage(command);
                 case APPROVE_TOOL -> handleApproveTool(command);
@@ -77,6 +86,7 @@ public class InProcessCommandHandler {
             // catch Throwable (not just Exception) so OOM/StackOverflow do not
             // escape the consumer loop and leave the stream entry undeleted.
             LOGGER.error("failed to process command, sessionId={}, type={}", command.sessionId(), command.type(), t);
+            publishCommandError(command, t);
             try {
                 respondError(command, t.getMessage());
             } catch (Throwable ignored) {
@@ -134,14 +144,27 @@ public class InProcessCommandHandler {
             return;
         }
         var loadedTools = sessionManager.loadToolRefs(command.sessionId(), toolRefs);
-        var idNames = loadedTools.stream().map(n -> {
-            var v = new IdName();
-            v.id = n;
-            v.name = n;
-            return v;
-        }).toList();
+        var idNames = LoadedToolRefNames.toIdNames(loadedTools, toolRegistryService);
         var result = JsonUtil.toJson(Map.of("loadedTools", idNames));
         respondOk(command, result);
+    }
+
+    private void publishCommandError(SessionCommand command, Throwable t) {
+        if (command.requestId() != null || command.sessionId() == null || eventPublisher == null) return;
+        var message = t.getMessage();
+        if (message == null || message.isBlank()) message = t.getClass().getSimpleName();
+        try {
+            var error = new SseErrorEvent();
+            error.message = message;
+            error.detail = t.getClass().getName();
+            eventPublisher.publish(command.sessionId(), error);
+
+            var status = new SseStatusChangeEvent();
+            status.status = SessionStatus.ERROR;
+            eventPublisher.publish(command.sessionId(), status);
+        } catch (Throwable publishError) {
+            LOGGER.warn("failed to publish command error event, sessionId={}", command.sessionId(), publishError);
+        }
     }
 
     private void handleLoadSkills(SessionCommand command) {

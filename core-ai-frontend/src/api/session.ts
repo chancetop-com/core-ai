@@ -9,8 +9,11 @@ function getAuthHeaders(): Record<string, string> {
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, { headers: getAuthHeaders(), ...options });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   const text = await res.text();
+  if (!res.ok) {
+    const detail = text ? `: ${text}` : '';
+    throw new Error(`${res.status} ${res.statusText}${detail}`);
+  }
   return text ? JSON.parse(text) : (undefined as T);
 }
 

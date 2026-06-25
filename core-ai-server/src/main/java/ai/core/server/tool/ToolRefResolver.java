@@ -4,6 +4,7 @@ import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistry;
+import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
@@ -58,19 +59,36 @@ public class ToolRefResolver {
         for (var toolRef : toolRefs) {
             if (toolRef == null || toolRef.id == null) continue;
 
-            if (toolRef.type != null) {
-                switch (toolRef.type) {
+            var type = effectiveType(toolRef);
+            if (type != null) {
+                switch (type) {
                     case BUILTIN -> resolveBuiltinRef(toolRef, result);
                     case MCP -> resolveMcpRef(toolRef, result, sessionMcpManager);
                     case API -> resolveApiRef(toolRef, result);
                     case AGENT -> LOGGER.debug("skipping AGENT tool ref at registry level, id={}", toolRef.id);
-                    default -> LOGGER.warn("unknown tool type, id={}, type={}", toolRef.id, toolRef.type);
+                    default -> LOGGER.warn("unknown tool type, id={}, type={}", toolRef.id, type);
                 }
             } else {
                 resolveLegacyRef(toolRef, result, sessionMcpManager);
             }
         }
         return result;
+    }
+
+    private ToolSourceType effectiveType(ToolRef toolRef) {
+        var entryType = registryType(toolRef.id);
+        return entryType != null ? entryType : toolRef.type;
+    }
+
+    private ToolSourceType registryType(String id) {
+        var entry = toolRegistry.get(id);
+        if (entry == null) entry = toolRegistry.get("builtin:" + id);
+        if (entry == null) return null;
+        return switch (entry.type) {
+            case BUILTIN -> ToolSourceType.BUILTIN;
+            case MCP -> ToolSourceType.MCP;
+            case API -> ToolSourceType.API;
+        };
     }
 
     private void resolveBuiltinRef(ToolRef toolRef, List<ToolCall> result) {
