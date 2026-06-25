@@ -286,28 +286,26 @@ export const sessionApi = {
     onClose?: () => void,
   ): AbortController => {
     const controller = new AbortController();
+    const url = `${BASE}/api/sessions/events?agent-session-id=${sessionId}`;
 
-    fetch(`${BASE}/api/sessions/events?agent-session-id=${sessionId}`, {
-      method: 'PUT',
-      headers: {
-        ...getAuthHeaders(),
-        'Accept': 'text/event-stream',
-      },
-      signal: controller.signal,
-    }).then(async (res) => {
-      if (!res.ok || !res.body) {
-        onError?.(new Error(`SSE connection failed: ${res.status}`));
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url, true);
+    const authHeaders = getAuthHeaders();
+    for (const [key, value] of Object.entries(authHeaders)) {
+      xhr.setRequestHeader(key, value);
+    }
+    xhr.setRequestHeader('Accept', 'text/event-stream');
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    let lastIndex = 0;
+    let buffer = '';
 
-        buffer += decoder.decode(value, { stream: true });
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState === xhr.HEADERS_RECEIVED || xhr.readyState === xhr.LOADING) {
+        const newText = xhr.responseText.substring(lastIndex);
+        lastIndex = xhr.responseText.length;
+        if (!newText) return;
+
+        buffer += newText;
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
@@ -325,10 +323,21 @@ export const sessionApi = {
           }
         }
       }
-      onClose?.();
-    }).catch((err) => {
-      if (err.name !== 'AbortError') onError?.(err);
-    });
+      if (xhr.readyState === xhr.DONE) {
+        if (xhr.status >= 400) {
+          onError?.(new Error(`SSE connection failed: ${xhr.status}`));
+        }
+        onClose?.();
+      }
+    };
+
+    xhr.onerror = () => {
+      onError?.(new Error('SSE connection error'));
+    };
+
+    controller.signal.addEventListener('abort', () => xhr.abort());
+
+    xhr.send();
 
     return controller;
   },
