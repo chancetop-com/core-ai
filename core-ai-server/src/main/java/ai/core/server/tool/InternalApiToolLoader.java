@@ -8,12 +8,14 @@ import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.function.Function;
 import ai.core.utils.JsonSchemaUtil;
+import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -197,15 +199,28 @@ public class InternalApiToolLoader {
         if (apiDefinitionService == null) return List.of();
         return apiDefinitionService.loadAll().stream()
                 .filter(api -> api.app.equals(appName))
-                .flatMap(api -> api.services.stream())
-                .map(s -> new ApiServiceInfo(
-                        s.name,
-                        s.description,
-                        s.operations != null ? s.operations.size() : 0,
-                        s.operations != null ? s.operations.stream()
-                                .map(op -> new ApiOperationInfo(op.name, op.description, op.method, op.path))
-                                .toList() : List.of()))
+                .flatMap(api -> api.services.stream()
+                        .map(s -> new ApiServiceInfo(
+                                s.name,
+                                s.description,
+                                s.operations != null ? s.operations.size() : 0,
+                                s.operations != null ? s.operations.stream()
+                                        .map(op -> toApiOperationInfo(api, s, op))
+                                        .toList() : List.of())))
                 .toList();
+    }
+
+    private ApiOperationInfo toApiOperationInfo(ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {
+        return new ApiOperationInfo(
+                operation.name,
+                functionCallName(api.app, service.name, operation.name),
+                operation.description,
+                operation.method,
+                operation.path,
+                operation.requestType,
+                operation.responseType,
+                JsonUtil.toJson(JsonSchemaUtil.toJsonSchema(toParams(api, operation))),
+                schemaJsonForType(operation.responseType, api));
     }
 
     private List<ToolCall> loadTools(List<ApiDefinition> apis) {
@@ -229,13 +244,7 @@ public class InternalApiToolLoader {
 
     private ToolCall toToolCall(DynamicApiCaller caller, ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {
         var method = findCallApiMethod();
-        var params = operation.pathParams.stream()
-                .map(p -> toParamFromPathParam(p, api))
-                .collect(Collectors.toList());
-
-        if (operation.requestType != null) {
-            params.addAll(toParamFromRequestType(operation.requestType, api));
-        }
+        var params = toParams(api, operation);
 
         return Function.builder()
                 .namespace(api.app)
@@ -248,6 +257,20 @@ public class InternalApiToolLoader {
                 .dynamicArguments(true)
                 .parameters(params)
                 .build();
+    }
+
+    private List<ToolCallParameter> toParams(ApiDefinition api, ApiDefinition.Operation operation) {
+        var params = new ArrayList<ToolCallParameter>();
+        if (operation.pathParams != null) {
+            params.addAll(operation.pathParams.stream()
+                    .map(p -> toParamFromPathParam(p, api))
+                    .toList());
+        }
+
+        if (operation.requestType != null) {
+            params.addAll(toParamFromRequestType(operation.requestType, api));
+        }
+        return params;
     }
 
     private String functionCallName(String app, String serviceName, String operationName) {
@@ -272,6 +295,20 @@ public class InternalApiToolLoader {
         var params = builder.buildParameters(requestType);
         checkDuplicateName(params, type, api);
         return params;
+    }
+
+    private String schemaJsonForType(String type, ApiDefinition api) {
+        if (type == null || type.isBlank() || api.types == null || api.types.isEmpty()) {
+            return null;
+        }
+        var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));
+        var apiType = typeMap.get(type);
+        if (apiType == null) {
+            LOGGER.warn("Response type not found: {} in API: {}", type, api.app);
+            return null;
+        }
+        var builder = new ai.core.mcp.server.apiserver.ApiDefinitionTypeSchemaBuilder(api.types);
+        return JsonUtil.toJson(builder.buildSchema(apiType));
     }
 
     private void checkDuplicateName(List<ToolCallParameter> params, String type, ApiDefinition api) {
@@ -331,6 +368,7 @@ public class InternalApiToolLoader {
     public record ApiServiceInfo(String name, String description, int operationCount, List<ApiOperationInfo> operations) {
     }
 
-    public record ApiOperationInfo(String name, String description, String method, String path) {
+    public record ApiOperationInfo(String name, String toolName, String description, String method, String path,
+                                   String requestType, String responseType, String inputSchema, String outputSchema) {
     }
 }

@@ -29,6 +29,9 @@ public class ListApiAppServicesResponse {
         @Property(name = "name")
         public String name;
 
+        @Property(name = "tool_name")
+        public String toolName;
+
         @Property(name = "description")
         public String description;
 
@@ -37,6 +40,17 @@ public class ListApiAppServicesResponse {
 
         @Property(name = "path")
         public String path;
+
+        @Property(name = "request_type")
+        public String requestType;
+
+        @Property(name = "response_type")
+        public String responseType;
+
+        @Property(name = "input_schema")
+        public String inputSchema;
+
+        @Property(name = "output_schema")
+        public String outputSchema;
     }
 }
-

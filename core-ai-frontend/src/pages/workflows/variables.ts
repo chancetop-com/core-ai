@@ -28,9 +28,58 @@ export function nodeOutputFields(node: WorkflowRFNode): OutputField[] {
         { selector: base, label: 'output', type: 'any' },
         { selector: artifacts, label: 'artifacts', type: 'array' },
       ];
+    case 'API_TOOL':
+      return apiOutputFields(node, base);
     default:
       return [{ selector: base, label: 'output', type: 'any' }];
   }
+}
+
+function apiOutputFields(node: WorkflowRFNode, base: string): OutputField[] {
+  const schema = parseJsonSchema(str(node.data.config?.output_schema));
+  if (!schema) return [{ selector: base, label: 'output', type: 'any' }];
+
+  const wholeType = schemaType(schema.type);
+  const fields: OutputField[] = [{ selector: base, label: 'output', type: wholeType }];
+  appendSchemaProperties(fields, schema, base, '');
+  return fields;
+}
+
+interface JsonSchemaLike {
+  type?: unknown;
+  properties?: Record<string, JsonSchemaLike>;
+  items?: JsonSchemaLike;
+}
+
+function appendSchemaProperties(fields: OutputField[], schema: JsonSchemaLike, selectorPrefix: string, labelPrefix: string) {
+  if (!schema.properties || typeof schema.properties !== 'object') return;
+  for (const [name, child] of Object.entries(schema.properties)) {
+    const selector = `${selectorPrefix}.${name}`;
+    const label = labelPrefix ? `${labelPrefix}.${name}` : name;
+    const type = schemaType(child?.type);
+    fields.push({ selector, label, type });
+    if (type === 'object') appendSchemaProperties(fields, child, selector, label);
+  }
+}
+
+function parseJsonSchema(schema: string): JsonSchemaLike | null {
+  if (!schema.trim()) return null;
+  try {
+    const parsed = JSON.parse(schema) as JsonSchemaLike;
+    return typeof parsed === 'object' && parsed !== null ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function schemaType(type: unknown): string {
+  if (typeof type === 'string') return type;
+  if (Array.isArray(type) && typeof type[0] === 'string') return type[0];
+  return 'any';
+}
+
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 // The run-input fields: the whole input plus each typed field declared on the START node.

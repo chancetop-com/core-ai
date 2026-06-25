@@ -602,9 +602,14 @@ export interface ApiServiceView {
 
 export interface ApiOperationView {
   name: string;
+  tool_name?: string;
   description: string;
   method: string;
   path: string;
+  request_type?: string;
+  response_type?: string;
+  input_schema?: string;
+  output_schema?: string;
 }
 
 export interface ApiPayloadTypeField {

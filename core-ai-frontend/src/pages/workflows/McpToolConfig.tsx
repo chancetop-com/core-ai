@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { api, type ToolRegistryView, type McpToolInfo } from '../../api/client';
-import VariableMapEditor, { parseMcpSchema } from './VariableMapEditor';
+import VariableMapEditor from './VariableMapEditor';
+import { parseMcpSchema } from './toolSchema';
 import type { WorkflowRFNode } from './graph';
 import type { Edge } from '@xyflow/react';
 
@@ -15,10 +16,11 @@ interface Props {
 /** MCP tool node config: pick an MCP server, then one of its tools, then the JSON arguments (template-aware). */
 export default function McpToolConfig({ config, onConfig, nodes, edges, selfId }: Props) {
   const [servers, setServers] = useState<ToolRegistryView[]>([]);
-  const [tools, setTools] = useState<McpToolInfo[]>([]);
-  const [loadingTools, setLoadingTools] = useState(false);
+  const [toolState, setToolState] = useState<{ serverId: string; tools: McpToolInfo[] }>({ serverId: '', tools: [] });
   const serverId = String(config.server_id ?? '');
   const toolName = String(config.tool_name ?? '');
+  const tools = useMemo(() => (toolState.serverId === serverId ? toolState.tools : []), [serverId, toolState.serverId, toolState.tools]);
+  const loadingTools = !!serverId && toolState.serverId !== serverId;
   // Declared params of the selected tool, parsed from its JSON schema — drives auto-filled argument rows.
   const params = useMemo(() => parseMcpSchema(tools.find((t) => t.name === toolName)?.input_schema), [tools, toolName]);
 
@@ -27,12 +29,16 @@ export default function McpToolConfig({ config, onConfig, nodes, edges, selfId }
   }, []);
 
   useEffect(() => {
-    if (!serverId) { setTools([]); return; }
-    setLoadingTools(true);
+    if (!serverId) return;
+    let cancelled = false;
     api.tools.listMcpServerTools(serverId)
-      .then((res) => setTools(res.tools || []))
-      .catch(() => setTools([]))
-      .finally(() => setLoadingTools(false));
+      .then((res) => {
+        if (!cancelled) setToolState({ serverId, tools: res.tools || [] });
+      })
+      .catch(() => {
+        if (!cancelled) setToolState({ serverId, tools: [] });
+      });
+    return () => { cancelled = true; };
   }, [serverId]);
 
   // changing server or tool resets arguments — a different tool has different params, so stale args must not leak

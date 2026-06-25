@@ -157,9 +157,14 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
             view.operations = s.operations().stream().map(op -> {
                 var opView = new ListApiAppServicesResponse.ApiOperationView();
                 opView.name = op.name();
+                opView.toolName = op.toolName();
                 opView.description = op.description();
                 opView.method = op.method();
                 opView.path = op.path();
+                opView.requestType = op.requestType();
+                opView.responseType = op.responseType();
+                opView.inputSchema = op.inputSchema();
+                opView.outputSchema = op.outputSchema();
                 return opView;
             }).toList();
             return view;
