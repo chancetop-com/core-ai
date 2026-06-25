@@ -180,7 +180,7 @@ export interface Span {
 }
 
 export interface TraceFilter {
-  q?: string;           // smart search: UUID-like → id fields; otherwise substring on name + agent_name
+  q?: string;           // smart search: IDs, user account, trace name, or agent name
   name?: string;        // advanced raw regex on name
   type?: string;        // agent | llm_call | external
   source?: string;      // chat | a2a | api | scheduled | workflow

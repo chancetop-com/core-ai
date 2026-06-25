@@ -150,8 +150,8 @@ export default function TraceList() {
     return () => { cancelled = true; };
   }, [sessionFilterId]);
 
-  // Facet contexts deliberately drop the field being queried, so the dropdown shows all options under the current peer filters
-  const facetContext = useMemo(() => cleanFilters(filters) || {}, [filters]);
+  // Facet contexts deliberately drop text search and the field being queried, so the dropdown stays indexed and shows peer-filter options.
+  const facetContext = useMemo(() => cleanFacetFilters(filters) || {}, [filters]);
   useEffect(() => {
     let cancelled = false;
     const modelContext = { ...facetContext };
@@ -215,7 +215,7 @@ export default function TraceList() {
   const searchHint = searchInput
     ? (searchKind === 'full' ? `Detected ID → ${isAdmin ? 'session/user/trace' : 'session/trace'} · all time`
       : searchKind === 'prefix' ? 'Detected ID prefix → session/trace · all time'
-      : 'name / agent')
+      : isAdmin ? 'user / recent name / agent' : 'recent name / agent')
     : '';
 
   const chips = activeChips(filters);
@@ -278,7 +278,7 @@ export default function TraceList() {
             <input
               value={searchInput}
               onChange={event => setSearchInput(event.target.value)}
-              placeholder={isAdmin ? 'Search trace name, agent, or paste a session/user ID...' : 'Search trace name, agent, or paste a session/trace ID...'}
+              placeholder={isAdmin ? 'Search user name/email, recent trace/agent, or paste a session/user ID...' : 'Search recent trace name/agent, or paste a session/trace ID...'}
               className="w-full pl-9 pr-32 py-2 rounded-md border text-sm"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
               autoComplete="off"
@@ -777,6 +777,15 @@ function cleanFilters(filters: TraceFilter): TraceFilter | undefined {
     cleaned[key] = value;
   });
   return Object.keys(cleaned).length > 0 ? (cleaned as TraceFilter) : undefined;
+}
+
+function cleanFacetFilters(filters: TraceFilter): TraceFilter | undefined {
+  const cleaned = cleanFilters(filters);
+  if (!cleaned) return undefined;
+  const facetFilters = { ...cleaned };
+  delete facetFilters.q;
+  delete facetFilters.name;
+  return Object.keys(facetFilters).length > 0 ? facetFilters : undefined;
 }
 
 function syncSearchParams(filters: TraceFilter, setSearchParams: (params: URLSearchParams) => void) {
