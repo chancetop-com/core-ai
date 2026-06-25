@@ -2,9 +2,10 @@ package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.web.exception.NotFoundException;
-import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Optional;
@@ -13,22 +14,25 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SkillServiceTest {
     @Test
-    void listFiltersQueryInMemory() {
+    void listAppliesPagingToQuery() {
         var service = new SkillService();
         service.skillCollection = skillCollection();
 
         var matchingName = skill("1", "Admin", "seo-audit", null);
-        var matchingDescription = skill("2", "Admin", "report", "review report skill");
-        var nonMatching = skill("3", "Admin", "content", "content writer");
-        when(service.skillCollection.find(any(Bson.class))).thenReturn(List.of(matchingName, matchingDescription, nonMatching));
+        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName));
 
-        var result = service.list(null, null, "audit");
+        var result = service.list(null, null, null, "audit", 20, 10);
 
         assertEquals(List.of(matchingName), result);
+        var query = ArgumentCaptor.forClass(Query.class);
+        verify(service.skillCollection).find(query.capture());
+        assertEquals(20, query.getValue().skip);
+        assertEquals(10, query.getValue().limit);
     }
 
     @Test
