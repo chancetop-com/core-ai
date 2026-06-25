@@ -104,8 +104,21 @@ public class InProcessCommandHandler {
 
         LOGGER.info("handleSendMessage: looking up session sessionId={}", command.sessionId());
         var session = sessionManager.getSession(command.sessionId());
-        LOGGER.info("handleSendMessage: session found, uploading pending files");
-        sandboxService.ensurePendingFilesUploaded(command.sessionId());
+
+        // upload pending files carried in command payload (cross-pod safe)
+        var pendingFilesRaw = (List<Map<String, Object>>) payload.get("pendingFiles");
+        if (pendingFilesRaw != null && !pendingFilesRaw.isEmpty()) {
+            var pendingFiles = new ArrayList<SandboxService.PendingFile>();
+            for (var f : pendingFilesRaw) {
+                pendingFiles.add(new SandboxService.PendingFile(
+                        (String) f.get("fileName"),
+                        (String) f.get("container"),
+                        (String) f.get("blobName")));
+            }
+            LOGGER.info("handleSendMessage: uploading {} pending files from command payload", pendingFiles.size());
+            sandboxService.uploadFiles(command.sessionId(), pendingFiles);
+        }
+
         chatMessageService.writeUserMessage(command.sessionId(), message);
         LOGGER.info("handleSendMessage: sending message to agent");
         session.sendMessage(message, variables);

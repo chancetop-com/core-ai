@@ -159,6 +159,29 @@ public class SandboxService {
         uploadPendingFiles(sessionId);
     }
 
+    /** Upload the given files directly to the session's sandbox, bypassing the pendingFiles queue.
+     *  Used when file metadata is carried in the command payload (cross-pod safe). */
+    public void uploadFiles(String sessionId, List<PendingFile> files) {
+        if (files == null || files.isEmpty()) return;
+        var sandbox = sessionSandboxes.get(sessionId);
+        LOGGER.info("[UPLOAD] uploadFiles called, sessionId={}, sandboxExists={}, fileCount={}",
+                sessionId, sandbox != null, files.size());
+        if (sandbox == null) {
+            LOGGER.warn("no sandbox for session {}, cannot upload files", sessionId);
+            return;
+        }
+        if (sandbox instanceof LazySandbox lazy) {
+            lazy.ensureReady();
+        }
+        for (var file : files) {
+            if (file.fileId() != null) {
+                stageFileRecord(sandbox, sessionId, file);
+            } else if (!uploadBlobFile(sandbox, sessionId, file)) {
+                LOGGER.warn("failed to upload file to sandbox: session={}, file={}", sessionId, file.fileName());
+            }
+        }
+    }
+
     private void uploadPendingFiles(String sessionId) {
         var files = pendingFiles.get(sessionId);
         LOGGER.info("[UPLOAD] uploadPendingFiles called, sessionId={}, filesExist={}, fileCount={}",

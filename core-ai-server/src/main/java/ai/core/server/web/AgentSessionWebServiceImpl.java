@@ -28,7 +28,6 @@ import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionOwnershipRegistry;
-import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
@@ -83,8 +82,6 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     RpcClient rpcClient;
     @Inject
     SessionCreateHelper createHelper;
-    @Inject
-    SandboxService sandboxService;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
@@ -136,17 +133,21 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        enqueueSandboxFiles(sessionId, request);
+        var pendingFiles = collectPendingFiles(sessionId, request);
         var message = buildMessageWithAttachments(request);
         var command = SessionCommand.sendMessage(sessionId, userId, message,
-                request.variables != null ? new HashMap<>(request.variables) : null);
+                request.variables != null ? new HashMap<>(request.variables) : null,
+                pendingFiles);
         commandPublisher.publish(command);
     }
 
-    private void enqueueSandboxFiles(String sessionId, SendMessageRequest request) {
-        LOGGER.info("[ENQUEUE] enqueueSandboxFiles called, sessionId={}, hasAttachments={}, count={}",
+    /** Collect pending file metadata for sandbox upload, returned as serializable maps
+     *  to be embedded in the command payload so the processing pod has the data. */
+    private List<Map<String, String>> collectPendingFiles(String sessionId, SendMessageRequest request) {
+        LOGGER.info("[ENQUEUE] collectPendingFiles called, sessionId={}, hasAttachments={}, count={}",
                 sessionId, request.attachments != null, request.attachments != null ? request.attachments.size() : 0);
-        if (request.attachments == null || request.attachments.isEmpty()) return;
+        if (request.attachments == null || request.attachments.isEmpty()) return null;
+        var result = new ArrayList<Map<String, String>>();
         for (var att : request.attachments) {
             LOGGER.info("[ENQUEUE] attachment: category={}, fileName={}, container={}, blobName={}, url={}",
                     att.category, att.fileName, att.container, att.blobName, att.url);
@@ -156,9 +157,10 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                             sessionId, att.fileName);
                     continue;
                 }
-                sandboxService.addPendingFile(sessionId,
-                        att.fileName != null ? att.fileName : att.blobName,
-                        att.container, att.blobName);
+                result.add(Map.of(
+                        "fileName", att.fileName != null ? att.fileName : att.blobName,
+                        "container", att.container,
+                        "blobName", att.blobName));
                 continue;
             }
             if ("multimodal".equals(att.category)) {
@@ -170,14 +172,16 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                 var blobInfo = parseBlobUrl(att.url);
                 if (blobInfo != null) {
                     LOGGER.info("[ENQUEUE] parsed blob URL: container={}, blobName={}", blobInfo.container, blobInfo.blobName);
-                    sandboxService.addPendingFile(sessionId,
-                            att.fileName != null ? att.fileName : blobInfo.fileName(),
-                            blobInfo.container(), blobInfo.blobName());
+                    result.add(Map.of(
+                            "fileName", att.fileName != null ? att.fileName : blobInfo.fileName(),
+                            "container", blobInfo.container(),
+                            "blobName", blobInfo.blobName()));
                     continue;
                 }
                 LOGGER.info("[ENQUEUE] url is not a blob storage URL, skipping sandbox upload, url={}", att.url);
             }
         }
+        return result.isEmpty() ? null : result;
     }
 
     private record BlobInfo(String container, String blobName) {

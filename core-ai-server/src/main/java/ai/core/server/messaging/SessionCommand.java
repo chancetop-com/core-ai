@@ -5,6 +5,7 @@ import ai.core.utils.JsonUtil;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -31,10 +32,17 @@ public record SessionCommand(CommandType type, String sessionId, String userId, 
     // --- Existing command factories (no requestId) ---
 
     public static SessionCommand sendMessage(String sessionId, String userId, String message, Map<String, Object> variables) {
-        var payload = JsonUtil.toJson(Map.of(
-                "message", message,
-                "variables", variables != null ? variables : Map.of()
-        ));
+        return sendMessage(sessionId, userId, message, variables, null);
+    }
+
+    public static SessionCommand sendMessage(String sessionId, String userId, String message, Map<String, Object> variables, List<Map<String, String>> pendingFiles) {
+        var payloadMap = new HashMap<String, Object>();
+        payloadMap.put("message", message);
+        payloadMap.put("variables", variables != null ? variables : Map.of());
+        if (pendingFiles != null && !pendingFiles.isEmpty()) {
+            payloadMap.put("pendingFiles", pendingFiles);
+        }
+        var payload = JsonUtil.toJson(payloadMap);
         return new SessionCommand(CommandType.SEND_MESSAGE, sessionId, userId, payload, null);
     }
 
