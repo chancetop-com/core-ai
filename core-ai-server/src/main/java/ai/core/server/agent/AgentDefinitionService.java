@@ -4,6 +4,7 @@ import ai.core.api.server.agent.AgentDatasetConfigView;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
+import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.SandboxConfigView;
 import ai.core.api.server.agent.UpdateAgentRequest;
@@ -23,8 +24,10 @@ import ai.core.server.session.AgentSessionManager;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.util.Strings;
 import org.bson.conversions.Bson;
 
@@ -96,22 +99,28 @@ public class AgentDefinitionService {
     }
 
     public ListAgentsResponse list(String userId) {
-        return list(userId, null, null, null, null);
+        return list(userId, new ListAgentsRequest());
     }
 
-    public ListAgentsResponse list(String userId, Boolean myAgents, String query, Integer page, Integer limit) {
-        var accessFilter = buildAccessFilter(userId, myAgents);
-        var searchFilter = buildSearchFilter(query);
+    public ListAgentsResponse list(String userId, ListAgentsRequest request) {
+        var effectiveRequest = request != null ? request : new ListAgentsRequest();
+        var accessFilter = buildAccessFilter(userId, effectiveRequest);
+        var searchFilter = buildSearchFilter(effectiveRequest.query);
         var combinedFilter = combineFilters(accessFilter, searchFilter);
 
-        var entities = agentDefinitionCollection.find(combinedFilter);
+        boolean paginated = effectiveRequest.page != null || effectiveRequest.limit != null;
+        int pageNum = effectiveRequest.page != null && effectiveRequest.page > 0 ? effectiveRequest.page : 1;
+        int pageSize = effectiveRequest.limit != null && effectiveRequest.limit > 0 ? Math.min(effectiveRequest.limit, 200) : 20;
 
-        int total = entities.size();
-        boolean paginated = page != null || limit != null;
-        int pageNum = page != null && page > 0 ? page : 1;
-        int pageSize = limit != null && limit > 0 ? Math.min(limit, 200) : 20;
-        int skip = (pageNum - 1) * pageSize;
-        var paged = paginated ? entities.stream().skip(skip).limit(pageSize).toList() : entities;
+        var dbQuery = new Query();
+        dbQuery.filter = combinedFilter;
+        dbQuery.sort = Sorts.descending(sortField(effectiveRequest.sort));
+        if (paginated) {
+            int skip = (pageNum - 1) * pageSize;
+            dbQuery.skip = skip;
+            dbQuery.limit = pageSize;
+        }
+        var paged = agentDefinitionCollection.find(dbQuery);
 
         var userNameMap = resolveUserNames(paged);
         var subAgentNameMap = resolveSubAgentNames(paged);
@@ -119,14 +128,21 @@ public class AgentDefinitionService {
 
         var response = new ListAgentsResponse();
         response.agents = paged.stream().map(e -> toView(e, userNameMap, subAgentNameMap, skillNameMap)).toList();
-        response.total = (long) total;
+        response.total = agentDefinitionCollection.count(combinedFilter);
         response.page = paginated ? pageNum : null;
         response.limit = paginated ? pageSize : null;
         return response;
     }
 
-    private Bson buildAccessFilter(String userId, Boolean myAgents) {
+    private Bson buildAccessFilter(String userId, ListAgentsRequest request) {
+        Boolean myAgents = myAgentsFilter(request.myAgents);
         if (myAgents != null && myAgents) {
+            if (Boolean.FALSE.equals(request.includeSystemDefault)) {
+                return Filters.and(
+                    Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
+                    Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+                );
+            }
             return Filters.or(
                 Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
                 Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
@@ -138,6 +154,16 @@ public class AgentDefinitionService {
             );
         }
         return Filters.empty();
+    }
+
+    private Boolean myAgentsFilter(String myAgents) {
+        if (myAgents == null) return null;
+        return "true".equalsIgnoreCase(myAgents) || "1".equals(myAgents);
+    }
+
+    private String sortField(String sort) {
+        if ("created_at".equals(sort)) return "created_at";
+        return "updated_at";
     }
 
     private Bson buildSearchFilter(String query) {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, Star, Sparkles, Pencil, Brain } from 'lucide-react';
 import { api } from '../../api/client';
@@ -7,6 +7,8 @@ import StatusBadge from '../../components/StatusBadge';
 
 const EXPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
   'max_turns', 'timeout_seconds', 'tool_ids', 'input_template', 'variables', 'response_schema'] as const;
+const DEFAULT_LIMIT = 10;
+const DEFAULT_SORT_BY = 'updated_at';
 
 function toExportData(a: AgentDefinition): Record<string, unknown> {
   const raw = a as unknown as Record<string, unknown>;
@@ -17,50 +19,109 @@ function toExportData(a: AgentDefinition): Record<string, unknown> {
   return data;
 }
 
+type AgentTab = 'my' | 'other';
+
+function pageFor(offset: number, limit: number) {
+  return Math.floor(offset / limit) + 1;
+}
+
+function agentPageKey(tab: AgentTab, query: string, offset: number, limit: number, sortBy: string) {
+  return `${tab}\u0000${query}\u0000${offset}\u0000${limit}\u0000${sortBy}`;
+}
+
 export default function AgentList() {
   const [myAgents, setMyAgents] = useState<AgentDefinition[]>([]);
   const [otherAgents, setOtherAgents] = useState<AgentDefinition[]>([]);
+  const [myTotal, setMyTotal] = useState(0);
+  const [otherTotal, setOtherTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'my' | 'other'>('my');
   const [myOffset, setMyOffset] = useState(0);
   const [otherOffset, setOtherOffset] = useState(0);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [query, setQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'updated_at' | 'created_at'>('updated_at');
+  const [sortBy, setSortBy] = useState<'updated_at' | 'created_at'>(DEFAULT_SORT_BY);
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reqIdRef = useRef<Record<AgentTab, number>>({ my: 0, other: 0 });
+  const loadedKeysRef = useRef<Record<AgentTab, string | null>>({ my: null, other: null });
+  const loadingKeysRef = useRef<Record<AgentTab, string | null>>({ my: null, other: null });
+
+  const loadAgents = useCallback(async (tab: AgentTab, offset: number, search: string) => {
+    const trimmed = search.trim();
+    const key = agentPageKey(tab, trimmed, offset, limit, sortBy);
+    if (loadedKeysRef.current[tab] === key || loadingKeysRef.current[tab] === key) return;
+    const requestId = ++reqIdRef.current[tab];
+    loadingKeysRef.current[tab] = key;
+    setPageLoading(true);
+    try {
+      const res = await api.agents.list(tab === 'my', trimmed || undefined, limit, pageFor(offset, limit), sortBy, tab === 'my' ? false : undefined);
+      if (requestId !== reqIdRef.current[tab]) return;
+      if (tab === 'my') {
+        setMyAgents(res.agents || []);
+        setMyTotal(res.total || 0);
+      } else {
+        setOtherAgents(res.agents || []);
+        setOtherTotal(res.total || 0);
+      }
+      loadedKeysRef.current[tab] = key;
+    } catch (err) {
+      console.error('Failed to load agents:', err);
+    } finally {
+      if (loadingKeysRef.current[tab] === key) loadingKeysRef.current[tab] = null;
+      if (requestId === reqIdRef.current[tab]) setPageLoading(false);
+    }
+  }, [limit, sortBy]);
 
   const loadMyAgents = () => {
-    setLoading(true);
-    api.agents.list(true).then(res => setMyAgents(res.agents || [])).finally(() => setLoading(false));
+    loadedKeysRef.current.my = null;
+    void loadAgents('my', myOffset, query);
   };
 
   useEffect(() => {
     setLoading(true);
+    const myKey = agentPageKey('my', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY);
+    const otherKey = agentPageKey('other', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY);
     Promise.all([
-      api.agents.list(true),
-      api.agents.list(false),
+      api.agents.list(true, undefined, DEFAULT_LIMIT, 1, DEFAULT_SORT_BY, false),
+      api.agents.list(false, undefined, DEFAULT_LIMIT, 1, DEFAULT_SORT_BY),
     ]).then(([myRes, otherRes]) => {
       setMyAgents(myRes.agents || []);
+      setMyTotal(myRes.total || 0);
       setOtherAgents(otherRes.agents || []);
+      setOtherTotal(otherRes.total || 0);
+      loadedKeysRef.current.my = myKey;
+      loadedKeysRef.current.other = otherKey;
     }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    const offset = activeTab === 'my' ? myOffset : otherOffset;
+    const trimmed = query.trim();
+    const key = agentPageKey(activeTab, trimmed, offset, limit, sortBy);
+    if (loadedKeysRef.current[activeTab] === key || loadingKeysRef.current[activeTab] === key) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { void loadAgents(activeTab, offset, query); }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [activeTab, myOffset, otherOffset, query, limit, sortBy, loading, loadAgents]);
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [activeTab, myOffset, otherOffset, query, limit, sortBy]);
 
   const currentAgents = activeTab === 'my' ? myAgents : otherAgents;
   const currentOffset = activeTab === 'my' ? myOffset : otherOffset;
   const setCurrentOffset = activeTab === 'my' ? setMyOffset : setOtherOffset;
-
-  const trimmedQuery = query.trim().toLowerCase();
-  const filteredAgents = currentAgents
-    .filter(a => !a.system_default)
-    .filter(a => !trimmedQuery || a.name.toLowerCase().includes(trimmedQuery))
-    .slice()
-    .sort((a, b) => (b[sortBy] || '').localeCompare(a[sortBy] || ''));
-  const pagedAgents = filteredAgents.slice(currentOffset, currentOffset + limit);
+  const currentTotal = activeTab === 'my' ? myTotal : otherTotal;
+  const currentLoading = loading || pageLoading;
+  const pagedAgents = currentAgents;
 
   const handleCreate = () => {
     setShowCreateDialog(true);
@@ -76,15 +137,15 @@ export default function AgentList() {
   };
 
   const toggleSelectAll = () => {
-    if (selected.size === filteredAgents.length) {
+    if (selected.size === currentAgents.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(filteredAgents.map(a => a.id)));
+      setSelected(new Set(currentAgents.map(a => a.id)));
     }
   };
 
   const handleExport = () => {
-    const toExport = filteredAgents.filter(a => selected.has(a.id));
+    const toExport = currentAgents.filter(a => selected.has(a.id));
     if (toExport.length === 0) return;
     const exportData = toExport.map(toExportData);
     const json = JSON.stringify(exportData.length === 1 ? exportData[0] : exportData, null, 2);
@@ -176,7 +237,7 @@ export default function AgentList() {
               <button onClick={toggleSelectAll}
                 className="px-3 py-2 rounded-lg text-sm border cursor-pointer"
                 style={{ borderColor: 'var(--color-border)' }}>
-                {selected.size === filteredAgents.length ? 'Deselect All' : 'Select All'}
+                {selected.size === currentAgents.length ? 'Deselect All' : 'Select All'}
               </button>
               <button onClick={handleExport} disabled={selected.size === 0}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
@@ -191,7 +252,7 @@ export default function AgentList() {
             </>
           ) : (
             <>
-              {activeTab === 'my' && myAgents.length > 0 && (
+              {activeTab === 'my' && myTotal > 0 && (
                 <button onClick={() => setSelectMode(true)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
                   style={{ borderColor: 'var(--color-border)' }}>
@@ -229,7 +290,7 @@ export default function AgentList() {
             <Bot size={14} />
             My Agents
             <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
-              {myAgents.filter(a => !a.system_default).length}
+              {myTotal}
             </span>
           </button>
           <button
@@ -242,7 +303,7 @@ export default function AgentList() {
             <Star size={14} />
             Shared Agents
             <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
-              {otherAgents.filter(a => !a.system_default).length}
+              {otherTotal}
             </span>
           </button>
         </div>
@@ -267,7 +328,7 @@ export default function AgentList() {
       </div>
 
       <div className="grid gap-4">
-        {loading ? (
+        {currentLoading ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
         ) : pagedAgents.length === 0 ? (
           <div className="text-center py-12 rounded-xl border"
@@ -330,11 +391,11 @@ export default function AgentList() {
         ))}
       </div>
 
-      {filteredAgents.length > 0 && (
+      {currentTotal > 0 && (
         <div className="flex items-center justify-between mt-4">
           <div className="flex items-center gap-3">
             <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              Showing {currentOffset + 1}-{Math.min(currentOffset + limit, filteredAgents.length)} of {filteredAgents.length}
+              Showing {currentOffset + 1}-{Math.min(currentOffset + limit, currentTotal)} of {currentTotal}
             </span>
             <select value={limit}
               onChange={e => { setLimit(Number(e.target.value)); setMyOffset(0); setOtherOffset(0); }}
@@ -349,7 +410,7 @@ export default function AgentList() {
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
               <ChevronLeft size={14} /> Prev
             </button>
-            <button onClick={() => setCurrentOffset(currentOffset + limit)} disabled={currentOffset + limit >= filteredAgents.length}
+            <button onClick={() => setCurrentOffset(currentOffset + limit)} disabled={currentOffset + limit >= currentTotal}
               className="px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
               Next <ChevronRight size={14} />

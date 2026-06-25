@@ -339,6 +339,8 @@ export interface AgentDatasetConfig {
 export interface ListAgentsResponse {
   agents: AgentDefinition[];
   total: number;
+  page?: number;
+  limit?: number;
 }
 
 export interface TriggerRunResponse {
@@ -839,11 +841,14 @@ export const api = {
       request<PromptTemplate>(`/api/prompts/${id}/publish`, { method: 'POST' }),
   },
   agents: {
-    list: (my?: boolean, query?: string, limit?: number) => {
+    list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean) => {
       const params = new URLSearchParams();
       if (my !== undefined) params.set('my', String(my));
       if (query) params.set('query', query);
       if (limit) params.set('limit', String(limit));
+      if (page) params.set('page', String(page));
+      if (sort) params.set('sort', sort);
+      if (includeSystemDefault !== undefined) params.set('include_system_default', String(includeSystemDefault));
       const qs = params.toString();
       return request<ListAgentsResponse>(`/api/agents${qs ? `?${qs}` : ''}`);
     },

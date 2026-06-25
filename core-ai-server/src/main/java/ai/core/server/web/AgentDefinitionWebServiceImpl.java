@@ -42,11 +42,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     @Override
     public ListAgentsResponse list(ListAgentsRequest request) {
         var userId = AuthContext.userId(webContext);
-        Boolean myAgentsFilter = null;
-        if (request.myAgents != null) {
-            myAgentsFilter = "true".equalsIgnoreCase(request.myAgents) || "1".equals(request.myAgents);
-        }
-        return agentDefinitionService.list(userId, myAgentsFilter, request.query, request.page, request.limit);
+        return agentDefinitionService.list(userId, request);
     }
 
     @Override
