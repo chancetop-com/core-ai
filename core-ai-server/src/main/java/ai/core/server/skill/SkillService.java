@@ -8,8 +8,10 @@ import ai.core.server.util.IdLists;
 import ai.core.skill.SkillLoader;
 import ai.core.skill.SkillMetadata;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
@@ -25,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -111,16 +112,19 @@ public class SkillService {
         }
     }
 
-    public List<SkillDefinition> list(String namespace, String sourceType, String query) {
-        var filters = new ArrayList<Bson>();
-        if (namespace != null && !namespace.isBlank()) {
-            filters.add(Filters.eq("namespace", namespace));
+    public List<SkillDefinition> list(String namespace, String sourceType, String userId, String query, Integer offset, Integer limit) {
+        var dbQuery = new Query();
+        dbQuery.filter = filter(namespace, sourceType, userId, query);
+        dbQuery.sort = Sorts.descending("updated_at");
+        if (offset != null || limit != null) {
+            dbQuery.skip = Math.max(0, offset != null ? offset : 0);
+            dbQuery.limit = Math.min(Math.max(limit != null ? limit : 20, 1), 100);
         }
-        if (sourceType != null && !sourceType.isBlank()) {
-            filters.add(Filters.eq("source_type", SkillSourceType.valueOf(sourceType)));
-        }
-        Bson filter = filters.isEmpty() ? Filters.exists("_id") : Filters.and(filters);
-        return filterByQuery(skillCollection.find(filter), query);
+        return skillCollection.find(dbQuery);
+    }
+
+    public long count(String namespace, String sourceType, String userId, String query) {
+        return skillCollection.count(filter(namespace, sourceType, userId, query));
     }
 
     public SkillDefinition get(String id) {
@@ -196,19 +200,31 @@ public class SkillService {
         return get(id);
     }
 
-    private List<SkillDefinition> filterByQuery(List<SkillDefinition> skills, String query) {
-        if (query == null || query.isBlank()) return skills;
-
-        String normalizedQuery = query.trim().toLowerCase(Locale.ROOT);
-        return skills.stream()
-            .filter(skill -> containsNormalized(skill.name, normalizedQuery)
-                || containsNormalized(skill.description, normalizedQuery)
-                || containsNormalized(skill.namespace, normalizedQuery))
-            .toList();
-    }
-
-    private boolean containsNormalized(String value, String normalizedQuery) {
-        return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedQuery);
+    private Bson filter(String namespace, String sourceType, String userId, String query) {
+        var filters = new ArrayList<Bson>();
+        if (namespace != null && !namespace.isBlank()) {
+            filters.add(Filters.eq("namespace", namespace));
+        }
+        if (sourceType != null && !sourceType.isBlank()) {
+            filters.add(Filters.eq("source_type", SkillSourceType.valueOf(sourceType)));
+        }
+        if (userId != null && !userId.isBlank()) {
+            filters.add(Filters.regex("user_id", Pattern.quote(userId), "i"));
+        }
+        if (query != null && !query.isBlank()) {
+            var pattern = Pattern.quote(query.trim());
+            filters.add(Filters.or(
+                Filters.regex("name", pattern, "i"),
+                Filters.regex("qualified_name", pattern, "i"),
+                Filters.regex("description", pattern, "i"),
+                Filters.regex("namespace", pattern, "i"),
+                Filters.regex("source_type", pattern, "i"),
+                Filters.regex("user_id", pattern, "i"),
+                Filters.regex("version", pattern, "i"),
+                Filters.regex("allowed_tools", pattern, "i")
+            ));
+        }
+        return filters.isEmpty() ? Filters.empty() : Filters.and(filters);
     }
 
     public Map<String, String> batchResolve(Set<String> skillIds) {

@@ -12,6 +12,15 @@ public class ListSkillsRequest {
     @QueryParam(name = "source_type")
     public String sourceType;
 
+    @QueryParam(name = "user_id")
+    public String userId;
+
     @QueryParam(name = "q")
     public String query;
+
+    @QueryParam(name = "offset")
+    public Integer offset;
+
+    @QueryParam(name = "limit")
+    public Integer limit;
 }

@@ -5,6 +5,7 @@ import ai.core.api.server.dataset.CreateDatasetRequest;
 import ai.core.api.server.dataset.DatasetRecordView;
 import ai.core.api.server.dataset.DatasetView;
 import ai.core.api.server.dataset.ListDatasetRecordsResponse;
+import ai.core.api.server.dataset.ListDatasetsRequest;
 import ai.core.api.server.dataset.ListDatasetsResponse;
 import ai.core.api.server.dataset.SchemaFieldView;
 import ai.core.api.server.dataset.UpdateDatasetRequest;
@@ -52,11 +53,12 @@ public class DatasetWebServiceImpl implements DatasetWebService {
     }
 
     @Override
-    public ListDatasetsResponse list() {
-        var entities = datasetService.list();
+    public ListDatasetsResponse list(ListDatasetsRequest request) {
+        var effectiveRequest = request != null ? request : new ListDatasetsRequest();
+        var entities = datasetService.list(effectiveRequest.query, effectiveRequest.offset, effectiveRequest.limit);
         var response = new ListDatasetsResponse();
         response.datasets = entities.stream().map(this::toView).toList();
-        response.total = (long) response.datasets.size();
+        response.total = datasetService.count(effectiveRequest.query);
         return response;
     }
 

@@ -38,10 +38,23 @@ public class SkillWebServiceImpl implements SkillWebService {
 
     @Override
     public ListSkillsResponse list(ListSkillsRequest request) {
-        var skills = skillService.list(request.namespace, request.sourceType, request.query);
+        var effectiveRequest = request != null ? request : new ListSkillsRequest();
+        var skills = skillService.list(
+            effectiveRequest.namespace,
+            effectiveRequest.sourceType,
+            effectiveRequest.userId,
+            effectiveRequest.query,
+            effectiveRequest.offset,
+            effectiveRequest.limit
+        );
         var response = new ListSkillsResponse();
         response.skills = skills.stream().map(this::toView).toList();
-        response.total = (long) response.skills.size();
+        response.total = skillService.count(
+            effectiveRequest.namespace,
+            effectiveRequest.sourceType,
+            effectiveRequest.userId,
+            effectiveRequest.query
+        );
         return response;
     }
 

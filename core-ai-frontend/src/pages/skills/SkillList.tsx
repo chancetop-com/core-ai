@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, FileUp, X } from 'lucide-react';
 import { api } from '../../api/client';
@@ -6,6 +6,7 @@ import type { SkillDefinition } from '../../api/client';
 
 export default function SkillList() {
   const [skills, setSkills] = useState<SkillDefinition[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(10);
@@ -14,53 +15,51 @@ export default function SkillList() {
   const [ownerFilter, setOwnerFilter] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reqIdRef = useRef(0);
   const navigate = useNavigate();
 
   const load = useCallback(() => {
+    const requestId = ++reqIdRef.current;
     setLoading(true);
-    api.skills.list()
-      .then(res => setSkills(res.skills || []))
-      .catch(err => {
-        console.error('Failed to load skills:', err);
+    api.skills.list(
+      undefined,
+      sourceFilter || undefined,
+      search.trim() || undefined,
+      ownerFilter.trim() || undefined,
+      offset,
+      limit
+    )
+      .then(res => {
+        if (requestId !== reqIdRef.current) return;
+        setSkills(res.skills || []);
+        setTotal(res.total || 0);
       })
-      .finally(() => setLoading(false));
-  }, []);
+      .catch(err => {
+        if (requestId !== reqIdRef.current) return;
+        console.error('Failed to load skills:', err);
+        setSkills([]);
+        setTotal(0);
+      })
+      .finally(() => {
+        if (requestId === reqIdRef.current) setLoading(false);
+      });
+  }, [sourceFilter, search, ownerFilter, offset, limit]);
 
   useEffect(() => {
-    load();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(load, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [load]);
 
-  const sourceOptions = useMemo(() => uniqueSorted(skills.map(s => s.source_type)), [skills]);
-  const ownerOptions = useMemo(() => uniqueSorted(skills.map(s => s.user_id)), [skills]);
-
-  const normalizedSearch = search.trim().toLowerCase();
-  const filteredSkills = useMemo(() => skills.filter(s => {
-    if (sourceFilter && s.source_type !== sourceFilter) return false;
-    if (ownerFilter && s.user_id !== ownerFilter) return false;
-    if (!normalizedSearch) return true;
-    return [
-      s.name,
-      s.qualified_name,
-      s.description,
-      s.namespace,
-      s.source_type,
-      s.user_id,
-      s.version,
-      ...(s.allowed_tools || []),
-    ].some(value => value?.toLowerCase().includes(normalizedSearch));
-  }), [skills, sourceFilter, ownerFilter, normalizedSearch]);
-
   useEffect(() => {
-    if (filteredSkills.length === 0 && offset !== 0) {
-      setOffset(0);
-      return;
+    if (total > 0 && offset >= total) {
+      setOffset(Math.floor((total - 1) / limit) * limit);
     }
-    if (filteredSkills.length > 0 && offset >= filteredSkills.length) {
-      setOffset(Math.floor((filteredSkills.length - 1) / limit) * limit);
-    }
-  }, [filteredSkills.length, limit, offset]);
+  }, [total, limit, offset]);
 
-  const pagedSkills = filteredSkills.slice(offset, offset + limit);
   const hasActiveFilters = Boolean(search || sourceFilter || ownerFilter);
 
   const formatTime = (iso: string) => {
@@ -79,8 +78,11 @@ export default function SkillList() {
     if (!confirm('Delete this skill?')) return;
     try {
       await api.skills.delete(id);
-      setSkills(prev => prev.filter(s => s.id !== id));
-      void load();
+      if (skills.length === 1 && offset > 0) {
+        setOffset(Math.max(0, offset - limit));
+      } else {
+        void load();
+      }
     } catch (err) {
       alert('Delete failed: ' + (err instanceof Error ? err.message : 'unknown error'));
     }
@@ -184,16 +186,15 @@ export default function SkillList() {
           className="px-3 py-2 rounded-lg border text-sm min-w-36"
           style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
           <option value="">All Sources</option>
-          {sourceOptions.map(source => <option key={source} value={source}>{formatSource(source)}</option>)}
+          {['UPLOAD', 'REPO'].map(source => <option key={source} value={source}>{formatSource(source)}</option>)}
         </select>
-        <select
+        <input
+          type="text"
           value={ownerFilter}
           onChange={e => { setOwnerFilter(e.target.value); setOffset(0); }}
+          placeholder="Creator..."
           className="px-3 py-2 rounded-lg border text-sm min-w-40"
-          style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
-          <option value="">All Creators</option>
-          {ownerOptions.map(owner => <option key={owner} value={owner}>{owner}</option>)}
-        </select>
+          style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
         {hasActiveFilters && (
           <button onClick={clearFilters}
             className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border text-sm cursor-pointer"
@@ -207,14 +208,14 @@ export default function SkillList() {
       <div className="grid gap-4">
         {loading ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
-        ) : filteredSkills.length === 0 ? (
+        ) : skills.length === 0 ? (
           <div className="text-center py-12 rounded-xl border"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-            {skills.length === 0
+            {total === 0 && !hasActiveFilters
               ? 'No skills found. Upload or register skills from a repo to get started.'
               : 'No skills match your filters.'}
           </div>
-        ) : pagedSkills.map(s => (
+        ) : skills.map(s => (
           <div key={s.id}
             onClick={() => navigate(`/skills/${s.id}/edit`)}
             className="rounded-xl border p-4 cursor-pointer transition-colors"
@@ -273,11 +274,11 @@ export default function SkillList() {
       </div>
 
       {/* Pagination */}
-      {filteredSkills.length > 0 && (
+      {total > 0 && (
         <div className="flex items-center justify-between mt-4">
           <div className="flex items-center gap-3">
             <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              Showing {offset + 1}-{Math.min(offset + limit, filteredSkills.length)} of {filteredSkills.length}
+              Showing {offset + 1}-{Math.min(offset + limit, total)} of {total}
             </span>
             <select value={limit}
               onChange={e => { setLimit(Number(e.target.value)); setOffset(0); }}
@@ -292,7 +293,7 @@ export default function SkillList() {
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
               <ChevronLeft size={14} /> Prev
             </button>
-            <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= filteredSkills.length}
+            <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= total}
               className="px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
               Next <ChevronRight size={14} />
@@ -302,10 +303,6 @@ export default function SkillList() {
       )}
     </div>
   );
-}
-
-function uniqueSorted(values: Array<string | null | undefined>) {
-  return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b));
 }
 
 function formatSource(source: string) {

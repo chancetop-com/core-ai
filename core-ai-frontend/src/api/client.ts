@@ -945,11 +945,14 @@ export const api = {
       request<SystemPromptTestResult>(`/api/system-prompts/${promptId}/test`, { method: 'POST', body: JSON.stringify(data) }),
   },
   skills: {
-    list: (namespace?: string, sourceType?: string, q?: string) => {
+    list: (namespace?: string, sourceType?: string, q?: string, userId?: string, offset?: number, limit?: number) => {
       const params = new URLSearchParams();
       if (namespace) params.set('namespace', namespace);
       if (sourceType) params.set('source_type', sourceType);
       if (q) params.set('q', q);
+      if (userId) params.set('user_id', userId);
+      if (offset !== undefined) params.set('offset', String(offset));
+      if (limit !== undefined) params.set('limit', String(limit));
       return request<ListSkillsResponse>(`/api/skills${params.toString() ? `?${params}` : ''}`);
     },
     get: (id: string) =>
@@ -1087,8 +1090,13 @@ export const api = {
       request<ChannelTypesResponse>('/api/admin/channel-types'),
   },
   datasets: {
-    list: () =>
-      request<ListDatasetsResponse>('/api/datasets'),
+    list: (q?: string, offset?: number, limit?: number) => {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (offset !== undefined) params.set('offset', String(offset));
+      if (limit !== undefined) params.set('limit', String(limit));
+      return request<ListDatasetsResponse>(`/api/datasets${params.toString() ? `?${params}` : ''}`);
+    },
     get: (id: string) =>
       request<DatasetView>(`/api/datasets/${id}`),
     create: (data: CreateDatasetRequest) =>

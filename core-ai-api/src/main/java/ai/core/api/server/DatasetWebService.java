@@ -3,6 +3,7 @@ package ai.core.api.server;
 import ai.core.api.server.dataset.CreateDatasetRequest;
 import ai.core.api.server.dataset.DatasetView;
 import ai.core.api.server.dataset.ListDatasetRecordsResponse;
+import ai.core.api.server.dataset.ListDatasetsRequest;
 import ai.core.api.server.dataset.ListDatasetsResponse;
 import ai.core.api.server.dataset.UpdateDatasetRequest;
 import core.framework.api.http.HTTPStatus;
@@ -25,7 +26,7 @@ public interface DatasetWebService {
 
     @GET
     @Path("/api/datasets")
-    ListDatasetsResponse list();
+    ListDatasetsResponse list(ListDatasetsRequest request);
 
     @GET
     @Path("/api/datasets/:id")
