@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MessageSquare, Plus, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { MessageSquare, Plus, Loader2, MoreHorizontal, Pencil, Trash2, CheckSquare, Square, X } from 'lucide-react';
 import { sessionApi } from '../../api/session';
 import type { ChatSessionSummary } from '../../api/session';
 import { formatMessageTimeFull } from './utils';
@@ -35,6 +35,9 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
   const [renameValue, setRenameValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [renameError, setRenameError] = useState('');
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletingBatch, setDeletingBatch] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -90,6 +93,42 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const enterSelectMode = () => {
+    setSelecting(true);
+    setSelectedIds(new Set());
+    setMenuId(null);
+  };
+
+  const exitSelectMode = () => {
+    setSelecting(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0 || deletingBatch) return;
+    if (!confirm(`Delete ${selectedIds.size} selected conversation${selectedIds.size > 1 ? 's' : ''}? (messages will remain in audit log)`)) return;
+    setDeletingBatch(true);
+    try {
+      const ids = Array.from(selectedIds);
+      await sessionApi.batchDeleteChatSessions(ids);
+      setSessions(prev => prev.filter(s => !selectedIds.has(s.id)));
+      ids.forEach(id => onDeleted?.(id));
+      exitSelectMode();
+    } catch (err) {
+      console.warn('failed to batch delete chat sessions', err);
+    } finally {
+      setDeletingBatch(false);
+    }
+  };
+
   const openRename = (s: ChatSessionSummary) => {
     setMenuId(null);
     setRenameId(s.id);
@@ -127,11 +166,38 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
     <div className="flex flex-col border-r h-full w-60 shrink-0"
       style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
       <div className="px-3 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
-        <button onClick={onNewChat}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm cursor-pointer"
-          style={{ background: 'var(--color-primary)', color: 'white' }}>
-          <Plus size={14} /> New Chat
-        </button>
+        {selecting ? (
+          <div className="flex items-center gap-2">
+            <button onClick={exitSelectMode}
+              className="flex items-center justify-center gap-1 px-2 py-2 rounded-lg text-xs cursor-pointer hover:opacity-80 flex-1"
+              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+              <X size={14} /> Cancel
+            </button>
+            <button onClick={handleBatchDelete} disabled={selectedIds.size === 0 || deletingBatch}
+              className="flex items-center justify-center gap-1 px-2 py-2 rounded-lg text-xs cursor-pointer disabled:opacity-50 flex-1"
+              style={{ background: 'var(--color-danger, #e5484d)', color: 'white' }}>
+              {deletingBatch ? (
+                <><Loader2 size={12} className="animate-spin" /> Deleting…</>
+              ) : (
+                <><Trash2 size={14} /> Delete ({selectedIds.size})</>
+              )}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button onClick={onNewChat}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm cursor-pointer"
+              style={{ background: 'var(--color-primary)', color: 'white' }}>
+              <Plus size={14} /> New Chat
+            </button>
+            <button onClick={enterSelectMode} disabled={sessions.length === 0}
+              className="flex items-center justify-center p-2 rounded-lg cursor-pointer disabled:opacity-30 hover:opacity-80 transition-opacity"
+              style={{ color: 'var(--color-text-secondary)' }}
+              title="Select conversations">
+              <CheckSquare size={14} />
+            </button>
+          </div>
+        )}
       </div>
       <div className="flex-1 overflow-auto">
         {loading && sessions.length === 0 && (
@@ -146,15 +212,26 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
         )}
         {sessions.map(s => {
           const active = s.id === currentSessionId;
+          const selected = selectedIds.has(s.id);
           return (
-            <div key={s.id} onClick={() => onOpen(s)}
+            <div key={s.id}
+              onClick={() => {
+                if (selecting) { toggleSelect(s.id); return; }
+                onOpen(s);
+              }}
               className="group relative w-full text-left px-3 py-2 flex items-start gap-2 cursor-pointer border-l-2 transition-colors"
               style={{
-                borderColor: active ? 'var(--color-primary)' : 'transparent',
-                background: active ? 'var(--color-bg-tertiary)' : 'transparent',
+                borderColor: active && !selecting ? 'var(--color-primary)' : 'transparent',
+                background: selecting && selected ? 'var(--color-primary-bg)' : (active && !selecting ? 'var(--color-bg-tertiary)' : 'transparent'),
                 color: 'var(--color-text)',
               }}>
-              <MessageSquare size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
+              {selecting ? (
+                selected
+                  ? <CheckSquare size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
+                  : <Square size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
+              ) : (
+                <MessageSquare size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
+              )}
               <div className="flex-1 min-w-0">
                 <div className="text-sm truncate" title={s.title || s.id}>
                   {s.title || '(untitled)'}
@@ -165,12 +242,14 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
                   {s.message_count ? ` · ${s.message_count} msg` : ''}
                 </div>
               </div>
-              <button onClick={e => { e.stopPropagation(); setMenuId(menuId === s.id ? null : s.id); }}
-                className="opacity-0 group-hover:opacity-100 mt-0.5 p-1 rounded cursor-pointer transition-opacity"
-                style={{ color: 'var(--color-text-secondary)' }}
-                title="More actions">
-                <MoreHorizontal size={14} />
-              </button>
+              {!selecting && (
+                <button onClick={e => { e.stopPropagation(); setMenuId(menuId === s.id ? null : s.id); }}
+                  className="opacity-0 group-hover:opacity-100 mt-0.5 p-1 rounded cursor-pointer transition-opacity"
+                  style={{ color: 'var(--color-text-secondary)' }}
+                  title="More actions">
+                  <MoreHorizontal size={14} />
+                </button>
+              )}
               {menuId === s.id && (
                 <div ref={menuRef} onClick={e => e.stopPropagation()}
                   className="absolute right-2 top-8 z-10 py-1 rounded-md border shadow-md text-sm"

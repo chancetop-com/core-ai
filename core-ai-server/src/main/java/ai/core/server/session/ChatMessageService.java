@@ -137,6 +137,21 @@ public class ChatMessageService {
         return true;
     }
 
+    // batch soft-delete: returns count of successfully deleted sessions.
+    public long batchSoftDelete(String userId, List<String> sessionIds) {
+        var deletedAt = ZonedDateTime.now();
+        long deleted = 0;
+        for (var sessionId : sessionIds) {
+            var meta = chatSessionCollection.get(sessionId).orElse(null);
+            if (meta == null) continue;
+            if (userId != null && meta.userId != null && !userId.equals(meta.userId)) continue;
+            chatSessionCollection.update(Filters.eq("_id", sessionId), Updates.set("deleted_at", deletedAt));
+            onSessionClosed(sessionId);
+            deleted++;
+        }
+        return deleted;
+    }
+
     // user-initiated rename: trims/collapses whitespace, caps length, enforces ownership.
     // returns true if updated; false if not found, not owned, or blank after trimming.
     public boolean updateSessionTitle(String userId, String sessionId, String title) {

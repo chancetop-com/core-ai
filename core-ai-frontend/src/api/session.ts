@@ -249,6 +249,12 @@ export const sessionApi = {
   deleteChatSession: (sessionId: string) =>
     request<{ deleted: boolean }>(`/api/chat/sessions/${sessionId}`, { method: 'DELETE' }),
 
+  batchDeleteChatSessions: (sessionIds: string[]) =>
+    request<{ deleted: number }>('/api/chat/sessions/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ session_ids: sessionIds }),
+    }),
+
   renameChatSession: (sessionId: string, title: string) =>
     request<{ updated: boolean }>(`/api/chat/sessions/${sessionId}`, {
       method: 'PUT',

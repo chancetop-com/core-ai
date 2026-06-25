@@ -14,6 +14,7 @@ import core.framework.web.WebContext;
 
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -64,6 +65,26 @@ public class ChatSessionController {
         var ok = chatMessageService.softDeleteSession(userId, sessionId);
         if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
         return jsonResponse(Map.of("deleted", true));
+    }
+
+    @SuppressWarnings("unchecked")
+    public Response batchDelete(Request request) {
+        var userId = AuthContext.userId(webContext);
+        if (userId == null) return Response.text("unauthorized").status(HTTPStatus.UNAUTHORIZED);
+        List<String> sessionIds;
+        try {
+            var bytes = request.body().get();
+            if (bytes.length == 0) return Response.text("session_ids required").status(HTTPStatus.BAD_REQUEST);
+            var map = MAPPER.readValue(bytes, Map.class);
+            var raw = map.get("session_ids");
+            if (!(raw instanceof List)) return Response.text("session_ids must be an array").status(HTTPStatus.BAD_REQUEST);
+            sessionIds = (List<String>) raw;
+        } catch (Exception e) {
+            return Response.text("invalid request body").status(HTTPStatus.BAD_REQUEST);
+        }
+        if (sessionIds.isEmpty()) return Response.text("session_ids required").status(HTTPStatus.BAD_REQUEST);
+        long deleted = chatMessageService.batchSoftDelete(userId, sessionIds);
+        return jsonResponse(Map.of("deleted", deleted));
     }
 
     public Response update(Request request) {
