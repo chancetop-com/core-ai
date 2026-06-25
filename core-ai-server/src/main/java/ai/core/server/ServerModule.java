@@ -466,6 +466,8 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/runs/:id", controller::serve);
         // note: /mcp is NOT an SPA route — core-ai's own MCP server (McpServerModule) owns GET /mcp. The frontend
         // MCP page only works via in-app navigation; serving it on refresh needs a non-clashing path (e.g. /mcp-servers).
+        // /mcp/:id does NOT conflict with McpServerModule (which only owns GET /mcp), so it can be a SPA fallback route.
+        http().route(HTTPMethod.GET, "/mcp/:id", controller::serve);
         http().route(HTTPMethod.GET, "/system-prompts/:id", controller::serve);
         http().route(HTTPMethod.GET, "/traces/:id", controller::serve);
         http().route(HTTPMethod.GET, "/skills/:id", controller::serve);
