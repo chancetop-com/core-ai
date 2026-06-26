@@ -243,8 +243,10 @@ public abstract class Node<T extends Node<T>> {
     }
     private String getFailedMessage() {
         var content = getRawOutput() == null ? getOutput() : getRawOutput();
-        var lastToolCalls = getMessages().getLast().toolCalls;
-        if (Strings.isBlank(content) && lastToolCalls != null && !lastToolCalls.isEmpty()) content = lastToolCalls.getLast().function.name;
+        if (!getMessages().isEmpty()) {
+            var lastToolCalls = getMessages().getLast().toolCalls;
+            if (Strings.isBlank(content) && lastToolCalls != null && !lastToolCalls.isEmpty()) content = lastToolCalls.getLast().function.name;
+        }
         return content;
     }
 
