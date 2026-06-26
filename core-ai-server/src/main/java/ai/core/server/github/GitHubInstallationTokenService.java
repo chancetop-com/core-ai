@@ -194,16 +194,14 @@ public class GitHubInstallationTokenService implements GitHubTokenProvider {
 
     private String createInstallationToken(long installationId) throws Exception {
         var jwt = createJwt();
-        var body = "{\"permissions\":{\"contents\":\"write\",\"pull_requests\":\"write\",\"issues\":\"write\",\"actions\":\"write\",\"checks\":\"write\"}}";
 
         var request = HttpRequest.newBuilder()
                 .uri(URI.create(GITHUB_API_BASE + "/app/installations/" + installationId + "/access_tokens"))
                 .header("Authorization", "Bearer " + jwt)
                 .header("Accept", "application/vnd.github+json")
-                .header("Content-Type", "application/json")
                 .header("User-Agent", "core-ai-server")
                 .timeout(HTTP_TIMEOUT)
-                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
 
         var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));

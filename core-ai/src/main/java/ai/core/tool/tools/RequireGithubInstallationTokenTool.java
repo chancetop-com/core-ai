@@ -21,7 +21,7 @@ public class RequireGithubInstallationTokenTool extends ToolCall {
             This token is required before the agent can clone, modify, or create pull requests
             on repositories within the GitHub App installation scope.
 
-            The returned token is valid for 1 hour and has repository contents, pull requests, issues, actions, and checks permissions.
+            The returned token is valid for 1 hour and inherits all permissions granted to the GitHub App installation.
             Use it with:
             - git clone: git clone https://x-access-token:{token}@github.com/{owner}/{repo}.git
             - gh auth:  gh auth login --with-token <<< "{token}" (then use gh pr create, etc.)
