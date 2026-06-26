@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.SocketException;
-import java.net.SocketTimeoutException;
 import java.time.Instant;
 
 /**
@@ -33,7 +32,10 @@ public class AgentSandbox implements Sandbox {
         this.serviceName = config.serviceName;
         this.image = config.image;
         this.podName = config.podName;
-        this.runtimeClient = new SandboxClient(config.host, config.port, config.timeoutSeconds);
+        // Use per-request timeout for HTTP calls, not the sandbox container TTL.
+        // The container TTL (config.timeoutSeconds) controls K8s shutdownTime;
+        // HTTP requests should not be bounded by the container lifetime.
+        this.runtimeClient = new SandboxClient(config.host, config.port, SandboxConstants.REQUEST_TIMEOUT_SECONDS);
         this.createdAt = Instant.now();
     }
 
@@ -122,7 +124,10 @@ public class AgentSandbox implements Sandbox {
     private boolean isConnectionError(Throwable throwable) {
         var current = throwable;
         while (current != null) {
-            if (current instanceof SocketException || current instanceof SocketTimeoutException) return true;
+            // Only SocketException (connection reset, broken pipe) indicates the sandbox is dead.
+            // SocketTimeoutException means the HTTP read timed out — the runtime may still be
+            // executing a long-running command; that does not mean the sandbox is broken.
+            if (current instanceof SocketException) return true;
             current = current.getCause();
         }
         return false;

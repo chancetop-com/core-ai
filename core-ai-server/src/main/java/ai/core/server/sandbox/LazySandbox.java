@@ -130,13 +130,18 @@ public class LazySandbox implements Sandbox {
     public void ensureReady() {
         var current = delegate;
         if (current != null && current.getStatus() == SandboxStatus.READY) {
-            return; // Fast path - sandbox is healthy, caller handles post-acquire actions
+            // Bump sandbox TTL so long-running agent loops don't trigger expiry mid-turn.
+            // touch() only bumps in-memory createdAt on every call; it throttles the
+            // provider-level renewal (K8s patch) to at most once per half-TTL.
+            manager.touch(current.getId());
+            return;
         }
 
         synchronized (this) {
             // Double-check after acquiring lock
             current = delegate;
             if (current != null && current.getStatus() == SandboxStatus.READY) {
+                manager.touch(current.getId());
                 return;
             }
 

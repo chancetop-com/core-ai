@@ -41,7 +41,8 @@ public class KubernetesSandbox implements Sandbox {
         this.podName = podName;
         this.serviceName = serviceName;
         this.image = image;
-        this.runtimeClient = new SandboxClient(host, port, timeoutSeconds);
+        // Use per-request timeout for HTTP calls, not the sandbox container TTL
+        this.runtimeClient = new SandboxClient(host, port, SandboxConstants.REQUEST_TIMEOUT_SECONDS);
         this.createdAt = Instant.now();
     }
 
@@ -72,7 +73,8 @@ public class KubernetesSandbox implements Sandbox {
     private boolean isConnectionError(Throwable th) {
         var current = th;
         while (current != null) {
-            if (current instanceof java.net.SocketException || current instanceof java.net.SocketTimeoutException) return true;
+            // Only SocketException indicates the sandbox is dead, not SocketTimeoutException
+            if (current instanceof java.net.SocketException) return true;
             current = current.getCause();
         }
         return false;

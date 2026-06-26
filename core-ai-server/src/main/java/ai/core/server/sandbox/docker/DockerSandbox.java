@@ -32,7 +32,8 @@ public class DockerSandbox implements Sandbox {
         this.containerId = containerId;
         this.image = image;
         var parts = hostAndPort.split(":");
-        this.runtimeClient = new SandboxClient(parts[0], Integer.parseInt(parts[1]), timeoutSeconds);
+        // Use per-request timeout for HTTP calls, not the sandbox container TTL
+        this.runtimeClient = new SandboxClient(parts[0], Integer.parseInt(parts[1]), SandboxConstants.REQUEST_TIMEOUT_SECONDS);
         this.createdAt = Instant.now();
     }
 
@@ -112,7 +113,8 @@ public class DockerSandbox implements Sandbox {
     private boolean isConnectionError(Throwable throwable) {
         var current = throwable;
         while (current != null) {
-            if (current instanceof java.net.SocketException || current instanceof java.net.SocketTimeoutException) return true;
+            // Only SocketException indicates the sandbox is dead, not SocketTimeoutException
+            if (current instanceof java.net.SocketException) return true;
             current = current.getCause();
         }
         return false;

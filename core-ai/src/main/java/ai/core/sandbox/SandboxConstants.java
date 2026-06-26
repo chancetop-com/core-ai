@@ -44,6 +44,11 @@ public final class SandboxConstants {
 
     public static final long MAX_TOOL_TIMEOUT_MS = 600_000;
 
+    // Per-request timeout for /execute HTTP calls, independent of sandbox container TTL.
+    // A long-running command (e.g. sleep 300) should not be killed by the HTTP client
+    // timeout when the sandbox container itself has a short lifetime TTL.
+    public static final int REQUEST_TIMEOUT_SECONDS = 600;
+
     public static final int MAX_OUTPUT_SIZE = 30 * 1024;
 
     public static final int RUNTIME_PORT = 8080;

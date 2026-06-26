@@ -122,12 +122,40 @@ public class SandboxManager {
         LOGGER.debug("sandbox renewed: id={}, sessionId={}, timeout={}s", sandboxId, entry.sessionId, timeout);
     }
 
+    /**
+     * Lightweight in-memory TTL bump, called on every tool execution in a long agent loop.
+     * Only propagates to provider (K8s patch) when past half the TTL to avoid excessive API calls.
+     */
+    public void touch(String sandboxId) {
+        var entry = activeSandboxes.get(sandboxId);
+        if (entry == null) return;
+
+        var now = Instant.now();
+        var timeout = entry.config.timeoutSeconds != null
+                ? entry.config.timeoutSeconds
+                : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
+
+        // Always bump in-memory TTL so cleanupExpired() won't release this sandbox mid-loop
+        entry.createdAt = now;
+
+        // Only call provider.renew() when past half the TTL since the last provider call
+        var elapsed = Duration.between(entry.lastProviderRenewAt, now);
+        if (elapsed.compareTo(Duration.ofSeconds(timeout / 2)) < 0) {
+            return;
+        }
+
+        entry.lastProviderRenewAt = now;
+        provider.renew(entry.sandbox, timeout);
+        LOGGER.debug("sandbox touched (provider): id={}, sessionId={}, timeout={}s", sandboxId, entry.sessionId, timeout);
+    }
+
     public static final class SandboxEntry {
         public final Sandbox sandbox;
         public final String sessionId;
         public final String userId;
         public final SandboxConfig config;
         volatile Instant createdAt;
+        volatile Instant lastProviderRenewAt;
 
         SandboxEntry(Sandbox sandbox, String sessionId, String userId, SandboxConfig config, Instant createdAt) {
             this.sandbox = sandbox;
@@ -135,6 +163,7 @@ public class SandboxManager {
             this.userId = userId;
             this.config = config;
             this.createdAt = createdAt;
+            this.lastProviderRenewAt = createdAt;
         }
     }
 }
