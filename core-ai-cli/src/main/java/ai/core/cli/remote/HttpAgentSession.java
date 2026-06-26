@@ -4,7 +4,9 @@ import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.AgentSession;
 import ai.core.api.server.session.ApprovalDecision;
+import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.CompressionEvent;
+import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.EventType;
 import ai.core.api.server.session.PlanUpdateEvent;
@@ -14,7 +16,6 @@ import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
-import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
@@ -147,6 +148,7 @@ public final class HttpAgentSession implements AgentSession {
             case "plan_update" -> EventType.PLAN_UPDATE;
             case "compression" -> EventType.COMPRESSION;
             case "sandbox" -> EventType.SANDBOX;
+            case "batch_tool_start" -> EventType.BATCH_TOOL_START;
             case "environment_output_chunk" -> EventType.ENVIRONMENT_OUTPUT_CHUNK;
             default -> null;
         };
@@ -166,6 +168,7 @@ public final class HttpAgentSession implements AgentSession {
             case PLAN_UPDATE -> JsonUtil.fromJson(PlanUpdateEvent.class, dataJson);
             case COMPRESSION -> JsonUtil.fromJson(CompressionEvent.class, dataJson);
             case SANDBOX -> JsonUtil.fromJson(SandboxEvent.class, dataJson);
+            case BATCH_TOOL_START -> JsonUtil.fromJson(BatchToolStartEvent.class, dataJson);
             case ENVIRONMENT_OUTPUT_CHUNK -> JsonUtil.fromJson(EnvironmentOutputChunkEvent.class, dataJson);
         };
     }
@@ -184,6 +187,7 @@ public final class HttpAgentSession implements AgentSession {
                 else if (event instanceof StatusChangeEvent e) listener.onStatusChange(e);
                 else if (event instanceof CompressionEvent e) listener.onCompression(e);
                 else if (event instanceof SandboxEvent e) listener.onSandbox(e);
+                else if (event instanceof BatchToolStartEvent e) listener.onBatchToolStart(e);
                 else if (event instanceof EnvironmentOutputChunkEvent e) listener.onEnvironmentOutput(e);
             } catch (Exception e) {
                 DebugLog.log("listener error: " + e.getMessage());
