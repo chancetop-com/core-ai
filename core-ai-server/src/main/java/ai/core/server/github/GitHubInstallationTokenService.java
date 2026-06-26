@@ -194,7 +194,7 @@ public class GitHubInstallationTokenService implements GitHubTokenProvider {
 
     private String createInstallationToken(long installationId) throws Exception {
         var jwt = createJwt();
-        var body = "{\"permissions\":{\"contents\":\"write\",\"pull_requests\":\"write\"}}";
+        var body = "{\"permissions\":{\"contents\":\"write\",\"pull_requests\":\"write\",\"issues\":\"write\",\"actions\":\"write\",\"checks\":\"write\"}}";
 
         var request = HttpRequest.newBuilder()
                 .uri(URI.create(GITHUB_API_BASE + "/app/installations/" + installationId + "/access_tokens"))
