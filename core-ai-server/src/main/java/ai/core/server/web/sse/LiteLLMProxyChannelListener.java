@@ -50,7 +50,7 @@ public class LiteLLMProxyChannelListener implements ChannelListener<Object> {
             public void onRawData(String sseData) {
                 rawChannel.sendRawData(sseData);
             }
-        });
+        }, null, false);
         var userId = AuthContext.userId(webContext);
         LOGGER.info(userId);
         rawChannel.sendRawData("[DONE]");

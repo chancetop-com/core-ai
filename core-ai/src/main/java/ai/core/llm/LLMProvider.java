@@ -108,6 +108,10 @@ public abstract class LLMProvider {
     }
 
     public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback, Consumer<SpanContext> llmSpanContextSink) {
+        return completionStream(request, callback, llmSpanContextSink, true);
+    }
+
+    public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
         request.model = getModel(request);
         preprocess(request);
         request.stream = true;
@@ -117,7 +121,7 @@ public abstract class LLMProvider {
         }
         var wrappedCallback = wrapCallback(callback);
         CompletionResponse response;
-        if (tracer != null) {
+        if (tracer != null && withTracing) {
             response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, wrappedCallback), llmSpanContextSink, wrappedCallback::isCancelled);
         } else {
             response = doCompletionStream(request, wrappedCallback);
