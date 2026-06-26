@@ -77,7 +77,7 @@ public class WorkflowDefinitionService {
         }
         var published = versionCollection.get(definition.publishedVersionId)
             .orElseThrow(() -> new NotFoundException("published version not found: " + definition.publishedVersionId));
-        return readOnlyCopy(definition, published.graph);
+        return readOnlyCopy(definition, WorkflowGraphSanitizer.sanitize(published.graph));
     }
 
     public String getVersionGraph(String versionId, String userId) {
@@ -94,7 +94,7 @@ public class WorkflowDefinitionService {
         if (!definition.userId.equals(userId) && !isPublicActive(definition)) {
             throw new ForbiddenException("workflow version is not readable: " + versionId);
         }
-        return version.graph;
+        return definition.userId.equals(userId) ? version.graph : WorkflowGraphSanitizer.sanitize(version.graph);
     }
 
     // A detached read-only projection of another user's published workflow: same identity/metadata, but the graph is

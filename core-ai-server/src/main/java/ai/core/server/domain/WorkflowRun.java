@@ -71,6 +71,9 @@ public class WorkflowRun {
     @Field(name = "status")
     public RunStatus status;
 
+    @Field(name = "visibility")
+    public WorkflowVisibility visibility;
+
     @Field(name = "input")
     public String input;
 

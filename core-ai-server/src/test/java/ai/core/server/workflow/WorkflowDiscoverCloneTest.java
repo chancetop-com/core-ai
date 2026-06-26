@@ -109,17 +109,22 @@ class WorkflowDiscoverCloneTest {
     }
 
     @Test
-    void otherUserCanRunPublishedWorkflowAndRunIsAttributedToThem() {
+    void workflowRunsArePrivateByDefaultAndPublicWhenRequested() {
         WorkflowDefinition published = definitionService.create("runnable", "WORKFLOW", GRAPH, "owner-1");
         publishService.publish(published.id, "owner-1");
 
-        WorkflowRun run = runService.createRun(published.id, "{}", TriggerType.API, "viewer-2");
-        assertEquals("viewer-2", run.userId, "run is attributed to the caller, not the owner");
-        assertEquals(RunStatus.PENDING, run.status);
-        assertEquals(published.id, run.workflowId);
-        // run-level ownership: the runner sees their own run, the owner does not
-        assertTrue(runService.listRuns(published.id, "viewer-2").stream().anyMatch(r -> r.id.equals(run.id)));
-        assertFalse(runService.listRuns(published.id, "owner-1").stream().anyMatch(r -> r.id.equals(run.id)));
+        WorkflowRun privateRun = runService.createRun(published.id, "{}", TriggerType.API, "viewer-2");
+        assertEquals("viewer-2", privateRun.userId, "run is attributed to the caller, not the owner");
+        assertEquals(RunStatus.PENDING, privateRun.status);
+        assertEquals(WorkflowVisibility.PRIVATE, WorkflowRunService.visibilityOf(privateRun.visibility));
+        assertTrue(runService.listRuns(published.id, "viewer-2").stream().anyMatch(r -> r.id.equals(privateRun.id)));
+        assertFalse(runService.listRuns(published.id, "owner-1").stream().anyMatch(r -> r.id.equals(privateRun.id)));
+        assertThrows(ForbiddenException.class, () -> runService.getRun(privateRun.id, "owner-1"));
+
+        WorkflowRun publicRun = runService.createRun(published.id, "{}", TriggerType.API, "viewer-2", WorkflowVisibility.PUBLIC);
+        assertEquals(WorkflowVisibility.PUBLIC, WorkflowRunService.visibilityOf(publicRun.visibility));
+        assertTrue(runService.listRuns(published.id, "owner-1").stream().anyMatch(r -> r.id.equals(publicRun.id)));
+        assertEquals(publicRun.id, runService.getRun(publicRun.id, "third-user").id);
     }
 
     @Test

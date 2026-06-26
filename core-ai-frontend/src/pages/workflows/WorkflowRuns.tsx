@@ -131,6 +131,7 @@ export default function WorkflowRuns() {
                         <Paperclip size={11} /> {r.artifacts!.length}
                       </span>
                     )}
+                    <span style={visibilityBadge}>{r.visibility === 'PUBLIC' ? 'Public' : 'Private'}</span>
                     <span style={dim}>{duration(r)}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, paddingLeft: 16 }}>
@@ -254,6 +255,10 @@ const dim: CSSProperties = { fontSize: 12, color: 'var(--color-text-secondary)' 
 const fileBadge: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', fontSize: 11,
   borderRadius: 999, border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)',
+};
+const visibilityBadge: CSSProperties = {
+  padding: '1px 7px', fontSize: 11, borderRadius: 999,
+  border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)',
 };
 const errText: CSSProperties = { color: '#dc2626', fontSize: 12, marginBottom: 8 };
 const iconBtn: CSSProperties = {

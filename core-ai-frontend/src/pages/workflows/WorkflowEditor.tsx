@@ -498,13 +498,13 @@ export default function WorkflowEditor() {
 
   // Run = save the draft, validate it, then run the DRAFT (a throwaway preview snapshot) — no publish required,
   // like Dify. Validation errors surface in the run panel. Publishing stays a separate, explicit action.
-  const startRun = async (input: string) => {
+  const startRun = async (input: string, runVisibility?: 'PRIVATE' | 'PUBLIC') => {
     if (!id || runId) return;
     setBusy(true); setMsg(''); setRunError('');
     try {
       // read-only viewer: run the PUBLISHED version directly (there's no draft to save/validate, and both are owner-only)
       const res = readOnly
-        ? await api.workflows.createRun(id, input)
+        ? await api.workflows.createRun(id, input, runVisibility)
         : await (async () => {
             if (!(await saveDraft())) throw new Error('Save failed');
             const validation = await api.workflows.validate(id);
@@ -653,8 +653,8 @@ export default function WorkflowEditor() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onInit={(inst) => { rfRef.current = inst; }}
-            onNodeClick={(_, node) => { if (preview || !canvasReadOnly) setSelectedId(node.id); }}
-            onPaneClick={() => { if (!preview && !canvasReadOnly) setSelectedId(null); }}
+            onNodeClick={(_, node) => setSelectedId(node.id)}
+            onPaneClick={() => { if (!preview) setSelectedId(null); }}
             nodesDraggable={!preview && !canvasReadOnly}
             nodesConnectable={!preview && !canvasReadOnly}
             deleteKeyCode={preview || canvasReadOnly ? null : 'Backspace'}
@@ -677,12 +677,13 @@ export default function WorkflowEditor() {
                 error={runError}
                 focusNodeId={selectedId}
                 onRun={startRun}
+                allowRunVisibility={readOnly}
                 onResume={startResume}
                 onResumeFromNode={startResumeFromNode}
                 resumedFrom={resumedFrom ?? undefined}
                 onClose={exitRun}
               />
-            ) : selectedNode && !canvasReadOnly ? (
+            ) : selectedNode ? (
               <NodeConfigPanel
                 key={selectedNode.id}
                 node={selectedNode}
@@ -690,6 +691,7 @@ export default function WorkflowEditor() {
                 edges={edges}
                 agents={agents}
                 currentWorkflowId={id}
+                readOnly={canvasReadOnly}
                 onChange={(partial) => updateNodeData(selectedNode.id, partial)}
                 onDelete={() => deleteNode(selectedNode.id)}
                 onClose={() => setSelectedId(null)}

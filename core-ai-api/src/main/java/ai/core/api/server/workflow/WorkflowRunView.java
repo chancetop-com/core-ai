@@ -18,6 +18,9 @@ public class WorkflowRunView {
     @Property(name = "status")
     public String status;
 
+    @Property(name = "visibility")
+    public String visibility;
+
     @Property(name = "input")
     public String input;
 

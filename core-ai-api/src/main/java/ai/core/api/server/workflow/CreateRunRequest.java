@@ -8,4 +8,7 @@ import core.framework.api.json.Property;
 public class CreateRunRequest {
     @Property(name = "input")
     public String input;
+
+    @Property(name = "visibility")
+    public String visibility;   // PRIVATE (default) | PUBLIC
 }

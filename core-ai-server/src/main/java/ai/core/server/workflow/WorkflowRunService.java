@@ -9,6 +9,7 @@ import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.WorkflowVersionStatus;
+import ai.core.server.domain.WorkflowVisibility;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import com.mongodb.client.model.Filters;
@@ -56,6 +57,10 @@ public class WorkflowRunService {
     WorkflowGraphLoader graphLoader;
 
     public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
+        return createRun(workflowId, input, triggeredBy, userId, WorkflowVisibility.PRIVATE);
+    }
+
+    public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId, WorkflowVisibility visibility) {
         WorkflowDefinition definition = definitionCollection.get(workflowId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + workflowId));
         // Only active public workflows expose the external run API. Unpublishing keeps the pinned version available
@@ -71,7 +76,7 @@ public class WorkflowRunService {
         if (version.status == WorkflowVersionStatus.DISABLED) {
             throw new ForbiddenException("workflow version is disabled: " + version.id);
         }
-        return insertRun(definition, version, input, triggeredBy, userId);
+        return insertRun(definition, version, input, triggeredBy, userId, visibilityOf(visibility));
     }
 
     /** Run the current DRAFT without publishing: snapshot it into a throwaway preview version and run that. */
@@ -82,7 +87,7 @@ public class WorkflowRunService {
             throw new ForbiddenException("workflow does not belong to the current user: " + workflowId);
         }
         WorkflowPublishedVersion version = publishService.createPreviewVersion(workflowId, userId);
-        return insertRun(definition, version, input, triggeredBy, userId);
+        return insertRun(definition, version, input, triggeredBy, userId, WorkflowVisibility.PRIVATE);
     }
 
     /**
@@ -92,7 +97,7 @@ public class WorkflowRunService {
      * then derives the resume node as the only ready node, so driving the new run continues from exactly there.
      */
     public WorkflowRun resumeFromNode(String sourceRunId, String resumeNodeId, String userId) {
-        WorkflowRun source = getRun(sourceRunId, userId);   // ownership + existence
+        WorkflowRun source = getOwnedRun(sourceRunId, userId);   // ownership + existence
         if (source.versionId == null) {
             throw new BadRequestException("source run has no pinned version, cannot resume: " + sourceRunId);
         }
@@ -147,6 +152,7 @@ public class WorkflowRunService {
         run.mode = source.mode;
         run.triggeredBy = source.triggeredBy;
         run.status = RunStatus.PENDING;
+        run.visibility = visibilityOf(source.visibility);
         run.input = source.input;
         run.preview = Boolean.TRUE.equals(source.preview);   // a resume of a preview run is itself a preview run (co-expires)
         run.resumedFromRunId = source.id;
@@ -158,7 +164,7 @@ public class WorkflowRunService {
     }
 
     private WorkflowRun insertRun(WorkflowDefinition definition, WorkflowPublishedVersion version, String input,
-                                  TriggerType triggeredBy, String userId) {
+                                  TriggerType triggeredBy, String userId, WorkflowVisibility visibility) {
         var now = ZonedDateTime.now();
         var run = new WorkflowRun();
         run.id = UUID.randomUUID().toString();
@@ -169,6 +175,7 @@ public class WorkflowRunService {
         run.mode = definition.mode;
         run.triggeredBy = triggeredBy;
         run.status = RunStatus.PENDING;
+        run.visibility = visibilityOf(visibility);
         run.input = input;
         run.preview = Boolean.TRUE.equals(version.preview);   // co-expire with the throwaway preview version
         run.leaseUntil = now;   // claimable immediately by the runner job
@@ -180,6 +187,15 @@ public class WorkflowRunService {
     public WorkflowRun getRun(String runId, String userId) {
         WorkflowRun run = runCollection.get(runId)
             .orElseThrow(() -> new NotFoundException("workflow run not found: " + runId));
+        if (!canRead(run, userId)) {
+            throw new ForbiddenException("workflow run does not belong to the current user: " + runId);
+        }
+        return run;
+    }
+
+    private WorkflowRun getOwnedRun(String runId, String userId) {
+        WorkflowRun run = runCollection.get(runId)
+            .orElseThrow(() -> new NotFoundException("workflow run not found: " + runId));
         if (!run.userId.equals(userId)) {
             throw new ForbiddenException("workflow run does not belong to the current user: " + runId);
         }
@@ -189,7 +205,7 @@ public class WorkflowRunService {
     public List<WorkflowRun> listRuns(String workflowId, String userId) {
         return runCollection.find(Filters.and(
             Filters.eq("workflow_id", workflowId),
-            Filters.eq("user_id", userId)));
+            Filters.or(Filters.eq("visibility", WorkflowVisibility.PUBLIC), Filters.eq("user_id", userId))));
     }
 
     public List<WorkflowNodeRun> listNodeRuns(String runId, String userId) {
@@ -209,7 +225,7 @@ public class WorkflowRunService {
      * (no driver) back to PENDING; it no-ops on a RUNNING run, whose live driver already owns the re-fold.
      */
     public void resume(String runId, String nodeId, Boolean approve, String input, String userId) {
-        WorkflowRun run = getRun(runId, userId);   // ownership
+        WorkflowRun run = getOwnedRun(runId, userId);   // ownership
         if (run.status != RunStatus.PAUSED && run.status != RunStatus.RUNNING) {
             throw new ConflictException("workflow run is not awaiting input (status=" + run.status + "): " + runId);
         }
@@ -288,6 +304,17 @@ public class WorkflowRunService {
         if (version.status == WorkflowVersionStatus.DISABLED) {
             throw new ForbiddenException("workflow version is disabled: " + version.id);
         }
-        return version.graph;
+        WorkflowDefinition definition = definitionCollection.get(run.workflowId)
+            .orElseThrow(() -> new NotFoundException("workflow not found for run: " + run.workflowId));
+        return definition.userId.equals(userId) ? version.graph : WorkflowGraphSanitizer.sanitize(version.graph);
+    }
+
+    public static WorkflowVisibility visibilityOf(WorkflowVisibility visibility) {
+        return visibility != null ? visibility : WorkflowVisibility.PRIVATE;
+    }
+
+    public static boolean canRead(WorkflowRun run, String userId) {
+        return run != null
+            && (run.userId.equals(userId) || visibilityOf(run.visibility) == WorkflowVisibility.PUBLIC);
     }
 }

@@ -117,6 +117,9 @@ export default function RunTrace({
                 {r.child_run_id && (
                   <Link to={childHref} style={childLink}><ExternalLink size={12} /> open child {isWorkflowChild ? 'workflow ' : ''}run</Link>
                 )}
+                {r.trace_id && (
+                  <Link to={`/traces/${encodeURIComponent(r.trace_id)}`} style={childLink}><ExternalLink size={12} /> open trace #{r.trace_id.slice(0, 8)}</Link>
+                )}
                 {isWorkflowChild && r.child_run_id && (
                   <ChildWorkflowTrace
                     runId={r.child_run_id}

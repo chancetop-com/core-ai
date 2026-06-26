@@ -65,6 +65,33 @@ class WorkflowAdvancerTest {
     }
 
     @Test
+    void redactsSecretLikeHttpHeadersInInputSnapshot() {
+        WorkflowNode http = new WorkflowNode("http", "HTTP", List.of(), Map.of(
+            "url", "https://api.example.com",
+            "headers", Map.of(
+                "ApiKey", "key-1",
+                "Access-Token", "token-1",
+                "Private-Key", "private-1",
+                "Accept", "application/json")));
+        WorkflowGraph graph = graph(
+            List.of(new WorkflowNode("start", "START"), http, new WorkflowNode("end", "END")),
+            List.of(edge("e0", "start", "http"), edge("e1", "http", "end")));
+        var journal = new InMemoryWorkflowJournal();
+        NodeExecutor executor = ctx -> "START".equals(ctx.node().type())
+            ? new StartExecutor().execute(ctx)
+            : new NodeOutcome.Normal("{}");
+
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+
+        assertEquals(RunStatus.COMPLETED, status);
+        String snapshot = journal.inputJson("run-1", "http");
+        assertFalse(snapshot.contains("key-1"));
+        assertFalse(snapshot.contains("token-1"));
+        assertFalse(snapshot.contains("private-1"));
+        assertTrue(snapshot.contains("application/json"));
+    }
+
+    @Test
     void ifElseSkipsDeadArmAndCompletes() {
         WorkflowGraph graph = graph(
             List.of(node("start"), node("if"), node("left"), node("right"), node("merge"), node("end")),

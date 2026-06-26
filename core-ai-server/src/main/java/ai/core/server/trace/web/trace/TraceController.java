@@ -10,10 +10,12 @@ import core.framework.web.Response;
 import core.framework.web.WebContext;
 
 import ai.core.server.domain.User;
+import ai.core.server.domain.WorkflowRun;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.service.TracePreviewExtractor;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.workflow.WorkflowRunService;
 import ai.core.utils.JsonUtil;
 
 import java.time.ZonedDateTime;
@@ -32,6 +34,8 @@ public class TraceController {
     TraceService traceService;
     @Inject
     MongoCollection<User> userCollection;
+    @Inject
+    MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
     WebContext webContext;
 
@@ -177,7 +181,14 @@ public class TraceController {
     private boolean canRead(Trace trace, TraceScope scope) {
         if (trace == null) return false;
         if (scope.admin()) return true;
-        return scope.userId() != null && scope.userId().equals(trace.userId);
+        if (scope.userId() == null) return false;
+        if (scope.userId().equals(trace.userId)) return true;
+        if (trace.metadata == null) return false;
+        var workflowRunId = trace.metadata.get("workflow_run_id");
+        if (workflowRunId == null || workflowRunId.isBlank()) return false;
+        return workflowRunCollection.get(workflowRunId)
+            .map(run -> WorkflowRunService.canRead(run, scope.userId()))
+            .orElse(false);
     }
 
     private Response unauthorized() {

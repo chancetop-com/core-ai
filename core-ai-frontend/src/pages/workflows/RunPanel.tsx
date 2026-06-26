@@ -5,6 +5,8 @@ import { startInputVars, widgetInput } from './configWidgets';
 import RunTrace from './RunTrace';
 import type { WorkflowNodeRunView } from '../../api/client';
 
+type RunVisibility = 'PRIVATE' | 'PUBLIC';
+
 interface Props {
   nodes: WorkflowRFNode[];
   runId: string | null;
@@ -13,7 +15,8 @@ interface Props {
   busy: boolean;
   error: string;                     // save/validate/run failure, shown before the run starts
   focusNodeId: string | null;        // a node clicked on the canvas auto-expands in the trace
-  onRun: (input: string) => void;
+  onRun: (input: string, visibility?: RunVisibility) => void;
+  allowRunVisibility?: boolean;
   onResume: (nodeId: string, body: { approve?: boolean; input?: string }) => void;
   onResumeFromNode: (nodeId: string) => void;
   resumedFrom?: { runId: string; nodeId: string };
@@ -22,11 +25,13 @@ interface Props {
 
 /** The test panel (Dify-style): enter input → Test → watch each node execute with status, timing and
  *  input/output → see the final result. Runs the current draft, no publish required. */
-export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, error, focusNodeId, onRun, onResume, onResumeFromNode, resumedFrom, onClose }: Props) {
+export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, error, focusNodeId, onRun, allowRunVisibility, onResume, onResumeFromNode, resumedFrom, onClose }: Props) {
   const inputVars = startInputVars(nodes);
   const [input, setInput] = useState('');                                 // free-text/JSON fallback (no declared inputs)
   const [form, setForm] = useState<Record<string, string | boolean>>({}); // typed form values
+  const [visibility, setVisibility] = useState<RunVisibility>('PRIVATE');
   const [err, setErr] = useState('');
+  const runLabel = allowRunVisibility ? 'Run' : 'Test';
 
   const submit = () => {
     setErr('');
@@ -41,11 +46,11 @@ export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, erro
         else if (v.type === 'number') { if (raw !== undefined && raw !== '') payload[v.name] = Number(raw); }
         else if (raw !== undefined && raw !== '') payload[v.name] = raw;
       }
-      onRun(JSON.stringify(payload));
+      onRun(JSON.stringify(payload), visibility);
       return;
     }
     // No declared inputs: accept plain text OR JSON as-is (downstream reads it via sys.input). Empty -> {}.
-    onRun(input.trim() ? input : '{}');
+    onRun(input.trim() ? input : '{}', visibility);
   };
 
   const setField = (name: string, value: string | boolean) => setForm((f) => ({ ...f, [name]: value }));
@@ -53,7 +58,7 @@ export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, erro
   return (
     <div style={panel}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text)' }}>Test</span>
+        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text)' }}>{runLabel}</span>
         <div style={{ flex: 1 }} />
         <button onClick={onClose} style={iconBtn} title="Close"><X size={15} /></button>
       </div>
@@ -89,14 +94,26 @@ export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, erro
             placeholder="plain text or JSON — leave blank for none"
             style={textarea}
           />
-          {!runId && <div style={{ ...dim, marginTop: 4 }}>Tip: add input variables on the Start node to get a typed form here.</div>}
+          {!runId && !allowRunVisibility && <div style={{ ...dim, marginTop: 4 }}>Tip: add input variables on the Start node to get a typed form here.</div>}
+        </>
+      )}
+      {allowRunVisibility && !runId && (
+        <>
+          <label style={label}>Visibility</label>
+          <select value={visibility} onChange={(e) => setVisibility(e.target.value as RunVisibility)} style={fieldInput}>
+            <option value="PRIVATE">Private</option>
+            <option value="PUBLIC">Public</option>
+          </select>
+          {visibility === 'PUBLIC' && (
+            <div style={warningText}>Public runs expose inputs, outputs, node history, artifacts, and trace links to everyone who can use the system.</div>
+          )}
         </>
       )}
       {err && <div style={errText}>{err}</div>}
       {!runId && (
         <>
-          <button onClick={submit} disabled={busy} style={runBtn}><FlaskConical size={15} /> Test draft</button>
-          <div style={{ ...dim, marginTop: 6 }}>Runs the current draft — no need to publish.</div>
+          <button onClick={submit} disabled={busy} style={runBtn}><FlaskConical size={15} /> {allowRunVisibility ? 'Run workflow' : 'Test draft'}</button>
+          {!allowRunVisibility && <div style={{ ...dim, marginTop: 6 }}>Runs the current draft — no need to publish.</div>}
           {error && <div style={errText}>{error}</div>}
         </>
       )}
@@ -124,6 +141,7 @@ const runBtn: CSSProperties = {
   border: 'none', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', cursor: 'pointer', fontWeight: 500,
 };
 const dim: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)' };
+const warningText: CSSProperties = { fontSize: 11, color: '#b45309', marginTop: 5, lineHeight: 1.4 };
 const errText: CSSProperties = { color: '#dc2626', fontSize: 12, marginTop: 4 };
 const iconBtn: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28,

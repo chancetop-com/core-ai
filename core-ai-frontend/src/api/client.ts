@@ -780,6 +780,7 @@ export interface WorkflowRunView {
   id: string;
   workflow_id?: string;
   status?: string;
+  visibility?: string;
   input?: string;
   output?: string;
   artifacts?: WorkflowArtifactView[];
@@ -808,6 +809,8 @@ export interface WorkflowNodeRunView {
   child_run_id?: string;
   child_run_type?: string;
   child_workflow_id?: string;
+  trace_id?: string;
+  span_id?: string;
   started_at?: string;
   completed_at?: string;
 }
@@ -937,10 +940,10 @@ export const api = {
       request<WorkflowView>(`/api/workflows/${id}/versions/${versionId}/restore`, { method: 'POST' }),
     unpublish: (id: string) =>
       request<WorkflowView>(`/api/workflows/${id}/unpublish`, { method: 'POST' }),
-    createRun: (id: string, input: string) =>
-      request<CreateRunResponse>(`/api/workflows/${id}/runs`, { method: 'POST', body: JSON.stringify({ input }) }),
-    runSync: (id: string, input: string) =>
-      request<WorkflowRunView>(`/api/workflows/${id}/run-sync`, { method: 'POST', body: JSON.stringify({ input }) }),
+    createRun: (id: string, input: string, visibility?: 'PRIVATE' | 'PUBLIC') =>
+      request<CreateRunResponse>(`/api/workflows/${id}/runs`, { method: 'POST', body: JSON.stringify({ input, visibility }) }),
+    runSync: (id: string, input: string, visibility?: 'PRIVATE' | 'PUBLIC') =>
+      request<WorkflowRunView>(`/api/workflows/${id}/run-sync`, { method: 'POST', body: JSON.stringify({ input, visibility }) }),
     previewRun: (id: string, input: string) =>
       request<CreateRunResponse>(`/api/workflows/${id}/preview-runs`, { method: 'POST', body: JSON.stringify({ input }) }),
     runs: (id: string) => request<ListWorkflowRunsResponse>(`/api/workflows/${id}/runs`),

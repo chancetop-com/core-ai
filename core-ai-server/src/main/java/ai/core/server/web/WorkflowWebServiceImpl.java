@@ -26,6 +26,7 @@ import ai.core.api.server.workflow.WorkflowRunView;
 import ai.core.api.server.workflow.WorkflowVersionView;
 import ai.core.api.server.workflow.WorkflowView;
 import ai.core.api.server.workflow.WorkflowWebService;
+import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
@@ -46,6 +47,7 @@ import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
+import core.framework.web.exception.BadRequestException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -82,6 +84,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
 
     @Inject
     MongoCollection<WorkflowRun> runCollection;
+
+    @Inject
+    MongoCollection<AgentRun> agentRunCollection;
 
     @Inject
     WorkflowPortService portService;
@@ -263,7 +268,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     public CreateRunResponse createRun(String id, CreateRunRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_id", id);
-        WorkflowRun run = runService.createRun(id, request.input, TriggerType.API, userId);
+        WorkflowRun run = runService.createRun(id, request.input, TriggerType.API, userId, runVisibility(request));
         runner.submit(run.id);   // start immediately; the runner job is the durability/recovery fallback, not the starter
         var response = new CreateRunResponse();
         response.runId = run.id;
@@ -275,7 +280,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     public WorkflowRunView runSync(String id, CreateRunRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_id", id);
-        WorkflowRun run = runService.createRun(id, request.input, TriggerType.API, userId);
+        WorkflowRun run = runService.createRun(id, request.input, TriggerType.API, userId, runVisibility(request));
         runner.submit(run.id);   // drive immediately instead of waiting for the runner job's next tick
         long deadline = System.currentTimeMillis() + SYNC_TIMEOUT_MS;
         WorkflowRun latest = run;
@@ -307,6 +312,17 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         response.runId = run.id;
         response.status = run.status.name();
         return response;
+    }
+
+    private static WorkflowVisibility runVisibility(CreateRunRequest request) {
+        if (request == null || request.visibility == null || request.visibility.isBlank()) {
+            return WorkflowVisibility.PRIVATE;
+        }
+        try {
+            return WorkflowVisibility.valueOf(request.visibility.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("invalid run visibility: " + request.visibility);
+        }
     }
 
     @Override
@@ -434,6 +450,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         view.id = run.id;
         view.workflowId = run.workflowId;
         view.status = run.status != null ? run.status.name() : null;
+        view.visibility = WorkflowRunService.visibilityOf(run.visibility).name();
         view.input = run.input;
         view.output = run.output;
         view.artifacts = toArtifactViews(run.artifacts);
@@ -463,8 +480,10 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
                 runCollection.get(nodeRun.childRunId).ifPresent(child -> view.childWorkflowId = child.workflowId);
             } else {
                 view.childRunType = "AGENT";
+                agentRunCollection.get(nodeRun.childRunId).ifPresent(child -> view.traceId = child.traceId);
             }
         }
+        view.spanId = nodeRun.spanId;
         view.startedAt = nodeRun.startedAt;
         view.completedAt = nodeRun.completedAt;
         return view;

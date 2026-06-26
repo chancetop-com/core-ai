@@ -23,12 +23,13 @@ interface Props {
   edges: Edge[];
   agents: AgentOption[];
   currentWorkflowId?: string;
+  readOnly?: boolean;
   onChange: (partial: Partial<WorkflowNodeData>) => void;
   onDelete: () => void;
   onClose: () => void;
 }
 
-export default function NodeConfigPanel({ node, nodes, edges, agents, currentWorkflowId, onChange, onDelete, onClose }: Props) {
+export default function NodeConfigPanel({ node, nodes, edges, agents, currentWorkflowId, readOnly, onChange, onDelete, onClose }: Props) {
   const meta = nodeMeta(node.data.nodeType);
   const isAgentNode = node.data.nodeType === 'AGENT' || node.data.nodeType === 'LLM';
   const isMcpTool = node.data.nodeType === 'MCP_TOOL';
@@ -73,6 +74,34 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, currentWor
   const selectedAgentMissing = String(config.agent_id ?? '') !== '' && !visibleAgents.some((a) => a.id === config.agent_id);
 
   const issues = nodeIssues(node, nodes, edges);
+
+  if (readOnly) {
+    return (
+      <div style={panel}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, color: meta.color, fontWeight: 700, textTransform: 'uppercase' }}>{meta.label}</span>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={iconBtn} title="Close"><X size={15} /></button>
+        </div>
+
+        {meta.description && <div style={desc}>{meta.description}</div>}
+        {meta.outputHint && <div style={outHint}>↳ Outputs: {meta.outputHint}</div>}
+        {issues.length > 0 && (
+          <div style={issueBox}>
+            <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div>{issues.map((m, i) => <div key={i}>{m}</div>)}</div>
+          </div>
+        )}
+
+        <label style={label}>Name</label>
+        <div style={readOnlyField}>{node.data.name || node.id}</div>
+        <label style={label}>Type</label>
+        <div style={readOnlyField}>{node.data.nodeType}</div>
+        <label style={label}>Config</label>
+        <pre style={readOnlyPre}>{JSON.stringify(node.data.config ?? {}, null, 2)}</pre>
+      </div>
+    );
+  }
 
   return (
     <div style={panel}>
@@ -224,6 +253,13 @@ const issueBox: CSSProperties = {
 const input: CSSProperties = {
   width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 13,
   border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',
+};
+const readOnlyField: CSSProperties = {
+  padding: '7px 10px', fontSize: 13, border: '1px solid var(--color-border)', borderRadius: 7,
+  background: 'var(--color-bg)', color: 'var(--color-text)', wordBreak: 'break-word',
+};
+const readOnlyPre: CSSProperties = {
+  ...readOnlyField, margin: 0, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', overflowX: 'auto',
 };
 const iconBtn: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28,

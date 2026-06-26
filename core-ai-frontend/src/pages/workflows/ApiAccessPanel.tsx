@@ -21,7 +21,7 @@ export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: P
     ? Object.fromEntries(vars.map((v) => [v.name, sampleValue(v.type)]))
     : null;
   const inputStr = inputObj ? JSON.stringify(inputObj) : 'your input text';
-  const requestBody = JSON.stringify({ input: inputStr });
+  const requestBody = JSON.stringify({ input: inputStr, visibility: 'PRIVATE' });
   const firstHuman = humanNodes[0];
   const pausedLines = firstHuman
     ? `\n  "pending_inputs": [ { "node_id": "${firstHuman.id}", "mode": "${modeOf(firstHuman)}", "prompt": "…" } ]`

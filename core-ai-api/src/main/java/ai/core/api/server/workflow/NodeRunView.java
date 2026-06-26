@@ -39,6 +39,12 @@ public class NodeRunView {
     @Property(name = "child_workflow_id")
     public String childWorkflowId;
 
+    @Property(name = "trace_id")
+    public String traceId;
+
+    @Property(name = "span_id")
+    public String spanId;
+
     @Property(name = "started_at")
     public ZonedDateTime startedAt;
 

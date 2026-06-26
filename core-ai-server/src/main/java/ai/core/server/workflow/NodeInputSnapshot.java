@@ -6,9 +6,7 @@ import core.framework.json.JSON;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Builds the resolved input snapshot shown in workflow run traces. This is observability only: executors still
@@ -17,9 +15,6 @@ import java.util.Set;
  * @author Xander
  */
 final class NodeInputSnapshot {
-    private static final Set<String> SENSITIVE_HEADERS = Set.of(
-        "authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "api-key");
-
     private NodeInputSnapshot() {
     }
 
@@ -152,7 +147,7 @@ final class NodeInputSnapshot {
     }
 
     private static boolean sensitiveHeader(String key) {
-        return SENSITIVE_HEADERS.contains(key.toLowerCase(Locale.ROOT));
+        return WorkflowGraphSanitizer.shouldRedactKey(key);
     }
 
     private static Object coerce(Object value) {

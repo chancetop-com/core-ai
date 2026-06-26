@@ -56,6 +56,7 @@ public class MongoWorkflowRunGateway implements WorkflowRunGateway {
         run.mode = parent.mode;
         run.triggeredBy = TriggerType.WORKFLOW;
         run.status = RunStatus.PENDING;
+        run.visibility = WorkflowRunService.visibilityOf(parent.visibility);
         run.input = input;
         run.preview = Boolean.TRUE.equals(parent.preview);
         run.parentRunId = parent.id;
