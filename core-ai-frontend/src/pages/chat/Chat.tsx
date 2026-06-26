@@ -21,6 +21,8 @@ import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 const VoiceTranscriberSidebar = lazy(() => import('./components/VoiceTranscriberSidebar'));
 const ArtifactDrawer = lazy(() => import('./components/ArtifactDrawer'));
 
+const DRAFT_CHAT_SESSION_ID = '__new_chat_draft__';
+
 function toToolRef(id: string, availableTools: ToolRegistryView[] = []): ToolRef {
   const registeredTool = availableTools.find(t => t.id === id);
   if (registeredTool?.type === 'MCP') {
@@ -49,6 +51,11 @@ function toToolRef(id: string, availableTools: ToolRegistryView[] = []): ToolRef
 
 function hasAnySegments(segments?: MessageSegment[]): boolean {
   return segments != null && segments.length > 0;
+}
+
+function titleFromMessage(text: string): string {
+  const title = text.replace(/\s+/g, ' ').trim();
+  return title ? title.slice(0, 40) : 'New Chat';
 }
 
 function cleanIdSet(ids: Array<string | null | undefined>): Set<string> {
@@ -85,6 +92,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try { const s = sessionStorage.getItem('chat_messages'); return s ? JSON.parse(s) : []; } catch { return []; }
   });
+  const [optimisticSession, setOptimisticSession] = useState<ChatSessionSummary | null>(null);
   const [visibleMessageLimit, setVisibleMessageLimit] = useState(INITIAL_VISIBLE_MESSAGES);
   const [status, setStatus] = useState<'idle' | 'running'>('idle');
   const [isThinking, setIsThinking] = useState(false);
@@ -184,6 +192,37 @@ export default function Chat() {
     activeSseSessionIdRef.current = null;
     sseControllerRef.current?.abort();
     sseControllerRef.current = null;
+  }, []);
+
+  const createDraftSession = useCallback(() => {
+    const now = new Date().toISOString();
+    setOptimisticSession({
+      id: DRAFT_CHAT_SESSION_ID,
+      agent_id: selectedAgentId || undefined,
+      source: 'chat',
+      title: 'New Chat',
+      message_count: 0,
+      created_at: now,
+      last_message_at: now,
+    });
+  }, [selectedAgentId]);
+
+  const promoteOptimisticSession = useCallback((id: string, firstMessage?: string) => {
+    const now = new Date().toISOString();
+    setOptimisticSession(prev => ({
+      id,
+      user_id: prev?.user_id,
+      agent_id: selectedAgentId || prev?.agent_id,
+      source: prev?.source || 'chat',
+      title: firstMessage != null ? titleFromMessage(firstMessage) : (prev?.title || 'New Chat'),
+      message_count: firstMessage != null ? Math.max(prev?.message_count || 0, 1) : prev?.message_count,
+      created_at: prev?.created_at || now,
+      last_message_at: now,
+    }));
+  }, [selectedAgentId]);
+
+  const handleDraftResolved = useCallback(() => {
+    setOptimisticSession(null);
   }, []);
 
   // All published agents for chat (my + others, filtered by status)
@@ -334,6 +373,7 @@ export default function Chat() {
     // bleed into the next one, and any open drawer is closed.
     abortSSE();
     composerRef.current?.reset();
+    setOptimisticSession(null);
     setSessionId(session.id);
     setMessages([]);
     setSessionArtifacts([]);
@@ -470,6 +510,7 @@ export default function Chat() {
           const res = await sessionApi.create(targetId, {});
           const sid = res.sessionId;
           setSessionId(sid);
+          promoteOptimisticSession(sid, autoMessage);
           doConnectSSE(sid);
           const lt = res.loaded_tools;
           if (lt && lt.length > 0) {
@@ -509,7 +550,7 @@ export default function Chat() {
       return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myAgents, otherAgents, searchParams]);
+  }, [myAgents, otherAgents, promoteOptimisticSession, searchParams]);
 
   const handleSSEEvent = useCallback((event: SseEvent) => {
     const eventType = event.type?.toLowerCase();
@@ -959,7 +1000,7 @@ export default function Chat() {
     };
   }, [abortSSE]);
 
-  const ensureSession = useCallback(async (): Promise<string> => {
+  const ensureSession = useCallback(async (firstMessage?: string): Promise<string> => {
     if (sessionId) {
       cancelledSessionIdsRef.current.delete(sessionId);
       // Always reconnect SSE before sending a new message to ensure a fresh stream.
@@ -985,6 +1026,7 @@ export default function Chat() {
     });
     const id = res.sessionId;
     setSessionId(id);
+    promoteOptimisticSession(id, firstMessage);
     cancelledSessionIdsRef.current.delete(id);
     doConnectSSE(id);
 
@@ -1015,7 +1057,7 @@ export default function Chat() {
     // Wait for SSE to connect
     await new Promise(resolve => setTimeout(resolve, 500));
     return id;
-  }, [availableTools, doConnectSSE, draftDatasetConfigs, preSkillIds, preSubAgentIds, preToolIds, selectedAgentId, sessionId, showToast]);
+  }, [availableTools, doConnectSSE, draftDatasetConfigs, preSkillIds, preSubAgentIds, preToolIds, promoteOptimisticSession, selectedAgentId, sessionId, showToast]);
 
   const handleSend = useCallback(async (text: string, attachments: ComposerAttachment[]) => {
     if ((!text && attachments.length === 0) || status !== 'idle' || !selectedAgentId) return;
@@ -1035,7 +1077,7 @@ export default function Chat() {
     setMessages(prev => [...prev, { role: 'agent', segments: [], timestamp: new Date().toISOString() }]);
 
     try {
-      const sid = await ensureSession();
+      const sid = await ensureSession(text);
       await sessionApi.sendMessage(sid, text, variableValues,
         attachments.length > 0
           ? attachments.map(a => ({
@@ -1099,6 +1141,7 @@ export default function Chat() {
     // and loses the partial reply. The session stays alive on the backend, runs to
     // TURN_COMPLETE, persists, and is reclaimable from the sidebar. Idle cleanup
     // is the backend's responsibility (see task: idle session TTL sweeper).
+    createDraftSession();
     setSessionId(null);
     setMessages([]);
     setSessionArtifacts([]);
@@ -1128,7 +1171,7 @@ export default function Chat() {
     sessionStorage.removeItem('chat_messages');
     sessionStorage.removeItem('chat_sessionId');
     sessionStorage.removeItem('chat_artifacts');
-  }, [abortSSE]);
+  }, [abortSSE, createDraftSession]);
 
   const handleSelectAgent = useCallback((id: string, agent?: AgentDefinition) => {
     if (agent && !agents.find(a => a.id === agent.id)) {
@@ -1139,6 +1182,7 @@ export default function Chat() {
     }
     handleNewChat();
     setSelectedAgentId(id);
+    setOptimisticSession(prev => prev ? { ...prev, agent_id: id } : prev);
   }, [handleNewChat, agents]);
 
   const skillNameMap = useMemo(() => {
@@ -1420,13 +1464,17 @@ export default function Chat() {
     composerRef.current?.setDraft(allText);
   }, [voiceSegments]);
 
+  const activeSidebarSessionId = optimisticSession?.id || sessionId;
+
   return (
     <div className="flex h-full">
       <ChatSessionsSidebar
-        currentSessionId={sessionId}
+        currentSessionId={activeSidebarSessionId}
+        draftSession={optimisticSession}
         refreshKey={sidebarRefreshKey}
         onOpen={hydrateSession}
         onNewChat={handleNewChat}
+        onDraftResolved={handleDraftResolved}
       />
       <div className="flex flex-col h-full flex-1 min-w-0 overflow-hidden">
       <AgentSelector

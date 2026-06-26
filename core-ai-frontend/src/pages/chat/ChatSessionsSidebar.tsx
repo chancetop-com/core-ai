@@ -6,9 +6,11 @@ import { formatMessageTimeFull } from './utils';
 
 interface Props {
   currentSessionId: string | null;
+  draftSession?: ChatSessionSummary | null;
   refreshKey: number;
   onOpen: (session: ChatSessionSummary) => void;
   onNewChat: () => void;
+  onDraftResolved?: () => void;
   onDeleted?: (sessionId: string) => void;
 }
 
@@ -25,7 +27,7 @@ function formatTime(iso?: string): string {
 
 const PAGE_SIZE = 50;
 
-export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOpen, onNewChat, onDeleted }: Props) {
+export default function ChatSessionsSidebar({ currentSessionId, draftSession, refreshKey, onOpen, onNewChat, onDraftResolved, onDeleted }: Props) {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -70,6 +72,15 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
   }, []);
 
   useEffect(() => { loadInitial(); }, [loadInitial, refreshKey]);
+
+  useEffect(() => {
+    if (!draftSession) return;
+    if (sessions.some(s => s.id === draftSession.id)) onDraftResolved?.();
+  }, [draftSession, onDraftResolved, sessions]);
+
+  const visibleSessions = draftSession
+    ? [draftSession, ...sessions.filter(s => s.id !== draftSession.id)]
+    : sessions;
 
   // close the hover menu when clicking outside of it
   useEffect(() => {
@@ -200,22 +211,24 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
         )}
       </div>
       <div className="flex-1 overflow-auto">
-        {loading && sessions.length === 0 && (
+        {loading && visibleSessions.length === 0 && (
           <div className="flex items-center justify-center py-6" style={{ color: 'var(--color-text-secondary)' }}>
             <Loader2 size={16} className="animate-spin" />
           </div>
         )}
-        {!loading && sessions.length === 0 && (
+        {!loading && visibleSessions.length === 0 && (
           <div className="px-4 py-6 text-xs text-center" style={{ color: 'var(--color-text-secondary)' }}>
             No conversations yet
           </div>
         )}
-        {sessions.map(s => {
+        {visibleSessions.map((s, index) => {
+          const isDraft = draftSession != null && index === 0 && s.id === draftSession.id;
           const active = s.id === currentSessionId;
           const selected = selectedIds.has(s.id);
           return (
             <div key={s.id}
               onClick={() => {
+                if (isDraft) return;
                 if (selecting) { toggleSelect(s.id); return; }
                 onOpen(s);
               }}
@@ -225,7 +238,9 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
                 background: selecting && selected ? 'var(--color-primary-bg)' : (active && !selecting ? 'var(--color-bg-tertiary)' : 'transparent'),
                 color: 'var(--color-text)',
               }}>
-              {selecting ? (
+              {isDraft ? (
+                <MessageSquare size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
+              ) : selecting ? (
                 selected
                   ? <CheckSquare size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
                   : <Square size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
@@ -242,7 +257,7 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
                   {s.message_count ? ` · ${s.message_count} msg` : ''}
                 </div>
               </div>
-              {!selecting && (
+              {!selecting && !isDraft && (
                 <button onClick={e => { e.stopPropagation(); setMenuId(menuId === s.id ? null : s.id); }}
                   className="opacity-0 group-hover:opacity-100 mt-0.5 p-1 rounded cursor-pointer transition-opacity"
                   style={{ color: 'var(--color-text-secondary)' }}
