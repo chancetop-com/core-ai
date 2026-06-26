@@ -5,6 +5,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.util.IdLists;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.ToolCall;
 import ai.core.tool.tools.SubAgentToolCall;
@@ -36,12 +37,17 @@ public class SessionSubAgentManager {
     }
 
     public List<String> loadSubAgentsFromDefinition(InProcessAgentSession session, AgentDefinition definition) {
-        var subAgents = subAgentAssembler.assemble(definition.subAgentIds, session.id());
+        var subAgentIds = definition.publishedConfig != null && definition.publishedConfig.subAgentIds != null
+                ? definition.publishedConfig.subAgentIds
+                : definition.subAgentIds;
+        var cleanSubAgentIds = IdLists.clean(subAgentIds);
+        var subAgents = subAgentAssembler.assemble(cleanSubAgentIds, session.id());
         var names = new ArrayList<String>();
         for (var subAgent : subAgents) {
             session.loadTools(List.of(subAgent));
             names.add(subAgent.getName());
         }
+        chatMessageService.addLoadedSubAgentIds(session.id(), cleanSubAgentIds);
         return names;
     }
 

@@ -79,6 +79,18 @@ export interface SsePlanUpdateEvent extends SseBaseEvent {
   todos: Array<{ content: string; status: string }>;
 }
 
+export interface SseBatchToolStartEvent extends SseBaseEvent {
+  group: string;
+  tools: Array<{ call_id: string; tool_name: string; arguments: string }>;
+  task_id?: string;
+}
+
+export interface SseEnvironmentOutputChunkEvent extends SseBaseEvent {
+  source: string;
+  call_id: string;
+  chunk: string;
+}
+
 export interface SseCompressionEvent extends SseBaseEvent {
   before_count: number;
   after_count: number;
@@ -105,6 +117,8 @@ export type SseEvent =
   | SseErrorEvent
   | SseStatusChangeEvent
   | SsePlanUpdateEvent
+  | SseBatchToolStartEvent
+  | SseEnvironmentOutputChunkEvent
   | SseCompressionEvent
   | SseSandboxEvent;
 
@@ -178,6 +192,7 @@ export interface SessionInfo {
   agent_id: string;
   loaded_tools?: { id: string; type?: string; source?: string }[];
   loaded_skill_ids?: string[];
+  loaded_sub_agent_ids?: string[];
 }
 
 export interface SessionStatusResponse {
@@ -207,7 +222,7 @@ export const sessionApi = {
   create: (agentId: string, options?: CreateSessionOptions | Record<string, unknown>) => {
     // Support legacy call signature: create(agentId, config)
     let body: Record<string, unknown>;
-    if (options && ('config' in options || 'tools' in options || 'skill_ids' in options)) {
+    if (options && ('config' in options || 'tools' in options || 'skill_ids' in options || 'sub_agent_ids' in options || 'dataset_configs' in options)) {
       const opts = options as CreateSessionOptions;
       body = agentId ? { agent_id: agentId, ...opts } : { ...opts };
     } else {

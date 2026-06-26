@@ -108,10 +108,15 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
     return false;
   };
   const hasRunning = tools.some(isRunning);
+  const toolDetail = (t: ToolEvent): string | undefined => {
+    if (t.type === 'result' && t.result) return t.result;
+    return t.output;
+  };
    // Render a single tool row (used for both top-level and children)
   const renderToolRow = (t: ToolEvent, key: string, level: number = 0) => {
     const hasChildren = t.children && t.children.length > 0;
     const showTaskIdBadge = level === 0 && t.taskId;
+    const detail = toolDetail(t);
     const headerContent = (
       <>
         {t.type === 'start' ? (
@@ -142,7 +147,7 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
             <span className="shrink-0" style={{ color: (t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? 'var(--color-success)' : 'var(--color-error)' }}>
               {(t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? 'done' : (t.resultStatus || 'error')}
             </span>
-            {t.result && (
+            {detail && (
               <button onClick={() => toggleResult(key)}
                 className="ml-auto flex items-center gap-0.5 cursor-pointer opacity-60 hover:opacity-100 shrink-0"
                 style={{ color: 'var(--color-text-secondary)' }}>
@@ -151,6 +156,14 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
               </button>
             )}
           </>
+        )}
+        {t.type === 'start' && t.output && (
+          <button onClick={() => toggleResult(key)}
+            className="ml-auto flex items-center gap-0.5 cursor-pointer opacity-60 hover:opacity-100 shrink-0"
+            style={{ color: 'var(--color-text-secondary)' }}>
+            {expandedResults.has(key) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <span>output</span>
+          </button>
         )}
       </>
     );
@@ -166,19 +179,19 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
             }}>
             {headerContent}
           </div>
-          {t.type === 'result' && t.result && expandedResults.has(key) && (
+          {detail && expandedResults.has(key) && (
             <div className="px-3 pb-1.5" style={{ marginLeft: level > 0 ? `${level * 12}px` : undefined }}>
               <div className="relative rounded-b overflow-auto"
                 style={{ maxHeight: '240px', background: 'var(--color-bg-secondary)' }}>
                 <div className="absolute top-1 right-1 z-10">
-                  <CopyIconButton text={formatJson(t.result)} />
+                  <CopyIconButton text={formatJson(detail)} />
                 </div>
-                {tryParseJson(t.result) !== null ? (
-                  <JsonResultView value={t.result} />
+                {tryParseJson(detail) !== null ? (
+                  <JsonResultView value={detail} />
                 ) : (
                   <pre className="whitespace-pre-wrap font-mono px-3 py-2"
                     style={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}>
-                    {t.result}
+                    {detail}
                   </pre>
                 )}
               </div>
@@ -212,17 +225,17 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
           </span>
         </button>
         {/* Parent result detail */}
-        {t.type === 'result' && t.result && expandedResults.has(key) && (
+        {detail && expandedResults.has(key) && (
           <div className="relative" style={{ borderBottom: '1px solid var(--color-border)', maxHeight: '240px', overflow: 'auto' }}>
             <div className="absolute top-1 right-1 z-10">
-              <CopyIconButton text={formatJson(t.result)} />
+              <CopyIconButton text={formatJson(detail)} />
             </div>
-            {tryParseJson(t.result) !== null ? (
-              <JsonResultView value={t.result} />
+            {tryParseJson(detail) !== null ? (
+              <JsonResultView value={detail} />
             ) : (
               <pre className="whitespace-pre-wrap font-mono px-3 py-2"
                 style={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}>
-                {t.result}
+                {detail}
               </pre>
             )}
           </div>

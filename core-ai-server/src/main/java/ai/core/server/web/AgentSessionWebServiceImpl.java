@@ -15,12 +15,15 @@ import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.api.server.session.SessionHistoryResponse;
+import ai.core.api.server.session.SessionInfo;
 import ai.core.api.server.session.SessionStatusResponse;
 import ai.core.api.server.session.UnloadSkillsRequest;
 import ai.core.api.server.session.UnloadSkillsResponse;
+import ai.core.api.server.tool.ToolRefView;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.api.server.session.Message;
@@ -41,6 +44,8 @@ import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.Session;
 import core.framework.web.WebContext;
+import core.framework.web.exception.ForbiddenException;
+import core.framework.web.exception.NotFoundException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -248,7 +253,41 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     }
 
     @Override
+    public SessionInfo getInfo(String sessionId) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
+
+        var meta = readableSessionMeta(sessionId, userId, true);
+
+        var response = new SessionInfo();
+        response.id = sessionId;
+        response.agentId = meta.agentId;
+        if (meta.loadedTools != null && !meta.loadedTools.isEmpty()) {
+            response.loadedTools = meta.loadedTools.stream()
+                    .filter(ref -> ref != null && ref.id != null && !ref.id.isBlank())
+                    .map(AgentSessionWebServiceImpl::toToolRefView)
+                    .toList();
+        }
+        response.loadedSkillIds = IdLists.clean(meta.loadedSkillIds);
+        response.loadedSubAgentIds = IdLists.clean(meta.loadedSubAgentIds);
+        return response;
+    }
+
+    private static ToolRefView toToolRefView(ToolRef ref) {
+        var view = new ToolRefView();
+        view.id = ref.id;
+        view.type = ref.type != null ? ref.type.name() : null;
+        view.source = ref.source;
+        return view;
+    }
+
+    @Override
     public SessionHistoryResponse history(String sessionId) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
+        readableSessionMeta(sessionId, userId, false);
         var records = chatMessageService.history(sessionId);
         var sessionArtifacts = chatMessageService.artifacts(sessionId);
         var messages = new ArrayList<Message>(records.size());
@@ -292,16 +331,34 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
     @Override
     public SessionStatusResponse status(String sessionId) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
+        var meta = readableSessionMeta(sessionId, userId, false);
         var response = new SessionStatusResponse();
         response.sessionId = sessionId;
         response.status = sessionChannelService.status(sessionId);
-        var meta = chatMessageService.getSessionMeta(sessionId);
         if (meta != null) {
             response.createdAt = meta.createdAt != null ? meta.createdAt.toInstant() : null;
             response.lastActiveAt = meta.lastMessageAt != null ? meta.lastMessageAt.toInstant() : null;
             response.messageCount = meta.messageCount != null ? (int) Math.min(meta.messageCount, (long) Integer.MAX_VALUE) : null;
         }
         return response;
+    }
+
+    private ChatSession readableSessionMeta(String sessionId, String userId, boolean required) {
+        var meta = chatMessageService.getSessionMeta(sessionId);
+        if (meta == null) {
+            if (required) throw new NotFoundException("session not found, sessionId=" + sessionId);
+            return null;
+        }
+        if (meta.deletedAt != null) {
+            throw new NotFoundException("session not found, sessionId=" + sessionId);
+        }
+        if (meta.userId != null && !meta.userId.equals(userId)) {
+            throw new ForbiddenException("session does not belong to current user");
+        }
+        return meta;
     }
 
     @Override

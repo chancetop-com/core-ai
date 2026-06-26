@@ -10,6 +10,7 @@ export interface ToolEvent {
   callId: string;
   arguments?: string;
   result?: string;
+  output?: string;
   resultStatus?: string;
   taskId?: string;
   runInBackground?: boolean;

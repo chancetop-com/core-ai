@@ -30,6 +30,8 @@ public enum EventType {
     COMPRESSION,
     @Property(name = "sandbox")
     SANDBOX,
+    @Property(name = "batch_tool_start")
+    BATCH_TOOL_START,
     @Property(name = "environment_output_chunk")
     ENVIRONMENT_OUTPUT_CHUNK
 }

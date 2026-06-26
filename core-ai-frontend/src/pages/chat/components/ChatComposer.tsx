@@ -102,6 +102,14 @@ const VALID_ATTACHMENT_TYPES = new Set([
 const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
 const COLLAPSE_THRESHOLD = 8;
 
+function countUniqueIds(...sets: Set<string>[]): number {
+  const ids = new Set<string>();
+  for (const set of sets) {
+    for (const id of set) ids.add(id);
+  }
+  return ids.size;
+}
+
 interface ComposerConfigChipsProps {
   totalChips: number;
   loadedToolIds: Set<string>;
@@ -132,6 +140,9 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
   const [chipsExpanded, setChipsExpanded] = useState(false);
   const collapsible = totalChips > COLLAPSE_THRESHOLD;
   const collapsed = collapsible && !chipsExpanded;
+  const toolCount = countUniqueIds(loadedToolIds, preToolIds);
+  const skillCount = countUniqueIds(loadedSkillIds, preSkillIds);
+  const subAgentCount = countUniqueIds(loadedSubAgentIds, preSubAgentIds);
 
   if (totalChips === 0 && datasetConfigs.length === 0) return null;
 
@@ -144,9 +155,9 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
           style={{ color: 'var(--color-text-secondary)' }}>
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
           <span>
-            {loadedToolIds.size + preToolIds.size > 0 && `${loadedToolIds.size + preToolIds.size} tools`}
-            {loadedSkillIds.size + preSkillIds.size > 0 && `${loadedToolIds.size + preToolIds.size > 0 ? ', ' : ''}${loadedSkillIds.size + preSkillIds.size} skills`}
-            {loadedSubAgentIds.size + preSubAgentIds.size > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0) ? ', ' : ''}${loadedSubAgentIds.size + preSubAgentIds.size} agents`}
+            {toolCount > 0 && `${toolCount} tools`}
+            {skillCount > 0 && `${toolCount > 0 ? ', ' : ''}${skillCount} skills`}
+            {subAgentCount > 0 && `${(toolCount > 0 || skillCount > 0) ? ', ' : ''}${subAgentCount} agents`}
             {datasetConfigs.length > 0 && `, ${datasetConfigs.length} dataset${datasetConfigs.length > 1 ? 's' : ''}`}
             {' loaded'}
           </span>
@@ -166,7 +177,7 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
               {getToolChipName(id)}
             </span>
           ))}
-          {Array.from(preToolIds).map(id => (
+          {Array.from(preToolIds).filter(id => !loadedToolIds.has(id)).map(id => (
             <span key={`pt-${id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
               style={{
@@ -191,7 +202,7 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
               {getSkillChipName(id)}
             </span>
           ))}
-          {Array.from(preSkillIds).map(id => (
+          {Array.from(preSkillIds).filter(id => !loadedSkillIds.has(id)).map(id => (
             <span key={`ps-${id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
               style={{
@@ -216,7 +227,7 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
               {getAgentChipName(id)}
             </span>
           ))}
-          {Array.from(preSubAgentIds).map(id => (
+          {Array.from(preSubAgentIds).filter(id => !loadedSubAgentIds.has(id)).map(id => (
             <span key={`psa-${id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
               style={{
@@ -412,12 +423,9 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     }
   }, [handleSend]);
 
-  const totalChips = loadedToolIds.size
-    + loadedSkillIds.size
-    + loadedSubAgentIds.size
-    + preToolIds.size
-    + preSkillIds.size
-    + preSubAgentIds.size
+  const totalChips = countUniqueIds(loadedToolIds, preToolIds)
+    + countUniqueIds(loadedSkillIds, preSkillIds)
+    + countUniqueIds(loadedSubAgentIds, preSubAgentIds)
     + datasetConfigs.length;
   const hasConfig = totalChips > 0;
 

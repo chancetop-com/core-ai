@@ -12,6 +12,7 @@ import ai.core.api.server.session.LoadToolsRequest;
 import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.SessionHistoryResponse;
+import ai.core.api.server.session.SessionInfo;
 import ai.core.api.server.session.SessionStatusResponse;
 import ai.core.api.server.session.UnloadSkillsRequest;
 import ai.core.api.server.session.UnloadSkillsResponse;
@@ -39,6 +40,10 @@ public interface AgentSessionWebService {
     @POST
     @Path("/api/sessions/:sessionId/approve")
     void approve(@PathParam("sessionId") String sessionId, ApproveToolCallRequest request);
+
+    @GET
+    @Path("/api/sessions/:sessionId")
+    SessionInfo getInfo(@PathParam("sessionId") String sessionId);
 
     @GET
     @Path("/api/sessions/:sessionId/history")

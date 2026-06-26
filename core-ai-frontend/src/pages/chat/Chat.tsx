@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
-import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
+import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import type { IdName } from '../../api/session';
@@ -58,6 +58,14 @@ function cleanIdSet(ids: Array<string | null | undefined>): Set<string> {
     if (clean) set.add(clean);
   }
   return set;
+}
+
+function unionIdSets(...sets: Set<string>[]): Set<string> {
+  const result = new Set<string>();
+  for (const set of sets) {
+    for (const id of set) result.add(id);
+  }
+  return result;
 }
 
 function configuredSkillIds(agent?: AgentDefinition): string[] {
@@ -158,6 +166,9 @@ export default function Chat() {
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const variablesPanelRef = useRef<HTMLDivElement>(null);
   const sseControllerRef = useRef<AbortController | null>(null);
+  const sseConnectionSeqRef = useRef(0);
+  const activeSseSessionIdRef = useRef<string | null>(null);
+  const cancelledSessionIdsRef = useRef<Set<string>>(new Set());
   const hydrateRequestSeqRef = useRef(0);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
@@ -166,6 +177,13 @@ export default function Chat() {
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  const abortSSE = useCallback(() => {
+    sseConnectionSeqRef.current += 1;
+    activeSseSessionIdRef.current = null;
+    sseControllerRef.current?.abort();
+    sseControllerRef.current = null;
   }, []);
 
   // All published agents for chat (my + others, filtered by status)
@@ -277,17 +295,23 @@ export default function Chat() {
     if (!agent) return;
 
     const skills = agent.skills || [];
-    setLoadedSkillIds(cleanIdSet(configuredSkillIds(agent)));
+    const defaultSkillIds = cleanIdSet(configuredSkillIds(agent));
+    setLoadedSkillIds(prev => sessionId ? unionIdSets(defaultSkillIds, prev) : defaultSkillIds);
     if (skills.length > 0) {
       setLoadedNames(prev => { const m = new Map(prev); for (const s of skills) m.set(s.id, s.name); return m; });
     }
     const subAgents = agent.sub_agents || [];
-    setLoadedSubAgentIds(cleanIdSet(configuredSubAgentIds(agent)));
+    const defaultSubAgentIds = cleanIdSet(configuredSubAgentIds(agent));
+    setLoadedSubAgentIds(prev => sessionId ? unionIdSets(defaultSubAgentIds, prev) : defaultSubAgentIds);
     if (subAgents.length > 0) {
       setLoadedNames(prev => { const m = new Map(prev); for (const a of subAgents) m.set(a.id, a.name); return m; });
     }
 
     // Initialize dataset draft from agent definition
+    if (sessionId) {
+      setDraftDatasetConfigs([]);
+      return;
+    }
     const dsConfig = agent.dataset_config;
     if (dsConfig && dsConfig.length > 0) {
       setDraftDatasetConfigs(dsConfig.map(c => ({
@@ -297,7 +321,7 @@ export default function Chat() {
     } else {
       setDraftDatasetConfigs([]);
     }
-  }, [agents, selectedAgentId]);
+  }, [agents, selectedAgentId, sessionId]);
 
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
@@ -308,8 +332,8 @@ export default function Chat() {
     // Reset all session-scoped state synchronously before fetching new history.
     // This guarantees any pending SSE callbacks from the previous session can't
     // bleed into the next one, and any open drawer is closed.
-    sseControllerRef.current?.abort();
-    sseControllerRef.current = null;
+    abortSSE();
+    composerRef.current?.reset();
     setSessionId(session.id);
     setMessages([]);
     setSessionArtifacts([]);
@@ -321,31 +345,59 @@ export default function Chat() {
     setIsThinking(false);
     setStatus('idle');
     setVisibleMessageLimit(INITIAL_VISIBLE_MESSAGES);
+    setLoadedToolIds(new Set());
+    setLoadedSkillIds(new Set());
+    setLoadedSubAgentIds(new Set());
+    setPreToolIds(new Set());
+    setPreSkillIds(new Set());
+    setPreSubAgentIds(new Set());
+    setSelectedToolIds(new Set());
+    setSelectedSkillIds(new Set());
+    setSelectedAgentIds(new Set());
+    setLoadedNames(new Map());
+    setDraftDatasetConfigs([]);
+    setShowConfigModal(false);
+    setShowSkillPicker(false);
+    setShowAgentPicker(false);
+    streamingContentRef.current = '';
+    streamingThinkingRef.current = '';
     try {
-      const [res, sessionStatus] = await Promise.all([
+      const [res, sessionStatus, sessionInfo] = await Promise.all([
         sessionApi.history(session.id),
         sessionApi.status(session.id).catch(() => null),
+        sessionApi.getInfo(session.id).catch(() => null),
       ]);
       if (!isCurrentHydration()) return;
+      const sessionAgentId = sessionInfo?.agent_id || session.agent_id;
+      const sessionAgent = agents.find(a => a.id === sessionAgentId);
+      const loadedToolIdsFromInfo = cleanIdSet((sessionInfo?.loaded_tools || []).map(t => t.id));
+      const loadedSkillIdsFromInfo = cleanIdSet(sessionInfo?.loaded_skill_ids || []);
+      const loadedSubAgentIdsFromInfo = cleanIdSet(sessionInfo?.loaded_sub_agent_ids || []);
+      const defaultSkillIds = cleanIdSet(configuredSkillIds(sessionAgent));
+      const defaultSubAgentIds = cleanIdSet(configuredSubAgentIds(sessionAgent));
+      setLoadedToolIds(loadedToolIdsFromInfo);
+      setLoadedSkillIds(unionIdSets(defaultSkillIds, loadedSkillIdsFromInfo));
+      setLoadedSubAgentIds(unionIdSets(defaultSubAgentIds, loadedSubAgentIdsFromInfo));
       const hydrated = historyToChatMessages(res.messages || []);
       // A trailing user message means the agent reply may not be persisted yet. Keep
       // a hidden placeholder so future/replayed SSE chunks have a slot to fill, but
       // only show running when the backend says the turn is currently active.
       const lastMsg = hydrated[hydrated.length - 1];
       const mayHavePendingReply = lastMsg?.role === 'user';
-      const turnInProgress = sessionStatus?.status === 'running';
+      const locallyCancelled = cancelledSessionIdsRef.current.has(session.id);
+      const turnInProgress = sessionStatus?.status === 'running' && !locallyCancelled;
       if ((turnInProgress || mayHavePendingReply) && lastMsg?.role !== 'agent') {
         hydrated.push({ role: 'agent', segments: [], timestamp: new Date().toISOString() });
       }
       setMessages(hydrated);
       setSessionArtifacts(res.artifacts || []);
-      if (session.agent_id && agents.some(a => a.id === session.agent_id)) {
-        setSelectedAgentId(session.agent_id);
+      if (sessionAgentId) {
+        setSelectedAgentId(sessionAgentId);
       }
       if (turnInProgress) {
         setStatus('running');
       }
-      if (turnInProgress || mayHavePendingReply) {
+      if (turnInProgress) {
         // Reconnect SSE so the backend replays any buffered in-progress events
         // (text chunks, tool calls, etc.) and resumes live streaming. If a prior
         // turn was cancelled, no event will arrive and the placeholder remains hidden.
@@ -356,7 +408,7 @@ export default function Chat() {
       console.warn('failed to hydrate session history', e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agents]);
+  }, [abortSSE, agents]);
 
   // Hydrate from URL ?sessionId=... — user returning from Sessions page
   useEffect(() => {
@@ -460,6 +512,16 @@ export default function Chat() {
   }, [myAgents, otherAgents, searchParams]);
 
   const handleSSEEvent = useCallback((event: SseEvent) => {
+    const eventType = event.type?.toLowerCase();
+    if (event.sessionId && cancelledSessionIdsRef.current.has(event.sessionId)) {
+      if (eventType === 'status_change') {
+        const statusEvent = event as SseStatusChangeEvent;
+        if (statusEvent.status === 'running') return;
+      } else if (eventType !== 'turn_complete' && eventType !== 'error') {
+        return;
+      }
+    }
+
     switch (event.type) {
       case 'TEXT_CHUNK':
       case 'text_chunk': {
@@ -686,6 +748,12 @@ export default function Chat() {
       }
       case 'TURN_COMPLETE':
       case 'turn_complete': {
+        const completeEvent = event as SseTurnCompleteEvent;
+        if (completeEvent.cancelled) {
+          if (completeEvent.sessionId) cancelledSessionIdsRef.current.add(completeEvent.sessionId);
+        } else if (completeEvent.sessionId) {
+          cancelledSessionIdsRef.current.delete(completeEvent.sessionId);
+        }
         setIsThinking(false);
         setStatus('idle');
         setAwaitInfo(null);
@@ -694,6 +762,9 @@ export default function Chat() {
           if (prev.length === 0) return prev;
           const last = prev[prev.length - 1];
           if (last.role !== 'agent') return prev;
+          if (completeEvent.cancelled && !hasAnySegments(last.segments)) {
+            return prev.slice(0, -1);
+          }
           const updated = [...prev];
           updated[updated.length - 1] = { ...last, timestamp: new Date().toISOString() };
           return updated;
@@ -723,9 +794,12 @@ export default function Chat() {
       case 'STATUS_CHANGE':
       case 'status_change': {
         const statusEvent = event as SseStatusChangeEvent;
-        if (statusEvent.status === 'idle' || statusEvent.status === 'waiting') {
+        if (statusEvent.status === 'idle' || statusEvent.status === 'waiting' || statusEvent.status === 'error') {
           setStatus('idle');
+          setIsThinking(false);
+          setAwaitInfo(null);
         } else if (statusEvent.status === 'running') {
+          if (statusEvent.sessionId && cancelledSessionIdsRef.current.has(statusEvent.sessionId)) break;
           setStatus('running');
         }
         break;
@@ -745,6 +819,55 @@ export default function Chat() {
           setCompressionInfo({ before: compressionEvent.before_count, after: compressionEvent.after_count });
           setTimeout(() => setCompressionInfo(null), 5000);
         }
+        break;
+      }
+      case 'ENVIRONMENT_OUTPUT_CHUNK':
+      case 'environment_output_chunk': {
+        const outputEvent = event as SseEnvironmentOutputChunkEvent;
+        const chunk = outputEvent.chunk || '';
+        if (!chunk) break;
+        setMessages(prev => {
+          const updated = [...prev];
+          let last = updated[updated.length - 1];
+          if (!last || last.role !== 'agent') {
+            last = { role: 'agent', segments: [], timestamp: new Date().toISOString() };
+            updated.push(last);
+          }
+          const segments = [...(last.segments || [])];
+          let toolsSegIdx = segments.findIndex(s => s.type === 'tools');
+          if (toolsSegIdx < 0) {
+            segments.push({ type: 'tools', tools: [] });
+            toolsSegIdx = segments.length - 1;
+          }
+          const toolsSeg = segments[toolsSegIdx] as ToolsSegment;
+          let changed = false;
+          const appendOutput = (tool: ToolEvent): ToolEvent => {
+            let next = tool;
+            if (tool.callId === outputEvent.call_id) {
+              changed = true;
+              next = { ...tool, output: (tool.output || '') + chunk };
+            }
+            if (tool.children) {
+              const children = tool.children.map(appendOutput);
+              if (children !== tool.children && children.some((child, idx) => child !== tool.children![idx])) {
+                next = { ...next, children };
+              }
+            }
+            return next;
+          };
+          let tools = toolsSeg.tools.map(appendOutput);
+          if (!changed) {
+            tools = [...tools, {
+              type: 'start',
+              tool: outputEvent.source || 'environment',
+              callId: outputEvent.call_id,
+              output: chunk,
+            }];
+          }
+          segments[toolsSegIdx] = { ...toolsSeg, tools };
+          updated[updated.length - 1] = { ...last, segments };
+          return updated;
+        });
         break;
       }
       case 'SANDBOX':
@@ -783,17 +906,22 @@ export default function Chat() {
 
   // Connect SSE - single source of truth
   const doConnectSSE = useCallback((sid: string) => {
-    if (sseControllerRef.current) {
-      sseControllerRef.current.abort();
-      sseControllerRef.current = null;
-    }
+    abortSSE();
+    const connectionSeq = ++sseConnectionSeqRef.current;
+    activeSseSessionIdRef.current = sid;
     const controller = sessionApi.connectSSE(
       sid,
-      handleSSEEvent,
+      (event) => {
+        if (sseConnectionSeqRef.current !== connectionSeq || activeSseSessionIdRef.current !== sid) return;
+        if (event.sessionId && event.sessionId !== sid) return;
+        handleSSEEvent(event);
+      },
       (err) => {
+        if (sseConnectionSeqRef.current !== connectionSeq || activeSseSessionIdRef.current !== sid) return;
         console.error('SSE error:', err);
         if (sseControllerRef.current === controller) {
           sseControllerRef.current = null;
+          activeSseSessionIdRef.current = null;
         }
         const msg = err instanceof Error ? err.message : String(err);
         showToast(`Connection lost: ${msg}. Please retry.`);
@@ -810,8 +938,9 @@ export default function Chat() {
       () => {
         // Only act if this controller is still the active one,
         // preventing a stale onClose from affecting a newer connection.
-        if (sseControllerRef.current === controller) {
+        if (sseConnectionSeqRef.current === connectionSeq && sseControllerRef.current === controller) {
           sseControllerRef.current = null;
+          activeSseSessionIdRef.current = null;
           setStatus('idle');
           setIsThinking(false);
           setAwaitInfo(null);
@@ -819,20 +948,20 @@ export default function Chat() {
       },
     );
     sseControllerRef.current = controller;
-  }, [handleSSEEvent, showToast]);
+  }, [abortSSE, handleSSEEvent, showToast]);
 
   // Cleanup SSE on unmount. Session changes are handled explicitly by
   // doConnectSSE() and handleNewChat(); aborting from this effect can cancel
   // the first connection created immediately after a new sessionId is set.
   useEffect(() => {
     return () => {
-      sseControllerRef.current?.abort();
-      sseControllerRef.current = null;
+      abortSSE();
     };
-  }, []);
+  }, [abortSSE]);
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (sessionId) {
+      cancelledSessionIdsRef.current.delete(sessionId);
       // Always reconnect SSE before sending a new message to ensure a fresh stream.
       // The old SSE connection may appear alive (sseControllerRef still set) even
       // after TURN_COMPLETE if the server keeps the connection open. Aborting and
@@ -856,6 +985,7 @@ export default function Chat() {
     });
     const id = res.sessionId;
     setSessionId(id);
+    cancelledSessionIdsRef.current.delete(id);
     doConnectSSE(id);
 
     // Update loaded state from server response
@@ -891,6 +1021,7 @@ export default function Chat() {
     if ((!text && attachments.length === 0) || status !== 'idle' || !selectedAgentId) return;
 
     hydrateRequestSeqRef.current += 1;
+    if (sessionId) cancelledSessionIdsRef.current.delete(sessionId);
     setMessages(prev => [...prev, {
       role: 'user',
       segments: [{ type: 'text', content: text }],
@@ -931,7 +1062,7 @@ export default function Chat() {
       setIsThinking(false);
       showToast(`Send failed: ${msg}. Please retry.`);
     }
-  }, [ensureSession, selectedAgentId, showToast, status, variableValues]);
+  }, [ensureSession, selectedAgentId, sessionId, showToast, status, variableValues]);
 
   const handleApproval = useCallback(async (decision: 'APPROVE' | 'DENY') => {
     if (!sessionId || !awaitInfo) return;
@@ -950,19 +1081,18 @@ export default function Chat() {
   }, [sessionId, awaitInfo]);
 
   const handleCancel = useCallback(() => {
-    sseControllerRef.current?.abort();
-    sseControllerRef.current = null;
+    if (sessionId) cancelledSessionIdsRef.current.add(sessionId);
+    abortSSE();
     setStatus('idle');
     setIsThinking(false);
     setAwaitInfo(null);
     setPlanTodos(null);
     if (sessionId) sessionApi.cancel(sessionId).catch(() => {});
-  }, [sessionId]);
+  }, [abortSSE, sessionId]);
 
   const handleNewChat = useCallback(() => {
     hydrateRequestSeqRef.current += 1;
-    sseControllerRef.current?.abort();
-    sseControllerRef.current = null;
+    abortSSE();
     composerRef.current?.reset();
     // Intentionally NOT calling sessionApi.close(sessionId): the previous session
     // may still be streaming an agent reply. Closing it forcibly cancels the turn
@@ -985,13 +1115,20 @@ export default function Chat() {
     setPreToolIds(new Set());
     setPreSkillIds(new Set());
     setPreSubAgentIds(new Set());
+    setSelectedToolIds(new Set());
+    setSelectedSkillIds(new Set());
+    setSelectedAgentIds(new Set());
     setLoadedNames(new Map());
+    setDraftDatasetConfigs([]);
+    setShowConfigModal(false);
+    setShowSkillPicker(false);
+    setShowAgentPicker(false);
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     sessionStorage.removeItem('chat_messages');
     sessionStorage.removeItem('chat_sessionId');
     sessionStorage.removeItem('chat_artifacts');
-  }, []);
+  }, [abortSSE]);
 
   const handleSelectAgent = useCallback((id: string, agent?: AgentDefinition) => {
     if (agent && !agents.find(a => a.id === agent.id)) {

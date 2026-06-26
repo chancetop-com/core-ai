@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -96,6 +97,10 @@ public class SessionRebuildManager {
         }
         state.fromAgent = true;
         state.agentConfig = buildSnapshotFromDefinition(definition);
+        var defaultSubAgentIds = definition.publishedConfig != null && definition.publishedConfig.subAgentIds != null
+                ? definition.publishedConfig.subAgentIds
+                : definition.subAgentIds;
+        state.subAgentIds = IdLists.clean(defaultSubAgentIds);
         populateDynamicLoads(state, meta);
         return state;
     }
@@ -109,8 +114,15 @@ public class SessionRebuildManager {
             state.skillIds = IdLists.clean(meta.loadedSkillIds);
         }
         if (meta.loadedSubAgentIds != null && !meta.loadedSubAgentIds.isEmpty()) {
-            state.subAgentIds = IdLists.clean(meta.loadedSubAgentIds);
+            state.subAgentIds = mergeIds(state.subAgentIds, meta.loadedSubAgentIds);
         }
+    }
+
+    private List<String> mergeIds(List<String> first, List<String> second) {
+        var merged = new LinkedHashSet<String>();
+        merged.addAll(IdLists.clean(first));
+        merged.addAll(IdLists.clean(second));
+        return new ArrayList<>(merged);
     }
 
     private SessionState.AgentConfigSnapshot buildSnapshotFromDefinition(AgentDefinition def) {

@@ -2,6 +2,7 @@ package ai.core.server.messaging;
 
 import ai.core.api.server.session.EventType;
 import ai.core.api.server.session.sse.SseBaseEvent;
+import ai.core.api.server.session.sse.SseBatchToolStartEvent;
 import ai.core.api.server.session.sse.SseCompressionEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SsePlanUpdateEvent;
@@ -37,6 +38,7 @@ public class SseEventHelper {
         TYPE_MAP.put(SsePlanUpdateEvent.class, EventType.PLAN_UPDATE);
         TYPE_MAP.put(SseCompressionEvent.class, EventType.COMPRESSION);
         TYPE_MAP.put(SseSandboxEvent.class, EventType.SANDBOX);
+        TYPE_MAP.put(SseBatchToolStartEvent.class, EventType.BATCH_TOOL_START);
         TYPE_MAP.put(SseEnvironmentOutputChunkEvent.class, EventType.ENVIRONMENT_OUTPUT_CHUNK);
     }
 
@@ -56,6 +58,7 @@ public class SseEventHelper {
             Map.entry(EventType.PLAN_UPDATE, SsePlanUpdateEvent.class),
             Map.entry(EventType.COMPRESSION, SseCompressionEvent.class),
             Map.entry(EventType.SANDBOX, SseSandboxEvent.class),
+            Map.entry(EventType.BATCH_TOOL_START, SseBatchToolStartEvent.class),
             Map.entry(EventType.ENVIRONMENT_OUTPUT_CHUNK, SseEnvironmentOutputChunkEvent.class)
     );
 

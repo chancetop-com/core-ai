@@ -141,6 +141,7 @@ public class InProcessCommandHandler {
     private void handleCancelTurn(SessionCommand command) {
         var session = sessionManager.getSession(command.sessionId());
         session.cancelTurn();
+        publishCancelAcknowledged(command.sessionId());
     }
 
     private void handleCloseSession(SessionCommand command) {
@@ -177,6 +178,17 @@ public class InProcessCommandHandler {
             eventPublisher.publish(command.sessionId(), status);
         } catch (Throwable publishError) {
             LOGGER.warn("failed to publish command error event, sessionId={}", command.sessionId(), publishError);
+        }
+    }
+
+    private void publishCancelAcknowledged(String sessionId) {
+        if (sessionId == null || eventPublisher == null) return;
+        try {
+            var status = new SseStatusChangeEvent();
+            status.status = SessionStatus.IDLE;
+            eventPublisher.publish(sessionId, status);
+        } catch (Throwable publishError) {
+            LOGGER.warn("failed to publish cancel acknowledgement, sessionId={}", sessionId, publishError);
         }
     }
 

@@ -48,8 +48,34 @@ public class SessionChannelService {
         sseEvent.timestamp = ZonedDateTime.now();
         setEventType(sseEvent);
 
-        var isTurnComplete = sseEvent instanceof SseTurnCompleteEvent;
+        var isRunningStatus = sseEvent instanceof SseStatusChangeEvent statusChange
+                && statusChange.status == SessionStatus.RUNNING;
+        var isErrorStatus = sseEvent instanceof SseStatusChangeEvent statusChange
+                && statusChange.status == SessionStatus.ERROR;
+        var isTerminalEvent = sseEvent instanceof SseTurnCompleteEvent
+                || sseEvent instanceof SseErrorEvent
+                || sseEvent instanceof SseStatusChangeEvent statusChange
+                && statusChange.status != SessionStatus.RUNNING;
         synchronized (state) {
+            if (isRunningStatus) {
+                state.eventBuffer.clear();
+                state.overflowLogged = false;
+                state.replayTerminated = false;
+            } else if (isTerminalEvent) {
+                // Keep the terminal event itself for status/reconnect, but drop all
+                // previously buffered stream chunks so cancelled/completed turns do not replay.
+                if (isErrorStatus) {
+                    state.eventBuffer.removeIf(event -> !(event instanceof SseErrorEvent));
+                } else {
+                    state.eventBuffer.clear();
+                }
+                state.overflowLogged = false;
+                state.replayTerminated = true;
+            } else if (state.replayTerminated && isTurnActivityEvent(sseEvent)) {
+                LOGGER.debug("dropping late session event after terminal state, sessionId={}, event={}",
+                        sessionId, sseEvent.getClass().getSimpleName());
+                return;
+            }
             if (state.eventBuffer.size() >= MAX_BUFFER_SIZE) {
                 state.eventBuffer.removeFirst();
                 if (!state.overflowLogged) {
@@ -59,12 +85,11 @@ public class SessionChannelService {
             }
             state.eventBuffer.addLast(sseEvent);
             channelService.send(sessionId, sseEvent);
-            if (isTurnComplete) {
-                // turn finished — persisted message is now in history, no need to replay further
-                state.eventBuffer.clear();
-                state.overflowLogged = false;
-            }
         }
+    }
+
+    private boolean isTurnActivityEvent(SseBaseEvent sseEvent) {
+        return !(sseEvent instanceof SseStatusChangeEvent) && !(sseEvent instanceof SseTurnCompleteEvent) && !(sseEvent instanceof SseErrorEvent);
     }
 
     private void setEventType(SseBaseEvent sseEvent) {
@@ -90,6 +115,10 @@ public class SessionChannelService {
             sseEvent.type = EventType.COMPRESSION;
         } else if (sseEvent instanceof ai.core.api.server.session.sse.SseSandboxEvent) {
             sseEvent.type = EventType.SANDBOX;
+        } else if (sseEvent instanceof ai.core.api.server.session.sse.SseBatchToolStartEvent) {
+            sseEvent.type = EventType.BATCH_TOOL_START;
+        } else if (sseEvent instanceof ai.core.api.server.session.sse.SseEnvironmentOutputChunkEvent) {
+            sseEvent.type = EventType.ENVIRONMENT_OUTPUT_CHUNK;
         }
     }
 
@@ -133,5 +162,6 @@ public class SessionChannelService {
     private static final class SessionChannelState {
         final Deque<SseBaseEvent> eventBuffer = new ArrayDeque<>();
         boolean overflowLogged;
+        boolean replayTerminated;
     }
 }
