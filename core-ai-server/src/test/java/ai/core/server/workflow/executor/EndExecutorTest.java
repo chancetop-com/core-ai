@@ -51,6 +51,18 @@ class EndExecutorTest {
     }
 
     @Test
+    void explicitArtifactsSelectorsAreReturnedInFlowOrder() {
+        var pool = new VariablePool(Map.of("draft", "d", "report", "r"), Map.of(
+            "draft", List.of(ref("f1", "draft.md")),
+            "report", List.of(ref("f2", "report.pdf"))), "{}");
+        var outcome = new EndExecutor().execute(ctx(pool,
+            Map.of("artifacts", List.of("nodes.report.artifacts", "nodes.draft.artifacts"))));
+
+        var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
+        assertEquals(List.of("f1", "f2"), normal.artifacts().stream().map(r -> r.fileId).toList());
+    }
+
+    @Test
     void explicitSelectorsAcceptTemplateBracesAndIgnoreNonArtifactEntries() {
         var pool = new VariablePool(Map.of("report", "r"), Map.of(
             "report", List.of(ref("f2", "report.pdf"))), "{}");
@@ -78,7 +90,7 @@ class EndExecutorTest {
         var outcome = new EndExecutor().execute(ctx(pool, Map.of("output", "files: {{ nodes.scratch.artifacts }}")));
 
         var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
-        assertEquals(List.of("f1", "f2", "tmp"), normal.artifacts().stream().map(r -> r.fileId).toList());
+        assertEquals(List.of("tmp", "f1", "f2"), normal.artifacts().stream().map(r -> r.fileId).toList());
     }
 
     @Test

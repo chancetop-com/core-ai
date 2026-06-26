@@ -225,6 +225,35 @@ export function visibleSourceIds(nodes: WorkflowRFNode[], edges: Edge[], selfId:
   return computeDominators(nodes, edges).get(selfId) ?? new Set([selfId]);
 }
 
+export function flowOrderRanks(nodes: WorkflowRFNode[], edges: Edge[]): Map<string, number> {
+  const ids = nodes.map((n) => n.id);
+  const known = new Set(ids);
+  const indegree = new Map(ids.map((id) => [id, 0]));
+  const outgoing = new Map(ids.map((id) => [id, [] as string[]]));
+  for (const e of edges) {
+    if (!known.has(e.source) || !known.has(e.target)) continue;
+    outgoing.get(e.source)!.push(e.target);
+    indegree.set(e.target, (indegree.get(e.target) ?? 0) + 1);
+  }
+
+  const queue = ids.filter((id) => (indegree.get(id) ?? 0) === 0);
+  const ranks = new Map<string, number>();
+  for (let i = 0; i < queue.length; i++) {
+    const id = queue[i];
+    if (ranks.has(id)) continue;
+    ranks.set(id, ranks.size);
+    for (const target of outgoing.get(id) ?? []) {
+      const next = (indegree.get(target) ?? 0) - 1;
+      indegree.set(target, next);
+      if (next === 0) queue.push(target);
+    }
+  }
+  for (const id of ids) {
+    if (!ranks.has(id)) ranks.set(id, ranks.size);
+  }
+  return ranks;
+}
+
 // Transitive predecessors of selfId (every node that can reach it via directed edges), excluding selfId. Cycle-safe.
 function ancestorIds(edges: Edge[], selfId: string): Set<string> {
   const preds = new Map<string, string[]>();

@@ -4,10 +4,14 @@ import ai.core.server.domain.ArtifactRef;
 import ai.core.server.workflow.ArtifactStaging;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.engine.WorkflowEdge;
+import ai.core.server.workflow.engine.WorkflowGraph;
 import core.framework.json.JSON;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -87,15 +91,89 @@ public final class OutputComposer {
     public static List<ArtifactRef> composeDeliverables(NodeContext ctx) {
         Object declared = ctx.node().config().get("artifacts");
         if (!(declared instanceof List<?> selectors) || selectors.isEmpty()) {
-            return composeArtifacts(ctx);
+            return defaultDeliverables(ctx);
         }
-        var lists = new ArrayList<List<ArtifactRef>>();
+        var groups = new ArrayList<ArtifactGroup>();
+        int sequence = 0;
         for (Object entry : selectors) {
             if (entry instanceof String selector) {
-                artifactsNodeId(selector).ifPresent(nodeId -> lists.add(ctx.pool().artifactsOf(nodeId)));
+                Optional<String> nodeId = artifactsNodeId(selector);
+                if (nodeId.isPresent()) {
+                    groups.add(new ArtifactGroup(nodeId.get(), ctx.pool().artifactsOf(nodeId.get()), sequence));
+                }
+            }
+            sequence++;
+        }
+        return unionInFlowOrder(ctx, groups);
+    }
+
+    private static List<ArtifactRef> defaultDeliverables(NodeContext ctx) {
+        var groups = new ArrayList<ArtifactGroup>();
+        int sequence = 0;
+        for (String predId : predecessorIds(ctx)) {
+            groups.add(new ArtifactGroup(predId, ctx.pool().artifactsOf(predId), sequence++));
+        }
+        if (ctx.node().config().get("output") instanceof String output) {
+            for (ArtifactStaging.ReferencedFiles refs : ArtifactStaging.referencedFileGroups(output, ctx.pool())) {
+                groups.add(new ArtifactGroup(refs.nodeId(), refs.artifacts(), sequence++));
             }
         }
-        return ArtifactRef.union(lists);
+        return unionInFlowOrder(ctx, groups);
+    }
+
+    private static List<ArtifactRef> unionInFlowOrder(NodeContext ctx, List<ArtifactGroup> groups) {
+        Map<String, Integer> ranks = flowRanks(ctx.graph());
+        groups.sort(Comparator
+            .comparingInt((ArtifactGroup group) -> ranks.getOrDefault(group.nodeId(), Integer.MAX_VALUE))
+            .thenComparingInt(ArtifactGroup::sequence));
+
+        var seen = new LinkedHashSet<String>();
+        var merged = new ArrayList<ArtifactRef>();
+        for (ArtifactGroup group : groups) {
+            if (group.artifacts() == null) continue;
+            for (ArtifactRef ref : group.artifacts()) {
+                if (ref.fileId == null || seen.add(ref.fileId)) merged.add(ref);
+            }
+        }
+        return merged;
+    }
+
+    private static Map<String, Integer> flowRanks(WorkflowGraph graph) {
+        var indegree = new LinkedHashMap<String, Integer>();
+        var outgoing = new LinkedHashMap<String, List<String>>();
+        for (var node : graph.nodes()) {
+            indegree.put(node.id(), 0);
+            outgoing.put(node.id(), new ArrayList<>());
+        }
+        for (WorkflowEdge edge : graph.edges()) {
+            if (!outgoing.containsKey(edge.source()) || !indegree.containsKey(edge.target())) continue;
+            outgoing.get(edge.source()).add(edge.target());
+            indegree.put(edge.target(), indegree.get(edge.target()) + 1);
+        }
+
+        var queue = new ArrayDeque<String>();
+        for (Map.Entry<String, Integer> entry : indegree.entrySet()) {
+            if (entry.getValue() == 0) queue.add(entry.getKey());
+        }
+
+        var ranks = new LinkedHashMap<String, Integer>();
+        while (!queue.isEmpty()) {
+            String id = queue.removeFirst();
+            if (ranks.containsKey(id)) continue;
+            ranks.put(id, ranks.size());
+            for (String target : outgoing.getOrDefault(id, List.of())) {
+                int next = indegree.get(target) - 1;
+                indegree.put(target, next);
+                if (next == 0) queue.add(target);
+            }
+        }
+        for (String id : indegree.keySet()) {
+            ranks.putIfAbsent(id, ranks.size());
+        }
+        return ranks;
+    }
+
+    private record ArtifactGroup(String nodeId, List<ArtifactRef> artifacts, int sequence) {
     }
 
     // "nodes.<id>.artifacts" (with optional surrounding {{ }} the editor may emit) -> the source node id.

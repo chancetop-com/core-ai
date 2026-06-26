@@ -71,15 +71,33 @@ public final class ArtifactStaging {
      * caller's {@link ArtifactRef#union} to fold.
      */
     public static List<ArtifactRef> referencedFiles(String template, VariablePool pool) {
+        var refs = new ArrayList<ArtifactRef>();
+        for (ReferencedFiles group : referencedFileGroups(template, pool)) {
+            refs.addAll(group.artifacts());
+        }
+        return refs;
+    }
+
+    /** Same as {@link #referencedFiles}, but keeps the source node id for flow-order delivery sorting. */
+    public static List<ReferencedFiles> referencedFileGroups(String template, VariablePool pool) {
         if (template == null || template.isBlank()) {
             return List.of();
         }
-        var refs = new ArrayList<ArtifactRef>();
+        var groups = new ArrayList<ReferencedFiles>();
         Matcher matcher = TEMPLATE_REFERENCE.matcher(template);
         while (matcher.find()) {
-            refs.addAll(referencedRefs(matcher.group(1), matcher.group(2), pool));
+            List<ArtifactRef> refs = referencedRefs(matcher.group(1), matcher.group(2), pool);
+            if (!refs.isEmpty()) {
+                groups.add(new ReferencedFiles(matcher.group(1), refs));
+            }
         }
-        return refs;
+        return groups;
+    }
+
+    public record ReferencedFiles(String nodeId, List<ArtifactRef> artifacts) {
+        public ReferencedFiles {
+            artifacts = artifacts == null ? List.of() : List.copyOf(artifacts);
+        }
     }
 
     private static void collect(String nodeId, String suffix, VariablePool pool, Map<String, SandboxService.StagedFile> out) {

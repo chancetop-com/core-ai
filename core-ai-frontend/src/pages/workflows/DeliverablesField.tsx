@@ -1,7 +1,7 @@
 import { type CSSProperties } from 'react';
 import type { Edge } from '@xyflow/react';
 import { Paperclip } from 'lucide-react';
-import type { WorkflowRFNode } from './graph';
+import { flowOrderRanks, type WorkflowRFNode } from './graph';
 import { variableGroups } from './variables';
 
 const ARTIFACTS_SELECTOR = /^nodes\.[^.]+\.artifacts$/;
@@ -16,9 +16,16 @@ export default function DeliverablesField({ nodes, edges, selfId, value, onChang
 }) {
   // Match candidates by selector shape (nodes.<id>.artifacts), not field label — a run-input field literally
   // named "artifacts" exposes `sys.input.artifacts` which the backend's node selector would never accept.
+  const ranks = flowOrderRanks(nodes, edges);
+  const nodeIndex = new Map(nodes.map((n, i) => [n.id, i]));
   const candidates = variableGroups(nodes, edges, selfId)
     .map((g) => ({ id: g.key, name: g.nodeName, color: g.color, selector: g.fields.find((f) => ARTIFACTS_SELECTOR.test(f.selector))?.selector }))
-    .filter((c) => c.selector) as { id: string; name: string; color: string; selector: string }[];
+    .filter((c) => c.selector)
+    .sort((a, b) =>
+      (ranks.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (ranks.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+      || (nodeIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (nodeIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER)) as {
+        id: string; name: string; color: string; selector: string
+      }[];
 
   const live = new Set(candidates.map((c) => c.selector));
   // Selectors stored for a node since deleted/disconnected from END: still shown so the user can untick them —
