@@ -17,6 +17,7 @@ import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.ConflictException;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
@@ -240,7 +241,10 @@ public class ToolRegistryService {
     }
 
     private ToolRegistry createMcpServerInternal(String name, String description, String category,
-                                                 Map<String, String> config, Boolean enabled, String rawConfig) {
+                                                   Map<String, String> config, Boolean enabled, String rawConfig) {
+        if (findMcpServerByName(name).isPresent()) {
+            throw new ConflictException("mcp server name already exists: " + name);
+        }
         var configMap = new HashMap<String, Object>(config);
         McpServerConfig.fromMap(name, configMap);
 
@@ -286,6 +290,10 @@ public class ToolRegistryService {
             String name = entry.getKey();
             if (!(entry.getValue() instanceof Map<?, ?> serverConf)) {
                 LOGGER.warn("skipping invalid mcp server config for '{}', expected object", name);
+                continue;
+            }
+            if (findMcpServerByName(name).isPresent()) {
+                LOGGER.warn("skipping duplicate mcp server, name={}", name);
                 continue;
             }
             var config = convertImportConfigToMap((Map<String, Object>) serverConf);
@@ -336,7 +344,12 @@ public class ToolRegistryService {
         boolean configChanged = false;
         boolean enabledChanged = false;
 
-        if (name != null) entity.name = name;
+        if (name != null && !name.equals(entity.name)) {
+            if (findMcpServerByName(name).isPresent()) {
+                throw new ConflictException("mcp server name already exists: " + name);
+            }
+            entity.name = name;
+        }
         if (description != null) entity.description = description;
         if (category != null) entity.category = category;
         if (config != null) {
@@ -551,6 +564,12 @@ public class ToolRegistryService {
 
     private static boolean isSandboxHosted(ToolRegistry entity) {
         return entity.config != null && "sandbox_hosted".equalsIgnoreCase(entity.config.get("transport"));
+    }
+
+    private java.util.Optional<ToolRegistry> findMcpServerByName(String name) {
+        return toolRegistryCollection.findOne(Filters.and(
+                Filters.eq("type", ToolType.MCP.name()),
+                Filters.eq("name", name)));
     }
 
     public McpClientManager.ConnectionState getMcpServerState(String serverId) {
