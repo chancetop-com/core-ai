@@ -1,5 +1,6 @@
 package ai.core.api.server;
 
+import ai.core.api.server.run.TriggerRunResponse;
 import ai.core.api.server.schedule.AgentScheduleView;
 import ai.core.api.server.schedule.CreateScheduleRequest;
 import ai.core.api.server.schedule.ListSchedulesResponse;
@@ -37,4 +38,8 @@ public interface AgentScheduleWebService {
     @DELETE
     @Path("/api/schedules/:id")
     void delete(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/schedules/:id/trigger")
+    TriggerRunResponse trigger(@PathParam("id") String id);
 }

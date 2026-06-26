@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Calendar, Edit2, Trash2, X } from 'lucide-react';
+import { Plus, Calendar, Edit2, Trash2, X, Play } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, AgentScheduleView, CreateScheduleRequest, UpdateScheduleRequest } from '../../api/client';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
@@ -162,6 +162,17 @@ export default function Scheduler() {
     load();
   };
 
+  const triggerRun = async (s: AgentScheduleView) => {
+    const agentName = agentMap[s.agent_id]?.name ?? s.agent_id;
+    if (!confirm(`Trigger a run now for "${s.name?.trim() || agentName}"?`)) return;
+    try {
+      const result = await api.schedules.trigger(s.id);
+      alert(`Run triggered successfully (run_id: ${result.run_id})`);
+    } catch (e) {
+      alert(`Failed to trigger run: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -263,6 +274,11 @@ export default function Scheduler() {
                     </button>
                   </td>
                   <td className="px-4 py-3 text-right">
+                    <button onClick={() => triggerRun(s)}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1"
+                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-primary)' }} title="Run Now">
+                      <Play size={14} />
+                    </button>
                     <button onClick={() => openEdit(s)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1"
                       style={{ borderColor: 'var(--color-border)' }} title="Edit">
