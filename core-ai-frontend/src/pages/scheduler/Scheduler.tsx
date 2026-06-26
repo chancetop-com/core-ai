@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Calendar, Edit2, Trash2, X } from 'lucide-react';
+import { Plus, Calendar, Edit2, Trash2, Play, X } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, AgentScheduleView, CreateScheduleRequest, UpdateScheduleRequest } from '../../api/client';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
@@ -58,6 +58,8 @@ export default function Scheduler() {
   const [filterAgentId, setFilterAgentId] = useState<string>('');
   const [filterEnabled, setFilterEnabled] = useState<'all' | 'enabled' | 'disabled'>('all');
   const [editor, setEditor] = useState<EditorState>(emptyEditor());
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [triggerMsg, setTriggerMsg] = useState<{ id: string; ok: boolean; text: string } | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -162,6 +164,19 @@ export default function Scheduler() {
     load();
   };
 
+  const triggerRun = async (s: AgentScheduleView) => {
+    setRunningId(s.id);
+    setTriggerMsg(null);
+    try {
+      const res = await api.agents.trigger(s.agent_id, s.input || '');
+      setTriggerMsg({ id: s.id, ok: true, text: `Run triggered: ${res.run_id}` });
+    } catch (e) {
+      setTriggerMsg({ id: s.id, ok: false, text: `Trigger failed: ${e instanceof Error ? e.message : e}` });
+    } finally {
+      setRunningId(null);
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -262,9 +277,20 @@ export default function Scheduler() {
                         style={{ transform: s.enabled ? 'translateX(22px)' : 'translateX(2px)' }} />
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right flex items-center justify-end gap-1">
+                    {triggerMsg?.id === s.id && (
+                      <span className={`text-xs mr-1 ${triggerMsg.ok ? '' : ''}`}
+                        style={{ color: triggerMsg.ok ? 'var(--color-text-secondary)' : '#e5484d' }}>
+                        {triggerMsg.ok ? '✓' : '✗'}
+                      </span>
+                    )}
+                    <button onClick={() => triggerRun(s)} disabled={runningId === s.id}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer disabled:opacity-40"
+                      style={{ borderColor: 'var(--color-border)' }} title="Trigger Run">
+                      <Play size={14} style={{ color: 'var(--color-primary)' }} />
+                    </button>
                     <button onClick={() => openEdit(s)}
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1"
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer"
                       style={{ borderColor: 'var(--color-border)' }} title="Edit">
                       <Edit2 size={14} />
                     </button>
