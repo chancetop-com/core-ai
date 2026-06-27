@@ -26,6 +26,7 @@ import java.util.Set;
 public class OcgSandboxService {
     private static final Logger LOGGER = LoggerFactory.getLogger(OcgSandboxService.class);
     private static final String CONFIG_PATH = "/tmp/ocg.json";
+    private static final String DEFAULT_CONFIG_PATH = "/root/.openclaw-channel-gateway/ocg.json";
     private static final String GATEWAY_LOG_PATH = "/tmp/ocg.log";
     private static final String TERMINAL_LOG_PATH = "/tmp/ocg-terminal.log";
     private static final String TERMINAL_WORK_DIR = "/root/ocg-work";
@@ -61,8 +62,7 @@ public class OcgSandboxService {
             runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " && chmod 777 " + TERMINAL_WORK_DIR, 10);
             var sandboxIp = sandbox.ip();
             if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
-            var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxIp, sandbox.port());
-            sandbox.uploadFile(CONFIG_PATH, ocgJson.getBytes(StandardCharsets.UTF_8));
+            uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
             startGatewayProcess(sandbox);
             runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
             config.sandboxId = sandbox.getId();
@@ -106,7 +106,7 @@ public class OcgSandboxService {
         var sandbox = requireSandbox(ocgConfigId);
         var sandboxIp = sandbox.ip();
         if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
-        patchRuntimeInjectedConfig(sandbox, config, sandboxIp, sandbox.port());
+        uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
         stopGatewayProcess(sandbox);
         startGatewayProcess(sandbox);
         runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
@@ -152,14 +152,12 @@ public class OcgSandboxService {
     private void recoverGatewayProcess(OcgConfigView config, Sandbox sandbox) {
         var sandboxIp = sandbox.ip();
         if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
+        uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
         var restarted = false;
         try {
             runCommand(sandbox, ocgProcessCheckCommand(), 15);
         } catch (RuntimeException e) {
             LOGGER.info("OCG gateway process is not running, restarting, id={}, sandboxId={}", config.id, config.sandboxId);
-            runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " && chmod 777 " + TERMINAL_WORK_DIR, 10);
-            var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxIp, sandbox.port());
-            sandbox.uploadFile(CONFIG_PATH, ocgJson.getBytes(StandardCharsets.UTF_8));
             stopGatewayProcess(sandbox);
             startGatewayProcess(sandbox);
             runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
@@ -244,17 +242,11 @@ public class OcgSandboxService {
         runCommand(sandbox, "OCG_CONFIG_PATH=" + CONFIG_PATH + " nohup ocg start > " + GATEWAY_LOG_PATH + " 2>&1 &", 10);
     }
 
-    private void patchRuntimeInjectedConfig(Sandbox sandbox, OcgConfigView config, String sandboxHost, int sandboxPort) {
-        var callbackSecret = config.callbackSecret == null ? "" : config.callbackSecret;
-        var filter = ".agentUrl = $agentUrl | .async = true | .callbackHost = \"0.0.0.0\" | .callbackPort = "
-                + DEFAULT_CALLBACK_PORT + " | .callbackPublicHost = $callbackPublicHost | .callbackPublicPort = ($callbackPublicPort | tonumber) | del(.apiKey) | if $callbackSecret == \"\" then del(.callbackSecret) else .callbackSecret = $callbackSecret end";
-        runCommand(sandbox,
-                "tmp=$(mktemp) && jq --arg agentUrl " + shellQuote(agentUrl(config.channelId, serverUrlFromSandbox()))
-                        + " --arg callbackPublicHost " + shellQuote(sandboxHost)
-                        + " --arg callbackPublicPort " + shellQuote(String.valueOf(sandboxPort))
-                        + " --arg callbackSecret " + shellQuote(callbackSecret)
-                        + " " + shellQuote(filter) + " " + CONFIG_PATH + " > $tmp && mv $tmp " + CONFIG_PATH,
-                15);
+    private void uploadRuntimeConfig(Sandbox sandbox, OcgConfigView config, String sandboxHost, int sandboxPort) {
+        runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " /root/.openclaw-channel-gateway && chmod 777 " + TERMINAL_WORK_DIR, 10);
+        var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxHost, sandboxPort);
+        sandbox.uploadFile(CONFIG_PATH, ocgJson.getBytes(StandardCharsets.UTF_8));
+        runCommand(sandbox, "cp " + CONFIG_PATH + " " + DEFAULT_CONFIG_PATH, 10);
     }
 
     private void stopGatewayProcess(Sandbox sandbox) {
