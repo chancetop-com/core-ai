@@ -1,5 +1,7 @@
 package ai.core.server.channel.openclaw;
 
+import ai.core.sandbox.SandboxStatus;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.ChatMessageService;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
@@ -12,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HexFormat;
@@ -43,6 +46,8 @@ public class OcgCallbackPool {
     ChatMessageService chatMessageService;
     @Inject
     OcgConfigStore ocgConfigStore;
+    @Inject
+    SandboxService sandboxService;
 
     public void submit(String sessionId, String callbackUrl, String channelId, int initialMessageCount) {
         executor.submit(() -> callback(sessionId, callbackUrl, channelId, initialMessageCount));
@@ -52,10 +57,11 @@ public class OcgCallbackPool {
         var reply = pollForResponse(sessionId, initialMessageCount);
         var config = ocgConfigStore.loadByChannelId(channelId);
         var callbackSecret = config == null ? null : config.callbackSecret;
+        var resolvedCallbackUrl = resolveCallbackUrl(callbackUrl, config);
         if (reply != null) {
-            postCallback(callbackUrl, reply, false, callbackSecret);
+            postCallback(resolvedCallbackUrl, reply, false, callbackSecret);
         } else {
-            postCallback(callbackUrl, "Agent did not respond within timeout", true, callbackSecret);
+            postCallback(resolvedCallbackUrl, "Agent did not respond within timeout", true, callbackSecret);
         }
     }
 
@@ -77,6 +83,36 @@ public class OcgCallbackPool {
             }
         }
         return null;
+    }
+
+    private String resolveCallbackUrl(String callbackUrl, OcgConfigView config) {
+        if (config == null || config.sandboxId == null || config.sandboxId.isBlank()) return callbackUrl;
+        URI uri;
+        try {
+            uri = URI.create(callbackUrl);
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("invalid OCG callback url, url={}", callbackUrl);
+            return callbackUrl;
+        }
+        var port = uri.getPort();
+        var host = uri.getHost();
+        if (port != 3457 || !isLocalCallbackHost(host)) return callbackUrl;
+        var sandbox = sandboxService.getSandbox(sandboxSessionId(config.id));
+        if (sandbox == null || sandbox.getStatus() == SandboxStatus.TERMINATED || sandbox.getStatus() == SandboxStatus.ERROR) {
+            LOGGER.warn("OCG sandbox unavailable while resolving callback url, configId={}, sandboxId={}, url={}", config.id, config.sandboxId, callbackUrl);
+            return callbackUrl;
+        }
+        var resolved = "http://" + sandbox.ip() + ":" + sandbox.port() + uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+        LOGGER.info("rewrote OCG callback url via sandbox runtime, original={}, resolved={}", callbackUrl, resolved);
+        return resolved;
+    }
+
+    private boolean isLocalCallbackHost(String host) {
+        return "127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host) || "0.0.0.0".equals(host);
+    }
+
+    private String sandboxSessionId(String id) {
+        return "ocg-" + id;
     }
 
     private void postCallback(String url, String reply, boolean isError, String secret) {
