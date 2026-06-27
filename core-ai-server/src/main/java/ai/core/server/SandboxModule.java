@@ -29,39 +29,43 @@ class SandboxModule extends Module {
 
     @Override
     protected void initialize() {
-        property("sys.sandbox.provider").ifPresent(p -> {
-            SandboxProvider provider;
-            String serverUrlFromSandbox;
-            if (p.equalsIgnoreCase("kubernetes")) {
-                provider = createKubernetesSandboxProvider();
-                serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
-            } else if (p.equalsIgnoreCase("agent-sandbox")) {
-                provider = createAgentSandboxProvider();
-                serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
-            } else if (p.equalsIgnoreCase("docker")) {
-                var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
-                var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
-                provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
-                serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
-            } else {
-                sandboxService = new SandboxService();
-                bind(sandboxService);
-                return;
-            }
-            sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox);
-            bind(sandboxService);
-            onShutdown(sandboxService::shutdown);
-        });
-        if (property("sys.sandbox.provider").isEmpty()) {
+        var providerName = property("sys.sandbox.provider").orElse(null);
+        if (providerName == null || providerName.isBlank()) {
             sandboxService = new SandboxService();
             bind(sandboxService);
+            return;
         }
+
+        SandboxProvider provider;
+        String serverUrlFromSandbox;
+        if (providerName.equalsIgnoreCase("kubernetes")) {
+            provider = createKubernetesSandboxProvider();
+            serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
+        } else if (providerName.equalsIgnoreCase("agent-sandbox")) {
+            provider = createAgentSandboxProvider();
+            serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
+        } else if (providerName.equalsIgnoreCase("docker")) {
+            var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
+            var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
+            provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
+            serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
+        } else {
+            sandboxService = new SandboxService();
+            bind(sandboxService);
+            return;
+        }
+        sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox);
+        bind(sandboxService);
+        onShutdown(sandboxService::shutdown);
     }
 
     // Sandbox lifetime in seconds, overridable via SYS_SANDBOX_TIMEOUT; defaults to createDefaultConfig (3900s).
     private SandboxConfig resolveDefaultConfig() {
         var config = SandboxService.createDefaultConfig();
-        property("sys.sandbox.timeout").ifPresent(v -> config.timeoutSeconds = Integer.parseInt(v.trim()));
+        property("sys.sandbox.timeout")
+                .map(String::trim)
+                .filter(v -> !v.isEmpty())
+                .ifPresent(v -> config.timeoutSeconds = Integer.parseInt(v));
         return config;
     }
 
