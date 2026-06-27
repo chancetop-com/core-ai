@@ -8,6 +8,7 @@ import core.framework.http.HTTPRequest;
 import core.framework.http.HTTPResponse;
 import core.framework.json.JSON;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -75,11 +76,8 @@ public class DockerClient {
             var container = containerOpt.get();
             var state = container.state != null ? container.state.status : null;
             if ("running".equals(state)) {
-                var hostPort = getMappedHostPort(container);
-                if (hostPort != null) return "127.0.0.1:" + hostPort;
-                // Fallback to container IP (Linux)
-                var ip = getContainerIP(container);
-                if (ip != null && !ip.isBlank()) return ip + ":" + RUNTIME_PORT;
+                var hostAndPort = hostAndPort(container);
+                if (hostAndPort != null) return hostAndPort;
             }
             if ("exited".equals(state)) {
                 throw new RuntimeException("Container exited unexpectedly: " + containerId);
@@ -107,10 +105,18 @@ public class DockerClient {
 
     public String hostAndPort(ContainerInfo container) {
         var hostPort = getMappedHostPort(container);
-        if (hostPort != null) return "127.0.0.1:" + hostPort;
+        if (hostPort != null) return dockerHost() + ":" + hostPort;
         var ip = getContainerIP(container);
         if (ip != null && !ip.isBlank()) return ip + ":" + RUNTIME_PORT;
         return null;
+    }
+
+    private String dockerHost() {
+        if (!socketPath.startsWith("tcp://")) return "127.0.0.1";
+        var uri = URI.create(socketPath);
+        var host = uri.getHost();
+        if (host == null || host.isBlank() || "0.0.0.0".equals(host)) return "127.0.0.1";
+        return host;
     }
 
     private String getMappedHostPort(ContainerInfo container) {

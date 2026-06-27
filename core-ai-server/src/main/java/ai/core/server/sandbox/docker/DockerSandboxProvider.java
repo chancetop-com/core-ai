@@ -68,7 +68,9 @@ public class DockerSandboxProvider implements SandboxProvider {
             var timeoutSeconds = effectiveConfig.timeoutSeconds != null
                     ? effectiveConfig.timeoutSeconds
                     : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
-            return new DockerSandbox(containerId, ip, timeoutSeconds, effectiveConfig.image);
+            var sandbox = new DockerSandbox(containerId, ip, timeoutSeconds, effectiveConfig.image);
+            sandbox.waitForReady();
+            return sandbox;
         } catch (Exception e) {
             LOGGER.error("failed to create docker sandbox: name={}", containerName, e);
             // Try to cleanup if partial creation happened

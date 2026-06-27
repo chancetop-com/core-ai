@@ -37,6 +37,10 @@ public class DockerSandbox implements Sandbox {
         this.createdAt = Instant.now();
     }
 
+    public void waitForReady() {
+        runtimeClient.waitForReady(30_000);
+    }
+
     @Override
     public boolean shouldIntercept(String toolName) {
         return SandboxConstants.INTERCEPTED_TOOLS.contains(toolName);
