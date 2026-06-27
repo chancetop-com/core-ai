@@ -44,7 +44,9 @@ public class SandboxService {
     private final SandboxManager sandboxManager;
     private final SandboxConfig defaultConfig;
     private final ScheduledExecutorService cleanupScheduler;
+    private final String serverUrlFromSandbox;
     private final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
+    private final Set<String> persistentSessionIds = ConcurrentHashMap.newKeySet();
     private final Map<String, List<PendingFile>> pendingFiles = new ConcurrentHashMap<>();
     // Per-session McpClientManager + the MCP server ids started on that session's sandbox.
     // Sandbox-hosted MCP servers live in these per-session managers (not the global one),
@@ -63,12 +65,18 @@ public class SandboxService {
         this.defaultConfig = new SandboxConfig();
         this.defaultConfig.enabled = false;
         this.cleanupScheduler = null;
+        this.serverUrlFromSandbox = null;
         this.enabled = false;
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig) {
+        this(provider, defaultConfig, null);
+    }
+
+    public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox) {
         this.sandboxManager = new SandboxManager(provider);
         this.defaultConfig = defaultConfig != null ? defaultConfig : createDefaultConfig();
+        this.serverUrlFromSandbox = serverUrlFromSandbox;
         this.enabled = true;
 
         this.cleanupScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -123,6 +131,12 @@ public class SandboxService {
 
         LOGGER.info("sandbox created for session: {}, config={}", sessionId, effectiveConfig);
         return lazySandbox;
+    }
+
+    public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId, boolean persistent) {
+        var sandbox = createSandbox(config, sessionId, userId, null);
+        if (persistent && sandbox != null) persistentSessionIds.add(sessionId);
+        return sandbox;
     }
 
     public void addPendingFile(String sessionId, String fileName, String container, String blobName) {
@@ -246,6 +260,27 @@ public class SandboxService {
         return sessionSandboxes.get(sessionId);
     }
 
+    public String serverUrlFromSandbox() {
+        return serverUrlFromSandbox;
+    }
+
+    public Sandbox attachSandbox(String sandboxId, SandboxConfig config, String sessionId, String userId) {
+        return attachSandbox(sandboxId, config, sessionId, userId, false);
+    }
+
+    public Sandbox attachSandbox(String sandboxId, SandboxConfig config, String sessionId, String userId, boolean persistent) {
+        if (!enabled) return null;
+        var attached = sandboxManager.attach(sandboxId, config, sessionId, userId);
+        if (attached.isEmpty()) return null;
+        sessionSandboxes.put(sessionId, attached.get());
+        if (persistent) persistentSessionIds.add(sessionId);
+        return attached.get();
+    }
+
+    public void markPersistentSandbox(String sessionId) {
+        persistentSessionIds.add(sessionId);
+    }
+
     /** Force a LazySandbox for the session to materialize. No-op when there is no sandbox or it's already ready. */
     public void ensureSandboxReady(String sessionId) {
         var sandbox = sessionSandboxes.get(sessionId);
@@ -264,6 +299,7 @@ public class SandboxService {
     public void releaseSandbox(String sessionId) {
         if (!enabled) return;
         var sandbox = sessionSandboxes.remove(sessionId);
+        persistentSessionIds.remove(sessionId);
         pendingFiles.remove(sessionId);
         // Stop the MCP processes started in this session's sandbox (best-effort — the
         // sandbox close that follows will reap them anyway, but explicit stop keeps the
@@ -283,7 +319,11 @@ public class SandboxService {
             }
         }
         if (sandbox != null) {
-            sandbox.close();
+            if (sandbox instanceof LazySandbox) {
+                sandbox.close();
+            } else {
+                sandboxManager.release(sandbox);
+            }
             LOGGER.info("sandbox released for session: {}", sessionId);
         }
     }
@@ -397,8 +437,8 @@ public class SandboxService {
         if (!enabled) return;
         LOGGER.info("shutting down sandbox service");
 
-        // Release all session sandboxes
         for (var entry : sessionSandboxes.entrySet()) {
+            if (persistentSessionIds.contains(entry.getKey())) continue;
             try {
                 entry.getValue().close();
             } catch (Exception e) {
@@ -406,6 +446,7 @@ public class SandboxService {
             }
         }
         sessionSandboxes.clear();
+        persistentSessionIds.clear();
         pendingFiles.clear();
         for (var mgr : sessionMcpManagers.values()) {
             try {

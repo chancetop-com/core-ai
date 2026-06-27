@@ -42,6 +42,7 @@ export default function Layout() {
       '/triggers': 'Triggers',
       '/triggers/webhook': 'Webhook Triggers',
       '/triggers/channels': 'Channels',
+      '/triggers/openclaw': 'OpenClaw',
       '/triggers/schedule': 'Scheduler',
     };
     const path = location.pathname;
@@ -69,7 +70,7 @@ export default function Layout() {
     if (to === '/datasets') return pathname === '/datasets' || pathname.startsWith('/datasets/');
     if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
     if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
-    if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule' || pathname === '/triggers/channels';
+    if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule' || pathname === '/triggers/channels' || pathname === '/triggers/openclaw';
     if (to === '/for-you') return pathname === '/for-you' || pathname.startsWith('/for-you/');
     return pathname === to;
   };
@@ -87,6 +88,7 @@ export default function Layout() {
     { to: '/triggers', icon: Zap, label: 'Triggers', show: true, children: [
       { to: '/triggers/webhook', icon: Webhook, label: 'Webhook', show: true },
       { to: '/triggers/channels', icon: Radio, label: 'Channels', show: true },
+      { to: '/triggers/openclaw', icon: Zap, label: 'OpenClaw', show: true },
       { to: '/triggers/schedule', icon: Calendar, label: 'Schedule', show: true },
     ]},
     { to: '/tools', icon: Wrench, label: 'Tools', show: true, children: [

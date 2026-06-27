@@ -105,6 +105,14 @@ public class DockerClient {
         return response.text();
     }
 
+    public String hostAndPort(ContainerInfo container) {
+        var hostPort = getMappedHostPort(container);
+        if (hostPort != null) return "127.0.0.1:" + hostPort;
+        var ip = getContainerIP(container);
+        if (ip != null && !ip.isBlank()) return ip + ":" + RUNTIME_PORT;
+        return null;
+    }
+
     private String getMappedHostPort(ContainerInfo container) {
         if (container.networkSettings != null && container.networkSettings.ports != null) {
             var bindings = container.networkSettings.ports.get(RUNTIME_PORT + "/tcp");

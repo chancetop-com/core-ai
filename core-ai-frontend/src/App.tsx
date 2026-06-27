@@ -43,6 +43,7 @@ const DatasetEditor = lazy(() => import('./pages/datasets/DatasetEditor'));
 const DatasetRecords = lazy(() => import('./pages/datasets/DatasetRecords'));
 const TriggersWebhook = lazy(() => import('./pages/triggers/TriggersWebhook'));
 const Channels = lazy(() => import('./pages/channels/Channels'));
+const OpenClaw = lazy(() => import('./pages/openclaw/OpenClaw'));
 const ForYou = lazy(() => import('./pages/for-you/ForYou'));
 const ArtifactList = lazy(() => import('./pages/artifacts/ArtifactList'));
 const SharedArtifact = lazy(() => import('./pages/shared/SharedArtifact'));
@@ -140,6 +141,7 @@ export default function App() {
                     {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<SystemPromptEditor />} />}
                     <Route path="/triggers/webhook" element={<TriggersWebhook />} />
                     <Route path="/triggers/channels" element={<Channels />} />
+                    <Route path="/triggers/openclaw" element={<OpenClaw />} />
                     <Route path="/triggers/schedule" element={<Scheduler />} />
                     <Route path="/triggers" element={<Navigate to="/triggers/webhook" replace />} />
                     {/* Backward compat: old /scheduler redirects to /triggers/schedule */}

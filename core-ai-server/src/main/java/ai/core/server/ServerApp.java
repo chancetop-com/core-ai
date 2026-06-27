@@ -6,6 +6,7 @@ import ai.core.server.apimcp.mcp.McpModule;
 import ai.core.server.apimcp.serviceapi.ServiceApiModule;
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.channel.ChannelConfigView;
+import ai.core.server.channel.openclaw.OcgConfigView;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
@@ -66,6 +67,7 @@ public class ServerApp extends App {
         mongo.collection(ToolRegistry.class);
         mongo.collection(AgentDefinition.class);
         mongo.collection(ChannelConfigView.class);
+        mongo.collection(OcgConfigView.class);
         mongo.collection(AgentSchedule.class);
         mongo.collection(AgentRun.class);
         mongo.collection(FileRecord.class);

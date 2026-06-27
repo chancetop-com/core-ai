@@ -15,6 +15,7 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -223,6 +224,76 @@ public class AgentSandboxProvider implements SandboxProvider {
     }
 
     // --- Release & Status ---
+
+    @Override
+    public Optional<Sandbox> attach(String sandboxId, SandboxConfig config, String sessionId, String userId) {
+        var effectiveConfig = config != null ? config : defaultConfig;
+        var timeoutSeconds = effectiveConfig.timeoutSeconds != null
+                ? effectiveConfig.timeoutSeconds
+                : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
+        if (useWarmPool()) return attachClaim(sandboxId, timeoutSeconds, effectiveConfig.image);
+        return attachDirect(sandboxId, timeoutSeconds, effectiveConfig.image);
+    }
+
+    private Optional<Sandbox> attachClaim(String claimName, int timeoutSeconds, String image) {
+        var claimOpt = extensionsClient.getClaim(claimName);
+        if (claimOpt.isEmpty()) return Optional.empty();
+        var claim = claimOpt.get();
+        if (claim.status == null || claim.status.sandbox == null) return Optional.empty();
+        var sandboxName = claim.status.sandbox.name;
+        String host;
+        int port = SandboxConstants.RUNTIME_PORT;
+        String serviceName = null;
+        if (useHostPort && kubernetesClient != null) {
+            serviceName = "svc-" + claimName;
+            var nodePort = findNodePort(serviceName);
+            if (nodePort == null) return Optional.empty();
+            host = "localhost";
+            port = nodePort;
+        } else if (claim.status.sandbox.podIPs != null && claim.status.sandbox.podIPs.length > 0) {
+            host = claim.status.sandbox.podIPs[0];
+        } else {
+            return Optional.empty();
+        }
+        var sandbox = new AgentSandbox(new AgentSandbox.Config(claimName, serviceName, host, port, timeoutSeconds, image, sandboxName));
+        return Optional.of(sandbox);
+    }
+
+    private Optional<Sandbox> attachDirect(String crName, int timeoutSeconds, String image) {
+        var crOpt = client.getSandbox(crName);
+        if (crOpt.isEmpty()) return Optional.empty();
+        var cr = crOpt.get();
+        if (cr.status == null) return Optional.empty();
+        String host;
+        int port = SandboxConstants.RUNTIME_PORT;
+        String serviceName = null;
+        if (useHostPort && kubernetesClient != null) {
+            serviceName = "svc-" + crName;
+            var nodePort = findNodePort(serviceName);
+            if (nodePort == null) return Optional.empty();
+            host = "localhost";
+            port = nodePort;
+        } else if (cr.status.serviceFQDN != null && !cr.status.serviceFQDN.isBlank()) {
+            host = cr.status.serviceFQDN;
+        } else if (cr.status.podIPs != null && cr.status.podIPs.length > 0) {
+            host = cr.status.podIPs[0];
+        } else {
+            return Optional.empty();
+        }
+        var sandbox = new AgentSandbox(new AgentSandbox.Config(crName, serviceName, host, port, timeoutSeconds, image, null));
+        return Optional.of(sandbox);
+    }
+
+    private Integer findNodePort(String serviceName) {
+        var services = kubernetesClient.listServices("component=sandbox");
+        return services.stream()
+                .filter(service -> serviceName.equals(service.metadata.name))
+                .filter(service -> service.spec != null && service.spec.ports != null && service.spec.ports.length > 0)
+                .map(service -> service.spec.ports[0].nodePort)
+                .filter(port -> port != null)
+                .findFirst()
+                .orElse(null);
+    }
 
     @Override
     public void release(Sandbox sandbox) {

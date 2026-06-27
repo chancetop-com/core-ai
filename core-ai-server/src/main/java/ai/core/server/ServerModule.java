@@ -113,6 +113,11 @@ import ai.core.server.channel.telegram.TelegramOutboundAdapter;
 import ai.core.server.channel.weclaw.WeClawInboundAdapter;
 import ai.core.server.channel.weclaw.WeClawOutboundAdapter;
 import ai.core.server.channel.ChannelSyncController;
+import ai.core.server.channel.openclaw.OcgCallbackPool;
+import ai.core.server.channel.openclaw.OcgConfigController;
+import ai.core.server.channel.openclaw.OcgConfigStore;
+import ai.core.server.channel.openclaw.OcgHealthCheckJob;
+import ai.core.server.channel.openclaw.OcgSandboxService;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
 import ai.core.server.web.ArtifactWebServiceImpl;
 import ai.core.server.web.ChatSessionController;
@@ -174,6 +179,8 @@ public class ServerModule extends Module {
         bind(RequestAuthenticator.class);
         var store = bind(ChannelConfigStore.class);         // must be before AuthInterceptor — AuthInterceptor checks per-channel auth
         onStartup(store::loadAllFromDb);
+        var ocgConfigStore = bind(OcgConfigStore.class);
+        onStartup(ocgConfigStore::loadAllFromDb);
         http().intercept(bind(AuthInterceptor.class));
         var corsInterceptor = bind(CorsInterceptor.class);
         http().intercept(corsInterceptor);
@@ -217,6 +224,7 @@ public class ServerModule extends Module {
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
         schedule().fixedRate("tool-registry-sync", bind(ToolRegistrySyncJob.class), Duration.ofSeconds(30));
         schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
+        schedule().fixedRate("ocg-health-check", bind(OcgHealthCheckJob.class), Duration.ofMinutes(1));
         var memoryConsolidationJob = bind(AgentMemoryConsolidationJob.class);
         memoryConsolidationJob.extractionModel = property("agent.memory.extraction.model")
                 .map(String::trim)
@@ -289,6 +297,11 @@ public class ServerModule extends Module {
         bind(UserService.class);
         var triggerService = bind(TriggerService.class);
         triggerService.publicUrl = publicUrl;
+        var ocgSandboxService = bind(OcgSandboxService.class);
+        ocgSandboxService.publicUrl = publicUrl;
+        onStartup(ocgSandboxService::recoverOnStartup);
+        var ocgCallbackPool = bind(OcgCallbackPool.class);
+        onShutdown(ocgCallbackPool::shutdown);
         bind(RunAgentAction.class);
 
         var memoryController = bind(AgentMemoryController.class);
@@ -487,6 +500,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/triggers/webhook", controller::serve);
         http().route(HTTPMethod.GET, "/triggers/schedule", controller::serve);
         http().route(HTTPMethod.GET, "/triggers/channels", controller::serve);
+        http().route(HTTPMethod.GET, "/triggers/openclaw", controller::serve);
         http().route(HTTPMethod.GET, "/tools/builtin", controller::serve);
         http().route(HTTPMethod.GET, "/settings", controller::serve);
         http().route(HTTPMethod.GET, "/settings/users", controller::serve);
@@ -558,6 +572,17 @@ public class ServerModule extends Module {
         // OpenAI-compatible sync endpoint for all channels
         var channelSync = bind(ChannelSyncController.class);
         http().route(HTTPMethod.POST, "/api/channels/:channelId/v1/chat/completions", channelSync);
+
+        var ocgConfigController = bind(OcgConfigController.class);
+        http().route(HTTPMethod.GET, "/api/admin/ocg-configs", ocgConfigController::list);
+        http().route(HTTPMethod.POST, "/api/admin/ocg-configs", ocgConfigController::create);
+        http().route(HTTPMethod.GET, "/api/admin/ocg-configs/:id", ocgConfigController::get);
+        http().route(HTTPMethod.PUT, "/api/admin/ocg-configs/:id", ocgConfigController::update);
+        http().route(HTTPMethod.DELETE, "/api/admin/ocg-configs/:id", ocgConfigController::delete);
+        http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/start", ocgConfigController::start);
+        http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/stop", ocgConfigController::stop);
+        http().route(HTTPMethod.GET, "/api/admin/ocg-configs/:id/status", ocgConfigController::status);
+
         http().route(HTTPMethod.GET, "/api/admin/channels", channelAdmin::list);
         http().route(HTTPMethod.POST, "/api/admin/channels", channelAdmin::create);
         http().route(HTTPMethod.GET, "/api/admin/channels/:channelId", channelAdmin::get);

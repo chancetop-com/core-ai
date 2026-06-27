@@ -1129,6 +1129,24 @@ export const api = {
     types: () =>
       request<ChannelTypesResponse>('/api/admin/channel-types'),
   },
+  ocg: {
+    list: () =>
+      request<ListOcgConfigsResponse>('/api/admin/ocg-configs'),
+    get: (id: string) =>
+      request<OcgConfigResponse>(`/api/admin/ocg-configs/${id}`),
+    create: (data: Record<string, unknown>) =>
+      request<OcgConfigResponse>('/api/admin/ocg-configs', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Record<string, unknown>) =>
+      request<OcgConfigResponse>(`/api/admin/ocg-configs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/api/admin/ocg-configs/${id}`, { method: 'DELETE' }),
+    start: (id: string) =>
+      request<OcgConfigResponse>(`/api/admin/ocg-configs/${id}/start`, { method: 'POST' }),
+    stop: (id: string) =>
+      request<OcgConfigResponse>(`/api/admin/ocg-configs/${id}/stop`, { method: 'POST' }),
+    status: (id: string) =>
+      request<OcgStatusResponse>(`/api/admin/ocg-configs/${id}/status`),
+  },
   datasets: {
     list: (q?: string, offset?: number, limit?: number) => {
       const params = new URLSearchParams();
@@ -1436,4 +1454,34 @@ export interface ChannelTypeInfo {
 
 export interface ChannelTypesResponse {
   types: ChannelTypeInfo[];
+}
+
+export type OcgSandboxStatus = 'stopped' | 'running' | 'error';
+
+export interface OcgConfigView {
+  id: string;
+  channelId: string;
+  channelName?: string;
+  configJson: string;
+  callbackSecret?: string;
+  enabled?: boolean;
+  sandboxId?: string;
+  sandboxIp?: string;
+  sandboxStatus: OcgSandboxStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OcgConfigResponse {
+  config: OcgConfigView;
+}
+
+export interface ListOcgConfigsResponse {
+  configs: OcgConfigView[];
+}
+
+export interface OcgStatusResponse {
+  status: OcgSandboxStatus;
+  sandboxId?: string;
+  sandboxIp?: string;
 }

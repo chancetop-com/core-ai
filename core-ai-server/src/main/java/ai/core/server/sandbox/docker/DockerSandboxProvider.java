@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -83,6 +84,22 @@ public class DockerSandboxProvider implements SandboxProvider {
         } catch (Exception cleanupError) {
             LOGGER.warn("failed to cleanup container after creation failure: name={}", containerName, cleanupError);
         }
+    }
+
+    @Override
+    public Optional<Sandbox> attach(String sandboxId, SandboxConfig config, String sessionId, String userId) {
+        var containerOpt = dockerClient.getContainer(sandboxId);
+        if (containerOpt.isEmpty()) return Optional.empty();
+        var container = containerOpt.get();
+        var state = container.state != null ? container.state.status : null;
+        if (!"running".equals(state)) return Optional.empty();
+        var effectiveConfig = config != null ? config : defaultConfig;
+        var hostAndPort = dockerClient.hostAndPort(container);
+        if (hostAndPort == null || hostAndPort.isBlank()) return Optional.empty();
+        var timeoutSeconds = effectiveConfig.timeoutSeconds != null
+                ? effectiveConfig.timeoutSeconds
+                : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
+        return Optional.of(new DockerSandbox(sandboxId, hostAndPort, timeoutSeconds, effectiveConfig.image));
     }
 
     @Override

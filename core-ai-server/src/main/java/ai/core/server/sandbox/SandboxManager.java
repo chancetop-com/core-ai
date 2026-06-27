@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -41,6 +42,22 @@ public class SandboxManager {
         LOGGER.debug("sandbox acquired: id={}, sessionId={}, activeCount={}", sandbox.getId(), sessionId, activeSandboxes.size());
 
         return sandbox;
+    }
+
+    public Optional<Sandbox> attach(String sandboxId, SandboxConfig config, String sessionId, String userId) {
+        var sandbox = provider.attach(sandboxId, config, sessionId, userId);
+        sandbox.ifPresent(value -> {
+            var entry = new SandboxEntry(value, sessionId, userId, config, Instant.now());
+            activeSandboxes.put(value.getId(), entry);
+            acquireCount.incrementAndGet();
+            LOGGER.info("sandbox attached: id={}, sessionId={}, activeCount={}", value.getId(), sessionId, activeSandboxes.size());
+        });
+        return sandbox;
+    }
+
+    public Sandbox get(String sandboxId) {
+        var entry = activeSandboxes.get(sandboxId);
+        return entry == null ? null : entry.sandbox;
     }
 
     public void release(Sandbox sandbox) {

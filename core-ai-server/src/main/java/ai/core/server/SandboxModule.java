@@ -13,6 +13,7 @@ import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import core.framework.module.Module;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -21,26 +22,33 @@ import java.nio.file.Path;
  */
 class SandboxModule extends Module {
 
+    private static final String DOCKER_SERVER_HOST = "host.docker.internal";
+    private static final String KUBERNETES_SERVER_HOST = "core-ai-server";
+
     SandboxService sandboxService;
 
     @Override
     protected void initialize() {
         property("sys.sandbox.provider").ifPresent(p -> {
             SandboxProvider provider;
+            String serverUrlFromSandbox;
             if (p.equalsIgnoreCase("kubernetes")) {
                 provider = createKubernetesSandboxProvider();
+                serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
             } else if (p.equalsIgnoreCase("agent-sandbox")) {
                 provider = createAgentSandboxProvider();
+                serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
             } else if (p.equalsIgnoreCase("docker")) {
                 var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
                 var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
                 provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
+                serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
             } else {
                 sandboxService = new SandboxService();
                 bind(sandboxService);
                 return;
             }
-            sandboxService = new SandboxService(provider, resolveDefaultConfig());
+            sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox);
             bind(sandboxService);
             onShutdown(sandboxService::shutdown);
         });
@@ -65,6 +73,29 @@ class SandboxModule extends Module {
         } catch (Exception e) {
             return "core-ai-sandbox";
         }
+    }
+
+    private String resolveServerUrlFromSandbox(String defaultHost) {
+        var configured = property("sys.sandbox.server.url").orElse(null);
+        if (configured != null && !configured.isBlank()) return trimTrailingSlash(configured.trim());
+        var publicUrl = property("sys.public.url").orElse("http://localhost:8080");
+        var uri = URI.create(publicUrl);
+        var scheme = uri.getScheme() != null ? uri.getScheme() : "http";
+        var port = resolvePublicUrlPort(uri);
+        return scheme + "://" + defaultHost + (port != null ? ":" + port : "");
+    }
+
+    private Integer resolvePublicUrlPort(URI uri) {
+        if (uri.getPort() >= 0) return uri.getPort();
+        var scheme = uri.getScheme();
+        if ("http".equalsIgnoreCase(scheme)) return 80;
+        if ("https".equalsIgnoreCase(scheme)) return 443;
+        return null;
+    }
+
+    private String trimTrailingSlash(String url) {
+        if (url.endsWith("/")) return url.substring(0, url.length() - 1);
+        return url;
     }
 
     private SandboxProvider createKubernetesSandboxProvider() {

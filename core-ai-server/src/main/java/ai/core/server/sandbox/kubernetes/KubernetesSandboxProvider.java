@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
+import java.util.Optional;
 import ai.core.server.sandbox.kubernetes.KubernetesClient.PodInfo;
 
 /**
@@ -131,6 +132,37 @@ public class KubernetesSandboxProvider implements SandboxProvider {
         } catch (Exception cleanupError) {
             LOGGER.warn("failed to cleanup pod after creation failure: name={}", podName, cleanupError);
         }
+    }
+
+    @Override
+    public Optional<Sandbox> attach(String sandboxId, SandboxConfig config, String sessionId, String userId) {
+        var effectiveConfig = config != null ? config : defaultConfig;
+        var podOpt = kubernetesClient.getPod(sandboxId);
+        if (podOpt.isEmpty()) return Optional.empty();
+        var pod = podOpt.get();
+        if (!"Running".equals(pod.getPhase())) return Optional.empty();
+        var podIp = pod.getIp();
+        if (podIp == null || podIp.isBlank()) return Optional.empty();
+        var timeoutSeconds = effectiveConfig.timeoutSeconds != null
+                ? effectiveConfig.timeoutSeconds
+                : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
+        Sandbox sandbox;
+        if (useHostPort) {
+            var serviceName = "svc-" + sandboxId;
+            var services = kubernetesClient.listServices("component=sandbox");
+            var nodePort = services.stream()
+                    .filter(service -> serviceName.equals(service.metadata.name))
+                    .filter(service -> service.spec != null && service.spec.ports != null && service.spec.ports.length > 0)
+                    .map(service -> service.spec.ports[0].nodePort)
+                    .filter(port -> port != null)
+                    .findFirst()
+                    .orElse(null);
+            if (nodePort == null) return Optional.empty();
+            sandbox = new KubernetesSandbox(sandboxId, serviceName, "localhost", nodePort, timeoutSeconds, effectiveConfig.image);
+        } else {
+            sandbox = new KubernetesSandbox(sandboxId, podIp, timeoutSeconds, effectiveConfig.image);
+        }
+        return Optional.of(sandbox);
     }
 
     @Override

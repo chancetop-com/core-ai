@@ -102,7 +102,8 @@ public class ChannelAdminController {
         var types = List.of(
             Map.of("type", "slack", "label", "Slack"),
             Map.of("type", "telegram", "label", "Telegram"),
-            Map.of("type", "weclaw", "label", "WeClaw (WeChat)")
+            Map.of("type", "weclaw", "label", "WeClaw (WeChat)"),
+            Map.of("type", "openclaw", "label", "OpenClaw")
         );
         var resp = JSON.toJSON(Map.of("types", types));
         return Response.text(resp);

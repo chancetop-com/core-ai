@@ -35,7 +35,6 @@ public class AuthInterceptor implements Interceptor {
             return invocation.proceed();
         }
 
-        // Per-channel auth control: channels with requireAuth=false skip authentication
         if (path.startsWith("/api/channels/")) {
             var channelId = extractChannelId(path);
             if (channelId != null) {

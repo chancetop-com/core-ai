@@ -2,11 +2,14 @@ package ai.core.server.channel;
 
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.channel.openclaw.OcgCallbackPool;
+import ai.core.server.channel.openclaw.OcgConfigStore;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.utils.JsonUtil;
+import core.framework.api.http.HTTPStatus;
 import core.framework.inject.Inject;
 import core.framework.web.Controller;
 import core.framework.web.Request;
@@ -48,6 +51,10 @@ public class ChannelSyncController implements Controller {
     ChatMessageService chatMessageService;
     @Inject
     CommandPublisher commandPublisher;
+    @Inject
+    OcgCallbackPool ocgCallbackPool;
+    @Inject
+    OcgConfigStore ocgConfigStore;
 
     @Override
     @SuppressWarnings("unchecked")
@@ -67,8 +74,15 @@ public class ChannelSyncController implements Controller {
         if (userText == null) throw new BadRequestException("no user message found in request");
 
         var channelId = request.pathParam("channelId");
+        var callbackUrl = request.header("X-OCG-Callback").orElse(null);
+        if (callbackUrl != null && !callbackUrl.isBlank()) {
+            authenticateOcg(channelId);
+        }
         var channel = channelConfigStore.load(channelId);
         if (channel == null) throw new NotFoundException("channel not configured: " + channelId + ", create it in Channels page");
+        if (callbackUrl != null && !callbackUrl.isBlank() && !"openclaw".equals(channel.channelType)) {
+            throw new BadRequestException("OCG async callback is only supported for openclaw channels");
+        }
         if (channel.agentId == null || channel.agentId.isBlank())
             throw new BadRequestException("channel " + channelId + " has no agent configured");
 
@@ -78,11 +92,24 @@ public class ChannelSyncController implements Controller {
         var userId = channel.userId != null ? channel.userId : channelId + ":" + UUID.randomUUID().toString().substring(0, 8);
 
         var userField = (String) payload.get("user");
-        var isNewConversation = countUserMessages(payload) == 1;
+        var asyncOcg = callbackUrl != null && !callbackUrl.isBlank();
+        var isNewConversation = !asyncOcg && countUserMessages(payload) == 1;
 
         String sessionId;
+        int initialMessageCount;
         if (userField != null && !isNewConversation && sessionCache.containsKey(userField)) {
             sessionId = sessionCache.get(userField);
+            try {
+                sessionManager.getSession(sessionId);
+                initialMessageCount = chatMessageService.history(sessionId).size();
+            } catch (NotFoundException e) {
+                sessionCache.remove(userField, sessionId);
+                var config = new SessionConfig();
+                var result = sessionManager.createSessionFromAgent(agent, config, userId, "channel-" + channelId);
+                sessionId = result.sessionId();
+                sessionCache.put(userField, sessionId);
+                initialMessageCount = 0;
+            }
             chatMessageService.writeUserMessage(sessionId, userText);
             var command = SessionCommand.sendMessage(sessionId, userId, userText, null);
             commandPublisher.publish(command);
@@ -94,6 +121,7 @@ public class ChannelSyncController implements Controller {
             var config = new SessionConfig();
             var result = sessionManager.createSessionFromAgent(agent, config, userId, "channel-" + channelId);
             sessionId = result.sessionId();
+            initialMessageCount = 0;
             if (userField != null) {
                 sessionCache.put(userField, sessionId);
             }
@@ -104,6 +132,11 @@ public class ChannelSyncController implements Controller {
             commandPublisher.publish(command);
 
             LOGGER.info("sync dispatch (new), channelId={}, sessionId={}, agentId={}, user={}, textLen={}", channelId, sessionId, channel.agentId, userField, userText.length());
+        }
+
+        if (callbackUrl != null && !callbackUrl.isBlank()) {
+            ocgCallbackPool.submit(sessionId, callbackUrl, channelId, initialMessageCount);
+            return Response.text(JsonUtil.toJson(Map.of("status", "accepted"))).status(HTTPStatus.ACCEPTED);
         }
 
         var response = pollForResponse(sessionId);
@@ -169,6 +202,11 @@ public class ChannelSyncController implements Controller {
             }
         }
         return null;
+    }
+
+    private void authenticateOcg(String channelId) {
+        var config = ocgConfigStore.loadByChannelId(channelId);
+        if (config == null || !Boolean.TRUE.equals(config.enabled)) throw new NotFoundException("OCG config not found for channel: " + channelId);
     }
 
     @SuppressWarnings("unchecked")
