@@ -48,9 +48,9 @@ public class AgentMemoryConsolidationJob implements Job {
     // - at least 5 tool calls in a single-turn session (real work was done).
     // This prevents memory bloat from meaningless sessions while preserving
     // deep single-run interactions that are the primary extraction target.
+    public static final String DEFAULT_EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
     private static final int MIN_MEANINGFUL_USER_TURNS = 3;
     private static final int MIN_TOOL_CALLS_FOR_SHORT_SESSION = 5;
-    private static final String EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
     private static final String EXTRACTION_PROMPT = """
             You maintain an agent's memory — a concise, stable set of reusable
             experiences that help the same agent perform more efficiently in future runs.
@@ -109,6 +109,8 @@ public class AgentMemoryConsolidationJob implements Job {
 
     @Inject
     AgentMemoryService agentMemoryService;
+
+    public String extractionModel = DEFAULT_EXTRACTION_MODEL;
 
     @Override
     public void execute(JobContext context) {
@@ -385,7 +387,7 @@ public class AgentMemoryConsolidationJob implements Job {
     private String callLLM(String prompt) {
         var provider = llmProviders.getProvider();
         var msgs = List.of(Message.of(RoleType.USER, prompt));
-        var request = CompletionRequest.of(msgs, null, provider.config.getTemperature(), EXTRACTION_MODEL, "memory-consolidator");
+        var request = CompletionRequest.of(msgs, null, provider.config.getTemperature(), extractionModel, "memory-consolidator");
         request.setTimeoutSeconds(120);
 
         var response = provider.completion(request);

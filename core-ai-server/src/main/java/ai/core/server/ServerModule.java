@@ -217,7 +217,12 @@ public class ServerModule extends Module {
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
         schedule().fixedRate("tool-registry-sync", bind(ToolRegistrySyncJob.class), Duration.ofSeconds(30));
         schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
-        schedule().fixedRate("agent-memory-consolidation", bind(AgentMemoryConsolidationJob.class), Duration.ofHours(1));
+        var memoryConsolidationJob = bind(AgentMemoryConsolidationJob.class);
+        memoryConsolidationJob.extractionModel = property("agent.memory.extraction.model")
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .orElse(AgentMemoryConsolidationJob.DEFAULT_EXTRACTION_MODEL);
+        schedule().fixedRate("agent-memory-consolidation", memoryConsolidationJob, Duration.ofHours(1));
         registerTrace();
         registerSystemPrompt();
         registerCapabilities();
