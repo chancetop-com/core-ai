@@ -1,47 +1,45 @@
 services:
-  # ============================================================
-  # MongoDB (requires replica set for core-ng framework)
-  # ============================================================
   mongo:
     image: mongo:7
     container_name: core-ai-mongo
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ ping: 1 }).ok"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 30s
 
-  # Initialize MongoDB replica set (runs once after mongo is healthy)
   mongo-init:
     image: mongo:7
     container_name: core-ai-mongo-init
     depends_on:
       mongo:
         condition: service_healthy
+    restart: "no"
     entrypoint:
       - bash
       - -c
       - |
-        echo "Waiting for MongoDB to be ready..."
-        sleep 3
-        mongosh --host mongo:27017 --eval "rs.initiate({
-          _id: 'rs0',
-          members: [{ _id: 0, host: 'localhost:27017' }]
-        })"
-        echo "Replica set initialized."
+        mongosh --host mongo:27017 --quiet --eval '
+          try {
+            rs.status();
+            print("Replica set already initialized.");
+          } catch (e) {
+            rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "mongo:27017" }] });
+            print("Replica set initialized.");
+          }
+        '
 
-  # ============================================================
-  # Redis
-  # ============================================================
   redis:
     image: redis:7-alpine
     container_name: core-ai-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
@@ -50,28 +48,45 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
 
-  # ============================================================
-  # Core-ai Server
-  # ============================================================
-  server:
+  core-ai-server:
     image: chancetop/core-ai-server:latest
+    pull_policy: always
     container_name: core-ai-server
+    restart: unless-stopped
     depends_on:
-      mongo:
-        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     ports:
-      - "8081:8080"
+      - "8080:8080"
+      - "8443:8443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      SYS_MONGO_URI: mongodb://mongo:27017/core-ai?
-      SYS_JEDIS_HOST: redis
-      APP_ENV: local
-      DEEPSEEK_API_KEY: *
-
+      SYS_HTTP_LISTEN: "8080"
+      SYS_MONGO_URI: "mongodb://mongo:27017/core-ai?replicaSet=rs0&directConnection=true"
+      SYS_JEDIS_HOST: "redis"
+      SYS_JEDIS_PORT: "6379"
+      SYS_PUBLIC_URL: "https://localhost:8443"
+      SYS_LOG_APPENDER: "console"
+      SYS_SESSION_HOST: "local"
+      SYS_ADMIN_EMAIL: "admin@example.com"
+      SYS_ADMIN_NAME: "Admin"
+      SYS_ADMIN_PASSWORD: "admin"
+      SYS_SANDBOX_PROVIDER: "docker"
+      SYS_SANDBOX_DOCKER_SOCKET: "tcp://host.docker.internal:2375"
+      SYS_SANDBOX_SERVER_URL: "http://host.docker.internal:8080"
+      CORE_AI_SERVER_OPTS: "-Dsys.sandbox.docker.socket=tcp://host.docker.internal:2375 -Dsys.sandbox.server.url=http://host.docker.internal:8080"
+      LLM_MODEL: "${LLM_MODEL:-gpt-5.5}"
+      AGENT_MEMORY_EXTRACTION_MODEL: "${AGENT_MEMORY_EXTRACTION_MODEL:-gpt-5-mini}"
 
 volumes:
   mongo-data:
+    name: core-ai_mongo-data
+    external: true
   redis-data:
+    name: core-ai_redis-data
+    external: true
