@@ -101,6 +101,28 @@ public class OcgConfigController {
         return json(body);
     }
 
+    public Response restart(Request request) {
+        var id = request.pathParam("id");
+        ocgSandboxService.restartGateway(id);
+        return json(Map.of("config", toMap(load(id))));
+    }
+
+    public Response command(Request request) {
+        var id = request.pathParam("id");
+        var payload = readPayload(request);
+        var command = (String) payload.get("command");
+        ocgSandboxService.runTerminalCommand(id, command);
+        return json(Map.of("ok", true));
+    }
+
+    public Response logs(Request request) {
+        var id = request.pathParam("id");
+        var params = request.queryParams();
+        var type = params.getOrDefault("type", "gateway");
+        var tail = Integer.parseInt(params.getOrDefault("tail", "300"));
+        return json(Map.of("logs", ocgSandboxService.logs(id, type, tail)));
+    }
+
     private OcgConfigView fromPayload(Map<String, Object> payload, String id, OcgConfigView existing) {
         var channelId = (String) payload.get("channelId");
         if (channelId == null || channelId.isBlank()) throw new BadRequestException("channelId is required");

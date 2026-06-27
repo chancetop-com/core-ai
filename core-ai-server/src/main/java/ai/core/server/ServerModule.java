@@ -581,6 +581,9 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.DELETE, "/api/admin/ocg-configs/:id", ocgConfigController::delete);
         http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/start", ocgConfigController::start);
         http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/stop", ocgConfigController::stop);
+        http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/restart", ocgConfigController::restart);
+        http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/command", ocgConfigController::command);
+        http().route(HTTPMethod.GET, "/api/admin/ocg-configs/:id/logs", ocgConfigController::logs);
         http().route(HTTPMethod.GET, "/api/admin/ocg-configs/:id/status", ocgConfigController::status);
 
         http().route(HTTPMethod.GET, "/api/admin/channels", channelAdmin::list);

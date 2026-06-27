@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Edit2, Play, Plus, Radio, Square, Trash2, X, Zap } from 'lucide-react';
+import { CheckCircle2, Edit2, FileText, Play, Plus, Radio, RotateCw, Square, Terminal, Trash2, X, Zap } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ChannelView, OcgConfigView, OcgSandboxStatus } from '../../api/client';
 
@@ -10,6 +10,16 @@ interface EditorState {
   channelId: string;
   callbackSecret: string;
   configJson: string;
+}
+
+interface LogsState {
+  open: boolean;
+  config: OcgConfigView | null;
+  type: 'gateway' | 'terminal';
+  content: string;
+  command: string;
+  running: boolean;
+  loading: boolean;
 }
 
 function emptyEditor(): EditorState {
@@ -40,6 +50,7 @@ export default function OpenClaw() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState>(emptyEditor());
+  const [logs, setLogs] = useState<LogsState>({ open: false, config: null, type: 'gateway', content: '', command: '', running: false, loading: false });
 
   const load = () => {
     setLoading(true);
@@ -138,6 +149,65 @@ export default function OpenClaw() {
     }
   };
 
+  const restart = async (config: OcgConfigView) => {
+    if (!confirm(`Restart OCG process for "${config.id}"? The sandbox will stay, only the gateway process restarts.`)) return;
+    setBusyId(config.id);
+    try {
+      await api.ocg.restart(config.id);
+      load();
+    } catch (e) {
+      alert(`Restart failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const openTerminal = async (config: OcgConfigView) => {
+    setLogs({ open: true, config, type: 'terminal', content: '', command: '', running: false, loading: true });
+    await loadLogs(config, 'terminal');
+  };
+
+  const runTerminalCommand = async () => {
+    if (!logs.config || !logs.command.trim()) return;
+    const config = logs.config;
+    const command = logs.command.trim();
+    setLogs(prev => ({ ...prev, running: true, content: `${prev.content}\n$ ${command}\n` }));
+    try {
+      await api.ocg.command(config.id, command);
+      setLogs(prev => ({ ...prev, command: '', running: false }));
+      await loadLogs(config, 'terminal');
+    } catch (e) {
+      setLogs(prev => ({ ...prev, content: `${prev.content}\nCommand failed: ${e instanceof Error ? e.message : e}`, running: false }));
+    }
+  };
+
+  const openLogs = async (config: OcgConfigView, type: 'gateway' | 'terminal' = 'gateway') => {
+    setLogs({ open: true, config, type, content: '', command: logs.command, running: false, loading: true });
+    await loadLogs(config, type);
+  };
+
+  const loadLogs = async (config: OcgConfigView, type: 'gateway' | 'terminal') => {
+    try {
+      const res = await api.ocg.logs(config.id, type, 1000);
+      setLogs(prev => ({ ...prev, open: true, config, type, content: res.logs || '', loading: false }));
+    } catch (e) {
+      setLogs(prev => ({ ...prev, open: true, config, type, content: `Load logs failed: ${e instanceof Error ? e.message : e}`, loading: false, running: false }));
+    }
+  };
+
+  const refreshLogs = async () => {
+    if (!logs.config) return;
+    await loadLogs(logs.config, logs.type);
+  };
+
+  useEffect(() => {
+    if (!logs.open || logs.type !== 'terminal' || !logs.config) return;
+    const timer = window.setInterval(() => {
+      if (logs.config) loadLogs(logs.config, 'terminal');
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [logs.open, logs.type, logs.config]);
+
   const remove = async (config: OcgConfigView) => {
     if (!confirm(`Delete OpenClaw config "${config.id}"?`)) return;
     try {
@@ -232,6 +302,21 @@ export default function OpenClaw() {
                         <Play size={14} />
                       </button>
                     )}
+                    <button onClick={() => restart(config)} disabled={config.sandboxStatus !== 'running' || busyId === config.id}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1 disabled:opacity-40"
+                      style={{ borderColor: 'var(--color-border)' }} title="Restart OCG process">
+                      <RotateCw size={14} />
+                    </button>
+                    <button onClick={() => openTerminal(config)} disabled={config.sandboxStatus !== 'running' || busyId === config.id}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1 disabled:opacity-40"
+                      style={{ borderColor: 'var(--color-border)' }} title="Open terminal">
+                      <Terminal size={14} />
+                    </button>
+                    <button onClick={() => openLogs(config, 'gateway')} disabled={!config.sandboxId}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1 disabled:opacity-40"
+                      style={{ borderColor: 'var(--color-border)' }} title="View logs">
+                      <FileText size={14} />
+                    </button>
                     <button onClick={() => openEdit(config)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1"
                       style={{ borderColor: 'var(--color-border)' }} title="Edit">
@@ -249,6 +334,63 @@ export default function OpenClaw() {
           </table>
         )}
       </div>
+
+      {logs.open && (
+        <div className="fixed inset-0 z-50 flex justify-end"
+          style={{ background: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setLogs(prev => ({ ...prev, open: false }))}>
+          <div className="w-full max-w-3xl h-full overflow-y-auto p-6"
+            style={{ background: 'var(--color-bg)', borderLeft: '1px solid var(--color-border)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold">OCG Logs</h2>
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  {logs.config?.id} / {logs.type}
+                </p>
+              </div>
+              <button onClick={() => setLogs(prev => ({ ...prev, open: false }))} className="p-1 rounded cursor-pointer"><X size={18} /></button>
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <button onClick={() => logs.config && openLogs(logs.config, 'gateway')}
+                className="px-3 py-1.5 rounded-lg border text-sm cursor-pointer"
+                style={{ borderColor: 'var(--color-border)', background: logs.type === 'gateway' ? 'var(--color-bg-tertiary)' : 'transparent' }}>
+                Gateway
+              </button>
+              <button onClick={() => logs.config && openTerminal(logs.config)}
+                className="px-3 py-1.5 rounded-lg border text-sm cursor-pointer"
+                style={{ borderColor: 'var(--color-border)', background: logs.type === 'terminal' ? 'var(--color-bg-tertiary)' : 'transparent' }}>
+                Terminal
+              </button>
+              <button onClick={refreshLogs}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm cursor-pointer"
+                style={{ borderColor: 'var(--color-border)' }}>
+                <RotateCw size={13} /> Refresh
+              </button>
+            </div>
+            {logs.type === 'terminal' && (
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>$</span>
+                <input value={logs.command}
+                  onChange={e => setLogs(prev => ({ ...prev, command: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') runTerminalCommand(); }}
+                  placeholder="Paste an OpenClaw/OCG command from docs, e.g. ocg channels login --channel openclaw-weixin"
+                  className="flex-1 px-3 py-2 rounded-lg border text-sm font-mono"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+                <button onClick={runTerminalCommand} disabled={!logs.command.trim() || logs.running}
+                  className="px-4 py-2 rounded-lg text-sm text-white cursor-pointer disabled:opacity-40"
+                  style={{ background: 'var(--color-primary)' }}>
+                  Run
+                </button>
+              </div>
+            )}
+            <pre className="text-xs rounded-lg border p-3 whitespace-pre-wrap overflow-auto min-h-[480px]"
+              style={{ borderColor: 'var(--color-border)', background: '#0f172a', color: '#e2e8f0' }}>
+              {logs.loading ? 'Loading...' : logs.content || '(empty)'}
+            </pre>
+          </div>
+        </div>
+      )}
 
       {editor.open && (
         <div className="fixed inset-0 z-50 flex justify-end"

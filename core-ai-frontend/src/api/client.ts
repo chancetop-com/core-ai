@@ -1144,6 +1144,12 @@ export const api = {
       request<OcgConfigResponse>(`/api/admin/ocg-configs/${id}/start`, { method: 'POST' }),
     stop: (id: string) =>
       request<OcgConfigResponse>(`/api/admin/ocg-configs/${id}/stop`, { method: 'POST' }),
+    restart: (id: string) =>
+      request<OcgConfigResponse>(`/api/admin/ocg-configs/${id}/restart`, { method: 'POST' }),
+    command: (id: string, command: string) =>
+      request<{ ok: boolean }>(`/api/admin/ocg-configs/${id}/command`, { method: 'POST', body: JSON.stringify({ command }) }),
+    logs: (id: string, type: 'gateway' | 'terminal' = 'gateway', tail = 300) =>
+      request<OcgLogsResponse>(`/api/admin/ocg-configs/${id}/logs?type=${encodeURIComponent(type)}&tail=${tail}`),
     status: (id: string) =>
       request<OcgStatusResponse>(`/api/admin/ocg-configs/${id}/status`),
   },
@@ -1484,4 +1490,8 @@ export interface OcgStatusResponse {
   status: OcgSandboxStatus;
   sandboxId?: string;
   sandboxIp?: string;
+}
+
+export interface OcgLogsResponse {
+  logs: string;
 }
