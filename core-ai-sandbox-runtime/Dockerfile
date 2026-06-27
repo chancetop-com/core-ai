@@ -35,7 +35,8 @@ RUN npm install -g node-gyp && \
     ln -s /usr/local/lib/node_modules/node-gyp /usr/share/nodejs/node-gyp
 
 # Layer 4: OpenClaw Channel Gateway CLI
-RUN npm install -g openclaw-channel-gateway && \
+ARG OCG_VERSION=1.0.11
+RUN npm install -g openclaw-channel-gateway@${OCG_VERSION} && \
     find /usr/local/lib/node_modules/openclaw-channel-gateway -path '*/node_modules/.bin/*' -type f -exec chmod 755 {} \; && \
     find /usr/local/lib/node_modules/openclaw-channel-gateway -name node-gyp-build -type f -exec chmod 755 {} \;
 
