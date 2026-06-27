@@ -34,7 +34,10 @@ RUN npm install -g node-gyp && \
     rm -rf /usr/share/nodejs/node-gyp && \
     ln -s /usr/local/lib/node_modules/node-gyp /usr/share/nodejs/node-gyp
 
-# Layer 4: gh CLI (version bumps only)
+# Layer 4: OpenClaw Channel Gateway CLI
+RUN npm install -g openclaw-channel-gateway
+
+# Layer 5: gh CLI (version bumps only)
 RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_linux_amd64.tar.gz -o /tmp/gh.tar.gz && \
     tar xzf /tmp/gh.tar.gz -C /tmp && \
     mv /tmp/gh_2.92.0_linux_amd64/bin/gh /usr/local/bin/gh && \
