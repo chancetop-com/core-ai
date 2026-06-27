@@ -19,6 +19,7 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
+import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +52,8 @@ public class AgentMemoryConsolidationJob implements Job {
     public static final String DEFAULT_EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
     private static final int MIN_MEANINGFUL_USER_TURNS = 3;
     private static final int MIN_TOOL_CALLS_FOR_SHORT_SESSION = 5;
+    private static final int MESSAGE_LOOKBACK_SECONDS = 5;
+    private static final int MESSAGE_LOOKAHEAD_SECONDS = 30;
     private static final String EXTRACTION_PROMPT = """
             You maintain an agent's memory — a concise, stable set of reusable
             experiences that help the same agent perform more efficiently in future runs.
@@ -145,7 +148,7 @@ public class AgentMemoryConsolidationJob implements Job {
         var ids = new HashSet<String>();
         for (var trace : traces) {
             if (trace.agentId != null && !trace.agentId.isBlank()
-                    && !EXCLUDED_AGENT_NAME.equals(trace.agentName)) {
+                    && !EXCLUDED_AGENT_NAME.equalsIgnoreCase(trace.agentName)) {
                 ids.add(trace.agentId);
             }
         }
@@ -154,12 +157,14 @@ public class AgentMemoryConsolidationJob implements Job {
 
     private void processAgent(String agentId) {
         var definition = agentDefinitionCollection.get(agentId).orElse(null);
-        if (definition != null) {
-            var enableMemory = definition.publishedConfig != null ? definition.publishedConfig.enableMemory : definition.enableMemory;
-            if (!AgentMemoryService.memoryEnabled(enableMemory)) {
-                LOGGER.debug("agent={} memory disabled, skipping extraction", agentId);
-                return;
-            }
+        if (definition == null) {
+            LOGGER.debug("agent={} definition not found, skipping extraction", agentId);
+            return;
+        }
+        var enableMemory = definition.publishedConfig != null ? definition.publishedConfig.enableMemory : definition.enableMemory;
+        if (!AgentMemoryService.memoryEnabled(enableMemory)) {
+            LOGGER.debug("agent={} memory disabled, skipping extraction", agentId);
+            return;
         }
         var cursor = agentMemoryService.getCursor(agentId);
         var since = cursor != null ? cursor.lastProcessedAt : ZonedDateTime.now().minusYears(10);
@@ -182,7 +187,8 @@ public class AgentMemoryConsolidationJob implements Job {
         }
 
         if (!hasMeaningfulInteractions(traces)) {
-            LOGGER.debug("agent={} has no meaningful interactions, skipping", agentId);
+            LOGGER.debug("agent={} has no meaningful interactions, advancing cursor without extraction", agentId);
+            advanceCursor(agentId, traces);
             return;
         }
 
@@ -199,14 +205,18 @@ public class AgentMemoryConsolidationJob implements Job {
 
         agentMemoryService.replaceAll(agentId, newMemories);
 
-        var newCursor = new AgentMemoryExtractionCursor();
-        newCursor.agentId = agentId;
-        newCursor.lastProcessedAt = traces.getLast().startedAt;
-        newCursor.lastTraceIds = traceIds;
-        agentMemoryService.upsertCursor(newCursor);
+        advanceCursor(agentId, traces);
 
         LOGGER.info("memory consolidated for agent={}, old={}, new={}, traces={}",
                 agentId, existingMemories.size(), newMemories.size(), traces.size());
+    }
+
+    private void advanceCursor(String agentId, List<Trace> traces) {
+        var newCursor = new AgentMemoryExtractionCursor();
+        newCursor.agentId = agentId;
+        newCursor.lastProcessedAt = traces.getLast().startedAt;
+        newCursor.lastTraceIds = traces.stream().map(t -> t.traceId).toList();
+        agentMemoryService.upsertCursor(newCursor);
     }
 
     private String buildPrompt(List<AgentMemory> existingMemories, List<Trace> traces) {
@@ -226,16 +236,10 @@ public class AgentMemoryConsolidationJob implements Job {
     }
 
     private String buildSessionLog(List<Trace> traces) {
-        var sessionIds = traces.stream()
-                .map(t -> t.sessionId)
-                .filter(s -> s != null && !s.isBlank())
-                .distinct()
-                .toList();
-
-        if (sessionIds.isEmpty()) return "(no session data)";
+        var allMessages = queryChatMessages(traces);
+        if (allMessages.isEmpty()) return "(no session data)";
 
         var systemPrompt = extractSystemPrompt(traces);
-        var allMessages = queryChatMessages(sessionIds);
         var bySession = allMessages.stream()
                 .collect(Collectors.groupingBy(m -> m.sessionId, LinkedHashMap::new, Collectors.toList()));
 
@@ -304,25 +308,42 @@ public class AgentMemoryConsolidationJob implements Job {
         return null;
     }
 
-    private List<ChatMessage> queryChatMessages(List<String> sessionIds) {
+    private List<ChatMessage> queryChatMessages(List<Trace> traces) {
+        var filters = new ArrayList<Bson>();
+        var traceIds = traces.stream()
+                .map(t -> t.traceId)
+                .filter(s -> s != null && !s.isBlank())
+                .distinct()
+                .toList();
+        if (!traceIds.isEmpty()) {
+            filters.add(Filters.in("trace_id", traceIds));
+        }
+
+        for (var trace : traces) {
+            if (trace.sessionId == null || trace.sessionId.isBlank() || trace.startedAt == null) continue;
+            var end = trace.completedAt != null ? trace.completedAt : trace.startedAt;
+            filters.add(Filters.and(
+                    Filters.eq("session_id", trace.sessionId),
+                    Filters.gte("created_at", trace.startedAt.minusSeconds(MESSAGE_LOOKBACK_SECONDS)),
+                    Filters.lte("created_at", end.plusSeconds(MESSAGE_LOOKAHEAD_SECONDS))
+            ));
+        }
+        return queryChatMessagesByFilters(filters);
+    }
+
+    private List<ChatMessage> queryChatMessagesByFilters(List<Bson> filters) {
+        if (filters.isEmpty()) return List.of();
+
         var query = new Query();
-        query.filter = Filters.in("session_id", sessionIds);
-        query.sort = Sorts.ascending("seq");
+        query.filter = filters.size() == 1 ? filters.getFirst() : Filters.or(filters);
+        query.sort = Sorts.ascending("created_at");
         query.limit = 500;
         return chatMessageCollection.find(query);
     }
 
     private boolean hasMeaningfulInteractions(List<Trace> traces) {
-        var sessionIds = traces.stream()
-                .map(t -> t.sessionId)
-                .filter(s -> s != null && !s.isBlank())
-                .distinct()
-                .toList();
-        if (sessionIds.isEmpty()) return false;
+        var messages = queryChatMessages(traces);
 
-        var messages = queryChatMessages(sessionIds);
-
-        // Count user turns (genuine back-and-forth)
         var userTurns = messages.stream()
                 .filter(m -> "user".equals(m.role))
                 .count();
