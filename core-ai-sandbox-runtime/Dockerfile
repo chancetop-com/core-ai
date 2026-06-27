@@ -35,7 +35,7 @@ RUN npm install -g node-gyp && \
     ln -s /usr/local/lib/node_modules/node-gyp /usr/share/nodejs/node-gyp
 
 # Layer 4: OpenClaw Channel Gateway CLI
-ARG OCG_VERSION=1.0.11
+ARG OCG_VERSION=1.0.12
 ARG OCG_CACHE_BUST=0
 RUN echo "Installing openclaw-channel-gateway@${OCG_VERSION} cache-bust=${OCG_CACHE_BUST}" && \
     npm install -g openclaw-channel-gateway@${OCG_VERSION} && \

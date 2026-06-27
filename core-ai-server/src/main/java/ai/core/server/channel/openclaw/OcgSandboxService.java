@@ -31,7 +31,7 @@ public class OcgSandboxService {
     private static final String TERMINAL_WORK_DIR = "/root/ocg-work";
     private static final String OPENCLAW_CHANNEL_TYPE = "openclaw";
     private static final int DEFAULT_CALLBACK_PORT = 3457;
-    private static final Set<String> GATEWAY_CONFIG_KEYS = Set.of("agentUrl", "model", "apiKey", "verbose", "async", "callbackHost", "callbackPort", "callbackSecret", "callbackTokenTTL", "channels");
+    private static final Set<String> GATEWAY_CONFIG_KEYS = Set.of("agentUrl", "model", "apiKey", "verbose", "async", "callbackHost", "callbackPort", "callbackPublicHost", "callbackPublicPort", "callbackSecret", "callbackTokenTTL", "channels");
 
     @Inject
     OcgConfigStore ocgConfigStore;
@@ -61,7 +61,7 @@ public class OcgSandboxService {
             runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " && chmod 777 " + TERMINAL_WORK_DIR, 10);
             var sandboxIp = sandbox.ip();
             if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
-            var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxIp);
+            var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxIp, sandbox.port());
             sandbox.uploadFile(CONFIG_PATH, ocgJson.getBytes(StandardCharsets.UTF_8));
             startGatewayProcess(sandbox);
             runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
@@ -106,7 +106,7 @@ public class OcgSandboxService {
         var sandbox = requireSandbox(ocgConfigId);
         var sandboxIp = sandbox.ip();
         if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
-        patchRuntimeInjectedConfig(sandbox, config, sandboxIp);
+        patchRuntimeInjectedConfig(sandbox, config, sandboxIp, sandbox.port());
         stopGatewayProcess(sandbox);
         startGatewayProcess(sandbox);
         runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
@@ -161,7 +161,7 @@ public class OcgSandboxService {
     }
 
     @SuppressWarnings("unchecked")
-    public String buildRuntimeConfig(OcgConfigView config, String agentUrl, String sandboxIp) {
+    public String buildRuntimeConfig(OcgConfigView config, String agentUrl, String sandboxHost, int sandboxPort) {
         Map<String, Object> payload;
         try {
             payload = (Map<String, Object>) JsonUtil.fromJson(Map.class, config.configJson);
@@ -180,8 +180,10 @@ public class OcgSandboxService {
         runtimeConfig.put("agentUrl", agentUrl);
         runtimeConfig.remove("apiKey");
         runtimeConfig.put("async", true);
-        runtimeConfig.put("callbackHost", sandboxIp);
-        runtimeConfig.putIfAbsent("callbackPort", DEFAULT_CALLBACK_PORT);
+        runtimeConfig.put("callbackHost", "0.0.0.0");
+        runtimeConfig.put("callbackPort", DEFAULT_CALLBACK_PORT);
+        runtimeConfig.put("callbackPublicHost", sandboxHost);
+        runtimeConfig.put("callbackPublicPort", sandboxPort);
         if (config.callbackSecret != null && !config.callbackSecret.isBlank()) {
             runtimeConfig.put("callbackSecret", config.callbackSecret);
         } else {
@@ -213,13 +215,14 @@ public class OcgSandboxService {
         runCommand(sandbox, "OCG_CONFIG_PATH=" + CONFIG_PATH + " nohup ocg start > " + GATEWAY_LOG_PATH + " 2>&1 &", 10);
     }
 
-    private void patchRuntimeInjectedConfig(Sandbox sandbox, OcgConfigView config, String sandboxIp) {
+    private void patchRuntimeInjectedConfig(Sandbox sandbox, OcgConfigView config, String sandboxHost, int sandboxPort) {
         var callbackSecret = config.callbackSecret == null ? "" : config.callbackSecret;
-        var filter = ".agentUrl = $agentUrl | .async = true | .callbackHost = $callbackHost | .callbackPort = (.callbackPort // "
-                + DEFAULT_CALLBACK_PORT + ") | del(.apiKey) | if $callbackSecret == \"\" then del(.callbackSecret) else .callbackSecret = $callbackSecret end";
+        var filter = ".agentUrl = $agentUrl | .async = true | .callbackHost = \"0.0.0.0\" | .callbackPort = "
+                + DEFAULT_CALLBACK_PORT + " | .callbackPublicHost = $callbackPublicHost | .callbackPublicPort = ($callbackPublicPort | tonumber) | del(.apiKey) | if $callbackSecret == \"\" then del(.callbackSecret) else .callbackSecret = $callbackSecret end";
         runCommand(sandbox,
                 "tmp=$(mktemp) && jq --arg agentUrl " + shellQuote(agentUrl(config.channelId, serverUrlFromSandbox()))
-                        + " --arg callbackHost " + shellQuote(sandboxIp)
+                        + " --arg callbackPublicHost " + shellQuote(sandboxHost)
+                        + " --arg callbackPublicPort " + shellQuote(String.valueOf(sandboxPort))
                         + " --arg callbackSecret " + shellQuote(callbackSecret)
                         + " " + shellQuote(filter) + " " + CONFIG_PATH + " > $tmp && mv $tmp " + CONFIG_PATH,
                 15);

@@ -169,6 +169,7 @@ func main() {
 	}
 
 	http.HandleFunc("/health", handleHealth)
+	http.HandleFunc("/ocg/callback/", handleOcgCallbackProxy)
 	http.HandleFunc("/execute", handleExecute)
 	http.HandleFunc("/tasks/", handleTaskPoll)
 	http.HandleFunc("/files/content", handleFileContent)
@@ -229,6 +230,52 @@ func loggingMiddleware(next http.Handler) http.Handler {
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func handleOcgCallbackProxy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !strings.HasPrefix(r.URL.Path, "/ocg/callback/") {
+		http.NotFound(w, r)
+		return
+	}
+
+	targetURL := "http://127.0.0.1:3457" + r.URL.RequestURI()
+	body, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+	if err != nil {
+		http.Error(w, "failed to read callback body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		http.Error(w, "failed to create callback request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	copyHeader(req.Header, r.Header)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		http.Error(w, "failed to proxy OCG callback: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	copyHeader(w.Header(), resp.Header)
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("failed to stream OCG callback response: %v", err)
+	}
+}
+
+func copyHeader(dst, src http.Header) {
+	for key, values := range src {
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
 }
 
 func handleExecute(w http.ResponseWriter, r *http.Request) {
