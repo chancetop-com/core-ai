@@ -31,7 +31,7 @@ public class AzureBlobSasService {
     }
 
     public static AzureBlobSasService tryCreate(String accountName, String accountKey) {
-        if (accountName == null || accountName.isBlank() || accountKey == null || accountKey.isBlank()) {
+        if (accountName == null || accountName.isBlank() || accountKey == null || accountKey.isBlank() || "***".equals(accountKey)) {
             return null;
         }
         try {
