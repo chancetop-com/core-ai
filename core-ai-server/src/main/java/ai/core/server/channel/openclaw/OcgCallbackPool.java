@@ -108,7 +108,10 @@ public class OcgCallbackPool {
     }
 
     private boolean isLocalCallbackHost(String host) {
-        return "127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host) || "0.0.0.0".equals(host);
+        return "127.0.0.1".equals(host)
+                || "localhost".equalsIgnoreCase(host)
+                || "0.0.0.0".equals(host)
+                || "host.docker.internal".equalsIgnoreCase(host);
     }
 
     private String sandboxSessionId(String id) {
