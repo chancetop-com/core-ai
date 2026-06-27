@@ -262,7 +262,7 @@ public class OcgSandboxService {
     }
 
     private String ocgProcessCheckCommand() {
-        return "ps aux | grep '[n]ode .*openclaw-channel-gateway.*dist/cli.js start' || (test -f " + GATEWAY_LOG_PATH + " && tail -80 " + GATEWAY_LOG_PATH + "; exit 1)";
+        return "ps aux | grep [n]ode | grep openclaw-channel-gateway | grep dist/cli.js | grep start || (test -f " + GATEWAY_LOG_PATH + " && tail -80 " + GATEWAY_LOG_PATH + "; exit 1)";
     }
 
     private String runCommand(Sandbox sandbox, String command, int timeoutSeconds) {
