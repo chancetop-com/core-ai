@@ -133,13 +133,42 @@ public class OcgSandboxService {
 
     public void recoverOnStartup() {
         for (var config : ocgConfigStore.allWithSandbox()) {
-            var attached = sandboxService.attachSandbox(config.sandboxId, buildSandboxConfig(), sandboxSessionId(config.id), "system", true);
-            if (attached != null) {
-                LOGGER.info("OCG sandbox recovered, id={}, sandboxId={}, ip={}", config.id, config.sandboxId, config.sandboxIp);
-            } else {
+            try {
+                var attached = sandboxService.attachSandbox(config.sandboxId, buildSandboxConfig(), sandboxSessionId(config.id), "system", true);
+                if (attached != null) {
+                    recoverGatewayProcess(config, attached);
+                    LOGGER.info("OCG sandbox recovered, id={}, sandboxId={}, ip={}", config.id, config.sandboxId, config.sandboxIp);
+                } else {
+                    ocgConfigStore.clearSandbox(config.id);
+                    LOGGER.warn("OCG sandbox lost, id={}, sandboxId={}", config.id, config.sandboxId);
+                }
+            } catch (RuntimeException e) {
                 ocgConfigStore.clearSandbox(config.id);
-                LOGGER.warn("OCG sandbox lost, id={}, sandboxId={}", config.id, config.sandboxId);
+                LOGGER.warn("OCG sandbox recovery failed, id={}, sandboxId={}", config.id, config.sandboxId, e);
             }
+        }
+    }
+
+    private void recoverGatewayProcess(OcgConfigView config, Sandbox sandbox) {
+        var sandboxIp = sandbox.ip();
+        if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
+        var restarted = false;
+        try {
+            runCommand(sandbox, ocgProcessCheckCommand(), 15);
+        } catch (RuntimeException e) {
+            LOGGER.info("OCG gateway process is not running, restarting, id={}, sandboxId={}", config.id, config.sandboxId);
+            runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " && chmod 777 " + TERMINAL_WORK_DIR, 10);
+            var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxIp, sandbox.port());
+            sandbox.uploadFile(CONFIG_PATH, ocgJson.getBytes(StandardCharsets.UTF_8));
+            stopGatewayProcess(sandbox);
+            startGatewayProcess(sandbox);
+            runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
+            restarted = true;
+        }
+        if (restarted || !sandboxIp.equals(config.sandboxIp)) {
+            config.sandboxIp = sandboxIp;
+            config.updatedAt = ZonedDateTime.now();
+            ocgConfigStore.store(config);
         }
     }
 
@@ -153,7 +182,7 @@ public class OcgSandboxService {
             }
             try {
                 sandboxService.renewSandbox(sessionId);
-                runCommand(sandbox, ocgProcessCheckCommand(), 15);
+                recoverGatewayProcess(config, sandbox);
             } catch (RuntimeException e) {
                 LOGGER.warn("OCG health check failed, id={}, sandboxId={}: {}", config.id, config.sandboxId, e.getMessage());
             }

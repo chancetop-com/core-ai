@@ -94,14 +94,27 @@ public class DockerSandboxProvider implements SandboxProvider {
         if (containerOpt.isEmpty()) return Optional.empty();
         var container = containerOpt.get();
         var state = container.state != null ? container.state.status : null;
-        if (!"running".equals(state)) return Optional.empty();
-        var effectiveConfig = config != null ? config : defaultConfig;
-        var hostAndPort = dockerClient.hostAndPort(container);
+        var hostAndPort = "running".equals(state) ? dockerClient.hostAndPort(container) : startExistingContainer(sandboxId, state);
         if (hostAndPort == null || hostAndPort.isBlank()) return Optional.empty();
+        var effectiveConfig = config != null ? config : defaultConfig;
         var timeoutSeconds = effectiveConfig.timeoutSeconds != null
                 ? effectiveConfig.timeoutSeconds
                 : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
-        return Optional.of(new DockerSandbox(sandboxId, hostAndPort, timeoutSeconds, effectiveConfig.image));
+        var sandbox = new DockerSandbox(sandboxId, hostAndPort, timeoutSeconds, effectiveConfig.image);
+        sandbox.waitForReady();
+        return Optional.of(sandbox);
+    }
+
+    private String startExistingContainer(String sandboxId, String state) {
+        if ("dead".equals(state) || "removing".equals(state)) return null;
+        try {
+            LOGGER.info("starting existing docker sandbox: id={}, state={}", sandboxId, state);
+            dockerClient.startContainer(sandboxId);
+            return dockerClient.waitForRunning(sandboxId);
+        } catch (Exception e) {
+            LOGGER.warn("failed to start existing docker sandbox: id={}, state={}", sandboxId, state, e);
+            return null;
+        }
     }
 
     @Override
