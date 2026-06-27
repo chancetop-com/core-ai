@@ -179,9 +179,49 @@ func main() {
 	http.HandleFunc("/mcp", handleMcp)
 
 	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d", port, workspaceDir, maxAsync)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := http.ListenAndServe(":"+port, loggingMiddleware(http.DefaultServeMux)); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
+}
+
+// ---- HTTP logging ----
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (w *loggingResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *loggingResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(data)
+	w.bytes += n
+	return n, err
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		path := r.URL.Path
+		if r.URL.RawQuery != "" {
+			path += "?" + r.URL.RawQuery
+		}
+		log.Printf("request started: method=%s path=%s remote=%s userAgent=%q contentLength=%d", r.Method, path, r.RemoteAddr, r.UserAgent(), r.ContentLength)
+		wrapped := &loggingResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(wrapped, r)
+		status := wrapped.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		log.Printf("request completed: method=%s path=%s remote=%s status=%d bytes=%d durationMs=%d", r.Method, path, r.RemoteAddr, status, wrapped.bytes, time.Since(start).Milliseconds())
+	})
 }
 
 // ---- Handlers ----
@@ -937,12 +977,12 @@ func minimalEnv() []string {
 	// (API_KEY, K8s service vars, etc.) are inherited by child processes.
 	parent := os.Environ()
 	overrides := map[string]string{
-		"PATH":                      "/usr/local/bin:/usr/bin:/bin",
-		"HOME":                      "/tmp",
-		"LANG":                      "en_US.UTF-8",
-		"PYTHONIOENCODING":          "utf-8",
-		"PYTHONDONTWRITEBYTECODE":   "1",
-		"PIP_USER":                  "1",
+		"PATH":                    "/usr/local/bin:/usr/bin:/bin",
+		"HOME":                    "/tmp",
+		"LANG":                    "en_US.UTF-8",
+		"PYTHONIOENCODING":        "utf-8",
+		"PYTHONDONTWRITEBYTECODE": "1",
+		"PIP_USER":                "1",
 	}
 	result := make([]string, 0, len(parent)+len(overrides))
 	for _, e := range parent {
