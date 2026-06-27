@@ -32,7 +32,7 @@ public class OcgSandboxService {
     private static final String TERMINAL_WORK_DIR = "/root/ocg-work";
     private static final String OPENCLAW_CHANNEL_TYPE = "openclaw";
     private static final int DEFAULT_CALLBACK_PORT = 3457;
-    private static final Set<String> GATEWAY_CONFIG_KEYS = Set.of("agentUrl", "model", "apiKey", "verbose", "async", "callbackHost", "callbackPort", "callbackPublicHost", "callbackPublicPort", "callbackSecret", "callbackTokenTTL", "channels");
+    private static final Set<String> GATEWAY_CONFIG_KEYS = Set.of("agentUrl", "model", "apiKey", "verbose", "async", "callbackHost", "callbackPort", "callbackPublicHost", "callbackPublicPort", "callbackSecret", "callbackTokenTTL", "channels", "plugins");
 
     @Inject
     OcgConfigStore ocgConfigStore;
@@ -152,12 +152,13 @@ public class OcgSandboxService {
     private void recoverGatewayProcess(OcgConfigView config, Sandbox sandbox) {
         var sandboxIp = sandbox.ip();
         if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
-        uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
         var restarted = false;
         try {
             runCommand(sandbox, ocgProcessCheckCommand(), 15);
+            ensureRuntimeConfigExists(sandbox, config, sandboxIp, sandbox.port());
         } catch (RuntimeException e) {
             LOGGER.info("OCG gateway process is not running, restarting, id={}, sandboxId={}", config.id, config.sandboxId);
+            uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
             stopGatewayProcess(sandbox);
             startGatewayProcess(sandbox);
             runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
@@ -242,11 +243,56 @@ public class OcgSandboxService {
         runCommand(sandbox, "OCG_CONFIG_PATH=" + CONFIG_PATH + " nohup ocg start > " + GATEWAY_LOG_PATH + " 2>&1 &", 10);
     }
 
+    private void ensureRuntimeConfigExists(Sandbox sandbox, OcgConfigView config, String sandboxHost, int sandboxPort) {
+        try {
+            runCommand(sandbox, "test -s " + CONFIG_PATH + " && test -s " + DEFAULT_CONFIG_PATH, 10);
+        } catch (RuntimeException e) {
+            uploadRuntimeConfig(sandbox, config, sandboxHost, sandboxPort);
+        }
+    }
+
     private void uploadRuntimeConfig(Sandbox sandbox, OcgConfigView config, String sandboxHost, int sandboxPort) {
         runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " /root/.openclaw-channel-gateway && chmod 777 " + TERMINAL_WORK_DIR, 10);
         var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxHost, sandboxPort);
-        sandbox.uploadFile(CONFIG_PATH, ocgJson.getBytes(StandardCharsets.UTF_8));
+        var runtimeConfig = mergeRuntimeConfig(existingRuntimeConfig(sandbox), parseJsonMap(ocgJson));
+        sandbox.uploadFile(CONFIG_PATH, JsonUtil.toJson(runtimeConfig).getBytes(StandardCharsets.UTF_8));
         runCommand(sandbox, "cp " + CONFIG_PATH + " " + DEFAULT_CONFIG_PATH, 10);
+    }
+
+    private Map<String, Object> existingRuntimeConfig(Sandbox sandbox) {
+        var json = runCommand(sandbox, "cat " + CONFIG_PATH + " 2>/dev/null || cat " + DEFAULT_CONFIG_PATH + " 2>/dev/null || true", 10);
+        if (json.isBlank()) return Map.of();
+        try {
+            return parseJsonMap(json);
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to parse existing OCG config, rebuilding from persisted config: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseJsonMap(String json) {
+        return (Map<String, Object>) JsonUtil.fromJson(Map.class, json);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mergeRuntimeConfig(Map<String, Object> existing, Map<String, Object> desired) {
+        if (existing.isEmpty()) return desired;
+        var merged = new LinkedHashMap<>(existing);
+        var existingChannels = existing.get("channels") instanceof Map<?, ?> value ? (Map<String, Object>) value : Map.<String, Object>of();
+        var desiredChannels = desired.get("channels") instanceof Map<?, ?> value ? (Map<String, Object>) value : Map.<String, Object>of();
+        if (!existingChannels.isEmpty() || !desiredChannels.isEmpty()) {
+            var channels = new LinkedHashMap<>(existingChannels);
+            channels.putAll(desiredChannels);
+            merged.put("channels", channels);
+        }
+        merged.putAll(desired);
+        if (!existingChannels.isEmpty() || !desiredChannels.isEmpty()) {
+            var channels = new LinkedHashMap<>(existingChannels);
+            channels.putAll(desiredChannels);
+            merged.put("channels", channels);
+        }
+        return merged;
     }
 
     private void stopGatewayProcess(Sandbox sandbox) {
