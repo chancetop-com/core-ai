@@ -64,6 +64,8 @@ ENV NPM_CONFIG_FETCH_RETRIES=3
 # xvfb display for non-headless browser automation
 ENV DISPLAY=:99
 
-WORKDIR /workspace
+RUN mkdir -p /root/ocg-work
+
+WORKDIR /root/ocg-work
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/core-ai-sandbox-runtime"]
