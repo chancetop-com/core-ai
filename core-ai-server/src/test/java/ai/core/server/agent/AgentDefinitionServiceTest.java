@@ -8,10 +8,12 @@ import ai.core.server.skill.SkillService;
 import org.junit.jupiter.api.Test;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -64,5 +66,37 @@ class AgentDefinitionServiceTest {
         var view = service.toView(entity);
 
         assertEquals(Boolean.FALSE, view.enableMemory);
+    }
+
+    @Test
+    void prioritizeDefaultAssistantMovesAssistantToFirst() {
+        var service = new AgentDefinitionService();
+        var recent = agent("recent-agent");
+        var assistant = agent("default-assistant");
+        var old = agent("old-agent");
+        var agents = new ArrayList<>(List.of(recent, assistant, old));
+
+        service.prioritizeDefaultAssistant(agents);
+
+        assertSame(assistant, agents.get(0));
+        assertEquals(List.of(assistant, recent, old), agents);
+    }
+
+    @Test
+    void prioritizeDefaultAssistantKeepsOrderWithoutAssistant() {
+        var service = new AgentDefinitionService();
+        var recent = agent("recent-agent");
+        var old = agent("old-agent");
+        var agents = new ArrayList<>(List.of(recent, old));
+
+        service.prioritizeDefaultAssistant(agents);
+
+        assertEquals(List.of(recent, old), agents);
+    }
+
+    private AgentDefinition agent(String id) {
+        var agent = new AgentDefinition();
+        agent.id = id;
+        return agent;
     }
 }

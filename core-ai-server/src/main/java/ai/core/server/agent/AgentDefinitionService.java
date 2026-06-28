@@ -46,6 +46,7 @@ import java.util.regex.Pattern;
 public class AgentDefinitionService {
     private static final String AIRAGENT_USER_ID_FIELD = "user_id";
     private static final String AIRAGENT_SYSTEM_DEFAULT_FIELD = "system_default";
+    private static final String DEFAULT_ASSISTANT_AGENT_ID = "default-assistant";
 
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
@@ -112,15 +113,10 @@ public class AgentDefinitionService {
         int pageNum = effectiveRequest.page != null && effectiveRequest.page > 0 ? effectiveRequest.page : 1;
         int pageSize = effectiveRequest.limit != null && effectiveRequest.limit > 0 ? Math.min(effectiveRequest.limit, 200) : 20;
 
-        var dbQuery = new Query();
-        dbQuery.filter = combinedFilter;
-        dbQuery.sort = Sorts.descending(sortField(effectiveRequest.sort));
-        if (paginated) {
-            int skip = (pageNum - 1) * pageSize;
-            dbQuery.skip = skip;
-            dbQuery.limit = pageSize;
-        }
-        var paged = agentDefinitionCollection.find(dbQuery);
+        var defaultAssistant = findDefaultAssistant(combinedFilter);
+        var paged = defaultAssistant != null
+            ? listWithDefaultAssistantFirst(combinedFilter, sortField(effectiveRequest.sort), paginated, pageNum, pageSize, defaultAssistant)
+            : findAgents(combinedFilter, sortField(effectiveRequest.sort), paginated ? (pageNum - 1) * pageSize : null, paginated ? pageSize : null);
 
         var userNameMap = resolveUserNames(paged);
         var subAgentNameMap = resolveSubAgentNames(paged);
@@ -164,6 +160,46 @@ public class AgentDefinitionService {
     private String sortField(String sort) {
         if ("created_at".equals(sort)) return "created_at";
         return "updated_at";
+    }
+
+    private AgentDefinition findDefaultAssistant(Bson filter) {
+        return agentDefinitionCollection.findOne(combineFilters(filter, Filters.eq("_id", DEFAULT_ASSISTANT_AGENT_ID))).orElse(null);
+    }
+
+    private List<AgentDefinition> listWithDefaultAssistantFirst(Bson filter, String sortField, boolean paginated, int pageNum, int pageSize, AgentDefinition defaultAssistant) {
+        if (!paginated) {
+            var agents = findAgents(filter, sortField, null, null);
+            prioritizeDefaultAssistant(agents);
+            return agents;
+        }
+        if (pageNum > 1) {
+            return findAgents(excludeDefaultAssistant(filter), sortField, (pageNum - 1) * pageSize - 1, pageSize);
+        }
+        var agents = pageSize > 1 ? findAgents(excludeDefaultAssistant(filter), sortField, 0, pageSize - 1) : new ArrayList<AgentDefinition>();
+        agents.add(0, defaultAssistant);
+        return agents;
+    }
+
+    private List<AgentDefinition> findAgents(Bson filter, String sortField, Integer skip, Integer limit) {
+        var query = new Query();
+        query.filter = filter;
+        query.sort = Sorts.descending(sortField);
+        if (skip != null) query.skip = skip;
+        if (limit != null) query.limit = limit;
+        return agentDefinitionCollection.find(query);
+    }
+
+    private Bson excludeDefaultAssistant(Bson filter) {
+        return combineFilters(filter, Filters.ne("_id", DEFAULT_ASSISTANT_AGENT_ID));
+    }
+
+    void prioritizeDefaultAssistant(List<AgentDefinition> agents) {
+        for (int i = 0; i < agents.size(); i++) {
+            if (DEFAULT_ASSISTANT_AGENT_ID.equals(agents.get(i).id)) {
+                agents.add(0, agents.remove(i));
+                return;
+            }
+        }
     }
 
     private Bson buildSearchFilter(String query) {
