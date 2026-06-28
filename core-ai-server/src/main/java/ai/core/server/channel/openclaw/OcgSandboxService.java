@@ -25,8 +25,8 @@ import java.util.Set;
  */
 public class OcgSandboxService {
     private static final Logger LOGGER = LoggerFactory.getLogger(OcgSandboxService.class);
-    private static final String CONFIG_PATH = "/tmp/ocg.json";
-    private static final String DEFAULT_CONFIG_PATH = "/root/.openclaw-channel-gateway/ocg.json";
+    private static final String CONFIG_PATH = "/root/.openclaw-channel-gateway/ocg.json";
+    private static final String TEMP_CONFIG_PATH = "/tmp/ocg.json";
     private static final String GATEWAY_LOG_PATH = "/tmp/ocg.log";
     private static final String TERMINAL_LOG_PATH = "/tmp/ocg-terminal.log";
     private static final String TERMINAL_WORK_DIR = "/root/ocg-work";
@@ -245,7 +245,7 @@ public class OcgSandboxService {
 
     private void ensureRuntimeConfigExists(Sandbox sandbox, OcgConfigView config, String sandboxHost, int sandboxPort) {
         try {
-            runCommand(sandbox, "test -s " + CONFIG_PATH + " && test -s " + DEFAULT_CONFIG_PATH, 10);
+            runCommand(sandbox, "test -s " + CONFIG_PATH, 10);
         } catch (RuntimeException e) {
             uploadRuntimeConfig(sandbox, config, sandboxHost, sandboxPort);
         }
@@ -256,11 +256,10 @@ public class OcgSandboxService {
         var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxHost, sandboxPort);
         var runtimeConfig = mergeRuntimeConfig(existingRuntimeConfig(sandbox), parseJsonMap(ocgJson));
         sandbox.uploadFile(CONFIG_PATH, JsonUtil.toJson(runtimeConfig).getBytes(StandardCharsets.UTF_8));
-        runCommand(sandbox, "cp " + CONFIG_PATH + " " + DEFAULT_CONFIG_PATH, 10);
     }
 
     private Map<String, Object> existingRuntimeConfig(Sandbox sandbox) {
-        var json = runCommand(sandbox, "cat " + CONFIG_PATH + " 2>/dev/null || cat " + DEFAULT_CONFIG_PATH + " 2>/dev/null || true", 10);
+        var json = runCommand(sandbox, "cat " + CONFIG_PATH + " 2>/dev/null || cat " + TEMP_CONFIG_PATH + " 2>/dev/null || true", 10);
         if (json.isBlank()) return Map.of();
         try {
             return parseJsonMap(json);
