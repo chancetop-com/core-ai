@@ -255,7 +255,8 @@ public class OcgSandboxService {
         runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " /root/.openclaw-channel-gateway && chmod 777 " + TERMINAL_WORK_DIR, 10);
         var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxHost, sandboxPort);
         var runtimeConfig = mergeRuntimeConfig(existingRuntimeConfig(sandbox), parseJsonMap(ocgJson));
-        sandbox.uploadFile(CONFIG_PATH, JsonUtil.toJson(runtimeConfig).getBytes(StandardCharsets.UTF_8));
+        sandbox.uploadFile(TEMP_CONFIG_PATH, JsonUtil.toJson(runtimeConfig).getBytes(StandardCharsets.UTF_8));
+        runCommand(sandbox, "cp " + TEMP_CONFIG_PATH + " " + CONFIG_PATH, 10);
     }
 
     private Map<String, Object> existingRuntimeConfig(Sandbox sandbox) {
