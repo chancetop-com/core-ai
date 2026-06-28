@@ -32,6 +32,7 @@ public class OcgSandboxService {
     private static final String TERMINAL_WORK_DIR = "/root/ocg-work";
     private static final String OPENCLAW_CHANNEL_TYPE = "openclaw";
     private static final int DEFAULT_CALLBACK_PORT = 3457;
+    private static final int GATEWAY_START_WAIT_SECONDS = 30;
     private static final Set<String> GATEWAY_CONFIG_KEYS = Set.of("agentUrl", "model", "apiKey", "verbose", "async", "callbackHost", "callbackPort", "callbackPublicHost", "callbackPublicPort", "callbackSecret", "callbackTokenTTL", "channels", "plugins");
 
     @Inject
@@ -64,7 +65,7 @@ public class OcgSandboxService {
             if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
             uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
             startGatewayProcess(sandbox);
-            runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
+            waitForGatewayProcess(sandbox, config.id);
             config.sandboxId = sandbox.getId();
             config.sandboxIp = sandboxIp;
             config.updatedAt = ZonedDateTime.now();
@@ -109,7 +110,7 @@ public class OcgSandboxService {
         uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
         stopGatewayProcess(sandbox);
         startGatewayProcess(sandbox);
-        runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
+        waitForGatewayProcess(sandbox, config.id);
         config.sandboxIp = sandboxIp;
         config.updatedAt = ZonedDateTime.now();
         ocgConfigStore.store(config);
@@ -152,40 +153,55 @@ public class OcgSandboxService {
     private void recoverGatewayProcess(OcgConfigView config, Sandbox sandbox) {
         var sandboxIp = sandbox.ip();
         if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
+        LOGGER.info("OCG gateway recovery check started, id={}, sandboxId={}, sandboxIp={}, sandboxPort={}, configPath={}, tempConfigPath={}", config.id, config.sandboxId, sandboxIp, sandbox.port(), CONFIG_PATH, TEMP_CONFIG_PATH);
+        logSandboxSnapshot(sandbox, config.id, "before-recover");
         var restarted = false;
         try {
-            runCommand(sandbox, ocgProcessCheckCommand(), 15);
+            var processOutput = runCommand(sandbox, ocgProcessCheckCommand(), 15);
+            LOGGER.info("OCG gateway process check passed, id={}, sandboxId={}, output={}", config.id, config.sandboxId, truncate(processOutput, 500));
             ensureRuntimeConfigExists(sandbox, config, sandboxIp, sandbox.port());
         } catch (RuntimeException e) {
-            LOGGER.info("OCG gateway process is not running, restarting, id={}, sandboxId={}", config.id, config.sandboxId);
+            LOGGER.warn("OCG gateway process check failed, restarting, id={}, sandboxId={}, error={}", config.id, config.sandboxId, truncate(e.getMessage(), 1_000));
             uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
             stopGatewayProcess(sandbox);
             startGatewayProcess(sandbox);
-            runCommand(sandbox, "sleep 1; " + ocgProcessCheckCommand(), 30);
+            logSandboxSnapshot(sandbox, config.id, "after-start-command");
+            waitForGatewayProcess(sandbox, config.id);
+            logSandboxSnapshot(sandbox, config.id, "after-restart");
             restarted = true;
         }
         if (restarted || !sandboxIp.equals(config.sandboxIp)) {
             config.sandboxIp = sandboxIp;
             config.updatedAt = ZonedDateTime.now();
             ocgConfigStore.store(config);
+            LOGGER.info("OCG sandbox recovery state stored, id={}, sandboxId={}, sandboxIp={}, restarted={}", config.id, config.sandboxId, sandboxIp, restarted);
         }
     }
 
     public void healthCheck() {
+        RuntimeException failure = null;
         for (var config : ocgConfigStore.allWithSandbox()) {
             var sessionId = sandboxSessionId(config.id);
             var sandbox = sandboxService.getSandbox(sessionId);
             if (sandbox == null) {
-                LOGGER.warn("OCG sandbox is not attached, id={}, sandboxId={}", config.id, config.sandboxId);
-                continue;
+                LOGGER.warn("OCG sandbox is not attached, attempting attach, id={}, sandboxId={}", config.id, config.sandboxId);
+                sandbox = sandboxService.attachSandbox(config.sandboxId, buildSandboxConfig(), sessionId, "system", true);
+                if (sandbox == null) {
+                    var error = new RuntimeException("OCG sandbox attach failed: id=" + config.id + ", sandboxId=" + config.sandboxId);
+                    LOGGER.warn("OCG sandbox attach failed, id={}, sandboxId={}", config.id, config.sandboxId);
+                    failure = error;
+                    continue;
+                }
             }
             try {
                 sandboxService.renewSandbox(sessionId);
                 recoverGatewayProcess(config, sandbox);
             } catch (RuntimeException e) {
-                LOGGER.warn("OCG health check failed, id={}, sandboxId={}: {}", config.id, config.sandboxId, e.getMessage());
+                LOGGER.warn("OCG health check failed, id={}, sandboxId={}: {}", config.id, config.sandboxId, truncate(e.getMessage(), 1_000), e);
+                failure = e;
             }
         }
+        if (failure != null) throw failure;
     }
 
     @SuppressWarnings("unchecked")
@@ -208,7 +224,7 @@ public class OcgSandboxService {
         runtimeConfig.put("agentUrl", agentUrl);
         runtimeConfig.remove("apiKey");
         runtimeConfig.put("async", true);
-        runtimeConfig.put("callbackHost", "0.0.0.0");
+        runtimeConfig.put("callbackHost", "127.0.0.1");
         runtimeConfig.put("callbackPort", DEFAULT_CALLBACK_PORT);
         runtimeConfig.put("callbackPublicHost", sandboxHost);
         runtimeConfig.put("callbackPublicPort", sandboxPort);
@@ -240,23 +256,40 @@ public class OcgSandboxService {
     }
 
     private void startGatewayProcess(Sandbox sandbox) {
+        LOGGER.info("OCG gateway start command executing, configPath={}, logPath={}", CONFIG_PATH, GATEWAY_LOG_PATH);
         runCommand(sandbox, "OCG_CONFIG_PATH=" + CONFIG_PATH + " nohup ocg start > " + GATEWAY_LOG_PATH + " 2>&1 &", 10);
+    }
+
+    private void waitForGatewayProcess(Sandbox sandbox, String ocgConfigId) {
+        try {
+            var output = runCommand(sandbox, gatewayWaitCommand(), GATEWAY_START_WAIT_SECONDS + 5);
+            LOGGER.info("OCG gateway process is ready, id={}, output={}", ocgConfigId, truncate(output, 1_000));
+        } catch (RuntimeException e) {
+            logSandboxSnapshot(sandbox, ocgConfigId, "gateway-start-timeout");
+            throw e;
+        }
     }
 
     private void ensureRuntimeConfigExists(Sandbox sandbox, OcgConfigView config, String sandboxHost, int sandboxPort) {
         try {
-            runCommand(sandbox, "test -s " + CONFIG_PATH, 10);
+            var output = runCommand(sandbox, "test -s " + CONFIG_PATH + " && ls -l " + CONFIG_PATH, 10);
+            LOGGER.info("OCG runtime config exists, id={}, path={}, output={}", config.id, CONFIG_PATH, truncate(output, 500));
         } catch (RuntimeException e) {
+            LOGGER.warn("OCG runtime config missing, uploading, id={}, path={}, error={}", config.id, CONFIG_PATH, truncate(e.getMessage(), 500));
             uploadRuntimeConfig(sandbox, config, sandboxHost, sandboxPort);
         }
     }
 
     private void uploadRuntimeConfig(Sandbox sandbox, OcgConfigView config, String sandboxHost, int sandboxPort) {
+        LOGGER.info("OCG runtime config upload started, id={}, sandboxHost={}, sandboxPort={}, tempPath={}, configPath={}", config.id, sandboxHost, sandboxPort, TEMP_CONFIG_PATH, CONFIG_PATH);
         runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " /root/.openclaw-channel-gateway && chmod 777 " + TERMINAL_WORK_DIR, 10);
         var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxHost, sandboxPort);
-        var runtimeConfig = mergeRuntimeConfig(existingRuntimeConfig(sandbox), parseJsonMap(ocgJson));
-        sandbox.uploadFile(TEMP_CONFIG_PATH, JsonUtil.toJson(runtimeConfig).getBytes(StandardCharsets.UTF_8));
-        runCommand(sandbox, "cp " + TEMP_CONFIG_PATH + " " + CONFIG_PATH, 10);
+        var existing = existingRuntimeConfig(sandbox);
+        var runtimeConfig = mergeRuntimeConfig(existing, parseJsonMap(ocgJson));
+        var runtimeConfigJson = JsonUtil.toJson(runtimeConfig);
+        sandbox.uploadFile(TEMP_CONFIG_PATH, runtimeConfigJson.getBytes(StandardCharsets.UTF_8));
+        runCommand(sandbox, "cp " + TEMP_CONFIG_PATH + " " + CONFIG_PATH + " && test -s " + CONFIG_PATH + " && ls -l " + TEMP_CONFIG_PATH + " " + CONFIG_PATH, 10);
+        LOGGER.info("OCG runtime config uploaded, id={}, existingKeys={}, desiredBytes={}, mergedBytes={}", config.id, existing.keySet(), ocgJson.getBytes(StandardCharsets.UTF_8).length, runtimeConfigJson.getBytes(StandardCharsets.UTF_8).length);
     }
 
     private Map<String, Object> existingRuntimeConfig(Sandbox sandbox) {
@@ -296,11 +329,25 @@ public class OcgSandboxService {
     }
 
     private void stopGatewayProcess(Sandbox sandbox) {
-        runCommand(sandbox, "pkill -f 'node .*openclaw-channel-gateway.*dist/cli.js start' || true", 10);
+        var output = runCommand(sandbox, "ps -eo pid=,args= | awk '($0 ~ /openclaw-channel-gateway/ && $0 ~ /dist\\/cli.js start/ || $0 ~ /node \\/usr\\/local\\/bin\\/ocg start/) && $0 !~ /awk/ && $0 !~ /bash -c/ {print $1}' | xargs -r kill; true", 10);
+        LOGGER.info("OCG gateway stop command completed, output={}", truncate(output, 500));
     }
 
     private String ocgProcessCheckCommand() {
-        return "ps aux | grep [n]ode | grep openclaw-channel-gateway | grep dist/cli.js | grep start || (test -f " + GATEWAY_LOG_PATH + " && tail -80 " + GATEWAY_LOG_PATH + "; exit 1)";
+        return "ps aux | grep [n]ode | grep openclaw-channel-gateway | grep dist/cli.js | grep start || (echo 'OCG gateway process not found'; echo '--- files ---'; ls -la " + TEMP_CONFIG_PATH + " " + CONFIG_PATH + " " + GATEWAY_LOG_PATH + " 2>&1 || true; echo '--- gateway log ---'; test -f " + GATEWAY_LOG_PATH + " && tail -80 " + GATEWAY_LOG_PATH + " || true; exit 1)";
+    }
+
+    private String gatewayWaitCommand() {
+        return "i=0; while [ $i -lt " + GATEWAY_START_WAIT_SECONDS + " ]; do if ps aux | grep [n]ode | grep openclaw-channel-gateway | grep dist/cli.js | grep start; then exit 0; fi; if test -f " + GATEWAY_LOG_PATH + " && grep -E 'Error|EADDRINUSE|Unhandled|Cannot|failed|No config found' " + GATEWAY_LOG_PATH + "; then break; fi; i=$((i+1)); sleep 1; done; echo 'OCG gateway process did not become ready within " + GATEWAY_START_WAIT_SECONDS + "s'; echo '--- process ---'; ps aux | grep -E 'openclaw-channel-gateway|ocg|core-ai-sandbox-runtime' | grep -v grep || true; echo '--- files ---'; ls -la " + TEMP_CONFIG_PATH + " " + CONFIG_PATH + " " + GATEWAY_LOG_PATH + " 2>&1 || true; echo '--- gateway log ---'; test -f " + GATEWAY_LOG_PATH + " && tail -120 " + GATEWAY_LOG_PATH + " || true; exit 1";
+    }
+
+    private void logSandboxSnapshot(Sandbox sandbox, String ocgConfigId, String stage) {
+        try {
+            var output = runCommand(sandbox, "echo '--- process ---'; ps aux | grep -E 'openclaw-channel-gateway|ocg|core-ai-sandbox-runtime' | grep -v grep || true; echo '--- files ---'; ls -la " + TEMP_CONFIG_PATH + " " + CONFIG_PATH + " " + GATEWAY_LOG_PATH + " 2>&1 || true; echo '--- gateway log ---'; test -f " + GATEWAY_LOG_PATH + " && tail -80 " + GATEWAY_LOG_PATH + " || true", 15);
+            LOGGER.info("OCG sandbox snapshot, id={}, stage={}, output={}", ocgConfigId, stage, truncate(output, 4_000));
+        } catch (RuntimeException e) {
+            LOGGER.warn("OCG sandbox snapshot failed, id={}, stage={}, error={}", ocgConfigId, stage, truncate(e.getMessage(), 1_000));
+        }
     }
 
     private String runCommand(Sandbox sandbox, String command, int timeoutSeconds) {
@@ -311,16 +358,30 @@ public class OcgSandboxService {
         var client = new SandboxClient(sandbox.ip(), sandbox.port(), timeoutSeconds);
         var result = client.execute(ShellCommandTool.TOOL_NAME, JsonUtil.toJson(Map.of(
                 "command", command,
-                "timeout", timeoutSeconds * 1000,
+                "timeout", timeoutSeconds,
                 "run_in_background", runInBackground)), null);
         if (!result.isCompleted()) {
             throw new RuntimeException(result.getResult());
         }
         var output = result.getResult();
-        if (output != null && (output.startsWith("Command exited with code") || output.startsWith("Command execution failed") || output.startsWith("Command timed out"))) {
+        if (isCommandFailure(output)) {
             throw new RuntimeException(output);
         }
         return output != null ? output : "";
+    }
+
+    private boolean isCommandFailure(String output) {
+        if (output == null) return false;
+        return output.startsWith("Command exited with code")
+                || output.startsWith("Command execution failed")
+                || output.startsWith("Command timed out")
+                || output.contains("\nexit status: exit status ");
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null) return "";
+        if (value.length() <= maxLength) return value;
+        return value.substring(0, maxLength) + "...<truncated>";
     }
 
     private Sandbox requireSandbox(String ocgConfigId) {

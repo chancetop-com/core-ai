@@ -21,6 +21,7 @@ public class OcgHealthCheckJob implements Job {
             ocgSandboxService.healthCheck();
         } catch (Exception e) {
             LOGGER.warn("OCG health check failed", e);
+            throw e;
         }
     }
 }
