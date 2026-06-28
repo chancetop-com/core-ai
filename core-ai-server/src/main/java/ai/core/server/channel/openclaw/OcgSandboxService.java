@@ -30,6 +30,8 @@ public class OcgSandboxService {
     private static final String GATEWAY_LOG_PATH = "/tmp/ocg.log";
     private static final String TERMINAL_LOG_PATH = "/tmp/ocg-terminal.log";
     private static final String TERMINAL_WORK_DIR = "/root/ocg-work";
+    private static final String OPENCLAW_STATE_DIR = "/root/.openclaw";
+    private static final String TEMP_OPENCLAW_STATE_DIR = "/tmp/.openclaw";
     private static final String OPENCLAW_CHANNEL_TYPE = "openclaw";
     private static final int DEFAULT_CALLBACK_PORT = 3457;
     private static final int GATEWAY_START_WAIT_SECONDS = 30;
@@ -120,7 +122,7 @@ public class OcgSandboxService {
     public void runTerminalCommand(String ocgConfigId, String command) {
         if (command == null || command.isBlank()) throw new BadRequestException("command is required");
         var sandbox = requireSandbox(ocgConfigId);
-        var terminalCommand = "export OCG_CONFIG_PATH=" + CONFIG_PATH + "; mkdir -p " + TERMINAL_WORK_DIR + " && chmod 777 " + TERMINAL_WORK_DIR + "; cd " + TERMINAL_WORK_DIR + " || exit 1; openclaw() { ocg \"$@\"; }; { printf '$ %s\\n' " + shellQuote(command.trim()) + "; " + command.trim() + "; printf '\\n[exit code: %s]\\n' \"$?\"; } > " + TERMINAL_LOG_PATH + " 2>&1 &";
+        var terminalCommand = "export OCG_CONFIG_PATH=" + CONFIG_PATH + " OPENCLAW_STATE_DIR=" + OPENCLAW_STATE_DIR + " CLAWDBOT_STATE_DIR=" + OPENCLAW_STATE_DIR + "; mkdir -p " + TERMINAL_WORK_DIR + " " + OPENCLAW_STATE_DIR + " && chmod 777 " + TERMINAL_WORK_DIR + "; cd " + TERMINAL_WORK_DIR + " || exit 1; openclaw() { ocg \"$@\"; }; { printf '$ %s\\n' " + shellQuote(command.trim()) + "; " + command.trim() + "; printf '\\n[exit code: %s]\\n' \"$?\"; } > " + TERMINAL_LOG_PATH + " 2>&1 &";
         runCommand(sandbox, terminalCommand, 10);
         LOGGER.info("OCG terminal command started, id={}, command={}", ocgConfigId, command);
     }
@@ -257,7 +259,7 @@ public class OcgSandboxService {
 
     private void startGatewayProcess(Sandbox sandbox) {
         LOGGER.info("OCG gateway start command executing, configPath={}, logPath={}", CONFIG_PATH, GATEWAY_LOG_PATH);
-        runCommand(sandbox, "OCG_CONFIG_PATH=" + CONFIG_PATH + " nohup ocg start > " + GATEWAY_LOG_PATH + " 2>&1 &", 10);
+        runCommand(sandbox, "OPENCLAW_STATE_DIR=" + OPENCLAW_STATE_DIR + " CLAWDBOT_STATE_DIR=" + OPENCLAW_STATE_DIR + " OCG_CONFIG_PATH=" + CONFIG_PATH + " nohup ocg start > " + GATEWAY_LOG_PATH + " 2>&1 &", 10);
     }
 
     private void waitForGatewayProcess(Sandbox sandbox, String ocgConfigId) {
@@ -282,7 +284,7 @@ public class OcgSandboxService {
 
     private void uploadRuntimeConfig(Sandbox sandbox, OcgConfigView config, String sandboxHost, int sandboxPort) {
         LOGGER.info("OCG runtime config upload started, id={}, sandboxHost={}, sandboxPort={}, tempPath={}, configPath={}", config.id, sandboxHost, sandboxPort, TEMP_CONFIG_PATH, CONFIG_PATH);
-        runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " /root/.openclaw-channel-gateway && chmod 777 " + TERMINAL_WORK_DIR, 10);
+        runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " /root/.openclaw-channel-gateway " + OPENCLAW_STATE_DIR + " && chmod 777 " + TERMINAL_WORK_DIR, 10);
         var ocgJson = buildRuntimeConfig(config, agentUrl(config.channelId, serverUrlFromSandbox()), sandboxHost, sandboxPort);
         var existing = existingRuntimeConfig(sandbox);
         var runtimeConfig = mergeRuntimeConfig(existing, parseJsonMap(ocgJson));
@@ -343,7 +345,7 @@ public class OcgSandboxService {
 
     private void logSandboxSnapshot(Sandbox sandbox, String ocgConfigId, String stage) {
         try {
-            var output = runCommand(sandbox, "echo '--- process ---'; ps aux | grep -E 'openclaw-channel-gateway|ocg|core-ai-sandbox-runtime' | grep -v grep || true; echo '--- files ---'; ls -la " + TEMP_CONFIG_PATH + " " + CONFIG_PATH + " " + GATEWAY_LOG_PATH + " 2>&1 || true; echo '--- gateway log ---'; test -f " + GATEWAY_LOG_PATH + " && tail -80 " + GATEWAY_LOG_PATH + " || true", 15);
+            var output = runCommand(sandbox, "echo '--- process ---'; ps aux | grep -E 'openclaw-channel-gateway|ocg|core-ai-sandbox-runtime' | grep -v grep || true; echo '--- files ---'; ls -la " + TEMP_CONFIG_PATH + " " + CONFIG_PATH + " " + GATEWAY_LOG_PATH + " 2>&1 || true; echo '--- openclaw state ---'; find " + OPENCLAW_STATE_DIR + " " + TEMP_OPENCLAW_STATE_DIR + " -maxdepth 4 -type f 2>/dev/null | sort || true; echo '--- gateway log ---'; test -f " + GATEWAY_LOG_PATH + " && tail -80 " + GATEWAY_LOG_PATH + " || true", 15);
             LOGGER.info("OCG sandbox snapshot, id={}, stage={}, output={}", ocgConfigId, stage, truncate(output, 4_000));
         } catch (RuntimeException e) {
             LOGGER.warn("OCG sandbox snapshot failed, id={}, stage={}, error={}", ocgConfigId, stage, truncate(e.getMessage(), 1_000));
