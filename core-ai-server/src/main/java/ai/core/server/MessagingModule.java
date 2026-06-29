@@ -40,7 +40,9 @@ class MessagingModule extends Module {
 
         var redisConfig = new JedisConfig(redisHost, redisPort);
         var jedisPool = redisConfig.createJedisPool();
-        onShutdown(jedisPool::close);
+        // jedisPool::close is registered LAST (see end of this method): Module.onShutdown puts every hook in
+        // ShutdownHook.STAGE_5 and they run in registration (FIFO) order, so the pool must outlive every hook
+        // below that still borrows connections from it (the command-drain hook, the subscriber stops).
 
         var ownershipRegistry = bind(new SessionOwnershipRegistry(jedisPool));
         var sandboxService = bean(SandboxService.class);
@@ -86,5 +88,8 @@ class MessagingModule extends Module {
                 }
             }
         });
+        // Must be the final onShutdown: STAGE_5 hooks run in registration order, so closing the pool here lets
+        // every hook above finish using it first — otherwise drainPodStream hits "Pool not open" (closed too early).
+        onShutdown(jedisPool::close);
     }
 }
