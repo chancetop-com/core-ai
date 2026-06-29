@@ -1094,6 +1094,8 @@ export const api = {
       request<AgentScheduleView>(`/api/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/api/schedules/${id}`, { method: 'DELETE' }),
+    trigger: (id: string) =>
+      request<TriggerRunResponse>(`/api/schedules/${id}/trigger`, { method: 'POST' }),
   },
   triggers: {
     list: (type?: string) => {
