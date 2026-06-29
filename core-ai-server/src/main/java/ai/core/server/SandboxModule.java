@@ -38,6 +38,8 @@ class SandboxModule extends Module {
 
         SandboxProvider provider;
         String serverUrlFromSandbox;
+        var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
+        var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
         if (providerName.equalsIgnoreCase("kubernetes")) {
             provider = createKubernetesSandboxProvider();
             serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
@@ -45,8 +47,6 @@ class SandboxModule extends Module {
             provider = createAgentSandboxProvider();
             serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
         } else if (providerName.equalsIgnoreCase("docker")) {
-            var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
-            var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
             provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
             serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
         } else {
