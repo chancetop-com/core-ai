@@ -46,6 +46,8 @@ public class TraceService {
     private static final int SEARCH_TRACE_SCAN_LIMIT = 10_000;
     private static final int FACET_LIMIT = 50;
     private static final int SESSION_SUMMARY_TRACE_LIMIT = 1000;
+    private static final int MAX_SPANS_PER_TRACE = 5000;
+    private static final int USER_SEARCH_LIMIT = 10000;
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -226,7 +228,10 @@ public class TraceService {
         }
 
         try {
-            var users = userCollection.find(Filters.exists("email"));
+            var userQuery = new Query();
+            userQuery.filter = Filters.exists("email");
+            userQuery.limit = USER_SEARCH_LIMIT;
+            var users = userCollection.find(userQuery);
             if (users == null) return userIds;
             for (var user : users) {
                 if (matchesUser(user, needle)) {
@@ -409,6 +414,7 @@ public class TraceService {
 
         var query = new Query();
         query.filter = Filters.in("trace_id", pending.stream().map(trace -> trace.traceId).toList());
+        query.limit = MAX_SPANS_PER_TRACE * pending.size();
         var spansByTrace = spanCollection.find(query).stream()
             .filter(span -> span.traceId != null)
             .collect(Collectors.groupingBy(span -> span.traceId));
@@ -486,6 +492,7 @@ public class TraceService {
         var query = new Query();
         query.filter = Filters.eq("trace_id", traceId);
         query.sort = Sorts.ascending("started_at");
+        query.limit = MAX_SPANS_PER_TRACE;
         return spanCollection.find(query);
     }
 

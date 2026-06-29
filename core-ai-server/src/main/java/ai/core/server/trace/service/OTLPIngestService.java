@@ -6,6 +6,8 @@ import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 
+import org.bson.conversions.Bson;
+
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.common.v1.AnyValue;
 import io.opentelemetry.proto.common.v1.KeyValue;
@@ -28,6 +30,7 @@ import ai.core.server.trace.domain.TraceStatus;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,7 +88,6 @@ public class OTLPIngestService {
         saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs);
         if (parentSpanId == null) {
             upsertTrace(protoSpan, traceId, attrs, resourceAttrs);
-            recalculateTraceTokens(traceId);
         }
     }
 
@@ -175,8 +177,8 @@ public class OTLPIngestService {
             backfillTraceModel(traceId, span.model);
         }
 
-        // Recalculate trace token totals from all spans
-        recalculateTraceTokens(traceId);
+        // Increment trace token/cost totals atomically instead of reloading all spans
+        incrementTraceTokens(traceId, span);
     }
 
     private void upsertTrace(io.opentelemetry.proto.trace.v1.Span protoSpan,
@@ -304,34 +306,20 @@ public class OTLPIngestService {
         trace.metadata = merged;
     }
 
-    private void recalculateTraceTokens(String traceId) {
-        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
-        if (existing.isEmpty()) return;
-
-        var trace = existing.getFirst();
-        var spans = spanCollection.find(Filters.eq("trace_id", traceId));
-
-        long totalInput = 0;
-        long totalOutput = 0;
-        long totalCached = 0;
-        double totalCost = 0.0;
-        boolean hasCost = false;
-        for (var span : spans) {
-            if (span.inputTokens != null) totalInput += span.inputTokens;
-            if (span.outputTokens != null) totalOutput += span.outputTokens;
-            if (span.cachedTokens != null) totalCached += span.cachedTokens;
-            if (span.costUsd != null) {
-                totalCost += span.costUsd;
-                hasCost = true;
-            }
+    private void incrementTraceTokens(String traceId, Span span) {
+        var inc = new ArrayList<Bson>();
+        long input = span.inputTokens != null ? span.inputTokens : 0;
+        long output = span.outputTokens != null ? span.outputTokens : 0;
+        if (input > 0) inc.add(Updates.inc("input_tokens", input));
+        if (output > 0) inc.add(Updates.inc("output_tokens", output));
+        long total = input + output;
+        if (total > 0) inc.add(Updates.inc("total_tokens", total));
+        if (span.cachedTokens != null && span.cachedTokens > 0) inc.add(Updates.inc("cached_tokens", span.cachedTokens));
+        if (span.costUsd != null && span.costUsd > 0) inc.add(Updates.inc("cost_usd", span.costUsd));
+        if (!inc.isEmpty()) {
+            inc.add(Updates.set("updated_at", ZonedDateTime.now()));
+            traceCollection.update(Filters.eq("trace_id", traceId), Updates.combine(inc));
         }
-        trace.inputTokens = totalInput;
-        trace.outputTokens = totalOutput;
-        trace.totalTokens = totalInput + totalOutput;
-        trace.cachedTokens = totalCached;
-        trace.costUsd = hasCost ? totalCost : null;
-        trace.updatedAt = ZonedDateTime.now();
-        traceCollection.replace(trace);
     }
 
     private SpanType resolveSpanType(Map<String, String> attrs) {
