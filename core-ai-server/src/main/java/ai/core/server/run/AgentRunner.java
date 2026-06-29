@@ -90,6 +90,11 @@ public class AgentRunner {
     private static final int MAX_CONCURRENT_RUNS = 10;
     private static final int DEFAULT_TIMEOUT_SECONDS = 600;
     private static final int SANDBOX_RELEASE_DELAY_SECONDS = 60;
+    // Workflow AGENT/LLM nodes are decoupled one-shot child runs: the node's awaitResult unblocks the moment the
+    // run reaches a terminal status and nothing reuses this run's sandbox afterwards, so release it on a short
+    // delay instead of the full grace window — under fan-out the long delay would leave many idle sandboxes alive
+    // at once. The small non-zero buffer still absorbs any in-flight terminal-status write.
+    private static final int WORKFLOW_SANDBOX_RELEASE_DELAY_SECONDS = 10;
     private static final int MAX_TRANSCRIPT_RESULT_LENGTH = 10240;
     // RUNNING records older than this are treated as ghost rows (left over from crashes / restarts)
     // and ignored by isRunning(), so SKIP-policy schedules don't get jammed forever.
@@ -179,7 +184,7 @@ public class AgentRunner {
                     }
                     execute(runEntity, definition, sandbox, resolvedVariables, traceContext);
                 } finally {
-                    scheduleSandboxRelease(runId);
+                    scheduleSandboxRelease(runId, trigger);
                 }
             }, executorService);
             runningFutures.put(runId, future);
@@ -209,14 +214,15 @@ public class AgentRunner {
         return error.getMessage() != null ? error.getMessage() : error.toString();
     }
 
-    private void scheduleSandboxRelease(String runId) {
+    private void scheduleSandboxRelease(String runId, TriggerType trigger) {
+        var delaySeconds = trigger == TriggerType.WORKFLOW ? WORKFLOW_SANDBOX_RELEASE_DELAY_SECONDS : SANDBOX_RELEASE_DELAY_SECONDS;
         timeoutScheduler.schedule(() -> {
             try {
                 sandboxService.releaseSandbox(runId);
             } catch (Exception e) {
                 LOGGER.warn("failed to release sandbox for runId={}", runId, e);
             }
-        }, SANDBOX_RELEASE_DELAY_SECONDS, TimeUnit.SECONDS);
+        }, delaySeconds, TimeUnit.SECONDS);
     }
 
     public void cancel(String runId) {
