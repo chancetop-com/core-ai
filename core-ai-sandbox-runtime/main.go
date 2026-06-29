@@ -493,7 +493,7 @@ func writeFileUploadError(w http.ResponseWriter, status int, msg string) {
 func executeBash(args string) (string, string) {
 	var parsed struct {
 		Command      string `json:"command"`
-		WorkspaceDir string `json:"workspace_dir"`
+		WorkspaceDir string `json:"workspace"`
 		Timeout      int    `json:"timeout"`
 	}
 	if err := json.Unmarshal([]byte(args), &parsed); err != nil {
@@ -531,7 +531,7 @@ func executePython(args string) (string, string) {
 	var parsed struct {
 		Code         string `json:"code"`
 		Script       string `json:"script"`
-		WorkspaceDir string `json:"workspace_dir"`
+		WorkspaceDir string `json:"workspace"`
 		Timeout      int    `json:"timeout"`
 	}
 	if err := json.Unmarshal([]byte(args), &parsed); err != nil {
