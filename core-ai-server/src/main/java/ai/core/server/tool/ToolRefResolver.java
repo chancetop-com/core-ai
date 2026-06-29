@@ -3,10 +3,12 @@ package ai.core.server.tool;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.server.domain.ToolRef;
-import ai.core.server.domain.ToolRegistry;
+import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
+import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
+import ai.core.tool.registry.BuiltinToolProvider;
 import ai.core.tool.mcp.McpToolCalls;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,12 +29,12 @@ public class ToolRefResolver {
     private static final String CONFIG_PREFIX = "config:";
     private static final String API_TOOL_ID = "builtin-service-api";
 
-    private final Map<String, ToolRegistry> toolRegistry;
+    private final Map<String, ToolRegistryEntry> toolRegistry;
     private final InternalApiToolLoader apiToolLoader;
     private final Map<String, List<ToolCall>> dynamicToolSets;
     private final Map<String, List<ToolCall>> apiToolCache = new ConcurrentHashMap<>();
 
-    public ToolRefResolver(Map<String, ToolRegistry> toolRegistry, InternalApiToolLoader apiToolLoader,
+    public ToolRefResolver(Map<String, ToolRegistryEntry> toolRegistry, InternalApiToolLoader apiToolLoader,
                            Map<String, List<ToolCall>> dynamicToolSets) {
         this.toolRegistry = toolRegistry;
         this.apiToolLoader = apiToolLoader;
@@ -95,9 +97,11 @@ public class ToolRefResolver {
         var entry = lookupBuiltinEntry(toolRef.id);
         if (entry != null) {
             var setName = entry.config != null ? entry.config.get("set") : null;
-            // BUILTIN_TOOL_SETS is an immutable Map.of() which throws NPE on get(null)
-            var builtinSet = setName != null ? ToolRegistryService.BUILTIN_TOOL_SETS.get(setName) : null;
-            if (builtinSet != null) result.addAll(builtinSet);
+            var builtinSet = setName != null ? BuiltinTools.GROUPED_SETS.get(setName) : null;
+            if (builtinSet != null) {
+                var provider = new BuiltinToolProvider("server-builtin:" + setName, builtinSet);
+                result.addAll(provider.provide().values());
+            }
             return;
         }
         // fallback for dynamically registered builtin tool sets
@@ -105,7 +109,7 @@ public class ToolRefResolver {
         if (dynamicSet != null) result.addAll(dynamicSet);
     }
 
-    private ToolRegistry lookupBuiltinEntry(String id) {
+    private ToolRegistryEntry lookupBuiltinEntry(String id) {
         var entry = toolRegistry.get(id);
         if (entry != null && entry.type == ToolType.BUILTIN) return entry;
         // builtin tools are registered with "builtin:" prefix, e.g. "builtin:builtin-all"
@@ -195,15 +199,18 @@ public class ToolRefResolver {
             case MCP -> result.addAll(resolveMcpTools(entry, sessionMgr));
             case BUILTIN -> {
                 var setName = entry.config != null ? entry.config.get("set") : null;
-                var builtinSet = ToolRegistryService.BUILTIN_TOOL_SETS.get(setName);
-                if (builtinSet != null) result.addAll(builtinSet);
+                var builtinSet = BuiltinTools.GROUPED_SETS.get(setName);
+                if (builtinSet != null) {
+                    var provider = new BuiltinToolProvider("server-builtin-legacy:" + setName, builtinSet);
+                    result.addAll(provider.provide().values());
+                }
             }
             case API -> result.addAll(resolveApiTools(entry));
             default -> LOGGER.warn("unknown tool type in legacy ref, id={}, type={}", toolRef.id, entry.type);
         }
     }
 
-    private List<ToolCall> resolveMcpTools(ToolRegistry entry, McpClientManager sessionMgr) {
+    private List<ToolCall> resolveMcpTools(ToolRegistryEntry entry, McpClientManager sessionMgr) {
         var byEntryId = pickManager(entry.id, sessionMgr);
         if (byEntryId != null && byEntryId.hasServer(entry.id)) {
             return loadMcpToolsSafe(byEntryId, entry.id);
@@ -236,8 +243,8 @@ public class ToolRefResolver {
         }
     }
 
-    /** Resolve the server name used by McpClientManager from a ToolRegistry entry. */
-    private String resolveMcpServerName(ToolRegistry entry) {
+    /** Resolve the server name used by McpClientManager from a ToolRegistryEntry entry. */
+    private String resolveMcpServerName(ToolRegistryEntry entry) {
         if (entry.id.startsWith(CONFIG_PREFIX)) {
             return entry.id.substring(CONFIG_PREFIX.length());
         }
@@ -248,7 +255,7 @@ public class ToolRefResolver {
         return null;
     }
 
-    private List<ToolCall> resolveApiTools(ToolRegistry entry) {
+    private List<ToolCall> resolveApiTools(ToolRegistryEntry entry) {
         if (API_TOOL_ID.equals(entry.id)) {
             var cached = apiToolCache.get(entry.id);
             if (cached != null) return cached;

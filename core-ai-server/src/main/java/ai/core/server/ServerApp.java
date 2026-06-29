@@ -20,7 +20,7 @@ import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SystemPrompt;
-import ai.core.server.domain.ToolRegistry;
+import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.User;
 import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
@@ -64,7 +64,7 @@ public class ServerApp extends App {
         mongo.uri(requiredProperty("sys.mongo.uri"));
 
         mongo.collection(User.class);
-        mongo.collection(ToolRegistry.class);
+        mongo.collection(ToolRegistryEntry.class);
         mongo.collection(AgentDefinition.class);
         mongo.collection(ChannelConfigView.class);
         mongo.collection(OcgConfigView.class);

@@ -1,7 +1,7 @@
 package ai.core.server.tool;
 
 import ai.core.server.domain.ToolRef;
-import ai.core.server.domain.ToolRegistry;
+import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
 import org.junit.jupiter.api.Test;
@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ToolRefResolverTest {
     @Test
     void registryTypeOverridesIncorrectRequestType() {
-        var registry = new ToolRegistry();
+        var registry = new ToolRegistryEntry();
         registry.id = "custom-builtin";
         registry.type = ToolType.BUILTIN;
         registry.config = Map.of("set", "builtin-planning");
@@ -26,6 +26,6 @@ class ToolRefResolverTest {
 
         var resolved = resolver.resolve(java.util.List.of(ref));
 
-        assertEquals(ToolRegistryService.BUILTIN_TOOL_SETS.get("builtin-planning").size(), resolved.size());
+        assertEquals(ai.core.tool.BuiltinTools.GROUPED_SETS.get("builtin-planning").size(), resolved.size());
     }
 }

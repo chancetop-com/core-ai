@@ -5,7 +5,7 @@ import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.mcp.client.McpServerConfig;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConstants;
-import ai.core.server.domain.ToolRegistry;
+import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.sandbox.SandboxClient;
 import ai.core.server.sandbox.SandboxService;
 import org.slf4j.Logger;
@@ -35,7 +35,7 @@ class McpServerConnectionManager {
     // Sandbox-hosted entries need an active sandbox and are deliberately ignored here —
     // they're picked up lazily by ensureRegisteredOnDiscovery (tool browsing UI) or
     // registerOnSession (agent run).
-    void registerMcpServer(ToolRegistry entry) {
+    void registerMcpServer(ToolRegistryEntry entry) {
         if (isSandboxHosted(entry.config)) return;
         var mcpManager = getOrCreateGlobalMcpManager();
         if (mcpManager.hasServer(entry.id)) return;
@@ -48,7 +48,7 @@ class McpServerConnectionManager {
 
     // Idempotently start a sandbox-hosted MCP on the discovery sandbox and register
     // it in the global manager. Used by the frontend's connect / list-tools flow.
-    boolean ensureRegisteredOnDiscovery(ToolRegistry entry) {
+    boolean ensureRegisteredOnDiscovery(ToolRegistryEntry entry) {
         if (!isSandboxHosted(entry.config)) return false;
         var mcpManager = getOrCreateGlobalMcpManager();
         if (mcpManager.hasServer(entry.id)) return true;
@@ -72,7 +72,7 @@ class McpServerConnectionManager {
     // Register a sandbox-hosted MCP server in a session-scoped manager, starting the
     // MCP process on the given session sandbox. Each session gets its own manager
     // and child process so concurrent sessions don't collide.
-    boolean registerOnSession(ToolRegistry entry, McpClientManager sessionManager, Sandbox sandbox) {
+    boolean registerOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox) {
         if (!isSandboxHosted(entry.config)) return false;
         if (sessionManager.hasServer(entry.id)) return true;
         var ip = sandbox.ip();
@@ -93,7 +93,7 @@ class McpServerConnectionManager {
         }
     }
 
-    private McpServerConfig buildSandboxBackedConfig(ToolRegistry entry, SandboxClient sandboxClient) {
+    private McpServerConfig buildSandboxBackedConfig(ToolRegistryEntry entry, SandboxClient sandboxClient) {
         var configMap = new HashMap<String, Object>();
         configMap.putAll(entry.config);
         var command = (String) configMap.get("command");
@@ -139,7 +139,7 @@ class McpServerConnectionManager {
         }
     }
 
-    void applyMcpServerState(ToolRegistry entity, boolean configChanged) {
+    void applyMcpServerState(ToolRegistryEntry entity, boolean configChanged) {
         // Sandbox-hosted entries aren't held by the global manager; just drop any
         // discovery-side registration so the next connect/listTools re-resolves.
         // In-flight session managers keep their own clients until session release.

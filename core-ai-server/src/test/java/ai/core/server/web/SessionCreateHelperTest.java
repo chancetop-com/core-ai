@@ -3,7 +3,7 @@ package ai.core.server.web;
 import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.tool.ToolRefView;
 import ai.core.server.domain.ToolRef;
-import ai.core.server.domain.ToolRegistry;
+import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
 import ai.core.server.session.AgentSessionManager;
@@ -27,7 +27,7 @@ class SessionCreateHelperTest {
         helper.toolRegistryService = mock(ToolRegistryService.class);
         var ref = toolRef("mcp-1", ToolSourceType.MCP);
         when(helper.sessionManager.loadToolRefs(eq("s-1"), eq(List.of(ref)))).thenReturn(List.of(ref));
-        var registry = new ToolRegistry();
+        var registry = new ToolRegistryEntry();
         registry.id = "mcp-1";
         registry.name = "Weather";
         registry.type = ToolType.MCP;

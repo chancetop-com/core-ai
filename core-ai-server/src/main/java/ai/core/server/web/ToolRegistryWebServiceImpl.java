@@ -17,7 +17,7 @@ import ai.core.api.server.tool.TestMcpToolRequest;
 import ai.core.api.server.tool.TestMcpToolResponse;
 import ai.core.api.server.tool.ToolRegistryView;
 import ai.core.api.server.tool.UpdateMcpServerRequest;
-import ai.core.server.domain.ToolRegistry;
+import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.tool.InternalApiToolLoader;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCallResult;
@@ -195,7 +195,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
         return view;
     }
 
-    private ToolRegistryView toView(ToolRegistry entity) {
+    private ToolRegistryView toView(ToolRegistryEntry entity) {
         var view = new ToolRegistryView();
         view.id = entity.id;
         view.name = entity.name;

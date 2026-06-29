@@ -6,7 +6,7 @@ import ai.core.mcp.client.McpServerConfig;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
 import ai.core.server.domain.ToolRef;
-import ai.core.server.domain.ToolRegistry;
+import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
 import ai.core.server.sandbox.SandboxService;
@@ -39,24 +39,13 @@ public class ToolRegistryService {
     private static final String BUILTIN_PREFIX = "builtin:";
     private static final String API_TOOL_ID = "builtin-service-api";
 
-    static final Map<String, List<ToolCall>> BUILTIN_TOOL_SETS = Map.of(
-        "builtin-all", BuiltinTools.ALL,
-        "builtin-planning", BuiltinTools.PLANNING,
-        "builtin-file-operations", BuiltinTools.FILE_OPERATIONS,
-        "builtin-file-read-only", BuiltinTools.FILE_READ_ONLY,
-        "builtin-multimodal", BuiltinTools.MULTIMODAL,
-        "builtin-web", BuiltinTools.WEB,
-        "builtin-code-execution", BuiltinTools.CODE_EXECUTION,
-        "builtin-github", BuiltinTools.GITHUB
-    );
-
-    private final Map<String, ToolRegistry> tools = new ConcurrentHashMap<>();
+    private final Map<String, ToolRegistryEntry> tools = new ConcurrentHashMap<>();
     private final Map<String, List<ToolCall>> dynamicToolSets = new ConcurrentHashMap<>();
     private final McpServerConnectionManager mcpConnectionManager;
     private ToolRefResolver toolRefResolver;
 
     @Inject
-    MongoCollection<ToolRegistry> toolRegistryCollection;
+    MongoCollection<ToolRegistryEntry> toolRegistryCollection;
 
     @Inject
     ApiDefinitionService apiDefinitionService;
@@ -91,7 +80,7 @@ public class ToolRegistryService {
             internalApiToolLoader = new InternalApiToolLoader(apiDefinitionService);
             var apiTools = internalApiToolLoader.load();
 
-            var registry = new ToolRegistry();
+            var registry = new ToolRegistryEntry();
             registry.id = API_TOOL_ID;
             registry.name = "service-api";
             registry.type = ToolType.API;
@@ -109,8 +98,8 @@ public class ToolRegistryService {
     }
 
     private void loadBuiltinTools() {
-        for (var entry : BUILTIN_TOOL_SETS.entrySet()) {
-            var registry = new ToolRegistry();
+        for (var entry : BuiltinTools.GROUPED_SETS.entrySet()) {
+            var registry = new ToolRegistryEntry();
             registry.id = BUILTIN_PREFIX + entry.getKey();
             registry.name = entry.getKey();
             registry.type = ToolType.BUILTIN;
@@ -135,7 +124,7 @@ public class ToolRegistryService {
             for (var entry : servers.entrySet()) {
                 var name = entry.getKey();
                 var config = entry.getValue();
-                var registry = new ToolRegistry();
+                var registry = new ToolRegistryEntry();
                 registry.id = CONFIG_PREFIX + name;
                 registry.name = name;
                 registry.type = ToolType.MCP;
@@ -215,14 +204,14 @@ public class ToolRegistryService {
         }
     }
 
-    public List<ToolRegistry> listTools(String category) {
+    public List<ToolRegistryEntry> listTools(String category) {
         if (category != null && !category.isBlank()) {
             return tools.values().stream().filter(t -> category.equals(t.category)).toList();
         }
         return List.copyOf(tools.values());
     }
 
-    public ToolRegistry getTool(String id) {
+    public ToolRegistryEntry getTool(String id) {
         var tool = tools.get(id);
         if (tool == null) throw new RuntimeException("tool not found, id=" + id);
         return tool;
@@ -236,11 +225,11 @@ public class ToolRegistryService {
         dynamicToolSets.put(name, toolCalls);
     }
 
-    public ToolRegistry createMcpServer(String name, String description, String category, Map<String, String> config, Boolean enabled) {
+    public ToolRegistryEntry createMcpServer(String name, String description, String category, Map<String, String> config, Boolean enabled) {
         return createMcpServerInternal(name, description, category, config, enabled, null);
     }
 
-    private ToolRegistry createMcpServerInternal(String name, String description, String category,
+    private ToolRegistryEntry createMcpServerInternal(String name, String description, String category,
                                                    Map<String, String> config, Boolean enabled, String rawConfig) {
         if (findMcpServerByName(name).isPresent()) {
             throw new ConflictException("mcp server name already exists: " + name);
@@ -248,7 +237,7 @@ public class ToolRegistryService {
         var configMap = new HashMap<String, Object>(config);
         McpServerConfig.fromMap(name, configMap);
 
-        var entity = new ToolRegistry();
+        var entity = new ToolRegistryEntry();
         entity.id = new ObjectId().toHexString();
         entity.name = name;
         entity.description = description;
@@ -278,14 +267,14 @@ public class ToolRegistryService {
      * Each server is automatically configured as sandbox-hosted.
      */
     @SuppressWarnings("unchecked")
-    public List<ToolRegistry> importMcpServers(String rawJson, String category, Boolean enabled) {
+    public List<ToolRegistryEntry> importMcpServers(String rawJson, String category, Boolean enabled) {
         Map<String, Object> parsed = JsonUtil.fromJson(Map.class, rawJson);
         var mcpServers = (Map<String, Object>) parsed.get("mcpServers");
         if (mcpServers == null || mcpServers.isEmpty()) {
             throw new IllegalArgumentException("missing or empty 'mcpServers' key in config");
         }
 
-        var results = new ArrayList<ToolRegistry>();
+        var results = new ArrayList<ToolRegistryEntry>();
         for (var entry : mcpServers.entrySet()) {
             String name = entry.getKey();
             if (!(entry.getValue() instanceof Map<?, ?> serverConf)) {
@@ -307,7 +296,7 @@ public class ToolRegistryService {
     }
 
     // Convert a single server config from the import JSON to Map<String,String>
-    // suitable for ToolRegistry.config storage. Container types (args/env/headers)
+    // suitable for ToolRegistryEntry.config storage. Container types (args/env/headers)
     // are serialized as JSON so they can be parsed back by McpServerConfig helpers.
     private Map<String, String> convertImportConfigToMap(Map<String, Object> serverConf) {
         var result = new HashMap<String, String>();
@@ -336,7 +325,7 @@ public class ToolRegistryService {
         return result;
     }
 
-    public ToolRegistry updateMcpServer(String id, String name, String description, String category, Map<String, String> config, Boolean enabled, String rawConfig) {
+    public ToolRegistryEntry updateMcpServer(String id, String name, String description, String category, Map<String, String> config, Boolean enabled, String rawConfig) {
         var entity = tools.get(id);
         if (entity == null) throw new RuntimeException("mcp server not found, id=" + id);
         if (entity.type != ToolType.MCP) throw new RuntimeException("tool is not an mcp server, id=" + id);
@@ -388,7 +377,7 @@ public class ToolRegistryService {
         LOGGER.info("deleted mcp server, id={}, name={}", id, entity.name);
     }
 
-    public ToolRegistry enableMcpServer(String id) {
+    public ToolRegistryEntry enableMcpServer(String id) {
         if (id.startsWith(CONFIG_PREFIX)) throw new RuntimeException("cannot enable/disable mcp server from configuration");
         if (id.startsWith(BUILTIN_PREFIX)) throw new RuntimeException("cannot enable/disable builtin tool set");
 
@@ -408,7 +397,7 @@ public class ToolRegistryService {
         return entity;
     }
 
-    public ToolRegistry disableMcpServer(String id) {
+    public ToolRegistryEntry disableMcpServer(String id) {
         if (id.startsWith(CONFIG_PREFIX)) throw new RuntimeException("cannot enable/disable mcp server from configuration");
         if (id.startsWith(BUILTIN_PREFIX)) throw new RuntimeException("cannot enable/disable builtin tool set");
 
@@ -477,9 +466,9 @@ public class ToolRegistryService {
         return sessionMgr;
     }
 
-    private List<ToolRegistry> collectSandboxHostedEntries(List<ToolRef> toolRefs) {
+    private List<ToolRegistryEntry> collectSandboxHostedEntries(List<ToolRef> toolRefs) {
         var seen = new java.util.LinkedHashSet<String>();
-        var result = new ArrayList<ToolRegistry>();
+        var result = new ArrayList<ToolRegistryEntry>();
         for (var ref : toolRefs) {
             if (ref == null || ref.id == null) continue;
             var entry = findMcpEntryForRef(ref);
@@ -490,7 +479,7 @@ public class ToolRegistryService {
         return result;
     }
 
-    private ToolRegistry findMcpEntryForRef(ToolRef ref) {
+    private ToolRegistryEntry findMcpEntryForRef(ToolRef ref) {
         var entry = tools.get(ref.id);
         if (entry != null && entry.type == ToolType.MCP) return entry;
         // mcp-tool:<server>:<tool> or mcp-tool:<tool> with source=server — resolve to the server entry
@@ -562,11 +551,11 @@ public class ToolRegistryService {
         }
     }
 
-    private static boolean isSandboxHosted(ToolRegistry entity) {
+    private static boolean isSandboxHosted(ToolRegistryEntry entity) {
         return entity.config != null && "sandbox_hosted".equalsIgnoreCase(entity.config.get("transport"));
     }
 
-    private java.util.Optional<ToolRegistry> findMcpServerByName(String name) {
+    private java.util.Optional<ToolRegistryEntry> findMcpServerByName(String name) {
         return toolRegistryCollection.findOne(Filters.and(
                 Filters.eq("type", ToolType.MCP.name()),
                 Filters.eq("name", name)));
@@ -635,7 +624,7 @@ public class ToolRegistryService {
         return tools.getFirst().execute(payload);
     }
 
-    private ToolRegistry requireMcpEntity(String serverId) {
+    private ToolRegistryEntry requireMcpEntity(String serverId) {
         var entity = tools.get(serverId);
         if (entity == null || entity.type != ToolType.MCP) {
             throw new RuntimeException("mcp server not found or not MCP type, id=" + serverId);

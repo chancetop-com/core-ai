@@ -2,7 +2,7 @@ package ai.core.server.workflow;
 
 import ai.core.api.server.workflow.ExportWorkflowResponse;
 import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.ToolRegistry;
+import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
@@ -34,7 +34,7 @@ public class WorkflowPortService {
     MongoCollection<WorkflowDefinition> definitionCollection;
 
     @Inject
-    MongoCollection<ToolRegistry> toolRegistryCollection;
+    MongoCollection<ToolRegistryEntry> toolRegistryCollection;
 
     public ExportWorkflowResponse export(String id, String userId) {
         WorkflowDefinition definition = definitionService.get(id, userId);   // ownership-checked

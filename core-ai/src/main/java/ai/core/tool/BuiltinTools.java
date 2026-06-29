@@ -19,6 +19,7 @@ import ai.core.tool.tools.WriteTodosTool;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -97,6 +98,16 @@ public final class BuiltinTools {
             RequireGithubInstallationTokenTool.builder().build()
     );
 
+    public static final Map<String, List<ToolCall>> GROUPED_SETS = Map.of(
+            "builtin-all", ALL,
+            "builtin-planning", PLANNING,
+            "builtin-file-operations", FILE_OPERATIONS,
+            "builtin-file-read-only", FILE_READ_ONLY,
+            "builtin-multimodal", MULTIMODAL,
+            "builtin-web", WEB,
+            "builtin-code-execution", CODE_EXECUTION,
+            "builtin-github", GITHUB
+    );
 
     @SafeVarargs
     @SuppressWarnings("varargs")
