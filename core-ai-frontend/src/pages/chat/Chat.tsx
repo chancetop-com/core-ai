@@ -410,6 +410,20 @@ export default function Chat() {
       if (!isCurrentHydration()) return;
       const sessionAgentId = sessionInfo?.agent_id || session.agent_id;
       const sessionAgent = agents.find(a => a.id === sessionAgentId);
+      // If the session's agent is not in the local agents list (e.g. a shared agent),
+      // fetch it and add to otherAgents so the selector can display its name.
+      if (sessionAgentId && !sessionAgent) {
+        api.agents.get(sessionAgentId).then(fetched => {
+          if (fetched) {
+            setOtherAgents(prev => {
+              if (prev.find(a => a.id === fetched.id)) return prev;
+              return [...prev, fetched];
+            });
+          }
+        }).catch(() => {
+          // Agent may have been deleted; fall through to "Select Agent" placeholder.
+        });
+      }
       const loadedToolIdsFromInfo = cleanIdSet((sessionInfo?.loaded_tools || []).map(t => t.id));
       const loadedSkillIdsFromInfo = cleanIdSet(sessionInfo?.loaded_skill_ids || []);
       const loadedSubAgentIdsFromInfo = cleanIdSet(sessionInfo?.loaded_sub_agent_ids || []);
