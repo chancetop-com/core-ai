@@ -84,7 +84,7 @@ export default function Layout() {
     { to: '/agents', icon: Bot, label: 'Agents', show: true },
     { to: '/workflows', icon: Workflow, label: 'Workflows', show: true },
     { to: '/system-prompts', icon: FileText, label: 'System Prompts', show: caps.systemPrompts },
-    { to: '/tasks', icon: ListChecks, label: 'Tasks', show: true },
+    { to: '/tasks', icon: ListChecks, label: 'Tasks', show: false }, // hidden until Tasks page is built
     { to: '/triggers', icon: Zap, label: 'Triggers', show: true, children: [
       { to: '/triggers/webhook', icon: Webhook, label: 'Webhook', show: true },
       { to: '/triggers/channels', icon: Radio, label: 'Channels', show: true },
