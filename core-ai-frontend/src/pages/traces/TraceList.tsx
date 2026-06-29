@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Children, isValidElement, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, MessageCircle, Search, UserCircle, X, Zap } from 'lucide-react';
 import { api, adminApi, type SessionSummary, type Trace, type TraceFacet, type TraceFilter, type UserStatus } from '../../api/client';
@@ -681,14 +681,56 @@ function SelectFilter({ value, onChange, children }: {
   onChange: (value: string) => void;
   children: ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  // Extract option data from <option> children so we can render a custom dropdown
+  const options = Children.toArray(children).filter(isValidElement).map(child => ({
+    value: (child.props as { value: string }).value,
+    label: ((child.props as { children?: ReactNode }).children as string) || '',
+  }));
+
+  const selectedLabel = options.find(o => o.value === value)?.label || 'Select...';
+
   return (
-    <select
-      value={value}
-      onChange={event => onChange(event.target.value)}
-      className="px-3 py-2 rounded-md border text-sm"
-      style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
-      {children}
-    </select>
+    <div className="relative inline-flex" ref={ref}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="px-3 py-2 rounded-md border text-sm cursor-pointer whitespace-nowrap"
+        style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)', color: value ? 'var(--color-text)' : 'var(--color-text-secondary)' }}>
+        {selectedLabel}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 min-w-full rounded-md border shadow-lg py-1"
+          style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+          {options.map(option => (
+            <button key={option.value}
+              onClick={() => { onChange(option.value); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-sm cursor-pointer whitespace-nowrap transition-colors"
+              style={{
+                color: option.value === value ? 'var(--color-primary)' : 'var(--color-text)',
+                fontWeight: option.value === value ? 600 : 400,
+                background: option.value === value ? 'var(--color-primary-bg)' : 'transparent',
+              }}
+              onMouseEnter={e => { if (option.value !== value) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
+              onMouseLeave={e => { if (option.value !== value) e.currentTarget.style.background = 'transparent'; }}>
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -937,24 +979,61 @@ function FacetCombobox({ label, placeholder, value, facets, onChange }: {
   facets: TraceFacet[];
   onChange: (value: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  const allOptions = [
+    { value: '', label: placeholder, count: 0 },
+    ...(value && !facets.some(f => f.value === value)
+      ? [{ value, label: value, count: 0 }]
+      : []),
+    ...facets.map(f => ({ value: f.value, label: f.value, count: f.count })),
+  ];
+
   return (
-    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm"
-      style={{
-        borderColor: value ? 'var(--color-primary)' : 'var(--color-border)',
-        background: value ? 'var(--color-primary-bg)' : 'var(--color-bg-tertiary)',
-      }}>
-      <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
-      <select value={value} onChange={event => onChange(event.target.value)}
-        className="bg-transparent border-0 outline-none cursor-pointer"
-        style={{ color: value ? 'var(--color-primary)' : 'var(--color-text)', fontWeight: value ? 600 : 400 }}>
-        <option value="">{placeholder}</option>
-        {value && !facets.some(f => f.value === value) && <option value={value}>{value}</option>}
-        {facets.map(facet => (
-          <option key={facet.value} value={facet.value}>
-            {facet.value} ({facet.count})
-          </option>
-        ))}
-      </select>
+    <div className="relative inline-flex" ref={ref}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm cursor-pointer whitespace-nowrap"
+        style={{
+          borderColor: value ? 'var(--color-primary)' : 'var(--color-border)',
+          background: value ? 'var(--color-primary-bg)' : 'var(--color-bg-tertiary)',
+        }}>
+        <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+        <span style={{ color: value ? 'var(--color-primary)' : 'var(--color-text)', fontWeight: value ? 600 : 400 }}>
+          {value || placeholder}
+        </span>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 min-w-full rounded-md border shadow-lg py-1"
+          style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+          {allOptions.map(option => (
+            <button key={option.value}
+              onClick={() => { onChange(option.value); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-sm cursor-pointer whitespace-nowrap transition-colors"
+              style={{
+                color: option.value === value ? 'var(--color-primary)' : option.value === '' ? 'var(--color-text-secondary)' : 'var(--color-text)',
+                fontWeight: option.value === value ? 600 : 400,
+                background: option.value === value ? 'var(--color-primary-bg)' : 'transparent',
+              }}
+              onMouseEnter={e => { if (option.value !== value) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
+              onMouseLeave={e => { if (option.value !== value) e.currentTarget.style.background = 'transparent'; }}>
+              {option.count > 0 ? `${option.label} (${option.count})` : option.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
