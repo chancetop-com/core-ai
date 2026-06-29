@@ -29,6 +29,7 @@ public class CliEventListener extends BaseEventListener {
     private static final Logger LOGGER = LoggerFactory.getLogger(CliEventListener.class);
 
     private static final int ESC = 27;
+    private static final int CTRL_C = 3;
 
     private static String truncate(String text) {
         if (text == null) return "null";
@@ -186,18 +187,19 @@ public class CliEventListener extends BaseEventListener {
     }
 
     private void startEscReader() {
-        // Try JLine NonBlockingReader first (works on all platforms including Windows)
+        var ttyFile = new File("/dev/tty");
+        if (ttyFile.exists()) {
+            LOGGER.debug("ESC reader: using /dev/tty");
+            startTtyEscReader(ttyFile);
+            return;
+        }
         var terminal = ui.getTerminal();
         if (terminal != null && ui.isJLineEnabled()) {
             LOGGER.debug("ESC reader: using JLine, terminal type={}", terminal.getType());
             startJLineEscReader(terminal);
             return;
         }
-        LOGGER.debug("ESC reader: JLine not available, terminal={}, jlineEnabled={}", terminal, ui.isJLineEnabled());
-        // Fallback to /dev/tty for Unix systems without JLine
-        var ttyFile = new File("/dev/tty");
-        if (!ttyFile.exists()) return;
-        startTtyEscReader(ttyFile);
+        LOGGER.debug("ESC reader: not available, terminal={}, jlineEnabled={}", terminal, ui.isJLineEnabled());
     }
 
     private void startJLineEscReader(org.jline.terminal.Terminal terminal) {
@@ -207,20 +209,18 @@ public class CliEventListener extends BaseEventListener {
                 LOGGER.debug("ESC reader: started, reader class={}", reader.getClass().getName());
                 while (turnRunning.get() && !Thread.currentThread().isInterrupted()) {
                     int ch = reader.read(50L);
-                    if (ch == ESC) {
-                        // Check if it's a standalone ESC or part of an escape sequence.
-                        // A standalone ESC means the user pressed the Escape key.
-                        // Escape sequences (like arrow keys) start with ESC followed by
-                        // additional bytes quickly. We peek at the next byte with a short
-                        // timeout to distinguish.
+                    if (ch == ESC || ch == CTRL_C) {
+                        if (ch == CTRL_C) {
+                            LOGGER.debug("Ctrl+C pressed (jline), cancelling turn");
+                            session.cancelTurn();
+                            return;
+                        }
                         int next = reader.read(50L);
                         if (next == NonBlockingReader.READ_EXPIRED) {
-                            // No more bytes within the timeout — this is a standalone ESC press
                             LOGGER.debug("ESC pressed (jline), cancelling turn");
                             session.cancelTurn();
                             return;
                         }
-                        // It was part of an escape sequence, drain the rest
                         drainEscapeSequence(reader, next);
                     }
                 }
@@ -253,11 +253,11 @@ public class CliEventListener extends BaseEventListener {
 
     private void startTtyEscReader(File ttyFile) {
         escReaderThread = new Thread(() -> {
-            stty("-icanon", "-echo");
-            boolean escPressed = pollEscKey(ttyFile);
+            stty("-icanon", "-echo", "-isig");
+            boolean cancelled = pollCancelKey(ttyFile);
             stty("sane");
-            if (escPressed) {
-                LOGGER.debug("ESC pressed (tty), cancelling turn");
+            if (cancelled) {
+                LOGGER.debug("cancel key pressed (tty), cancelling turn");
                 session.cancelTurn();
             }
         }, "esc-reader");
@@ -266,13 +266,13 @@ public class CliEventListener extends BaseEventListener {
     }
 
     @SuppressWarnings("PMD.AvoidFileStream")
-    private boolean pollEscKey(File ttyFile) {
+    private boolean pollCancelKey(File ttyFile) {
         try (var ttyIn = new FileInputStream(ttyFile)) {
             byte[] buf = new byte[8];
             while (turnRunning.get() && !Thread.currentThread().isInterrupted()) {
                 if (ttyIn.available() > 0) {
                     int n = ttyIn.read(buf);
-                    if (n > 0 && buf[0] == ESC && n == 1) {
+                    if (n == 1 && (buf[0] == ESC || buf[0] == CTRL_C)) {
                         return true;
                     }
                 } else {
