@@ -6,10 +6,9 @@ import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * @author stephen
@@ -17,21 +16,10 @@ import java.util.concurrent.ConcurrentMap;
 public class OcgConfigStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(OcgConfigStore.class);
 
-    private final ConcurrentMap<String, OcgConfigView> store = new ConcurrentHashMap<>();
-
     @Inject
     MongoCollection<OcgConfigView> collection;
 
-    public void loadAllFromDb() {
-        var configs = collection.find(Filters.empty());
-        for (var config : configs) {
-            store.put(config.id, config);
-        }
-        LOGGER.info("loaded {} OCG configs from db", configs.size());
-    }
-
     public void store(OcgConfigView config) {
-        store.put(config.id, config);
         try {
             var existing = collection.get(config.id).orElse(null);
             if (existing == null) {
@@ -46,28 +34,32 @@ public class OcgConfigStore {
     }
 
     public OcgConfigView load(String id) {
-        return store.get(id);
+        return collection.get(id).orElse(null);
     }
 
     public OcgConfigView loadByChannelId(String channelId) {
-        return store.values().stream()
-                .filter(config -> channelId.equals(config.channelId))
-                .findFirst()
-                .orElse(null);
+        var configs = collection.find(Filters.eq("channelId", channelId));
+        return configs.isEmpty() ? null : configs.get(0);
     }
 
     public Map<String, OcgConfigView> all() {
-        return Map.copyOf(store);
+        var configs = collection.find(Filters.empty());
+        var result = new LinkedHashMap<String, OcgConfigView>();
+        for (var config : configs) {
+            result.put(config.id, config);
+        }
+        return result;
     }
 
     public List<OcgConfigView> allWithSandbox() {
-        return store.values().stream()
+        var configs = collection.find(Filters.empty());
+        return configs.stream()
                 .filter(config -> config.sandboxId != null && !config.sandboxId.isBlank())
                 .toList();
     }
 
     public void clearSandbox(String id) {
-        var config = store.get(id);
+        var config = collection.get(id).orElse(null);
         if (config == null) return;
         config.sandboxId = null;
         config.sandboxIp = null;
@@ -79,7 +71,6 @@ public class OcgConfigStore {
     }
 
     public void remove(String id) {
-        store.remove(id);
         try {
             collection.delete(id);
         } catch (Exception e) {

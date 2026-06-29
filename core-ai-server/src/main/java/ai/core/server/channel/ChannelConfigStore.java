@@ -6,9 +6,8 @@ import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * @author stephen
@@ -16,21 +15,10 @@ import java.util.concurrent.ConcurrentMap;
 public class ChannelConfigStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChannelConfigStore.class);
 
-    private final ConcurrentMap<String, ChannelConfigView> store = new ConcurrentHashMap<>();
-
     @Inject
     MongoCollection<ChannelConfigView> collection;
 
-    public void loadAllFromDb() {
-        var channels = collection.find(Filters.empty());
-        for (var channel : channels) {
-            store.put(channel.channelId, channel);
-        }
-        LOGGER.info("loaded {} channels from db", channels.size());
-    }
-
     public void store(ChannelConfigView config) {
-        store.put(config.channelId, config);
         try {
             var existing = collection.get(config.channelId).orElse(null);
             if (existing == null) {
@@ -45,15 +33,19 @@ public class ChannelConfigStore {
     }
 
     public ChannelConfigView load(String channelId) {
-        return store.get(channelId);
+        return collection.get(channelId).orElse(null);
     }
 
     public Map<String, ChannelConfigView> all() {
-        return Map.copyOf(store);
+        var channels = collection.find(Filters.empty());
+        var result = new LinkedHashMap<String, ChannelConfigView>();
+        for (var channel : channels) {
+            result.put(channel.channelId, channel);
+        }
+        return result;
     }
 
     public void remove(String channelId) {
-        store.remove(channelId);
         try {
             collection.delete(channelId);
         } catch (Exception e) {

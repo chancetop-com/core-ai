@@ -177,10 +177,8 @@ public class ServerModule extends Module {
         var migrationManager = bind(SchemaMigrationManager.class);
         onStartup(migrationManager::migrate);
         bind(RequestAuthenticator.class);
-        var store = bind(ChannelConfigStore.class);         // must be before AuthInterceptor — AuthInterceptor checks per-channel auth
-        onStartup(store::loadAllFromDb);
-        var ocgConfigStore = bind(OcgConfigStore.class);
-        onStartup(ocgConfigStore::loadAllFromDb);
+        bind(ChannelConfigStore.class);         // must be before AuthInterceptor — AuthInterceptor checks per-channel auth
+        bind(OcgConfigStore.class);
         http().intercept(bind(AuthInterceptor.class));
         var corsInterceptor = bind(CorsInterceptor.class);
         http().intercept(corsInterceptor);
