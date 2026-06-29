@@ -6,6 +6,7 @@
   --color-bg-tertiary: #f1f5f9;
   --color-text: #0f172a;
   --color-text-secondary: #64748b;
+  --color-text-muted: #94a3b8;
   --color-border: #e2e8f0;
   --color-primary: #6366f1;
   --color-primary-bg: rgba(99, 102, 241, 0.12);
@@ -21,6 +22,7 @@
   --color-bg-tertiary: #334155;
   --color-text: #f1f5f9;
   --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
   --color-border: #334155;
   --color-primary: #818cf8;
   --color-primary-bg: rgba(129, 140, 248, 0.16);
