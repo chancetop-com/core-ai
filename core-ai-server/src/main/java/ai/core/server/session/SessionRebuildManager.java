@@ -234,7 +234,7 @@ public class SessionRebuildManager {
         logger.info("doRebuild start, sessionId={}, fromAgent={}, baseTools={}, dynamicTools={}, skills={}, subAgents={}",
                 sessionId, state != null && state.fromAgent, toolCount, dynamicToolCount, skillCount, subAgentCount);
         var agent = subAgentManager.buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
-                sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools,
+                SessionSubAgentManager.toolsToRegistry(sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools),
                 context, agentName, extraVars, agentId);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessionRef[0] = session;

@@ -8,6 +8,9 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.util.IdLists;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.ToolCall;
+import ai.core.tool.registry.ListToolProvider;
+import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.SubAgentToolCall;
 
 import java.util.ArrayList;
@@ -74,11 +77,16 @@ public class SessionSubAgentManager {
         return subAgentAssembler.toSessionConfig(definition);
     }
 
-    public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName, String agentId) {
-        return subAgentAssembler.buildAgent(config, tools, context, agentName, null, null, agentId);
+    public Agent buildAgent(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,
+                            String agentName, Map<String, Object> extraSystemVars, String agentId) {
+        return subAgentAssembler.buildAgent(config, toolRegistry, context, agentName, extraSystemVars, agentId);
     }
 
-    public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName, Map<String, Object> extraSystemVars, String agentId) {
-        return subAgentAssembler.buildAgent(config, tools, context, agentName, extraSystemVars, null, agentId);
+    public static ToolRegistry toolsToRegistry(List<ToolCall> tools) {
+        var registry = ToolRegistryFactory.createEmpty();
+        if (tools != null && !tools.isEmpty()) {
+            registry.registerProvider(new ListToolProvider("session-tools", tools));
+        }
+        return registry;
     }
 }

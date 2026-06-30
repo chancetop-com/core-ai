@@ -9,6 +9,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.server.artifact.AgentRunArtifactSink;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.ToolRef;
 import ai.core.server.memory.AgentMemoryService;
 import ai.core.tool.ToolCall;
 import ai.core.server.domain.AgentPublishedConfig;
@@ -34,6 +35,8 @@ import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.tool.registry.ListToolProvider;
+import ai.core.tool.registry.ToolRegistry;
 import ai.core.telemetry.TelemetryConfig;
 import ai.core.tool.tools.InternalUrlResolver;
 import com.mongodb.client.model.Filters;
@@ -372,17 +375,20 @@ public class AgentRunner {
     @SuppressWarnings("checkstyle:MethodLength")
     private Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         var config = definition.publishedConfig;
-        List<ToolCall> tools;
+        List<ToolRef> toolRefs;
         if (config != null && config.tools != null && !config.tools.isEmpty()) {
-            tools = toolRegistryService.resolveToolRefs(config.tools, runEntity.id);
+            toolRefs = config.tools;
         } else if (definition.tools != null && !definition.tools.isEmpty()) {
-            tools = toolRegistryService.resolveToolRefs(definition.tools, runEntity.id);
+            toolRefs = definition.tools;
         } else {
-            tools = List.of();
+            toolRefs = List.of();
         }
-        tools = new ArrayList<>(tools);
-        if (sandbox != null) tools.add(SubmitArtifactsTool.create(definition.userId, fileService, new AgentRunArtifactSink(runEntity.id, agentRunCollection)));
-        addDatasetTools(tools, config, definition, runEntity.id);
+        var registry = toolRegistryService.resolveToToolRegistry(toolRefs, runEntity.id);
+        if (sandbox != null) {
+            registry.registerProvider(ListToolProvider.of("sandbox-submit",
+                    List.of(SubmitArtifactsTool.create(definition.userId, fileService, new AgentRunArtifactSink(runEntity.id, agentRunCollection)))));
+        }
+        addDatasetTools(registry, config, definition, runEntity.id);
         var context = ExecutionContext.builder()
             .sessionId("run:" + runEntity.id)
             .userId(definition.userId)
@@ -396,14 +402,17 @@ public class AgentRunner {
         var multiModalModel = config != null ? config.multiModalModel : definition.multiModalModel;
         var temperature = config != null ? config.temperature : definition.temperature;
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
-        var skillRegistry = skillToolAssembler.attach(config != null ? config.skillIds : definition.skillIds, tools);
-        tools.addAll(subAgentAssembler.assemble(config != null ? config.subAgentIds : definition.subAgentIds, runEntity.id));
+        skillToolAssembler.attach(config != null ? config.skillIds : definition.skillIds, registry);
+        var subAgents = subAgentAssembler.assemble(config != null ? config.subAgentIds : definition.subAgentIds, runEntity.id);
+        if (!subAgents.isEmpty()) {
+            registry.registerProvider(ListToolProvider.of("sub-agents", new ArrayList<>(subAgents)));
+        }
         var builder = Agent.builder()
             .name(safeNodeName(definition))
             .id(definition.id)
             .description(definition.description != null ? definition.description : definition.name)
             .llmProvider(llmProviders.getProvider())
-            .toolCalls(tools)
+            .toolRegistry(registry)
             .executionContext(context);
         if (systemPrompt != null) builder.systemPrompt(systemPrompt);
         if (model != null) builder.model(model);
@@ -415,7 +424,6 @@ public class AgentRunner {
         }
         if (temperature != null) builder.temperature(temperature);
         if (maxTurns != null) builder.maxTurn(maxTurns);
-        if (skillRegistry != null) builder.skillRegistry(skillRegistry);
         injectDatasetSystemVars(builder, config, definition);
         var enableMemory = config != null ? config.enableMemory : definition.enableMemory;
         if (AgentMemoryService.memoryEnabled(enableMemory)) {
@@ -529,17 +537,21 @@ public class AgentRunner {
         };
     }
 
-    private void addDatasetTools(List<ToolCall> tools, AgentPublishedConfig config, AgentDefinition definition, String runId) {
+    private void addDatasetTools(ToolRegistry registry, AgentPublishedConfig config, AgentDefinition definition, String runId) {
         var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
         if (datasetConfig == null || datasetConfig.isEmpty()) return;
-        var registry = DatasetAccessRegistry.from(datasetConfig);
-        tools.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
-        if (registry.hasAnyWrite()) {
-            tools.add(InsertDatasetRecordTool.create(definition.id, runId, datasetService, datasetRecordService, registry));
-            tools.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
+        var accessRegistry = DatasetAccessRegistry.from(datasetConfig);
+        var tools = new ArrayList<ToolCall>();
+        tools.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, accessRegistry));
+        if (accessRegistry.hasAnyWrite()) {
+            tools.add(InsertDatasetRecordTool.create(definition.id, runId, datasetService, datasetRecordService, accessRegistry));
+            tools.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
         }
-        if (registry.hasAnyFull()) {
-            tools.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, registry));
+        if (accessRegistry.hasAnyFull()) {
+            tools.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
+        }
+        if (!tools.isEmpty()) {
+            registry.registerProvider(ListToolProvider.of("dataset", tools));
         }
     }
 

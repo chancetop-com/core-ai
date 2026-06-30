@@ -10,8 +10,6 @@ import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
-import ai.core.skill.SkillRegistry;
-import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
@@ -73,8 +71,8 @@ public class SubAgentAssembler {
     public Agent buildSubAgent(AgentDefinition definition, String sessionId) {
         var config = toSessionConfig(definition);
         var toolRegistry = resolveToolsToRegistry(definition, sessionId);
-        var skillRegistry = skillToolAssembler.attachToRegistry(resolveSkillIds(definition), toolRegistry);
-        return buildAgent(config, toolRegistry, null, definition.name, null, skillRegistry, definition.id);
+        skillToolAssembler.attach(resolveSkillIds(definition), toolRegistry);
+        return buildAgent(config, toolRegistry, null, definition.name, null, definition.id);
     }
 
     private List<String> resolveSkillIds(AgentDefinition definition) {
@@ -116,7 +114,7 @@ public class SubAgentAssembler {
 
     @SuppressWarnings({"checkstyle:NestedIfDepth", "checkstyle:ParameterNumber"})
     public Agent buildAgent(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context, String agentName,
-                            Map<String, Object> extraSystemVars, SkillRegistry skillRegistry, String agentId) {
+                            Map<String, Object> extraSystemVars, String agentId) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
                 .name(agentName != null && !agentName.isBlank() ? agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
@@ -151,48 +149,7 @@ public class SubAgentAssembler {
         if (extraSystemVars != null) {
             extraSystemVars.forEach(builder::extraSystemVariable);
         }
-        if (skillRegistry != null) builder.skillRegistry(skillRegistry);
         return builder.build();
     }
 
-    @SuppressWarnings({"checkstyle:NestedIfDepth", "checkstyle:ParameterNumber"})
-    public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName,
-                            Map<String, Object> extraSystemVars, SkillRegistry skillRegistry, String agentId) {
-        var llmProvider = llmProviders.getProvider();
-        var builder = Agent.builder()
-                .name(agentName != null && !agentName.isBlank() ? agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
-                .llmProvider(llmProvider)
-                .toolCalls(tools != null && !tools.isEmpty() ? tools : BuiltinTools.ALL)
-                .temperature(config != null && config.temperature != null ? config.temperature : 0.8);
-        if (agentId != null && !agentId.isBlank()) {
-            builder.id(agentId);
-        }
-        if (config != null) {
-            if (config.systemPrompt != null) {
-                builder.systemPrompt(config.systemPrompt);
-            } else {
-                builder.systemPrompt("You are a helpful AI assistant.");
-            }
-            if (config.model != null) builder.model(config.model);
-            if (config.multiModalModel != null) {
-                builder.multiModalModel(config.multiModalModel);
-            } else if (config.model == null) {
-                var mmModel = llmProvider.config.getMultiModalModel();
-                if (mmModel != null) builder.multiModalModel(mmModel);
-            }
-            if (config.maxTurns != null) builder.maxTurn(config.maxTurns);
-        } else {
-            builder.systemPrompt("You are a helpful AI assistant.");
-            var mmModel = llmProvider.config.getMultiModalModel();
-            if (mmModel != null) builder.multiModalModel(mmModel);
-        }
-        if (context != null) builder.executionContext(context);
-        var provider = persistenceProviders.getDefaultPersistenceProvider();
-        if (provider != null) builder.persistenceProvider(provider);
-        if (extraSystemVars != null) {
-            extraSystemVars.forEach(builder::extraSystemVariable);
-        }
-        if (skillRegistry != null) builder.skillRegistry(skillRegistry);
-        return builder.build();
-    }
 }
