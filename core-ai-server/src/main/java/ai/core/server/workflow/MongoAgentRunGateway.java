@@ -116,15 +116,21 @@ public class MongoAgentRunGateway implements AgentRunGateway {
 
     // Snapshot-only definition: AgentRunner reads everything from publishedConfig; sandbox_config is lifted to the
     // top-level field that SandboxService.getEffectiveConfig reads, so the run honors the snapshot's sandbox too.
-    private static AgentDefinition transientDefinition(WorkflowNode node, String userId, AgentPublishedConfig snapshot) {
+    static AgentDefinition transientDefinition(WorkflowNode node, String userId, AgentPublishedConfig snapshot) {
         var definition = new AgentDefinition();
         definition.id = String.valueOf(node.config().get("agent_id"));
+        definition.name = configString(node, "agent_name");
         definition.userId = userId;
         definition.type = "LLM".equals(node.type()) ? DefinitionType.LLM_CALL : DefinitionType.AGENT;
         definition.status = AgentStatus.PUBLISHED;
         definition.publishedConfig = snapshot;
         definition.sandboxConfig = snapshot.sandboxConfig;
         return definition;
+    }
+
+    private static String configString(WorkflowNode node, String key) {
+        Object value = node.config().get(key);
+        return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : null;
     }
 
     private static void sleep() {

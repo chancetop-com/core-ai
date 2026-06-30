@@ -15,6 +15,7 @@ import {
   formatTokenPair,
   resolveTraceSource,
   resolveTraceType,
+  traceDisplayName,
 } from './traceViewModel';
 
 const PAGE_SIZES = [20, 50, 100];
@@ -582,6 +583,7 @@ function TraceRow({ trace, selected, onSelect, onOpenSession, onFilterSession }:
   // List responses carry a server-computed preview; fall back to client extraction for older servers
   const preview = trace.preview || extractTracePreview(trace);
   const model = trace.model || trace.metadata?.model || '';
+  const title = traceDisplayName(trace);
 
   return (
     <div onClick={onSelect}
@@ -604,8 +606,8 @@ function TraceRow({ trace, selected, onSelect, onOpenSession, onFilterSession }:
               style={{ background: traceType.bg, color: traceType.text }}>
               {traceType.label}
             </span>
-            <span className="font-medium truncate max-w-[340px]" title={trace.name || trace.traceId}>
-              {trace.name || trace.traceId}
+            <span className="font-medium truncate max-w-[340px]" title={title}>
+              {title}
             </span>
             {trace.agentName && <NeutralChip>{trace.agentName}</NeutralChip>}
             {trace.userId && <AccountChip trace={trace} />}

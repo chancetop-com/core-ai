@@ -29,6 +29,10 @@ export interface TimelineBounds {
   totalMs: number;
 }
 
+export function traceDisplayName(trace: Trace): string {
+  return trace.agentName || trace.name || trace.traceId || trace.id;
+}
+
 export function buildSpanTree(spans: Span[]): SpanNode[] {
   const nodes = new Map<string, SpanNode>();
   const roots: SpanNode[] = [];

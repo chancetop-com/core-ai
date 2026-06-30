@@ -37,6 +37,9 @@ import java.util.UUID;
 public class IngestService {
     private static final Logger LOGGER = LoggerFactory.getLogger(IngestService.class);
     private static final String CORE_AI_CANCELLED = "core_ai.cancelled";
+    private static final String GEN_AI_AGENT_NAME = "gen_ai.agent.name";
+    private static final String GEN_AI_AGENT_ID = "gen_ai.agent.id";
+    private static final Set<String> OPERATION_TRACE_NAMES = Set.of("agent.run", "agent.turn", "llm_call.run");
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -81,6 +84,14 @@ public class IngestService {
         return attributes != null ? attributes.get("user.id") : null;
     }
 
+    static String friendlyTraceName(String spanName, String agentName) {
+        var cleanAgentName = nonBlank(agentName);
+        var cleanSpanName = nonBlank(spanName);
+        if (cleanAgentName == null) return cleanSpanName;
+        if (cleanSpanName == null || OPERATION_TRACE_NAMES.contains(cleanSpanName)) return cleanAgentName;
+        return cleanSpanName;
+    }
+
     private void ensureTrace(String traceId, IngestSpanRequest rootSpan, IngestRequest request, String authUserId, String source) {
         var existing = traceCollection.find(Filters.eq("trace_id", traceId));
         if (!existing.isEmpty()) {
@@ -91,7 +102,10 @@ public class IngestService {
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
         trace.traceId = traceId;
-        trace.name = rootSpan.name;
+        trace.agentName = attr(rootSpan.attributes, GEN_AI_AGENT_NAME);
+        trace.agentId = attr(rootSpan.attributes, GEN_AI_AGENT_ID);
+        trace.name = friendlyTraceName(rootSpan.name, trace.agentName);
+        trace.model = rootSpan.model;
         trace.sessionId = rootSpan.attributes != null ? rootSpan.attributes.get("session.id") : null;
         trace.userId = resolveUserId(authUserId, rootSpan.attributes);
         trace.source = source;
@@ -133,8 +147,8 @@ public class IngestService {
     }
 
     private void updateTrace(String traceId, IngestSpanRequest rootSpan) {
-        // First-write-wins on identity: userId/source are set only at insert (ensureTrace) and never
-        // overwritten here, so a later anonymous re-ingest of the same trace cannot blank attribution.
+        // userId/source attribution is set only at insert (ensureTrace) and never overwritten here,
+        // so a later anonymous re-ingest of the same trace cannot blank attribution.
         // Use targeted $set updates instead of full document replace so concurrent $inc
         // operations on token/cost counters aren't overwritten with a stale snapshot.
         List<Bson> updates = new ArrayList<>();
@@ -145,7 +159,15 @@ public class IngestService {
         if (rootSpan.durationMs > 0) updates.add(Updates.set("duration_ms", rootSpan.durationMs));
         var completedAt = toZonedDateTime(rootSpan.completedAtEpochMs);
         if (completedAt != null) updates.add(Updates.set("completed_at", completedAt));
+        var agentName = attr(rootSpan.attributes, GEN_AI_AGENT_NAME);
+        if (agentName != null) {
+            updates.add(Updates.set("agent_name", agentName));
+        }
+        var agentId = attr(rootSpan.attributes, GEN_AI_AGENT_ID);
+        if (agentId != null) updates.add(Updates.set("agent_id", agentId));
+        if (rootSpan.model != null && !rootSpan.model.isBlank()) updates.add(Updates.set("model", rootSpan.model));
         traceCollection.update(Filters.eq("trace_id", traceId), Updates.combine(updates));
+        if (agentName != null) backfillTraceName(traceId, rootSpan.name, agentName);
     }
 
     private void saveSpan(IngestSpanRequest spanReq, String authUserId) {
@@ -188,10 +210,50 @@ public class IngestService {
         if (spanReq.model != null && !spanReq.model.isEmpty()) {
             backfillTraceModel(spanReq.traceId, spanReq.model);
         }
+        backfillTraceIdentity(spanReq.traceId, spanReq.name, spanReq.attributes);
 
         // Incrementally roll up this span's tokens/cost onto the parent trace doc.
         // Replaces the previous full re-aggregation pass for O(1) per span instead of O(N).
         incrementTraceTotals(spanReq.traceId, span);
+    }
+
+    private void backfillTraceIdentity(String traceId, String spanName, Map<String, String> attributes) {
+        var agentName = attr(attributes, GEN_AI_AGENT_NAME);
+        if (agentName != null) {
+            traceCollection.update(
+                Filters.and(
+                    Filters.eq("trace_id", traceId),
+                    Filters.or(Filters.exists("agent_name", false), Filters.eq("agent_name", null), Filters.eq("agent_name", ""))
+                ),
+                Updates.combine(Updates.set("agent_name", agentName), Updates.set("updated_at", ZonedDateTime.now()))
+            );
+            backfillTraceName(traceId, spanName, agentName);
+        }
+        var agentId = attr(attributes, GEN_AI_AGENT_ID);
+        if (agentId != null) {
+            traceCollection.update(
+                Filters.and(
+                    Filters.eq("trace_id", traceId),
+                    Filters.or(Filters.exists("agent_id", false), Filters.eq("agent_id", null), Filters.eq("agent_id", ""))
+                ),
+                Updates.combine(Updates.set("agent_id", agentId), Updates.set("updated_at", ZonedDateTime.now()))
+            );
+        }
+    }
+
+    private void backfillTraceName(String traceId, String spanName, String agentName) {
+        traceCollection.update(
+            Filters.and(
+                Filters.eq("trace_id", traceId),
+                Filters.or(
+                    Filters.exists("name", false),
+                    Filters.eq("name", null),
+                    Filters.eq("name", ""),
+                    Filters.in("name", OPERATION_TRACE_NAMES)
+                )
+            ),
+            Updates.combine(Updates.set("name", friendlyTraceName(spanName, agentName)), Updates.set("updated_at", ZonedDateTime.now()))
+        );
     }
 
     private void backfillTraceModel(String traceId, String model) {
@@ -278,6 +340,14 @@ public class IngestService {
 
     private long safeLong(Long value) {
         return value != null ? value : 0L;
+    }
+
+    private static String attr(Map<String, String> attributes, String key) {
+        return attributes != null ? nonBlank(attributes.get(key)) : null;
+    }
+
+    private static String nonBlank(String value) {
+        return value != null && !value.isBlank() ? value : null;
     }
 
     private SpanStatus mapSpanStatus(String status, Map<String, String> attributes) {

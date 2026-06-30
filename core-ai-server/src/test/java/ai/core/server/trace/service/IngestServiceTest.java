@@ -30,4 +30,14 @@ class IngestServiceTest {
         // A blank Bearer-resolved id must not be written as the user; fall back to the attribute.
         assertEquals("attr-user", IngestService.resolveUserId("  ", Map.of("user.id", "attr-user")));
     }
+
+    @Test
+    void friendlyTraceNameUsesAgentNameForOperationSpan() {
+        assertEquals("Support Summarizer", IngestService.friendlyTraceName("agent.run", "Support Summarizer"));
+    }
+
+    @Test
+    void friendlyTraceNameKeepsSpecificSpanName() {
+        assertEquals("classify_ticket", IngestService.friendlyTraceName("classify_ticket", "Support Summarizer"));
+    }
 }

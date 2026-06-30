@@ -42,6 +42,7 @@ import {
   prettyContent,
   resolveTraceSource,
   resolveTraceType,
+  traceDisplayName,
   type ExtractedAssistantOutput,
   type ExtractedMessage,
   type SpanNode,
@@ -148,6 +149,7 @@ function TraceHeader({ trace, spans, mode, onClose }: {
   const traceType = typeColors(resolveTraceType(trace));
   const source = sourceColors(resolveTraceSource(trace));
   const traceId = trace.traceId || trace.id;
+  const title = traceDisplayName(trace);
   const workflowRunId = trace.metadata?.workflow_run_id;
   const workflowNodeId = trace.metadata?.workflow_node_id;
 
@@ -165,7 +167,7 @@ function TraceHeader({ trace, spans, mode, onClose }: {
               style={{ background: traceType.bg, color: traceType.text }}>
               {traceType.label}
             </span>
-            <h2 className="font-semibold truncate text-base">{trace.name || traceId}</h2>
+            <h2 className="font-semibold truncate text-base">{title}</h2>
             <StatusBadge status={trace.status} />
           </div>
 
