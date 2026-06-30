@@ -3,6 +3,11 @@ import type { Span, Trace } from '../../api/client';
 export interface SpanNode extends Span {
   children: SpanNode[];
   depth: number;
+  ownerAgentId?: string;
+  ownerAgentName?: string;
+  workflowRunId?: string;
+  workflowNodeId?: string;
+  workflowNodeType?: string;
   // Index of the agent turn this span belongs to. A new turn starts each time an LLM span
   // appears outside any other LLM ancestor; descendants (tools, sub-agents) inherit the index.
   // undefined for spans above the first LLM call (e.g. the wrapping agent.turn root).
@@ -37,6 +42,28 @@ export function traceDisplayName(trace: Trace): string {
   return trace.agentName || name || trace.traceId || trace.id;
 }
 
+export function spanOperationLabel(span: SpanNode | Span): string {
+  if (span.type === 'TOOL') return spanAttr(span, 'tool.name') || span.name || 'tool';
+  if (span.type === 'LLM') return 'LLM call';
+  if (span.type === 'AGENT') {
+    if (span.name === 'agent.run') return 'Agent run';
+    if (span.name === 'agent.turn') return 'Agent turn';
+    return span.name || 'Agent';
+  }
+  if (span.type === 'FLOW') return span.name || 'Flow';
+  if (span.type === 'GROUP') return span.name || 'Group';
+  return span.name || span.type;
+}
+
+export function spanOwnerLabel(span: SpanNode | Span): string {
+  const node = span as SpanNode;
+  return node.ownerAgentName
+    || node.ownerAgentId
+    || spanAttr(span, 'gen_ai.agent.name')
+    || spanAttr(span, 'gen_ai.agent.id')
+    || '';
+}
+
 export function buildSpanTree(spans: Span[]): SpanNode[] {
   const nodes = new Map<string, SpanNode>();
   const roots: SpanNode[] = [];
@@ -65,8 +92,51 @@ export function buildSpanTree(spans: Span[]): SpanNode[] {
 
   sortByStart(roots);
   assignDepth(roots, 0);
+  assignSpanContext(roots);
   assignTurnIndex(roots);
   return roots;
+}
+
+interface SpanContext {
+  agentId?: string;
+  agentName?: string;
+  workflowRunId?: string;
+  workflowNodeId?: string;
+  workflowNodeType?: string;
+}
+
+function assignSpanContext(roots: SpanNode[]) {
+  const walk = (items: SpanNode[], context: SpanContext) => {
+    items.forEach(item => {
+      const directAgentId = spanAttr(item, 'gen_ai.agent.id');
+      const directAgentName = spanAttr(item, 'gen_ai.agent.name');
+      const directWorkflowRunId = spanAttr(item, 'core_ai.workflow_run_id', 'core_ai.workflow.run_id');
+      const directWorkflowNodeId = spanAttr(item, 'core_ai.workflow_node_id', 'core_ai.workflow.node_id');
+      const directWorkflowNodeType = spanAttr(item, 'core_ai.workflow_node_type', 'core_ai.workflow.node_type');
+      const next: SpanContext = {
+        agentId: directAgentId || context.agentId,
+        agentName: context.agentName,
+        workflowRunId: directWorkflowRunId || context.workflowRunId,
+        workflowNodeId: directWorkflowNodeId || context.workflowNodeId,
+        workflowNodeType: directWorkflowNodeType || context.workflowNodeType,
+      };
+
+      // Preserve a friendly root agent name when child framework spans repeat the same id with a sanitized name.
+      if (!next.agentName || directAgentId && directAgentId !== context.agentId) {
+        next.agentName = directAgentName || directAgentId || context.agentName;
+      }
+
+      item.ownerAgentId = next.agentId;
+      item.ownerAgentName = next.agentName;
+      item.workflowRunId = next.workflowRunId;
+      item.workflowNodeId = next.workflowNodeId;
+      item.workflowNodeType = next.workflowNodeType;
+
+      walk(item.children, next);
+    });
+  };
+
+  walk(roots, {});
 }
 
 function assignTurnIndex(roots: SpanNode[]) {
@@ -318,6 +388,14 @@ function extractFirstString(value: unknown): string {
 function compactText(text: string, maxLength: number): string {
   const compacted = text.replace(/\s+/g, ' ').trim();
   return compacted.length > maxLength ? `${compacted.slice(0, maxLength)}...` : compacted;
+}
+
+function spanAttr(span: SpanNode | Span, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = span.attributes?.[key];
+    if (value && value.trim()) return value;
+  }
+  return '';
 }
 
 function toMs(iso?: string | null): number {

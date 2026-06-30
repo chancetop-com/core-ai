@@ -42,6 +42,8 @@ import {
   prettyContent,
   resolveTraceSource,
   resolveTraceType,
+  spanOperationLabel,
+  spanOwnerLabel,
   traceDisplayName,
   type ExtractedAssistantOutput,
   type ExtractedMessage,
@@ -383,6 +385,16 @@ function SpanTimelineRow({ span, bounds, selected, collapsed, onSelect, onToggle
   const Icon = SPAN_ICONS[span.type] || Bot;
   const hasChildren = span.children.length > 0;
   const { left, width } = getSpanTiming(span, bounds);
+  const operation = spanOperationLabel(span);
+  const owner = spanOwnerLabel(span);
+  const title = span.type === 'TOOL'
+    ? operation
+    : owner || (operation !== span.name ? operation : span.name);
+  const details = [
+    span.type === 'TOOL' ? owner : operation,
+    span.model,
+    span.workflowNodeId ? `node ${span.workflowNodeId}` : '',
+  ].filter(Boolean);
   // Subtle zebra striping by turn so users can see iteration boundaries at a glance.
   const turnTint = span.turnIndex !== undefined && span.turnIndex % 2 === 1
     ? 'rgba(148, 163, 184, 0.08)'
@@ -415,8 +427,12 @@ function SpanTimelineRow({ span, bounds, selected, collapsed, onSelect, onToggle
           <Icon size={12} style={{ color }} />
         </div>
         <div className="ml-2 min-w-0">
-          <div className="text-xs font-medium truncate">{span.name}</div>
-          <div className="text-[10px] uppercase tracking-wide" style={{ color }}>{span.type}</div>
+          <div className="text-xs font-medium truncate" title={title}>{title}</div>
+          <div className="text-[10px] truncate" title={details.join(' · ')}
+            style={{ color: 'var(--color-text-secondary)' }}>
+            <span className="font-medium" style={{ color }}>{span.type}</span>
+            {details.length > 0 && <span> · {details.join(' · ')}</span>}
+          </div>
         </div>
       </div>
 
