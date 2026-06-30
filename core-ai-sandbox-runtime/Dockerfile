@@ -28,6 +28,9 @@ RUN pip install --no-cache-dir \
     scikit-learn statsmodels \
     pillow openpyxl nodriver weasyprint
 
+# Layer 3.5: uv (fast Python package manager with uvx runner)
+RUN pip install --no-cache-dir uv
+
 # npm-installed node-gyp bundles its own gyp; replace Debian's hardcoded path
 RUN npm install -g node-gyp && \
     mkdir -p /usr/share/nodejs && \
