@@ -12,7 +12,6 @@ import ai.core.defaultagents.DefaultGeneralAgent;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import io.opentelemetry.context.Context;
 
 /**
  * author: lim chen
@@ -107,16 +106,10 @@ public class TaskTool extends ToolCall {
             var subAgent = createAgent(subagentType, subContext);
             if (runInBackground && taskManager != null) {
                 var model = resolveModel(subagentType, context);
-                var otelContext = Context.current();
                 var handle = taskManager.submit(taskId, () -> {
-                    var scope = otelContext.makeCurrent();
-                    try {
-                        subAgent.run(prompt, subContext);
-                        var lastContent = subAgent.getMessages().getLast().content;
-                        return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
-                    } finally {
-                        scope.close();
-                    }
+                    subAgent.run(prompt, subContext);
+                    var lastContent = subAgent.getMessages().getLast().content;
+                    return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
                 }, context.getCancellationToken());
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), subContext));
                 return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, subagentType, model))

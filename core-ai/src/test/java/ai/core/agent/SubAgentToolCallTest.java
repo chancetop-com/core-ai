@@ -136,6 +136,44 @@ class SubAgentToolCallTest {
         assertTrue(result.isCompleted());
         assertNotNull(result.getResult());
         assertTrue(result.getResult().contains("Research result"));
+        assertEquals(researcher.getId(), result.getStats().get("subagent_id"));
+        assertEquals("researcher", result.getStats().get("subagent_name"));
+    }
+
+    @Test
+    void timedOutSubAgentResultKeepsSubAgentIdentityStats() {
+        var subAgentResponse = CompletionResponse.of(
+                List.of(Choice.of(
+                        FinishReason.STOP,
+                        Message.of(RoleType.ASSISTANT, "late result")
+                )),
+                new Usage(10, 10, 20)
+        );
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
+                .thenAnswer(invocation -> {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return subAgentResponse;
+                });
+
+        var researcher = Agent.builder()
+                .name("researcher")
+                .description("Expert at researching topics")
+                .systemPrompt("You are a research specialist")
+                .llmProvider(subAgentLlmProvider)
+                .build();
+
+        var toolCall = SubAgentToolCall.builder()
+                .subAgent(researcher)
+                .timeoutMs(1L)
+                .build();
+        var result = toolCall.execute("{\"query\": \"Research climate change\"}", ExecutionContext.empty());
+
+        assertTrue(result.isFailed());
+        assertEquals(researcher.getId(), result.getStats().get("subagent_id"));
         assertEquals("researcher", result.getStats().get("subagent_name"));
     }
 

@@ -78,10 +78,8 @@ public class SubAgentToolCall extends ToolCall {
                 var subAgentStatus = agent.getNodeStatus();
 
                 if (subAgentStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
-                    return ToolCallResult.waitingForInput(agent.getId(), result)
+                    return withSubAgentStats(ToolCallResult.waitingForInput(agent.getId(), result), agent)
                             .withToolName(getName())
-                            .withStats("subagent_id", agent.getId())
-                            .withStats("subagent_name", agent.getName())
                             .withStats("subagent_status", subAgentStatus.name());
                 }
 
@@ -90,10 +88,8 @@ public class SubAgentToolCall extends ToolCall {
                             .withToolName(getName());
                 }
 
-                return ToolCallResult.completed(result)
+                return withSubAgentStats(ToolCallResult.completed(result), agent)
                         .withToolName(getName())
-                        .withStats("subagent_id", agent.getId())
-                        .withStats("subagent_name", agent.getName())
                         .withStats("subagent_token_usage", agent.getCurrentTokenUsage());
 
             } catch (CancellationException e) {
@@ -134,9 +130,8 @@ public class SubAgentToolCall extends ToolCall {
         var partialOutput = agent.getOutput();
 
         if (partialOutput != null && !partialOutput.isBlank()) {
-            return ToolCallResult.completed(partialOutput)
+            return withSubAgentStats(ToolCallResult.completed(partialOutput), agent)
                     .withToolName(getName())
-                    .withStats("subagent_name", agent.getName())
                     .withStats("subagent_status", "cancelled_with_partial_result")
                     .withStats("subagent_token_usage", agent.getCurrentTokenUsage());
         }
@@ -144,14 +139,19 @@ public class SubAgentToolCall extends ToolCall {
         var toolResultCount = agent.getMessages().stream()
                 .filter(m -> m.role == RoleType.TOOL).count();
         if (toolResultCount > 0) {
-            return ToolCallResult.completed("(cancelled, but produced " + toolResultCount + " tool results)")
+            return withSubAgentStats(ToolCallResult.completed("(cancelled, but produced " + toolResultCount + " tool results)"), agent)
                     .withToolName(getName())
-                    .withStats("subagent_name", agent.getName())
                     .withStats("subagent_status", "cancelled_with_tool_results");
         }
 
-        return ToolCallResult.failed("subagent '" + getName() + "' cancelled")
+        return withSubAgentStats(ToolCallResult.failed("subagent '" + getName() + "' cancelled"), agent)
                 .withToolName(getName());
+    }
+
+    private ToolCallResult withSubAgentStats(ToolCallResult result, Agent agent) {
+        return result
+                .withStats("subagent_id", agent.getId())
+                .withStats("subagent_name", agent.getName());
     }
 
     private void cancelChildBackgroundTasks(Agent agent) {
