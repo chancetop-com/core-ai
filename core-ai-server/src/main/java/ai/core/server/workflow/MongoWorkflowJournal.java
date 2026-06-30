@@ -65,6 +65,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
                 nodeRun.output = normal.output();
                 nodeRun.childRunId = normal.childRunId();
                 nodeRun.artifacts = normal.artifacts().isEmpty() ? null : List.copyOf(normal.artifacts());
+                nodeRun.traceMetadata = normal.traceMetadata();
             }
             case NodeOutcome.Branch branch -> {
                 nodeRun.status = NodeRunStatus.COMPLETED;
@@ -77,6 +78,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
                 nodeRun.status = NodeRunStatus.FAILED_RETRYABLE;
                 nodeRun.error = fail.error();
                 nodeRun.childRunId = fail.childRunId();
+                nodeRun.traceMetadata = fail.traceMetadata();
             }
             case NodeOutcome.Waiting waiting -> {
                 // park: out-edges stay PENDING (WAITING -> running fact). The resume endpoint later flips this to
@@ -117,6 +119,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
         seeded.artifacts = prior.artifacts;
         seeded.chosenEdgeIds = prior.chosenEdgeIds;
         seeded.childRunId = prior.childRunId;
+        seeded.traceMetadata = prior.traceMetadata;
         seeded.attempt = prior.attempt;
         seeded.preview = preview;
         seeded.startedAt = now;

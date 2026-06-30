@@ -4,6 +4,7 @@ import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
+import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.workflow.engine.WorkflowGraph;
@@ -29,6 +30,46 @@ class AgentExecutorTest {
         var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
         assertEquals("{\"category\":\"auth\"}", normal.output());
         assertEquals("agentrun-1", normal.childRunId());
+    }
+
+    @Test
+    void completedChildRunCarriesTraceMetadata() {
+        var usage = new TokenUsage();
+        usage.input = 12L;
+        usage.output = 7L;
+        var gateway = new FakeGateway();
+        gateway.scriptComplete("{}", List.of(), "trace-123", RunStatus.COMPLETED, usage);
+        var node = new WorkflowNode("summarize", "AGENT", List.of(), Map.of(
+            "agent_id", "agent-123",
+            "agent_name", "Support Summarizer"));
+
+        var outcome = new AgentExecutor(gateway).execute(ctx(emptyGraph(), run(), node));
+
+        var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
+        assertEquals("agent-123", normal.traceMetadata().agentId);
+        assertEquals("Support Summarizer", normal.traceMetadata().agentName);
+        assertEquals("gpt-4.1", normal.traceMetadata().model);
+        assertEquals("trace-123", normal.traceMetadata().childTraceId);
+        assertEquals("COMPLETED", normal.traceMetadata().childStatus);
+        assertEquals(12L, normal.traceMetadata().tokenUsage.input);
+        assertEquals(7L, normal.traceMetadata().tokenUsage.output);
+    }
+
+    @Test
+    void llmNodeCarriesTraceMetadataToo() {
+        var gateway = new FakeGateway();
+        gateway.scriptComplete("{}", List.of(), "trace-llm", RunStatus.COMPLETED, null);
+        var node = new WorkflowNode("extract", "LLM", List.of(), Map.of(
+            "agent_id", "llm-123",
+            "agent_name", "Invoice Extractor"));
+
+        var outcome = new AgentExecutor(gateway).execute(ctx(emptyGraph(), run(), node));
+
+        var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
+        assertEquals("llm-123", normal.traceMetadata().agentId);
+        assertEquals("Invoice Extractor", normal.traceMetadata().agentName);
+        assertEquals("gpt-4.1", normal.traceMetadata().model);
+        assertEquals("trace-llm", normal.traceMetadata().childTraceId);
     }
 
     @Test
@@ -65,9 +106,9 @@ class AgentExecutorTest {
                        {"id": "end", "type": "END"}],
              "edges": [{"id": "e0", "source": "start", "target": "classify"},
                        {"id": "e1", "source": "classify", "target": "end"}]}
-            """);
+        """);
         var gateway = new FakeGateway();
-        gateway.scriptComplete("{\"ok\": true}");
+        gateway.scriptComplete("{\"ok\": true}", List.of(), "trace-123", RunStatus.COMPLETED, null);
         NodeExecutor registry = new NodeExecutorRegistry(Map.of(
             NodeType.START, new StartExecutor(),
             NodeType.AGENT, new AgentExecutor(gateway),
@@ -79,6 +120,7 @@ class AgentExecutorTest {
         assertEquals(RunStatus.COMPLETED, status);
         assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "classify"));
         assertEquals("agentrun-1", journal.childRunId("run-1", "classify"));   // two-layer run stays linked
+        assertEquals("trace-123", journal.childTraceId("run-1", "classify"));
     }
 
     private static WorkflowGraph emptyGraph() {
@@ -108,13 +150,17 @@ class AgentExecutorTest {
             scripted = AgentRunResult.completed(output, artifacts);
         }
 
+        void scriptComplete(String output, List<ArtifactRef> artifacts, String traceId, RunStatus status, TokenUsage tokenUsage) {
+            scripted = AgentRunResult.completed(output, artifacts, traceId, status, tokenUsage);
+        }
+
         void scriptFail(String error) {
             scripted = AgentRunResult.failed(error);
         }
 
         @Override
-        public String startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
-            return "agentrun-1";
+        public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
+            return new StartedAgentRun("agentrun-1", "gpt-4.1", null);
         }
 
         @Override

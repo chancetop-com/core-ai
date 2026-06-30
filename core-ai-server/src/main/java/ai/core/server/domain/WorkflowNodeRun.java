@@ -73,6 +73,9 @@ public class WorkflowNodeRun {
     @Field(name = "span_id")
     public String spanId;
 
+    @Field(name = "trace_metadata")
+    public WorkflowNodeTraceMetadata traceMetadata;
+
     @Field(name = "attempt")
     public Integer attempt;
 

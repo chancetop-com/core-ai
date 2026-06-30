@@ -1,5 +1,6 @@
 package ai.core.server.workflow.executor;
 
+import ai.core.server.domain.WorkflowNodeTraceMetadata;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.workflow.AgentRunGateway;
 import ai.core.server.workflow.AgentRunResult;
@@ -7,6 +8,8 @@ import ai.core.server.workflow.ArtifactStaging;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeOutcome;
+import ai.core.server.workflow.StartedAgentRun;
+import ai.core.server.workflow.engine.WorkflowNode;
 
 import java.util.List;
 
@@ -47,12 +50,33 @@ public class AgentExecutor implements NodeExecutor {
         } else {
             input = ctx.run().input;
         }
-        String childRunId = gateway.startChildRun(ctx.run(), ctx.node(), input, stagedFiles);
-        AgentRunResult result = gateway.awaitResult(childRunId);
+        StartedAgentRun child = gateway.startChildRun(ctx.run(), ctx.node(), input, stagedFiles);
+        AgentRunResult result = gateway.awaitResult(child.runId());
+        WorkflowNodeTraceMetadata metadata = traceMetadata(ctx.node(), child, result);
         return result.completed()
-            ? new NodeOutcome.Normal(result.output(), childRunId, result.artifacts())
+            ? new NodeOutcome.Normal(result.output(), child.runId(), result.artifacts(), metadata)
             // retryable: a child-run failure is treated as transient so RetryingNodeExecutor can start a fresh
             // child run; an exhausted retry budget then surfaces this as the terminal node failure.
-            : new NodeOutcome.Fail(result.error(), true, childRunId);
+            : new NodeOutcome.Fail(result.error(), true, child.runId(), metadata);
+    }
+
+    private static WorkflowNodeTraceMetadata traceMetadata(WorkflowNode node, StartedAgentRun child, AgentRunResult result) {
+        var metadata = new WorkflowNodeTraceMetadata();
+        metadata.agentId = str(node.config().get("agent_id"));
+        metadata.agentName = str(node.config().get("agent_name"));
+        metadata.model = child.model();
+        metadata.multiModalModel = child.multiModalModel();
+        metadata.childTraceId = result.traceId();
+        metadata.childStatus = result.status() != null ? result.status().name() : null;
+        metadata.tokenUsage = result.tokenUsage();
+        return metadata;
+    }
+
+    private static String str(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String string = String.valueOf(value);
+        return string.isBlank() ? null : string;
     }
 }

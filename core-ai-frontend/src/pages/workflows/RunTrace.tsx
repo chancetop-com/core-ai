@@ -102,6 +102,7 @@ export default function RunTrace({
                   <ResumeForm node={nodes.find((n) => n.id === r.node_id)} ask={r.input} busy={!!busy} onSubmit={(body) => onResume(r.node_id, body)} />
                 )}
                 {r.error && <Field title="Error" body={r.error} danger />}
+                {r.trace_metadata && <TraceMetadata metadata={r.trace_metadata} />}
                 <Field title="Input" body={r.input} />
                 <Field title="Output" body={r.output} />
                 {r.artifacts && r.artifacts.length > 0 && (
@@ -325,6 +326,36 @@ function Field({ title, body, danger }: { title: string; body?: string; danger?:
   );
 }
 
+function TraceMetadata({ metadata }: { metadata: NonNullable<WorkflowNodeRunView['trace_metadata']> }) {
+  const items = [
+    metadata.agent_name || metadata.agent_id ? ['Agent', metadata.agent_name && metadata.agent_id ? `${metadata.agent_name} (${metadata.agent_id})` : metadata.agent_name || metadata.agent_id] : null,
+    metadata.model ? ['Model', metadata.model] : null,
+    metadata.multi_modal_model ? ['Vision', metadata.multi_modal_model] : null,
+    metadata.child_status ? ['Child', metadata.child_status] : null,
+    metadata.child_trace_id ? ['Trace', `#${metadata.child_trace_id.slice(0, 8)}`] : null,
+    tokenSummary(metadata.token_usage) ? ['Tokens', tokenSummary(metadata.token_usage)] : null,
+  ].filter(Boolean) as [string, string][];
+  if (items.length === 0) return null;
+  return (
+    <div style={metadataBox}>
+      {items.map(([label, value]) => (
+        <div key={label} style={metadataItem}>
+          <span style={metadataLabel}>{label}</span>
+          <span style={metadataValue} title={value}>{value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function tokenSummary(tokenUsage?: { input?: number; output?: number }): string {
+  if (!tokenUsage) return '';
+  const parts = [];
+  if (tokenUsage.input !== undefined) parts.push(`in ${tokenUsage.input}`);
+  if (tokenUsage.output !== undefined) parts.push(`out ${tokenUsage.output}`);
+  return parts.join(' / ');
+}
+
 /** The human-action form for a WAITING HUMAN_INPUT node: approve/reject buttons (approval mode) or a typed form
  *  whose object is submitted as the node output (input mode). Prompt comes from the node-run ask snapshot. */
 function ResumeForm({ node, ask, busy, onSubmit }: {
@@ -417,6 +448,18 @@ const pre: CSSProperties = {
 };
 const dim: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)' };
 const childLink: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-primary)', textDecoration: 'none' };
+const metadataBox: CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6, marginBottom: 8,
+};
+const metadataItem: CSSProperties = {
+  minWidth: 0, padding: '5px 7px', border: '1px solid var(--color-border)', borderRadius: 6,
+  background: 'var(--color-bg-secondary)',
+};
+const metadataLabel: CSSProperties = { display: 'block', marginBottom: 2, fontSize: 10.5, fontWeight: 600, color: 'var(--color-text-secondary)' };
+const metadataValue: CSSProperties = {
+  display: 'block', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  fontSize: 11.5, color: 'var(--color-text)',
+};
 const childTraceBox: CSSProperties = {
   marginTop: 10,
   padding: '8px 8px 8px 10px',

@@ -16,6 +16,7 @@ import ai.core.api.server.workflow.ListWorkflowVersionsResponse;
 import ai.core.api.server.workflow.ListWorkflowsRequest;
 import ai.core.api.server.workflow.ListWorkflowsResponse;
 import ai.core.api.server.workflow.NodeRunView;
+import ai.core.api.server.workflow.NodeRunTraceMetadataView;
 import ai.core.api.server.workflow.ResumeFromNodeRequest;
 import ai.core.api.server.workflow.ResumeRunRequest;
 import ai.core.api.server.workflow.UnresolvedReferenceView;
@@ -29,10 +30,12 @@ import ai.core.api.server.workflow.WorkflowWebService;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.RunStatus;
+import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.User;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
+import ai.core.server.domain.WorkflowNodeTraceMetadata;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.WorkflowVisibility;
@@ -50,6 +53,7 @@ import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -474,19 +478,50 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         view.artifacts = toArtifactViews(nodeRun.artifacts);
         view.error = nodeRun.error;
         view.childRunId = nodeRun.childRunId;
+        view.traceMetadata = toTraceMetadataView(nodeRun.traceMetadata);
+        if (nodeRun.traceMetadata != null && nodeRun.traceMetadata.childTraceId != null && !nodeRun.traceMetadata.childTraceId.isBlank()) {
+            view.traceId = nodeRun.traceMetadata.childTraceId;
+        }
         if (nodeRun.childRunId != null && !nodeRun.childRunId.isBlank()) {
             if ("WORKFLOW".equals(nodeRun.nodeType)) {
                 view.childRunType = "WORKFLOW";
                 runCollection.get(nodeRun.childRunId).ifPresent(child -> view.childWorkflowId = child.workflowId);
             } else {
                 view.childRunType = "AGENT";
-                agentRunCollection.get(nodeRun.childRunId).ifPresent(child -> view.traceId = child.traceId);
+                if (view.traceId == null || view.traceId.isBlank()) {
+                    agentRunCollection.get(nodeRun.childRunId).ifPresent(child -> view.traceId = child.traceId);
+                }
             }
         }
         view.spanId = nodeRun.spanId;
         view.startedAt = nodeRun.startedAt;
         view.completedAt = nodeRun.completedAt;
         return view;
+    }
+
+    private static NodeRunTraceMetadataView toTraceMetadataView(WorkflowNodeTraceMetadata metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        var view = new NodeRunTraceMetadataView();
+        view.agentId = metadata.agentId;
+        view.agentName = metadata.agentName;
+        view.model = metadata.model;
+        view.multiModalModel = metadata.multiModalModel;
+        view.childTraceId = metadata.childTraceId;
+        view.childStatus = metadata.childStatus;
+        view.tokenUsage = toTokenUsageMap(metadata.tokenUsage);
+        return view;
+    }
+
+    private static Map<String, Long> toTokenUsageMap(TokenUsage usage) {
+        if (usage == null) {
+            return null;
+        }
+        var map = new LinkedHashMap<String, Long>();
+        if (usage.input != null) map.put("input", usage.input);
+        if (usage.output != null) map.put("output", usage.output);
+        return map.isEmpty() ? null : map;
     }
 
     private static List<ArtifactView> toArtifactViews(List<ArtifactRef> refs) {

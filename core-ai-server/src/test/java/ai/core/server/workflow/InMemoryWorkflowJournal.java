@@ -45,6 +45,7 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
                 nodeRun.status = NodeRunStatus.COMPLETED;
                 nodeRun.output = normal.output();
                 nodeRun.childRunId = normal.childRunId();
+                nodeRun.traceMetadata = normal.traceMetadata();
             }
             case NodeOutcome.Branch branch -> {
                 nodeRun.status = NodeRunStatus.COMPLETED;
@@ -55,6 +56,7 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
                 nodeRun.status = NodeRunStatus.FAILED_RETRYABLE;
                 nodeRun.error = fail.error();
                 nodeRun.childRunId = fail.childRunId();
+                nodeRun.traceMetadata = fail.traceMetadata();
             }
             case NodeOutcome.Waiting waiting -> {
                 nodeRun.status = NodeRunStatus.WAITING;
@@ -85,6 +87,11 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
     String childRunId(String runId, String nodeId) {
         WorkflowNodeRun nodeRun = byId.get(key(runId, nodeId));
         return nodeRun == null ? null : nodeRun.childRunId;
+    }
+
+    String childTraceId(String runId, String nodeId) {
+        WorkflowNodeRun nodeRun = byId.get(key(runId, nodeId));
+        return nodeRun == null || nodeRun.traceMetadata == null ? null : nodeRun.traceMetadata.childTraceId;
     }
 
     String inputJson(String runId, String nodeId) {

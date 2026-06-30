@@ -1,6 +1,7 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.ArtifactRef;
+import ai.core.server.domain.WorkflowNodeTraceMetadata;
 
 import java.util.List;
 
@@ -14,17 +15,22 @@ import java.util.List;
 public sealed interface NodeOutcome {
     /** Plain completion: every out-edge becomes ACTIVE (parallel fan-out). artifacts are downstream file
      *  references this node produced (empty for most nodes; AGENT/AGGREGATOR populate them). */
-    record Normal(String output, String childRunId, List<ArtifactRef> artifacts) implements NodeOutcome {
+    record Normal(String output, String childRunId, List<ArtifactRef> artifacts,
+                  WorkflowNodeTraceMetadata traceMetadata) implements NodeOutcome {
         public Normal {
             artifacts = artifacts == null ? List.of() : List.copyOf(artifacts);
         }
 
         public Normal(String output) {
-            this(output, null, List.of());
+            this(output, null, List.of(), null);
         }
 
         public Normal(String output, String childRunId) {
-            this(output, childRunId, List.of());
+            this(output, childRunId, List.of(), null);
+        }
+
+        public Normal(String output, String childRunId, List<ArtifactRef> artifacts) {
+            this(output, childRunId, artifacts, null);
         }
     }
 
@@ -36,9 +42,14 @@ public sealed interface NodeOutcome {
     }
 
     /** Failure that halts the branch. retryable distinguishes a transient fault from a deterministic error. */
-    record Fail(String error, boolean retryable, String childRunId) implements NodeOutcome {
+    record Fail(String error, boolean retryable, String childRunId,
+                WorkflowNodeTraceMetadata traceMetadata) implements NodeOutcome {
         public Fail(String error, boolean retryable) {
-            this(error, retryable, null);
+            this(error, retryable, null, null);
+        }
+
+        public Fail(String error, boolean retryable, String childRunId) {
+            this(error, retryable, childRunId, null);
         }
     }
 

@@ -811,8 +811,22 @@ export interface WorkflowNodeRunView {
   child_workflow_id?: string;
   trace_id?: string;
   span_id?: string;
+  trace_metadata?: WorkflowNodeTraceMetadataView;
   started_at?: string;
   completed_at?: string;
+}
+
+export interface WorkflowNodeTraceMetadataView {
+  agent_id?: string;
+  agent_name?: string;
+  model?: string;
+  multi_modal_model?: string;
+  child_trace_id?: string;
+  child_status?: string;
+  token_usage?: {
+    input?: number;
+    output?: number;
+  };
 }
 
 export interface ListNodeRunsResponse {

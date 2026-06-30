@@ -133,9 +133,9 @@ class IfElseExecutorTest {
         final List<String> started = new CopyOnWriteArrayList<>();
 
         @Override
-        public String startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
+        public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
             started.add(node.id());
-            return "agentrun-" + node.id();
+            return new StartedAgentRun("agentrun-" + node.id());
         }
 
         @Override

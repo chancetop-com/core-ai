@@ -54,11 +54,12 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     FileService fileService;
 
     @Override
-    public String startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
+    public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
         AgentPublishedConfig snapshot = loadSnapshot(run.versionId, node.id());
         AgentDefinition definition = transientDefinition(node, run.userId, snapshot);
         var traceContext = new AgentRunner.WorkflowTraceContext(run.workflowId, run.id, node.id(), node.type());
-        return agentRunner.run(definition, input, TriggerType.WORKFLOW, null, null, new AgentRunner.WorkflowRunContext(traceContext, stagedFiles));
+        String runId = agentRunner.run(definition, input, TriggerType.WORKFLOW, null, null, new AgentRunner.WorkflowRunContext(traceContext, stagedFiles));
+        return new StartedAgentRun(runId, snapshot.model, snapshot.multiModalModel);
     }
 
     @Override
@@ -69,11 +70,14 @@ public class MongoAgentRunGateway implements AgentRunGateway {
             if (child != null) {
                 if (TERMINAL.contains(child.status)) {
                     return child.status == RunStatus.COMPLETED
-                        ? AgentRunResult.completed(child.output, artifactRefs(child))
-                        : AgentRunResult.failed(child.error != null ? child.error : "child run " + child.status);
+                        ? AgentRunResult.completed(child.output, artifactRefs(child), child.traceId, child.status, child.tokenUsage)
+                        : AgentRunResult.failed(child.error != null ? child.error : "child run " + child.status,
+                            child.traceId, child.status, child.tokenUsage);
                 }
                 if (child.startedAt != null && child.startedAt.isBefore(ZonedDateTime.now().minusSeconds(STALE_SECONDS))) {
-                    return AgentRunResult.failed("child agent run " + childRunId + " is stalled (no terminal status after " + STALE_SECONDS + "s)");
+                    return AgentRunResult.failed(
+                        "child agent run " + childRunId + " is stalled (no terminal status after " + STALE_SECONDS + "s)",
+                        child.traceId, child.status, child.tokenUsage);
                 }
             }
             sleep();

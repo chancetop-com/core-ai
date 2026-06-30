@@ -45,6 +45,9 @@ public class NodeRunView {
     @Property(name = "span_id")
     public String spanId;
 
+    @Property(name = "trace_metadata")
+    public NodeRunTraceMetadataView traceMetadata;
+
     @Property(name = "started_at")
     public ZonedDateTime startedAt;
 

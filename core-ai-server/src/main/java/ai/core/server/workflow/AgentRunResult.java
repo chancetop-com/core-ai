@@ -1,6 +1,8 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.ArtifactRef;
+import ai.core.server.domain.RunStatus;
+import ai.core.server.domain.TokenUsage;
 
 import java.util.List;
 
@@ -12,20 +14,30 @@ import java.util.List;
  *
  * @author Xander
  */
-public record AgentRunResult(boolean completed, String output, String error, List<ArtifactRef> artifacts) {
+public record AgentRunResult(boolean completed, String output, String error, List<ArtifactRef> artifacts,
+                             String traceId, RunStatus status, TokenUsage tokenUsage) {
     public AgentRunResult {
         artifacts = artifacts == null ? List.of() : List.copyOf(artifacts);
     }
 
     public static AgentRunResult completed(String output) {
-        return new AgentRunResult(true, output, null, List.of());
+        return completed(output, List.of());
     }
 
     public static AgentRunResult completed(String output, List<ArtifactRef> artifacts) {
-        return new AgentRunResult(true, output, null, artifacts);
+        return completed(output, artifacts, null, null, null);
+    }
+
+    public static AgentRunResult completed(String output, List<ArtifactRef> artifacts, String traceId,
+                                           RunStatus status, TokenUsage tokenUsage) {
+        return new AgentRunResult(true, output, null, artifacts, traceId, status, tokenUsage);
     }
 
     public static AgentRunResult failed(String error) {
-        return new AgentRunResult(false, null, error, List.of());
+        return failed(error, null, null, null);
+    }
+
+    public static AgentRunResult failed(String error, String traceId, RunStatus status, TokenUsage tokenUsage) {
+        return new AgentRunResult(false, null, error, List.of(), traceId, status, tokenUsage);
     }
 }

@@ -15,9 +15,9 @@ import java.util.List;
  * @author Xander
  */
 public interface AgentRunGateway {
-    /** Start a decoupled child AgentRun from the node's embedded published snapshot; returns its run id.
+    /** Start a decoupled child AgentRun from the node's embedded published snapshot.
      *  {@code stagedFiles} are upstream artifacts the platform stages into the child's sandbox before its loop starts. */
-    String startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles);
+    StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles);
 
     /** Block until the child AgentRun reaches a terminal status, then return its result. */
     AgentRunResult awaitResult(String childRunId);
