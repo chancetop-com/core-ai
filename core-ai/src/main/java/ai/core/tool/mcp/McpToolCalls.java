@@ -46,7 +46,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
         return McpToolCall.builder()
                 .name(tool.name())
                 .namespace(serverName)
-                .description(tool.description())
+                .description("[MCP:" + serverName + "] " + tool.description())
                 .needAuth(false)
                 .parameters(buildParameters(tool.inputSchema()))
                 .mcpClientManager(manager)
