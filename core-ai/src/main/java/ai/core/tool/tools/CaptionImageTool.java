@@ -64,7 +64,7 @@ public class CaptionImageTool extends ToolCall {
     public ToolCallResult execute(String text, ExecutionContext context) {
         var params = JsonUtil.fromJson(CaptionImageToolParams.class, text);
         var llmProvider = context.getLlmProvider();
-        var imageUrl = resolveImageUrl(params.url());
+        var imageUrl = resolveImageUrl(params.url(), context);
         var messages = List.of(Message.of(new Message.MessageRecord(
                 RoleType.USER,
                 List.of(Content.of(params.query()), Content.of(imageUrl)),
@@ -87,9 +87,30 @@ public class CaptionImageTool extends ToolCall {
         return llmProvider.config.getModel();
     }
 
-    private Content.ImageUrl resolveImageUrl(String url) {
+    private Content.ImageUrl resolveImageUrl(String url, ExecutionContext context) {
         if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
             return Content.ImageUrl.of(url, null);
+        }
+        // If a sandbox is available, try to download the file from the sandbox first.
+        // The file may reside in the sandbox filesystem (e.g., /tmp/screenshot.png) rather than
+        // on the server filesystem.
+        var sandbox = context.getSandbox();
+        if (sandbox != null) {
+            try {
+                var sandboxFile = sandbox.downloadFile(url);
+                if (sandboxFile != null && sandboxFile.path() != null) {
+                    byte[] bytes = Files.readAllBytes(sandboxFile.path());
+                    String mimeType = sandboxFile.contentType();
+                    String base64 = Base64.getEncoder().encodeToString(bytes);
+                    String dataUri = "data:" + mimeType + ";base64," + base64;
+                    LOGGER.info("caption_image resolved sandbox file [{}] with mimeType=[{}], size=[{}] bytes",
+                            url, mimeType, bytes.length);
+                    return Content.ImageUrl.of(dataUri, mimeType);
+                }
+            } catch (Exception e) {
+                LOGGER.warn("caption_image failed to download from sandbox, falling back to local filesystem: url={}, error={}",
+                        url, e.getMessage());
+            }
         }
         Path path = Paths.get(url);
         if (!Files.isRegularFile(path)) {
