@@ -13,6 +13,8 @@ import ai.core.server.util.IdLists;
 import ai.core.skill.SkillRegistry;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
+import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -70,14 +72,23 @@ public class SubAgentAssembler {
 
     public Agent buildSubAgent(AgentDefinition definition, String sessionId) {
         var config = toSessionConfig(definition);
-        var tools = new ArrayList<>(resolveTools(definition, sessionId));
-        var skillRegistry = skillToolAssembler.attach(resolveSkillIds(definition), tools);
-        return buildAgent(config, tools.isEmpty() ? null : tools, null, definition.name, null, skillRegistry, definition.id);
+        var toolRegistry = resolveToolsToRegistry(definition, sessionId);
+        var skillRegistry = skillToolAssembler.attachToRegistry(resolveSkillIds(definition), toolRegistry);
+        return buildAgent(config, toolRegistry, null, definition.name, null, skillRegistry, definition.id);
     }
 
     private List<String> resolveSkillIds(AgentDefinition definition) {
         var source = definition.publishedConfig;
         return source != null && source.skillIds != null ? source.skillIds : definition.skillIds;
+    }
+
+    public ToolRegistry resolveToolsToRegistry(AgentDefinition definition, String sessionId) {
+        if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
+            return toolRegistryService.resolveToToolRegistry(definition.publishedConfig.tools, sessionId);
+        } else if (definition.tools != null && !definition.tools.isEmpty()) {
+            return toolRegistryService.resolveToToolRegistry(definition.tools, sessionId);
+        }
+        return ToolRegistryFactory.createEmpty();
     }
 
     public List<ToolCall> resolveTools(AgentDefinition definition, String sessionId) {
@@ -104,11 +115,51 @@ public class SubAgentAssembler {
     }
 
     @SuppressWarnings({"checkstyle:NestedIfDepth", "checkstyle:ParameterNumber"})
+    public Agent buildAgent(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context, String agentName,
+                            Map<String, Object> extraSystemVars, SkillRegistry skillRegistry, String agentId) {
+        var llmProvider = llmProviders.getProvider();
+        var builder = Agent.builder()
+                .name(agentName != null && !agentName.isBlank() ? agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
+                .llmProvider(llmProvider)
+                .toolRegistry(toolRegistry)
+                .temperature(config != null && config.temperature != null ? config.temperature : 0.8);
+        if (agentId != null && !agentId.isBlank()) {
+            builder.id(agentId);
+        }
+        if (config != null) {
+            if (config.systemPrompt != null) {
+                builder.systemPrompt(config.systemPrompt);
+            } else {
+                builder.systemPrompt("You are a helpful AI assistant.");
+            }
+            if (config.model != null) builder.model(config.model);
+            if (config.multiModalModel != null) {
+                builder.multiModalModel(config.multiModalModel);
+            } else if (config.model == null) {
+                var mmModel = llmProvider.config.getMultiModalModel();
+                if (mmModel != null) builder.multiModalModel(mmModel);
+            }
+            if (config.maxTurns != null) builder.maxTurn(config.maxTurns);
+        } else {
+            builder.systemPrompt("You are a helpful AI assistant.");
+            var mmModel = llmProvider.config.getMultiModalModel();
+            if (mmModel != null) builder.multiModalModel(mmModel);
+        }
+        if (context != null) builder.executionContext(context);
+        var provider = persistenceProviders.getDefaultPersistenceProvider();
+        if (provider != null) builder.persistenceProvider(provider);
+        if (extraSystemVars != null) {
+            extraSystemVars.forEach(builder::extraSystemVariable);
+        }
+        if (skillRegistry != null) builder.skillRegistry(skillRegistry);
+        return builder.build();
+    }
+
+    @SuppressWarnings({"checkstyle:NestedIfDepth", "checkstyle:ParameterNumber"})
     public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName,
                             Map<String, Object> extraSystemVars, SkillRegistry skillRegistry, String agentId) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
-                // same sanitization as AgentRunner.safeNodeName: node names must be tool-name-safe (^[^\s<|\\/>]+$)
                 .name(agentName != null && !agentName.isBlank() ? agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
                 .llmProvider(llmProvider)
                 .toolCalls(tools != null && !tools.isEmpty() ? tools : BuiltinTools.ALL)

@@ -3,6 +3,8 @@ package ai.core.server.skill;
 import ai.core.server.util.IdLists;
 import ai.core.skill.SkillRegistry;
 import ai.core.tool.ToolCall;
+import ai.core.tool.registry.ListToolProvider;
+import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.ReadSkillResourceTool;
 import core.framework.inject.Inject;
 
@@ -38,6 +40,27 @@ public class SkillToolAssembler {
                 .archiveBuilder(skillArchiveBuilder)
                 .build());
         tools.add(ReadSkillResourceTool.builder().registry(registry).build());
+        return registry;
+    }
+
+    /**
+     * Registers skill tools (ServerSkillTool + ReadSkillResourceTool) into the given
+     * {@link ToolRegistry} as a provider and returns the skill registry.
+     * Returns null when skillIds is empty.
+     */
+    public SkillRegistry attachToRegistry(List<String> skillIds, ToolRegistry toolRegistry) {
+        var clean = IdLists.clean(skillIds);
+        if (clean.isEmpty()) return null;
+        var registry = new SkillRegistry();
+        registry.addProvider(mongoSkillProvider.scoped(new HashSet<>(clean)));
+        var skillTools = List.of(
+                ServerSkillTool.builder()
+                        .registry(registry)
+                        .skillService(skillService)
+                        .archiveBuilder(skillArchiveBuilder)
+                        .build(),
+                ReadSkillResourceTool.builder().registry(registry).build());
+        toolRegistry.registerProvider(ListToolProvider.of("server-skill", skillTools));
         return registry;
     }
 }

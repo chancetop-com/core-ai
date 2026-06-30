@@ -13,6 +13,8 @@ import ai.core.server.sandbox.SandboxService;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
@@ -443,6 +445,172 @@ public class ToolRegistryService {
             }
         }
         return toolRefResolver.resolve(toolRefs, sessionMgr);
+    }
+
+    /**
+     * Resolves {@link ToolRef}s into a core {@link ToolRegistry}
+     * populated with appropriate {@link ai.core.tool.registry.ToolProvider}s.
+     * <p>
+     * Each tool source (BUILTIN, MCP, API) is registered as a separate provider so the
+     * registry can apply priority-based dedup and respect {@code ToolExposure}.
+     * <p>
+     * MCP sandbox isolation is handled per-session: sandbox-hosted MCP refs are prepared
+     * via {@link #prepareSessionMcpServers} and registered with a session-scoped manager.
+     *
+     * @param toolRefs the tool references to resolve
+     * @param sessionId the session/run id, or {@code null} for non-session callers
+     * @return a core ToolRegistry with providers registered for each resolved tool source
+     */
+    public ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId) {
+        var registry = ToolRegistryFactory.createEmpty();
+        if (toolRefs == null || toolRefs.isEmpty()) return registry;
+
+        McpClientManager sessionMgr = null;
+        if (sessionId != null && sandboxService != null) {
+            var sandbox = sandboxService.getSandbox(sessionId);
+            if (sandbox != null) {
+                sessionMgr = prepareSessionMcpServers(toolRefs, sessionId, sandbox);
+            }
+        }
+
+        for (var ref : toolRefs) {
+            if (ref == null || ref.id == null) continue;
+            var type = effectiveType(ref);
+            if (type != null) {
+                switch (type) {
+                    case BUILTIN -> registerBuiltinProvider(registry, ref);
+                    case MCP -> registerMcpProvider(registry, ref, sessionMgr);
+                    case API -> registerApiProvider(registry, ref);
+                    case AGENT -> LOGGER.debug("skipping AGENT tool ref at registry level, id={}", ref.id);
+                    default -> LOGGER.warn("unknown tool source type, id={}, type={}", ref.id, type);
+                }
+            } else {
+                registerLegacyProvider(registry, ref, sessionMgr);
+            }
+        }
+        return registry;
+    }
+
+    private ToolSourceType effectiveType(ToolRef ref) {
+        var entry = lookupToolEntry(ref.id);
+        return entry != null ? entryType(entry) : ref.type;
+    }
+
+    private ToolRegistryEntry lookupToolEntry(String id) {
+        var entry = tools.get(id);
+        if (entry == null) entry = tools.get("builtin:" + id);
+        return entry;
+    }
+
+    private static ToolSourceType entryType(ToolRegistryEntry entry) {
+        return switch (entry.type) {
+            case BUILTIN -> ToolSourceType.BUILTIN;
+            case MCP -> ToolSourceType.MCP;
+            case API -> ToolSourceType.API;
+        };
+    }
+
+    private void registerBuiltinProvider(ToolRegistry registry, ToolRef ref) {
+        var entry = lookupToolEntry(ref.id);
+        if (entry != null && entry.type == ToolType.BUILTIN) {
+            var setName = entry.config != null ? entry.config.get("set") : null;
+            if (setName != null) {
+                registry.registerProvider(new BuiltinToolSetProvider(setName));
+                return;
+            }
+        }
+        // fallback for dynamically registered builtin tool sets
+        var dynamicSet = dynamicToolSets.get(ref.id);
+        if (dynamicSet != null) {
+            registry.registerProvider(new DynamicToolSetProvider(ref.id, dynamicSet));
+        }
+    }
+
+    @SuppressWarnings("checkstyle:NestedIfDepth")
+    private void registerMcpProvider(ToolRegistry registry, ToolRef ref,
+                                     McpClientManager sessionMgr) {
+        var parsed = ToolRef.parseMcpToolId(ref.id, ref.source);
+        if (parsed != null) {
+            var serverId = parsed.serverId();
+            var toolName = parsed.toolName();
+            if (serverId != null) {
+                var mgr = pickMcpManager(serverId, sessionMgr);
+                if (mgr != null && mgr.hasServer(serverId)) {
+                    var includes = toolName != null ? List.of(toolName) : null;
+                    registry.registerProvider(new McpToolSetProvider(serverId, mgr, includes, sessionMgr != null && sessionMgr.hasServer(serverId)));
+                    return;
+                }
+                var entry = tools.get(serverId);
+                if (entry != null) {
+                    var resolvedName = resolveMcpServerName(entry);
+                    if (resolvedName != null) {
+                        var fallbackMgr = pickMcpManager(resolvedName, sessionMgr);
+                        if (fallbackMgr != null && fallbackMgr.hasServer(resolvedName)) {
+                            var includes = toolName != null ? List.of(toolName) : null;
+                            registry.registerProvider(new McpToolSetProvider(resolvedName, fallbackMgr, includes, false));
+                            return;
+                        }
+                    }
+                }
+            }
+            LOGGER.warn("unable to resolve mcp provider, id={}, source={}", ref.id, ref.source);
+            return;
+        }
+
+        var entry = tools.get(ref.id);
+        if (entry != null) {
+            var mgr = pickMcpManager(entry.id, sessionMgr);
+            if (mgr != null && mgr.hasServer(entry.id)) {
+                registry.registerProvider(new McpToolSetProvider(entry.id, mgr, null, sessionMgr != null && sessionMgr.hasServer(entry.id)));
+                return;
+            }
+            if (entry.id.startsWith(CONFIG_PREFIX)) {
+                var serverName = entry.id.substring(CONFIG_PREFIX.length());
+                var shortMgr = pickMcpManager(serverName, sessionMgr);
+                if (shortMgr != null && shortMgr.hasServer(serverName)) {
+                    registry.registerProvider(new McpToolSetProvider(serverName, shortMgr, null, false));
+                }
+            }
+            return;
+        }
+
+        var serverName = ref.source != null ? ref.source : ref.id;
+        var mgr = pickMcpManager(serverName, sessionMgr);
+        if (mgr != null && mgr.hasServer(serverName)) {
+            registry.registerProvider(new McpToolSetProvider(serverName, mgr, null, false));
+        }
+    }
+
+    private void registerApiProvider(ToolRegistry registry, ToolRef ref) {
+        registry.registerProvider(new ApiToolSetProvider(internalApiToolLoader, ref.id, ref.source));
+    }
+
+    private void registerLegacyProvider(ToolRegistry registry, ToolRef ref,
+                                        McpClientManager sessionMgr) {
+        var entry = lookupToolEntry(ref.id);
+        if (entry == null) return;
+        switch (entry.type) {
+            case MCP -> registerMcpProvider(registry, ref, sessionMgr);
+            case BUILTIN -> registerBuiltinProvider(registry, ref);
+            case API -> registerApiProvider(registry, ref);
+            default -> LOGGER.warn("unknown tool type in legacy ref, id={}, type={}", ref.id, entry.type);
+        }
+    }
+
+    private static McpClientManager pickMcpManager(String serverName, McpClientManager sessionMgr) {
+        if (sessionMgr != null && serverName != null && sessionMgr.hasServer(serverName)) return sessionMgr;
+        return McpClientManagerRegistry.getManager();
+    }
+
+    private static String resolveMcpServerName(ToolRegistryEntry entry) {
+        if (entry.id.startsWith(CONFIG_PREFIX)) {
+            return entry.id.substring(CONFIG_PREFIX.length());
+        }
+        var mcpManager = McpClientManagerRegistry.getManager();
+        if (mcpManager != null && mcpManager.hasServer(entry.id)) {
+            return entry.id;
+        }
+        return null;
     }
 
     // Walk the refs, find sandbox-hosted MCP entries, and ensure each is registered
