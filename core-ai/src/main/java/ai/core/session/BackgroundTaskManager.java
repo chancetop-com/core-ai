@@ -4,6 +4,7 @@ import ai.core.agent.CancellationToken;
 import ai.core.agent.Task;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
+import io.opentelemetry.context.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,30 +36,36 @@ public class BackgroundTaskManager {
         var sink = sinkFactory.create(taskId);
         var outputRef = sink.getReference();
         var notified = new AtomicBoolean(false);
+        var otelContext = Context.current();
         var future = executor.submit(() -> {
-            String status;
-            String result = null;
-            String error = null;
+            var scope = otelContext.makeCurrent();
             try {
-                result = agentRunner.get();
-                sink.write(result != null ? result : "");
-                status = "completed";
-            } catch (Exception e) {
-                if (Thread.currentThread().isInterrupted()) {
-                    status = "cancelled";
-                    error = e.getMessage();
-                    LOGGER.debug("background task interrupted, taskId={}", taskId);
-                } else {
-                    status = "failed";
-                    error = e.getMessage();
-                    LOGGER.warn("background task failed, taskId={}, error={}", taskId, e.getMessage());
+                String status;
+                String result = null;
+                String error = null;
+                try {
+                    result = agentRunner.get();
+                    sink.write(result != null ? result : "");
+                    status = "completed";
+                } catch (Exception e) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        status = "cancelled";
+                        error = e.getMessage();
+                        LOGGER.debug("background task interrupted, taskId={}", taskId);
+                    } else {
+                        status = "failed";
+                        error = e.getMessage();
+                        LOGGER.warn("background task failed, taskId={}, error={}", taskId, e.getMessage());
+                    }
+                } finally {
+                    sink.close();
+                }
+                LOGGER.debug("background task finished, taskId={}, status={}", taskId, status);
+                if (notified.compareAndSet(false, true)) {
+                    commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error));
                 }
             } finally {
-                sink.close();
-            }
-            LOGGER.debug("background task finished, taskId={}, status={}", taskId, status);
-            if (notified.compareAndSet(false, true)) {
-                commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error));
+                scope.close();
             }
         });
         if (token != null) {

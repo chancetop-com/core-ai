@@ -11,7 +11,11 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.LiteLLMProvider;
+import ai.core.telemetry.AgentTracer;
+import ai.core.telemetry.RecordingSpanProcessor;
 import ai.core.tool.tools.SubAgentToolCall;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -133,6 +137,54 @@ class SubAgentToolCallTest {
         assertNotNull(result.getResult());
         assertTrue(result.getResult().contains("Research result"));
         assertEquals("researcher", result.getStats().get("subagent_name"));
+    }
+
+    @Test
+    void subAgentExecutionKeepsParentTraceContext() {
+        var spans = new RecordingSpanProcessor();
+        var tracerProvider = SdkTracerProvider.builder()
+                .addSpanProcessor(spans)
+                .build();
+        try {
+            var openTelemetry = OpenTelemetrySdk.builder()
+                    .setTracerProvider(tracerProvider)
+                    .build();
+            var agentTracer = new AgentTracer(openTelemetry, true);
+            var parentSpan = openTelemetry.getTracer("test").spanBuilder("parent-tool").startSpan();
+            var subAgentResponse = CompletionResponse.of(
+                    List.of(Choice.of(
+                            FinishReason.STOP,
+                            Message.of(RoleType.ASSISTANT, "research done")
+                    )),
+                    new Usage(10, 10, 20)
+            );
+            when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
+                    .thenReturn(subAgentResponse);
+
+            var researcher = Agent.builder()
+                    .name("researcher")
+                    .description("Expert at researching topics")
+                    .systemPrompt("You are a research specialist")
+                    .llmProvider(subAgentLlmProvider)
+                    .tracer(agentTracer)
+                    .build();
+
+            var scope = parentSpan.makeCurrent();
+            try {
+                var toolCall = SubAgentToolCall.builder().subAgent(researcher).build();
+                var result = toolCall.execute("{\"query\": \"Research climate change\"}", ExecutionContext.empty());
+                assertTrue(result.isCompleted());
+            } finally {
+                scope.close();
+                parentSpan.end();
+            }
+
+            var agentTurn = spans.find("agent.turn").orElseThrow();
+            assertEquals(parentSpan.getSpanContext().getTraceId(), agentTurn.getTraceId());
+            assertEquals(parentSpan.getSpanContext().getSpanId(), agentTurn.getParentSpanId());
+        } finally {
+            tracerProvider.shutdown();
+        }
     }
 
     @Test

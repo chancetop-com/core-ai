@@ -12,6 +12,7 @@ import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import io.opentelemetry.context.Context;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -58,7 +59,15 @@ public class SubAgentToolCall extends ToolCall {
             }
 
             var executor = AsyncToolTaskExecutor.getInstance().getExecutor();
-            var future = CompletableFuture.supplyAsync(() -> agent.run(query, context), executor);
+            var otelContext = Context.current();
+            var future = CompletableFuture.supplyAsync(() -> {
+                var scope = otelContext.makeCurrent();
+                try {
+                    return agent.run(query, context);
+                } finally {
+                    scope.close();
+                }
+            }, executor);
 
             try {
                 var result = childToken != null
@@ -71,6 +80,7 @@ public class SubAgentToolCall extends ToolCall {
                 if (subAgentStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
                     return ToolCallResult.waitingForInput(agent.getId(), result)
                             .withToolName(getName())
+                            .withStats("subagent_id", agent.getId())
                             .withStats("subagent_name", agent.getName())
                             .withStats("subagent_status", subAgentStatus.name());
                 }
@@ -82,6 +92,7 @@ public class SubAgentToolCall extends ToolCall {
 
                 return ToolCallResult.completed(result)
                         .withToolName(getName())
+                        .withStats("subagent_id", agent.getId())
                         .withStats("subagent_name", agent.getName())
                         .withStats("subagent_token_usage", agent.getCurrentTokenUsage());
 
