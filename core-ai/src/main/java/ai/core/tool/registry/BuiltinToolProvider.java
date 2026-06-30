@@ -49,4 +49,9 @@ public class BuiltinToolProvider implements ToolProvider {
     public Map<String, ToolCall> provide() {
         return tools;
     }
+
+    @Override
+    public RefreshPolicy refreshPolicy() {
+        return RefreshPolicy.ONCE;
+    }
 }

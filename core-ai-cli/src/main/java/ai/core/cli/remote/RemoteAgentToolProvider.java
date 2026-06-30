@@ -80,4 +80,9 @@ public class RemoteAgentToolProvider implements ToolProvider {
     public Map<String, ToolCall> provide() {
         return tools;
     }
+
+    @Override
+    public ToolProvider.RefreshPolicy refreshPolicy() {
+        return ToolProvider.RefreshPolicy.ONCE;
+    }
 }

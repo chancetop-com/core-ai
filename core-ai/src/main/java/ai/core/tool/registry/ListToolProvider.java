@@ -54,4 +54,9 @@ public class ListToolProvider implements ToolProvider {
         }
         return map;
     }
+
+    @Override
+    public RefreshPolicy refreshPolicy() {
+        return RefreshPolicy.ONCE;
+    }
 }

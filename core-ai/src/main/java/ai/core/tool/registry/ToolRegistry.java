@@ -22,6 +22,7 @@ public class ToolRegistry {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistry.class);
 
     private final Map<String, ToolProvider> providers = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, ToolCall>> providerCache = new ConcurrentHashMap<>();
 
     public ToolRegistry() {
     }
@@ -32,6 +33,7 @@ public class ToolRegistry {
             return;
         }
         var previous = providers.put(provider.id(), provider);
+        providerCache.remove(provider.id());
         if (previous != null) {
             LOGGER.info("replaced provider, id={}", provider.id());
         } else {
@@ -45,7 +47,13 @@ public class ToolRegistry {
 
     public void unregisterProvider(String providerId) {
         providers.remove(providerId);
+        providerCache.remove(providerId);
         LOGGER.info("unregistered provider, id={}", providerId);
+    }
+
+    public void invalidateCache(String providerId) {
+        providerCache.remove(providerId);
+        LOGGER.debug("invalidated cache, id={}", providerId);
     }
 
     public ToolMaterialization materialize() {
@@ -72,7 +80,7 @@ public class ToolRegistry {
         var toolProviderIndex = new LinkedHashMap<String, String>();
         for (var provider : sorted) {
             try {
-                var toolMap = provider.provide();
+                var toolMap = resolveToolMap(provider);
                 for (var entry : toolMap.entrySet()) {
                     var name = entry.getKey();
                     if (tools.putIfAbsent(name, entry.getValue()) == null) {
@@ -84,6 +92,17 @@ public class ToolRegistry {
             }
         }
         return new CollectResult(tools, toolProviderIndex);
+    }
+
+    private Map<String, ToolCall> resolveToolMap(ToolProvider provider) {
+        var policy = provider.refreshPolicy();
+        if (policy == ToolProvider.RefreshPolicy.ONCE) {
+            return providerCache.computeIfAbsent(provider.id(), k -> provider.provide());
+        }
+        if (policy == ToolProvider.RefreshPolicy.MANUAL) {
+            return providerCache.computeIfAbsent(provider.id(), k -> provider.provide());
+        }
+        return provider.provide();
     }
 
     private record CollectResult(Map<String, ToolCall> tools, Map<String, String> toolProviderIndex) {}
