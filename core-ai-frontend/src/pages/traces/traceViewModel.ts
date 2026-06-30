@@ -29,8 +29,12 @@ export interface TimelineBounds {
   totalMs: number;
 }
 
+const WRAPPER_TRACE_NAMES = new Set(['agent.run', 'agent.turn', 'llm_call.run']);
+
 export function traceDisplayName(trace: Trace): string {
-  return trace.agentName || trace.name || trace.traceId || trace.id;
+  const name = trace.name?.trim();
+  if (name && !WRAPPER_TRACE_NAMES.has(name)) return name;
+  return trace.agentName || name || trace.traceId || trace.id;
 }
 
 export function buildSpanTree(spans: Span[]): SpanNode[] {

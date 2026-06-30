@@ -112,7 +112,7 @@ public class OTLPIngestService {
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
         trace.traceId = traceId;
-        trace.name = protoSpan.getName();
+        trace.name = IngestService.friendlyTraceName(protoSpan.getName(), attrs.get("gen_ai.agent.name"));
         trace.sessionId = attrs.get("session.id");
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");
@@ -221,7 +221,7 @@ public class OTLPIngestService {
 
     private void upgradeTraceWithSpanInfo(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
                                           Map<String, String> attrs) {
-        trace.name = protoSpan.getName();
+        trace.name = IngestService.friendlyTraceName(protoSpan.getName(), attrs.get("gen_ai.agent.name"));
         trace.sessionId = attrs.get("session.id");
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");
@@ -237,7 +237,7 @@ public class OTLPIngestService {
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
         trace.traceId = traceId;
-        trace.name = protoSpan.getName();
+        trace.name = IngestService.friendlyTraceName(protoSpan.getName(), attrs.get("gen_ai.agent.name"));
         trace.sessionId = attrs.get("session.id");
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");
