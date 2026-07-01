@@ -40,6 +40,7 @@ public class AgentTracer extends Tracer {
 
     // Tool call attributes
     private static final AttributeKey<String> TOOL_NAME = AttributeKey.stringKey("tool.name");
+    private static final AttributeKey<Boolean> TOOL_IS_SUB_AGENT = AttributeKey.booleanKey("tool.is_sub_agent");
 
     public AgentTracer(OpenTelemetry openTelemetry, boolean enabled) {
         super(openTelemetry, enabled);
@@ -137,8 +138,16 @@ public class AgentTracer extends Tracer {
      * instead of the current OpenTelemetry context. This is used to nest tool spans under
      * the LLM span that triggered them (Langfuse-style causal chain).
      */
-    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     public <T> T traceToolCall(String toolName, String arguments, SpanContext parentSpanContext, Supplier<T> operation) {
+        return traceToolCall(toolName, arguments, parentSpanContext, false, operation);
+    }
+
+    /**
+     * Trace tool/function call, marking the span as a sub-agent delegation when applicable so the
+     * trace UI can tell a "call another agent" tool span apart from a regular tool span.
+     */
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    public <T> T traceToolCall(String toolName, String arguments, SpanContext parentSpanContext, boolean isSubAgent, Supplier<T> operation) {
         if (!enabled) {
             return operation.get();
         }
@@ -148,6 +157,10 @@ public class AgentTracer extends Tracer {
             .setAttribute(LANGFUSE_OBSERVATION_TYPE, "tool")
             .setAttribute(GEN_AI_OPERATION_NAME, "tool")
             .setAttribute(TOOL_NAME, toolName);
+
+        if (isSubAgent) {
+            spanBuilder.setAttribute(TOOL_IS_SUB_AGENT, true);
+        }
 
         if (parentSpanContext != null && parentSpanContext.isValid()) {
             spanBuilder.setParent(Context.current().with(Span.wrap(parentSpanContext)));

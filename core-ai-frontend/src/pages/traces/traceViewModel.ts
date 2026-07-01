@@ -43,7 +43,12 @@ export function traceDisplayName(trace: Trace): string {
 }
 
 export function spanOperationLabel(span: SpanNode | Span): string {
-  if (span.type === 'TOOL') return spanAttr(span, 'tool.name') || span.name || 'tool';
+  if (span.type === 'TOOL') {
+    const name = spanAttr(span, 'tool.name') || span.name || 'tool';
+    // A sub-agent-as-tool call otherwise repeats the delegate agent's own name/title,
+    // making the TOOL row look like a duplicate of the AGENT row nested right under it.
+    return isSubAgentToolSpan(span) ? `Sub-agent call: ${name}` : name;
+  }
   if (span.type === 'LLM') return 'LLM call';
   if (span.type === 'AGENT') {
     if (span.name === 'agent.run') return 'Agent run';
@@ -388,6 +393,10 @@ function extractFirstString(value: unknown): string {
 function compactText(text: string, maxLength: number): string {
   const compacted = text.replace(/\s+/g, ' ').trim();
   return compacted.length > maxLength ? `${compacted.slice(0, maxLength)}...` : compacted;
+}
+
+function isSubAgentToolSpan(span: SpanNode | Span): boolean {
+  return spanAttr(span, 'tool.is_sub_agent') === 'true';
 }
 
 function spanAttr(span: SpanNode | Span, ...keys: string[]): string {

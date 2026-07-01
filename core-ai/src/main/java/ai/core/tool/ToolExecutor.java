@@ -76,7 +76,7 @@ public class ToolExecutor {
             LOGGER.debug("sandbox intercepting tool: {}", tool.getName());
             // Wrap sandbox execution in a tool span too, otherwise sandbox-intercepted tools (e.g. a sub-agent's
             // file/bash operations) produce no TOOL span and never appear in the trace timeline.
-            result = traceToolSpan(functionCall, () -> sandbox.execute(tool.getName(), functionCall.function.arguments, context));
+            result = traceToolSpan(functionCall, tool.isSubAgent(), () -> sandbox.execute(tool.getName(), functionCall.function.arguments, context));
             result.withStats("executionMode", "sandbox");
             result.withStats("sandboxId", sandbox.getId());
         } else {
@@ -116,7 +116,7 @@ public class ToolExecutor {
         var future = CompletableFuture.supplyAsync(() -> {
             threadRef.set(Thread.currentThread());
             try (var scope = otelContext.makeCurrent()) {
-                return traceToolSpan(functionCall, () -> tool.execute(functionCall.function.arguments, context));
+                return traceToolSpan(functionCall, tool.isSubAgent(), () -> tool.execute(functionCall.function.arguments, context));
             }
         }, AsyncToolTaskExecutor.getInstance().getExecutor());
 
@@ -141,12 +141,12 @@ public class ToolExecutor {
     }
 
     // Run the action inside a tool span nested under the triggering LLM span; runs the action directly when tracing is off.
-    private ToolCallResult traceToolSpan(FunctionCall functionCall, Supplier<ToolCallResult> action) {
+    private ToolCallResult traceToolSpan(FunctionCall functionCall, boolean isSubAgent, Supplier<ToolCallResult> action) {
         if (tracer == null) {
             return action.get();
         }
         var llmSpanContext = llmSpanContextSupplier != null ? llmSpanContextSupplier.get() : null;
-        return tracer.traceToolCall(functionCall.function.name, functionCall.function.arguments, llmSpanContext, action);
+        return tracer.traceToolCall(functionCall.function.name, functionCall.function.arguments, llmSpanContext, isSubAgent, action);
     }
 
     private void handleAsyncResult(ToolCallResult result, ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
