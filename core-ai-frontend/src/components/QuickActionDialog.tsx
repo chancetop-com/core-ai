@@ -28,6 +28,9 @@ export default function QuickActionDialog() {
   const dragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
   const wasDragged = useRef(false);
+  // Tracks the position the user last chose (by drag or init), so the resize handler
+  // can restore it when the viewport is large enough again.
+  const intendedPos = useRef({ x: -1, y: -1 });
 
   // Init default position (bottom-right inset)
   const getDefaultPos = useCallback(() => ({
@@ -36,15 +39,31 @@ export default function QuickActionDialog() {
   }), []);
 
   useEffect(() => {
-    if (pos.x < 0) setPos(getDefaultPos());
+    if (pos.x < 0) {
+      const dp = getDefaultPos();
+      setPos(dp);
+      intendedPos.current = dp;
+    }
   }, [pos.x, getDefaultPos]);
 
-  // Re-anchor on window resize
+  // Re-anchor on window resize — restore intended position when possible
   useEffect(() => {
     const handleResize = () => {
       setPos(prev => {
-        const nx = Math.max(0, Math.min(prev.x, window.innerWidth - 48));
-        const ny = Math.max(0, Math.min(prev.y, window.innerHeight - 48));
+        const maxX = window.innerWidth - 48;
+        const maxY = window.innerHeight - 48;
+
+        // If the intended position (user-chosen or initial) fits in the new viewport,
+        // restore it so the button goes back to where the user placed it.
+        if (intendedPos.current.x >= 0 && intendedPos.current.y >= 0) {
+          if (intendedPos.current.x <= maxX && intendedPos.current.y <= maxY) {
+            return intendedPos.current;
+          }
+        }
+
+        // Otherwise clamp the current position to keep it visible
+        const nx = Math.max(0, Math.min(prev.x, maxX));
+        const ny = Math.max(0, Math.min(prev.y, maxY));
         return nx === prev.x && ny === prev.y ? prev : { x: nx, y: ny };
       });
     };
@@ -81,6 +100,12 @@ export default function QuickActionDialog() {
     dragging.current = false;
     if (!wasDragged.current) {
       setOpen(prev => !prev);
+    } else {
+      // Save the final drag position as the intended position
+      setPos(current => {
+        intendedPos.current = { x: current.x, y: current.y };
+        return current;
+      });
     }
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }, []);
