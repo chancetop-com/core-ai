@@ -37,8 +37,12 @@ public class McpToolProvider implements ToolProvider {
     }
 
     public McpToolProvider(String serverName, McpClientManager manager, List<String> includes, RefreshPolicy refreshPolicy) {
-        this.id = MCP + ":" + serverName;
-        this.serverName = serverName;
+        this(MCP + ":" + serverName, serverName, manager, includes, refreshPolicy);
+    }
+
+    public McpToolProvider(String id, String lookupKey, McpClientManager manager, List<String> includes, RefreshPolicy refreshPolicy) {
+        this.id = id;
+        this.serverName = lookupKey;
         this.manager = manager;
         this.includes = includes;
         this.refreshPolicy = refreshPolicy;

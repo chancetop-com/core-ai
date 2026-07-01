@@ -553,12 +553,27 @@ public class ToolRegistryService {
         registerMcpByName(registry, name, null, sessionMgr);
     }
 
-    private void registerMcpByName(ToolRegistry registry, String name, List<String> includes,
+    private void registerMcpByName(ToolRegistry registry, String lookupKey, List<String> includes,
                                     McpClientManager sessionMgr) {
-        var mgr = pickMcpManager(name, sessionMgr);
-        if (mgr == null || !mgr.hasServer(name)) return;
-        var sandbox = sessionMgr != null && sessionMgr.hasServer(name);
-        registry.registerProvider(new McpToolProvider(name, mgr, includes, sandbox ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
+        var mgr = pickMcpManager(lookupKey, sessionMgr);
+        if (mgr == null || !mgr.hasServer(lookupKey)) return;
+        var sandbox = sessionMgr != null && sessionMgr.hasServer(lookupKey);
+        var entry = findMcpEntryByLookupKey(lookupKey);
+        var displayName = entry != null ? entry.name : lookupKey;
+        registry.registerProvider(new McpToolProvider(McpToolProvider.MCP + ":" + displayName, lookupKey, mgr, includes, sandbox ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
+    }
+
+    private ToolRegistryEntry findMcpEntryByLookupKey(String lookupKey) {
+        // direct match first (id == lookupKey or id == "config:" + lookupKey)
+        var entry = tools.get(lookupKey);
+        if (entry != null && entry.type == ToolType.MCP) return entry;
+        entry = tools.get(CONFIG_PREFIX + lookupKey);
+        if (entry != null && entry.type == ToolType.MCP) return entry;
+        // search by name if lookupKey is a resolved name
+        for (var e : tools.values()) {
+            if (e.type == ToolType.MCP && lookupKey.equals(e.name)) return e;
+        }
+        return null;
     }
 
     private void registerApiProvider(ToolRegistry registry, ToolRef ref) {
