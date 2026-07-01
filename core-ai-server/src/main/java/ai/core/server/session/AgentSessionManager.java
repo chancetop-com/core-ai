@@ -29,7 +29,13 @@ import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.util.IdLists;
+import ai.core.tool.registry.BuiltinToolProvider;
+import ai.core.tool.registry.ListToolProvider;
+import ai.core.tool.registry.ToolProvider;
+import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.tool.tools.InternalUrlResolver;
@@ -38,7 +44,6 @@ import ai.core.prompt.SystemVariables;
 import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
-import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -157,7 +162,7 @@ public class AgentSessionManager {
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
                 .build();
         var sandboxOn = sandboxService.isSandboxEnabled(null);
-        var tools = buildDefaultSessionTools(effectiveConfig, sessionId);
+        var toolRegistry = buildSessionToolRegistry(effectiveConfig, sessionId);
         Map<String, Object> extraVars = null;
         if (hasText(effectiveConfig.datasetId)) {
             var dp = new AgentDatasetConfig();
@@ -167,8 +172,14 @@ public class AgentSessionManager {
             effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
             extraVars = buildDatasetSystemVars(datasetConfig);
         }
+        if (sandboxOn) {
+            var submitTools = artifactSetup.withSubmitArtifactsTool(null, sessionId, userId, true);
+            if (submitTools != null && !submitTools.isEmpty()) {
+                toolRegistry.registerProvider(new ListToolProvider("sandbox-submit", submitTools));
+            }
+        }
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
-                SessionSubAgentManager.toolsToRegistry(artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, sandboxOn)), context, null, extraVars, null);
+                toolRegistry, context, null, extraVars, null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
@@ -223,8 +234,14 @@ public class AgentSessionManager {
         var sandbox2 = sandboxService.createSandbox(sandboxConfig, sessionId, userId,
                 event -> { if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event); });
 
-        var tools = subAgentManager().resolveTools(definition, sessionId);
-        tools = addDatasetTools(tools, datasetConfig, definition.id, sessionId);
+        var toolRegistry = subAgentManager().resolveToolsToRegistry(definition, sessionId);
+        addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
+        if (sandboxOn) {
+            var submitTools = artifactSetup.withSubmitArtifactsTool(null, sessionId, userId, true);
+            if (submitTools != null && !submitTools.isEmpty()) {
+                toolRegistry.registerProvider(new ListToolProvider("sandbox-submit", submitTools));
+            }
+        }
         Map<String, Object> extraVars = null;
         if (datasetConfig != null && !datasetConfig.isEmpty()) {
             config.systemPrompt = appendDatasetInstructions(config.systemPrompt, datasetConfig);
@@ -235,8 +252,7 @@ public class AgentSessionManager {
                 .build();
         if (sandbox2 != null) context.sandbox(sandbox2);
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn),
-                SessionSubAgentManager.toolsToRegistry(artifactSetup.withSubmitArtifactsTool(tools.isEmpty() ? null : tools, sessionId, userId, sandboxOn)),
-                context, definition.name, extraVars, definition.id);
+                toolRegistry, context, definition.name, extraVars, definition.id);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
@@ -401,6 +417,21 @@ public class AgentSessionManager {
         return mutable;
     }
 
+    private void addDatasetToolsToRegistry(ToolRegistry registry, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
+        if (datasetConfig == null || datasetConfig.isEmpty()) return;
+        var accessRegistry = DatasetAccessRegistry.from(datasetConfig);
+        var tools = new ArrayList<ToolCall>();
+        tools.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, accessRegistry));
+        if (accessRegistry.hasAnyWrite()) {
+            tools.add(InsertDatasetRecordTool.create(agentId, sessionId, datasetService, datasetRecordService, accessRegistry));
+            tools.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
+        }
+        if (accessRegistry.hasAnyFull()) {
+            tools.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
+        }
+        registry.registerProvider(new ListToolProvider("dataset", tools));
+    }
+
     private String appendDatasetInstructions(String systemPrompt, List<AgentDatasetConfig> datasetConfig) {
         if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
         return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
@@ -439,20 +470,23 @@ public class AgentSessionManager {
         return sb.toString();
     }
 
-    private List<ToolCall> buildDefaultSessionTools(SessionConfig config, String sessionId) {
-        if (config == null || !hasText(config.datasetId)) return null;
+    private ToolRegistry buildSessionToolRegistry(SessionConfig config, String sessionId) {
+        var registry = ToolRegistryFactory.createEmpty();
+        registry.registerProvider(BuiltinToolProvider.fromSet(ToolProvider.BUILTIN_ALL));
+        if (config == null || !hasText(config.datasetId)) return registry;
         var dataset = datasetService.get(config.datasetId);
-        if (dataset == null) return null;
+        if (dataset == null) return registry;
         var dp = new AgentDatasetConfig();
         dp.datasetId = config.datasetId;
         dp.permission = DatasetPermission.FULL;
-        var registry = DatasetAccessRegistry.from(List.of(dp));
-        var tools = new ArrayList<ToolCall>(BuiltinTools.ALL);
-        tools.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
-        tools.add(InsertDatasetRecordTool.create("default", sessionId, datasetService, datasetRecordService, registry));
-        tools.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
-        tools.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, registry));
-        return tools;
+        var accessRegistry = DatasetAccessRegistry.from(List.of(dp));
+        var tools = new ArrayList<ToolCall>();
+        tools.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, accessRegistry));
+        tools.add(InsertDatasetRecordTool.create("default", sessionId, datasetService, datasetRecordService, accessRegistry));
+        tools.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
+        tools.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
+        registry.registerProvider(new ListToolProvider("dataset", tools));
+        return registry;
     }
 
     private boolean hasText(String value) {

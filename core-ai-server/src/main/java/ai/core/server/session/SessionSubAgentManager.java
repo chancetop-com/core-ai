@@ -73,6 +73,10 @@ public class SessionSubAgentManager {
         return subAgentAssembler.resolveTools(definition, sessionId);
     }
 
+    public ToolRegistry resolveToolsToRegistry(AgentDefinition definition, String sessionId) {
+        return subAgentAssembler.resolveToolsToRegistry(definition, sessionId);
+    }
+
     public SessionConfig toSessionConfig(AgentDefinition definition) {
         return subAgentAssembler.toSessionConfig(definition);
     }
