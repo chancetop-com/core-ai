@@ -2,6 +2,8 @@ package ai.core.server.tool;
 
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.tool.mcp.McpToolProvider;
+import ai.core.tool.registry.ToolProvider.RefreshPolicy;
 import ai.core.mcp.client.McpServerConfig;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
@@ -14,6 +16,7 @@ import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.BuiltinToolProvider;
+import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.utils.JsonUtil;
@@ -523,7 +526,7 @@ public class ToolRegistryService {
         // fallback for dynamically registered builtin tool sets
         var dynamicSet = dynamicToolSets.get(ref.id);
         if (dynamicSet != null) {
-            registry.registerProvider(new DynamicToolSetProvider(ref.id, dynamicSet));
+            registry.registerProvider(new ListToolProvider("dynamic:" + ref.id, dynamicSet));
         }
     }
 
@@ -538,7 +541,7 @@ public class ToolRegistryService {
                 var mgr = pickMcpManager(serverId, sessionMgr);
                 if (mgr != null && mgr.hasServer(serverId)) {
                     var includes = toolName != null ? List.of(toolName) : null;
-                    registry.registerProvider(new McpToolSetProvider(serverId, mgr, includes, sessionMgr != null && sessionMgr.hasServer(serverId)));
+                    registry.registerProvider(new McpToolProvider(serverId, mgr, includes, sessionMgr != null && sessionMgr.hasServer(serverId) ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
                     return;
                 }
                 var entry = tools.get(serverId);
@@ -548,7 +551,7 @@ public class ToolRegistryService {
                         var fallbackMgr = pickMcpManager(resolvedName, sessionMgr);
                         if (fallbackMgr != null && fallbackMgr.hasServer(resolvedName)) {
                             var includes = toolName != null ? List.of(toolName) : null;
-                            registry.registerProvider(new McpToolSetProvider(resolvedName, fallbackMgr, includes, false));
+                            registry.registerProvider(new McpToolProvider(resolvedName, fallbackMgr, includes, RefreshPolicy.EVERY_TURN));
                             return;
                         }
                     }
@@ -562,14 +565,14 @@ public class ToolRegistryService {
         if (entry != null) {
             var mgr = pickMcpManager(entry.id, sessionMgr);
             if (mgr != null && mgr.hasServer(entry.id)) {
-                registry.registerProvider(new McpToolSetProvider(entry.id, mgr, null, sessionMgr != null && sessionMgr.hasServer(entry.id)));
+                registry.registerProvider(new McpToolProvider(entry.id, mgr, null, sessionMgr != null && sessionMgr.hasServer(entry.id) ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
                 return;
             }
             if (entry.id.startsWith(CONFIG_PREFIX)) {
                 var serverName = entry.id.substring(CONFIG_PREFIX.length());
                 var shortMgr = pickMcpManager(serverName, sessionMgr);
                 if (shortMgr != null && shortMgr.hasServer(serverName)) {
-                    registry.registerProvider(new McpToolSetProvider(serverName, shortMgr, null, false));
+                    registry.registerProvider(new McpToolProvider(serverName, shortMgr, null, RefreshPolicy.EVERY_TURN));
                 }
             }
             return;
@@ -578,7 +581,7 @@ public class ToolRegistryService {
         var serverName = ref.source != null ? ref.source : ref.id;
         var mgr = pickMcpManager(serverName, sessionMgr);
         if (mgr != null && mgr.hasServer(serverName)) {
-            registry.registerProvider(new McpToolSetProvider(serverName, mgr, null, false));
+            registry.registerProvider(new McpToolProvider(serverName, mgr, null, RefreshPolicy.EVERY_TURN));
         }
     }
 
