@@ -3,6 +3,7 @@ package ai.core.server.tool;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.tool.mcp.McpToolProvider;
+import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolProvider.RefreshPolicy;
 import ai.core.mcp.client.McpServerConfig;
 import ai.core.sandbox.Sandbox;
@@ -586,7 +587,16 @@ public class ToolRegistryService {
     }
 
     private void registerApiProvider(ToolRegistry registry, ToolRef ref) {
-        registry.registerProvider(new ApiToolSetProvider(internalApiToolLoader, ref.id, ref.source));
+        List<ToolCall> tools = List.of();
+        if (internalApiToolLoader != null && InternalApiToolLoader.isApiToolId(ref.id)) {
+            tools = internalApiToolLoader.loadByToolId(ref.id);
+        }
+        if (tools.isEmpty() && internalApiToolLoader != null && ref.source != null) {
+            tools = internalApiToolLoader.loadApiAppTools(ref.source);
+        }
+        if (!tools.isEmpty()) {
+            registry.registerProvider(new ListToolProvider(ToolProvider.API_TOOLS + ":" + ref.id, tools));
+        }
     }
 
     private void registerLegacyProvider(ToolRegistry registry, ToolRef ref,
