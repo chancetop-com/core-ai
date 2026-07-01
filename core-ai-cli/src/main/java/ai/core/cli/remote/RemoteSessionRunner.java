@@ -208,7 +208,8 @@ public class RemoteSessionRunner {
             case "/clear" -> ui.printStreamingChunk("\u001B[2J\u001B[H");
             default -> {
                 if (lower.startsWith("/stats") || lower.startsWith("/model")
-                        || lower.startsWith("/undo") || lower.startsWith("/compact") || lower.startsWith("/export")
+                        || lower.startsWith("/thinking") || lower.startsWith("/undo")
+                        || lower.startsWith("/compact") || lower.startsWith("/export")
                         || lower.startsWith("/copy") || lower.startsWith("/resume") || lower.startsWith("/memory")) {
                     ui.printStreamingChunk(AnsiTheme.MUTED + "  Not available in remote mode.\n" + AnsiTheme.RESET);
                     break;

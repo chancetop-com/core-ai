@@ -21,7 +21,9 @@ import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.TextUtil;
 import ai.core.cli.upgrade.VersionUtil;
 import ai.core.llm.LLMProviders;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
+import ai.core.utils.JsonUtil;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence;
@@ -29,12 +31,15 @@ import ai.core.session.ToolPermissionStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -49,6 +54,7 @@ public class AgentSessionRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionRunner.class);
     private static final String POISON_PILL = "\0__EXIT__";
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final Path CONFIG_FILE = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
     private final TerminalUI ui;
     private final Agent agent;
     private final String modelName;
@@ -291,6 +297,169 @@ public class AgentSessionRunner {
             ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + tool.getName() + AnsiTheme.RESET + hint + "\n");
         }
         ui.printStreamingChunk("\n");
+    }
+    void handleThinking(String trimmed) {
+        String[] parts = trimmed.split("\\s+", 2);
+        if (parts.length > 1 && !parts[1].isBlank()) {
+            var arg = parts[1].trim().toLowerCase(java.util.Locale.ROOT);
+            var level = parseLevel(arg);
+            if (level == null && !"off".equals(arg) && !"none".equals(arg) && !"default".equals(arg)) {
+                ui.printStreamingChunk(AnsiTheme.ERROR + "  Invalid level: " + arg + ". Use low, medium, high, max, or off.\n" + AnsiTheme.RESET);
+                return;
+            }
+            String error = persistReasoningEffortToExtraBody(level);
+            if (error != null) {
+                ui.printStreamingChunk(AnsiTheme.WARNING + "  " + error + "\n" + AnsiTheme.RESET);
+                return;
+            }
+            String label = level != null ? level.name().toLowerCase(java.util.Locale.ROOT) : "off (provider default)";
+            ui.printStreamingChunk(AnsiTheme.SUCCESS + "  \u2713 Reasoning effort set to " + label + "\n" + AnsiTheme.RESET);
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Restart CLI for the change to take effect.\n" + AnsiTheme.RESET);
+            return;
+        }
+        // interactive picker
+        var current = loadReasoningEffortFromExtraBody();
+        String[] levels = {"low", "medium", "high", "max", "off (provider default)"};
+        var labels = new java.util.ArrayList<String>(5);
+        for (String l : levels) {
+            boolean isCurrent = (l.startsWith("off") && current == null)
+                    || (current != null && l.equalsIgnoreCase(current.name()));
+            labels.add(l + (isCurrent ? " (current)" : ""));
+        }
+        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Reasoning Effort" + AnsiTheme.RESET
+                + AnsiTheme.MUTED + " (\u2191\u2193 select, Enter confirm, q/Esc cancel)" + AnsiTheme.RESET + "\n");
+        int choice = ui.pickIndex(labels);
+        if (choice < 0) return;
+        var newLevel = switch (choice) {
+            case 0 -> ReasoningEffort.LOW;
+            case 1 -> ReasoningEffort.MEDIUM;
+            case 2 -> ReasoningEffort.HIGH;
+            case 3 -> ReasoningEffort.MAX;
+            default -> null;
+        };
+        String error = persistReasoningEffortToExtraBody(newLevel);
+        if (error != null) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  " + error + "\n" + AnsiTheme.RESET);
+            return;
+        }
+        String label = newLevel != null ? newLevel.name().toLowerCase(java.util.Locale.ROOT) : "off (provider default)";
+        ui.printStreamingChunk(AnsiTheme.SUCCESS + "  \u2713 Reasoning effort set to " + label + "\n" + AnsiTheme.RESET);
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Restart CLI for the change to take effect.\n" + AnsiTheme.RESET);
+    }
+
+    // read active provider from agent.properties, merge reasoning_effort into its extra_body
+    // returns null on success, or error message on failure
+    public static String persistReasoningEffortToExtraBody(ReasoningEffort level) {
+        try {
+            var props = loadAgentProperties();
+            String activeProvider = props.getProperty("active.provider");
+            if (activeProvider == null || activeProvider.isBlank()) {
+                return "No active.provider in agent.properties";
+            }
+            String key = activeProvider + ".request.extra_body";
+            String existingJson = props.getProperty(key, "{}").trim();
+            if (existingJson.isEmpty()) existingJson = "{}";
+            @SuppressWarnings("unchecked")
+            var extraMap = (java.util.Map<String, Object>) JsonUtil.fromJson(java.util.Map.class, existingJson);
+            if (level == null) {
+                extraMap.remove("reasoning_effort");
+            } else {
+                extraMap.put("reasoning_effort", level.name().toLowerCase(java.util.Locale.ROOT));
+            }
+            Files.createDirectories(CONFIG_FILE.getParent());
+            writePropertyToFile(key, extraMap.isEmpty() ? null : JsonUtil.toJson(extraMap));
+            return null;
+        } catch (IOException e) {
+            LOGGER.warn("Failed to persist reasoning effort to extra_body", e);
+            return "Failed to write config: " + e.getMessage();
+        }
+    }
+
+    // write a single property key=value line to agent.properties, removing the line if value is null.
+    // avoids Properties.store() which escapes = and : inside JSON values.
+    private static void writePropertyToFile(String key, String value) throws IOException {
+        var lines = new java.util.ArrayList<String>();
+        boolean found = false;
+        if (Files.exists(CONFIG_FILE)) {
+            for (String line : Files.readAllLines(CONFIG_FILE)) {
+                String stripped = line.stripLeading();
+                if (!found && isPropertyLine(stripped, key)) {
+                    found = true;
+                    if (value != null) {
+                        lines.add(key + "=" + value);
+                    }
+                    // if value is null, skip this line (remove)
+                } else {
+                    lines.add(line);
+                }
+            }
+        }
+        if (!found && value != null) {
+            lines.add(key + "=" + value);
+        }
+        Files.write(CONFIG_FILE, lines);
+    }
+
+    private static boolean isPropertyLine(String line, String key) {
+        int sep = -1;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '\\') { i++; continue; }
+            if (c == '=' || c == ':') { sep = i; break; }
+        }
+        if (sep < 0) return false;
+        String lineKey = line.substring(0, sep);
+        // unescape any Properties-escaped chars in the key
+        var sb = new StringBuilder();
+        for (int i = 0; i < lineKey.length(); i++) {
+            char c = lineKey.charAt(i);
+            if (c == '\\' && i + 1 < lineKey.length()) {
+                sb.append(lineKey.charAt(++i));
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString().equals(key);
+    }
+
+    public static ReasoningEffort loadReasoningEffortFromExtraBody() {
+        try {
+            var props = loadAgentProperties();
+            String activeProvider = props.getProperty("active.provider");
+            if (activeProvider == null || activeProvider.isBlank()) return null;
+            String key = activeProvider + ".request.extra_body";
+            String json = props.getProperty(key, "{}").trim();
+            if (json.isEmpty() || "{}".equals(json)) return null;
+            @SuppressWarnings("unchecked")
+            var extraMap = (java.util.Map<String, Object>) JsonUtil.fromJson(java.util.Map.class, json);
+            Object effort = extraMap.get("reasoning_effort");
+            if (effort instanceof String s) {
+                return parseLevel(s.toLowerCase(java.util.Locale.ROOT));
+            }
+        } catch (IOException e) {
+            LOGGER.warn("Failed to read reasoning effort from extra_body", e);
+        }
+        return null;
+    }
+
+    private static Properties loadAgentProperties() throws IOException {
+        var props = new Properties();
+        if (Files.exists(CONFIG_FILE)) {
+            try (InputStream is = Files.newInputStream(CONFIG_FILE)) {
+                props.load(is);
+            }
+        }
+        return props;
+    }
+
+    public static ReasoningEffort parseLevel(String level) {
+        return switch (level) {
+            case "low" -> ReasoningEffort.LOW;
+            case "medium" -> ReasoningEffort.MEDIUM;
+            case "high" -> ReasoningEffort.HIGH;
+            case "max" -> ReasoningEffort.MAX;
+            default -> null;
+        };
     }
     void handleExport(String trimmed) {
         String[] parts = trimmed.split("\\s+", 2);

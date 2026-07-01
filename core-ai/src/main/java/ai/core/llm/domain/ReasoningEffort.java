@@ -11,5 +11,7 @@ public enum ReasoningEffort {
     @Property(name = "medium")
     MEDIUM,
     @Property(name = "high")
-    HIGH
+    HIGH,
+    @Property(name = "max")
+    MAX
 }

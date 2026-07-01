@@ -1,6 +1,7 @@
 package ai.core.cli.acp;
 
 import ai.core.cli.DebugLog;
+import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.llm.LLMProviderType;
@@ -49,6 +50,7 @@ class AcpSlashCommandHandler {
                       /help           Show this help
                       /models         List available models
                       /model <name>   Switch to model
+                      /thinking [lvl] Show or set reasoning effort (low/medium/high/off)
                       /debug          Toggle debug mode
                       /init           Create .core-ai/instructions.md
                       /tools          List available tools
@@ -64,6 +66,7 @@ class AcpSlashCommandHandler {
                     """;
             case "/models" -> handleModels(providers);
             case "/model" -> handleModel(parts, providers);
+            case "/thinking" -> handleThinking(parts, agent);
             case "/debug" -> handleDebug();
             case "/init" -> handleInit();
             case "/tools" -> handleTools(agent);
@@ -115,6 +118,23 @@ class AcpSlashCommandHandler {
         DebugLog.enable();
         System.setProperty("core.ai.debug", "true");
         return "Debug mode: ON";
+    }
+
+    private String handleThinking(String[] parts, ai.core.agent.Agent agent) {
+        if (parts.length < 2 || parts[1].isBlank()) {
+            var current = AgentSessionRunner.loadReasoningEffortFromExtraBody();
+            String level = current != null ? current.name().toLowerCase(Locale.ROOT) : "off (provider default)";
+            return "Reasoning effort: " + level + "\nUsage: /thinking [low|medium|high|off]";
+        }
+        var arg = parts[1].trim().toLowerCase(Locale.ROOT);
+        var level = AgentSessionRunner.parseLevel(arg);
+        if (level != null || "off".equals(arg) || "none".equals(arg) || "default".equals(arg)) {
+            String error = AgentSessionRunner.persistReasoningEffortToExtraBody(level);
+            if (error != null) return "Error: " + error;
+            String label = level != null ? level.name().toLowerCase(Locale.ROOT) : "off (provider default)";
+            return "Reasoning effort set to " + label;
+        }
+        return "Invalid level: " + arg + ". Use low, medium, high, or off.";
     }
 
     private String handleInit() {
@@ -346,6 +366,7 @@ class AcpSlashCommandHandler {
                 new CommandInfo("/help", "Show this help"),
                 new CommandInfo("/models", "List available models"),
                 new CommandInfo("/model <name>", "Switch to model"),
+                new CommandInfo("/thinking [level]", "Show or set reasoning effort (low/medium/high/off)"),
                 new CommandInfo("/debug", "Toggle debug mode"),
                 new CommandInfo("/init", "Create .core-ai/instructions.md"),
                 new CommandInfo("/tools", "List available tools"),

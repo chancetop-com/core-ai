@@ -55,6 +55,13 @@ public class CommandDispatcher {
             modelPicker.showModelPicker();
             return true;
         }
+        if (lower.startsWith("/thinking ")) {
+            return false;
+        }
+        if ("/thinking".equals(lower)) {
+            session.handleThinking(lower);
+            return true;
+        }
         if ("/stats".equals(lower)) {
             session.handleStats();
             return true;
@@ -95,6 +102,10 @@ public class CommandDispatcher {
     private boolean dispatchConfigCommand(String trimmed, String lower, BlockingQueue<String> queue) {
         if (lower.startsWith("/model ")) {
             modelPicker.switchModel(modelPicker.getCurrentModelName(), trimmed.split("\\s+", 2)[1].trim(), null);
+            return true;
+        }
+        if (lower.startsWith("/thinking ")) {
+            session.handleThinking(trimmed);
             return true;
         }
         if (lower.startsWith("/export")) {

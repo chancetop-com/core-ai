@@ -88,7 +88,8 @@ class ModelPicker {
         }
         agent.setModel(newModel);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model switched: "
-                + currentModel + " → " + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
+                + currentModel + " → " + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n");
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Restart CLI to persist across sessions.\n\n" + AnsiTheme.RESET);
     }
 
     String getCurrentModelName() {
