@@ -564,14 +564,14 @@ public class ToolRegistryService {
     }
 
     private ToolRegistryEntry findMcpEntryByLookupKey(String lookupKey) {
-        // direct match first (id == lookupKey or id == "config:" + lookupKey)
         var entry = tools.get(lookupKey);
         if (entry != null && entry.type == ToolType.MCP) return entry;
         entry = tools.get(CONFIG_PREFIX + lookupKey);
         if (entry != null && entry.type == ToolType.MCP) return entry;
-        // search by name if lookupKey is a resolved name
         for (var e : tools.values()) {
-            if (e.type == ToolType.MCP && lookupKey.equals(e.name)) return e;
+            if (e.type != ToolType.MCP) continue;
+            if (lookupKey.equals(e.name)) return e;
+            if (lookupKey.equals(resolveMcpServerName(e.id))) return e;
         }
         return null;
     }
