@@ -5,7 +5,6 @@ import ai.core.cli.command.McpCommandHandler;
 import ai.core.cli.command.HandlerContext;
 import ai.core.cli.command.SkillCommandHandler;
 import ai.core.cli.command.plugins.PluginCommandHandler;
-import ai.core.cli.remote.RemoteCommandHandler;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
@@ -110,14 +109,6 @@ public class CommandDispatcher {
                 ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory is disabled. Set agent.memory.enabled=true in agent.properties to enable.\n" + AnsiTheme.RESET);
             } else {
                 handlers.memoryCommand().handle(trimmed);
-            }
-            return true;
-        }
-        if ("/remote".equals(lower)) {
-            var config = new RemoteCommandHandler(ui, defaultServerUrl).handle();
-            if (config != null) {
-                remoteConfig.set(config);
-                queue.offer(POISON_PILL);
             }
             return true;
         }

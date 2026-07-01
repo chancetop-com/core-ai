@@ -81,10 +81,9 @@ Available in the REPL (`core-ai` without `--prompt` or `--serve`):
 | `/plugins` | Manage plugins |
 | `/mcp` | Show MCP server status |
 
-### Remote and Other
+### Other
 | Command | Description |
 |---------|-------------|
-| `/remote` | Connect to remote core-ai-server |
 | `/stats` | Show token usage and session stats |
 | `/copy` | Copy last response to clipboard |
 | `/upgrade` | Check for updates |
