@@ -536,54 +536,29 @@ public class ToolRegistryService {
                                      McpClientManager sessionMgr) {
         var parsed = ToolRef.parseMcpToolId(ref.id, ref.source);
         if (parsed != null) {
-            var serverId = parsed.serverId();
-            var toolName = parsed.toolName();
-            if (serverId != null) {
-                var mgr = pickMcpManager(serverId, sessionMgr);
-                if (mgr != null && mgr.hasServer(serverId)) {
-                    var includes = toolName != null ? List.of(toolName) : null;
-                    registry.registerProvider(new McpToolProvider(serverId, mgr, includes, sessionMgr != null && sessionMgr.hasServer(serverId) ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
-                    return;
-                }
-                var entry = tools.get(serverId);
-                if (entry != null) {
-                    var resolvedName = resolveMcpServerName(entry);
-                    if (resolvedName != null) {
-                        var fallbackMgr = pickMcpManager(resolvedName, sessionMgr);
-                        if (fallbackMgr != null && fallbackMgr.hasServer(resolvedName)) {
-                            var includes = toolName != null ? List.of(toolName) : null;
-                            registry.registerProvider(new McpToolProvider(resolvedName, fallbackMgr, includes, RefreshPolicy.EVERY_TURN));
-                            return;
-                        }
-                    }
-                }
+            var refServerName = parsed.serverId();
+            if (refServerName != null) {
+                var name = resolveMcpServerName(refServerName);
+                var includes = parsed.toolName() != null ? List.of(parsed.toolName()) : null;
+                registerMcpByName(registry, name, includes, sessionMgr);
             }
-            LOGGER.warn("unable to resolve mcp provider, id={}, source={}", ref.id, ref.source);
             return;
         }
 
         var entry = tools.get(ref.id);
-        if (entry != null) {
-            var mgr = pickMcpManager(entry.id, sessionMgr);
-            if (mgr != null && mgr.hasServer(entry.id)) {
-                registry.registerProvider(new McpToolProvider(entry.id, mgr, null, sessionMgr != null && sessionMgr.hasServer(entry.id) ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
-                return;
-            }
-            if (entry.id.startsWith(CONFIG_PREFIX)) {
-                var serverName = entry.id.substring(CONFIG_PREFIX.length());
-                var shortMgr = pickMcpManager(serverName, sessionMgr);
-                if (shortMgr != null && shortMgr.hasServer(serverName)) {
-                    registry.registerProvider(new McpToolProvider(serverName, shortMgr, null, RefreshPolicy.EVERY_TURN));
-                }
-            }
-            return;
+        var name = entry != null ? resolveMcpServerName(entry.id) : null;
+        if (name == null) {
+            name = ref.source != null ? ref.source : ref.id;
         }
+        registerMcpByName(registry, name, null, sessionMgr);
+    }
 
-        var serverName = ref.source != null ? ref.source : ref.id;
-        var mgr = pickMcpManager(serverName, sessionMgr);
-        if (mgr != null && mgr.hasServer(serverName)) {
-            registry.registerProvider(new McpToolProvider(serverName, mgr, null, RefreshPolicy.EVERY_TURN));
-        }
+    private void registerMcpByName(ToolRegistry registry, String name, List<String> includes,
+                                    McpClientManager sessionMgr) {
+        var mgr = pickMcpManager(name, sessionMgr);
+        if (mgr == null || !mgr.hasServer(name)) return;
+        var sandbox = sessionMgr != null && sessionMgr.hasServer(name);
+        registry.registerProvider(new McpToolProvider(name, mgr, includes, sandbox ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
     }
 
     private void registerApiProvider(ToolRegistry registry, ToolRef ref) {
@@ -616,15 +591,18 @@ public class ToolRegistryService {
         return McpClientManagerRegistry.getManager();
     }
 
-    private static String resolveMcpServerName(ToolRegistryEntry entry) {
-        if (entry.id.startsWith(CONFIG_PREFIX)) {
-            return entry.id.substring(CONFIG_PREFIX.length());
+    private static String resolveMcpServerName(String name) {
+        if (name.startsWith(CONFIG_PREFIX)) {
+            return name.substring(CONFIG_PREFIX.length());
         }
+        // also resolve through entry to find the manager-recognizable name
         var mcpManager = McpClientManagerRegistry.getManager();
-        if (mcpManager != null && mcpManager.hasServer(entry.id)) {
-            return entry.id;
-        }
-        return null;
+        if (mcpManager != null && mcpManager.hasServer(name)) return name;
+        return name;
+    }
+
+    private static String resolveMcpServerName(ToolRegistryEntry entry) {
+        return resolveMcpServerName(entry.id);
     }
 
     // Walk the refs, find sandbox-hosted MCP entries, and ensure each is registered
