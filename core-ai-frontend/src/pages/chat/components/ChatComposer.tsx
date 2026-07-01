@@ -1,5 +1,5 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import type { ChangeEvent, KeyboardEvent, RefObject } from 'react';
+import type { ChangeEvent, ClipboardEvent, KeyboardEvent, RefObject } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -327,70 +327,99 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     fileInputRef.current?.click();
   }, []);
 
+  const uploadFile = useCallback(async (file: File) => {
+    if (!VALID_ATTACHMENT_TYPES.has(file.type)) {
+      onToast(`Unsupported file type: ${file.type}.`);
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      onToast(`File too large: ${file.name}. Maximum size is 20MB.`);
+      return;
+    }
+
+    const isMultimodal = file.type.startsWith('image/') || file.type === 'application/pdf';
+    const category = isMultimodal ? 'multimodal' : 'sandbox';
+    const id = crypto.randomUUID();
+    setPendingAttachments(prev => [...prev, {
+      id,
+      name: file.name,
+      url: '',
+      contentType: file.type,
+      category,
+      uploading: true,
+    }]);
+
+    try {
+      const credentialResponse = await fetch(`/api/blob/upload-credential?content_type=${encodeURIComponent(file.type)}&category=${category}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('apiKey')}` },
+      });
+      if (!credentialResponse.ok) throw new Error(`Credential request failed: ${credentialResponse.status}`);
+      const credential = await credentialResponse.json();
+
+      const uploadResponse = await fetch(credential.upload_url, {
+        method: 'PUT',
+        headers: {
+          'x-ms-blob-type': 'BlockBlob',
+          'x-ms-blob-content-type': file.type,
+        },
+        body: file,
+      });
+      if (!uploadResponse.ok) throw new Error(`Upload failed: ${uploadResponse.status}`);
+
+      setPendingAttachments(prev => prev.map(attachment =>
+        attachment.id === id
+          ? {
+              ...attachment,
+              url: credential.blob_url,
+              contentType: file.type,
+              container: credential.container,
+              blobName: credential.blob_name,
+              uploading: false,
+            }
+          : attachment
+      ));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      onToast(`Upload failed for ${file.name}: ${message}`);
+      setPendingAttachments(prev => prev.filter(attachment => attachment.id !== id));
+    }
+  }, [onToast]);
+
   const handleFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
     for (const file of Array.from(files)) {
-      if (!VALID_ATTACHMENT_TYPES.has(file.type)) {
-        onToast(`Unsupported file type: ${file.type}.`);
-        continue;
-      }
-      if (file.size > MAX_ATTACHMENT_SIZE) {
-        onToast(`File too large: ${file.name}. Maximum size is 20MB.`);
-        continue;
-      }
-
-      const isMultimodal = file.type.startsWith('image/') || file.type === 'application/pdf';
-      const category = isMultimodal ? 'multimodal' : 'sandbox';
-      const id = crypto.randomUUID();
-      setPendingAttachments(prev => [...prev, {
-        id,
-        name: file.name,
-        url: '',
-        contentType: file.type,
-        category,
-        uploading: true,
-      }]);
-
-      try {
-        const credentialResponse = await fetch(`/api/blob/upload-credential?content_type=${encodeURIComponent(file.type)}&category=${category}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('apiKey')}` },
-        });
-        if (!credentialResponse.ok) throw new Error(`Credential request failed: ${credentialResponse.status}`);
-        const credential = await credentialResponse.json();
-
-        const uploadResponse = await fetch(credential.upload_url, {
-          method: 'PUT',
-          headers: {
-            'x-ms-blob-type': 'BlockBlob',
-            'x-ms-blob-content-type': file.type,
-          },
-          body: file,
-        });
-        if (!uploadResponse.ok) throw new Error(`Upload failed: ${uploadResponse.status}`);
-
-        setPendingAttachments(prev => prev.map(attachment =>
-          attachment.id === id
-            ? {
-                ...attachment,
-                url: credential.blob_url,
-                contentType: file.type,
-                container: credential.container,
-                blobName: credential.blob_name,
-                uploading: false,
-              }
-            : attachment
-        ));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        onToast(`Upload failed for ${file.name}: ${message}`);
-        setPendingAttachments(prev => prev.filter(attachment => attachment.id !== id));
-      }
+      await uploadFile(file);
     }
 
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [onToast]);
+  }, [uploadFile]);
+
+  const handlePaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          const ext = file.type.split('/')[1] || 'png';
+          const namedFile = new File([file], `clipboard-image-${Date.now()}.${ext}`, { type: file.type });
+          imageFiles.push(namedFile);
+        }
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      event.preventDefault();
+      for (const file of imageFiles) {
+        uploadFile(file);
+      }
+    }
+  }, [uploadFile]);
 
   const removeAttachment = useCallback((id: string) => {
     setPendingAttachments(prev => prev.filter(attachment => attachment.id !== id));
@@ -514,6 +543,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
               value={input}
               onChange={event => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={selectedAgentId ? 'Send a message...' : 'Select an agent first'}
               rows={isInputExpanded ? undefined : 1}
               className={`rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none w-full ${isInputExpanded ? 'absolute bottom-0 left-0 right-0 z-10' : ''}`}
