@@ -24,25 +24,25 @@ public class McpToolProvider implements ToolProvider {
 
     private final String id;
     private final McpClientManager manager;
-    private final String serverName;
+    private final String lookupKey;
     private final List<String> includes;
     private final RefreshPolicy refreshPolicy;
 
     public McpToolProvider() {
         this.id = MCP;
-        this.serverName = null;
+        this.lookupKey = null;
         this.manager = null;
         this.includes = null;
         this.refreshPolicy = RefreshPolicy.EVERY_TURN;
     }
 
-    public McpToolProvider(String serverName, McpClientManager manager, List<String> includes, RefreshPolicy refreshPolicy) {
-        this(MCP + ":" + serverName, serverName, manager, includes, refreshPolicy);
+    public McpToolProvider(String lookupKey, McpClientManager manager, List<String> includes, RefreshPolicy refreshPolicy) {
+        this(MCP + ":" + lookupKey, lookupKey, manager, includes, refreshPolicy);
     }
 
     public McpToolProvider(String id, String lookupKey, McpClientManager manager, List<String> includes, RefreshPolicy refreshPolicy) {
         this.id = id;
-        this.serverName = lookupKey;
+        this.lookupKey = lookupKey;
         this.manager = manager;
         this.includes = includes;
         this.refreshPolicy = refreshPolicy;
@@ -68,9 +68,9 @@ public class McpToolProvider implements ToolProvider {
         var mgr = manager != null ? manager : McpClientManagerRegistry.getManager();
         if (mgr == null) return Map.of();
         List<String> servers;
-        if (serverName != null) {
-            if (!mgr.hasServer(serverName)) return Map.of();
-            servers = List.of(serverName);
+        if (lookupKey != null) {
+            if (!mgr.hasServer(lookupKey)) return Map.of();
+            servers = List.of(lookupKey);
         } else {
             var names = mgr.getServerNames();
             if (names == null || names.isEmpty()) return Map.of();
