@@ -24,21 +24,21 @@ public class McpToolProvider implements ToolProvider {
 
     private final String id;
     private final McpClientManager manager;
-    private final String serverId;
+    private final String serverName;
     private final List<String> includes;
     private final RefreshPolicy refreshPolicy;
 
     public McpToolProvider() {
         this.id = MCP;
-        this.serverId = null;
+        this.serverName = null;
         this.manager = null;
         this.includes = null;
         this.refreshPolicy = RefreshPolicy.EVERY_TURN;
     }
 
-    public McpToolProvider(String serverId, McpClientManager manager, List<String> includes, RefreshPolicy refreshPolicy) {
-        this.id = MCP + ":" + serverId;
-        this.serverId = serverId;
+    public McpToolProvider(String serverName, McpClientManager manager, List<String> includes, RefreshPolicy refreshPolicy) {
+        this.id = MCP + ":" + serverName;
+        this.serverName = serverName;
         this.manager = manager;
         this.includes = includes;
         this.refreshPolicy = refreshPolicy;
@@ -64,9 +64,9 @@ public class McpToolProvider implements ToolProvider {
         var mgr = manager != null ? manager : McpClientManagerRegistry.getManager();
         if (mgr == null) return Map.of();
         List<String> servers;
-        if (serverId != null) {
-            if (!mgr.hasServer(serverId)) return Map.of();
-            servers = List.of(serverId);
+        if (serverName != null) {
+            if (!mgr.hasServer(serverName)) return Map.of();
+            servers = List.of(serverName);
         } else {
             var names = mgr.getServerNames();
             if (names == null || names.isEmpty()) return Map.of();
