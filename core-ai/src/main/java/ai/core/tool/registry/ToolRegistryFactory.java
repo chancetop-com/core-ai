@@ -66,6 +66,32 @@ public final class ToolRegistryFactory {
             derived.registerProvider(ListToolProvider.of(individualTools));
         }
 
+        // expand GROUPED_SETS keys to individual tool names before falling back
+        if (derived.getToolCalls().isEmpty()) {
+            var expandedNames = new ArrayList<String>();
+            for (var name : names) {
+                var tools = BuiltinTools.GROUPED_SETS.get(name);
+                if (tools != null) {
+                    for (var tc : tools) expandedNames.add(tc.getName());
+                }
+            }
+            if (!expandedNames.isEmpty()) {
+                var expandedTools = new ArrayList<ToolCall>();
+                for (var toolName : expandedNames) {
+                    var tool = dispatchMap.get(toolName);
+                    if (tool != null) {
+                        expandedTools.add(tool);
+                    } else {
+                        tool = searchAcrossProviders(source, toolName);
+                        if (tool != null) expandedTools.add(tool);
+                    }
+                }
+                if (!expandedTools.isEmpty()) {
+                    derived.registerProvider(ListToolProvider.of(expandedTools));
+                }
+            }
+        }
+
         if (derived.getToolCalls().isEmpty() && !dispatchMap.isEmpty()) {
             for (var entry : source.providers().entrySet()) {
                 if (!foundProviderIds.contains(entry.getKey())) {
