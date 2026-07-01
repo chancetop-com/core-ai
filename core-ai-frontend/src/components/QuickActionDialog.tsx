@@ -53,17 +53,14 @@ export default function QuickActionDialog() {
         const maxX = window.innerWidth - 48;
         const maxY = window.innerHeight - 48;
 
-        // If the intended position (user-chosen or initial) fits in the new viewport,
-        // restore it so the button goes back to where the user placed it.
-        if (intendedPos.current.x >= 0 && intendedPos.current.y >= 0) {
-          if (intendedPos.current.x <= maxX && intendedPos.current.y <= maxY) {
-            return intendedPos.current;
-          }
-        }
-
-        // Otherwise clamp the current position to keep it visible
-        const nx = Math.max(0, Math.min(prev.x, maxX));
-        const ny = Math.max(0, Math.min(prev.y, maxY));
+        // Restore each axis of the intended position independently once it fits
+        // again, instead of requiring both axes to fit before restoring either.
+        const nx = intendedPos.current.x >= 0 && intendedPos.current.x <= maxX
+          ? intendedPos.current.x
+          : Math.max(0, Math.min(prev.x, maxX));
+        const ny = intendedPos.current.y >= 0 && intendedPos.current.y <= maxY
+          ? intendedPos.current.y
+          : Math.max(0, Math.min(prev.y, maxY));
         return nx === prev.x && ny === prev.y ? prev : { x: nx, y: ny };
       });
     };
