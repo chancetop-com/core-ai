@@ -1,5 +1,6 @@
 package ai.core.tool;
 
+import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.tools.CaptionImageTool;
 import ai.core.tool.tools.EditFileTool;
 import ai.core.tool.tools.GlobFileTool;
@@ -98,15 +99,17 @@ public final class BuiltinTools {
             RequireGithubInstallationTokenTool.builder().build()
     );
 
-    public static final Map<String, List<ToolCall>> GROUPED_SETS = Map.of(
-            "builtin-all", ALL,
-            "builtin-planning", PLANNING,
-            "builtin-file-operations", FILE_OPERATIONS,
-            "builtin-file-read-only", FILE_READ_ONLY,
-            "builtin-multimodal", MULTIMODAL,
-            "builtin-web", WEB,
-            "builtin-code-execution", CODE_EXECUTION,
-            "builtin-github", GITHUB
+    public static final Map<String, List<ToolCall>> GROUPED_SETS = Map.ofEntries(
+            Map.entry(ToolProvider.BUILTIN_ALL, ALL),
+            Map.entry(ToolProvider.BUILTIN_PLANNING, PLANNING),
+            Map.entry(ToolProvider.BUILTIN_FILES, FILE_OPERATIONS),
+            Map.entry(ToolProvider.BUILTIN_FILE_OPERATIONS, FILE_OPERATIONS),
+            Map.entry(ToolProvider.BUILTIN_FILE_READ_ONLY, FILE_READ_ONLY),
+            Map.entry(ToolProvider.BUILTIN_MULTIMODAL, MULTIMODAL),
+            Map.entry(ToolProvider.BUILTIN_WEB, WEB),
+            Map.entry(ToolProvider.BUILTIN_BASH, BASH_EXECUTION),
+            Map.entry(ToolProvider.BUILTIN_CODE_EXECUTION, CODE_EXECUTION),
+            Map.entry(ToolProvider.BUILTIN_GITHUB, GITHUB)
     );
 
     @SafeVarargs

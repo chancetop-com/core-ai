@@ -4,6 +4,7 @@ import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
+import ai.core.tool.mcp.McpToolProvider;
 import ai.core.tool.registry.ToolProvider;
 
 import java.util.LinkedHashMap;
@@ -37,7 +38,7 @@ public class McpToolSetProvider implements ToolProvider {
      * @param sandbox    {@code true} to use {@code MANUAL} refresh, {@code false} for {@code EVERY_TURN}
      */
     public McpToolSetProvider(String serverId, McpClientManager manager, List<String> includes, boolean sandbox) {
-        this.id = "mcp-server:" + serverId;
+        this.id = McpToolProvider.MCP + ":" + serverId;
         this.serverId = serverId;
         this.manager = manager;
         this.includes = includes;

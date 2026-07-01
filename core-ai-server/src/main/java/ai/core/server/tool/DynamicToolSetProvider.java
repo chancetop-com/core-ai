@@ -20,7 +20,7 @@ public class DynamicToolSetProvider implements ToolProvider {
     private final List<ToolCall> tools;
 
     public DynamicToolSetProvider(String toolSetId, List<ToolCall> tools) {
-        this.id = "dynamic:" + toolSetId;
+        this.id = ToolProvider.DYNAMIC + ":" + toolSetId;
         this.tools = List.copyOf(tools);
     }
 

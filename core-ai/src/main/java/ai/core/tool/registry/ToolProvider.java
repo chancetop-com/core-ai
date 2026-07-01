@@ -23,14 +23,21 @@ import java.util.Map;
  * @author Lim Chen
  */
 public interface ToolProvider {
+    String BUILTIN_ALL = "builtin-all";
     String BUILTIN_PLANNING = "builtin-planning";
     String BUILTIN_FILES = "builtin-files";
+    String BUILTIN_FILE_OPERATIONS = "builtin-file-operations";
+    String BUILTIN_FILE_READ_ONLY = "builtin-file-read-only";
     String BUILTIN_MULTIMODAL = "builtin-multimodal";
     String BUILTIN_WEB = "builtin-web";
     String BUILTIN_BASH = "builtin-bash";
+    String BUILTIN_CODE_EXECUTION = "builtin-code-execution";
+    String BUILTIN_GITHUB = "builtin-github";
 
     String BUILTIN = "builtin";
     String USER = "user-provided";
+    String API_TOOLS = "api-tools";
+    String DYNAMIC = "dynamic";
 
     String id();
 

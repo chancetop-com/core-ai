@@ -18,14 +18,6 @@ public class BuiltinToolProvider implements ToolProvider {
     private final String id;
     private final Map<String, ToolCall> tools;
 
-    public BuiltinToolProvider() {
-        this(BUILTIN, BuiltinTools.ALL);
-    }
-
-    public BuiltinToolProvider(List<ToolCall> toolList) {
-        this(BUILTIN, toolList);
-    }
-
     public BuiltinToolProvider(String id, List<ToolCall> toolList) {
         this.id = id;
         var map = new LinkedHashMap<String, ToolCall>();
@@ -33,6 +25,11 @@ public class BuiltinToolProvider implements ToolProvider {
             map.put(tc.getName(), tc);
         }
         this.tools = Map.copyOf(map);
+    }
+
+    public static BuiltinToolProvider fromSet(String setName) {
+        var tools = BuiltinTools.GROUPED_SETS.getOrDefault(setName, List.of());
+        return new BuiltinToolProvider(setName, tools);
     }
 
     @Override

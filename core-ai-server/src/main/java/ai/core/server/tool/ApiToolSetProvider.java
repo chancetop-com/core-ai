@@ -28,7 +28,7 @@ public class ApiToolSetProvider implements ToolProvider {
      * @param source  fallback app name when {@code toolId} resolution returns empty
      */
     public ApiToolSetProvider(InternalApiToolLoader loader, String toolId, String source) {
-        this.id = "api-tools:" + toolId;
+        this.id = ToolProvider.API_TOOLS + ":" + toolId;
         this.loader = loader;
         this.toolId = toolId;
         this.source = source;

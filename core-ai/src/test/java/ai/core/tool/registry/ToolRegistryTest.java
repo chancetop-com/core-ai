@@ -36,14 +36,14 @@ class ToolRegistryTest {
     class BuiltinProvider {
         @Test
         void shouldProvideBuiltinTools() {
-            var provider = new BuiltinToolProvider();
+            var provider = BuiltinToolProvider.fromSet("builtin-all");
             assertEquals(ToolProvider.BUILTIN, provider.id());
             assertEquals(10, provider.priority());
         }
 
         @Test
         void shouldRegisterAndMaterializeBuiltinTools() {
-            registry.registerProvider(new BuiltinToolProvider());
+            registry.registerProvider(BuiltinToolProvider.fromSet("builtin-all"));
 
             var mat = registry.materialize();
             var names = mat.definitions().stream().map(t -> t.function.name).toList();

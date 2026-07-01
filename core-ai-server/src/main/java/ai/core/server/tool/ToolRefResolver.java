@@ -97,9 +97,8 @@ public class ToolRefResolver {
         var entry = lookupBuiltinEntry(toolRef.id);
         if (entry != null) {
             var setName = entry.config != null ? entry.config.get("set") : null;
-            var builtinSet = setName != null ? BuiltinTools.GROUPED_SETS.get(setName) : null;
-            if (builtinSet != null) {
-                var provider = new BuiltinToolProvider("server-builtin:" + setName, builtinSet);
+            if (setName != null) {
+                var provider = BuiltinToolProvider.fromSet(setName);
                 result.addAll(provider.provide().values());
             }
             return;
@@ -199,11 +198,8 @@ public class ToolRefResolver {
             case MCP -> result.addAll(resolveMcpTools(entry, sessionMgr));
             case BUILTIN -> {
                 var setName = entry.config != null ? entry.config.get("set") : null;
-                var builtinSet = BuiltinTools.GROUPED_SETS.get(setName);
-                if (builtinSet != null) {
-                    var provider = new BuiltinToolProvider("server-builtin-legacy:" + setName, builtinSet);
-                    result.addAll(provider.provide().values());
-                }
+                var provider = BuiltinToolProvider.fromSet(setName);
+                result.addAll(provider.provide().values());
             }
             case API -> result.addAll(resolveApiTools(entry));
             default -> LOGGER.warn("unknown tool type in legacy ref, id={}, type={}", toolRef.id, entry.type);

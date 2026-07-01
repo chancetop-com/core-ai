@@ -13,6 +13,7 @@ import ai.core.server.sandbox.SandboxService;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.registry.BuiltinToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.utils.JsonUtil;
@@ -515,7 +516,7 @@ public class ToolRegistryService {
         if (entry != null && entry.type == ToolType.BUILTIN) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
-                registry.registerProvider(new BuiltinToolSetProvider(setName));
+                registry.registerProvider(BuiltinToolProvider.fromSet(setName));
                 return;
             }
         }
