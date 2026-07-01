@@ -560,7 +560,7 @@ public class ToolRegistryService {
         var sandbox = sessionMgr != null && sessionMgr.hasServer(lookupKey);
         var entry = findMcpEntryByLookupKey(lookupKey);
         var displayName = entry != null ? entry.name : lookupKey;
-        registry.registerProvider(new McpToolProvider(McpToolProvider.MCP + ":" + displayName, lookupKey, mgr, includes, sandbox ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
+        registry.registerProvider(new McpToolProvider(McpToolProvider.MCP + ":" + displayName, lookupKey, displayName, mgr, includes, sandbox ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
     }
 
     private ToolRegistryEntry findMcpEntryByLookupKey(String lookupKey) {

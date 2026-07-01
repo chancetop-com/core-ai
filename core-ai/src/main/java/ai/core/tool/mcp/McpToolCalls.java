@@ -20,33 +20,41 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     private static final long serialVersionUID = 2202468890851081427L;
 
     public static List<McpToolCall> from(McpClientManager mcpClientManager, List<String> serverNames, List<String> includes) {
-        return from(mcpClientManager, serverNames, includes, null);
+        return from(mcpClientManager, serverNames, includes, null, null);
     }
 
     public static List<McpToolCall> from(McpClientManager mcpClientManager, List<String> serverNames, List<String> includes, List<String> excludes) {
+        return from(mcpClientManager, serverNames, includes, excludes, null);
+    }
+
+    public static List<McpToolCall> from(McpClientManager mcpClientManager, List<String> serverNames, List<String> includes, List<String> excludes, String label) {
         var mcpToolCalls = new McpToolCalls();
         for (var serverName : serverNames) {
             if (mcpClientManager.hasServer(serverName)) {
-                addToolsFromClient(mcpToolCalls, mcpClientManager, serverName, includes, excludes);
+                addToolsFromClient(mcpToolCalls, mcpClientManager, serverName, includes, excludes, label != null ? label : serverName);
             }
         }
         return mcpToolCalls;
     }
 
-    private static void addToolsFromClient(List<McpToolCall> mcpToolCalls, McpClientManager manager, String serverName, List<String> includes, List<String> excludes) {
+    private static void addToolsFromClient(List<McpToolCall> mcpToolCalls, McpClientManager manager, String serverName, List<String> includes, List<String> excludes, String displayName) {
         var tools = manager.safeListTools(serverName);
         for (var tool : tools) {
             if (includes != null && includes.stream().noneMatch(t -> Pattern.compile(t).matcher(tool.name()).matches())) continue;
             if (excludes != null && excludes.stream().anyMatch(t -> Pattern.compile(t).matcher(tool.name()).matches())) continue;
-            mcpToolCalls.add(buildToolCall(tool, manager, serverName));
+            mcpToolCalls.add(buildToolCall(tool, manager, serverName, displayName));
         }
     }
 
     private static McpToolCall buildToolCall(McpSchema.Tool tool, McpClientManager manager, String serverName) {
+        return buildToolCall(tool, manager, serverName, serverName);
+    }
+
+    private static McpToolCall buildToolCall(McpSchema.Tool tool, McpClientManager manager, String serverName, String displayName) {
         return McpToolCall.builder()
                 .name(tool.name())
                 .namespace(serverName)
-                .description("[MCP:" + serverName + "] " + tool.description())
+                .description("[MCP:" + displayName + "] " + tool.description())
                 .needAuth(false)
                 .parameters(buildParameters(tool.inputSchema()))
                 .mcpClientManager(manager)
