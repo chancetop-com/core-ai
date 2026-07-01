@@ -55,7 +55,7 @@ public class SkillToolAssembler {
 
         @Override
         public String id() {
-            return "server-skill";
+            return "skill";
         }
 
         @Override

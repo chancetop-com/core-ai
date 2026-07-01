@@ -8,6 +8,7 @@ import ai.core.llm.domain.ReasoningEffort;
 import ai.core.prompt.PromptInject;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.tools.WriteTodosTool;
 
 import java.util.List;
 import java.util.Objects;
@@ -30,7 +31,7 @@ public class DeepResearchAgent {
             """;
 
     private static final List<String> TOOL_NAMES = List.of(
-            ToolProvider.BUILTIN_PLANNING, ToolProvider.BUILTIN_FILES, ToolProvider.BUILTIN_WEB
+            WriteTodosTool.WT_TOOL_NAME, ToolProvider.BUILTIN_FILES, ToolProvider.BUILTIN_WEB
     );
 
     public static Agent of(ToolRegistry toolRegistry, LLMProvider llmProvider, String model, StreamingCallback streamingCallback,
