@@ -22,6 +22,7 @@ import ai.core.server.domain.TriggerType;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetAccessRegistry;
+import ai.core.server.dataset.tool.DatasetToolProvider;
 import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
 import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
@@ -36,6 +37,7 @@ import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.registry.ListToolProvider;
+import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.telemetry.TelemetryConfig;
 import ai.core.tool.tools.InternalUrlResolver;
@@ -385,7 +387,7 @@ public class AgentRunner {
         }
         var registry = toolRegistryService.resolveToToolRegistry(toolRefs, runEntity.id);
         if (sandbox != null) {
-            registry.registerProvider(ListToolProvider.of("sandbox-submit",
+            registry.registerProvider(ListToolProvider.of(ToolProvider.SANDBOX,
                     List.of(SubmitArtifactsTool.create(definition.userId, fileService, new AgentRunArtifactSink(runEntity.id, agentRunCollection)))));
         }
         addDatasetTools(registry, config, definition, runEntity.id);
@@ -541,18 +543,7 @@ public class AgentRunner {
         var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
         if (datasetConfig == null || datasetConfig.isEmpty()) return;
         var accessRegistry = DatasetAccessRegistry.from(datasetConfig);
-        var tools = new ArrayList<ToolCall>();
-        tools.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, accessRegistry));
-        if (accessRegistry.hasAnyWrite()) {
-            tools.add(InsertDatasetRecordTool.create(definition.id, runId, datasetService, datasetRecordService, accessRegistry));
-            tools.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
-        }
-        if (accessRegistry.hasAnyFull()) {
-            tools.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
-        }
-        if (!tools.isEmpty()) {
-            registry.registerProvider(ListToolProvider.of("dataset", tools));
-        }
+        registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, definition.id, runId));
     }
 
     private void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error, Agent agent) {

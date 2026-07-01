@@ -38,6 +38,8 @@ public interface ToolProvider {
     String USER = "user-provided";
     String API_TOOLS = "api-tools";
     String DYNAMIC = "dynamic";
+    String DATASET = "dataset";
+    String SANDBOX = "sandbox";
 
     String id();
 

@@ -8,6 +8,7 @@ import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetAccessRegistry;
+import ai.core.server.dataset.tool.DatasetToolProvider;
 import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
 import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
@@ -175,7 +176,7 @@ public class AgentSessionManager {
         if (sandboxOn) {
             var submitTools = artifactSetup.withSubmitArtifactsTool(null, sessionId, userId, true);
             if (submitTools != null && !submitTools.isEmpty()) {
-                toolRegistry.registerProvider(new ListToolProvider("sandbox-submit", submitTools));
+                toolRegistry.registerProvider(new ListToolProvider(ToolProvider.SANDBOX, submitTools));
             }
         }
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
@@ -239,7 +240,7 @@ public class AgentSessionManager {
         if (sandboxOn) {
             var submitTools = artifactSetup.withSubmitArtifactsTool(null, sessionId, userId, true);
             if (submitTools != null && !submitTools.isEmpty()) {
-                toolRegistry.registerProvider(new ListToolProvider("sandbox-submit", submitTools));
+                toolRegistry.registerProvider(new ListToolProvider(ToolProvider.SANDBOX, submitTools));
             }
         }
         Map<String, Object> extraVars = null;
@@ -420,16 +421,7 @@ public class AgentSessionManager {
     private void addDatasetToolsToRegistry(ToolRegistry registry, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
         if (datasetConfig == null || datasetConfig.isEmpty()) return;
         var accessRegistry = DatasetAccessRegistry.from(datasetConfig);
-        var tools = new ArrayList<ToolCall>();
-        tools.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, accessRegistry));
-        if (accessRegistry.hasAnyWrite()) {
-            tools.add(InsertDatasetRecordTool.create(agentId, sessionId, datasetService, datasetRecordService, accessRegistry));
-            tools.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
-        }
-        if (accessRegistry.hasAnyFull()) {
-            tools.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
-        }
-        registry.registerProvider(new ListToolProvider("dataset", tools));
+        registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, agentId, sessionId));
     }
 
     private String appendDatasetInstructions(String systemPrompt, List<AgentDatasetConfig> datasetConfig) {
@@ -480,12 +472,7 @@ public class AgentSessionManager {
         dp.datasetId = config.datasetId;
         dp.permission = DatasetPermission.FULL;
         var accessRegistry = DatasetAccessRegistry.from(List.of(dp));
-        var tools = new ArrayList<ToolCall>();
-        tools.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, accessRegistry));
-        tools.add(InsertDatasetRecordTool.create("default", sessionId, datasetService, datasetRecordService, accessRegistry));
-        tools.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
-        tools.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, accessRegistry));
-        registry.registerProvider(new ListToolProvider("dataset", tools));
+        registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, "default", sessionId));
         return registry;
     }
 
