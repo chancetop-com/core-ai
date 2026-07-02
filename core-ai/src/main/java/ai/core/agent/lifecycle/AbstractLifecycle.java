@@ -3,6 +3,7 @@ package ai.core.agent.lifecycle;
 import ai.core.agent.Agent;
 import ai.core.agent.AgentBuilder;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.Node;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FunctionCall;
@@ -34,6 +35,10 @@ public abstract class AbstractLifecycle {
 
     public void beforeAgentRun(AtomicReference<String> query, ExecutionContext executionContext) {
 
+    }
+
+    public void beforeAgentRun(Node<?> node, AtomicReference<String> query, ExecutionContext executionContext) {
+        beforeAgentRun(query, executionContext);
     }
 
     public void afterAgentRun(String query, AtomicReference<String> result, ExecutionContext executionContext) {
