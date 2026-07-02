@@ -2,9 +2,11 @@ package ai.core.tool.registry;
 
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 
@@ -17,6 +19,8 @@ import java.util.Set;
  * @author Lim Chen
  */
 public final class ToolRegistryFactory {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistryFactory.class);
 
     private ToolRegistryFactory() {
     }
@@ -41,63 +45,44 @@ public final class ToolRegistryFactory {
         var derived = new ToolRegistry();
         var mat = source.materialize();
         var dispatchMap = mat.getDispatchMap();
-        var individualTools = new ArrayList<ToolCall>();
-        var foundProviderIds = new HashSet<String>();
+        var individualTools = new LinkedHashMap<String, ToolCall>();
 
         for (var name : names) {
             var provider = source.getProvider(name);
             if (provider != null) {
                 derived.registerProvider(provider);
-                foundProviderIds.add(name);
-            } else {
-                var tool = dispatchMap.get(name);
-                if (tool != null) {
-                    individualTools.add(tool);
-                } else {
-                    tool = searchAcrossProviders(source, name);
-                    if (tool != null) {
-                        individualTools.add(tool);
+                continue;
+            }
+            var tool = dispatchMap.get(name);
+            if (tool != null) {
+                individualTools.putIfAbsent(name, tool);
+                continue;
+            }
+            tool = searchAcrossProviders(source, name);
+            if (tool != null) {
+                individualTools.putIfAbsent(name, tool);
+                continue;
+            }
+            var groupTools = BuiltinTools.GROUPED_SETS.get(name);
+            if (groupTools != null) {
+                for (var tc : groupTools) {
+                    var expandedTool = dispatchMap.get(tc.getName());
+                    if (expandedTool != null) {
+                        individualTools.putIfAbsent(tc.getName(), expandedTool);
+                    } else {
+                        expandedTool = searchAcrossProviders(source, tc.getName());
+                        if (expandedTool != null) individualTools.putIfAbsent(tc.getName(), expandedTool);
                     }
                 }
             }
         }
 
         if (!individualTools.isEmpty()) {
-            derived.registerProvider(ListToolProvider.of(individualTools));
+            derived.registerProvider(ListToolProvider.of(new ArrayList<>(individualTools.values())));
         }
 
-        // expand GROUPED_SETS keys to individual tool names before falling back
-        if (derived.getToolCalls().isEmpty()) {
-            var expandedNames = new ArrayList<String>();
-            for (var name : names) {
-                var tools = BuiltinTools.GROUPED_SETS.get(name);
-                if (tools != null) {
-                    for (var tc : tools) expandedNames.add(tc.getName());
-                }
-            }
-            if (!expandedNames.isEmpty()) {
-                var expandedTools = new ArrayList<ToolCall>();
-                for (var toolName : expandedNames) {
-                    var tool = dispatchMap.get(toolName);
-                    if (tool != null) {
-                        expandedTools.add(tool);
-                    } else {
-                        tool = searchAcrossProviders(source, toolName);
-                        if (tool != null) expandedTools.add(tool);
-                    }
-                }
-                if (!expandedTools.isEmpty()) {
-                    derived.registerProvider(ListToolProvider.of(expandedTools));
-                }
-            }
-        }
-
-        if (derived.getToolCalls().isEmpty() && !dispatchMap.isEmpty()) {
-            for (var entry : source.providers().entrySet()) {
-                if (!foundProviderIds.contains(entry.getKey())) {
-                    derived.registerProvider(entry.getValue());
-                }
-            }
+        if (derived.getToolCalls().isEmpty() && !names.isEmpty()) {
+            LOGGER.warn("derive matched no tools, names={}", names);
         }
 
         return derived;
