@@ -18,4 +18,14 @@ public interface RawSseChannel<T> extends Channel<T> {
      * @return true if queued, false if channel is closed
      */
     boolean sendRawData(String data);
+
+    /**
+     * Sends a named raw SSE event without JSON serialization.
+     * The payload is framed as {@code event: <event>\ndata: <data>\n\n}.
+     *
+     * @param event SSE event name
+     * @param data raw SSE data (not including SSE framing prefix/suffix)
+     * @return true if queued, false if channel is closed
+     */
+    boolean sendRawEvent(String event, String data);
 }

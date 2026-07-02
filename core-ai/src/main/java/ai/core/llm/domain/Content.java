@@ -74,6 +74,9 @@ public class Content {
         // can be null if not base64 encoded
         @Property(name = "format")
         public String format;
+
+        @Property(name = "detail")
+        public String detail;
     }
 
     public static class FileContent {

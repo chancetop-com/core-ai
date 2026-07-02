@@ -101,6 +101,11 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
     }
 
     @Override
+    public boolean sendRawEvent(String event, String data) {
+        return sendBytes(Strings.bytes("event: " + event + "\ndata: " + data + "\n\n"));
+    }
+
+    @Override
     public boolean isOpen() {
         return !exchange.isResponseComplete();
     }
@@ -233,4 +238,3 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
         }
     }
 }
-

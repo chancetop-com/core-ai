@@ -36,6 +36,12 @@ public class CompletionRequest {
     public List<Message> messages;
     @Property(name = "temperature")
     public Double temperature;
+    @Property(name = "top_p")
+    public Double topP;
+    @Property(name = "max_completion_tokens")
+    public Integer maxCompletionTokens;
+    @Property(name = "parallel_tool_calls")
+    public Boolean parallelToolCalls;
     @Property(name = "tools")
     public List<Tool> tools;
     @Property(name = "tool_choice")

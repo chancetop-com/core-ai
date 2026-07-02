@@ -63,6 +63,10 @@ public class Usage {
         return promptTokensDetails;
     }
 
+    public CompletionTokensDetails getCompletionTokensDetails() {
+        return completionTokensDetails;
+    }
+
     public void setPromptTokens(int promptTokens) {
         this.promptTokens = promptTokens;
     }
