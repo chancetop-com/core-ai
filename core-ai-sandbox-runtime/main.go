@@ -126,7 +126,7 @@ func (r *TaskRegistry) Cleanup(maxAge time.Duration) {
 // ---- Globals ----
 
 var (
-	workspaceDir = "/tmp"
+	workspaceDir = "/workspace"
 	taskRegistry *TaskRegistry
 
 	skillVersionsMu sync.Mutex
