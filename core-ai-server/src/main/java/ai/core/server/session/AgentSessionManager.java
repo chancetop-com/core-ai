@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
@@ -24,6 +25,7 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.run.SubmitArtifactsTool;
+import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
@@ -173,14 +175,9 @@ public class AgentSessionManager {
             effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
             extraVars = buildDatasetSystemVars(datasetConfig);
         }
-        if (sandboxOn) {
-            var submitTools = artifactSetup.withSubmitArtifactsTool(null, sessionId, userId, true);
-            if (submitTools != null && !submitTools.isEmpty()) {
-                toolRegistry.registerProvider(new ListToolProvider(ToolProvider.SANDBOX, submitTools));
-            }
-        }
-        var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
-                toolRegistry, context, null, extraVars, null);
+        var agent = subAgentManager().buildAgent(effectiveConfig,
+                toolRegistry, context, null, extraVars, null,
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
@@ -237,12 +234,6 @@ public class AgentSessionManager {
 
         var toolRegistry = subAgentManager().resolveToolsToRegistry(definition, sessionId);
         addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
-        if (sandboxOn) {
-            var submitTools = artifactSetup.withSubmitArtifactsTool(null, sessionId, userId, true);
-            if (submitTools != null && !submitTools.isEmpty()) {
-                toolRegistry.registerProvider(new ListToolProvider(ToolProvider.SANDBOX, submitTools));
-            }
-        }
         Map<String, Object> extraVars = null;
         if (datasetConfig != null && !datasetConfig.isEmpty()) {
             config.systemPrompt = appendDatasetInstructions(config.systemPrompt, datasetConfig);
@@ -252,8 +243,9 @@ public class AgentSessionManager {
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
                 .build();
         if (sandbox2 != null) context.sandbox(sandbox2);
-        var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn),
-                toolRegistry, context, definition.name, extraVars, definition.id);
+        var agent = subAgentManager().buildAgent(config,
+                toolRegistry, context, definition.name, extraVars, definition.id,
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));

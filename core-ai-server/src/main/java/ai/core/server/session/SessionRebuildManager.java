@@ -2,6 +2,7 @@ package ai.core.server.session;
 
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
@@ -22,6 +23,7 @@ import ai.core.server.domain.DatasetPermission;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.run.SubmitArtifactsTool;
+import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
@@ -233,9 +235,10 @@ public class SessionRebuildManager {
         var dynamicToolCount = state != null && state.tools != null ? state.tools.size() : 0;
         logger.info("doRebuild start, sessionId={}, fromAgent={}, baseTools={}, dynamicTools={}, skills={}, subAgents={}",
                 sessionId, state != null && state.fromAgent, toolCount, dynamicToolCount, skillCount, subAgentCount);
-        var agent = subAgentManager.buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
-                SessionSubAgentManager.toolsToRegistry(sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools),
-                context, agentName, extraVars, agentId);
+        var agent = subAgentManager.buildAgent(effectiveConfig,
+                SessionSubAgentManager.toolsToRegistry(tools),
+                context, agentName, extraVars, agentId,
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));

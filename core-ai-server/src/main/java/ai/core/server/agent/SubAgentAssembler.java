@@ -2,6 +2,7 @@ package ai.core.server.agent;
 
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
@@ -72,7 +73,7 @@ public class SubAgentAssembler {
         var config = toSessionConfig(definition);
         var toolRegistry = resolveToolsToRegistry(definition, sessionId);
         skillToolAssembler.attach(resolveSkillIds(definition), toolRegistry);
-        return buildAgent(config, toolRegistry, null, definition.name, null, definition.id);
+        return buildAgent(config, toolRegistry, null, definition.name, null, definition.id, null);
     }
 
     private List<String> resolveSkillIds(AgentDefinition definition) {
@@ -114,7 +115,8 @@ public class SubAgentAssembler {
 
     @SuppressWarnings({"checkstyle:NestedIfDepth", "checkstyle:ParameterNumber"})
     public Agent buildAgent(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context, String agentName,
-                            Map<String, Object> extraSystemVars, String agentId) {
+                            Map<String, Object> extraSystemVars, String agentId,
+                            List<AbstractLifecycle> extraLifecycles) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
                 .name(agentName != null && !agentName.isBlank() ? agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
@@ -148,6 +150,9 @@ public class SubAgentAssembler {
         if (provider != null) builder.persistenceProvider(provider);
         if (extraSystemVars != null) {
             extraSystemVars.forEach(builder::extraSystemVariable);
+        }
+        if (extraLifecycles != null && !extraLifecycles.isEmpty()) {
+            builder.agentLifecycle(extraLifecycles);
         }
         return builder.build();
     }

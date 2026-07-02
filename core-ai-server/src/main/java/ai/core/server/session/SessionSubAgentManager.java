@@ -2,6 +2,7 @@ package ai.core.server.session;
 
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.domain.AgentDefinition;
@@ -82,8 +83,9 @@ public class SessionSubAgentManager {
     }
 
     public Agent buildAgent(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,
-                            String agentName, Map<String, Object> extraSystemVars, String agentId) {
-        return subAgentAssembler.buildAgent(config, toolRegistry, context, agentName, extraSystemVars, agentId);
+                            String agentName, Map<String, Object> extraSystemVars, String agentId,
+                            List<AbstractLifecycle> extraLifecycles) {
+        return subAgentAssembler.buildAgent(config, toolRegistry, context, agentName, extraSystemVars, agentId, extraLifecycles);
     }
 
     public static ToolRegistry toolsToRegistry(List<ToolCall> tools) {

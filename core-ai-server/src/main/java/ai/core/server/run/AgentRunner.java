@@ -8,6 +8,7 @@ import ai.core.llm.LLMProviders;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.artifact.AgentRunArtifactSink;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.memory.AgentMemoryService;
@@ -386,10 +387,6 @@ public class AgentRunner {
             toolRefs = List.of();
         }
         var registry = toolRegistryService.resolveToToolRegistry(toolRefs, runEntity.id);
-        if (sandbox != null) {
-            registry.registerProvider(ListToolProvider.of(ToolProvider.SANDBOX,
-                    List.of(SubmitArtifactsTool.create(definition.userId, fileService, new AgentRunArtifactSink(runEntity.id, agentRunCollection)))));
-        }
         addDatasetTools(registry, config, definition, runEntity.id);
         var context = ExecutionContext.builder()
             .sessionId("run:" + runEntity.id)
@@ -398,7 +395,7 @@ public class AgentRunner {
             .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
             .build();
         if (sandbox != null) context.sandbox(sandbox);
-        var systemPrompt = appendArtifactInstructions(resolveSystemPrompt(config, definition), sandbox != null);
+        var systemPrompt = resolveSystemPrompt(config, definition);
         systemPrompt = appendDatasetInstructions(systemPrompt, config, definition);
         var model = config != null ? config.model : definition.model;
         var multiModalModel = config != null ? config.multiModalModel : definition.multiModalModel;
@@ -431,6 +428,10 @@ public class AgentRunner {
         if (AgentMemoryService.memoryEnabled(enableMemory)) {
             var memoryInject = agentMemoryService.buildMemoryPromptInject(definition.id);
             if (memoryInject != null) builder.systemPromptSection(memoryInject);
+        }
+        if (sandbox != null) {
+            builder.addAgentLifecycle(new SandboxLifecycle(fileService,
+                    new AgentRunArtifactSink(runEntity.id, agentRunCollection)));
         }
         var agent = builder.build();
         agent.setAuthenticated(true);
@@ -606,12 +607,6 @@ public class AgentRunner {
             return systemPromptService.resolveContent(promptId);
         }
         return config != null ? config.systemPrompt : definition.systemPrompt;
-    }
-
-    private String appendArtifactInstructions(String systemPrompt, boolean sandboxEnabled) {
-        if (!sandboxEnabled) return systemPrompt;
-        if (systemPrompt == null || systemPrompt.isBlank()) return SubmitArtifactsTool.SYSTEM_INSTRUCTIONS.strip();
-        return systemPrompt + SubmitArtifactsTool.SYSTEM_INSTRUCTIONS;
     }
 
     private String appendDatasetInstructions(String systemPrompt, AgentPublishedConfig config, AgentDefinition definition) {
