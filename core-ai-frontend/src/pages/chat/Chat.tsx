@@ -178,6 +178,7 @@ export default function Chat() {
   const activeSseSessionIdRef = useRef<string | null>(null);
   const cancelledSessionIdsRef = useRef<Set<string>>(new Set());
   const hydrateRequestSeqRef = useRef(0);
+  const autoSendProcessedRef = useRef<string | null>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
 
@@ -497,13 +498,23 @@ export default function Chat() {
     const agentParam = searchParams.get('agent');
     const autoParam = searchParams.get('auto');
     const messageParam = searchParams.get('message');
-    if (!agentParam || !autoParam) return;
+    if (!agentParam || !autoParam) {
+      autoSendProcessedRef.current = null;
+      return;
+    }
+    // Prevent re-trigger when myAgents/otherAgents change after initial processing.
+    // window.history.replaceState below clears the browser URL but searchParams may
+    // remain stale in React state, so we guard with a ref keyed by params to avoid
+    // overwriting historical conversation hydration triggered by the user.
+    const paramsKey = `${agentParam}|${autoParam}|${messageParam || ''}`;
+    if (autoSendProcessedRef.current === paramsKey) return;
 
     const allAgents = [...myAgents, ...otherAgents]
       .filter(a => a.status === 'PUBLISHED' || a.type === 'local');
     const targetAgent = allAgents.find(a => a.id === agentParam);
 
     if (targetAgent && autoParam === 'help') {
+      autoSendProcessedRef.current = paramsKey;
       handleNewChat();
       setSelectedAgentId(agentParam);
 
