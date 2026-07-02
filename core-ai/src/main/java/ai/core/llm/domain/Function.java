@@ -17,4 +17,6 @@ public class Function {
     @NotNull
     @Property(name = "parameters")
     public JsonSchema parameters;
+    @Property(name = "strict")
+    public Boolean strict;
 }

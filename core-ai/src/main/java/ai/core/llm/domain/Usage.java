@@ -78,6 +78,10 @@ public class Usage {
         this.promptTokensDetails = promptTokensDetails;
     }
 
+    public void setCompletionTokensDetails(CompletionTokensDetails completionTokensDetails) {
+        this.completionTokensDetails = completionTokensDetails;
+    }
+
     public void setTotalTokens(int totalTokens) {
         this.totalTokens = totalTokens;
     }
