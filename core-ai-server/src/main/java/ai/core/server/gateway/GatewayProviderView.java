@@ -11,6 +11,7 @@ public class GatewayProviderView {
     public Boolean hasApiKey;
     public String apiVersion;
     public Boolean enabled;
+    public Boolean allowPrivateNetwork;
     public String modelPrefix;
     public String defaultChatModel;
     public String defaultResponsesModel;

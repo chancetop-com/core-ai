@@ -7,6 +7,7 @@ public class GatewayProviderRequest {
     public String apiKey;
     public String apiVersion;
     public Boolean enabled;
+    public Boolean allowPrivateNetwork;
     public String modelPrefix;
     public String defaultChatModel;
     public String defaultResponsesModel;

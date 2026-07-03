@@ -42,8 +42,11 @@ import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
 import ai.core.server.file.SharedFileDownloadController;
+import ai.core.server.gateway.GatewayProxyController;
+import ai.core.server.gateway.GatewayProxyService;
 import ai.core.server.gateway.GatewayProviderController;
 import ai.core.server.gateway.GatewayProviderService;
+import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.github.GitHubInstallationTokenService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
@@ -428,13 +431,19 @@ public class ServerModule extends Module {
         http().bean(ListAgentMemoriesResponse.class);
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
 
+        bind(new GatewaySecretProtector(property("gateway.secret.key").orElse(requiredProperty("sys.mongo.uri"))));
         bind(GatewayProviderService.class);
+        bind(GatewayProxyService.class);
         var gatewayProviderController = bind(GatewayProviderController.class);
         http().route(HTTPMethod.GET, "/api/gateway/providers", gatewayProviderController::list);
         http().route(HTTPMethod.POST, "/api/gateway/providers", gatewayProviderController::create);
         http().route(HTTPMethod.PUT, "/api/gateway/providers/:id", gatewayProviderController::update);
         http().route(HTTPMethod.DELETE, "/api/gateway/providers/:id", gatewayProviderController::delete);
         http().route(HTTPMethod.POST, "/api/gateway/providers/:id/test", gatewayProviderController::test);
+        var gatewayProxyController = bind(GatewayProxyController.class);
+        http().route(HTTPMethod.GET, "/api/gateway/v1/models", gatewayProxyController::models);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/chat/completions", gatewayProxyController::chatCompletions);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/responses", gatewayProxyController::responses);
 
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
         api().service(UserWebService.class, bind(UserWebServiceImpl.class));

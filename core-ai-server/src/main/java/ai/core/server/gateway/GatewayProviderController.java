@@ -34,7 +34,7 @@ public class GatewayProviderController {
 
     public Response delete(Request request) {
         gatewayProviderService.delete(request.pathParam("id"), userId());
-        return Response.text("deleted");
+        return Response.empty().status(HTTPStatus.NO_CONTENT);
     }
 
     public Response test(Request request) {

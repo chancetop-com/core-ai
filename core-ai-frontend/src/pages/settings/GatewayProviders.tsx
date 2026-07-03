@@ -20,6 +20,7 @@ type FormState = {
   apiKey: string;
   apiVersion: string;
   enabled: boolean;
+  allowPrivateNetwork: boolean;
   modelPrefix: string;
   defaultChatModel: string;
   defaultResponsesModel: string;
@@ -35,6 +36,7 @@ const emptyForm: FormState = {
   apiKey: '',
   apiVersion: '',
   enabled: true,
+  allowPrivateNetwork: false,
   modelPrefix: 'openai/',
   defaultChatModel: '',
   defaultResponsesModel: '',
@@ -88,6 +90,7 @@ export default function GatewayProviders() {
       apiKey: '',
       apiVersion: provider.apiVersion || '',
       enabled: provider.enabled !== false,
+      allowPrivateNetwork: provider.allowPrivateNetwork === true,
       modelPrefix: provider.modelPrefix || '',
       defaultChatModel: provider.defaultChatModel || '',
       defaultResponsesModel: provider.defaultResponsesModel || '',
@@ -119,6 +122,7 @@ export default function GatewayProviders() {
         apiKey: form.apiKey,
         apiVersion: form.apiVersion,
         enabled: form.enabled,
+        allowPrivateNetwork: form.allowPrivateNetwork,
         modelPrefix: form.modelPrefix,
         defaultChatModel: form.defaultChatModel,
         defaultResponsesModel: form.defaultResponsesModel,
@@ -199,6 +203,7 @@ export default function GatewayProviders() {
                 <th className="px-4 py-3 font-medium">Route Prefix</th>
                 <th className="px-4 py-3 font-medium">Base URL</th>
                 <th className="px-4 py-3 font-medium">Key</th>
+                <th className="px-4 py-3 font-medium">Network</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
@@ -206,13 +211,13 @@ export default function GatewayProviders() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td colSpan={7} className="px-4 py-10 text-center" style={{ color: 'var(--color-text-secondary)' }}>
                     Loading...
                   </td>
                 </tr>
               ) : providers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td colSpan={7} className="px-4 py-10 text-center" style={{ color: 'var(--color-text-secondary)' }}>
                     No providers configured
                   </td>
                 </tr>
@@ -232,6 +237,9 @@ export default function GatewayProviders() {
                       <KeyRound size={14} style={{ color: provider.hasApiKey ? 'var(--color-success)' : 'var(--color-text-secondary)' }} />
                       {provider.apiKeyMasked || 'none'}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs" style={{ color: provider.allowPrivateNetwork ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>
+                    {provider.allowPrivateNetwork ? 'private' : 'public'}
                   </td>
                   <td className="px-4 py-3">
                     {provider.lastTestStatus === 'ok' ? (
@@ -297,6 +305,13 @@ export default function GatewayProviders() {
                   </label>
                 </Field>
               </div>
+
+              <Field label="Network">
+                <label className="h-10 flex items-center gap-2 px-3 rounded-lg" style={{ background: 'var(--color-bg-tertiary)' }}>
+                  <input type="checkbox" checked={form.allowPrivateNetwork} onChange={e => setForm({ ...form, allowPrivateNetwork: e.target.checked })} />
+                  <span className="text-sm">Allow private hosts</span>
+                </label>
+              </Field>
 
               <Field label="Base URL">
                 <input

@@ -856,6 +856,7 @@ export interface GatewayProvider {
   hasApiKey?: boolean;
   apiVersion?: string;
   enabled?: boolean;
+  allowPrivateNetwork?: boolean;
   modelPrefix?: string;
   defaultChatModel?: string;
   defaultResponsesModel?: string;
@@ -878,6 +879,7 @@ export interface GatewayProviderRequest {
   apiKey?: string;
   apiVersion?: string;
   enabled?: boolean;
+  allowPrivateNetwork?: boolean;
   modelPrefix?: string;
   defaultChatModel?: string;
   defaultResponsesModel?: string;

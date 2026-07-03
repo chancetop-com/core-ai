@@ -23,11 +23,17 @@ public class GatewayProviderConfig {
     @Field(name = "api_key")
     public String apiKey;
 
+    @Field(name = "api_key_encrypted")
+    public String apiKeyEncrypted;
+
     @Field(name = "api_version")
     public String apiVersion;
 
     @Field(name = "enabled")
     public Boolean enabled;
+
+    @Field(name = "allow_private_network")
+    public Boolean allowPrivateNetwork;
 
     @Field(name = "model_prefix")
     public String modelPrefix;

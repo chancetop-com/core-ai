@@ -28,6 +28,8 @@ public class GatewayProviderService {
     MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
     @Inject
     MongoCollection<User> userCollection;
+    @Inject
+    GatewaySecretProtector secretProtector;
 
     public ListGatewayProvidersResponse list(String userId) {
         requireAdmin(userId);
@@ -89,18 +91,19 @@ public class GatewayProviderService {
         var started = System.nanoTime();
         var result = new TestGatewayProviderResponse();
         try {
+            GatewayNetworkGuard.validateOutboundUrl(testUrl(entity), Boolean.TRUE.equals(entity.allowPrivateNetwork));
             var client = HTTPClient.builder()
                     .connectTimeout(Duration.ofSeconds(valueOrDefault(entity.connectTimeoutSeconds, 10)))
                     .timeout(Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, 30)))
-                    .trustAll()
                     .build();
             var request = new HTTPRequest(HTTPMethod.GET, testUrl(entity));
             request.headers.put("Content-Type", "application/json");
-            if (!isBlank(entity.apiKey)) {
+            var apiKey = secret(entity);
+            if (!isBlank(apiKey)) {
                 if ("azure".equals(entity.type)) {
-                    request.headers.put("api-key", entity.apiKey);
+                    request.headers.put("api-key", apiKey);
                 } else {
-                    request.headers.put("Authorization", "Bearer " + entity.apiKey);
+                    request.headers.put("Authorization", "Bearer " + apiKey);
                 }
             }
 
@@ -137,10 +140,15 @@ public class GatewayProviderService {
         if (request.name != null) entity.name = request.name.trim();
         if (request.type != null) entity.type = normalizeType(request.type);
         if (request.baseUrl != null) entity.baseUrl = stripTrailingSlash(request.baseUrl.trim());
-        if (request.apiKey != null && (!keepExistingSecret || !request.apiKey.isBlank())) entity.apiKey = request.apiKey.trim();
+        if (request.apiKey != null && (!keepExistingSecret || !request.apiKey.isBlank())) {
+            entity.apiKeyEncrypted = secretProtector.protect(request.apiKey.trim());
+            entity.apiKey = null;
+        }
         if (request.apiVersion != null) entity.apiVersion = trimToNull(request.apiVersion);
         if (request.enabled != null) entity.enabled = request.enabled;
         if (entity.enabled == null) entity.enabled = Boolean.TRUE;
+        if (request.allowPrivateNetwork != null) entity.allowPrivateNetwork = request.allowPrivateNetwork;
+        if (entity.allowPrivateNetwork == null) entity.allowPrivateNetwork = Boolean.FALSE;
         if (request.modelPrefix != null) entity.modelPrefix = trimToNull(request.modelPrefix);
         if (entity.modelPrefix == null) entity.modelPrefix = defaultModelPrefix(entity.type);
         if (request.defaultChatModel != null) entity.defaultChatModel = trimToNull(request.defaultChatModel);
@@ -158,7 +166,9 @@ public class GatewayProviderService {
         if (create && isBlank(request.baseUrl)) throw new BadRequestException("baseUrl is required");
         if (request.name != null && request.name.isBlank()) throw new BadRequestException("name is required");
         if (request.baseUrl != null && request.baseUrl.isBlank()) throw new BadRequestException("baseUrl is required");
+        if (request.baseUrl != null && !request.baseUrl.isBlank()) GatewayNetworkGuard.validateHttpUrlSyntax(request.baseUrl.trim());
         if (request.type != null) normalizeType(request.type);
+        if (request.requestExtraBody != null) validateExtraBody(request.requestExtraBody);
         if (request.timeoutSeconds != null && request.timeoutSeconds <= 0) {
             throw new BadRequestException("timeoutSeconds must be positive");
         }
@@ -179,10 +189,12 @@ public class GatewayProviderService {
         view.name = entity.name;
         view.type = entity.type;
         view.baseUrl = entity.baseUrl;
-        view.apiKeyMasked = mask(entity.apiKey);
-        view.hasApiKey = !isBlank(entity.apiKey);
+        var apiKey = secret(entity);
+        view.apiKeyMasked = mask(apiKey);
+        view.hasApiKey = !isBlank(apiKey);
         view.apiVersion = entity.apiVersion;
         view.enabled = entity.enabled;
+        view.allowPrivateNetwork = entity.allowPrivateNetwork;
         view.modelPrefix = entity.modelPrefix;
         view.defaultChatModel = entity.defaultChatModel;
         view.defaultResponsesModel = entity.defaultResponsesModel;
@@ -197,6 +209,24 @@ public class GatewayProviderService {
         view.lastTestMessage = entity.lastTestMessage;
         view.lastTestAt = entity.lastTestAt;
         return view;
+    }
+
+    private void validateExtraBody(String value) {
+        var trimmed = trimToNull(value);
+        if (trimmed == null) return;
+        try {
+            var parsed = com.fasterxml.jackson.databind.json.JsonMapper.builder().build().readValue(trimmed, Object.class);
+            if (!(parsed instanceof java.util.Map<?, ?>)) throw new BadRequestException("requestExtraBody must be a JSON object");
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BadRequestException("requestExtraBody must be valid JSON: " + e.getMessage());
+        }
+    }
+
+    private String secret(GatewayProviderConfig entity) {
+        if (entity.apiKeyEncrypted != null) return secretProtector.unprotect(entity.apiKeyEncrypted);
+        return secretProtector.unprotect(entity.apiKey);
     }
 
     private String normalizeType(String type) {
