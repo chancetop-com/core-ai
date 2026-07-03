@@ -63,6 +63,10 @@ public class Usage {
         return promptTokensDetails;
     }
 
+    public CompletionTokensDetails getCompletionTokensDetails() {
+        return completionTokensDetails;
+    }
+
     public void setPromptTokens(int promptTokens) {
         this.promptTokens = promptTokens;
     }
@@ -72,6 +76,10 @@ public class Usage {
     }
     public void setPromptTokensDetails(PromptTokensDetails promptTokensDetails) {
         this.promptTokensDetails = promptTokensDetails;
+    }
+
+    public void setCompletionTokensDetails(CompletionTokensDetails completionTokensDetails) {
+        this.completionTokensDetails = completionTokensDetails;
     }
 
     public void setTotalTokens(int totalTokens) {

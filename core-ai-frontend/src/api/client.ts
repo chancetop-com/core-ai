@@ -847,6 +847,56 @@ export interface ValidateWorkflowResponse {
   errors: string[];
 }
 
+export interface GatewayProvider {
+  id: string;
+  name: string;
+  type: string;
+  baseUrl: string;
+  apiKeyMasked?: string;
+  hasApiKey?: boolean;
+  apiVersion?: string;
+  enabled?: boolean;
+  modelPrefix?: string;
+  defaultChatModel?: string;
+  defaultResponsesModel?: string;
+  requestExtraBody?: string;
+  timeoutSeconds?: number;
+  connectTimeoutSeconds?: number;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastTestStatus?: string;
+  lastTestMessage?: string;
+  lastTestAt?: string;
+}
+
+export interface GatewayProviderRequest {
+  name?: string;
+  type?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  apiVersion?: string;
+  enabled?: boolean;
+  modelPrefix?: string;
+  defaultChatModel?: string;
+  defaultResponsesModel?: string;
+  requestExtraBody?: string;
+  timeoutSeconds?: number;
+  connectTimeoutSeconds?: number;
+}
+
+export interface ListGatewayProvidersResponse {
+  providers: GatewayProvider[];
+}
+
+export interface TestGatewayProviderResponse {
+  ok: boolean;
+  status: string;
+  message?: string;
+  durationMs: number;
+}
+
 export const api = {
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
@@ -885,6 +935,18 @@ export const api = {
       request<void>(`/api/prompts/${id}`, { method: 'DELETE' }),
     publish: (id: string) =>
       request<PromptTemplate>(`/api/prompts/${id}/publish`, { method: 'POST' }),
+  },
+  gateway: {
+    listProviders: () =>
+      request<ListGatewayProvidersResponse>('/api/gateway/providers'),
+    createProvider: (data: GatewayProviderRequest) =>
+      request<GatewayProvider>('/api/gateway/providers', { method: 'POST', body: JSON.stringify(data) }),
+    updateProvider: (id: string, data: GatewayProviderRequest) =>
+      request<GatewayProvider>(`/api/gateway/providers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteProvider: (id: string) =>
+      request<void>(`/api/gateway/providers/${id}`, { method: 'DELETE' }),
+    testProvider: (id: string) =>
+      request<TestGatewayProviderResponse>(`/api/gateway/providers/${id}/test`, { method: 'POST' }),
   },
   agents: {
     list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean) => {

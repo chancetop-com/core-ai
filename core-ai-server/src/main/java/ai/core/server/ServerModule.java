@@ -42,6 +42,8 @@ import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
 import ai.core.server.file.SharedFileDownloadController;
+import ai.core.server.gateway.GatewayProviderController;
+import ai.core.server.gateway.GatewayProviderService;
 import ai.core.server.github.GitHubInstallationTokenService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
@@ -426,6 +428,14 @@ public class ServerModule extends Module {
         http().bean(ListAgentMemoriesResponse.class);
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
 
+        bind(GatewayProviderService.class);
+        var gatewayProviderController = bind(GatewayProviderController.class);
+        http().route(HTTPMethod.GET, "/api/gateway/providers", gatewayProviderController::list);
+        http().route(HTTPMethod.POST, "/api/gateway/providers", gatewayProviderController::create);
+        http().route(HTTPMethod.PUT, "/api/gateway/providers/:id", gatewayProviderController::update);
+        http().route(HTTPMethod.DELETE, "/api/gateway/providers/:id", gatewayProviderController::delete);
+        http().route(HTTPMethod.POST, "/api/gateway/providers/:id/test", gatewayProviderController::test);
+
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
         api().service(UserWebService.class, bind(UserWebServiceImpl.class));
         api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
@@ -503,6 +513,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/settings", controller::serve);
         http().route(HTTPMethod.GET, "/settings/users", controller::serve);
         http().route(HTTPMethod.GET, "/settings/api-keys", controller::serve);
+        http().route(HTTPMethod.GET, "/settings/gateway", controller::serve);
     }
     private void registerFile() {
         this.fileService = bind(FileService.class);

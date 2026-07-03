@@ -18,6 +18,7 @@ import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.FileRecord;
+import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -71,6 +72,7 @@ public class ServerApp extends App {
         mongo.collection(AgentSchedule.class);
         mongo.collection(AgentRun.class);
         mongo.collection(FileRecord.class);
+        mongo.collection(GatewayProviderConfig.class);
         mongo.collection(SkillDefinition.class);
         mongo.collection(SchemaVersion.class);
 
