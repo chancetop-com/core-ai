@@ -1,5 +1,6 @@
 package ai.core.server.gateway;
 
+import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
@@ -26,6 +27,8 @@ public class GatewayProviderService {
 
     @Inject
     MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    @Inject
+    MongoCollection<GatewayModelConfig> gatewayModelCollection;
     @Inject
     MongoCollection<User> userCollection;
     @Inject
@@ -72,6 +75,8 @@ public class GatewayProviderService {
 
     public void delete(String id, String userId) {
         requireAdmin(userId);
+        getEntity(id);
+        if (hasModels(id)) throw new BadRequestException("gateway provider has models configured: " + id);
         gatewayProviderCollection.delete(id);
     }
 
@@ -134,6 +139,13 @@ public class GatewayProviderService {
     private GatewayProviderConfig getEntity(String id) {
         return gatewayProviderCollection.get(id)
                 .orElseThrow(() -> new NotFoundException("gateway provider not found: " + id));
+    }
+
+    private boolean hasModels(String providerId) {
+        if (gatewayModelCollection == null) return false;
+        var query = new Query();
+        query.filter = Filters.eq("provider_id", providerId);
+        return !gatewayModelCollection.find(query).isEmpty();
     }
 
     private void apply(GatewayProviderConfig entity, GatewayProviderRequest request, boolean keepExistingSecret) {

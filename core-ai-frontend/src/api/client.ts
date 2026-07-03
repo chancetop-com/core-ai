@@ -899,6 +899,48 @@ export interface TestGatewayProviderResponse {
   durationMs: number;
 }
 
+export interface GatewayModel {
+  id: string;
+  modelId: string;
+  displayName?: string;
+  providerId: string;
+  providerName?: string;
+  upstreamModel: string;
+  endpointTypes?: string[];
+  enabled?: boolean;
+  priority?: number | null;
+  contextWindow?: number | null;
+  supportsStream?: boolean;
+  supportsTools?: boolean;
+  supportsVision?: boolean;
+  inputPricePer1MTokens?: number | null;
+  outputPricePer1MTokens?: number | null;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GatewayModelRequest {
+  modelId?: string;
+  displayName?: string;
+  providerId?: string;
+  upstreamModel?: string;
+  endpointTypes?: string[];
+  enabled?: boolean;
+  priority?: number | null;
+  contextWindow?: number | null;
+  supportsStream?: boolean;
+  supportsTools?: boolean;
+  supportsVision?: boolean;
+  inputPricePer1MTokens?: number | null;
+  outputPricePer1MTokens?: number | null;
+}
+
+export interface ListGatewayModelsResponse {
+  models: GatewayModel[];
+}
+
 export const api = {
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
@@ -949,6 +991,14 @@ export const api = {
       request<void>(`/api/gateway/providers/${id}`, { method: 'DELETE' }),
     testProvider: (id: string) =>
       request<TestGatewayProviderResponse>(`/api/gateway/providers/${id}/test`, { method: 'POST' }),
+    listModels: () =>
+      request<ListGatewayModelsResponse>('/api/gateway/models'),
+    createModel: (data: GatewayModelRequest) =>
+      request<GatewayModel>('/api/gateway/models', { method: 'POST', body: JSON.stringify(data) }),
+    updateModel: (id: string, data: GatewayModelRequest) =>
+      request<GatewayModel>(`/api/gateway/models/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteModel: (id: string) =>
+      request<void>(`/api/gateway/models/${id}`, { method: 'DELETE' }),
   },
   agents: {
     list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean) => {

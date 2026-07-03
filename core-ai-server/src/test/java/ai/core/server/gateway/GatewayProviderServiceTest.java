@@ -1,19 +1,23 @@
 package ai.core.server.gateway;
 
+import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.User;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -97,13 +101,34 @@ class GatewayProviderServiceTest {
         assertThrows(ForbiddenException.class, () -> service.create(request, "user-1"));
     }
 
+    @Test
+    void deleteRejectsProviderWithModels() {
+        var service = serviceWithUser(admin("admin-1"));
+        when(service.gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(provider("provider-1")));
+        var model = new GatewayModelConfig();
+        model.id = "model-1";
+        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of(model));
+
+        assertThrows(BadRequestException.class, () -> service.delete("provider-1", "admin-1"));
+    }
+
+    @Test
+    void deleteRejectsMissingProvider() {
+        var service = serviceWithUser(admin("admin-1"));
+        when(service.gatewayProviderCollection.get("missing")).thenReturn(Optional.empty());
+
+        assertThrows(core.framework.web.exception.NotFoundException.class, () -> service.delete("missing", "admin-1"));
+    }
+
     @SuppressWarnings("unchecked")
     private GatewayProviderService serviceWithUser(User user) {
         var service = new GatewayProviderService();
         service.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
+        service.gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
         service.userCollection = (MongoCollection<User>) mock(MongoCollection.class);
         service.secretProtector = new GatewaySecretProtector("test-secret");
         when(service.userCollection.get(user.id)).thenReturn(Optional.of(user));
+        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
         return service;
     }
 
@@ -119,5 +144,12 @@ class GatewayProviderServiceTest {
         user.id = id;
         user.role = "user";
         return user;
+    }
+
+    private GatewayProviderConfig provider(String id) {
+        var provider = new GatewayProviderConfig();
+        provider.id = id;
+        provider.name = "Provider";
+        return provider;
     }
 }

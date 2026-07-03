@@ -3,7 +3,6 @@ package ai.core.server.gateway;
 import ai.core.server.domain.GatewayProviderConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mongodb.client.model.Filters;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.http.EventSource;
@@ -12,18 +11,13 @@ import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.http.HTTPResponse;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.Response;
 import core.framework.web.exception.BadRequestException;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 public class GatewayProxyService {
@@ -33,33 +27,35 @@ public class GatewayProxyService {
     private static final ContentType EVENT_STREAM = ContentType.create("text/event-stream", StandardCharsets.UTF_8);
 
     @Inject
-    MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    GatewayRoutingEngine routingEngine;
     @Inject
     GatewaySecretProtector secretProtector;
 
     public Response proxyChatCompletions(byte[] body) {
-        return proxy(body, GatewayEndpoint.CHAT_COMPLETIONS);
+        return proxy(body, GatewayEndpointType.CHAT_COMPLETIONS);
     }
 
     public Response proxyResponses(byte[] body) {
-        return proxy(body, GatewayEndpoint.RESPONSES);
+        return proxy(body, GatewayEndpointType.RESPONSES);
     }
 
     public Response models() {
-        var data = new ArrayList<Map<String, Object>>();
-        for (var provider : enabledProviders()) {
-            addModel(data, provider, provider.defaultChatModel);
-            addModel(data, provider, provider.defaultResponsesModel);
-        }
+        var data = routingEngine.models().stream().map(model -> {
+            var row = new LinkedHashMap<String, Object>();
+            row.put("id", model.id());
+            row.put("object", "model");
+            row.put("owned_by", model.ownedBy());
+            return row;
+        }).toList();
         var response = new LinkedHashMap<String, Object>();
         response.put("object", "list");
         response.put("data", data);
         return jsonResponse(response);
     }
 
-    private Response proxy(byte[] body, GatewayEndpoint endpoint) {
+    private Response proxy(byte[] body, GatewayEndpointType endpoint) {
         var requestBody = parseBody(body);
-        var selection = selectProvider(string(requestBody.get("model")), endpoint);
+        var selection = routingEngine.route(string(requestBody.get("model")), endpoint);
         var provider = selection.provider();
         var outgoingBody = new LinkedHashMap<>(requestBody);
         outgoingBody.put("model", selection.upstreamModel());
@@ -79,48 +75,11 @@ public class GatewayProxyService {
         return response(execute(upstreamRequest, provider));
     }
 
-    private GatewaySelection selectProvider(String requestedModel, GatewayEndpoint endpoint) {
-        var providers = enabledProviders();
-        if (providers.isEmpty()) throw new BadRequestException("no enabled gateway providers configured");
-        if (requestedModel != null && !requestedModel.isBlank()) {
-            var byPrefix = providers.stream()
-                    .filter(provider -> hasText(provider.modelPrefix) && requestedModel.startsWith(provider.modelPrefix))
-                    .max(Comparator.comparingInt(provider -> provider.modelPrefix.length()));
-            if (byPrefix.isPresent()) {
-                var provider = byPrefix.get();
-                var upstreamModel = requestedModel.substring(provider.modelPrefix.length());
-                if (upstreamModel.isBlank()) upstreamModel = defaultModel(provider, endpoint);
-                if (!hasText(upstreamModel)) throw new BadRequestException("model is required after gateway prefix: " + provider.modelPrefix);
-                return new GatewaySelection(provider, upstreamModel);
-            }
-            var fallback = providers.stream().filter(provider -> !hasText(provider.modelPrefix)).findFirst();
-            if (fallback.isPresent()) {
-                return new GatewaySelection(fallback.get(), requestedModel);
-            }
-            throw new BadRequestException("no enabled gateway provider matches model: " + requestedModel);
-        }
-
-        for (var provider : providers) {
-            var defaultModel = defaultModel(provider, endpoint);
-            if (hasText(defaultModel)) return new GatewaySelection(provider, stripPrefix(defaultModel, provider.modelPrefix));
-        }
-        throw new BadRequestException("model is required");
-    }
-
-    private List<GatewayProviderConfig> enabledProviders() {
-        var query = new Query();
-        query.filter = Filters.empty();
-        query.sort = com.mongodb.client.model.Sorts.ascending("name");
-        return gatewayProviderCollection.find(query).stream()
-                .filter(provider -> !Boolean.FALSE.equals(provider.enabled))
-                .toList();
-    }
-
-    private String endpointUrl(GatewayProviderConfig provider, GatewayEndpoint endpoint, String model) {
+    private String endpointUrl(GatewayProviderConfig provider, GatewayEndpointType endpoint, String model) {
         var baseUrl = stripTrailingSlash(provider.baseUrl);
         if ("azure".equals(provider.type)) {
             var version = hasText(provider.apiVersion) ? provider.apiVersion : "2024-10-21";
-            if (endpoint == GatewayEndpoint.CHAT_COMPLETIONS) {
+            if (endpoint == GatewayEndpointType.CHAT_COMPLETIONS) {
                 if (!hasText(model)) throw new BadRequestException("azure chat gateway requires a deployment model");
                 return baseUrl + "/openai/deployments/" + urlEncode(model) + "/chat/completions?api-version=" + urlEncode(version);
             }
@@ -225,31 +184,6 @@ public class GatewayProxyService {
         }
     }
 
-    private void addModel(List<Map<String, Object>> data, GatewayProviderConfig provider, String model) {
-        if (!hasText(model)) return;
-        var row = new LinkedHashMap<String, Object>();
-        row.put("id", prefixModel(stripPrefix(model, provider.modelPrefix), provider.modelPrefix));
-        row.put("object", "model");
-        row.put("owned_by", provider.name);
-        data.add(row);
-    }
-
-    private String defaultModel(GatewayProviderConfig provider, GatewayEndpoint endpoint) {
-        return endpoint == GatewayEndpoint.CHAT_COMPLETIONS ? provider.defaultChatModel : provider.defaultResponsesModel;
-    }
-
-    private String stripPrefix(String model, String prefix) {
-        if (hasText(prefix) && hasText(model) && model.startsWith(prefix)) {
-            return model.substring(prefix.length());
-        }
-        return model;
-    }
-
-    private String prefixModel(String model, String prefix) {
-        if (!hasText(prefix) || !hasText(model) || model.startsWith(prefix)) return model;
-        return prefix + model;
-    }
-
     private String string(Object value) {
         return value instanceof String string ? string : null;
     }
@@ -268,19 +202,5 @@ public class GatewayProxyService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
-    }
-
-    private enum GatewayEndpoint {
-        CHAT_COMPLETIONS("/chat/completions"),
-        RESPONSES("/responses");
-
-        final String path;
-
-        GatewayEndpoint(String path) {
-            this.path = path;
-        }
-    }
-
-    private record GatewaySelection(GatewayProviderConfig provider, String upstreamModel) {
     }
 }

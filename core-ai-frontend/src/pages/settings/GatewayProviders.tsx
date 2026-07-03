@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CheckCircle2, CircleAlert, KeyRound, Pencil, PlugZap, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
-import { api, type GatewayProvider, type GatewayProviderRequest } from '../../api/client';
+import { api, type GatewayModel, type GatewayModelRequest, type GatewayProvider, type GatewayProviderRequest } from '../../api/client';
 
 const PROVIDER_TYPES = [
   { value: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', prefix: 'openai/' },
@@ -12,7 +12,14 @@ const PROVIDER_TYPES = [
   { value: 'openai-compatible', label: 'OpenAI Compatible', baseUrl: '', prefix: '' },
 ];
 
-type FormState = {
+const ENDPOINT_TYPES = [
+  { value: 'chat.completions', label: 'Chat' },
+  { value: 'responses', label: 'Responses' },
+];
+
+type Tab = 'providers' | 'models';
+
+type ProviderFormState = {
   id?: string;
   name: string;
   type: string;
@@ -29,7 +36,24 @@ type FormState = {
   connectTimeoutSeconds: string;
 };
 
-const emptyForm: FormState = {
+type ModelFormState = {
+  id?: string;
+  modelId: string;
+  displayName: string;
+  providerId: string;
+  upstreamModel: string;
+  endpointTypes: string[];
+  enabled: boolean;
+  priority: string;
+  contextWindow: string;
+  supportsStream: boolean;
+  supportsTools: boolean;
+  supportsVision: boolean;
+  inputPricePer1MTokens: string;
+  outputPricePer1MTokens: string;
+};
+
+const emptyProviderForm: ProviderFormState = {
   name: '',
   type: 'openai',
   baseUrl: 'https://api.openai.com/v1',
@@ -45,28 +69,58 @@ const emptyForm: FormState = {
   connectTimeoutSeconds: '10',
 };
 
+const emptyModelForm: ModelFormState = {
+  modelId: '',
+  displayName: '',
+  providerId: '',
+  upstreamModel: '',
+  endpointTypes: ['chat.completions'],
+  enabled: true,
+  priority: '100',
+  contextWindow: '',
+  supportsStream: true,
+  supportsTools: false,
+  supportsVision: false,
+  inputPricePer1MTokens: '',
+  outputPricePer1MTokens: '',
+};
+
 export default function GatewayProviders() {
+  const [activeTab, setActiveTab] = useState<Tab>('providers');
   const [providers, setProviders] = useState<GatewayProvider[]>([]);
+  const [models, setModels] = useState<GatewayModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [form, setForm] = useState<FormState>(emptyForm);
+  const [providerPanelOpen, setProviderPanelOpen] = useState(false);
+  const [modelPanelOpen, setModelPanelOpen] = useState(false);
+  const [providerForm, setProviderForm] = useState<ProviderFormState>(emptyProviderForm);
+  const [modelForm, setModelForm] = useState<ModelFormState>(emptyModelForm);
 
   const selectedType = useMemo(
-    () => PROVIDER_TYPES.find(type => type.value === form.type) || PROVIDER_TYPES[0],
-    [form.type],
+    () => PROVIDER_TYPES.find(type => type.value === providerForm.type) || PROVIDER_TYPES[0],
+    [providerForm.type],
   );
+
+  const providerById = useMemo(() => {
+    const map = new Map<string, GatewayProvider>();
+    providers.forEach(provider => map.set(provider.id, provider));
+    return map;
+  }, [providers]);
 
   const load = async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await api.gateway.listProviders();
-      setProviders(response.providers || []);
+      const [providerResponse, modelResponse] = await Promise.all([
+        api.gateway.listProviders(),
+        api.gateway.listModels(),
+      ]);
+      setProviders(providerResponse.providers || []);
+      setModels(modelResponse.models || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load gateway providers');
+      setError(err instanceof Error ? err.message : 'Failed to load gateway config');
     } finally {
       setLoading(false);
     }
@@ -76,13 +130,13 @@ export default function GatewayProviders() {
     load();
   }, []);
 
-  const openCreate = () => {
-    setForm(emptyForm);
-    setPanelOpen(true);
+  const openCreateProvider = () => {
+    setProviderForm(emptyProviderForm);
+    setProviderPanelOpen(true);
   };
 
-  const openEdit = (provider: GatewayProvider) => {
-    setForm({
+  const openEditProvider = (provider: GatewayProvider) => {
+    setProviderForm({
       id: provider.id,
       name: provider.name || '',
       type: provider.type || 'openai',
@@ -98,12 +152,12 @@ export default function GatewayProviders() {
       timeoutSeconds: String(provider.timeoutSeconds || 30),
       connectTimeoutSeconds: String(provider.connectTimeoutSeconds || 10),
     });
-    setPanelOpen(true);
+    setProviderPanelOpen(true);
   };
 
   const changeType = (type: string) => {
     const preset = PROVIDER_TYPES.find(item => item.value === type) || PROVIDER_TYPES[0];
-    setForm(current => ({
+    setProviderForm(current => ({
       ...current,
       type,
       baseUrl: current.id ? current.baseUrl : preset.baseUrl,
@@ -111,31 +165,31 @@ export default function GatewayProviders() {
     }));
   };
 
-  const save = async () => {
+  const saveProvider = async () => {
     setSaving(true);
     setError('');
     try {
       const payload: GatewayProviderRequest = {
-        name: form.name,
-        type: form.type,
-        baseUrl: form.baseUrl,
-        apiKey: form.apiKey,
-        apiVersion: form.apiVersion,
-        enabled: form.enabled,
-        allowPrivateNetwork: form.allowPrivateNetwork,
-        modelPrefix: form.modelPrefix,
-        defaultChatModel: form.defaultChatModel,
-        defaultResponsesModel: form.defaultResponsesModel,
-        requestExtraBody: form.requestExtraBody,
-        timeoutSeconds: Number(form.timeoutSeconds || 30),
-        connectTimeoutSeconds: Number(form.connectTimeoutSeconds || 10),
+        name: providerForm.name,
+        type: providerForm.type,
+        baseUrl: providerForm.baseUrl,
+        apiKey: providerForm.apiKey,
+        apiVersion: providerForm.apiVersion,
+        enabled: providerForm.enabled,
+        allowPrivateNetwork: providerForm.allowPrivateNetwork,
+        modelPrefix: providerForm.modelPrefix,
+        defaultChatModel: providerForm.defaultChatModel,
+        defaultResponsesModel: providerForm.defaultResponsesModel,
+        requestExtraBody: providerForm.requestExtraBody,
+        timeoutSeconds: Number(providerForm.timeoutSeconds || 30),
+        connectTimeoutSeconds: Number(providerForm.connectTimeoutSeconds || 10),
       };
-      if (form.id) {
-        await api.gateway.updateProvider(form.id, payload);
+      if (providerForm.id) {
+        await api.gateway.updateProvider(providerForm.id, payload);
       } else {
         await api.gateway.createProvider(payload);
       }
-      setPanelOpen(false);
+      setProviderPanelOpen(false);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save gateway provider');
@@ -144,7 +198,7 @@ export default function GatewayProviders() {
     }
   };
 
-  const remove = async (provider: GatewayProvider) => {
+  const removeProvider = async (provider: GatewayProvider) => {
     if (!window.confirm(`Delete ${provider.name}?`)) return;
     setError('');
     try {
@@ -155,7 +209,7 @@ export default function GatewayProviders() {
     }
   };
 
-  const test = async (provider: GatewayProvider) => {
+  const testProvider = async (provider: GatewayProvider) => {
     setTestingId(provider.id);
     setError('');
     try {
@@ -168,23 +222,106 @@ export default function GatewayProviders() {
     }
   };
 
+  const openCreateModel = () => {
+    setModelForm({ ...emptyModelForm, providerId: providers[0]?.id || '' });
+    setModelPanelOpen(true);
+  };
+
+  const openEditModel = (model: GatewayModel) => {
+    setModelForm({
+      id: model.id,
+      modelId: model.modelId || '',
+      displayName: model.displayName || '',
+      providerId: model.providerId || '',
+      upstreamModel: model.upstreamModel || '',
+      endpointTypes: model.endpointTypes?.length ? model.endpointTypes : ['chat.completions'],
+      enabled: model.enabled !== false,
+      priority: String(model.priority ?? 100),
+      contextWindow: model.contextWindow ? String(model.contextWindow) : '',
+      supportsStream: model.supportsStream === true,
+      supportsTools: model.supportsTools === true,
+      supportsVision: model.supportsVision === true,
+      inputPricePer1MTokens: model.inputPricePer1MTokens == null ? '' : String(model.inputPricePer1MTokens),
+      outputPricePer1MTokens: model.outputPricePer1MTokens == null ? '' : String(model.outputPricePer1MTokens),
+    });
+    setModelPanelOpen(true);
+  };
+
+  const saveModel = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const payload: GatewayModelRequest = {
+        modelId: modelForm.modelId,
+        displayName: modelForm.displayName,
+        providerId: modelForm.providerId,
+        upstreamModel: modelForm.upstreamModel,
+        endpointTypes: modelForm.endpointTypes,
+        enabled: modelForm.enabled,
+        priority: optionalNumber(modelForm.priority, 'Priority'),
+        contextWindow: optionalNumber(modelForm.contextWindow, 'Context window'),
+        supportsStream: modelForm.supportsStream,
+        supportsTools: modelForm.supportsTools,
+        supportsVision: modelForm.supportsVision,
+        inputPricePer1MTokens: optionalNumber(modelForm.inputPricePer1MTokens, 'Input price'),
+        outputPricePer1MTokens: optionalNumber(modelForm.outputPricePer1MTokens, 'Output price'),
+      };
+      if (modelForm.id) {
+        await api.gateway.updateModel(modelForm.id, payload);
+      } else {
+        await api.gateway.createModel(payload);
+      }
+      setModelPanelOpen(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save gateway model');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeModel = async (model: GatewayModel) => {
+    if (!window.confirm(`Delete ${model.modelId}?`)) return;
+    setError('');
+    try {
+      await api.gateway.deleteModel(model.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete gateway model');
+    }
+  };
+
+  const toggleEndpoint = (endpoint: string, checked: boolean) => {
+    setModelForm(current => {
+      const next = checked
+        ? [...current.endpointTypes.filter(value => value !== endpoint), endpoint]
+        : current.endpointTypes.filter(value => value !== endpoint);
+      return { ...current, endpointTypes: next.length ? next : [endpoint] };
+    });
+  };
+
   return (
     <div className="h-full overflow-auto">
       <div className="px-6 py-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Gateway</h2>
             <div className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-              {providers.length} providers configured
+              {providers.length} providers · {models.length} models
             </div>
           </div>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-            style={{ background: 'var(--color-primary)' }}>
-            <Plus size={16} />
-            Provider
-          </button>
+          <div className="flex items-center gap-2">
+            <SegmentedButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')}>Providers</SegmentedButton>
+            <SegmentedButton active={activeTab === 'models'} onClick={() => setActiveTab('models')}>Models</SegmentedButton>
+            <button
+              onClick={activeTab === 'providers' ? openCreateProvider : openCreateModel}
+              disabled={activeTab === 'models' && providers.length === 0}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
+              style={{ background: 'var(--color-primary)' }}>
+              <Plus size={16} />
+              {activeTab === 'providers' ? 'Provider' : 'Model'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -195,201 +332,425 @@ export default function GatewayProviders() {
           </div>
         )}
 
-        <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
-          <table className="w-full text-sm">
-            <thead style={{ background: 'var(--color-bg-secondary)' }}>
-              <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
-                <th className="px-4 py-3 font-medium">Provider</th>
-                <th className="px-4 py-3 font-medium">Route Prefix</th>
-                <th className="px-4 py-3 font-medium">Base URL</th>
-                <th className="px-4 py-3 font-medium">Key</th>
-                <th className="px-4 py-3 font-medium">Network</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center" style={{ color: 'var(--color-text-secondary)' }}>
-                    Loading...
-                  </td>
-                </tr>
-              ) : providers.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center" style={{ color: 'var(--color-text-secondary)' }}>
-                    No providers configured
-                  </td>
-                </tr>
-              ) : providers.map(provider => (
-                <tr key={provider.id} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{provider.name}</div>
-                    <div className="text-xs uppercase mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-                      {provider.type}
-                      {provider.enabled === false && ' · disabled'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">{provider.modelPrefix || '-'}</td>
-                  <td className="px-4 py-3 max-w-sm truncate" title={provider.baseUrl}>{provider.baseUrl}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1.5">
-                      <KeyRound size={14} style={{ color: provider.hasApiKey ? 'var(--color-success)' : 'var(--color-text-secondary)' }} />
-                      {provider.apiKeyMasked || 'none'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: provider.allowPrivateNetwork ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>
-                    {provider.allowPrivateNetwork ? 'private' : 'public'}
-                  </td>
-                  <td className="px-4 py-3">
-                    {provider.lastTestStatus === 'ok' ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-success)' }}>
-                        <CheckCircle2 size={14} /> OK
-                      </span>
-                    ) : provider.lastTestStatus === 'failed' ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-error)' }} title={provider.lastTestMessage}>
-                        <CircleAlert size={14} /> Failed
-                      </span>
-                    ) : (
-                      <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Untested</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <IconButton title="Test" onClick={() => test(provider)} disabled={testingId === provider.id}>
-                        <RefreshCw size={15} className={testingId === provider.id ? 'animate-spin' : ''} />
-                      </IconButton>
-                      <IconButton title="Edit" onClick={() => openEdit(provider)}>
-                        <Pencil size={15} />
-                      </IconButton>
-                      <IconButton title="Delete" onClick={() => remove(provider)}>
-                        <Trash2 size={15} />
-                      </IconButton>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {activeTab === 'providers' ? renderProvidersTable({
+          providers,
+          loading,
+          testingId,
+          testProvider,
+          openEditProvider,
+          removeProvider,
+        }) : renderModelsTable({
+          models,
+          loading,
+          providerById,
+          openEditModel,
+          removeModel,
+        })}
       </div>
 
-      {panelOpen && (
-        <div className="fixed inset-0 z-40 flex justify-end" style={{ background: 'rgba(0,0,0,0.28)' }}>
-          <div className="h-full w-full max-w-xl overflow-auto border-l" style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
-            <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b" style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
-              <div className="flex items-center gap-2">
-                <PlugZap size={18} style={{ color: 'var(--color-primary)' }} />
-                <h3 className="font-semibold">{form.id ? 'Edit Provider' : 'New Provider'}</h3>
-              </div>
-              <button className="p-2 rounded-lg cursor-pointer" onClick={() => setPanelOpen(false)} title="Close">
-                <X size={18} />
-              </button>
-            </div>
+      {providerPanelOpen && renderProviderPanel({
+        form: providerForm,
+        selectedType,
+        saving,
+        setForm: setProviderForm,
+        changeType,
+        close: () => setProviderPanelOpen(false),
+        save: saveProvider,
+      })}
 
-            <div className="p-5 space-y-4">
-              <Field label="Name">
-                <input className={inputClass} style={inputStyle} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-              </Field>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Type">
-                  <select className={inputClass} style={inputStyle} value={form.type} onChange={e => changeType(e.target.value)}>
-                    {PROVIDER_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-                  </select>
-                </Field>
-                <Field label="Enabled">
-                  <label className="h-10 flex items-center gap-2 px-3 rounded-lg" style={{ background: 'var(--color-bg-tertiary)' }}>
-                    <input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} />
-                    <span className="text-sm">Accept traffic</span>
-                  </label>
-                </Field>
-              </div>
-
-              <Field label="Network">
-                <label className="h-10 flex items-center gap-2 px-3 rounded-lg" style={{ background: 'var(--color-bg-tertiary)' }}>
-                  <input type="checkbox" checked={form.allowPrivateNetwork} onChange={e => setForm({ ...form, allowPrivateNetwork: e.target.checked })} />
-                  <span className="text-sm">Allow private hosts</span>
-                </label>
-              </Field>
-
-              <Field label="Base URL">
-                <input
-                  className={inputClass}
-                  style={inputStyle}
-                  value={form.baseUrl}
-                  placeholder={selectedType.baseUrl || 'https://...'}
-                  onChange={e => setForm({ ...form, baseUrl: e.target.value })}
-                />
-              </Field>
-
-              <Field label={form.id ? 'API Key (leave empty to keep current)' : 'API Key'}>
-                <input
-                  className={inputClass}
-                  style={inputStyle}
-                  type="password"
-                  value={form.apiKey}
-                  onChange={e => setForm({ ...form, apiKey: e.target.value })}
-                />
-              </Field>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Model Prefix">
-                  <input className={inputClass} style={inputStyle} value={form.modelPrefix} onChange={e => setForm({ ...form, modelPrefix: e.target.value })} />
-                </Field>
-                <Field label="API Version">
-                  <input className={inputClass} style={inputStyle} value={form.apiVersion} onChange={e => setForm({ ...form, apiVersion: e.target.value })} />
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Chat Model">
-                  <input className={inputClass} style={inputStyle} value={form.defaultChatModel} onChange={e => setForm({ ...form, defaultChatModel: e.target.value })} />
-                </Field>
-                <Field label="Responses Model">
-                  <input className={inputClass} style={inputStyle} value={form.defaultResponsesModel} onChange={e => setForm({ ...form, defaultResponsesModel: e.target.value })} />
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Timeout Seconds">
-                  <input className={inputClass} style={inputStyle} type="number" min={1} value={form.timeoutSeconds} onChange={e => setForm({ ...form, timeoutSeconds: e.target.value })} />
-                </Field>
-                <Field label="Connect Timeout">
-                  <input className={inputClass} style={inputStyle} type="number" min={1} value={form.connectTimeoutSeconds} onChange={e => setForm({ ...form, connectTimeoutSeconds: e.target.value })} />
-                </Field>
-              </div>
-
-              <Field label="Extra Body JSON">
-                <textarea
-                  className={`${inputClass} min-h-24 font-mono`}
-                  style={inputStyle}
-                  value={form.requestExtraBody}
-                  onChange={e => setForm({ ...form, requestExtraBody: e.target.value })}
-                />
-              </Field>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  onClick={() => setPanelOpen(false)}
-                  className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
-                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
-                  Cancel
-                </button>
-                <button
-                  onClick={save}
-                  disabled={saving || !form.name || !form.type || !form.baseUrl}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
-                  style={{ background: 'var(--color-primary)' }}>
-                  <Save size={16} />
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {modelPanelOpen && renderModelPanel({
+        form: modelForm,
+        providers,
+        saving,
+        setForm: setModelForm,
+        toggleEndpoint,
+        close: () => setModelPanelOpen(false),
+        save: saveModel,
+      })}
     </div>
+  );
+}
+
+function renderProvidersTable(props: {
+  providers: GatewayProvider[];
+  loading: boolean;
+  testingId: string | null;
+  testProvider: (provider: GatewayProvider) => void;
+  openEditProvider: (provider: GatewayProvider) => void;
+  removeProvider: (provider: GatewayProvider) => void;
+}) {
+  const { providers, loading, testingId, testProvider, openEditProvider, removeProvider } = props;
+  return (
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+      <table className="w-full text-sm">
+        <thead style={{ background: 'var(--color-bg-secondary)' }}>
+          <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
+            <th className="px-4 py-3 font-medium">Provider</th>
+            <th className="px-4 py-3 font-medium">Route Prefix</th>
+            <th className="px-4 py-3 font-medium">Base URL</th>
+            <th className="px-4 py-3 font-medium">Key</th>
+            <th className="px-4 py-3 font-medium">Network</th>
+            <th className="px-4 py-3 font-medium">Status</th>
+            <th className="px-4 py-3 font-medium text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading ? (
+            <EmptyRow colSpan={7}>Loading...</EmptyRow>
+          ) : providers.length === 0 ? (
+            <EmptyRow colSpan={7}>No providers configured</EmptyRow>
+          ) : providers.map(provider => (
+            <tr key={provider.id} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <td className="px-4 py-3">
+                <div className="font-medium">{provider.name}</div>
+                <div className="text-xs uppercase mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                  {provider.type}
+                  {provider.enabled === false && ' · disabled'}
+                </div>
+              </td>
+              <td className="px-4 py-3 font-mono text-xs">{provider.modelPrefix || '-'}</td>
+              <td className="px-4 py-3 max-w-sm truncate" title={provider.baseUrl}>{provider.baseUrl}</td>
+              <td className="px-4 py-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <KeyRound size={14} style={{ color: provider.hasApiKey ? 'var(--color-success)' : 'var(--color-text-secondary)' }} />
+                  {provider.apiKeyMasked || 'none'}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-xs" style={{ color: provider.allowPrivateNetwork ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>
+                {provider.allowPrivateNetwork ? 'private' : 'public'}
+              </td>
+              <td className="px-4 py-3">
+                {provider.lastTestStatus === 'ok' ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-success)' }}>
+                    <CheckCircle2 size={14} /> OK
+                  </span>
+                ) : provider.lastTestStatus === 'failed' ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-error)' }} title={provider.lastTestMessage}>
+                    <CircleAlert size={14} /> Failed
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Untested</span>
+                )}
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex items-center justify-end gap-1">
+                  <IconButton title="Test" onClick={() => testProvider(provider)} disabled={testingId === provider.id}>
+                    <RefreshCw size={15} className={testingId === provider.id ? 'animate-spin' : ''} />
+                  </IconButton>
+                  <IconButton title="Edit" onClick={() => openEditProvider(provider)}>
+                    <Pencil size={15} />
+                  </IconButton>
+                  <IconButton title="Delete" onClick={() => removeProvider(provider)}>
+                    <Trash2 size={15} />
+                  </IconButton>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function renderModelsTable(props: {
+  models: GatewayModel[];
+  loading: boolean;
+  providerById: Map<string, GatewayProvider>;
+  openEditModel: (model: GatewayModel) => void;
+  removeModel: (model: GatewayModel) => void;
+}) {
+  const { models, loading, providerById, openEditModel, removeModel } = props;
+  return (
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+      <table className="w-full text-sm">
+        <thead style={{ background: 'var(--color-bg-secondary)' }}>
+          <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
+            <th className="px-4 py-3 font-medium">Model</th>
+            <th className="px-4 py-3 font-medium">Provider</th>
+            <th className="px-4 py-3 font-medium">Upstream</th>
+            <th className="px-4 py-3 font-medium">Endpoints</th>
+            <th className="px-4 py-3 font-medium">Priority</th>
+            <th className="px-4 py-3 font-medium">Capabilities</th>
+            <th className="px-4 py-3 font-medium text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading ? (
+            <EmptyRow colSpan={7}>Loading...</EmptyRow>
+          ) : models.length === 0 ? (
+            <EmptyRow colSpan={7}>No models configured</EmptyRow>
+          ) : models.map(model => {
+            const provider = providerById.get(model.providerId);
+            return (
+              <tr key={model.id} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+                <td className="px-4 py-3">
+                  <div className="font-medium font-mono">{model.modelId}</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                    {model.displayName || '-'}
+                    {model.enabled === false && ' · disabled'}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <div>{model.providerName || provider?.name || model.providerId}</div>
+                  {provider?.enabled === false && <div className="text-xs" style={{ color: 'var(--color-warning)' }}>provider disabled</div>}
+                </td>
+                <td className="px-4 py-3 font-mono text-xs">{model.upstreamModel}</td>
+                <td className="px-4 py-3">{(model.endpointTypes || []).map(labelEndpoint).join(', ') || '-'}</td>
+                <td className="px-4 py-3">{model.priority ?? 100}</td>
+                <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {[
+                    model.supportsStream ? 'stream' : null,
+                    model.supportsTools ? 'tools' : null,
+                    model.supportsVision ? 'vision' : null,
+                    model.contextWindow ? `${model.contextWindow} ctx` : null,
+                  ].filter(Boolean).join(', ') || '-'}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1">
+                    <IconButton title="Edit" onClick={() => openEditModel(model)}>
+                      <Pencil size={15} />
+                    </IconButton>
+                    <IconButton title="Delete" onClick={() => removeModel(model)}>
+                      <Trash2 size={15} />
+                    </IconButton>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function renderProviderPanel(props: {
+  form: ProviderFormState;
+  selectedType: { baseUrl: string };
+  saving: boolean;
+  setForm: (form: ProviderFormState) => void;
+  changeType: (type: string) => void;
+  close: () => void;
+  save: () => void;
+}) {
+  const { form, selectedType, saving, setForm, changeType, close, save } = props;
+  return (
+    <Panel title={form.id ? 'Edit Provider' : 'New Provider'} close={close}>
+      <div className="p-5 space-y-4">
+        <Field label="Name">
+          <input className={inputClass} style={inputStyle} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Type">
+            <select className={inputClass} style={inputStyle} value={form.type} onChange={e => changeType(e.target.value)}>
+              {PROVIDER_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Enabled">
+            <Checkbox checked={form.enabled} onChange={checked => setForm({ ...form, enabled: checked })}>Accept traffic</Checkbox>
+          </Field>
+        </div>
+
+        <Field label="Network">
+          <Checkbox checked={form.allowPrivateNetwork} onChange={checked => setForm({ ...form, allowPrivateNetwork: checked })}>Allow private hosts</Checkbox>
+        </Field>
+
+        <Field label="Base URL">
+          <input
+            className={inputClass}
+            style={inputStyle}
+            value={form.baseUrl}
+            placeholder={selectedType.baseUrl || 'https://...'}
+            onChange={e => setForm({ ...form, baseUrl: e.target.value })}
+          />
+        </Field>
+
+        <Field label={form.id ? 'API Key (leave empty to keep current)' : 'API Key'}>
+          <input
+            className={inputClass}
+            style={inputStyle}
+            type="password"
+            value={form.apiKey}
+            onChange={e => setForm({ ...form, apiKey: e.target.value })}
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Model Prefix">
+            <input className={inputClass} style={inputStyle} value={form.modelPrefix} onChange={e => setForm({ ...form, modelPrefix: e.target.value })} />
+          </Field>
+          <Field label="API Version">
+            <input className={inputClass} style={inputStyle} value={form.apiVersion} onChange={e => setForm({ ...form, apiVersion: e.target.value })} />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Chat Model">
+            <input className={inputClass} style={inputStyle} value={form.defaultChatModel} onChange={e => setForm({ ...form, defaultChatModel: e.target.value })} />
+          </Field>
+          <Field label="Responses Model">
+            <input className={inputClass} style={inputStyle} value={form.defaultResponsesModel} onChange={e => setForm({ ...form, defaultResponsesModel: e.target.value })} />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Timeout Seconds">
+            <input className={inputClass} style={inputStyle} type="number" min={1} value={form.timeoutSeconds} onChange={e => setForm({ ...form, timeoutSeconds: e.target.value })} />
+          </Field>
+          <Field label="Connect Timeout">
+            <input className={inputClass} style={inputStyle} type="number" min={1} value={form.connectTimeoutSeconds} onChange={e => setForm({ ...form, connectTimeoutSeconds: e.target.value })} />
+          </Field>
+        </div>
+
+        <Field label="Extra Body JSON">
+          <textarea
+            className={`${inputClass} min-h-24 font-mono`}
+            style={inputStyle}
+            value={form.requestExtraBody}
+            onChange={e => setForm({ ...form, requestExtraBody: e.target.value })}
+          />
+        </Field>
+
+        <PanelActions close={close} save={save} saving={saving} disabled={!form.name || !form.type || !form.baseUrl} />
+      </div>
+    </Panel>
+  );
+}
+
+function renderModelPanel(props: {
+  form: ModelFormState;
+  providers: GatewayProvider[];
+  saving: boolean;
+  setForm: (form: ModelFormState) => void;
+  toggleEndpoint: (endpoint: string, checked: boolean) => void;
+  close: () => void;
+  save: () => void;
+}) {
+  const { form, providers, saving, setForm, toggleEndpoint, close, save } = props;
+  return (
+    <Panel title={form.id ? 'Edit Model' : 'New Model'} close={close}>
+      <div className="p-5 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Model ID">
+            <input className={inputClass} style={inputStyle} value={form.modelId} onChange={e => setForm({ ...form, modelId: e.target.value })} />
+          </Field>
+          <Field label="Display Name">
+            <input className={inputClass} style={inputStyle} value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} />
+          </Field>
+        </div>
+
+        <Field label="Provider">
+          <select className={inputClass} style={inputStyle} value={form.providerId} onChange={e => setForm({ ...form, providerId: e.target.value })}>
+            <option value="">Select provider</option>
+            {providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+          </select>
+        </Field>
+
+        <Field label="Upstream Model">
+          <input className={inputClass} style={inputStyle} value={form.upstreamModel} onChange={e => setForm({ ...form, upstreamModel: e.target.value })} />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Enabled">
+            <Checkbox checked={form.enabled} onChange={checked => setForm({ ...form, enabled: checked })}>Accept traffic</Checkbox>
+          </Field>
+          <Field label="Priority">
+            <input className={inputClass} style={inputStyle} type="number" min={0} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} />
+          </Field>
+        </div>
+
+        <Field label="Endpoints">
+          <div className="grid grid-cols-2 gap-2">
+            {ENDPOINT_TYPES.map(endpoint => (
+              <Checkbox
+                key={endpoint.value}
+                checked={form.endpointTypes.includes(endpoint.value)}
+                onChange={checked => toggleEndpoint(endpoint.value, checked)}>
+                {endpoint.label}
+              </Checkbox>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Capabilities">
+          <div className="grid grid-cols-3 gap-2">
+            <Checkbox checked={form.supportsStream} onChange={checked => setForm({ ...form, supportsStream: checked })}>Stream</Checkbox>
+            <Checkbox checked={form.supportsTools} onChange={checked => setForm({ ...form, supportsTools: checked })}>Tools</Checkbox>
+            <Checkbox checked={form.supportsVision} onChange={checked => setForm({ ...form, supportsVision: checked })}>Vision</Checkbox>
+          </div>
+        </Field>
+
+        <div className="grid grid-cols-3 gap-4">
+          <Field label="Context Window">
+            <input className={inputClass} style={inputStyle} type="number" min={1} value={form.contextWindow} onChange={e => setForm({ ...form, contextWindow: e.target.value })} />
+          </Field>
+          <Field label="Input $/1M">
+            <input className={inputClass} style={inputStyle} type="number" min={0} step="0.0001" value={form.inputPricePer1MTokens} onChange={e => setForm({ ...form, inputPricePer1MTokens: e.target.value })} />
+          </Field>
+          <Field label="Output $/1M">
+            <input className={inputClass} style={inputStyle} type="number" min={0} step="0.0001" value={form.outputPricePer1MTokens} onChange={e => setForm({ ...form, outputPricePer1MTokens: e.target.value })} />
+          </Field>
+        </div>
+
+        <PanelActions close={close} save={save} saving={saving} disabled={!form.modelId || !form.providerId || !form.upstreamModel} />
+      </div>
+    </Panel>
+  );
+}
+
+function Panel({ title, close, children }: { title: string; close: () => void; children: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end" style={{ background: 'rgba(0,0,0,0.28)' }}>
+      <div className="h-full w-full max-w-xl overflow-auto border-l" style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b" style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+          <div className="flex items-center gap-2">
+            <PlugZap size={18} style={{ color: 'var(--color-primary)' }} />
+            <h3 className="font-semibold">{title}</h3>
+          </div>
+          <button className="p-2 rounded-lg cursor-pointer" onClick={close} title="Close">
+            <X size={18} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PanelActions({ close, save, saving, disabled }: { close: () => void; save: () => void; saving: boolean; disabled: boolean }) {
+  return (
+    <div className="flex justify-end gap-2 pt-2">
+      <button
+        onClick={close}
+        className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
+        style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+        Cancel
+      </button>
+      <button
+        onClick={save}
+        disabled={saving || disabled}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
+        style={{ background: 'var(--color-primary)' }}>
+        <Save size={16} />
+        {saving ? 'Saving...' : 'Save'}
+      </button>
+    </div>
+  );
+}
+
+function SegmentedButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
+      style={{
+        background: active ? 'var(--color-bg-tertiary)' : 'transparent',
+        color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
+      }}>
+      {children}
+    </button>
   );
 }
 
@@ -406,6 +767,25 @@ function IconButton({ title, onClick, disabled, children }: { title: string; onC
   );
 }
 
+function Checkbox({ checked, onChange, children }: { checked: boolean; onChange: (checked: boolean) => void; children: ReactNode }) {
+  return (
+    <label className="h-10 flex items-center gap-2 px-3 rounded-lg" style={{ background: 'var(--color-bg-tertiary)' }}>
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
+      <span className="text-sm">{children}</span>
+    </label>
+  );
+}
+
+function EmptyRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-4 py-10 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+        {children}
+      </td>
+    </tr>
+  );
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
@@ -413,6 +793,18 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </label>
   );
+}
+
+function labelEndpoint(value: string) {
+  return ENDPOINT_TYPES.find(endpoint => endpoint.value === value)?.label || value;
+}
+
+function optionalNumber(value: string, label: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const number = Number(trimmed);
+  if (!Number.isFinite(number)) throw new Error(`${label} must be a number`);
+  return number;
 }
 
 const inputClass = 'w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none';

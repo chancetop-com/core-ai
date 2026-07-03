@@ -1,6 +1,7 @@
 package ai.core.server.gateway;
 
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.server.domain.GatewayModelConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.http.HTTPRequest;
@@ -69,13 +70,92 @@ class GatewayProxyServiceTest {
         ))));
     }
 
+    @Test
+    void routesByRegisteredModelBeforePrefixFallback() throws Exception {
+        var provider = provider("LiteLLM", "litellm", "https://litellm.example.com", "litellm/", "deepseek/default");
+        var service = service(provider, model("fast-chat", provider.id, "deepseek/deepseek-v4-flash", List.of("chat.completions")));
+
+        service.proxyChatCompletions(json(Map.of(
+                "model", "fast-chat",
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )));
+
+        assertEquals("https://litellm.example.com/chat/completions", service.captured.uri);
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        assertEquals("deepseek/deepseek-v4-flash", body.get("model"));
+    }
+
+    @Test
+    void registeredModelsBlockLegacyPrefixFallback() {
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var service = service(provider, model("fast-chat", provider.id, "deepseek-chat", List.of("chat.completions")));
+
+        assertThrows(BadRequestException.class, () -> service.proxyChatCompletions(json(Map.of(
+                "model", "deepseek/deepseek-chat",
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        ))));
+    }
+
+    @Test
+    void publishedModelsUseSamePrioritySelectionAsRouting() {
+        var slow = provider("Slow", "openai", "https://slow.example.com/v1", "", "slow-default");
+        var fast = provider("Fast", "openai", "https://fast.example.com/v1", "", "fast-default");
+        var routingEngine = routingEngine(List.of(slow, fast), List.of(
+                model("shared-chat", slow.id, "slow-upstream", List.of("chat.completions"), 50L),
+                model("shared-chat", fast.id, "fast-upstream", List.of("chat.completions"), 10L)
+        ));
+
+        var published = routingEngine.models();
+        assertEquals(1, published.size());
+        assertEquals("shared-chat", published.get(0).id());
+        assertEquals("Fast", published.get(0).ownedBy());
+
+        var route = routingEngine.route("shared-chat", GatewayEndpointType.CHAT_COMPLETIONS);
+        assertEquals(fast.id, route.provider().id);
+        assertEquals("fast-upstream", route.upstreamModel());
+    }
+
+    @Test
+    void modelRegistryRespectsEndpointType() throws Exception {
+        var provider = provider("LiteLLM", "litellm", "https://litellm.example.com", "litellm/", "deepseek/default");
+        var service = service(provider, model("fast-response", provider.id, "deepseek/response-model", List.of("responses")));
+
+        service.proxyResponses(json(Map.of(
+                "model", "fast-response",
+                "input", "hi"
+        )));
+
+        assertEquals("https://litellm.example.com/responses", service.captured.uri);
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        assertEquals("deepseek/response-model", body.get("model"));
+    }
+
     @SuppressWarnings("unchecked")
     private CapturingGatewayProxyService service(GatewayProviderConfig provider) {
+        return service(provider, List.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    private CapturingGatewayProxyService service(GatewayProviderConfig provider, GatewayModelConfig model) {
+        return service(provider, List.of(model));
+    }
+
+    @SuppressWarnings("unchecked")
+    private CapturingGatewayProxyService service(GatewayProviderConfig provider, List<GatewayModelConfig> models) {
         var service = new CapturingGatewayProxyService();
-        service.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
+        service.routingEngine = routingEngine(List.of(provider), models);
         service.secretProtector = new GatewaySecretProtector("test-secret");
-        when(service.gatewayProviderCollection.find(any(Query.class))).thenReturn(List.of(provider));
         return service;
+    }
+
+    @SuppressWarnings("unchecked")
+    private GatewayRoutingEngine routingEngine(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models) {
+        var routingEngine = new GatewayRoutingEngine();
+        routingEngine.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
+        routingEngine.gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
+        when(routingEngine.gatewayProviderCollection.find(any(Query.class))).thenReturn(providers);
+        when(routingEngine.gatewayModelCollection.find(any(Query.class))).thenReturn(models);
+        return routingEngine;
     }
 
     private GatewayProviderConfig provider(String name, String type, String baseUrl, String prefix, String defaultModel) {
@@ -91,6 +171,22 @@ class GatewayProxyServiceTest {
         provider.apiKeyEncrypted = new GatewaySecretProtector("test-secret").protect("sk-test");
         provider.requestExtraBody = "{\"mode\":\"strict\"}";
         return provider;
+    }
+
+    private GatewayModelConfig model(String modelId, String providerId, String upstreamModel, List<String> endpointTypes) {
+        return model(modelId, providerId, upstreamModel, endpointTypes, 100L);
+    }
+
+    private GatewayModelConfig model(String modelId, String providerId, String upstreamModel, List<String> endpointTypes, long priority) {
+        var model = new GatewayModelConfig();
+        model.id = modelId;
+        model.modelId = modelId;
+        model.providerId = providerId;
+        model.upstreamModel = upstreamModel;
+        model.endpointTypes = endpointTypes;
+        model.enabled = true;
+        model.priority = priority;
+        return model;
     }
 
     private static byte[] json(Object value) {
