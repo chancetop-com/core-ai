@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CheckCircle2, CircleAlert, KeyRound, Pencil, PlugZap, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
-import { api, type GatewayModel, type GatewayModelRequest, type GatewayProvider, type GatewayProviderRequest } from '../../api/client';
+import { api, type GatewayDiscoveredModel, type GatewayModel, type GatewayModelRequest, type GatewayProvider, type GatewayProviderRequest } from '../../api/client';
 
 const PROVIDER_TYPES = [
   { value: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', prefix: 'openai/' },
@@ -95,6 +95,11 @@ export default function GatewayProviders() {
   const [error, setError] = useState('');
   const [providerPanelOpen, setProviderPanelOpen] = useState(false);
   const [modelPanelOpen, setModelPanelOpen] = useState(false);
+  const [discoveryPanelOpen, setDiscoveryPanelOpen] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveryProviderId, setDiscoveryProviderId] = useState('');
+  const [discoveredModels, setDiscoveredModels] = useState<GatewayDiscoveredModel[]>([]);
+  const [selectedDiscoveredModels, setSelectedDiscoveredModels] = useState<Set<string>>(new Set());
   const [providerForm, setProviderForm] = useState<ProviderFormState>(emptyProviderForm);
   const [modelForm, setModelForm] = useState<ModelFormState>(emptyModelForm);
 
@@ -222,9 +227,13 @@ export default function GatewayProviders() {
     }
   };
 
-  const openCreateModel = () => {
-    setModelForm({ ...emptyModelForm, providerId: providers[0]?.id || '' });
-    setModelPanelOpen(true);
+  const openDiscoverModels = () => {
+    const providerId = providers[0]?.id || '';
+    setDiscoveryProviderId(providerId);
+    setDiscoveredModels([]);
+    setSelectedDiscoveredModels(new Set());
+    setDiscoveryPanelOpen(true);
+    if (providerId) void discoverModels(providerId);
   };
 
   const openEditModel = (model: GatewayModel) => {
@@ -259,12 +268,6 @@ export default function GatewayProviders() {
         endpointTypes: modelForm.endpointTypes,
         enabled: modelForm.enabled,
         priority: optionalNumber(modelForm.priority, 'Priority'),
-        contextWindow: optionalNumber(modelForm.contextWindow, 'Context window'),
-        supportsStream: modelForm.supportsStream,
-        supportsTools: modelForm.supportsTools,
-        supportsVision: modelForm.supportsVision,
-        inputPricePer1MTokens: optionalNumber(modelForm.inputPricePer1MTokens, 'Input price'),
-        outputPricePer1MTokens: optionalNumber(modelForm.outputPricePer1MTokens, 'Output price'),
       };
       if (modelForm.id) {
         await api.gateway.updateModel(modelForm.id, payload);
@@ -275,6 +278,58 @@ export default function GatewayProviders() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save gateway model');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const discoverModels = async (providerId = discoveryProviderId) => {
+    if (!providerId) return;
+    setDiscovering(true);
+    setError('');
+    try {
+      const response = await api.gateway.discoverModels(providerId);
+      const rows = response.models || [];
+      setDiscoveredModels(rows);
+      setSelectedDiscoveredModels(new Set(rows.filter(model => !model.imported).map(model => model.id)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync provider models');
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const changeDiscoveryProvider = (providerId: string) => {
+    setDiscoveryProviderId(providerId);
+    setDiscoveredModels([]);
+    setSelectedDiscoveredModels(new Set());
+    if (providerId) void discoverModels(providerId);
+  };
+
+  const toggleDiscoveredModel = (modelId: string, checked: boolean) => {
+    setSelectedDiscoveredModels(current => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(modelId);
+      } else {
+        next.delete(modelId);
+      }
+      return next;
+    });
+  };
+
+  const importDiscoveredModels = async () => {
+    if (!discoveryProviderId || selectedDiscoveredModels.size === 0) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.gateway.importModels(discoveryProviderId, {
+        models: Array.from(selectedDiscoveredModels).map(upstreamModel => ({ upstreamModel })),
+      });
+      setDiscoveryPanelOpen(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import provider models');
     } finally {
       setSaving(false);
     }
@@ -314,12 +369,12 @@ export default function GatewayProviders() {
             <SegmentedButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')}>Providers</SegmentedButton>
             <SegmentedButton active={activeTab === 'models'} onClick={() => setActiveTab('models')}>Models</SegmentedButton>
             <button
-              onClick={activeTab === 'providers' ? openCreateProvider : openCreateModel}
+              onClick={activeTab === 'providers' ? openCreateProvider : openDiscoverModels}
               disabled={activeTab === 'models' && providers.length === 0}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
               style={{ background: 'var(--color-primary)' }}>
-              <Plus size={16} />
-              {activeTab === 'providers' ? 'Provider' : 'Model'}
+              {activeTab === 'providers' ? <Plus size={16} /> : <RefreshCw size={16} />}
+              {activeTab === 'providers' ? 'Provider' : 'Sync Models'}
             </button>
           </div>
         </div>
@@ -360,12 +415,26 @@ export default function GatewayProviders() {
 
       {modelPanelOpen && renderModelPanel({
         form: modelForm,
-        providers,
+        provider: providerById.get(modelForm.providerId),
         saving,
         setForm: setModelForm,
         toggleEndpoint,
         close: () => setModelPanelOpen(false),
         save: saveModel,
+      })}
+
+      {discoveryPanelOpen && renderDiscoverModelsPanel({
+        providers,
+        providerId: discoveryProviderId,
+        models: discoveredModels,
+        selectedModels: selectedDiscoveredModels,
+        discovering,
+        saving,
+        changeProvider: changeDiscoveryProvider,
+        discover: discoverModels,
+        toggleModel: toggleDiscoveredModel,
+        close: () => setDiscoveryPanelOpen(false),
+        importModels: importDiscoveredModels,
       })}
     </div>
   );
@@ -466,9 +535,9 @@ function renderModelsTable(props: {
       <table className="w-full text-sm">
         <thead style={{ background: 'var(--color-bg-secondary)' }}>
           <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
-            <th className="px-4 py-3 font-medium">Model</th>
+            <th className="px-4 py-3 font-medium">Alias</th>
             <th className="px-4 py-3 font-medium">Provider</th>
-            <th className="px-4 py-3 font-medium">Upstream</th>
+            <th className="px-4 py-3 font-medium">Official Model</th>
             <th className="px-4 py-3 font-medium">Endpoints</th>
             <th className="px-4 py-3 font-medium">Priority</th>
             <th className="px-4 py-3 font-medium">Capabilities</th>
@@ -621,19 +690,19 @@ function renderProviderPanel(props: {
 
 function renderModelPanel(props: {
   form: ModelFormState;
-  providers: GatewayProvider[];
+  provider?: GatewayProvider;
   saving: boolean;
   setForm: (form: ModelFormState) => void;
   toggleEndpoint: (endpoint: string, checked: boolean) => void;
   close: () => void;
   save: () => void;
 }) {
-  const { form, providers, saving, setForm, toggleEndpoint, close, save } = props;
+  const { form, provider, saving, setForm, toggleEndpoint, close, save } = props;
   return (
     <Panel title={form.id ? 'Edit Model' : 'New Model'} close={close}>
       <div className="p-5 space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Model ID">
+          <Field label="Alias">
             <input className={inputClass} style={inputStyle} value={form.modelId} onChange={e => setForm({ ...form, modelId: e.target.value })} />
           </Field>
           <Field label="Display Name">
@@ -641,16 +710,8 @@ function renderModelPanel(props: {
           </Field>
         </div>
 
-        <Field label="Provider">
-          <select className={inputClass} style={inputStyle} value={form.providerId} onChange={e => setForm({ ...form, providerId: e.target.value })}>
-            <option value="">Select provider</option>
-            {providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
-          </select>
-        </Field>
-
-        <Field label="Upstream Model">
-          <input className={inputClass} style={inputStyle} value={form.upstreamModel} onChange={e => setForm({ ...form, upstreamModel: e.target.value })} />
-        </Field>
+        <ReadOnlyField label="Provider">{provider?.name || form.providerId}</ReadOnlyField>
+        <ReadOnlyField label="Official Model">{form.upstreamModel}</ReadOnlyField>
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Enabled">
@@ -674,27 +735,103 @@ function renderModelPanel(props: {
           </div>
         </Field>
 
-        <Field label="Capabilities">
-          <div className="grid grid-cols-3 gap-2">
-            <Checkbox checked={form.supportsStream} onChange={checked => setForm({ ...form, supportsStream: checked })}>Stream</Checkbox>
-            <Checkbox checked={form.supportsTools} onChange={checked => setForm({ ...form, supportsTools: checked })}>Tools</Checkbox>
-            <Checkbox checked={form.supportsVision} onChange={checked => setForm({ ...form, supportsVision: checked })}>Vision</Checkbox>
-          </div>
-        </Field>
-
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Context Window">
-            <input className={inputClass} style={inputStyle} type="number" min={1} value={form.contextWindow} onChange={e => setForm({ ...form, contextWindow: e.target.value })} />
-          </Field>
-          <Field label="Input $/1M">
-            <input className={inputClass} style={inputStyle} type="number" min={0} step="0.0001" value={form.inputPricePer1MTokens} onChange={e => setForm({ ...form, inputPricePer1MTokens: e.target.value })} />
-          </Field>
-          <Field label="Output $/1M">
-            <input className={inputClass} style={inputStyle} type="number" min={0} step="0.0001" value={form.outputPricePer1MTokens} onChange={e => setForm({ ...form, outputPricePer1MTokens: e.target.value })} />
-          </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <ReadOnlyField label="Capabilities">
+            {formatCapabilities({
+              supportsStream: form.supportsStream,
+              supportsTools: form.supportsTools,
+              supportsVision: form.supportsVision,
+              contextWindow: optionalDisplayNumber(form.contextWindow),
+            })}
+          </ReadOnlyField>
+          <ReadOnlyField label="Pricing">
+            {formatPricing(optionalDisplayNumber(form.inputPricePer1MTokens), optionalDisplayNumber(form.outputPricePer1MTokens))}
+          </ReadOnlyField>
         </div>
 
         <PanelActions close={close} save={save} saving={saving} disabled={!form.modelId || !form.providerId || !form.upstreamModel} />
+      </div>
+    </Panel>
+  );
+}
+
+function renderDiscoverModelsPanel(props: {
+  providers: GatewayProvider[];
+  providerId: string;
+  models: GatewayDiscoveredModel[];
+  selectedModels: Set<string>;
+  discovering: boolean;
+  saving: boolean;
+  changeProvider: (providerId: string) => void;
+  discover: (providerId?: string) => void;
+  toggleModel: (modelId: string, checked: boolean) => void;
+  close: () => void;
+  importModels: () => void;
+}) {
+  const { providers, providerId, models, selectedModels, discovering, saving, changeProvider, discover, toggleModel, close, importModels } = props;
+  return (
+    <Panel title="Sync Models" close={close}>
+      <div className="p-5 space-y-4">
+        <div className="grid grid-cols-[1fr_auto] gap-2">
+          <Field label="Provider">
+            <select className={inputClass} style={inputStyle} value={providerId} onChange={e => changeProvider(e.target.value)}>
+              <option value="">Select provider</option>
+              {providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+            </select>
+          </Field>
+          <div className="pt-5">
+            <button
+              onClick={() => discover(providerId)}
+              disabled={!providerId || discovering}
+              className="inline-flex items-center gap-2 h-10 px-3 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+              <RefreshCw size={16} className={discovering ? 'animate-spin' : ''} />
+              Sync
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+          <table className="w-full text-sm">
+            <thead style={{ background: 'var(--color-bg-secondary)' }}>
+              <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
+                <th className="px-3 py-2 font-medium w-10"></th>
+                <th className="px-3 py-2 font-medium">Official Model</th>
+                <th className="px-3 py-2 font-medium">Endpoints</th>
+                <th className="px-3 py-2 font-medium">Metadata</th>
+              </tr>
+            </thead>
+            <tbody>
+              {discovering ? (
+                <EmptyRow colSpan={4}>Syncing models...</EmptyRow>
+              ) : models.length === 0 ? (
+                <EmptyRow colSpan={4}>No provider models synced</EmptyRow>
+              ) : models.map(model => (
+                <tr key={model.id} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedModels.has(model.id)}
+                      onChange={e => toggleModel(model.id, e.target.checked)}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="font-mono font-medium">{model.id}</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                      {model.imported ? 'already imported' : model.displayName || 'alias defaults to official ID'}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">{(model.endpointTypes || []).map(labelEndpoint).join(', ') || '-'}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    {formatCapabilities(model)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <PanelActions close={close} save={importModels} saving={saving} disabled={!providerId || selectedModels.size === 0} saveLabel="Import" />
       </div>
     </Panel>
   );
@@ -719,7 +856,7 @@ function Panel({ title, close, children }: { title: string; close: () => void; c
   );
 }
 
-function PanelActions({ close, save, saving, disabled }: { close: () => void; save: () => void; saving: boolean; disabled: boolean }) {
+function PanelActions({ close, save, saving, disabled, saveLabel = 'Save' }: { close: () => void; save: () => void; saving: boolean; disabled: boolean; saveLabel?: string }) {
   return (
     <div className="flex justify-end gap-2 pt-2">
       <button
@@ -734,7 +871,7 @@ function PanelActions({ close, save, saving, disabled }: { close: () => void; sa
         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
         style={{ background: 'var(--color-primary)' }}>
         <Save size={16} />
-        {saving ? 'Saving...' : 'Save'}
+        {saving ? 'Saving...' : saveLabel}
       </button>
     </div>
   );
@@ -795,6 +932,17 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function ReadOnlyField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <span className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+      <div className="min-h-10 flex items-center px-3 py-2 rounded-lg text-sm border" style={inputStyle}>
+        {children || '-'}
+      </div>
+    </div>
+  );
+}
+
 function labelEndpoint(value: string) {
   return ENDPOINT_TYPES.find(endpoint => endpoint.value === value)?.label || value;
 }
@@ -805,6 +953,32 @@ function optionalNumber(value: string, label: string) {
   const number = Number(trimmed);
   if (!Number.isFinite(number)) throw new Error(`${label} must be a number`);
   return number;
+}
+
+function optionalDisplayNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const number = Number(trimmed);
+  return Number.isFinite(number) ? number : null;
+}
+
+function formatCapabilities(model: {
+  supportsStream?: boolean | null;
+  supportsTools?: boolean | null;
+  supportsVision?: boolean | null;
+  contextWindow?: number | null;
+}) {
+  return [
+    model.supportsStream ? 'stream' : null,
+    model.supportsTools ? 'tools' : null,
+    model.supportsVision ? 'vision' : null,
+    model.contextWindow ? `${model.contextWindow} ctx` : null,
+  ].filter(Boolean).join(', ') || '-';
+}
+
+function formatPricing(inputPrice: number | null, outputPrice: number | null) {
+  if (inputPrice == null && outputPrice == null) return '-';
+  return `in ${inputPrice ?? '-'} / out ${outputPrice ?? '-'} per 1M`;
 }
 
 const inputClass = 'w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none';

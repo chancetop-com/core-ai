@@ -18,6 +18,8 @@ public class GatewayModelController {
     @Inject
     GatewayModelService gatewayModelService;
     @Inject
+    GatewayModelDiscoveryService gatewayModelDiscoveryService;
+    @Inject
     WebContext webContext;
 
     public Response list(Request request) {
@@ -39,6 +41,15 @@ public class GatewayModelController {
         return Response.empty().status(HTTPStatus.NO_CONTENT);
     }
 
+    public Response discover(Request request) {
+        return jsonResponse(gatewayModelDiscoveryService.discover(request.pathParam("id"), userId()));
+    }
+
+    public Response importModels(Request request) {
+        var body = readBody(request, ImportGatewayModelsRequest.class);
+        return jsonResponse(gatewayModelService.importModels(request.pathParam("id"), body, userId()));
+    }
+
     private String userId() {
         return AuthContext.userId(webContext);
     }
@@ -53,6 +64,17 @@ public class GatewayModelController {
             node.fieldNames().forEachRemaining(fields::add);
             value.fields = fields;
             return value;
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BadRequestException("invalid request body: " + e.getMessage());
+        }
+    }
+
+    private <T> T readBody(Request request, Class<T> type) {
+        try {
+            byte[] body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
+            return MAPPER.readValue(body, type);
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {

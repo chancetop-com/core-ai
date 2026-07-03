@@ -17,6 +17,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -94,6 +95,47 @@ class GatewayModelServiceTest {
         assertNull(captor.getValue().contextWindow);
         assertNull(captor.getValue().inputPricePer1MTokens);
         assertNull(captor.getValue().outputPricePer1MTokens);
+    }
+
+    @Test
+    void importUsesOfficialModelIdAsDefaultAlias() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        service.gatewayModelDiscoveryService = new GatewayModelDiscoveryService() {
+            @Override
+            List<GatewayModelMetadata> discover(GatewayProviderConfig provider) {
+                return List.of(new GatewayModelMetadata(
+                        "deepseek/deepseek-chat",
+                        "DeepSeek Chat",
+                        List.of("chat.completions"),
+                        64_000L,
+                        true,
+                        true,
+                        false,
+                        1D,
+                        2D
+                ));
+            }
+        };
+        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
+        var request = new ImportGatewayModelsRequest();
+        var model = new ImportGatewayModelsRequest.Model();
+        model.upstreamModel = "deepseek/deepseek-chat";
+        request.models = List.of(model);
+
+        var response = service.importModels("provider-1", request, "admin-1");
+
+        assertEquals(1, response.models.size());
+        assertEquals("deepseek/deepseek-chat", response.models.get(0).modelId);
+        assertEquals("deepseek/deepseek-chat", response.models.get(0).upstreamModel);
+        assertEquals(List.of("chat.completions"), response.models.get(0).endpointTypes);
+        assertTrue(response.models.get(0).supportsStream);
+        assertTrue(response.models.get(0).supportsTools);
+        assertEquals(64_000L, response.models.get(0).contextWindow);
+        assertEquals(1D, response.models.get(0).inputPricePer1MTokens);
+
+        var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
+        verify(service.gatewayModelCollection).insert(captor.capture());
+        assertEquals("deepseek/deepseek-chat", captor.getValue().modelId);
     }
 
     @Test

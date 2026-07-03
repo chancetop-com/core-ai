@@ -29,6 +29,72 @@ public class GatewayModelService {
     MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
     @Inject
     MongoCollection<User> userCollection;
+    @Inject
+    GatewayModelDiscoveryService gatewayModelDiscoveryService;
+
+    public ListGatewayModelsResponse importModels(String providerId, ImportGatewayModelsRequest request, String userId) {
+        requireAdmin(userId);
+        var provider = provider(providerId);
+        if (request.models == null || request.models.isEmpty()) throw new BadRequestException("models are required");
+
+        var now = ZonedDateTime.now();
+        var existing = modelsByUpstreamModel(providerId);
+        var discoveredModels = discoveredModels(provider);
+        var imported = new ListGatewayModelsResponse();
+        imported.models = request.models.stream().map(item -> {
+            if (isBlank(item.upstreamModel)) throw new BadRequestException("upstreamModel is required");
+            var upstreamModel = item.upstreamModel.trim();
+            var metadata = discoveredModels.get(upstreamModel);
+            if (metadata == null && !discoveredModels.isEmpty()) {
+                throw new BadRequestException("gateway model is not available from provider discovery: " + upstreamModel);
+            }
+            if (metadata == null) {
+                metadata = GatewayModelCatalog.enrich(new GatewayModelMetadata(
+                        upstreamModel,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ));
+            }
+            if (metadata.endpointTypes() == null || metadata.endpointTypes().isEmpty()) {
+                throw new BadRequestException("gateway does not support model endpoint type: " + upstreamModel);
+            }
+
+            var entity = existing.get(upstreamModel);
+            var create = entity == null;
+            if (create) {
+                entity = new GatewayModelConfig();
+                entity.id = UUID.randomUUID().toString();
+                entity.modelId = trimToNull(item.alias) == null ? upstreamModel : item.alias.trim();
+                entity.providerId = provider.id;
+                entity.upstreamModel = upstreamModel;
+                entity.createdBy = userId;
+                entity.createdAt = now;
+            } else if (trimToNull(item.alias) != null) {
+                entity.modelId = item.alias.trim();
+            }
+
+            applyMetadata(entity, metadata);
+            if (item.enabled != null) entity.enabled = item.enabled;
+            if (entity.enabled == null) entity.enabled = Boolean.TRUE;
+            if (item.priority != null) entity.priority = item.priority;
+            if (entity.priority == null) entity.priority = 100L;
+            entity.updatedBy = userId;
+            entity.updatedAt = now;
+            if (create) {
+                gatewayModelCollection.insert(entity);
+            } else {
+                gatewayModelCollection.replace(entity);
+            }
+            return toView(entity, provider);
+        }).toList();
+        return imported;
+    }
 
     public ListGatewayModelsResponse list(String userId) {
         requireAdmin(userId);
@@ -101,6 +167,17 @@ public class GatewayModelService {
         if (specified(request, "outputPricePer1MTokens", create)) entity.outputPricePer1MTokens = request.outputPricePer1MTokens;
     }
 
+    private void applyMetadata(GatewayModelConfig entity, GatewayModelMetadata metadata) {
+        if (metadata.displayName() != null && entity.displayName == null) entity.displayName = metadata.displayName();
+        entity.endpointTypes = normalizeEndpointTypes(metadata.endpointTypes());
+        entity.contextWindow = metadata.contextWindow();
+        entity.supportsStream = metadata.supportsStream();
+        entity.supportsTools = metadata.supportsTools();
+        entity.supportsVision = metadata.supportsVision();
+        entity.inputPricePer1MTokens = metadata.inputPricePer1MTokens();
+        entity.outputPricePer1MTokens = metadata.outputPricePer1MTokens();
+    }
+
     private void validate(GatewayModelRequest request, boolean create) {
         if (create && isBlank(request.modelId)) throw new BadRequestException("modelId is required");
         if (create && isBlank(request.providerId)) throw new BadRequestException("providerId is required");
@@ -136,6 +213,23 @@ public class GatewayModelService {
         var providers = new LinkedHashMap<String, GatewayProviderConfig>();
         gatewayProviderCollection.find(query).forEach(provider -> providers.put(provider.id, provider));
         return providers;
+    }
+
+    private Map<String, GatewayModelConfig> modelsByUpstreamModel(String providerId) {
+        var query = new Query();
+        query.filter = Filters.eq("provider_id", providerId);
+        var models = new LinkedHashMap<String, GatewayModelConfig>();
+        gatewayModelCollection.find(query).forEach(model -> {
+            if (model.upstreamModel != null) models.putIfAbsent(model.upstreamModel, model);
+        });
+        return models;
+    }
+
+    private Map<String, GatewayModelMetadata> discoveredModels(GatewayProviderConfig provider) {
+        if (gatewayModelDiscoveryService == null) return Map.of();
+        var models = new LinkedHashMap<String, GatewayModelMetadata>();
+        gatewayModelDiscoveryService.discover(provider).forEach(model -> models.putIfAbsent(model.id(), model));
+        return models;
     }
 
     private GatewayModelView toView(GatewayModelConfig entity, GatewayProviderConfig provider) {

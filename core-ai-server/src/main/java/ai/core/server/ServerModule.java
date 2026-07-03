@@ -45,6 +45,7 @@ import ai.core.server.file.SharedFileDownloadController;
 import ai.core.server.gateway.GatewayProxyController;
 import ai.core.server.gateway.GatewayProxyService;
 import ai.core.server.gateway.GatewayModelController;
+import ai.core.server.gateway.GatewayModelDiscoveryService;
 import ai.core.server.gateway.GatewayModelService;
 import ai.core.server.gateway.GatewayProviderController;
 import ai.core.server.gateway.GatewayProviderService;
@@ -435,6 +436,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
 
         bind(new GatewaySecretProtector(property("gateway.secret.key").orElse(requiredProperty("sys.mongo.uri"))));
+        bind(GatewayModelDiscoveryService.class);
         bind(GatewayModelService.class);
         bind(GatewayProviderService.class);
         bind(GatewayRoutingEngine.class);
@@ -450,6 +452,8 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.POST, "/api/gateway/models", gatewayModelController::create);
         http().route(HTTPMethod.PUT, "/api/gateway/models/:id", gatewayModelController::update);
         http().route(HTTPMethod.DELETE, "/api/gateway/models/:id", gatewayModelController::delete);
+        http().route(HTTPMethod.POST, "/api/gateway/providers/:id/models/discover", gatewayModelController::discover);
+        http().route(HTTPMethod.POST, "/api/gateway/providers/:id/models/import", gatewayModelController::importModels);
         var gatewayProxyController = bind(GatewayProxyController.class);
         http().route(HTTPMethod.GET, "/api/gateway/v1/models", gatewayProxyController::models);
         http().route(HTTPMethod.POST, "/api/gateway/v1/chat/completions", gatewayProxyController::chatCompletions);

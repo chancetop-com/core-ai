@@ -941,6 +941,34 @@ export interface ListGatewayModelsResponse {
   models: GatewayModel[];
 }
 
+export interface GatewayDiscoveredModel {
+  id: string;
+  displayName?: string;
+  endpointTypes?: string[];
+  contextWindow?: number | null;
+  supportsStream?: boolean;
+  supportsTools?: boolean;
+  supportsVision?: boolean;
+  inputPricePer1MTokens?: number | null;
+  outputPricePer1MTokens?: number | null;
+  imported?: boolean;
+}
+
+export interface ListGatewayDiscoveredModelsResponse {
+  providerId: string;
+  providerName?: string;
+  models: GatewayDiscoveredModel[];
+}
+
+export interface ImportGatewayModelsRequest {
+  models: Array<{
+    upstreamModel: string;
+    alias?: string;
+    enabled?: boolean;
+    priority?: number;
+  }>;
+}
+
 export const api = {
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
@@ -999,6 +1027,10 @@ export const api = {
       request<GatewayModel>(`/api/gateway/models/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteModel: (id: string) =>
       request<void>(`/api/gateway/models/${id}`, { method: 'DELETE' }),
+    discoverModels: (providerId: string) =>
+      request<ListGatewayDiscoveredModelsResponse>(`/api/gateway/providers/${providerId}/models/discover`, { method: 'POST' }),
+    importModels: (providerId: string, data: ImportGatewayModelsRequest) =>
+      request<ListGatewayModelsResponse>(`/api/gateway/providers/${providerId}/models/import`, { method: 'POST', body: JSON.stringify(data) }),
   },
   agents: {
     list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean) => {
