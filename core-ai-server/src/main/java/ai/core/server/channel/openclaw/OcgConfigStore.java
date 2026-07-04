@@ -38,7 +38,7 @@ public class OcgConfigStore {
     }
 
     public OcgConfigView loadByChannelId(String channelId) {
-        var configs = collection.find(Filters.eq("channelId", channelId));
+        var configs = collection.find(Filters.eq("channel_id", channelId));
         return configs.isEmpty() ? null : configs.get(0);
     }
 
