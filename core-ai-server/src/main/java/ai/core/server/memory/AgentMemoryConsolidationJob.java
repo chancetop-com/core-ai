@@ -6,6 +6,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatMessage;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
@@ -112,6 +113,8 @@ public class AgentMemoryConsolidationJob implements Job {
 
     @Inject
     AgentMemoryService agentMemoryService;
+    @Inject
+    SystemSettingsService systemSettingsService;
 
     public String extractionModel = DEFAULT_EXTRACTION_MODEL;
 
@@ -408,7 +411,8 @@ public class AgentMemoryConsolidationJob implements Job {
     private String callLLM(String prompt) {
         var provider = llmProviders.getProvider();
         var msgs = List.of(Message.of(RoleType.USER, prompt));
-        var request = CompletionRequest.of(msgs, null, provider.config.getTemperature(), extractionModel, "memory-consolidator");
+        var model = systemSettingsService.memoryExtractionModel();
+        var request = CompletionRequest.of(msgs, null, provider.config.getTemperature(), model, "memory-consolidator");
         request.setTimeoutSeconds(120);
 
         var response = provider.completion(request);

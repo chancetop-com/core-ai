@@ -22,6 +22,7 @@ import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SystemPrompt;
+import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.User;
 import ai.core.server.domain.UserReport;
@@ -79,6 +80,7 @@ public class ServerApp extends App {
         mongo.collection(SchemaVersion.class);
 
         mongo.collection(SystemPrompt.class);
+        mongo.collection(SystemSettings.class);
         mongo.collection(ChatMessage.class);
         mongo.collection(ChatSession.class);
 

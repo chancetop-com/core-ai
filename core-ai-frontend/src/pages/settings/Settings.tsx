@@ -1,4 +1,4 @@
-import { Activity, PlugZap, Shield, User } from 'lucide-react';
+import { Activity, PlugZap, Settings as SettingsIcon, Shield, User } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
 
@@ -63,6 +63,18 @@ export default function Settings() {
                 })}>
                 <PlugZap size={16} />
                 Gateway
+              </NavLink>
+              <NavLink to="/settings/system"
+                className={() =>
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
+                }
+                style={({ isActive }) => ({
+                  background: isActive ? 'var(--color-primary-bg)' : 'transparent',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                  fontWeight: isActive ? 500 : 400,
+                })}>
+                <SettingsIcon size={16} />
+                System Configuration
               </NavLink>
             </>
           )}

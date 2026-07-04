@@ -969,6 +969,19 @@ export interface ImportGatewayModelsRequest {
   }>;
 }
 
+export interface SystemSettings {
+  memory_extraction_model?: string | null;
+  default_memory_extraction_model?: string;
+  created_by?: string;
+  updated_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SystemSettingsRequest {
+  memory_extraction_model?: string | null;
+}
+
 export const api = {
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
@@ -1007,6 +1020,12 @@ export const api = {
       request<void>(`/api/prompts/${id}`, { method: 'DELETE' }),
     publish: (id: string) =>
       request<PromptTemplate>(`/api/prompts/${id}/publish`, { method: 'POST' }),
+  },
+  systemSettings: {
+    get: () =>
+      request<SystemSettings>('/api/admin/system-settings'),
+    update: (data: SystemSettingsRequest) =>
+      request<SystemSettings>('/api/admin/system-settings', { method: 'PUT', body: JSON.stringify(data) }),
   },
   gateway: {
     listProviders: () =>

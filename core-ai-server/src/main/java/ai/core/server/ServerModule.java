@@ -12,6 +12,7 @@ import ai.core.api.server.AgentSessionWebService;
 import ai.core.api.server.SkillWebService;
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.UserWebService;
+import ai.core.api.server.settings.SystemSettingsWebService;
 import ai.core.api.server.trigger.TriggerWebService;
 import ai.core.api.a2a.StreamResponse;
 import ai.core.a2a.A2AHttpPaths;
@@ -60,6 +61,7 @@ import ai.core.server.memory.AgentMemoryController;
 import ai.core.server.memory.AgentMemoryService;
 import ai.core.server.memory.AgentMemoryView;
 import ai.core.server.memory.ListAgentMemoriesResponse;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.run.AgentRunService;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.run.AgentRunner;
@@ -145,6 +147,7 @@ import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
 import ai.core.server.web.AuthWebServiceImpl;
 import ai.core.server.web.UserWebServiceImpl;
+import ai.core.server.web.SystemSettingsWebServiceImpl;
 import ai.core.server.web.TriggerWebServiceImpl;
 import ai.core.server.systemprompt.SystemPromptController;
 import ai.core.server.systemprompt.SystemPromptService;
@@ -227,6 +230,7 @@ public class ServerModule extends Module {
         bindChannels();
 
         bind(PodLocalExecutor.class);
+        bind(SystemSettingsService.class);
         bindWebService();
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
         schedule().fixedRate("tool-registry-sync", bind(ToolRegistrySyncJob.class), Duration.ofSeconds(30));
@@ -237,6 +241,7 @@ public class ServerModule extends Module {
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
                 .orElse(AgentMemoryConsolidationJob.DEFAULT_EXTRACTION_MODEL);
+        bean(SystemSettingsService.class).defaultMemoryExtractionModel = memoryConsolidationJob.extractionModel;
         schedule().fixedRate("agent-memory-consolidation", memoryConsolidationJob, Duration.ofHours(1));
         registerTrace();
         registerSystemPrompt();
@@ -459,6 +464,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.POST, "/api/gateway/v1/chat/completions", gatewayProxyController::chatCompletions);
         http().route(HTTPMethod.POST, "/api/gateway/v1/responses", gatewayProxyController::responses);
 
+        api().service(SystemSettingsWebService.class, bind(SystemSettingsWebServiceImpl.class));
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
         api().service(UserWebService.class, bind(UserWebServiceImpl.class));
         api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
@@ -537,6 +543,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/settings/users", controller::serve);
         http().route(HTTPMethod.GET, "/settings/api-keys", controller::serve);
         http().route(HTTPMethod.GET, "/settings/gateway", controller::serve);
+        http().route(HTTPMethod.GET, "/settings/system", controller::serve);
     }
     private void registerFile() {
         this.fileService = bind(FileService.class);
