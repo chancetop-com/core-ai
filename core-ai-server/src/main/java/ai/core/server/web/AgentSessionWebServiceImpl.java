@@ -50,6 +50,7 @@ import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -424,7 +425,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                     }).toList() : null;
             var payload = JsonUtil.toJson(Map.of("tools", toolRefs != null ? toolRefs : List.of()));
             var command = SessionCommand.loadTools(sessionId, userId, payload, rpcClient.newRequestId());
-            return rpcClient.call(command, LoadToolsResponse.class);
+            return rpcClient.call(command, LoadToolsResponse.class, Duration.ofSeconds(60));
         }
     }
 
