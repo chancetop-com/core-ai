@@ -22,7 +22,7 @@
 
 Core-AI gives you an AI-powered coding agent that runs in your terminal and a self-hosted agent server with a web UI. The CLI works standalone with any LLM provider's API key, or connects to a core-ai-server for team features. Chat with LLMs, execute tools, orchestrate sub-agents, and manage knowledge — all from the command line or your browser.
 
-> 📸 **[Take a tour of the server UI →](doc/core-ai-server/README.md)** — screenshots and walkthrough for chat, agents, workflows, traces, tools, skills, datasets, and scheduling.
+> 📸 **[Take a tour of the server UI →](docs/core-ai-server/README.md)** — screenshots and walkthrough for chat, agents, workflows, traces, tools, skills, datasets, and scheduling.
 
 ### 🚀 Quick Start
 
@@ -141,7 +141,7 @@ volumes:
 
 </details>
 
-> 💡 The full `docker-compose.local.yml` includes Redis, sandbox, and SSL. See [core-ai-server/README.md](core-ai-server/README.md) for server API docs, or [doc/core-ai-server/README.md](doc/core-ai-server/README.md) for a tour with screenshots.
+> 💡 The full `docker-compose.local.yml` includes Redis, sandbox, and SSL. See [core-ai-server/README.md](core-ai-server/README.md) for server API docs, or [docs/core-ai-server/README.md](docs/core-ai-server/README.md) for a tour with screenshots.
 
 ### ✨ Features
 
