@@ -207,6 +207,16 @@ func (w *loggingResponseWriter) Write(data []byte) (int, error) {
 	return n, err
 }
 
+// Flush implements http.Flusher for SSE streaming support.
+// The underlying http.ResponseWriter from Go's default HTTP server
+// always implements Flusher, but the wrapper struct erases the
+// interface assertion unless we forward it explicitly.
+func (w *loggingResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
