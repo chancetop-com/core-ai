@@ -13,6 +13,8 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 
+import java.util.UUID;
+
 /**
  * author: lim chen
  * date: 2026/3/23
@@ -101,7 +103,7 @@ public class TaskTool extends ToolCall {
 
             var taskManager = context.getTaskManager();
             var description = getStringValue(argsMap, "description");
-            var taskId = String.valueOf(argsMap.get("task_id"));
+            var taskId = getStringValue(argsMap, "task_id");
             var subContext = buildSubContext(subagentType, context, taskId, description);
             var subAgent = createAgent(subagentType, subContext);
             if (runInBackground && taskManager != null) {
@@ -247,7 +249,9 @@ public class TaskTool extends ToolCall {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC.replace("%s", subagentType));
             this.parameters(ToolCallParameters.of(
-                    ToolCallParameters.ParamSpec.of(String.class, "task_id", "a unique id  of the task").required(),
+                    ToolCallParameters.ParamSpec.of(String.class, "task_id", "Optional task ID. Omit for new tasks; provide an existing task_id to resume a previously launched subagent session.")
+                            .optional()
+                            .defaultValue(() -> "sa-" + UUID.randomUUID().toString().substring(0, 8)),
                     ToolCallParameters.ParamSpec.of(String.class, "description", "A short (3-5 words) description of the task").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "The task for the agent to perform").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "subagent_type", "The type of specialized agent to use for this task").required(),
