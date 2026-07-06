@@ -70,7 +70,7 @@ public class SandboxClient {
                 break;
             }
         }
-        LOGGER.warn("sandbox runtime health check timed out after {}ms: url={}", maxWaitMs, baseUrl);
+        throw new RuntimeException("sandbox runtime health check timed out after " + maxWaitMs + "ms: url=" + baseUrl);
     }
 
     public String getIp() {
