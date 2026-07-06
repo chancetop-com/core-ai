@@ -327,16 +327,52 @@ func handleMcpStart(w http.ResponseWriter, r *http.Request) {
 
 // handleMcp dispatches /mcp by HTTP method:
 //
-//	GET  — list running MCP servers
+//	GET  — SSE stream for MCP Streamable HTTP transport (server-to-client messages)
 //	POST — MCP JSON-RPC bridge (X-Mcp-Server-Id header identifies target process)
 func handleMcp(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		writeMcpJSON(w, http.StatusOK, map[string]interface{}{"servers": mcpManager.List()})
+		handleMcpSSE(w, r)
 	case http.MethodPost:
 		handleMcpBridge(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleMcpSSE serves as the SSE endpoint for the MCP Streamable HTTP transport.
+// The MCP SDK opens a GET connection here to receive server-to-client messages
+// (e.g. tool list changed notifications). Since the sandbox runtime uses a
+// synchronous request/response model (all JSON-RPC exchange happens via POST),
+// this endpoint just keeps the SSE connection alive with periodic heartbeats
+// so the client doesn't time out waiting.
+func handleMcpSSE(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	// Keep the connection alive with heartbeats. When the client disconnects
+	// (context cancelled) we clean up. 30s interval matches common proxy/ALB
+	// idle timeout defaults and keeps the client SSE subscriber alive.
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			fmt.Fprintf(w, ": heartbeat\n\n")
+			flusher.Flush()
+		}
 	}
 }
 
