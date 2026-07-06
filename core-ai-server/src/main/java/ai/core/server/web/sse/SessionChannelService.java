@@ -4,7 +4,9 @@ import ai.core.api.server.session.EventType;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
+import ai.core.api.server.session.sse.SseReasoningChunkEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
+import ai.core.api.server.session.sse.SseTextChunkEvent;
 import ai.core.api.server.session.sse.SseTurnCompleteEvent;
 import core.framework.inject.Inject;
 import core.framework.web.sse.Channel;
@@ -22,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SessionChannelService {
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(SessionChannelService.class);
-    private static final int MAX_BUFFER_SIZE = 5000;
+    private static final int MAX_BUFFER_SIZE = 50000;
 
     @Inject
     ChannelService channelService;
@@ -76,6 +78,13 @@ public class SessionChannelService {
                         sessionId, sseEvent.getClass().getSimpleName());
                 return;
             }
+            // Merge consecutive text/reasoning chunks to conserve buffer space.
+            // This preserves total content while avoiding buffer slots being consumed
+            // by many small streaming chunks during long agent turns.
+            if (!state.eventBuffer.isEmpty() && mergeConsecutiveChunk(state.eventBuffer.peekLast(), sseEvent)) {
+                channelService.send(sessionId, sseEvent);
+                return;
+            }
             if (state.eventBuffer.size() >= MAX_BUFFER_SIZE) {
                 state.eventBuffer.removeFirst();
                 if (!state.overflowLogged) {
@@ -90,6 +99,29 @@ public class SessionChannelService {
 
     private boolean isTurnActivityEvent(SseBaseEvent sseEvent) {
         return !(sseEvent instanceof SseStatusChangeEvent) && !(sseEvent instanceof SseTurnCompleteEvent) && !(sseEvent instanceof SseErrorEvent);
+    }
+
+    /**
+     * Merge a streaming chunk event into the previous event of the same type when they are
+     * consecutive in the buffer. This prevents a rapid stream of small text/reasoning chunks
+     * from consuming an excessive number of buffer slots.
+     *
+     * @return true if the new event was merged into the last event (caller should skip adding)
+     */
+    private boolean mergeConsecutiveChunk(SseBaseEvent last, SseBaseEvent incoming) {
+        if (last instanceof SseTextChunkEvent lastText && incoming instanceof SseTextChunkEvent incomingText) {
+            lastText.content += incomingText.content;
+            lastText.isFinalChunk = incomingText.isFinalChunk;
+            lastText.timestamp = incomingText.timestamp;
+            return true;
+        }
+        if (last instanceof SseReasoningChunkEvent lastReasoning && incoming instanceof SseReasoningChunkEvent incomingReasoning) {
+            lastReasoning.content += incomingReasoning.content;
+            lastReasoning.isFinalChunk = incomingReasoning.isFinalChunk;
+            lastReasoning.timestamp = incomingReasoning.timestamp;
+            return true;
+        }
+        return false;
     }
 
     private void setEventType(SseBaseEvent sseEvent) {
