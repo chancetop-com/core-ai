@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -48,6 +49,7 @@ public class OTLPIngestService {
     private static final String CORE_AI_WORKFLOW_RUN_ID = "core_ai.workflow_run_id";
     private static final String CORE_AI_WORKFLOW_NODE_ID = "core_ai.workflow_node_id";
     private static final String CORE_AI_WORKFLOW_NODE_TYPE = "core_ai.workflow_node_type";
+    private static final Set<String> SYSTEM_OPERATIONS = Set.of("memory-consolidator", "memory-compressor", "memory-extractor");
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -361,6 +363,9 @@ public class OTLPIngestService {
         // Highest priority: explicit client.type span attribute (set by server-side wrapper span, e.g. LLM call entry)
         var clientType = attrs.get("client.type");
         if (clientType != null) return clientType;
+        // System-internal operations (memory consolidation, compression, extraction) are tagged as "system"
+        var operationName = attrs.get("gen_ai.operation.name");
+        if (operationName != null && SYSTEM_OPERATIONS.contains(operationName)) return "system";
         // Agent trace with session_id — look up chat_sessions to find the session's source
         if (sessionId != null) {
             var session = chatSessionCollection.get(sessionId).orElse(null);
