@@ -12,7 +12,9 @@ import static com.mongodb.client.model.Indexes.descending;
 public class SchemaMigrationVSandboxSnapshotIndexes implements SchemaMigration {
     @Override
     public String version() {
-        return "20260706001";
+        // 20260706001 was claimed by another migration the same day (4-way collision found on dev);
+        // this one never ran under the old version, so renumbering is safe.
+        return "20260706009";
     }
 
     @Override
