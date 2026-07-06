@@ -3,7 +3,7 @@ package ai.core.server.workflow;
 import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.WorkflowRun;
-import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.StagedFile;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import ai.core.server.workflow.executor.AgentExecutor;
@@ -133,7 +133,7 @@ class IfElseExecutorTest {
         final List<String> started = new CopyOnWriteArrayList<>();
 
         @Override
-        public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
+        public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<StagedFile> stagedFiles) {
             started.add(node.id());
             return new StartedAgentRun("agentrun-" + node.id());
         }

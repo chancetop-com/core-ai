@@ -1,7 +1,7 @@
 package ai.core.server.workflow.executor;
 
 import ai.core.server.domain.WorkflowNodeTraceMetadata;
-import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.StagedFile;
 import ai.core.server.workflow.AgentRunGateway;
 import ai.core.server.workflow.AgentRunResult;
 import ai.core.server.workflow.ArtifactStaging;
@@ -41,7 +41,7 @@ public class AgentExecutor implements NodeExecutor {
     public NodeOutcome execute(NodeContext ctx) {
         Object template = ctx.node().config().get("input");
         String input;
-        List<SandboxService.StagedFile> stagedFiles = List.of();
+        List<StagedFile> stagedFiles = List.of();
         if (template instanceof String s) {
             if ("AGENT".equals(ctx.node().type())) {
                 stagedFiles = ArtifactStaging.scanTemplate(s, ctx.pool());

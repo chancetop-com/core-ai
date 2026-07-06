@@ -137,19 +137,20 @@ public class ChatMessageService {
         return true;
     }
 
-    // batch soft-delete: returns count of successfully deleted sessions.
-    public long batchSoftDelete(String userId, List<String> sessionIds) {
+    // batch soft-delete: returns the ids actually deleted (non-existent or non-owned ids are skipped),
+    // so callers can safely run follow-up cleanup only on sessions the user truly owns.
+    public List<String> batchSoftDelete(String userId, List<String> sessionIds) {
         var deletedAt = ZonedDateTime.now();
-        long deleted = 0;
+        var deletedIds = new java.util.ArrayList<String>();
         for (var sessionId : sessionIds) {
             var meta = chatSessionCollection.get(sessionId).orElse(null);
             if (meta == null) continue;
             if (userId != null && meta.userId != null && !userId.equals(meta.userId)) continue;
             chatSessionCollection.update(Filters.eq("_id", sessionId), Updates.set("deleted_at", deletedAt));
             onSessionClosed(sessionId);
-            deleted++;
+            deletedIds.add(sessionId);
         }
-        return deleted;
+        return deletedIds;
     }
 
     // user-initiated rename: trims/collapses whitespace, caps length, enforces ownership.

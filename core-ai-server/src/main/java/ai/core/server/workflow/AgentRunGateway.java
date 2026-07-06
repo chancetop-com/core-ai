@@ -1,7 +1,7 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.WorkflowRun;
-import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.StagedFile;
 import ai.core.server.workflow.engine.WorkflowNode;
 
 import java.util.List;
@@ -17,7 +17,7 @@ import java.util.List;
 public interface AgentRunGateway {
     /** Start a decoupled child AgentRun from the node's embedded published snapshot.
      *  {@code stagedFiles} are upstream artifacts the platform stages into the child's sandbox before its loop starts. */
-    StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles);
+    StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<StagedFile> stagedFiles);
 
     /** Block until the child AgentRun reaches a terminal status, then return its result. */
     AgentRunResult awaitResult(String childRunId);

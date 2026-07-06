@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.server.domain.ChatSession;
+import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.utils.JsonUtil;
@@ -27,6 +28,8 @@ public class ChatSessionController {
     WebContext webContext;
     @Inject
     ChatMessageService chatMessageService;
+    @Inject
+    SandboxSnapshotService sandboxSnapshotService;
 
     public Response list(Request request) {
         var userId = AuthContext.userId(webContext);
@@ -64,6 +67,7 @@ public class ChatSessionController {
         var sessionId = request.pathParam("sessionId");
         var ok = chatMessageService.softDeleteSession(userId, sessionId);
         if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
+        sandboxSnapshotService.deleteForSession(sessionId);
         return jsonResponse(Map.of("deleted", true));
     }
 
@@ -83,8 +87,11 @@ public class ChatSessionController {
             return Response.text("invalid request body").status(HTTPStatus.BAD_REQUEST);
         }
         if (sessionIds.isEmpty()) return Response.text("session_ids required").status(HTTPStatus.BAD_REQUEST);
-        long deleted = chatMessageService.batchSoftDelete(userId, sessionIds);
-        return jsonResponse(Map.of("deleted", deleted));
+        // Only clean snapshots of sessions actually soft-deleted: batchSoftDelete skips
+        // non-owned/nonexistent ids, and snapshot deletion must not outrun that ownership check.
+        var deletedIds = chatMessageService.batchSoftDelete(userId, sessionIds);
+        deletedIds.forEach(sandboxSnapshotService::deleteForSession);
+        return jsonResponse(Map.of("deleted", deletedIds.size()));
     }
 
     public Response update(Request request) {

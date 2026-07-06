@@ -1,7 +1,7 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.ArtifactRef;
-import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.StagedFile;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -41,20 +41,20 @@ public final class ArtifactStaging {
     }
 
     /** Staging set for a {@code {{ … }}} input template (AGENT nodes). */
-    public static List<SandboxService.StagedFile> scanTemplate(String template, VariablePool pool) {
+    public static List<StagedFile> scanTemplate(String template, VariablePool pool) {
         return scan(template, TEMPLATE_REFERENCE, pool);
     }
 
     /** Staging set for a bare selector (CODE node input map values). */
-    public static List<SandboxService.StagedFile> scanSelector(String selector, VariablePool pool) {
+    public static List<StagedFile> scanSelector(String selector, VariablePool pool) {
         return scan(selector, SELECTOR_REFERENCE, pool);
     }
 
-    private static List<SandboxService.StagedFile> scan(String text, Pattern pattern, VariablePool pool) {
+    private static List<StagedFile> scan(String text, Pattern pattern, VariablePool pool) {
         if (text == null || text.isBlank()) {
             return List.of();
         }
-        var staged = new LinkedHashMap<String, SandboxService.StagedFile>();   // keyed by target path -> dedup
+        var staged = new LinkedHashMap<String, StagedFile>();   // keyed by target path -> dedup
         Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
             collect(matcher.group(1), matcher.group(2), pool, staged);
@@ -100,7 +100,7 @@ public final class ArtifactStaging {
         }
     }
 
-    private static void collect(String nodeId, String suffix, VariablePool pool, Map<String, SandboxService.StagedFile> out) {
+    private static void collect(String nodeId, String suffix, VariablePool pool, Map<String, StagedFile> out) {
         for (ArtifactRef ref : referencedRefs(nodeId, suffix, pool)) {
             add(nodeId, ref, out);
         }
@@ -125,12 +125,12 @@ public final class ArtifactStaging {
         return tokens.length == 1 || "path".equals(tokens[1]) ? List.of(refs.get(index)) : List.of();
     }
 
-    private static void add(String nodeId, ArtifactRef ref, Map<String, SandboxService.StagedFile> out) {
+    private static void add(String nodeId, ArtifactRef ref, Map<String, StagedFile> out) {
         if (ref.fileId == null || ref.fileName == null || ref.fileName.isBlank()) {
             return;
         }
         String path = pathOf(nodeId, ref.fileName);
-        out.putIfAbsent(path, new SandboxService.StagedFile(ref.fileId, ref.fileName, path));
+        out.putIfAbsent(path, new StagedFile(ref.fileId, ref.fileName, path));
     }
 
     // Keep only the last path segment and strip traversal — a staged file always lands inside its node directory.

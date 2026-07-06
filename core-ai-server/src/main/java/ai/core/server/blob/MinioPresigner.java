@@ -44,6 +44,10 @@ class MinioPresigner {
         return presign("GET", bucket, key, expirySeconds);
     }
 
+    PreSignedResult presignedDeleteUrl(String bucket, String key, int expirySeconds) {
+        return presign("DELETE", bucket, key, expirySeconds);
+    }
+
     String url(String bucket, String key) {
         return endpoint + "/" + bucket + "/" + key;
     }

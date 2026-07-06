@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -94,6 +96,23 @@ class ChatMessageServiceTest {
         var doc = captor.getValue().toBsonDocument(BsonDocument.class,
             CodecRegistries.fromProviders(new ValueCodecProvider(), new BsonValueCodecProvider()));
         assertEquals("x".repeat(100), doc.getDocument("$set").getString("title").getValue());
+    }
+
+    @Test
+    void batchSoftDeleteReturnsOnlyOwnedExistingIds() {
+        var service = new ChatMessageService();
+        service.chatSessionCollection = mock();
+        when(service.chatSessionCollection.get("owned")).thenReturn(Optional.of(session("owned", "user-1")));
+        when(service.chatSessionCollection.get("foreign")).thenReturn(Optional.of(session("foreign", "user-2")));
+        when(service.chatSessionCollection.get("missing")).thenReturn(Optional.empty());
+        when(service.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+
+        var deletedIds = service.batchSoftDelete("user-1", List.of("owned", "foreign", "missing"));
+
+        // Non-owned and missing ids must not leak into the result: callers run
+        // follow-up cleanup (e.g. sandbox snapshot deletion) on the returned ids.
+        assertEquals(List.of("owned"), deletedIds);
+        verify(service.chatSessionCollection, times(1)).update(any(Bson.class), any(Bson.class));
     }
 
     @Test

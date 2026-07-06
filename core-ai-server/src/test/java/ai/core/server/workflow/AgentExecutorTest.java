@@ -6,7 +6,7 @@ import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.WorkflowRun;
-import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.StagedFile;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import ai.core.server.workflow.executor.AgentExecutor;
@@ -159,7 +159,7 @@ class AgentExecutorTest {
         }
 
         @Override
-        public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
+        public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<StagedFile> stagedFiles) {
             return new StartedAgentRun("agentrun-1", "gpt-4.1", null);
         }
 

@@ -74,6 +74,22 @@ public class AzureBlobSasService {
         return buildResult(containerName, blobName, params, expiryStr);
     }
 
+    public SasResult generateDeleteBlobSas(String containerName, String blobName, int expiryMinutes) {
+        var expiry = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(expiryMinutes);
+        var expiryStr = EXPIRY_FORMATTER.format(expiry);
+        var startStr = EXPIRY_FORMATTER.format(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5));
+
+        var params = new LinkedHashMap<String, String>();
+        params.put("sv", SAS_VERSION);
+        params.put("spr", "https");
+        params.put("st", startStr);
+        params.put("se", expiryStr);
+        params.put("sr", "b");  // blob-level
+        params.put("sp", "d");  // delete only
+
+        return buildResult(containerName, blobName, params, expiryStr);
+    }
+
     private SasResult buildResult(String containerName, String blobName, Map<String, String> params, String expiryStr) {
         var stringToSign = buildStringToSign(accountName, containerName, blobName, params);
         var signature = hmacSha256(stringToSign);

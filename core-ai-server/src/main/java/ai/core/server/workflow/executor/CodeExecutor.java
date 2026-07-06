@@ -4,6 +4,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.StagedFile;
 import ai.core.server.workflow.ArtifactStaging;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.NodeExecutor;
@@ -68,7 +69,7 @@ public class CodeExecutor implements NodeExecutor {
         if (sandboxService == null) {
             return new NodeOutcome.Fail("sandbox is not configured (set sys.sandbox.provider)", false);
         }
-        List<SandboxService.StagedFile> stagedFiles = stagedInputFiles(ctx);
+        List<StagedFile> stagedFiles = stagedInputFiles(ctx);
         String script = buildScript(code, resolveInputs(ctx, stagedFiles.isEmpty() ? ctx.pool() : ctx.pool().stagedView()));
         // One sandbox per workflow RUN, shared by every CODE node (created lazily on first use, reused thereafter,
         // and released by WorkflowRunner when the run ends). Amortizes container cold-start. Each script still
@@ -80,7 +81,7 @@ public class CodeExecutor implements NodeExecutor {
         if (sandbox == null) {
             return new NodeOutcome.Fail("sandbox is disabled", false);
         }
-        for (SandboxService.StagedFile file : stagedFiles) {
+        for (StagedFile file : stagedFiles) {
             try {
                 sandbox.uploadFile(file.targetPath(), fileService.getBytes(fileService.get(file.fileId())));
             } catch (RuntimeException e) {
@@ -95,16 +96,16 @@ public class CodeExecutor implements NodeExecutor {
 
     // Union of the staging sets of every input selector (a selector referencing artifacts whole / by index /
     // by .path stages the file; metadata-only references don't — same rule as AGENT templates).
-    private static List<SandboxService.StagedFile> stagedInputFiles(NodeContext ctx) {
+    private static List<StagedFile> stagedInputFiles(NodeContext ctx) {
         Object inputs = ctx.node().config().get("inputs");
         if (!(inputs instanceof Map<?, ?> map)) {
             return List.of();
         }
         var seen = new LinkedHashSet<String>();
-        var staged = new ArrayList<SandboxService.StagedFile>();
+        var staged = new ArrayList<StagedFile>();
         for (Object value : map.values()) {
             if (value instanceof String selector) {
-                for (SandboxService.StagedFile file : ArtifactStaging.scanSelector(selector, ctx.pool())) {
+                for (StagedFile file : ArtifactStaging.scanSelector(selector, ctx.pool())) {
                     if (seen.add(file.targetPath())) {
                         staged.add(file);
                     }

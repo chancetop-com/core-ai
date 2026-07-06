@@ -16,6 +16,15 @@ public interface ObjectStorageService {
 
     byte[] downloadObject(String container, String blobName);
 
+    /** Server-side streaming upload from a local file (snapshot capture path). */
+    void uploadObject(String container, String blobName, java.nio.file.Path file);
+
+    /** Server-side streaming download to a local file (snapshot restore path). */
+    void downloadObjectToFile(String container, String blobName, java.nio.file.Path target);
+
+    /** Delete an object; missing objects (404) are treated as success. */
+    void deleteObject(String container, String blobName);
+
     record UploadCredential(String uploadUrl, String blobUrl, String container, String blobName, String expiresAt) {
     }
 }

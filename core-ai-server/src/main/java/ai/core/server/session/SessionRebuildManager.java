@@ -206,7 +206,7 @@ public class SessionRebuildManager {
         // the event dispatcher through a holder.
         var sessionRef = new InProcessAgentSession[1];
         if (context != null) {
-            var sandbox = sandboxService.createSandbox(null, sessionId, userId,
+            var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId,
                     event -> { if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event); });
             if (sandbox != null) context.sandbox(sandbox);
         }

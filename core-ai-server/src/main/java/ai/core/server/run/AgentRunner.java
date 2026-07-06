@@ -28,6 +28,7 @@ import ai.core.server.dataset.tool.DatasetToolProvider;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.StagedFile;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
@@ -162,7 +163,7 @@ public class AgentRunner {
 
         var runId = runEntity.id;
         var traceContext = workflowContext == null ? null : workflowContext.trace();
-        var stagedFiles = workflowContext == null ? List.<SandboxService.StagedFile>of() : workflowContext.stagedFiles();
+        var stagedFiles = workflowContext == null ? List.<StagedFile>of() : workflowContext.stagedFiles();
 
         try {
             // Create sandbox with effective config (platform default + agent override)
@@ -257,7 +258,7 @@ public class AgentRunner {
 
     /** Everything a workflow-origin run carries beyond the plain agent run: the trace linkage and the upstream
      *  artifact files the platform stages into the child sandbox before the agent loop starts. */
-    public record WorkflowRunContext(WorkflowTraceContext trace, List<SandboxService.StagedFile> stagedFiles) {
+    public record WorkflowRunContext(WorkflowTraceContext trace, List<StagedFile> stagedFiles) {
         public WorkflowRunContext {
             stagedFiles = stagedFiles == null ? List.of() : List.copyOf(stagedFiles);
         }

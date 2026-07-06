@@ -32,6 +32,8 @@ import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.migration.SchemaVersion;
+import ai.core.server.sandbox.snapshot.SandboxEpochDoc;
+import ai.core.server.sandbox.snapshot.SandboxSnapshotDoc;
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
@@ -115,5 +117,9 @@ public class ServerApp extends App {
         // memory collections
         mongo.collection(AgentMemory.class);
         mongo.collection(AgentMemoryExtractionCursor.class);
+
+        // sandbox snapshot collections
+        mongo.collection(SandboxSnapshotDoc.class);
+        mongo.collection(SandboxEpochDoc.class);
     }
 }

@@ -25,8 +25,10 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.run.SubmitArtifactsTool;
+import ai.core.server.sandbox.LazySandbox;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
@@ -101,6 +103,8 @@ public class AgentSessionManager {
     DatasetRecordService datasetRecordService;
     @Inject
     FileService fileService;
+    @Inject
+    SandboxSnapshotService sandboxSnapshotService;
 
     EventPublisher eventPublisher;
     SessionOwnershipRegistry ownershipRegistry;
@@ -182,7 +186,7 @@ public class AgentSessionManager {
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, null, source));
-        var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
+        var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent);
         if (sandbox != null) context.sandbox(sandbox);
         sessions.put(sessionId, session);
         touchActivity(sessionId);
@@ -229,7 +233,7 @@ public class AgentSessionManager {
         var sandboxConfig = sandboxService.getEffectiveConfig(definition);
         var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
         var sessionRef = new InProcessAgentSession[1];
-        var sandbox2 = sandboxService.createSandbox(sandboxConfig, sessionId, userId,
+        var sandbox2 = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId,
                 event -> { if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event); });
 
         var toolRegistry = subAgentManager().resolveToolsToRegistry(definition, sessionId);
@@ -327,6 +331,7 @@ public class AgentSessionManager {
         if (session != null) session.close();
         skillManager().removeSkillState(sessionId);
         sessionLastActivity.remove(sessionId);
+        captureSandboxSnapshot(sessionId);
         sandboxService.releaseSandbox(sessionId);
         chatMessageService.onSessionClosed(sessionId);
         sessionChannelService.close(sessionId);
@@ -335,6 +340,24 @@ public class AgentSessionManager {
         }
         if (ownershipRegistry != null) {
             ownershipRegistry.release(sessionId);
+        }
+    }
+
+    // Capture only on the session-close path (60min idle cleanup + explicit close).
+    // Run/workflow/OCG releases and shutdown() intentionally never capture (v1 scope).
+    private void captureSandboxSnapshot(String sessionId) {
+        if (sandboxSnapshotService == null || !sandboxSnapshotService.enabled()) return;
+        try {
+            var sandbox = sandboxService.getSandbox(sessionId);
+            if (!(sandbox instanceof LazySandbox lazy)) return;
+            if (!lazy.snapshotDirty()) return;
+            var ip = lazy.ip();
+            var port = lazy.port();
+            if (ip == null || port == 0) return; // sandbox never materialized
+            if (!lazy.isDelegateTracked()) { logger.info("skip snapshot capture, sandbox already released by ttl cleanup: sessionId={}", sessionId); return; }
+            sandboxSnapshotService.captureBeforeRelease(sessionId, lazy.userId(), lazy.snapshotEpoch(), ip, port, lazy.image());
+        } catch (Exception e) {
+            logger.warn("sandbox snapshot capture failed, releasing anyway: sessionId={}", sessionId, e);
         }
     }
 

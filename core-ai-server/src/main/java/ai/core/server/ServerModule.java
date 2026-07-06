@@ -105,6 +105,8 @@ import ai.core.server.schedule.AgentSchedulerJob;
 import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.schedule.ToolRegistrySyncJob;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.snapshot.SandboxSnapshotCleanupJob;
+import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.MongoSkillProvider;
@@ -192,6 +194,8 @@ public class ServerModule extends Module {
     protected void initialize() {
         var migrationManager = bind(SchemaMigrationManager.class);
         onStartup(migrationManager::migrate);
+        // Must be bound before bindService(): AgentSessionManager @Injects SandboxSnapshotService.
+        bind(SandboxSnapshotService.class);
         bind(RequestAuthenticator.class);
         bind(ChannelConfigStore.class);         // must be before AuthInterceptor — AuthInterceptor checks per-channel auth
         bind(OcgConfigStore.class);
@@ -239,6 +243,7 @@ public class ServerModule extends Module {
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
         schedule().fixedRate("tool-registry-sync", bind(ToolRegistrySyncJob.class), Duration.ofSeconds(30));
         schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
+        schedule().fixedRate("sandbox-snapshot-cleanup", bind(SandboxSnapshotCleanupJob.class), Duration.ofHours(1));
         schedule().fixedRate("ocg-health-check", bind(OcgHealthCheckJob.class), Duration.ofMinutes(1));
         var memoryConsolidationJob = bind(AgentMemoryConsolidationJob.class);
         memoryConsolidationJob.extractionModel = property("agent.memory.extraction.model")
@@ -437,6 +442,18 @@ public class ServerModule extends Module {
             if (sandboxService != null) {
                 sandboxService.setStorageService(objectStorage);
             }
+        }
+
+        // Sandbox filesystem snapshot: kill-switched by sys.sandbox.snapshot.enabled (default false).
+        // With no object storage configured, configure() forces disabled regardless of the flag.
+        var snapshotEnabled = "true".equalsIgnoreCase(property("sys.sandbox.snapshot.enabled").orElse("false"));
+        var snapshotContainer = property("azure.blob.snapshot.container").orElse("sandbox-snapshots");
+        var minioSnapshotBucket = property("storage.minio.snapshot.bucket").orElse("sandbox-snapshots");
+        if (objectStorage instanceof MinioObjectStorageService) snapshotContainer = minioSnapshotBucket;
+        var snapshotService = bean(SandboxSnapshotService.class);
+        snapshotService.configure(objectStorage, snapshotContainer, snapshotEnabled && objectStorage != null);
+        if (sandboxService != null) {
+            sandboxService.setSnapshotService(snapshotService);
         }
 
         http().bean(BlobUploadCredentialView.class);

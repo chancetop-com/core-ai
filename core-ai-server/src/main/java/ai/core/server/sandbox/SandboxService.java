@@ -9,6 +9,7 @@ import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.file.FileService;
+import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,6 +60,7 @@ public class SandboxService {
     private final boolean enabled;
     private ObjectStorageService storageService;
     private FileService fileService;
+    private SandboxSnapshotService snapshotService;
 
     public SandboxService() {
         this.sandboxManager = null;
@@ -95,6 +97,10 @@ public class SandboxService {
         this.fileService = fileService;
     }
 
+    public void setSnapshotService(SandboxSnapshotService snapshotService) {
+        this.snapshotService = snapshotService;
+    }
+
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
         return createSandbox(config, sessionId, userId, null);
     }
@@ -116,19 +122,24 @@ public class SandboxService {
     }
 
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId, Consumer<SandboxEvent> eventDispatcher) {
+        return create(config, sessionId, userId, eventDispatcher, null);
+    }
+
+    /** Chat-session sandboxes only: adds snapshot capture/restore. Run/workflow/OCG sandboxes never snapshot. */
+    public Sandbox createSessionSandbox(SandboxConfig config, String sessionId, String userId, Consumer<SandboxEvent> eventDispatcher) {
+        return create(config, sessionId, userId, eventDispatcher, snapshotService);
+    }
+
+    private Sandbox create(SandboxConfig config, String sessionId, String userId, Consumer<SandboxEvent> eventDispatcher, SandboxSnapshotService snapshot) {
         if (!enabled) return null;
-
         var effectiveConfig = config != null ? config : defaultConfig;
-
         if (Boolean.FALSE.equals(effectiveConfig.enabled)) {
             LOGGER.debug("sandbox disabled for session: {}", sessionId);
             return null;
         }
-
         var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, sessionId, userId,
-                () -> onSandboxReady(sessionId));
+                () -> onSandboxReady(sessionId), snapshot);
         sessionSandboxes.put(sessionId, lazySandbox);
-
         LOGGER.info("sandbox created for session: {}, config={}", sessionId, effectiveConfig);
         return lazySandbox;
     }
@@ -244,14 +255,14 @@ public class SandboxService {
             return false;
         }
         try {
-            LOGGER.info("[UPLOAD] downloading blob: container={}, blobName={}", file.container, file.blobName);
-            var data = storageService.downloadObject(file.container, file.blobName);
-            LOGGER.info("[UPLOAD] blob downloaded: size={} bytes, uploading to /tmp/{}", data.length, file.fileName);
-            sandbox.uploadFile("/tmp/" + file.fileName, data);
-            LOGGER.info("pending file uploaded: session={}, file={}", sessionId, file.fileName);
+            LOGGER.info("[UPLOAD] downloading blob: container={}, blobName={}", file.container(), file.blobName());
+            var data = storageService.downloadObject(file.container(), file.blobName());
+            LOGGER.info("[UPLOAD] blob downloaded: size={} bytes, uploading to /tmp/{}", data.length, file.fileName());
+            sandbox.uploadFile("/tmp/" + file.fileName(), data);
+            LOGGER.info("pending file uploaded: session={}, file={}", sessionId, file.fileName());
             return true;
         } catch (Exception e) {
-            LOGGER.error("failed to upload pending file to sandbox: session={}, file={}", sessionId, file.fileName, e);
+            LOGGER.error("failed to upload pending file to sandbox: session={}, file={}", sessionId, file.fileName(), e);
             return false;
         }
     }
@@ -419,22 +430,8 @@ public class SandboxService {
     }
 
     public SandboxConfig getEffectiveConfig(AgentDefinition definition) {
-        if (!enabled) return defaultConfig;
-        if (definition == null || definition.sandboxConfig == null) {
-            return defaultConfig;
-        }
-
-        var agentConfig = definition.sandboxConfig.toConfig();
-        if (Boolean.FALSE.equals(agentConfig.enabled)) {
-            return agentConfig;
-        }
-
-        return agentConfig;
-    }
-
-    @Deprecated
-    public SandboxConfig getSandboxConfig(AgentDefinition definition) {
-        return getEffectiveConfig(definition);
+        if (!enabled || definition == null || definition.sandboxConfig == null) return defaultConfig;
+        return definition.sandboxConfig.toConfig();
     }
 
     public SandboxConfig getDefaultConfig() {
@@ -498,18 +495,5 @@ public class SandboxService {
         }
 
         LOGGER.info("sandbox service shutdown complete");
-    }
-
-    /** A file queued for upload into a session's sandbox once it materializes: either a blob-storage object
-     *  landing at {@code /tmp/<fileName>} (chat uploads), or a staged FileRecord landing at {@code targetPath}
-     *  (workflow artifact staging — see addStagedFile). */
-    public record PendingFile(String fileName, String container, String blobName, String fileId, String targetPath) {
-        public PendingFile(String fileName, String container, String blobName) {
-            this(fileName, container, blobName, null, null);
-        }
-    }
-
-    /** A workflow input file to stage into a consumer sandbox at a deterministic path before it starts. */
-    public record StagedFile(String fileId, String fileName, String targetPath) {
     }
 }

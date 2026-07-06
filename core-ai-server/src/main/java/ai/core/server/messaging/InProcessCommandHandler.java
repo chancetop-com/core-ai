@@ -9,6 +9,7 @@ import ai.core.api.server.session.sse.SseStatusChangeEvent;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
+import ai.core.server.sandbox.PendingFile;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
@@ -108,9 +109,9 @@ public class InProcessCommandHandler {
         // upload pending files carried in command payload (cross-pod safe)
         var pendingFilesRaw = (List<Map<String, Object>>) payload.get("pendingFiles");
         if (pendingFilesRaw != null && !pendingFilesRaw.isEmpty()) {
-            var pendingFiles = new ArrayList<SandboxService.PendingFile>();
+            var pendingFiles = new ArrayList<PendingFile>();
             for (var f : pendingFilesRaw) {
-                pendingFiles.add(new SandboxService.PendingFile(
+                pendingFiles.add(new PendingFile(
                         (String) f.get("fileName"),
                         (String) f.get("container"),
                         (String) f.get("blobName")));

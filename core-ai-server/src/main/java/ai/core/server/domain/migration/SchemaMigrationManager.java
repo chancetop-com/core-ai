@@ -97,7 +97,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVToolRegistryTypeNameIndex(),
             new SchemaMigrationVGatewayModelProviderIndex(),
             new SchemaMigrationVGatewayModelModelIdIndex(),
-            new SchemaMigrationVMemoryLayerIndex()
+            new SchemaMigrationVMemoryLayerIndex(),
+            new SchemaMigrationVSandboxSnapshotIndexes()
         );
     }
 }
