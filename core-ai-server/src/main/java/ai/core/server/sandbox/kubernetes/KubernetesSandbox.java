@@ -73,8 +73,15 @@ public class KubernetesSandbox implements Sandbox {
     private boolean isConnectionError(Throwable th) {
         var current = th;
         while (current != null) {
-            // Only SocketException indicates the sandbox is dead, not SocketTimeoutException
             if (current instanceof java.net.SocketException) return true;
+            // SocketTimeoutException can be either connect timeout (pod is dead) or read
+            // timeout (long-running command). Only treat as connection error when the
+            // message indicates a connect timeout — OkHttp uses "Connect timed out" for
+            // connect failures and just "timeout" for read/write timeouts.
+            if (current instanceof java.net.SocketTimeoutException) {
+                var message = current.getMessage();
+                if (message != null && message.contains("Connect timed out")) return true;
+            }
             current = current.getCause();
         }
         return false;

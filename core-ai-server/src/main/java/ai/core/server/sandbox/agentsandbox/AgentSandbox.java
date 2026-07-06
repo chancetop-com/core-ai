@@ -124,10 +124,11 @@ public class AgentSandbox implements Sandbox {
     private boolean isConnectionError(Throwable throwable) {
         var current = throwable;
         while (current != null) {
-            // Only SocketException (connection reset, broken pipe) indicates the sandbox is dead.
-            // SocketTimeoutException means the HTTP read timed out — the runtime may still be
-            // executing a long-running command; that does not mean the sandbox is broken.
-            if (current instanceof SocketException) return true;
+            if (current instanceof java.net.SocketException) return true;
+            if (current instanceof java.net.SocketTimeoutException) {
+                var message = current.getMessage();
+                if (message != null && message.contains("Connect timed out")) return true;
+            }
             current = current.getCause();
         }
         return false;

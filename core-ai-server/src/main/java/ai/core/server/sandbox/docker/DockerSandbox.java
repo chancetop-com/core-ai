@@ -117,8 +117,11 @@ public class DockerSandbox implements Sandbox {
     private boolean isConnectionError(Throwable throwable) {
         var current = throwable;
         while (current != null) {
-            // Only SocketException indicates the sandbox is dead, not SocketTimeoutException
             if (current instanceof java.net.SocketException) return true;
+            if (current instanceof java.net.SocketTimeoutException) {
+                var message = current.getMessage();
+                if (message != null && message.contains("Connect timed out")) return true;
+            }
             current = current.getCause();
         }
         return false;
