@@ -27,6 +27,7 @@ public class SandboxManager {
     private final Map<String, SandboxEntry> activeSandboxes = new ConcurrentHashMap<>();
     private final AtomicInteger acquireCount = new AtomicInteger(0);
     private final AtomicInteger releaseCount = new AtomicInteger(0);
+    private final AtomicInteger untrackedReleaseCount = new AtomicInteger(0);
 
     public SandboxManager(SandboxProvider provider) {
         this.provider = provider;
@@ -71,9 +72,12 @@ public class SandboxManager {
             LOGGER.debug("sandbox released: id={}, sessionId={}, activeCount={}",
                     sandbox.getId(), entry.sessionId, activeSandboxes.size());
         } else {
-            // Sandbox not tracked, still release it
+            // Sandbox not tracked — likely already cleaned up by cleanupExpired() or the claim was
+            // created outside the tracking path. Still release the provider resource as a safety net.
             provider.release(sandbox);
-            LOGGER.warn("released sandbox not tracked: id={}", sandbox.getId());
+            untrackedReleaseCount.incrementAndGet();
+            LOGGER.warn("released sandbox not tracked: id={}, hostname={}, image={}, status={}, untrackedTotal={}",
+                    sandbox.getId(), sandbox.hostname(), sandbox.image(), sandbox.getStatus(), untrackedReleaseCount.get());
         }
     }
 
@@ -121,7 +125,8 @@ public class SandboxManager {
         return Map.of(
                 "activeCount", activeSandboxes.size(),
                 "totalAcquired", acquireCount.get(),
-                "totalReleased", releaseCount.get()
+                "totalReleased", releaseCount.get(),
+                "totalUntrackedReleased", untrackedReleaseCount.get()
         );
     }
 
