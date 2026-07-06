@@ -50,3 +50,23 @@ references [README.md](docs/en/README.md)
 - Always import classes, never use fully-qualified names inline
 - Newly added files（*.java） need to be subject to Git version control
 - The author of a newly created file must be the same person (git author or computer user).
+
+## core-ng Framework Constraints
+
+** `ClassValidator` rejects `Object` type anywhere in bean fields — this applies to both Mongo entities and WebService DTOs **
+** `Map<String, Object>` is NOT allowed — `Object` is not a recognized value type **
+** `Map<String, String>` IS allowed — both key and value are concrete types **
+** `org.bson.Document` is also rejected in entity classes — it implements `Map`, caught by same validation **
+** For dynamic/heterogeneous data: use `String` (JSON text), serialize with `JsonUtil.toJson()`, deserialize with `JsonUtil.toMap()` **
+
+** MongoDB collections must be explicitly registered in `ServerApp.registerMongo()` — `mongo.collection(EntityClass.class)` **
+** Service binding order in `ServerModule.bindService()` matters — `bind(X)` resolves `@Inject` immediately, so dependencies must be bound first **
+
+** MongoDB entities: NO primitive types — use `Boolean`, `Integer`, `Long`, `Double` instead of `boolean`, `int`, `long`, `double` **
+** Fields with default values (e.g. `= true`) MUST have `@NotNull` annotation **
+** `MongoCollection<?>` fields MUST have `@Inject` annotation **
+** MongoDB query filters: import `com.mongodb.client.model.Filters` (NOT `core.framework.mongo.Filters`) **
+** `MongoCollection.find()` returns `List<T>` directly, NOT a stream — no `.toList()` needed **
+
+** SchemaMigration version MUST be bumped when modifying migration logic — otherwise already-executed migrations won't re-run on existing environments **
+** `$setOnInsert` only applies on document creation — to update fields in existing documents, use a separate `$set` update **

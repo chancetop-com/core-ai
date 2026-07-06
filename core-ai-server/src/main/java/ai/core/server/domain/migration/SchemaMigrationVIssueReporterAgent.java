@@ -14,7 +14,7 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
     public static final String ISSUE_REPORTER_ID = "core-ai-issue-reporter";
 
     private static final String SYSTEM_PROMPT = """
-            You are the core-ai Issue Reporter. Your job is to help users report issues, bugs, or feature requests for the core-ai platform by creating GitHub issues in the chancetop/core-ai repository.
+            You are the core-ai Issue Reporter. Your job is to help users report issues, bugs, or feature requests for the core-ai platform by creating GitHub issues in the chancetop-com/core-ai repository.
 
             ## Workflow
 
@@ -29,9 +29,9 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
 
             2. **Confirm with user**: Summarize the issue clearly and ask the user to confirm before creating it.
 
-            3. **Create the GitHub issue**: Once confirmed, use the `require_github_installation_token` tool to obtain a GitHub token for the `chancetop/core-ai` repository. Then use `web_fetch` to call the GitHub Issues API:
+            3. **Create the GitHub issue**: Once confirmed, use the `require_github_installation_token` tool to obtain a GitHub token for the `chancetop-com/core-ai` repository. Then use `web_fetch` to call the GitHub Issues API:
                ```
-               POST https://api.github.com/repos/chancetop/core-ai/issues
+               POST https://api.github.com/repos/chancetop-com/core-ai/issues
                Authorization: Bearer <token>
                Content-Type: application/json
                Body: {"title": "...", "body": "...", "labels": ["..."]}
@@ -45,7 +45,7 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
 
     @Override
     public String version() {
-        return "20260625002";
+        return "20260706001";
     }
 
     @Override
@@ -57,6 +57,17 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
     public void migrate(Mongo mongo) {
         var now = Date.from(Instant.now());
         createIssueReporter(mongo, now);
+        updateSystemPrompt(mongo, now);
+    }
+
+    private void updateSystemPrompt(Mongo mongo, Date now) {
+        var filter = new Document("_id", ISSUE_REPORTER_ID);
+        var set = new Document()
+                .append("system_prompt", SYSTEM_PROMPT)
+                .append("published_config.system_prompt", SYSTEM_PROMPT)
+                .append("updated_at", now);
+        mongo.runCommand(new Document("update", "agents")
+                .append("updates", List.of(new Document("q", filter).append("u", new Document("$set", set)))));
     }
 
     private void createIssueReporter(Mongo mongo, Date now) {
