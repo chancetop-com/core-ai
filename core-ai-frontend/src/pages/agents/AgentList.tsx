@@ -313,7 +313,7 @@ export default function AgentList() {
               style={{ color: 'var(--color-text-secondary)' }} />
             <input type="text" value={query}
               onChange={e => { setQuery(e.target.value); setMyOffset(0); setOtherOffset(0); }}
-              placeholder="Search by name..."
+              placeholder="Search by name or description..."
               className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
               style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
           </div>
