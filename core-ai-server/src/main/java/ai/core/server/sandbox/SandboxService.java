@@ -365,18 +365,37 @@ public class SandboxService {
 
     public synchronized SandboxClient getDiscoverySandboxClient() {
         if (!enabled) throw new IllegalStateException("sandbox is not enabled");
-        if (discoverySandbox == null) {
-            var discoveryConfig = createDiscoveryConfig();
-            discoverySandbox = new LazySandbox(discoveryConfig, sandboxManager, null, "discovery", "system", null);
-            LOGGER.info("discovery sandbox created");
+        final int maxAttempts = 3;
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            if (discoverySandbox == null) {
+                var discoveryConfig = createDiscoveryConfig();
+                discoverySandbox = new LazySandbox(discoveryConfig, sandboxManager, null, "discovery", "system", null);
+                LOGGER.info("discovery sandbox created (attempt {}/{})", attempt + 1, maxAttempts);
+            }
+            discoverySandbox.ensureReady();
+            var ip = discoverySandbox.ip();
+            var port = discoverySandbox.port();
+            if (ip == null || port == 0) {
+                throw new IllegalStateException("discovery sandbox ip/port not available");
+            }
+            var client = new SandboxClient(ip, port, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+            // Quick health check — ensures the sandbox runtime is actually reachable.
+            // When the underlying pod has been deleted (e.g. warm-pool template update),
+            // the LazySandbox still reports READY with the stale IP. In that case the
+            // health check fails, we close & reset discoverySandbox and retry with a
+            // freshly acquired pod.
+            try {
+                client.waitForReady(5_000);
+                LOGGER.info("discovery sandbox ready: ip={}, port={}", ip, port);
+                return client;
+            } catch (Exception e) {
+                LOGGER.warn("discovery sandbox unreachable (attempt {}/{}): ip={}, port={}, error={}",
+                        attempt + 1, maxAttempts, ip, port, e.getMessage());
+                discoverySandbox.close();
+                discoverySandbox = null;
+            }
         }
-        discoverySandbox.ensureReady();
-        var ip = discoverySandbox.ip();
-        var port = discoverySandbox.port();
-        if (ip == null || port == 0) {
-            throw new IllegalStateException("discovery sandbox ip/port not available");
-        }
-        return new SandboxClient(ip, port, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+        throw new IllegalStateException("discovery sandbox failed after " + maxAttempts + " attempts");
     }
 
     private static SandboxConfig createDiscoveryConfig() {
