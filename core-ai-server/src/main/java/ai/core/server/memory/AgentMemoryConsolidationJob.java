@@ -34,62 +34,67 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
+ * V2 memory consolidation: append-only extraction, no REFINE/MERGE.
+ * <p>
+ * Key changes from V1:
+ * <ul>
+ *   <li>Layer 2 (methods): extracted patterns are appended, never merged/refined.</li>
+ *   <li>Layer 3 (trajectories): per-trace session summaries, append-only.</li>
+ *   <li>Layer 1 (knowledge): NOT auto-generated — only via manual/semi-auto confirmation.</li>
+ *   <li>FIFO eviction for Layer 2 (max 50) handled by AgentMemoryService.</li>
+ * </ul>
+ *
  * @author stephen
  */
 public class AgentMemoryConsolidationJob implements Job {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentMemoryConsolidationJob.class);
     private static final int MAX_TRACES_PER_AGENT = 50;
-    // Allow single-run agents with deep interactions (e.g. 100+ turns) to generate memories.
-    // Previously required 5+ traces, which excluded agents that complete complex tasks in one run.
     private static final int MIN_TRACES_FOR_EXTRACTION = 1;
-    // Reduce idle threshold so agents don't need to wait 24h before memory extraction.
-    // 1h is sufficient for UAT; can be increased for production if needed.
     private static final int IDLE_THRESHOLD_HOURS = 1;
-    // Filter out trivial interactions (e.g. "test", "hello") by requiring either:
-    // - at least 3 user turns (some back-and-forth), or
-    // - at least 5 tool calls in a single-turn session (real work was done).
-    // This prevents memory bloat from meaningless sessions while preserving
-    // deep single-run interactions that are the primary extraction target.
-    public static final String DEFAULT_EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
     private static final int MIN_MEANINGFUL_USER_TURNS = 3;
     private static final int MIN_TOOL_CALLS_FOR_SHORT_SESSION = 5;
     private static final int MESSAGE_LOOKBACK_SECONDS = 5;
     private static final int MESSAGE_LOOKAHEAD_SECONDS = 30;
+    private static final int TRAJECTORY_MAX_CHARS = 500;
+    public static final String DEFAULT_EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
+
+    // V2 prompt: extract-only, no REFINE/MERGE.
+    // Two-part output: trajectory summaries (Layer 3) + reusable patterns (Layer 2).
     private static final String EXTRACTION_PROMPT = """
-            You maintain an agent's memory — a concise, stable set of reusable
-            experiences that help the same agent perform more efficiently in future runs.
+            You analyze an agent's execution traces and produce two things:
 
-            ## Current memory
-            %s
+            1. A concise session trajectory summary (≤%d chars each)
+            2. New reusable patterns observed in these traces
 
-            ## New execution traces
+            ## Execution traces
             %s
 
             ## Task
 
-            Review the current memory against the new traces, then produce the UPDATED
-            complete memory set. For each memory:
+            ### Part 1: Trajectory summaries
+            For each session, write a short summary of what happened — the user request,
+            key decisions made, tools used, and final outcome. Keep each summary under %d characters.
+            Do NOT generalize or abstract — record what actually happened, faithfully.
 
-            - VALIDATE: if a trace reaffirms a memory, keep it unchanged
-            - REFINE:   if a trace adds nuance or reveals an edge case, improve it
-            - MERGE:    if two memories overlap, combine them into one
-            - ADD:      if a trace reveals a genuinely new reusable pattern, add it
-            - REMOVE:   if a memory is outdated or no longer applies, drop it
+            ### Part 2: Reusable patterns
+            Extract new patterns that the agent can reuse in future runs.
+            Only extract truly general patterns, not one-off facts about specific inputs.
+            Classify each into one of: WORKFLOW_PATTERN | TOOL_USAGE | EFFICIENCY
 
             Rules:
-            - Only include patterns reusable across future runs
-            - Skip one-off facts tied to specific user input
-            - Keep each memory under 200 words
+            - DO NOT modify or merge with any previous memories — only extract what's NEW in these traces
+            - Skip patterns already obvious from the SOP or system prompt
+            - Keep each pattern under 200 words
             - Be specific and actionable
-
-            For each memory, also label its type:
-            WORKFLOW_PATTERN | GOTCHA | TOOL_USAGE | EFFICIENCY | DOMAIN_KNOWLEDGE
 
             Output ONLY valid JSON (no markdown fences, no extra text):
             {
-              "memories": [
-                { "type": "WORKFLOW_PATTERN", "content": "..." },
-                { "type": "GOTCHA", "content": "..." }
+              "trajectories": [
+                { "session_id": "...", "summary": "..." }
+              ],
+              "patterns": [
+                { "type": "EFFICIENCY", "content": "..." },
+                { "type": "TOOL_USAGE", "content": "..." }
               ]
             }
             """;
@@ -113,6 +118,7 @@ public class AgentMemoryConsolidationJob implements Job {
 
     @Inject
     AgentMemoryService agentMemoryService;
+
     @Inject
     SystemSettingsService systemSettingsService;
 
@@ -195,23 +201,19 @@ public class AgentMemoryConsolidationJob implements Job {
             return;
         }
 
-        var existingMemories = agentMemoryService.findByAgentId(agentId);
-        var prompt = buildPrompt(existingMemories, traces);
+        var tracesText = buildSessionLog(traces);
+        var prompt = EXTRACTION_PROMPT.formatted(TRAJECTORY_MAX_CHARS, tracesText, TRAJECTORY_MAX_CHARS);
         var response = callLLM(prompt);
-        var newMemories = parseResponse(response, traces);
+        var result = parseV2Response(response, agentId, traces);
 
-        var traceIds = traces.stream().map(t -> t.traceId).toList();
-        for (var memory : newMemories) {
-            memory.agentId = agentId;
-            memory.sourceTraceIds = mergeSourceTraceIds(memory.content, existingMemories, traceIds);
+        if (!result.isEmpty()) {
+            agentMemoryService.appendMemories(agentId, result);
         }
-
-        agentMemoryService.replaceAll(agentId, newMemories);
 
         advanceCursor(agentId, traces);
 
-        LOGGER.info("memory consolidated for agent={}, old={}, new={}, traces={}",
-                agentId, existingMemories.size(), newMemories.size(), traces.size());
+        LOGGER.info("memory V2 appended for agent={}, total={}, traces={}",
+                agentId, result.size(), traces.size());
     }
 
     private void advanceCursor(String agentId, List<Trace> traces) {
@@ -220,22 +222,6 @@ public class AgentMemoryConsolidationJob implements Job {
         newCursor.lastProcessedAt = traces.getLast().startedAt;
         newCursor.lastTraceIds = traces.stream().map(t -> t.traceId).toList();
         agentMemoryService.upsertCursor(newCursor);
-    }
-
-    private String buildPrompt(List<AgentMemory> existingMemories, List<Trace> traces) {
-        var existingText = existingMemories.isEmpty() ? "(empty)" : formatMemoriesForPrompt(existingMemories);
-        var tracesText = buildSessionLog(traces);
-        return EXTRACTION_PROMPT.formatted(existingText, tracesText);
-    }
-
-    @SuppressWarnings("PMD")
-    private String formatMemoriesForPrompt(List<AgentMemory> memories) {
-        var sb = new StringBuilder();
-        for (int i = 0; i < memories.size(); i++) {
-            var m = memories.get(i);
-            sb.append((i + 1) + ". [" + (m.type != null ? m.type : "MEMORY") + "] " + m.content + "\n");
-        }
-        return sb.toString();
     }
 
     private String buildSessionLog(List<Trace> traces) {
@@ -351,17 +337,13 @@ public class AgentMemoryConsolidationJob implements Job {
                 .filter(m -> "user".equals(m.role))
                 .count();
 
-        // Count tool calls in agent responses (actual work done)
         var toolCalls = messages.stream()
                 .filter(m -> "agent".equals(m.role))
                 .filter(m -> m.tools != null)
                 .mapToLong(m -> m.tools.size())
                 .sum();
 
-        // Multiple user turns → meaningful conversation
         if (userTurns >= MIN_MEANINGFUL_USER_TURNS) return true;
-
-        // Single-turn session with deep tool orchestration → real work
         return toolCalls >= MIN_TOOL_CALLS_FOR_SHORT_SESSION;
     }
 
@@ -422,29 +404,60 @@ public class AgentMemoryConsolidationJob implements Job {
         return "";
     }
 
-    private List<AgentMemory> parseResponse(String response, List<Trace> traces) {
+    private List<AgentMemory> parseV2Response(String response, String agentId, List<Trace> traces) {
         var memories = new ArrayList<AgentMemory>();
         try {
             var json = extractJson(response);
             var om = new ObjectMapper();
             var node = om.readTree(json);
-            var arr = node.get("memories");
-            if (arr != null && arr.isArray()) {
-                for (var item : arr) {
+            var now = ZonedDateTime.now();
+
+            // Part 1: trajectory summaries (Layer 3)
+            var trajectories = node.get("trajectories");
+            if (trajectories != null && trajectories.isArray()) {
+                for (var item : trajectories) {
                     var memory = new AgentMemory();
                     memory.id = UUID.randomUUID().toString();
+                    memory.agentId = agentId;
+                    memory.type = "TRAJECTORY";
+                    memory.layer = AgentMemory.LAYER_TRAJECTORIES;
+                    memory.content = formatTrajectoryContent(item);
+                    memory.createdAt = now;
+                    memory.updatedAt = now;
+                    memory.sourceTraceIds = traces.stream().map(t -> t.traceId).toList();
+                    memories.add(memory);
+                }
+            }
+
+            // Part 2: patterns (Layer 2)
+            var patterns = node.get("patterns");
+            if (patterns != null && patterns.isArray()) {
+                for (var item : patterns) {
+                    var memory = new AgentMemory();
+                    memory.id = UUID.randomUUID().toString();
+                    memory.agentId = agentId;
                     memory.type = item.has("type") ? item.get("type").asText() : null;
+                    memory.layer = AgentMemory.LAYER_METHODS;
                     memory.content = item.get("content").asText();
-                    memory.createdAt = ZonedDateTime.now();
-                    memory.updatedAt = ZonedDateTime.now();
+                    memory.createdAt = now;
+                    memory.updatedAt = now;
                     memory.sourceTraceIds = traces.stream().map(t -> t.traceId).toList();
                     memories.add(memory);
                 }
             }
         } catch (Exception e) {
-            LOGGER.error("failed to parse LLM extraction response", e);
+            LOGGER.error("failed to parse V2 extraction response", e);
         }
         return memories;
+    }
+
+    private String formatTrajectoryContent(JsonNode item) {
+        var sessionId = item.has("session_id") ? item.get("session_id").asText() : "unknown";
+        var summary = item.has("summary") ? item.get("summary").asText() : "";
+        if (summary.length() > TRAJECTORY_MAX_CHARS) {
+            summary = summary.substring(0, TRAJECTORY_MAX_CHARS);
+        }
+        return "[session=" + sessionId + "] " + summary;
     }
 
     private String extractJson(String response) {
@@ -456,20 +469,5 @@ public class AgentMemoryConsolidationJob implements Job {
             return trimmed.substring(start, end + 1);
         }
         return "{}";
-    }
-
-    private List<String> mergeSourceTraceIds(String content, List<AgentMemory> existingMemories, List<String> newTraceIds) {
-        for (var existing : existingMemories) {
-            if (existing.content != null && existing.content.equals(content)) {
-                var merged = new ArrayList<>(existing.sourceTraceIds != null ? existing.sourceTraceIds : List.of());
-                for (var id : newTraceIds) {
-                    if (!merged.contains(id)) {
-                        merged.add(id);
-                    }
-                }
-                return merged;
-            }
-        }
-        return new ArrayList<>(newTraceIds);
     }
 }

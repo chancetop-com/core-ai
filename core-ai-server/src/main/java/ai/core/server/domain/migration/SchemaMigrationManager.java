@@ -96,7 +96,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVIssueReporterAgent(),
             new SchemaMigrationVToolRegistryTypeNameIndex(),
             new SchemaMigrationVGatewayModelProviderIndex(),
-            new SchemaMigrationVGatewayModelModelIdIndex()
+            new SchemaMigrationVGatewayModelModelIdIndex(),
+            new SchemaMigrationVMemoryLayerIndex()
         );
     }
 }

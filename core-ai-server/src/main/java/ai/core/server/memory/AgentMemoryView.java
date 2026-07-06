@@ -18,6 +18,9 @@ public class AgentMemoryView {
     @Property(name = "type")
     public String type;
 
+    @Property(name = "layer")
+    public String layer;
+
     @Property(name = "content")
     public String content;
 

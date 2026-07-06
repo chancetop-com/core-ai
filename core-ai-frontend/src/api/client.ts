@@ -320,6 +320,7 @@ export interface AgentMemoryView {
   id: string;
   agent_id: string;
   type: string;
+  layer: string;
   content: string;
   source_trace_ids: string[];
   created_at: string;

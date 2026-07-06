@@ -19,6 +19,7 @@ public class AgentMemoryController {
             v.id = m.id;
             v.agentId = m.agentId;
             v.type = m.type;
+            v.layer = m.layer;
             v.content = m.content;
             v.sourceTraceIds = m.sourceTraceIds;
             v.createdAt = m.createdAt;

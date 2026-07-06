@@ -12,7 +12,8 @@ import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.memory.AgentMemoryService;
-import ai.core.tool.ToolCall;
+import ai.core.server.memory.SearchMemoryTool;
+import ai.core.tool.registry.ListToolProvider;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
@@ -24,10 +25,6 @@ import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetAccessRegistry;
 import ai.core.server.dataset.tool.DatasetToolProvider;
-import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
-import ai.core.server.dataset.tool.InsertDatasetRecordTool;
-import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
-import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
@@ -37,8 +34,6 @@ import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.tool.ToolRegistryService;
-import ai.core.tool.registry.ListToolProvider;
-import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.telemetry.TelemetryConfig;
 import ai.core.tool.tools.InternalUrlResolver;
@@ -397,6 +392,10 @@ public class AgentRunner {
         if (sandbox != null) context.sandbox(sandbox);
         var systemPrompt = resolveSystemPrompt(config, definition);
         systemPrompt = appendDatasetInstructions(systemPrompt, config, definition);
+        var enableMemory = config != null ? config.enableMemory : definition.enableMemory;
+        if (AgentMemoryService.memoryEnabled(enableMemory)) {
+            systemPrompt = appendSopPriorityDeclaration(systemPrompt);
+        }
         var model = config != null ? config.model : definition.model;
         var multiModalModel = config != null ? config.multiModalModel : definition.multiModalModel;
         var temperature = config != null ? config.temperature : definition.temperature;
@@ -405,6 +404,10 @@ public class AgentRunner {
         var subAgents = subAgentAssembler.assemble(config != null ? config.subAgentIds : definition.subAgentIds, runEntity.id);
         if (!subAgents.isEmpty()) {
             registry.registerProvider(ListToolProvider.of("sub-agents", new ArrayList<>(subAgents)));
+        }
+        if (AgentMemoryService.memoryEnabled(enableMemory)) {
+            var searchTool = new SearchMemoryTool(definition.id, agentMemoryService);
+            registry.registerProvider(ListToolProvider.of("search-memory", List.of(searchTool)));
         }
         var builder = Agent.builder()
             .name(safeNodeName(definition))
@@ -424,7 +427,6 @@ public class AgentRunner {
         if (temperature != null) builder.temperature(temperature);
         if (maxTurns != null) builder.maxTurn(maxTurns);
         injectDatasetSystemVars(builder, config, definition);
-        var enableMemory = config != null ? config.enableMemory : definition.enableMemory;
         if (AgentMemoryService.memoryEnabled(enableMemory)) {
             var memoryInject = agentMemoryService.buildMemoryPromptInject(definition.id);
             if (memoryInject != null) builder.systemPromptSection(memoryInject);
@@ -614,6 +616,21 @@ public class AgentRunner {
         if (datasetConfig == null || datasetConfig.isEmpty()) return systemPrompt;
         if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
         return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
+    }
+
+    static String appendSopPriorityDeclaration(String systemPrompt) {
+        var declaration = """
+                \n
+                ## Behavior Rules
+
+                1. The current Skill SOP is your only behavior specification. Follow the SOP step order
+                   exactly — do NOT skip, merge, or modify any step.
+                2. Historical patterns in Memory are supplementary reference only. Use the search_memory
+                   tool to look them up when helpful, but NEVER substitute them for SOP steps.
+                3. When SOP and Memory conflict, SOP ALWAYS takes priority.
+                """;
+        var text = systemPrompt != null ? systemPrompt : "";
+        return declaration + text;
     }
 
     private void injectDatasetSystemVars(AgentBuilder builder, AgentPublishedConfig config, AgentDefinition definition) {
