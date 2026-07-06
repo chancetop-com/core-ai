@@ -249,7 +249,7 @@ public class TaskTool extends ToolCall {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC.replace("%s", subagentType));
             this.parameters(ToolCallParameters.of(
-                    ToolCallParameters.ParamSpec.of(String.class, "task_id", "Optional task ID. Omit for new tasks; provide an existing task_id to resume a previously launched subagent session.")
+                    ToolCallParameters.ParamSpec.of(String.class, "task_id", "A unique identifier for this task. If not provided, one will be auto-generated.")
                             .optional()
                             .defaultValue(() -> "sa-" + UUID.randomUUID().toString().substring(0, 8)),
                     ToolCallParameters.ParamSpec.of(String.class, "description", "A short (3-5 words) description of the task").required(),
