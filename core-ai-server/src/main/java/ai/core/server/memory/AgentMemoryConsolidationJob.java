@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
+import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -24,6 +25,7 @@ import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -57,6 +59,10 @@ public class AgentMemoryConsolidationJob implements Job {
     private static final int MESSAGE_LOOKAHEAD_SECONDS = 30;
     private static final int TRAJECTORY_MAX_CHARS = 500;
     public static final String DEFAULT_EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
+
+    // Distributed lock: prevents concurrent execution on multiple pods.
+    static final Duration JOB_LOCK_DURATION = Duration.ofMinutes(10);
+    static final String JOB_LOCK_ID = "agent-memory-consolidation";
 
     // V2 prompt: extract-only, no REFINE/MERGE.
     // Two-part output: trajectory summaries (Layer 3) + reusable patterns (Layer 2).
@@ -120,24 +126,85 @@ public class AgentMemoryConsolidationJob implements Job {
     AgentMemoryService agentMemoryService;
 
     @Inject
+    MongoCollection<JobLock> jobLockCollection;
+
+    @Inject
     SystemSettingsService systemSettingsService;
 
     public String extractionModel = DEFAULT_EXTRACTION_MODEL;
 
     @Override
     public void execute(JobContext context) {
-        var agentIds = collectAgentIds();
-        if (agentIds.isEmpty()) {
-            LOGGER.debug("no agents with traces found");
+        if (!tryAcquireLock()) {
+            LOGGER.info("another pod is already executing job={}, skipping", JOB_LOCK_ID);
             return;
         }
-
-        for (var agentId : agentIds) {
-            try {
-                processAgent(agentId);
-            } catch (Exception e) {
-                LOGGER.error("failed to consolidate memory for agent={}", agentId, e);
+        try {
+            var agentIds = collectAgentIds();
+            if (agentIds.isEmpty()) {
+                LOGGER.debug("no agents with traces found");
+                return;
             }
+
+            for (var agentId : agentIds) {
+                try {
+                    processAgent(agentId);
+                } catch (Exception e) {
+                    LOGGER.error("failed to consolidate memory for agent={}", agentId, e);
+                }
+            }
+        } finally {
+            releaseLock();
+        }
+    }
+
+    // Acquires a distributed lock via MongoDB CAS.
+    // Only one pod succeeds per tick; the lock auto-releases after JOB_LOCK_DURATION.
+    boolean tryAcquireLock() {
+        var now = ZonedDateTime.now();
+        var leaseUntil = now.plus(JOB_LOCK_DURATION);
+
+        // CAS: update only if the lock is expired (lease_until <= now).
+        long updated = jobLockCollection.update(
+                Filters.and(
+                        Filters.eq("_id", JOB_LOCK_ID),
+                        Filters.lte("lease_until", now)
+                ),
+                Updates.combine(
+                        Updates.set("lease_until", leaseUntil),
+                        Updates.set("updated_at", now)
+                )
+        );
+        if (updated == 1) return true;
+
+        // Document may not exist yet (first run ever).
+        var existing = jobLockCollection.get(JOB_LOCK_ID);
+        if (existing == null) {
+            try {
+                var lock = new JobLock();
+                lock.id = JOB_LOCK_ID;
+                lock.leaseUntil = leaseUntil;
+                lock.updatedAt = now;
+                jobLockCollection.insert(lock);
+                return true;
+            } catch (Exception e) {
+                // Race lost — another pod created the document.
+                return false;
+            }
+        }
+
+        return false; // Lock is still held by another pod.
+    }
+
+    // Releases the lock so the next pod can claim it immediately.
+    void releaseLock() {
+        try {
+            jobLockCollection.update(
+                    Filters.eq("_id", JOB_LOCK_ID),
+                    Updates.set("lease_until", ZonedDateTime.now())
+            );
+        } catch (Exception e) {
+            LOGGER.warn("failed to release job lock, id={}", JOB_LOCK_ID, e);
         }
     }
 
