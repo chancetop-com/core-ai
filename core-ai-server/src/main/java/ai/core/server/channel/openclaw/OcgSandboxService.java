@@ -346,18 +346,22 @@ public class OcgSandboxService {
 
     private String runCommand(Sandbox sandbox, String command, int timeoutSeconds, boolean runInBackground) {
         var client = new SandboxClient(sandbox.ip(), sandbox.port(), timeoutSeconds);
-        var result = client.execute(ShellCommandTool.TOOL_NAME, JsonUtil.toJson(Map.of(
-                "command", command,
-                "timeout", timeoutSeconds,
-                "run_in_background", runInBackground)), null);
-        if (!result.isCompleted()) {
-            throw new RuntimeException(result.getResult());
+        try {
+            var result = client.execute(ShellCommandTool.TOOL_NAME, JsonUtil.toJson(Map.of(
+                    "command", command,
+                    "timeout", timeoutSeconds,
+                    "run_in_background", runInBackground)), null);
+            if (!result.isCompleted()) {
+                throw new RuntimeException(result.getResult());
+            }
+            var output = result.getResult();
+            if (isCommandFailure(output)) {
+                throw new RuntimeException(output);
+            }
+            return output != null ? output : "";
+        } finally {
+            client.close();
         }
-        var output = result.getResult();
-        if (isCommandFailure(output)) {
-            throw new RuntimeException(output);
-        }
-        return output != null ? output : "";
     }
 
     private boolean isCommandFailure(String output) {

@@ -48,6 +48,15 @@ public final class CustomHTTPClientImpl implements HTTPClient {
         timeoutInNano = timeout.toNanos();
     }
 
+    /**
+     * Close the underlying HTTP client resources (connection pool threads, dispatcher executor).
+     * Call this when the client is no longer needed to prevent thread leaks.
+     */
+    public void close() {
+        client.dispatcher().executorService().shutdown();
+        client.connectionPool().evictAll();
+    }
+
     @Override
     public HTTPResponse execute(HTTPRequest request) {
         var watch = new StopWatch();

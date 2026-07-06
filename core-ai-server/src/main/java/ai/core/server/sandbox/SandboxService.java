@@ -356,12 +356,16 @@ public class SandboxService {
         var port = sandbox.port();
         if (ip == null || port == 0) return;
         var client = new SandboxClient(ip, port, 30);
-        for (var id : serverIds) {
-            try {
-                client.stopMcpServer(id);
-            } catch (Exception e) {
-                LOGGER.warn("failed to stop mcp server in session sandbox: session={}, serverId={}: {}", sessionId, id, e.getMessage());
+        try {
+            for (var id : serverIds) {
+                try {
+                    client.stopMcpServer(id);
+                } catch (Exception e) {
+                    LOGGER.warn("failed to stop mcp server in session sandbox: session={}, serverId={}: {}", sessionId, id, e.getMessage());
+                }
             }
+        } finally {
+            client.close();
         }
     }
 
