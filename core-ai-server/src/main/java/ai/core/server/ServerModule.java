@@ -43,8 +43,12 @@ import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
 import ai.core.server.file.SharedFileDownloadController;
+import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.LLMProviderType;
+import ai.core.llm.LLMProviders;
 import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
 import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
+import ai.core.server.gateway.GatewayLLMProvider;
 import ai.core.server.gateway.GatewayProxyController;
 import ai.core.server.gateway.GatewayProxyService;
 import ai.core.server.gateway.GatewayResponsesChannelListener;
@@ -465,8 +469,8 @@ public class ServerModule extends Module {
         // fallback so secrets encrypted before configuring the dedicated key stay readable
         var gatewaySecretKey = property("gateway.secret.key").map(String::trim).filter(key -> !key.isBlank()).orElse(null);
         var gatewayLegacySecret = requiredProperty("sys.mongo.uri");
-        bind(gatewaySecretKey == null ? new GatewaySecretProtector(gatewayLegacySecret) : new GatewaySecretProtector(gatewaySecretKey, gatewayLegacySecret));
-        bind(GatewayRoutingEngine.class);
+        var gatewaySecretProtector = bind(gatewaySecretKey == null ? new GatewaySecretProtector(gatewayLegacySecret) : new GatewaySecretProtector(gatewaySecretKey, gatewayLegacySecret));
+        var gatewayRoutingEngine = bind(GatewayRoutingEngine.class);
         bind(GatewayModelDiscoveryService.class);
         bind(GatewayModelService.class);
         bind(GatewayProviderService.class);
@@ -496,6 +500,15 @@ public class ServerModule extends Module {
         gatewaySse.requireEventStreamAccept(HTTPMethod.POST, "/api/gateway/v1/chat/completions");
         gatewaySse.listen(HTTPMethod.POST, "/api/gateway/v1/responses", GatewayResponsesSseEvent.class, bind(GatewayResponsesChannelListener.class));
         gatewaySse.requireEventStreamAccept(HTTPMethod.POST, "/api/gateway/v1/responses");
+        // bridge agent runtime LLM calls onto gateway-managed providers; static property-based providers remain the fallback
+        var llmProviders = bean(LLMProviders.class);
+        var fallbackLLMProvider = llmProviders.getProviderTypes().isEmpty() ? null : llmProviders.getProvider();
+        var gatewayLLMConfig = fallbackLLMProvider == null ? new LLMProviderConfig(null, null, null) : new LLMProviderConfig(fallbackLLMProvider.config);
+        var gatewayLLMProvider = new GatewayLLMProvider(gatewayLLMConfig, gatewayRoutingEngine, gatewaySecretProtector, fallbackLLMProvider);
+        if (fallbackLLMProvider != null) gatewayLLMProvider.setTracer(fallbackLLMProvider.getTracer());
+        bind(gatewayLLMProvider);
+        llmProviders.addProvider(LLMProviderType.GATEWAY, gatewayLLMProvider);
+        llmProviders.setDefaultProvider(LLMProviderType.GATEWAY);
 
         api().service(SystemSettingsWebService.class, bind(SystemSettingsWebServiceImpl.class));
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));

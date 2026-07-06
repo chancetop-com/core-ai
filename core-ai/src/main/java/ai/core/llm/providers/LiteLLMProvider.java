@@ -78,6 +78,15 @@ public class LiteLLMProvider extends LLMProvider {
         return chatCompletionStream(dto, callback);
     }
 
+    /**
+     * Executes the completion transport directly, skipping the {@link LLMProvider} template
+     * (preprocess/tracing/postprocess). For delegating providers that already ran the template,
+     * e.g. the server gateway bridge; regular callers should use completionStream instead.
+     */
+    public CompletionResponse delegateCompletionStream(CompletionRequest dto, StreamingCallback callback) {
+        return doCompletionStream(dto, callback);
+    }
+
     @Override
     public EmbeddingResponse embeddings(EmbeddingRequest dto) {
         var req = new HTTPRequest(HTTPMethod.POST, url + "/embeddings");

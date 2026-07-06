@@ -9,7 +9,8 @@ public enum LLMProviderType {
     AZURE("azure"),
     AZURE_INFERENCE("azure-inference"),
     OPENROUTER("openrouter"),
-    LITELLM("litellm");
+    LITELLM("litellm"),
+    GATEWAY("gateway");
 
     private final String name;
 
