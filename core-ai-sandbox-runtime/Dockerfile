@@ -30,7 +30,16 @@ RUN pip install --no-cache-dir \
     pillow openpyxl nodriver weasyprint
 
 # Layer 3.5: uv (fast Python package manager with uvx runner)
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv && \
+    # uvx may not be installed as a separate binary in all versions;
+    # create a symlink if missing so MCP servers can exec("uvx") directly.
+    if ! command -v uvx >/dev/null 2>&1; then \
+        ln -sf "$(command -v uv)" /usr/local/bin/uvx; \
+        echo "Created uvx symlink -> $(command -v uv)"; \
+    else \
+        echo "uvx already installed at $(command -v uvx)"; \
+    fi && \
+    uvx --version 2>&1 | head -1
 
 # npm-installed node-gyp bundles its own gyp; replace Debian's hardcoded path
 RUN npm install -g node-gyp && \
