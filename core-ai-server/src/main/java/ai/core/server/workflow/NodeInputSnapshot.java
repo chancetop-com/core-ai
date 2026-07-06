@@ -52,7 +52,7 @@ final class NodeInputSnapshot {
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             if (entry.getValue() instanceof String selector) {
                 ctx.pool().resolve(selector)
-                    .ifPresent(value -> resolved.put(String.valueOf(entry.getKey()), coerce(value)));
+                    .ifPresent(resolvedValue -> resolved.put(String.valueOf(entry.getKey()), coerce(resolvedValue)));
             }
         }
         return resolved;
@@ -134,8 +134,8 @@ final class NodeInputSnapshot {
             .distinct()
             .toList()) {
             var input = new LinkedHashMap<String, Object>();
-            ctx.pool().resolve("nodes." + id + ".output").ifPresent(value -> input.put("output", coerce(value)));
-            ctx.pool().resolve("nodes." + id + ".artifacts").ifPresent(value -> input.put("artifacts", coerce(value)));
+            ctx.pool().resolve("nodes." + id + ".output").ifPresent(output -> input.put("output", coerce(output)));
+            ctx.pool().resolve("nodes." + id + ".artifacts").ifPresent(artifacts -> input.put("artifacts", coerce(artifacts)));
             result.put(id, input);
         }
         return result;

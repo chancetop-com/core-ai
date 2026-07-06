@@ -1,5 +1,61 @@
 # Sandbox Snapshot 机制设计
 
+## v1 实施范围（2026-07-06 收敛）
+
+本章是 v1 实施的**唯一优先依据**。下面第 1~20 章是完整版长期设计，继续保留；凡与本章冲突的地方（包括第 19 章旧的 v1 决策），v1 一律以本章为准，被裁剪的机制留给后续版本按需启用。
+
+### 简化依据
+
+复核现有实现后确认两个事实，使 v1 可以大幅裁剪：
+
+1. **sandbox 所有权本来就是 pod 内存级的**。`SandboxManager.activeSandboxes` 是每个 server pod 各自的内存 Map，sandbox 归创建它的 pod 所有，idle 清理（`SandboxCleanupJob` → `cleanupExpired()`）也只清理本 pod 内存中的条目，跨 pod 只有 K8s 孤儿清理兜底。完整版设计中的 lease 机制想解决的"多 pod 争夺 session 执行权"问题，现状本来就不存在解决方案，snapshot 只需不使现状更糟。
+2. **生产为 2 副本**，多 pod 竞态真实存在，但唯一需要防的是：pod A 上的旧 sandbox idle 超时后，把过期文件状态 capture 成"最新" snapshot，覆盖用户已在 pod B 上继续工作的成果。这个竞态用 `sandbox_epoch` 一个机制即可消灭，不需要 lease。
+
+### 相对完整版的裁剪
+
+| 完整版机制 | v1 决定 | 理由 |
+|------|------|------|
+| Lease（`owner_id` / `lease_token` / `lease_expires_at` / 续租） | **整体删除** | 现状即内存所有权，lease 解决的是当前不存在的问题 |
+| 多代 generation + fallback 链（保 2 代） | **只保 1 代**：新 snapshot 置 AVAILABLE 后异步删除上一代 | 不兼容类失败多代同样失败；损坏包已被 sha256 + 两阶段可见挡住 |
+| Mongo CAS dirty tracking | **pod 内存 boolean**：本 epoch 内执行过任意 sandbox 工具即视为 dirty | sandbox 是 pod 内存所有，内存标记天然正确 |
+| restore 失败阻断工具调用 + 用户显式选择 | **原地重试 1 次，仍失败则发 warning 事件 + 空 sandbox 继续** | 语义本就是 best-effort，不为罕见路径新增交互；重试挡住瞬时网络抖动 |
+| 前端改造（RESTORING 状态、选择 UI） | **零前端改动** | restore 完成后才发 `READY`；失败 warning 走现有事件渠道 |
+
+### v1 保留的正确性底线
+
+1. **`sandbox_epoch`**：每 session 一个 Mongo 计数文档，`ensureReady()` acquire 新 sandbox 时 `findAndModify` 自增。capture 开始前记录本 pod 持有的 epoch，置 AVAILABLE 时 CAS 校验 `epoch == 记录值`；若用户已在别的 pod 重建 sandbox（epoch 已被自增），过期 capture 的 CAS 失败，blob 作废丢弃。
+2. **两阶段可见**：Blob 上传成功 ≠ 可用；Mongo 状态 `UPLOADING → AVAILABLE` CAS 成功后才可被 restore 选中。
+3. **白名单 roots 打包 + sha256 校验 + `image_digest` / `runtime_major` 兼容检查**（不匹配视为无 eligible snapshot，空 sandbox 继续并记 warning）。
+4. **restore 成功（或确认无 eligible snapshot / 降级放弃）之后才发 `READY` 事件**——无感恢复的关键顺序约束。
+5. **capture 无论成败，sandbox 都必须照常 release**，不泄漏资源。
+
+### v1 组件与流程
+
+Runtime（sandbox 镜像内，新增 2 个接口）：
+
+- `POST /snapshot`：白名单 roots（`/tmp`、`/skill`）按排除规则打 tar.gz 流返回，附 manifest（文件数、字节数、sha256）。超过单包上限（压缩后 500MB 或 10000 个文件）直接报错拒绝，本次不产生 snapshot。
+- `POST /snapshot/restore`：接收 tar.gz 流，校验 sha256；解包前逐条目做路径逃逸检查（拒绝 `..`、越出 roots 的绝对路径、指向 roots 之外的 symlink）后解至 roots。
+
+Server（新增 `SandboxSnapshotService` + 两个钩子）：
+
+- release 钩子：idle release 时，若本 epoch 内存 dirty 为 true → `capture` → Blob 上传 → Mongo CAS 置 AVAILABLE → 异步删除上一代（文档 + blob）→ release。
+- `LazySandbox.ensureReady()` 钩子：acquire → epoch 自增 → 查该 session 最新 AVAILABLE 且 `image_digest` 匹配的 snapshot → 下载 → restore（失败原地重试 1 次）→ 成功或无 snapshot 才发 `READY`；两次失败 → warning 事件（"未能恢复上次的工作文件"）+ 空 sandbox 发 `READY` 继续。
+
+Mongo：
+
+- `sandbox_snapshots`：`snapshot_id, session_id, user_id, epoch, status(UPLOADING/AVAILABLE/DELETED), blob_key, sha256, size, image_digest, roots, created_at, expires_at(14 天)`。
+- epoch 计数文档：`{session_id, epoch}`。
+- ⚠️ 部署要求：新 collection 必须新增 index migration（`session_id + status + created_at`），dev 环境 notablescan 下缺索引会直接 500。
+
+Blob：私有 container，key = `{user_id}/{session_id}/{snapshot_id}.tar.gz`；restore 时校验文档 `user_id` 与当前用户一致。
+
+清理：
+
+- session 删除：snapshot 文档标记 DELETED + 删 blob；blob 删除失败由 cleanup job 周期重试。
+- `expires_at` 过期的文档与 blob 由 cleanup job 兜底删除，防孤儿。
+
+运维开关：提供一个系统级 kill switch 配置（关闭后 capture/restore 全部跳过，行为退回当前空 sandbox 模式），保证线上出问题可以即时止血。
+
 ## 1. 背景
 
 当前 Sandbox 的生命周期以节省资源为优先：会话创建时只挂 `LazySandbox`，第一次执行 shell、python、文件读写类工具时才真正创建 sandbox；会话空闲、关闭或 run 结束后会 release sandbox，避免长时间占用 Pod / warm pool / Docker 容器。
@@ -1510,7 +1566,9 @@ Blob/Mongo 异常：
 - canary restore job。
 - runbook 和 kill switch。
 
-## 19. 推荐 v1 决策
+## 19. 推荐 v1 决策（已过时，被顶部"v1 实施范围"取代）
+
+> ⚠️ 本章是 2026-06 的初版建议，2026-07-06 复核后已被文档顶部"v1 实施范围"一章取代。主要差异：只保留 1 代 snapshot（原 2 代）、内存 dirty（原 CAS dirty）、restore 失败重试 1 次后降级继续（原 fail 阻断）、单包上限 500MB / 保留 14 天（原 256MB / 7 天）、无 lease。以下内容仅作历史记录保留。
 
 - Snapshot roots：`/tmp`、`/skill`。
 - Archive：`tar.gz`。

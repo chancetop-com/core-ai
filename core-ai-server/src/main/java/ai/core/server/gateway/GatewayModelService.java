@@ -292,8 +292,8 @@ public class GatewayModelService {
 
     static List<String> normalizeEndpointTypes(List<String> endpointTypes) {
         var values = endpointTypes.stream()
-                .filter(value -> value != null && !value.isBlank())
-                .map(value -> normalizeEndpointType(value.trim()))
+                .filter(endpointType -> endpointType != null && !endpointType.isBlank())
+                .map(endpointType -> normalizeEndpointType(endpointType.trim()))
                 .distinct()
                 .toList();
         if (values.isEmpty()) throw new BadRequestException("endpointTypes must include at least one endpoint");

@@ -46,11 +46,11 @@ public class SandboxManager {
 
     public Optional<Sandbox> attach(String sandboxId, SandboxConfig config, String sessionId, String userId) {
         var sandbox = provider.attach(sandboxId, config, sessionId, userId);
-        sandbox.ifPresent(value -> {
-            var entry = new SandboxEntry(value, sessionId, userId, config, Instant.now());
-            activeSandboxes.put(value.getId(), entry);
+        sandbox.ifPresent(attached -> {
+            var entry = new SandboxEntry(attached, sessionId, userId, config, Instant.now());
+            activeSandboxes.put(attached.getId(), entry);
             acquireCount.incrementAndGet();
-            LOGGER.info("sandbox attached: id={}, sessionId={}, activeCount={}", value.getId(), sessionId, activeSandboxes.size());
+            LOGGER.info("sandbox attached: id={}, sessionId={}, activeCount={}", attached.getId(), sessionId, activeSandboxes.size());
         });
         return sandbox;
     }

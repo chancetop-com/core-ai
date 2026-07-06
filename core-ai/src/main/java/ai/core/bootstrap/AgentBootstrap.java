@@ -309,7 +309,7 @@ public class AgentBootstrap {
         for (var key : props.propertyNames()) {
             if (key.startsWith(extraBodyPrefix) && key.length() > extraBodyPrefix.length()) {
                 var modelName = key.substring(extraBodyPrefix.length());
-                props.property(key).ifPresent(value -> config.addModelExtraBody(modelName, value));
+                props.property(key).ifPresent(extraBody -> config.addModelExtraBody(modelName, extraBody));
             }
         }
     }
