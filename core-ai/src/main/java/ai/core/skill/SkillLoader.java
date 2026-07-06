@@ -219,7 +219,7 @@ public class SkillLoader {
             LOGGER.warn("Skill name '{}' does not follow naming convention (expected: ^[a-z0-9]+(-[a-z0-9]+)*$), loading anyway", name);
         }
         if (!name.equals(directoryName)) {
-            LOGGER.warn("Skill name '{}' does not match directory name '{}', loading with skill name", name, directoryName);
+            LOGGER.debug("Skill name '{}' does not match directory name '{}', loading with skill name", name, directoryName);
         }
         return true;
     }
