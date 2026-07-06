@@ -108,10 +108,31 @@ public class GatewayRoutingEngine {
         cache = null;
     }
 
+    public boolean hasEnabledProviders() {
+        return !snapshot().providers.isEmpty();
+    }
+
+    /**
+     * Whether any gateway model (enabled or not) is registered under this modelId —
+     * lets callers distinguish "never registered" from "registered but disabled".
+     */
+    public boolean knowsModel(String modelId) {
+        if (!hasText(modelId)) return false;
+        return snapshot().models.stream().anyMatch(model -> modelId.equals(model.modelId));
+    }
+
+    /**
+     * Whether this modelId currently resolves to an enabled model on an enabled provider.
+     */
+    public boolean isRoutable(String modelId) {
+        if (!hasText(modelId)) return false;
+        return registeredModels(snapshot(), null).stream().anyMatch(route -> modelId.equals(route.model.modelId));
+    }
+
     private Snapshot snapshot() {
         var current = cache;
         if (current != null && System.nanoTime() - current.createdAt < CACHE_TTL_NANOS) return current;
-        var refreshed = new Snapshot(enabledProviders(), enabledModels(), System.nanoTime());
+        var refreshed = new Snapshot(enabledProviders(), allModels(), System.nanoTime());
         cache = refreshed;
         return refreshed;
     }
@@ -119,6 +140,7 @@ public class GatewayRoutingEngine {
     private List<RegisteredGatewayModel> registeredModels(Snapshot snapshot, GatewayEndpointType endpoint) {
         var providersById = providersById(snapshot.providers);
         return snapshot.models.stream()
+                .filter(model -> !Boolean.FALSE.equals(model.enabled))
                 .filter(model -> hasText(model.modelId))
                 .filter(model -> hasText(model.upstreamModel))
                 .filter(model -> endpoint == null || supportsEndpoint(model, endpoint))
@@ -173,14 +195,12 @@ public class GatewayRoutingEngine {
                 .toList();
     }
 
-    private List<GatewayModelConfig> enabledModels() {
+    private List<GatewayModelConfig> allModels() {
         if (gatewayModelCollection == null) return List.of();
         var query = new Query();
         query.filter = Filters.empty();
         query.sort = Sorts.ascending("model_id");
-        return gatewayModelCollection.find(query).stream()
-                .filter(model -> !Boolean.FALSE.equals(model.enabled))
-                .toList();
+        return gatewayModelCollection.find(query);
     }
 
     private void addLegacyModel(List<GatewayPublishedModel> data, Set<String> seen, GatewayProviderConfig provider, String model) {

@@ -35,7 +35,7 @@
 
 Runtime（sandbox 镜像内，新增 2 个接口）：
 
-- `POST /snapshot`：白名单 roots（`/tmp`、`/skill`）按排除规则打 tar.gz 流返回，附 manifest（文件数、字节数、sha256、`runtime_version`）。超过单包上限（压缩后 500MB 或 10000 个文件）直接报错拒绝，本次不产生 snapshot。
+- `POST /snapshot`：白名单 roots（`/tmp`、`/skill`、`/workspace`——后者 2026-07-06 起纳入）按排除规则打 tar.gz 流返回，附 manifest（文件数、字节数、sha256、`runtime_version`）。超过单包上限（压缩后 500MB 或 10000 个文件）直接报错拒绝，本次不产生 snapshot。
 - `POST /snapshot/restore`：接收 tar.gz 流，校验 sha256；解包前逐条目做路径逃逸检查（拒绝 `..`、越出 roots 的绝对路径、指向 roots 之外的 symlink）后解至 roots。
 - `GET /health` 扩展返回 `runtime_version`（编译期注入常量），server restore 前用它做 `runtime_major` 比对。
 
@@ -227,9 +227,9 @@ CAPTURING
 |------|---------|------|
 | `/tmp` | 保存 | 用户生成文件、脚本中间产物、`pip install --user` 依赖通常在这里 |
 | `/skill` | 保存 | `ServerSkillTool` materialize 的 skill 和资源路径需要继续有效 |
-| `/workspace` | 默认不保存 | 当前设计中 Docker `/workspace` 是只读 bind，K8s/AgentSandbox 也不应依赖 writable workspace |
+| `/workspace` | 保存（2026-07-06 修订） | runtime 启动时创建该目录，且它是 bash/python 工具的默认 cwd——agent 相对路径产物落在这里，不保存则 resume 丢主要工作目录 |
 
-如果未来要支持 writable workspace，应单独引入 `/workspace` writable volume，并把它加入可配置 snapshot roots，而不是在 v1 中默认保存。
+> 2026-07-06 修订说明：原裁剪理由"Docker `/workspace` 是只读 bind"仅对本地 Docker provider 成立；K8s/AgentSandbox 环境该目录原本不存在，导致裸跑 bash 报 chdir 错误。现 runtime 启动时 `MkdirAll(/workspace)` 并将其纳入快照 roots。本地 Docker 的 bind 目录被打包由 500MB/10000 文件上限兜底。
 
 注意：`/skill` 不是普通缓存目录。它来自 server 侧 skill materialization，restore 时必须确认 skill identity 与内容 hash 是否仍可接受，不能只靠路径存在就认为安全。
 

@@ -87,6 +87,13 @@ public class LiteLLMProvider extends LLMProvider {
         return doCompletionStream(dto, callback);
     }
 
+    /**
+     * Whether this model name selects the /responses transport instead of /chat/completions.
+     */
+    public static boolean isResponsesModel(String model) {
+        return LiteLLMResponsesBridge.isResponsesModel(model);
+    }
+
     @Override
     public EmbeddingResponse embeddings(EmbeddingRequest dto) {
         var req = new HTTPRequest(HTTPMethod.POST, url + "/embeddings");

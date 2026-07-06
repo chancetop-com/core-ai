@@ -133,7 +133,9 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
 
     @Override
     public String version() {
-        return "20260611001";
+        // 20260611001 is recorded on deployed envs by SchemaMigrationVAgentRunTraceIndex (version collision);
+        // renumbered so this migration actually runs — agent upserts are idempotent, re-running is safe
+        return "20260611002";
     }
 
     @Override

@@ -9,7 +9,9 @@ import core.framework.mongo.Mongo;
 public class SchemaMigrationVMemoryLayerIndex implements SchemaMigration {
     @Override
     public String version() {
-        return "20260706001";
+        // 20260706001 is recorded on dev by SchemaMigrationVGatewayModelModelIdIndex (same-day collision);
+        // renumbered so this index migration actually runs
+        return "20260706003";
     }
 
     @Override

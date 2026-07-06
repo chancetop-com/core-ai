@@ -45,7 +45,9 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
 
     @Override
     public String version() {
-        return "20260706001";
+        // 20260706001 is recorded on dev by SchemaMigrationVGatewayModelModelIdIndex (same-day collision);
+        // renumbered so this migration actually runs — the agent upsert is idempotent, re-running is safe
+        return "20260706002";
     }
 
     @Override

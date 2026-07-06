@@ -27,11 +27,14 @@ import static ai.core.server.gateway.GatewaySupport.hasText;
  * Bridges the agent runtime {@link LLMProvider} interface onto gateway-managed providers:
  * requests are routed by gateway modelId to the configured upstream, so agents can run
  * any model registered in the gateway. Falls back to the statically configured provider
- * when the gateway has no matching route.
+ * only when the gateway does not know the model at all — a registered-but-disabled model
+ * stays blocked so admin enable/disable is enforced on the agent path too.
  */
 public class GatewayLLMProvider extends LLMProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(GatewayLLMProvider.class);
     private static final int MAX_CACHED_UPSTREAM_PROVIDERS = 32;
+    // model prefix that makes LiteLLMProvider pick the /responses transport; stripped before sending upstream
+    private static final String RESPONSES_MODEL_PREFIX = "responses/";
 
     private final GatewayRoutingEngine routingEngine;
     private final GatewaySecretProtector secretProtector;
@@ -45,6 +48,16 @@ public class GatewayLLMProvider extends LLMProvider {
         this.fallback = fallback;
     }
 
+    /**
+     * Deferred on purpose: the base template calls preprocess before doCompletionStream,
+     * when request.model is still the gateway alias. Model-specific request rewrites
+     * (o1 system-role conversion, gpt-5 temperature) must run against the real upstream
+     * model name, so doCompletionStream applies {@link #applyPreprocess} after routing.
+     */
+    @Override
+    public void preprocess(CompletionRequest request) {
+    }
+
     @Override
     protected CompletionResponse doCompletion(CompletionRequest request) {
         return doCompletionStream(request, new DefaultStreamingCallback());
@@ -52,16 +65,29 @@ public class GatewayLLMProvider extends LLMProvider {
 
     @Override
     protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
-        var route = resolveRoute(request.model);
-        if (route == null) return fallbackCompletionStream(request, callback);
-        if ("azure".equals(route.provider().type)) {
-            throw new BadRequestException("azure gateway provider is not supported for agent runtime yet: " + route.provider().name);
+        // fast path: gateway unconfigured deployments go straight to the static provider,
+        // without exception-driven routing attempts or log noise on every call
+        if (!routingEngine.hasEnabledProviders()) return fallbackCompletionStream(request, callback);
+        var resolved = resolveRoute(request.model);
+        if (resolved == null) return fallbackCompletionStream(request, callback);
+        var provider = resolved.route().provider();
+        if ("azure".equals(provider.type)) {
+            if (fallback != null) {
+                LOGGER.warn("azure gateway provider is not supported for agent runtime yet, falling back to static LLM provider, model={}, provider={}", request.model, provider.name);
+                return fallbackCompletionStream(request, callback);
+            }
+            throw new BadRequestException("azure gateway provider is not supported for agent runtime yet: " + provider.name);
         }
-        var upstream = upstreamProvider(route.provider());
-        request.model = route.upstreamModel();
-        // re-apply model-specific request adjustments now that the upstream model name is known
-        preprocess(request);
-        return upstream.delegateCompletionStream(request, callback);
+        var upstream = upstreamProvider(provider);
+        var requestedModel = request.model;
+        try {
+            request.model = upstreamModel(resolved);
+            applyPreprocess(request);
+            return upstream.delegateCompletionStream(request, callback);
+        } finally {
+            // callers keep their model invariant: trace/persistence/retries must see the requested alias
+            request.model = requestedModel;
+        }
     }
 
     @Override
@@ -87,9 +113,18 @@ public class GatewayLLMProvider extends LLMProvider {
         return "gateway";
     }
 
-    private GatewayRoute resolveRoute(String model) {
+    private void applyPreprocess(CompletionRequest request) {
+        super.preprocess(request);
+    }
+
+    private ResolvedRoute resolveRoute(String model) {
+        // a registered-but-disabled model must stay blocked; without this check it could still be
+        // served by legacy prefix routing or the static fallback, bypassing the admin's disable
+        if (routingEngine.knowsModel(model) && !routingEngine.isRoutable(model)) {
+            throw new BadRequestException("gateway model is disabled: " + model);
+        }
         try {
-            return routingEngine.route(model, GatewayEndpointType.CHAT_COMPLETIONS);
+            return new ResolvedRoute(routingEngine.route(model, GatewayEndpointType.CHAT_COMPLETIONS), false);
         } catch (BadRequestException e) {
             var responsesRoute = responsesRoute(model);
             if (responsesRoute != null) return responsesRoute;
@@ -99,21 +134,29 @@ public class GatewayLLMProvider extends LLMProvider {
         }
     }
 
-    // responses-only models still go through LiteLLMProvider, whose responses bridge picks the transport by model name
-    private GatewayRoute responsesRoute(String model) {
-        if (!hasText(model)) return null;
+    private ResolvedRoute responsesRoute(String model) {
         try {
-            return routingEngine.route(model, GatewayEndpointType.RESPONSES);
+            return new ResolvedRoute(routingEngine.route(model, GatewayEndpointType.RESPONSES), true);
         } catch (BadRequestException e) {
             return null;
         }
     }
 
+    private String upstreamModel(ResolvedRoute resolved) {
+        var upstreamModel = resolved.route().upstreamModel();
+        if (!resolved.responses() || LiteLLMProvider.isResponsesModel(upstreamModel)) return upstreamModel;
+        return RESPONSES_MODEL_PREFIX + upstreamModel;
+    }
+
     private CompletionResponse fallbackCompletionStream(CompletionRequest request, StreamingCallback callback) {
+        if (fallback == null) {
+            throw new BadRequestException("no LLM provider available for model, gateway has no enabled providers and no static provider is configured: " + request.model);
+        }
         if (fallback instanceof LiteLLMProvider liteLLMProvider) {
+            applyPreprocess(request);
             return liteLLMProvider.delegateCompletionStream(request, callback);
         }
-        throw new IllegalStateException("unsupported fallback LLM provider: " + (fallback == null ? "none" : fallback.name()));
+        throw new IllegalStateException("unsupported fallback LLM provider: " + fallback.name());
     }
 
     private LiteLLMProvider upstreamProvider(GatewayProviderConfig provider) {
@@ -126,11 +169,15 @@ public class GatewayLLMProvider extends LLMProvider {
     }
 
     LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider) {
-        var upstreamConfig = new LLMProviderConfig(config);
+        // fresh config: the static provider's extra-body/model settings must not leak to gateway upstreams
+        var upstreamConfig = new LLMProviderConfig(null, config.getTemperature(), null);
         if (provider.timeoutSeconds != null) upstreamConfig.setTimeout(provider.timeoutSeconds);
         if (provider.connectTimeoutSeconds != null) upstreamConfig.setConnectTimeout(provider.connectTimeoutSeconds);
         if (hasText(provider.requestExtraBody)) upstreamConfig.setRequestExtraBody(provider.requestExtraBody);
         var apiKey = secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);
         return new LiteLLMProvider(upstreamConfig, provider.baseUrl, apiKey == null ? "" : apiKey);
+    }
+
+    private record ResolvedRoute(GatewayRoute route, boolean responses) {
     }
 }

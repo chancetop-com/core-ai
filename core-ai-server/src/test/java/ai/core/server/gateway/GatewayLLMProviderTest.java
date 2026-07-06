@@ -28,15 +28,29 @@ import static org.mockito.Mockito.when;
 
 class GatewayLLMProviderTest {
     @Test
-    void routesGatewayModelIdToUpstreamModel() {
+    void routesGatewayModelIdToUpstreamModelAndRestoresRequestedModel() {
         var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
         var gateway = gateway(List.of(provider), List.of(model("fast-chat", provider.id, "deepseek/deepseek-v4-flash")), null);
+        var request = request("fast-chat");
 
-        var response = gateway.completion(request("fast-chat"));
+        var response = gateway.completion(request);
 
         assertEquals("ok", response.choices.getFirst().message.content);
-        assertEquals("deepseek/deepseek-v4-flash", gateway.upstream.captured.model);
+        assertEquals("deepseek/deepseek-v4-flash", gateway.upstream.capturedModel);
         assertEquals("https://litellm.example.com", gateway.upstreamBaseUrl);
+        assertEquals("fast-chat", request.model);
+    }
+
+    @Test
+    void routesResponsesOnlyModelThroughResponsesTransport() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var responsesModel = model("deep-research", provider.id, "gpt-5.2-pro");
+        responsesModel.endpointTypes = List.of("responses");
+        var gateway = gateway(List.of(provider), List.of(responsesModel), null);
+
+        gateway.completion(request("deep-research"));
+
+        assertEquals("responses/gpt-5.2-pro", gateway.upstream.capturedModel);
     }
 
     @Test
@@ -47,7 +61,7 @@ class GatewayLLMProviderTest {
         var response = gateway.completion(request("gpt-4o"));
 
         assertEquals("answered by fallback", response.choices.getFirst().message.content);
-        assertEquals("gpt-4o", fallback.captured.model);
+        assertEquals("gpt-4o", fallback.capturedModel);
     }
 
     @Test
@@ -59,7 +73,18 @@ class GatewayLLMProviderTest {
         var response = gateway.completion(request("legacy-model"));
 
         assertEquals("answered by fallback", response.choices.getFirst().message.content);
-        assertEquals("legacy-model", fallback.captured.model);
+        assertEquals("legacy-model", fallback.capturedModel);
+    }
+
+    @Test
+    void disabledModelStaysBlockedInsteadOfFallingBack() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var disabled = model("fast-chat", provider.id, "deepseek/deepseek-v4-flash");
+        disabled.enabled = false;
+        var fallback = new CapturingLiteLLMProvider(new LLMProviderConfig(null, null, null), "https://static.example.com", "answered by fallback");
+        var gateway = gateway(List.of(provider), List.of(disabled), fallback);
+
+        assertThrows(BadRequestException.class, () -> gateway.completion(request("fast-chat")));
     }
 
     @Test
@@ -71,7 +96,18 @@ class GatewayLLMProviderTest {
     }
 
     @Test
-    void rejectsAzureGatewayProvider() {
+    void azureRouteFallsBackToStaticProviderWhenAvailable() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com");
+        var fallback = new CapturingLiteLLMProvider(new LLMProviderConfig(null, null, null), "https://static.example.com", "answered by fallback");
+        var gateway = gateway(List.of(provider), List.of(model("azure-chat", provider.id, "my-deployment")), fallback);
+
+        var response = gateway.completion(request("azure-chat"));
+
+        assertEquals("answered by fallback", response.choices.getFirst().message.content);
+    }
+
+    @Test
+    void azureRouteWithoutFallbackIsRejected() {
         var provider = provider("azure-1", "azure", "https://example.openai.azure.com");
         var gateway = gateway(List.of(provider), List.of(model("azure-chat", provider.id, "my-deployment")), null);
 
@@ -142,7 +178,7 @@ class GatewayLLMProviderTest {
 
     private static final class CapturingLiteLLMProvider extends LiteLLMProvider {
         final String content;
-        CompletionRequest captured;
+        String capturedModel;
 
         CapturingLiteLLMProvider(LLMProviderConfig config, String url, String content) {
             super(config, url, "sk-test");
@@ -151,7 +187,7 @@ class GatewayLLMProviderTest {
 
         @Override
         public CompletionResponse delegateCompletionStream(CompletionRequest dto, StreamingCallback callback) {
-            captured = dto;
+            capturedModel = dto.model;
             return response(content);
         }
     }

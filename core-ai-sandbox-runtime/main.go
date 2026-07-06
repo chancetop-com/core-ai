@@ -171,6 +171,12 @@ func main() {
 		log.Printf("warning: failed to create skill base dir %s: %v", skillBaseDir, err)
 	}
 
+	// The workspace dir is the default cwd for bash/python tools; without it every
+	// bare command fails with chdir errors on providers that don't mount /workspace.
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		log.Printf("warning: failed to create workspace dir %s: %v", workspaceDir, err)
+	}
+
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/ocg/callback/", handleOcgCallbackProxy)
 	http.HandleFunc("/execute", handleExecute)

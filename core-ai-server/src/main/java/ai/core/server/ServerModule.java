@@ -46,6 +46,7 @@ import ai.core.server.file.SharedFileDownloadController;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
+import ai.core.telemetry.LLMTracer;
 import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
 import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
 import ai.core.server.gateway.GatewayLLMProvider;
@@ -505,7 +506,16 @@ public class ServerModule extends Module {
         var fallbackLLMProvider = llmProviders.getProviderTypes().isEmpty() ? null : llmProviders.getProvider();
         var gatewayLLMConfig = fallbackLLMProvider == null ? new LLMProviderConfig(null, null, null) : new LLMProviderConfig(fallbackLLMProvider.config);
         var gatewayLLMProvider = new GatewayLLMProvider(gatewayLLMConfig, gatewayRoutingEngine, gatewaySecretProtector, fallbackLLMProvider);
-        if (fallbackLLMProvider != null) gatewayLLMProvider.setTracer(fallbackLLMProvider.getTracer());
+        if (fallbackLLMProvider != null) {
+            gatewayLLMProvider.setTracer(fallbackLLMProvider.getTracer());
+        } else {
+            try {
+                // gateway-only deployment: pick up the telemetry tracer directly so gateway-routed calls stay traced
+                gatewayLLMProvider.setTracer(bean(LLMTracer.class));
+            } catch (Error e) {
+                LOGGER.info("no LLMTracer configured, gateway LLM calls run untraced");
+            }
+        }
         bind(gatewayLLMProvider);
         llmProviders.addProvider(LLMProviderType.GATEWAY, gatewayLLMProvider);
         llmProviders.setDefaultProvider(LLMProviderType.GATEWAY);

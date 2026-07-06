@@ -48,11 +48,13 @@ type snapshotError struct {
 }
 
 // liveSnapshotRoots returns the whitelist of directories captured and restored.
-// /workspace is intentionally excluded: it is a read-only bind in the current design.
+// /workspace is included since 2026-07-06: the runtime creates it at startup and
+// it is the default cwd for bash/python tools, so agent files land there.
 func liveSnapshotRoots() []snapshotRoot {
 	return []snapshotRoot{
 		{Name: "tmp", Target: os.TempDir(), ArchivePrefix: "roots/tmp"},
 		{Name: "skill", Target: skillBaseDir, ArchivePrefix: "roots/skill"},
+		{Name: "workspace", Target: workspaceDir, ArchivePrefix: "roots/workspace"},
 	}
 }
 

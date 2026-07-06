@@ -26,13 +26,15 @@ public class SchemaMigrationManager {
     MongoCollection<SchemaVersion> schemaVersionCollection;
 
     public void migrate() {
+        var migrations = migrations();
+        validateUniqueVersions(migrations);
         var applied = schemaVersionCollection.find(com.mongodb.client.model.Filters.exists("_id"))
             .stream()
             .map(v -> v.id)
             .collect(Collectors.toSet());
         Set<String> runInThisSession = new HashSet<>();
 
-        for (var migration : migrations()) {
+        for (var migration : migrations) {
             if (applied.contains(migration.version()) || runInThisSession.contains(migration.version())) {
                 LOGGER.info("skip migration, version={}, description={}", migration.version(), migration.description());
                 continue;
@@ -56,6 +58,16 @@ public class SchemaMigrationManager {
             runInThisSession.add(migration.version());
 
             LOGGER.info("migration completed, version={}", migration.version());
+        }
+    }
+
+    // duplicate versions make later migrations silently skip forever (seen twice on dev) — fail fast at startup
+    private void validateUniqueVersions(List<SchemaMigration> migrations) {
+        Set<String> versions = new HashSet<>();
+        for (var migration : migrations) {
+            if (!versions.add(migration.version())) {
+                throw new Error("duplicate schema migration version, assign a new unique version: version=" + migration.version() + ", migration=" + migration.getClass().getSimpleName());
+            }
         }
     }
 

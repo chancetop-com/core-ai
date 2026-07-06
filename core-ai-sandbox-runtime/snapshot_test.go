@@ -195,3 +195,13 @@ func TestSnapshotFileCountCap(t *testing.T) {
 		t.Fatal("expected file count cap error")
 	}
 }
+
+func TestLiveSnapshotRootsCoverWorkspace(t *testing.T) {
+	prefixes := map[string]string{}
+	for _, root := range liveSnapshotRoots() {
+		prefixes[root.Name] = root.ArchivePrefix
+	}
+	if prefixes["tmp"] != "roots/tmp" || prefixes["skill"] != "roots/skill" || prefixes["workspace"] != "roots/workspace" {
+		t.Fatalf("unexpected snapshot roots whitelist: %v", prefixes)
+	}
+}
