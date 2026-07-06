@@ -62,6 +62,11 @@ public final class SandboxConstants {
     // overhead. Once the server is ready the normal tool / request timeouts apply.
     public static final int MCP_STARTUP_TIMEOUT_SECONDS = 180;
 
+    // Per-server timeout used during session creation (POST /api/sessions). Sessions
+    // should not block for the full 180s per MCP server — use a shorter timeout so
+    // that a stuck MCP server does not cause session creation to take minutes.
+    public static final int SESSION_MCP_STARTUP_TIMEOUT_SECONDS = 30;
+
     private SandboxConstants() {
     }
 }

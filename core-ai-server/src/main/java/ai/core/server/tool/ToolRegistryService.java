@@ -7,6 +7,7 @@ import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolProvider.RefreshPolicy;
 import ai.core.mcp.client.McpServerConfig;
 import ai.core.sandbox.Sandbox;
+import ai.core.sandbox.SandboxConstants;
 import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -624,6 +625,11 @@ public class ToolRegistryService {
     // in the session's McpClientManager (starts the MCP child process on the session
     // sandbox the first time). Returns the session manager if any were registered,
     // else null so the resolver falls through to the global manager.
+    // <p>
+    // Uses a shorter per-server timeout (SESSION_MCP_STARTUP_TIMEOUT_SECONDS) so a
+    // slow/failing MCP server does not block session creation for minutes. If a server
+    // fails to start it is simply skipped — the session can still proceed without it.
+    // Multiple servers are started in parallel to minimise the overall delay.
     private McpClientManager prepareSessionMcpServers(List<ToolRef> toolRefs, String sessionId, Sandbox sandbox) {
         var sandboxHostedEntries = collectSandboxHostedEntries(toolRefs);
         if (sandboxHostedEntries.isEmpty()) return null;
@@ -634,10 +640,21 @@ public class ToolRegistryService {
         var sessionMgr = sandboxService != null ? sandboxService.getOrCreateSessionMcpManager(sessionId) : null;
         if (sessionMgr == null) return null;
 
-        for (var entry : sandboxHostedEntries) {
-            var registered = mcpConnectionManager.registerOnSession(entry, sessionMgr, sandbox);
-            if (registered && sandboxService != null) sandboxService.recordSessionMcpServer(sessionId, entry.id);
-        }
+        var startupTimeout = SandboxConstants.SESSION_MCP_STARTUP_TIMEOUT_SECONDS;
+
+        // Start MCP servers in parallel so multiple slow servers don't compound sequentially.
+        sandboxHostedEntries.parallelStream().forEach(entry -> {
+            try {
+                var registered = mcpConnectionManager.registerOnSession(entry, sessionMgr, sandbox, startupTimeout);
+                if (registered && sandboxService != null) {
+                    sandboxService.recordSessionMcpServer(sessionId, entry.id);
+                }
+            } catch (Exception e) {
+                LOGGER.warn("failed to start sandbox-hosted mcp server during session creation, id={}, name={}: {}",
+                        entry.id, entry.name, e.getMessage());
+            }
+        });
+
         return sessionMgr;
     }
 

@@ -73,6 +73,12 @@ class McpServerConnectionManager {
     // MCP process on the given session sandbox. Each session gets its own manager
     // and child process so concurrent sessions don't collide.
     boolean registerOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox) {
+        return registerOnSession(entry, sessionManager, sandbox, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+    }
+
+    // Register with a specific startup timeout — session creation uses a shorter timeout
+    // so a stuck MCP server does not block session creation for minutes.
+    boolean registerOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox, int startupTimeoutSeconds) {
         if (!isSandboxHosted(entry.config)) return false;
         if (sessionManager.hasServer(entry.id)) return true;
         var ip = sandbox.ip();
@@ -81,11 +87,11 @@ class McpServerConnectionManager {
             LOGGER.warn("session sandbox ip/port not available for mcp server {}", entry.id);
             return false;
         }
-        var sandboxClient = new SandboxClient(ip, port, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+        var sandboxClient = new SandboxClient(ip, port, startupTimeoutSeconds);
         try {
             var serverConfig = buildSandboxBackedConfig(entry, sandboxClient);
             sessionManager.addServer(serverConfig);
-            LOGGER.info("registered sandbox-hosted mcp server on session sandbox, id={}, ip={}", entry.id, ip);
+            LOGGER.info("registered sandbox-hosted mcp server on session sandbox, id={}, ip={}, startupTimeout={}s", entry.id, ip, startupTimeoutSeconds);
             return true;
         } catch (Exception e) {
             LOGGER.warn("failed to register sandbox-hosted mcp server on session, id={}: {}", entry.id, e.getMessage());
