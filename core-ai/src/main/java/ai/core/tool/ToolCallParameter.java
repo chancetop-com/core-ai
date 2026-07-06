@@ -1,6 +1,7 @@
 package ai.core.tool;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * @author stephen
@@ -21,6 +22,7 @@ public class ToolCallParameter {
     List<ToolCallParameter> items;
     List<String> itemEnums;
     boolean flatten;
+    Supplier<Object> defaultValue;
 
     public String getName() {
         return name;
@@ -64,6 +66,14 @@ public class ToolCallParameter {
 
     public void setFlatten(boolean flatten) {
         this.flatten = flatten;
+    }
+
+    public Supplier<Object> getDefaultValue() {
+        return defaultValue;
+    }
+
+    public void setDefaultValue(Supplier<Object> defaultValue) {
+        this.defaultValue = defaultValue;
     }
 
     public List<ToolCallParameter> getItems() {

@@ -11,6 +11,7 @@ import ai.core.utils.JsonSchemaUtil;
 import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -186,19 +187,44 @@ public abstract class ToolCall {
         return JsonSchemaUtil.toJsonSchema(parameters);
     }
 
+    /**
+     * Fills missing, null, or blank parameters with their declared default values.
+     * Returns parameter names that remain missing (required, no default available).
+     */
+    public List<String> normalizeArguments(Map<String, Object> args) {
+        if (parameters == null || parameters.isEmpty()) return List.of();
+        var stillMissing = new ArrayList<String>();
+        for (var param : parameters) {
+            var value = args.get(param.getName());
+            if (value == null || (value instanceof String s && s.isBlank())) {
+                var def = param.getDefaultValue();
+                if (def != null) {
+                    args.put(param.getName(), def.get());
+                } else if (Boolean.TRUE.equals(param.isRequired())) {
+                    stillMissing.add(param.getName());
+                }
+            }
+        }
+        return stillMissing;
+    }
+
     public List<String> findMissingRequiredParams(String arguments) {
         if (parameters == null || parameters.isEmpty()) return List.of();
-        var required = parameters.stream().filter(p -> Boolean.TRUE.equals(p.isRequired())).toList();
-        if (required.isEmpty()) return List.of();
         try {
-            var args = parseArguments(arguments);
-            return required.stream()
-                    .filter(p -> !args.containsKey(p.getName()) || args.get(p.getName()) == null)
-                    .map(ToolCallParameter::getName)
-                    .toList();
+            return findMissingRequiredParams(parseArguments(arguments));
         } catch (Exception e) {
             return List.of("(arguments is not valid JSON)");
         }
+    }
+
+    public List<String> findMissingRequiredParams(Map<String, Object> args) {
+        if (parameters == null || parameters.isEmpty()) return List.of();
+        var required = parameters.stream().filter(p -> Boolean.TRUE.equals(p.isRequired())).toList();
+        if (required.isEmpty()) return List.of();
+        return required.stream()
+                .filter(p -> !args.containsKey(p.getName()) || args.get(p.getName()) == null)
+                .map(ToolCallParameter::getName)
+                .toList();
     }
 
     /**

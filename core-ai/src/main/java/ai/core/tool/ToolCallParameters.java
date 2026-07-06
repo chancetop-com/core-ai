@@ -4,6 +4,7 @@ import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Supplier;
 
 /**
  * @author stephen
@@ -44,6 +45,8 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
             parameter.setRequired(spec.isRequired() != null && spec.isRequired());
             // Set enums if provided
             parameter.setEnums(spec.getEnums());
+            // Set defaultValue if provided
+            parameter.setDefaultValue(spec.getDefaultValue());
             parameters.add(parameter);
         }
         return parameters;
@@ -60,6 +63,7 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
         private final String description;
         private Boolean required;
         private List<String> enums;
+        private Supplier<Object> defaultValue;
 
         private ParamSpec(Class<?> type, String name, String description) {
             this.type = type;
@@ -85,6 +89,11 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
             return this;
         }
 
+        public ParamSpec defaultValue(Supplier<Object> supplier) {
+            this.defaultValue = supplier;
+            return this;
+        }
+
         Class<?> getType() {
             return this.type;
         }
@@ -103,6 +112,10 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
 
         List<String> getEnums() {
             return this.enums;
+        }
+
+        Supplier<Object> getDefaultValue() {
+            return this.defaultValue;
         }
     }
 }

@@ -6,6 +6,7 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import ai.core.utils.JsonUtil;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import io.opentelemetry.api.trace.SpanContext;
@@ -14,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -49,21 +51,30 @@ public class ToolExecutor {
     }
 
     public ToolCallResult execute(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
+        var args = tool.parseArguments(functionCall.function.arguments);
+        tool.normalizeArguments(args);
+        functionCall.function.arguments = JsonUtil.toJson(args);
+
         lifecycles.forEach(lc -> lc.beforeTool(functionCall, context));
-        var result = executeWithoutLifecycle(tool, functionCall, context);
+        var result = executeWithoutLifecycle(tool, functionCall, args, context);
         lifecycles.forEach(lc -> lc.afterTool(functionCall, context, result));
         return result;
     }
 
     public ToolCallResult executeWithoutLifecycle(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
-        return doExecute(tool, functionCall, context);
+        var args = tool.parseArguments(functionCall.function.arguments);
+        return doExecute(tool, functionCall, args, context);
     }
 
-    private ToolCallResult doExecute(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
+    public ToolCallResult executeWithoutLifecycle(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {
+        return doExecute(tool, functionCall, args, context);
+    }
+
+    private ToolCallResult doExecute(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {
         var sandbox = context.getSandbox();
         var useSandbox = sandbox != null && sandbox.shouldIntercept(tool.getName());
 
-        var validationResult = validate(tool, functionCall, useSandbox);
+        var validationResult = validate(tool, args, useSandbox);
         if (validationResult != null) {
             return validationResult;
         }
@@ -90,13 +101,13 @@ public class ToolExecutor {
         return result;
     }
 
-    private ToolCallResult validate(ToolCall tool, FunctionCall functionCall, boolean useSandbox) {
+    private ToolCallResult validate(ToolCall tool, Map<String, Object> args, boolean useSandbox) {
         if (!useSandbox && Boolean.TRUE.equals(tool.isNeedAuth()) && !authenticated) {
             statusUpdater.accept(NodeStatus.WAITING_FOR_USER_INPUT);
             return ToolCallResult.failed("This tool call requires user authentication, please ask user to confirm it.");
         }
 
-        var missingParams = tool.findMissingRequiredParams(functionCall.function.arguments);
+        var missingParams = tool.findMissingRequiredParams(args);
         if (!missingParams.isEmpty()) {
             LOGGER.warn("tool [{}] call rejected: missing required parameters: {}", tool.getName(), missingParams);
             return ToolCallResult.failed(Strings.format("Tool [{}] call failed: missing required parameters: [{}]. Please provide all required parameters and retry.",
