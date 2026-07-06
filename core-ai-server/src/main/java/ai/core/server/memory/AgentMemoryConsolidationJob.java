@@ -31,6 +31,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -56,6 +58,7 @@ public class AgentMemoryConsolidationJob implements Job {
     private static final int MESSAGE_LOOKBACK_SECONDS = 5;
     private static final int MESSAGE_LOOKAHEAD_SECONDS = 30;
     private static final int TRAJECTORY_MAX_CHARS = 500;
+    private static final int PROCESSING_TIMEOUT_SECONDS = 55; // stay under 60s monitoring threshold
     public static final String DEFAULT_EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
 
     // V2 prompt: extract-only, no REFINE/MERGE.
@@ -132,13 +135,39 @@ public class AgentMemoryConsolidationJob implements Job {
             return;
         }
 
-        for (var agentId : agentIds) {
-            try {
-                processAgent(agentId);
-            } catch (Exception e) {
-                LOGGER.error("failed to consolidate memory for agent={}", agentId, e);
+        LOGGER.info("memory consolidation starting for {} agents", agentIds.size());
+
+        var deadline = ZonedDateTime.now().plusSeconds(PROCESSING_TIMEOUT_SECONDS);
+        var processed = new AtomicInteger(0);
+        var failed = new AtomicInteger(0);
+
+        try (var scope = new StructuredTaskScope<Object>()) {
+            for (var agentId : agentIds) {
+                if (ZonedDateTime.now().isAfter(deadline)) {
+                    LOGGER.warn("memory consolidation timeout reached, skipping remaining {} agents",
+                            agentIds.size() - processed.get() - failed.get());
+                    break;
+                }
+                var currentAgentId = agentId;
+                scope.fork(() -> {
+                    try {
+                        processAgent(currentAgentId);
+                        processed.incrementAndGet();
+                    } catch (Exception e) {
+                        LOGGER.error("failed to consolidate memory for agent={}", currentAgentId, e);
+                        failed.incrementAndGet();
+                    }
+                    return null;
+                });
             }
+            scope.join();
+        } catch (InterruptedException e) {
+            LOGGER.warn("memory consolidation interrupted", e);
+            Thread.currentThread().interrupt();
         }
+
+        LOGGER.info("memory consolidation completed: processed={}, failed={}, total={}",
+                processed.get(), failed.get(), agentIds.size());
     }
 
     private Set<String> collectAgentIds() {

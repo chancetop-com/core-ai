@@ -110,7 +110,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVGatewayModelProviderIndex(),
             new SchemaMigrationVGatewayModelModelIdIndex(),
             new SchemaMigrationVMemoryLayerIndex(),
-            new SchemaMigrationVSandboxSnapshotIndexes()
+            new SchemaMigrationVSandboxSnapshotIndexes(),
+            new SchemaMigrationVTraceMemoryConsolidationIndexes()
         );
     }
 }
