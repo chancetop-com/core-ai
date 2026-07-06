@@ -47,7 +47,9 @@ class MessagingModule extends Module {
         var ownershipRegistry = bind(new SessionOwnershipRegistry(jedisPool));
         var sandboxService = bean(SandboxService.class);
         var commandPublisher = bind(new CommandPublisher(jedisPool, ownershipRegistry, sandboxService));
-        bind(new EventPublisher(jedisPool));
+        var eventPublisher = new EventPublisher(jedisPool);
+        eventPublisher.setSessionChannelService(bean(SessionChannelService.class));
+        bind(eventPublisher);
         var a2aTaskRegistry = bind(new A2ATaskRegistry(jedisPool, ownershipRegistry));
         var a2aEventRelay = bind(new A2AEventRelay(jedisPool));
         bean(AgentSessionManager.class).setEventPublisher(bean(EventPublisher.class));
