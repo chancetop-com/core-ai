@@ -133,6 +133,9 @@ var (
 	skillVersions   = make(map[string]string) // name -> installed version
 )
 
+// runtimeVersion is injected at build time via -ldflags "-X main.runtimeVersion=..."
+var runtimeVersion = "dev"
+
 // ---- Tool executor type ----
 
 type toolExecutor func(args string) (string, string)
@@ -178,7 +181,10 @@ func main() {
 	http.HandleFunc("/mcp/start", handleMcpStart)
 	http.HandleFunc("/mcp/stop", handleMcpStop)
 	http.HandleFunc("/mcp", handleMcp)
+	http.HandleFunc("/snapshot", handleSnapshot)
+	http.HandleFunc("/snapshot/restore", handleSnapshotRestore)
 
+	log.Printf("runtime version: %s", runtimeVersion)
 	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d", port, workspaceDir, maxAsync)
 	if err := http.ListenAndServe(":"+port, loggingMiddleware(http.DefaultServeMux)); err != nil {
 		log.Fatalf("server failed: %v", err)
@@ -239,7 +245,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"status":"ok"}`))
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": runtimeVersion})
 }
 
 func handleOcgCallbackProxy(w http.ResponseWriter, r *http.Request) {

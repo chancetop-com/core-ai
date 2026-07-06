@@ -2,6 +2,8 @@
 
 ## v1 实施范围（2026-07-06 收敛）
 
+> 实施状态：v1 已实现（2026-07-06，实施计划见 `docs/superpowers/plans/2026-07-06-sandbox-snapshot-v1.md`；kill switch `sys.sandbox.snapshot.enabled` 默认关闭）。
+
 本章是 v1 实施的**唯一优先依据**。下面第 1~20 章是完整版长期设计，继续保留；凡与本章冲突的地方（包括第 19 章旧的 v1 决策），v1 一律以本章为准，被裁剪的机制留给后续版本按需启用。
 
 ### 简化依据
@@ -25,7 +27,7 @@
 
 1. **`sandbox_epoch`**：每 session 一个 Mongo 计数文档，`ensureReady()` acquire 新 sandbox 时 `findAndModify` 自增。capture 开始前记录本 pod 持有的 epoch，置 AVAILABLE 时 CAS 校验 `epoch == 记录值`；若用户已在别的 pod 重建 sandbox（epoch 已被自增），过期 capture 的 CAS 失败，blob 作废丢弃。
 2. **两阶段可见**：Blob 上传成功 ≠ 可用；Mongo 状态 `UPLOADING → AVAILABLE` CAS 成功后才可被 restore 选中。
-3. **白名单 roots 打包 + sha256 校验 + `image_digest` / `runtime_major` 兼容检查**（不匹配视为无 eligible snapshot，空 sandbox 继续并记 warning）。
+3. **白名单 roots 打包 + sha256 校验 + `runtime_major` 兼容检查**（不匹配视为无 eligible snapshot，空 sandbox 继续并记 warning）。版本号内嵌在 runtime 二进制中并由 `/health` 上报、写入 manifest；`image_digest` 在三个 provider 上都没有现成获取通道且默认镜像是可变 tag `latest`，v1 仅记录 image tag 供排查，digest 校验留 v2。
 4. **restore 成功（或确认无 eligible snapshot / 降级放弃）之后才发 `READY` 事件**——无感恢复的关键顺序约束。
 5. **capture 无论成败，sandbox 都必须照常 release**，不泄漏资源。
 
@@ -33,18 +35,20 @@
 
 Runtime（sandbox 镜像内，新增 2 个接口）：
 
-- `POST /snapshot`：白名单 roots（`/tmp`、`/skill`）按排除规则打 tar.gz 流返回，附 manifest（文件数、字节数、sha256）。超过单包上限（压缩后 500MB 或 10000 个文件）直接报错拒绝，本次不产生 snapshot。
+- `POST /snapshot`：白名单 roots（`/tmp`、`/skill`）按排除规则打 tar.gz 流返回，附 manifest（文件数、字节数、sha256、`runtime_version`）。超过单包上限（压缩后 500MB 或 10000 个文件）直接报错拒绝，本次不产生 snapshot。
 - `POST /snapshot/restore`：接收 tar.gz 流，校验 sha256；解包前逐条目做路径逃逸检查（拒绝 `..`、越出 roots 的绝对路径、指向 roots 之外的 symlink）后解至 roots。
+- `GET /health` 扩展返回 `runtime_version`（编译期注入常量），server restore 前用它做 `runtime_major` 比对。
 
 Server（新增 `SandboxSnapshotService` + 两个钩子）：
 
-- release 钩子：idle release 时，若本 epoch 内存 dirty 为 true → `capture` → Blob 上传 → Mongo CAS 置 AVAILABLE → 异步删除上一代（文档 + blob）→ release。
-- `LazySandbox.ensureReady()` 钩子：acquire → epoch 自增 → 查该 session 最新 AVAILABLE 且 `image_digest` 匹配的 snapshot → 下载 → restore（失败原地重试 1 次）→ 成功或无 snapshot 才发 `READY`；两次失败 → warning 事件（"未能恢复上次的工作文件"）+ 空 sandbox 发 `READY` 继续。
+- release 钩子：capture 只挂在 `AgentSessionManager.closeSession()`（60 分钟 idle 清理与用户显式 close 共用此路径）调用的 `releaseSandbox(sessionId, capture=true)` 上，且本 epoch 内存 dirty 为 true 才触发：`capture` → Blob 上传 → Mongo CAS 置 AVAILABLE → 异步删除上一代（文档 + blob）→ release。其余 release 路径一律不 capture：AgentRunner / WorkflowRunner / OCG 的 per-run release（session 不会 resume）、`SandboxManager.cleanupExpired()` 兜底、`ensureReady()` 换车（REPLACING，旧 sandbox 已损坏）、`shutdown()`（部署场景，termination grace 内装不下大包上传——**部署仍丢文件是 v1 已知限制，capture-on-shutdown 列为 v2 候选**）。
+- `LazySandbox.ensureReady()` 钩子：acquire → epoch 自增 → 查该 session 最新 AVAILABLE 且 `runtime_major` 匹配的 snapshot → 下载 → restore（失败原地重试 1 次）→ 再执行原有 postAcquireHook（pending 文件上传，保证用户离开期间新上传的文件覆盖 snapshot 中的旧同名副本）→ 成功或无 snapshot 才发 `READY`；两次失败 → 空 sandbox 继续，warning 文案放进最终 `READY` 事件的 message 字段（前端对 sandbox 事件是单 segment 替换渲染，单独发 warning 事件会立刻被随后的 READY 覆盖，用户看不见）。
+- `ObjectStorageService` 需新增 `uploadObject` / `deleteObject` 两个方法（现接口只有 SAS 凭证生成 + download；Azure 实现沿用现有 SAS + JDK HttpClient 模式，SAS 权限加 write / delete）。
 
 Mongo：
 
-- `sandbox_snapshots`：`snapshot_id, session_id, user_id, epoch, status(UPLOADING/AVAILABLE/DELETED), blob_key, sha256, size, image_digest, roots, created_at, expires_at(14 天)`。
-- epoch 计数文档：`{session_id, epoch}`。
+- `sandbox_snapshots`：`snapshot_id, session_id, user_id, epoch, status(UPLOADING/AVAILABLE/DELETED), blob_key, sha256, size, image, runtime_version, roots, created_at, expires_at(14 天)`（`image` 为 tag 仅供排查，兼容判断用 `runtime_version` 的 major）。
+- epoch 计数文档：`{_id: session_id, epoch}`——用 session_id 做 `_id`，主键查询免建索引，migration 只需覆盖 `sandbox_snapshots`。
 - ⚠️ 部署要求：新 collection 必须新增 index migration（`session_id + status + created_at`），dev 环境 notablescan 下缺索引会直接 500。
 
 Blob：私有 container，key = `{user_id}/{session_id}/{snapshot_id}.tar.gz`；restore 时校验文档 `user_id` 与当前用户一致。

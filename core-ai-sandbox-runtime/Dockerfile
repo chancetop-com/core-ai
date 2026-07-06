@@ -1,8 +1,9 @@
 FROM golang:1.22-alpine AS builder
 WORKDIR /app
 COPY go.mod ./
+COPY VERSION ./
 COPY *.go ./
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /core-ai-sandbox-runtime .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.runtimeVersion=$(cat VERSION)" -o /core-ai-sandbox-runtime .
 
 FROM python:3.12-slim
 
