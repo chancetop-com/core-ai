@@ -241,7 +241,13 @@ type readResult struct {
 
 // SendJSONRPC writes a JSON-RPC request to the process stdin and reads a
 // JSON-RPC response from stdout. It matches responses by the JSON-RPC id.
-// Notifications (messages without id) from the server are skipped.
+// Server-to-client notifications (messages without id) are skipped.
+//
+// Client-to-server notifications (outgoing requests without an id) are
+// handled as fire-and-forget: the request is forwarded to stdin but no
+// response is expected, and nil is returned immediately. This is critical
+// because the MCP spec (§Transports) says servers MUST return HTTP 202
+// Accepted with no body for notifications — our HTTP bridge must not hang.
 //
 // A real read deadline is set on the underlying stdout file descriptor so that
 // ReadString can be interrupted when the timeout fires. This is much cleaner
@@ -260,6 +266,13 @@ func (p *McpServerProcess) SendJSONRPC(requestJSON []byte, timeout time.Duration
 	}
 	if _, err := p.stdin.Write([]byte("\n")); err != nil {
 		return nil, fmt.Errorf("write newline to stdin: %w", err)
+	}
+
+	// JSON-RPC notification (no id): fire-and-forget, no response expected.
+	// The MCP server will not send a response for notifications, so we must
+	// not block waiting for one.
+	if reqID == "" {
+		return nil, nil
 	}
 
 	// set a real read deadline on the underlying pipe so ReadString will
@@ -379,6 +392,10 @@ func handleMcpSSE(w http.ResponseWriter, r *http.Request) {
 // handleMcpBridge forwards an MCP JSON-RPC request to a child process's stdin
 // and returns the response from its stdout. The target process is identified by
 // the X-Mcp-Server-Id header.
+//
+// Per the MCP spec:
+// - For JSON-RPC requests (with id): the response body is the JSON-RPC response.
+// - For JSON-RPC notifications (without id): HTTP 202 Accepted, no body.
 func handleMcpBridge(w http.ResponseWriter, r *http.Request) {
 	serverID := r.Header.Get("X-Mcp-Server-Id")
 	if serverID == "" {
@@ -402,6 +419,12 @@ func handleMcpBridge(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[mcp:%s] bridge error: %v", serverID, err)
 		writeMcpJSON(w, http.StatusBadGateway, map[string]string{"error": "mcp bridge failed: " + err.Error()})
+		return
+	}
+
+	if response == nil {
+		// Notification accepted (fire-and-forget): 202 Accepted, no body
+		w.WriteHeader(http.StatusAccepted)
 		return
 	}
 
