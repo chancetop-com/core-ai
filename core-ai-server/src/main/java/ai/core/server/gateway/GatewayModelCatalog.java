@@ -30,7 +30,8 @@ final class GatewayModelCatalog {
         if (containsAny(value, "embedding", "embed", "whisper", "tts", "image", "moderation")) return List.of();
         var endpoints = new ArrayList<String>();
         endpoints.add(GatewayModelService.ENDPOINT_CHAT_COMPLETIONS);
-        if (value.startsWith("o") || value.startsWith("gpt-4.1") || value.startsWith("gpt-5")) {
+        // o-series reasoning models (o1/o3/o4...), not any id starting with "o" (e.g. openai/..., openrouter/...)
+        if (value.matches("o\\d.*") || value.startsWith("gpt-4.1") || value.startsWith("gpt-5")) {
             endpoints.add(GatewayModelService.ENDPOINT_RESPONSES);
         }
         return endpoints;

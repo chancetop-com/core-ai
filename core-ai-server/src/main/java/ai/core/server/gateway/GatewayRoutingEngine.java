@@ -3,30 +3,41 @@ package ai.core.server.gateway;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import static ai.core.server.gateway.GatewaySupport.hasText;
 
 public class GatewayRoutingEngine {
+    // model/provider configs change rarely; short TTL keeps the proxy hot path off Mongo
+    private static final long CACHE_TTL_NANOS = Duration.ofSeconds(5).toNanos();
+
     @Inject
     MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
     @Inject
     MongoCollection<GatewayModelConfig> gatewayModelCollection;
 
+    private volatile Snapshot cache;
+
     public List<GatewayPublishedModel> models() {
         var data = new ArrayList<GatewayPublishedModel>();
-        var providers = enabledProviders();
-        var models = registeredModels(providers, null);
+        var snapshot = snapshot();
+        var models = registeredModels(snapshot, null);
         if (!models.isEmpty()) {
             var seen = new HashSet<String>();
+            // duplicate modelIds across providers are failover routes; publish the highest priority one
             for (var route : models) {
                 if (seen.add(route.model.modelId)) {
                     data.add(new GatewayPublishedModel(route.model.modelId, route.provider.name));
@@ -34,7 +45,7 @@ public class GatewayRoutingEngine {
             }
         } else {
             var seen = new HashSet<String>();
-            for (var provider : providers) {
+            for (var provider : snapshot.providers) {
                 addLegacyModel(data, seen, provider, provider.defaultChatModel);
                 addLegacyModel(data, seen, provider, provider.defaultResponsesModel);
             }
@@ -42,10 +53,29 @@ public class GatewayRoutingEngine {
         return data;
     }
 
+    public List<GatewayAvailableModelView> availableModels() {
+        var data = new ArrayList<GatewayAvailableModelView>();
+        var snapshot = snapshot();
+        var models = registeredModels(snapshot, null);
+        if (!models.isEmpty()) {
+            var seen = new HashSet<String>();
+            for (var route : models) {
+                if (seen.add(route.model.modelId)) data.add(availableModel(route));
+            }
+            return data;
+        }
+        var seen = new HashSet<String>();
+        for (var provider : snapshot.providers) {
+            addLegacyAvailableModel(data, seen, provider, provider.defaultChatModel, GatewayModelService.ENDPOINT_CHAT_COMPLETIONS);
+            addLegacyAvailableModel(data, seen, provider, provider.defaultResponsesModel, GatewayModelService.ENDPOINT_RESPONSES);
+        }
+        return data;
+    }
+
     public GatewayRoute route(String requestedModel, GatewayEndpointType endpoint) {
-        var providers = enabledProviders();
-        if (providers.isEmpty()) throw new BadRequestException("no enabled gateway providers configured");
-        var registeredModels = registeredModels(providers, null);
+        var snapshot = snapshot();
+        if (snapshot.providers.isEmpty()) throw new BadRequestException("no enabled gateway providers configured");
+        var registeredModels = registeredModels(snapshot, null);
         var endpointModels = registeredModels.stream()
                 .filter(route -> supportsEndpoint(route.model, endpoint))
                 .toList();
@@ -63,7 +93,7 @@ public class GatewayRoutingEngine {
                 if (modelExists) throw new BadRequestException("gateway model does not support endpoint: " + requestedModel);
                 throw new BadRequestException("no enabled gateway model matches model: " + requestedModel);
             }
-            return legacyRoute(requestedModel, endpoint, providers);
+            return legacyRoute(requestedModel, endpoint, snapshot.providers);
         }
 
         if (!endpointModels.isEmpty()) {
@@ -71,12 +101,24 @@ public class GatewayRoutingEngine {
             return new GatewayRoute(route.provider, route.model.upstreamModel);
         }
         if (!registeredModels.isEmpty()) throw new BadRequestException("no enabled gateway model configured for endpoint: " + endpoint.id);
-        return legacyRoute(null, endpoint, providers);
+        return legacyRoute(null, endpoint, snapshot.providers);
     }
 
-    private List<RegisteredGatewayModel> registeredModels(List<GatewayProviderConfig> providers, GatewayEndpointType endpoint) {
-        var providersById = providersById(providers);
-        return enabledModels().stream()
+    public void invalidate() {
+        cache = null;
+    }
+
+    private Snapshot snapshot() {
+        var current = cache;
+        if (current != null && System.nanoTime() - current.createdAt < CACHE_TTL_NANOS) return current;
+        var refreshed = new Snapshot(enabledProviders(), enabledModels(), System.nanoTime());
+        cache = refreshed;
+        return refreshed;
+    }
+
+    private List<RegisteredGatewayModel> registeredModels(Snapshot snapshot, GatewayEndpointType endpoint) {
+        var providersById = providersById(snapshot.providers);
+        return snapshot.models.stream()
                 .filter(model -> hasText(model.modelId))
                 .filter(model -> hasText(model.upstreamModel))
                 .filter(model -> endpoint == null || supportsEndpoint(model, endpoint))
@@ -125,7 +167,7 @@ public class GatewayRoutingEngine {
     private List<GatewayProviderConfig> enabledProviders() {
         var query = new Query();
         query.filter = Filters.empty();
-        query.sort = com.mongodb.client.model.Sorts.ascending("name");
+        query.sort = Sorts.ascending("name");
         return gatewayProviderCollection.find(query).stream()
                 .filter(provider -> !Boolean.FALSE.equals(provider.enabled))
                 .toList();
@@ -135,16 +177,35 @@ public class GatewayRoutingEngine {
         if (gatewayModelCollection == null) return List.of();
         var query = new Query();
         query.filter = Filters.empty();
-        query.sort = com.mongodb.client.model.Sorts.ascending("model_id");
+        query.sort = Sorts.ascending("model_id");
         return gatewayModelCollection.find(query).stream()
                 .filter(model -> !Boolean.FALSE.equals(model.enabled))
                 .toList();
     }
 
-    private void addLegacyModel(List<GatewayPublishedModel> data, HashSet<String> seen, GatewayProviderConfig provider, String model) {
+    private void addLegacyModel(List<GatewayPublishedModel> data, Set<String> seen, GatewayProviderConfig provider, String model) {
         if (!hasText(model)) return;
         var modelId = prefixModel(stripPrefix(model, provider.modelPrefix), provider.modelPrefix);
         if (seen.add(modelId)) data.add(new GatewayPublishedModel(modelId, provider.name));
+    }
+
+    private void addLegacyAvailableModel(List<GatewayAvailableModelView> data, Set<String> seen, GatewayProviderConfig provider, String model, String endpointType) {
+        if (!hasText(model)) return;
+        var view = new GatewayAvailableModelView();
+        view.modelId = prefixModel(stripPrefix(model, provider.modelPrefix), provider.modelPrefix);
+        view.providerName = provider.name;
+        view.endpointTypes = List.of(endpointType);
+        if (seen.add(view.modelId)) data.add(view);
+    }
+
+    private GatewayAvailableModelView availableModel(RegisteredGatewayModel route) {
+        var view = new GatewayAvailableModelView();
+        view.modelId = route.model.modelId;
+        view.displayName = route.model.displayName;
+        view.providerName = route.provider.name;
+        view.endpointTypes = route.model.endpointTypes;
+        view.supportsVision = route.model.supportsVision;
+        return view;
     }
 
     private String defaultModel(GatewayProviderConfig provider, GatewayEndpointType endpoint) {
@@ -167,10 +228,9 @@ public class GatewayRoutingEngine {
         return prefix + model;
     }
 
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
+    private record RegisteredGatewayModel(GatewayModelConfig model, GatewayProviderConfig provider) {
     }
 
-    private record RegisteredGatewayModel(GatewayModelConfig model, GatewayProviderConfig provider) {
+    private record Snapshot(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models, long createdAt) {
     }
 }

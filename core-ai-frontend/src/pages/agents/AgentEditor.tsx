@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal, Brain } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo, AgentDatasetConfig } from '../../api/client';
+import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo, AgentDatasetConfig, GatewayAvailableModel } from '../../api/client';
 import { sessionApi } from '../../api/session';
 import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
@@ -68,6 +68,9 @@ export default function AgentEditor() {
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [modelConfigOpen, setModelConfigOpen] = useState(true);
 
+  // gateway models for the model dropdowns
+  const [gatewayModels, setGatewayModels] = useState<GatewayAvailableModel[]>([]);
+
   // multi-modal model toggle
   const [showMultiModalModel, setShowMultiModalModel] = useState(false);
 
@@ -122,6 +125,7 @@ export default function AgentEditor() {
       setAllAgents(published);
     }).catch(console.error);
     api.skills.list().then(res => setAllSkills(res.skills || [])).catch(console.error);
+    api.gateway.listAvailableModels().then(res => setGatewayModels(res.models || [])).catch(console.error);
 
     if (isNew) {
       setLoading(false);
@@ -150,6 +154,9 @@ export default function AgentEditor() {
   const update = (field: string, value: unknown) => {
     setAgent({ ...agent, [field]: value } as AgentDefinition);
   };
+
+  const chatModels = gatewayModels.filter(m => !m.endpointTypes || m.endpointTypes.length === 0 || m.endpointTypes.includes('chat.completions'));
+  const visionModels = chatModels.filter(m => m.supportsVision !== false);
 
   const datasetConfig = agent.dataset_config || [];
 
@@ -933,10 +940,26 @@ The system prompt should define how this agent behaves, its capabilities, and it
                 <div className="grid grid-cols-4 gap-4 pt-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">Model</label>
-                    <input value={agent.model || ''} onChange={e => update('model', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                      style={inputStyle}
-                      placeholder="e.g. gpt-4" />
+                    {chatModels.length > 0 ? (
+                      <select value={agent.model || ''} onChange={e => update('model', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                        style={inputStyle}>
+                        <option value="">Default</option>
+                        {agent.model && !chatModels.some(m => m.modelId === agent.model) && (
+                          <option value={agent.model}>{agent.model} (not in gateway)</option>
+                        )}
+                        {chatModels.map(m => (
+                          <option key={m.modelId} value={m.modelId}>
+                            {(m.displayName || m.modelId) + (m.providerName ? ` · ${m.providerName}` : '')}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input value={agent.model || ''} onChange={e => update('model', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                        style={inputStyle}
+                        placeholder="e.g. gpt-4" />
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Temperature</label>
@@ -981,10 +1004,26 @@ The system prompt should define how this agent behaves, its capabilities, and it
                   </p>
                   {showMultiModalModel && (
                     <div className="mt-2 ml-6 w-80">
-                      <input value={agent.multi_modal_model || ''} onChange={e => update('multi_modal_model', e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                        style={inputStyle}
-                        placeholder="e.g. gpt-4o" />
+                      {visionModels.length > 0 ? (
+                        <select value={agent.multi_modal_model || ''} onChange={e => update('multi_modal_model', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                          style={inputStyle}>
+                          <option value="">Select a model</option>
+                          {agent.multi_modal_model && !visionModels.some(m => m.modelId === agent.multi_modal_model) && (
+                            <option value={agent.multi_modal_model}>{agent.multi_modal_model} (not in gateway)</option>
+                          )}
+                          {visionModels.map(m => (
+                            <option key={m.modelId} value={m.modelId}>
+                              {(m.displayName || m.modelId) + (m.providerName ? ` · ${m.providerName}` : '')}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input value={agent.multi_modal_model || ''} onChange={e => update('multi_modal_model', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                          style={inputStyle}
+                          placeholder="e.g. gpt-4o" />
+                      )}
                     </div>
                   )}
                 </div>

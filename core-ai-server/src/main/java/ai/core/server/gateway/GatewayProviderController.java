@@ -11,7 +11,7 @@ import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 
 public class GatewayProviderController {
-    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final ObjectMapper MAPPER = GatewayJson.MAPPER;
 
     @Inject
     GatewayProviderService gatewayProviderService;

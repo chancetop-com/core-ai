@@ -156,6 +156,7 @@ class GatewayModelServiceTest {
         service.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
         service.userCollection = (MongoCollection<User>) mock(MongoCollection.class);
         when(service.userCollection.get(user.id)).thenReturn(Optional.of(user));
+        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
         if (provider != null) {
             when(service.gatewayProviderCollection.get(provider.id)).thenReturn(Optional.of(provider));
             when(service.gatewayProviderCollection.find(any(Query.class))).thenReturn(List.of(provider));

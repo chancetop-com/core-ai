@@ -4,7 +4,6 @@ import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.User;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mongodb.client.model.Filters;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
@@ -14,19 +13,32 @@ import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
-import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import static ai.core.server.gateway.GatewaySupport.isBlank;
+import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
+import static ai.core.server.gateway.GatewaySupport.truncate;
+import static ai.core.server.gateway.GatewaySupport.urlEncode;
+import static ai.core.server.gateway.GatewaySupport.valueOrDefault;
 
 public class GatewayModelDiscoveryService {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    // shared client with a high ceiling; effective limits come from per-request timeouts
+    private static final HTTPClient CLIENT = HTTPClient.builder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofMinutes(2))
+            .build();
 
     @Inject
     MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
@@ -38,7 +50,7 @@ public class GatewayModelDiscoveryService {
     GatewaySecretProtector secretProtector;
 
     public ListGatewayDiscoveredModelsResponse discover(String providerId, String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         var provider = provider(providerId);
         var discovered = discover(provider);
         var imported = importedUpstreamModels(providerId);
@@ -64,12 +76,8 @@ public class GatewayModelDiscoveryService {
         return models.stream()
                 .map(GatewayModelCatalog::enrich)
                 .filter(model -> model.id() != null && !model.id().isBlank())
-                .collect(java.util.stream.Collectors.collectingAndThen(
-                        java.util.stream.Collectors.toMap(
-                                GatewayModelMetadata::id,
-                                java.util.function.Function.identity(),
-                                (left, right) -> left,
-                                java.util.LinkedHashMap::new),
+                .collect(Collectors.collectingAndThen(
+                        Collectors.toMap(GatewayModelMetadata::id, Function.identity(), (left, right) -> left, LinkedHashMap::new),
                         map -> map.values().stream()
                                 .sorted(Comparator.comparing(GatewayModelMetadata::id))
                                 .toList()
@@ -81,7 +89,9 @@ public class GatewayModelDiscoveryService {
             GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(provider.allowPrivateNetwork));
             var request = new HTTPRequest(HTTPMethod.GET, url);
             request.headers.put("Content-Type", "application/json");
-            applyAuth(provider, request);
+            request.connectTimeout = Duration.ofSeconds(valueOrDefault(provider.connectTimeoutSeconds, 10));
+            request.timeout = Duration.ofSeconds(valueOrDefault(provider.timeoutSeconds, 30));
+            GatewaySupport.applyAuth(provider, request, secret(provider));
             var response = execute(request, provider);
             if (response.statusCode < 200 || response.statusCode >= 300) {
                 if ("litellm".equals(provider.type) && url.endsWith("/model/info")) return List.of();
@@ -96,7 +106,7 @@ public class GatewayModelDiscoveryService {
 
     private List<GatewayModelMetadata> parse(byte[] body) {
         try {
-            var root = MAPPER.readTree(body);
+            var root = GatewayJson.MAPPER.readTree(body);
             var rows = rows(root);
             var models = new ArrayList<GatewayModelMetadata>();
             for (var row : rows) {
@@ -180,7 +190,7 @@ public class GatewayModelDiscoveryService {
         return view;
     }
 
-    private HashSet<String> importedUpstreamModels(String providerId) {
+    private Set<String> importedUpstreamModels(String providerId) {
         var query = new Query();
         query.filter = Filters.eq("provider_id", providerId);
         var imported = new HashSet<String>();
@@ -195,28 +205,15 @@ public class GatewayModelDiscoveryService {
                 .orElseThrow(() -> new NotFoundException("gateway provider not found: " + id));
     }
 
-    private void applyAuth(GatewayProviderConfig provider, HTTPRequest request) {
-        var apiKey = secret(provider);
-        if (apiKey == null || apiKey.isBlank()) return;
-        if ("azure".equals(provider.type)) {
-            request.headers.put("api-key", apiKey);
-        } else {
-            request.headers.put("Authorization", "Bearer " + apiKey);
-        }
-    }
-
     HTTPResponse execute(HTTPRequest request, GatewayProviderConfig provider) {
-        var builder = HTTPClient.builder()
-                .connectTimeout(Duration.ofSeconds(valueOrDefault(provider.connectTimeoutSeconds, 10)))
-                .timeout(Duration.ofSeconds(valueOrDefault(provider.timeoutSeconds, 30)));
-        return builder.build().execute(request);
+        return CLIENT.execute(request);
     }
 
     private String modelsUrl(GatewayProviderConfig provider) {
         var baseUrl = stripTrailingSlash(provider.baseUrl);
         if ("azure".equals(provider.type)) {
-            var version = provider.apiVersion == null || provider.apiVersion.isBlank() ? "2024-10-21" : provider.apiVersion;
-            return baseUrl + "/openai/deployments?api-version=" + version;
+            var version = isBlank(provider.apiVersion) ? "2024-10-21" : provider.apiVersion;
+            return baseUrl + "/openai/deployments?api-version=" + urlEncode(version);
         }
         return baseUrl + "/models";
     }
@@ -228,24 +225,6 @@ public class GatewayModelDiscoveryService {
     private String secret(GatewayProviderConfig provider) {
         if (provider.apiKeyEncrypted != null) return secretProtector.unprotect(provider.apiKeyEncrypted);
         return secretProtector.unprotect(provider.apiKey);
-    }
-
-    private void requireAdmin(String userId) {
-        if (userId == null) throw new ForbiddenException("admin required");
-        var user = userCollection.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
-        if (!"admin".equals(user.role)) throw new ForbiddenException("admin required");
-    }
-
-    private String stripTrailingSlash(String value) {
-        var result = value;
-        while (result.endsWith("/")) {
-            result = result.substring(0, result.length() - 1);
-        }
-        return result;
-    }
-
-    private long valueOrDefault(Long value, long defaultValue) {
-        return value == null ? defaultValue : value;
     }
 
     private List<JsonNode> merge(JsonNode... nodes) {
@@ -320,10 +299,5 @@ public class GatewayModelDiscoveryService {
             if (value.contains(token)) return true;
         }
         return false;
-    }
-
-    private String truncate(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) return value;
-        return value.substring(0, maxLength);
     }
 }

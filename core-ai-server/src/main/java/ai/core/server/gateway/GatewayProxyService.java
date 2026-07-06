@@ -1,8 +1,8 @@
 package ai.core.server.gateway;
 
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.sse.RawSseChannel;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.http.EventSource;
@@ -14,17 +14,24 @@ import core.framework.inject.Inject;
 import core.framework.web.Response;
 import core.framework.web.exception.BadRequestException;
 
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
-import java.util.Map;
+
+import static ai.core.server.gateway.GatewaySupport.hasText;
+import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
+import static ai.core.server.gateway.GatewaySupport.urlEncode;
+import static ai.core.server.gateway.GatewaySupport.valueOrDefault;
 
 public class GatewayProxyService {
-    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final ContentType EVENT_STREAM = ContentType.create("text/event-stream", StandardCharsets.UTF_8);
+    // shared client with a high ceiling; effective limits come from per-request timeouts set in applyTimeouts
+    private static final HTTPClient CLIENT = HTTPClient.builder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofMinutes(10))
+            .build();
 
     @Inject
     GatewayRoutingEngine routingEngine;
@@ -53,26 +60,46 @@ public class GatewayProxyService {
         return jsonResponse(response);
     }
 
+    void streamToChannel(byte[] body, GatewayEndpointType endpoint, RawSseChannel<?> channel) {
+        var call = prepare(body, endpoint);
+        if (!call.stream()) {
+            var upstream = execute(call.request(), call.provider());
+            channel.sendRawData(new String(upstream.body == null ? new byte[0] : upstream.body, StandardCharsets.UTF_8));
+            return;
+        }
+        try (var source = sse(call.request(), call.provider())) {
+            for (var event : source) {
+                channel.sendRawEvent(event.type(), event.data());
+                if ("[DONE]".equals(event.data())) break;
+            }
+        }
+    }
+
     private Response proxy(byte[] body, GatewayEndpointType endpoint) {
+        var call = prepare(body, endpoint);
+        // buffered fallback for streaming clients not sending Accept: text/event-stream;
+        // those with the header are served incrementally by the SSE channel listener
+        if (call.stream()) return bufferedStream(call);
+        return response(execute(call.request(), call.provider()));
+    }
+
+    private GatewayUpstreamCall prepare(byte[] body, GatewayEndpointType endpoint) {
         var requestBody = parseBody(body);
         var selection = routingEngine.route(string(requestBody.get("model")), endpoint);
         var provider = selection.provider();
         var outgoingBody = new LinkedHashMap<>(requestBody);
-        outgoingBody.put("model", selection.upstreamModel());
         mergeExtraBody(outgoingBody, provider.requestExtraBody);
+        // routed model always wins, provider extra body must not override it
+        outgoingBody.put("model", selection.upstreamModel());
 
         var url = endpointUrl(provider, endpoint, selection.upstreamModel());
         GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(provider.allowPrivateNetwork));
         var upstreamRequest = new HTTPRequest(HTTPMethod.POST, url);
         upstreamRequest.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
-        applyAuth(provider, upstreamRequest);
+        GatewaySupport.applyAuth(provider, upstreamRequest, apiKey(provider));
         applyTimeouts(provider, upstreamRequest);
         upstreamRequest.body(writeJson(outgoingBody), ContentType.APPLICATION_JSON);
-
-        if (Boolean.TRUE.equals(requestBody.get("stream"))) {
-            return stream(upstreamRequest, provider);
-        }
-        return response(execute(upstreamRequest, provider));
+        return new GatewayUpstreamCall(upstreamRequest, provider, Boolean.TRUE.equals(requestBody.get("stream")));
     }
 
     private String endpointUrl(GatewayProviderConfig provider, GatewayEndpointType endpoint, String model) {
@@ -83,29 +110,24 @@ public class GatewayProxyService {
                 if (!hasText(model)) throw new BadRequestException("azure chat gateway requires a deployment model");
                 return baseUrl + "/openai/deployments/" + urlEncode(model) + "/chat/completions?api-version=" + urlEncode(version);
             }
+            //todo verify Azure Responses API path/version against a real Azure deployment (may need /openai/v1/responses)
             return baseUrl + "/openai/responses?api-version=" + urlEncode(version);
         }
         return baseUrl + endpoint.path;
     }
 
-    private void applyAuth(GatewayProviderConfig provider, HTTPRequest request) {
-        var apiKey = secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);
-        if (!hasText(apiKey)) return;
-        if ("azure".equals(provider.type)) {
-            request.headers.put("api-key", apiKey);
-        } else {
-            request.headers.put("Authorization", "Bearer " + apiKey);
-        }
+    private String apiKey(GatewayProviderConfig provider) {
+        return secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);
     }
 
     private void applyTimeouts(GatewayProviderConfig provider, HTTPRequest request) {
-        if (provider.connectTimeoutSeconds != null) request.connectTimeout = Duration.ofSeconds(provider.connectTimeoutSeconds);
-        if (provider.timeoutSeconds != null) request.timeout = Duration.ofSeconds(provider.timeoutSeconds);
+        request.connectTimeout = Duration.ofSeconds(valueOrDefault(provider.connectTimeoutSeconds, 10));
+        request.timeout = Duration.ofSeconds(valueOrDefault(provider.timeoutSeconds, 30));
     }
 
-    private Response stream(HTTPRequest request, GatewayProviderConfig provider) {
+    private Response bufferedStream(GatewayUpstreamCall call) {
         var builder = new StringBuilder();
-        try (var source = sse(request, provider)) {
+        try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 appendEvent(builder, event);
                 if ("[DONE]".equals(event.data())) break;
@@ -126,18 +148,11 @@ public class GatewayProxyService {
     }
 
     HTTPResponse execute(HTTPRequest request, GatewayProviderConfig provider) {
-        return client(provider).execute(request);
+        return CLIENT.execute(request);
     }
 
     EventSource sse(HTTPRequest request, GatewayProviderConfig provider) {
-        return client(provider).sse(request);
-    }
-
-    private HTTPClient client(GatewayProviderConfig provider) {
-        var builder = HTTPClient.builder();
-        if (provider.connectTimeoutSeconds != null) builder.connectTimeout(Duration.ofSeconds(provider.connectTimeoutSeconds));
-        if (provider.timeoutSeconds != null) builder.timeout(Duration.ofSeconds(provider.timeoutSeconds));
-        return builder.build();
+        return CLIENT.sse(request);
     }
 
     private Response response(HTTPResponse upstream) {
@@ -158,7 +173,7 @@ public class GatewayProxyService {
     private void mergeExtraBody(LinkedHashMap<String, Object> body, String extraBody) {
         if (!hasText(extraBody)) return;
         try {
-            body.putAll(MAPPER.readValue(extraBody, MAP_TYPE));
+            body.putAll(GatewayJson.MAPPER.readValue(extraBody, MAP_TYPE));
         } catch (Exception e) {
             throw new BadRequestException("invalid provider extra body JSON: " + e.getMessage());
         }
@@ -166,7 +181,7 @@ public class GatewayProxyService {
 
     private LinkedHashMap<String, Object> parseBody(byte[] body) {
         try {
-            return MAPPER.readValue(body, MAP_TYPE);
+            return GatewayJson.MAPPER.readValue(body, MAP_TYPE);
         } catch (Exception e) {
             throw new BadRequestException("invalid JSON body: " + e.getMessage());
         }
@@ -178,7 +193,7 @@ public class GatewayProxyService {
 
     private byte[] writeJson(Object data) {
         try {
-            return MAPPER.writeValueAsBytes(data);
+            return GatewayJson.MAPPER.writeValueAsBytes(data);
         } catch (Exception e) {
             throw new RuntimeException("failed to serialize gateway JSON", e);
         }
@@ -186,21 +201,5 @@ public class GatewayProxyService {
 
     private String string(Object value) {
         return value instanceof String string ? string : null;
-    }
-
-    private String stripTrailingSlash(String value) {
-        var result = value;
-        while (result.endsWith("/")) {
-            result = result.substring(0, result.length() - 1);
-        }
-        return result;
-    }
-
-    private String urlEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
-    }
-
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
     }
 }

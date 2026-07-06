@@ -28,8 +28,10 @@ import org.xnio.channels.StreamSinkChannel;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 //todo: use extends for sse handler
 public class PatchedServerSentEventHandler extends ServerSentEventHandler {
@@ -44,6 +46,7 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
     private final SessionManager sessionManager;
     private final HTTPHandlerContext handlerContext;
     private final Map<String, PatchedChannelSupport<?>> supports = new HashMap<>();
+    private final Set<String> acceptGatedKeys = new HashSet<>();
     private final List<SseChannelInterceptor> interceptors = new ArrayList<>();
     public WebContextImpl webContext;
 
@@ -80,7 +83,19 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
 //        if (headers != null && headers.getFirst(Headers.ACCEPT) != null) {
 //            return headers.getFirst(Headers.ACCEPT).contains("text/event-stream");
 //        }
+        if (acceptGatedKeys.contains(routeKey)) {
+            var accept = headers == null ? null : headers.getFirst(Headers.ACCEPT);
+            return accept != null && accept.contains("text/event-stream");
+        }
         return true;
+    }
+
+    /**
+     * Only take over requests on this route when the client sends Accept: text/event-stream,
+     * letting non-SSE requests fall through to a regular http route on the same path.
+     */
+    public void requireEventStreamAccept(HTTPMethod method, String path) {
+        acceptGatedKeys.add(key(method.name(), path));
     }
 
     @Override

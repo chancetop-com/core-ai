@@ -101,6 +101,19 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
     }
 
     @Override
+    public boolean sendRawEvent(String event, String data) {
+        var builder = new StringBuilder();
+        if (event != null && !event.isBlank()) builder.append("event: ").append(event).append('\n');
+        if (data != null) {
+            for (String line : data.split("\\R", -1)) {
+                builder.append("data: ").append(line).append('\n');
+            }
+        }
+        builder.append('\n');
+        return sendBytes(Strings.bytes(builder.toString()));
+    }
+
+    @Override
     public boolean isOpen() {
         return !exchange.isResponseComplete();
     }

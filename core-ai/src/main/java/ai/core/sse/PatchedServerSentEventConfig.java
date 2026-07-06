@@ -55,6 +55,15 @@ public class PatchedServerSentEventConfig extends Config {
     }
 
     /**
+     * Gate an already-registered SSE route on Accept: text/event-stream, so requests without
+     * that header fall through to a regular http route registered on the same path.
+     */
+    public void requireEventStreamAccept(HTTPMethod method, String path) {
+        ensureHandler();
+        patchedServerSentEventHandler.requireEventStreamAccept(method, path);
+    }
+
+    /**
      * Register an SSE channel interceptor that runs before all channel listeners' onConnect.
      * Must be called before any {@link #listen} calls, or the handler will be lazily initialized.
      */

@@ -9,15 +9,19 @@ import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
-import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+
+import static ai.core.server.gateway.GatewaySupport.isBlank;
+import static ai.core.server.gateway.GatewaySupport.trimToNull;
 
 public class GatewayModelService {
     static final String ENDPOINT_CHAT_COMPLETIONS = "chat.completions";
@@ -31,41 +35,41 @@ public class GatewayModelService {
     MongoCollection<User> userCollection;
     @Inject
     GatewayModelDiscoveryService gatewayModelDiscoveryService;
+    @Inject
+    GatewayRoutingEngine gatewayRoutingEngine;
 
     public ListGatewayModelsResponse importModels(String providerId, ImportGatewayModelsRequest request, String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         var provider = provider(providerId);
         if (request.models == null || request.models.isEmpty()) throw new BadRequestException("models are required");
 
         var now = ZonedDateTime.now();
-        var existing = modelsByUpstreamModel(providerId);
+        var providerModels = providerModels(providerId);
+        var existingByUpstream = new LinkedHashMap<String, GatewayModelConfig>();
+        providerModels.forEach(model -> {
+            if (model.upstreamModel != null) existingByUpstream.putIfAbsent(model.upstreamModel, model);
+        });
         var discoveredModels = discoveredModels(provider);
-        var imported = new ListGatewayModelsResponse();
-        imported.models = request.models.stream().map(item -> {
+
+        // first pass: validate and stage every item, so one bad item fails the batch before any write
+        var staged = new ArrayList<StagedImport>();
+        var seenUpstream = new HashSet<String>();
+        for (var item : request.models) {
             if (isBlank(item.upstreamModel)) throw new BadRequestException("upstreamModel is required");
             var upstreamModel = item.upstreamModel.trim();
+            if (!seenUpstream.add(upstreamModel)) throw new BadRequestException("duplicate upstreamModel in import request: " + upstreamModel);
             var metadata = discoveredModels.get(upstreamModel);
             if (metadata == null && !discoveredModels.isEmpty()) {
                 throw new BadRequestException("gateway model is not available from provider discovery: " + upstreamModel);
             }
             if (metadata == null) {
-                metadata = GatewayModelCatalog.enrich(new GatewayModelMetadata(
-                        upstreamModel,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null
-                ));
+                metadata = GatewayModelCatalog.enrich(new GatewayModelMetadata(upstreamModel, null, null, null, null, null, null, null, null));
             }
             if (metadata.endpointTypes() == null || metadata.endpointTypes().isEmpty()) {
                 throw new BadRequestException("gateway does not support model endpoint type: " + upstreamModel);
             }
 
-            var entity = existing.get(upstreamModel);
+            var entity = existingByUpstream.get(upstreamModel);
             var create = entity == null;
             if (create) {
                 entity = new GatewayModelConfig();
@@ -86,18 +90,24 @@ public class GatewayModelService {
             if (entity.priority == null) entity.priority = 100L;
             entity.updatedBy = userId;
             entity.updatedAt = now;
-            if (create) {
-                gatewayModelCollection.insert(entity);
+            staged.add(new StagedImport(entity, create));
+        }
+
+        var imported = new ListGatewayModelsResponse();
+        imported.models = staged.stream().map(change -> {
+            if (change.create) {
+                gatewayModelCollection.insert(change.entity);
             } else {
-                gatewayModelCollection.replace(entity);
+                gatewayModelCollection.replace(change.entity);
             }
-            return toView(entity, provider);
+            return toView(change.entity, provider);
         }).toList();
+        invalidateRouting();
         return imported;
     }
 
     public ListGatewayModelsResponse list(String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         var query = new Query();
         query.filter = Filters.empty();
         query.sort = Sorts.ascending("model_id");
@@ -110,8 +120,14 @@ public class GatewayModelService {
         return response;
     }
 
+    public ListGatewayAvailableModelsResponse listAvailable() {
+        var response = new ListGatewayAvailableModelsResponse();
+        response.models = gatewayRoutingEngine.availableModels();
+        return response;
+    }
+
     public GatewayModelView create(GatewayModelRequest request, String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         validate(request, true);
         var provider = provider(request.providerId);
 
@@ -119,31 +135,36 @@ public class GatewayModelService {
         var entity = new GatewayModelConfig();
         entity.id = UUID.randomUUID().toString();
         apply(entity, request, true);
+        rejectDuplicateModelId(entity);
         entity.createdBy = userId;
         entity.updatedBy = userId;
         entity.createdAt = now;
         entity.updatedAt = now;
         gatewayModelCollection.insert(entity);
+        invalidateRouting();
         return toView(entity, provider);
     }
 
     public GatewayModelView update(String id, GatewayModelRequest request, String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         validate(request, false);
 
         var entity = getEntity(id);
         var providerId = request.providerId != null ? request.providerId : entity.providerId;
         var provider = provider(providerId);
         apply(entity, request, false);
+        rejectDuplicateModelId(entity);
         entity.updatedBy = userId;
         entity.updatedAt = ZonedDateTime.now();
         gatewayModelCollection.replace(entity);
+        invalidateRouting();
         return toView(entity, provider);
     }
 
     public void delete(String id, String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         gatewayModelCollection.delete(id);
+        invalidateRouting();
     }
 
     private void apply(GatewayModelConfig entity, GatewayModelRequest request, boolean create) {
@@ -168,14 +189,23 @@ public class GatewayModelService {
     }
 
     private void applyMetadata(GatewayModelConfig entity, GatewayModelMetadata metadata) {
+        // discovery metadata refreshes known values but never clears fields it has no data for,
+        // so manual edits survive a re-import
         if (metadata.displayName() != null && entity.displayName == null) entity.displayName = metadata.displayName();
-        entity.endpointTypes = normalizeEndpointTypes(metadata.endpointTypes());
-        entity.contextWindow = metadata.contextWindow();
-        entity.supportsStream = metadata.supportsStream();
-        entity.supportsTools = metadata.supportsTools();
-        entity.supportsVision = metadata.supportsVision();
-        entity.inputPricePer1MTokens = metadata.inputPricePer1MTokens();
-        entity.outputPricePer1MTokens = metadata.outputPricePer1MTokens();
+        if (metadata.endpointTypes() != null && !metadata.endpointTypes().isEmpty()) entity.endpointTypes = normalizeEndpointTypes(metadata.endpointTypes());
+        if (metadata.contextWindow() != null) entity.contextWindow = metadata.contextWindow();
+        if (metadata.supportsStream() != null) entity.supportsStream = metadata.supportsStream();
+        if (metadata.supportsTools() != null) entity.supportsTools = metadata.supportsTools();
+        if (metadata.supportsVision() != null) entity.supportsVision = metadata.supportsVision();
+        if (metadata.inputPricePer1MTokens() != null) entity.inputPricePer1MTokens = metadata.inputPricePer1MTokens();
+        if (metadata.outputPricePer1MTokens() != null) entity.outputPricePer1MTokens = metadata.outputPricePer1MTokens();
+    }
+
+    private void rejectDuplicateModelId(GatewayModelConfig entity) {
+        // duplicate modelIds across providers are allowed (priority failover); within one provider they are a config mistake
+        var duplicate = providerModels(entity.providerId).stream()
+                .anyMatch(model -> !model.id.equals(entity.id) && entity.modelId.equals(model.modelId));
+        if (duplicate) throw new BadRequestException("gateway model already exists for provider: " + entity.modelId);
     }
 
     private void validate(GatewayModelRequest request, boolean create) {
@@ -215,14 +245,10 @@ public class GatewayModelService {
         return providers;
     }
 
-    private Map<String, GatewayModelConfig> modelsByUpstreamModel(String providerId) {
+    private List<GatewayModelConfig> providerModels(String providerId) {
         var query = new Query();
         query.filter = Filters.eq("provider_id", providerId);
-        var models = new LinkedHashMap<String, GatewayModelConfig>();
-        gatewayModelCollection.find(query).forEach(model -> {
-            if (model.upstreamModel != null) models.putIfAbsent(model.upstreamModel, model);
-        });
-        return models;
+        return gatewayModelCollection.find(query);
     }
 
     private Map<String, GatewayModelMetadata> discoveredModels(GatewayProviderConfig provider) {
@@ -230,6 +256,10 @@ public class GatewayModelService {
         var models = new LinkedHashMap<String, GatewayModelMetadata>();
         gatewayModelDiscoveryService.discover(provider).forEach(model -> models.putIfAbsent(model.id(), model));
         return models;
+    }
+
+    private void invalidateRouting() {
+        if (gatewayRoutingEngine != null) gatewayRoutingEngine.invalidate();
     }
 
     private GatewayModelView toView(GatewayModelConfig entity, GatewayProviderConfig provider) {
@@ -278,19 +308,6 @@ public class GatewayModelService {
         };
     }
 
-    private void requireAdmin(String userId) {
-        if (userId == null) throw new ForbiddenException("admin required");
-        var user = userCollection.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
-        if (!"admin".equals(user.role)) throw new ForbiddenException("admin required");
-    }
-
-    private String trimToNull(String value) {
-        if (value == null) return null;
-        var trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
+    private record StagedImport(GatewayModelConfig entity, boolean create) {
     }
 }

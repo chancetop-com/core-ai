@@ -13,7 +13,7 @@ import core.framework.web.exception.BadRequestException;
 import java.util.HashSet;
 
 public class GatewayModelController {
-    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final ObjectMapper MAPPER = GatewayJson.MAPPER;
 
     @Inject
     GatewayModelService gatewayModelService;
@@ -24,6 +24,11 @@ public class GatewayModelController {
 
     public Response list(Request request) {
         return jsonResponse(gatewayModelService.list(userId()));
+    }
+
+    public Response listAvailable(Request request) {
+        // any authenticated user may read routable models, e.g. for the agent editor model dropdown
+        return jsonResponse(gatewayModelService.listAvailable());
     }
 
     public Response create(Request request) {

@@ -43,8 +43,12 @@ import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
 import ai.core.server.file.SharedFileDownloadController;
+import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
+import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
 import ai.core.server.gateway.GatewayProxyController;
 import ai.core.server.gateway.GatewayProxyService;
+import ai.core.server.gateway.GatewayResponsesChannelListener;
+import ai.core.server.gateway.GatewayResponsesSseEvent;
 import ai.core.server.gateway.GatewayModelController;
 import ai.core.server.gateway.GatewayModelDiscoveryService;
 import ai.core.server.gateway.GatewayModelService;
@@ -440,11 +444,15 @@ public class ServerModule extends Module {
         http().bean(ListAgentMemoriesResponse.class);
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
 
-        bind(new GatewaySecretProtector(property("gateway.secret.key").orElse(requiredProperty("sys.mongo.uri"))));
+        // prefer a dedicated gateway.secret.key; keep the mongo-uri-derived key as decrypt-only
+        // fallback so secrets encrypted before configuring the dedicated key stay readable
+        var gatewaySecretKey = property("gateway.secret.key").map(String::trim).filter(key -> !key.isBlank()).orElse(null);
+        var gatewayLegacySecret = requiredProperty("sys.mongo.uri");
+        bind(gatewaySecretKey == null ? new GatewaySecretProtector(gatewayLegacySecret) : new GatewaySecretProtector(gatewaySecretKey, gatewayLegacySecret));
+        bind(GatewayRoutingEngine.class);
         bind(GatewayModelDiscoveryService.class);
         bind(GatewayModelService.class);
         bind(GatewayProviderService.class);
-        bind(GatewayRoutingEngine.class);
         bind(GatewayProxyService.class);
         var gatewayProviderController = bind(GatewayProviderController.class);
         http().route(HTTPMethod.GET, "/api/gateway/providers", gatewayProviderController::list);
@@ -454,6 +462,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.POST, "/api/gateway/providers/:id/test", gatewayProviderController::test);
         var gatewayModelController = bind(GatewayModelController.class);
         http().route(HTTPMethod.GET, "/api/gateway/models", gatewayModelController::list);
+        http().route(HTTPMethod.GET, "/api/gateway/models/available", gatewayModelController::listAvailable);
         http().route(HTTPMethod.POST, "/api/gateway/models", gatewayModelController::create);
         http().route(HTTPMethod.PUT, "/api/gateway/models/:id", gatewayModelController::update);
         http().route(HTTPMethod.DELETE, "/api/gateway/models/:id", gatewayModelController::delete);
@@ -463,6 +472,13 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/api/gateway/v1/models", gatewayProxyController::models);
         http().route(HTTPMethod.POST, "/api/gateway/v1/chat/completions", gatewayProxyController::chatCompletions);
         http().route(HTTPMethod.POST, "/api/gateway/v1/responses", gatewayProxyController::responses);
+        // streaming requests (Accept: text/event-stream) are served incrementally over SSE;
+        // others fall through to the buffered http routes above
+        var gatewaySse = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
+        gatewaySse.listen(HTTPMethod.POST, "/api/gateway/v1/chat/completions", GatewayChatCompletionsSseEvent.class, bind(GatewayChatCompletionsChannelListener.class));
+        gatewaySse.requireEventStreamAccept(HTTPMethod.POST, "/api/gateway/v1/chat/completions");
+        gatewaySse.listen(HTTPMethod.POST, "/api/gateway/v1/responses", GatewayResponsesSseEvent.class, bind(GatewayResponsesChannelListener.class));
+        gatewaySse.requireEventStreamAccept(HTTPMethod.POST, "/api/gateway/v1/responses");
 
         api().service(SystemSettingsWebService.class, bind(SystemSettingsWebServiceImpl.class));
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));

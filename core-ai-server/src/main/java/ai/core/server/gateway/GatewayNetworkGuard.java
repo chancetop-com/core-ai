@@ -45,7 +45,20 @@ final class GatewayNetworkGuard {
 
     private static boolean isBlocked(InetAddress address) {
         return address.isLoopbackAddress() || address.isAnyLocalAddress() || address.isLinkLocalAddress()
-                || address.isSiteLocalAddress() || address.isMulticastAddress();
+                || address.isSiteLocalAddress() || address.isMulticastAddress()
+                || isUniqueLocalIpv6(address) || isCarrierGradeNat(address);
+    }
+
+    // fc00::/7 unique local IPv6, not covered by isSiteLocalAddress (which only matches deprecated fec0::/10)
+    private static boolean isUniqueLocalIpv6(InetAddress address) {
+        var bytes = address.getAddress();
+        return bytes.length == 16 && (bytes[0] & 0xFE) == 0xFC;
+    }
+
+    // 100.64.0.0/10 carrier-grade NAT range
+    private static boolean isCarrierGradeNat(InetAddress address) {
+        var bytes = address.getAddress();
+        return bytes.length == 4 && (bytes[0] & 0xFF) == 100 && (bytes[1] & 0xC0) == 64;
     }
 
     private GatewayNetworkGuard() {

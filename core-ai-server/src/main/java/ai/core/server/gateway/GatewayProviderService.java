@@ -4,6 +4,7 @@ import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
@@ -11,19 +12,29 @@ import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
-import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
-import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
+import static ai.core.server.gateway.GatewaySupport.isBlank;
+import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
+import static ai.core.server.gateway.GatewaySupport.trimToNull;
+import static ai.core.server.gateway.GatewaySupport.truncate;
+import static ai.core.server.gateway.GatewaySupport.urlEncode;
+import static ai.core.server.gateway.GatewaySupport.valueOrDefault;
+
 public class GatewayProviderService {
     private static final Logger LOGGER = LoggerFactory.getLogger(GatewayProviderService.class);
+    // shared client with a high ceiling; effective limits come from per-request timeouts
+    private static final HTTPClient CLIENT = HTTPClient.builder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofMinutes(2))
+            .build();
 
     @Inject
     MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
@@ -33,12 +44,14 @@ public class GatewayProviderService {
     MongoCollection<User> userCollection;
     @Inject
     GatewaySecretProtector secretProtector;
+    @Inject
+    GatewayRoutingEngine gatewayRoutingEngine;
 
     public ListGatewayProvidersResponse list(String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         var query = new Query();
         query.filter = Filters.empty();
-        query.sort = com.mongodb.client.model.Sorts.ascending("name");
+        query.sort = Sorts.ascending("name");
 
         var response = new ListGatewayProvidersResponse();
         response.providers = gatewayProviderCollection.find(query).stream().map(this::toView).toList();
@@ -46,7 +59,7 @@ public class GatewayProviderService {
     }
 
     public GatewayProviderView create(GatewayProviderRequest request, String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         validate(request, true);
 
         var now = ZonedDateTime.now();
@@ -58,11 +71,12 @@ public class GatewayProviderService {
         entity.createdAt = now;
         entity.updatedAt = now;
         gatewayProviderCollection.insert(entity);
+        invalidateRouting();
         return toView(entity);
     }
 
     public GatewayProviderView update(String id, GatewayProviderRequest request, String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         validate(request, false);
 
         var entity = getEntity(id);
@@ -70,18 +84,20 @@ public class GatewayProviderService {
         entity.updatedBy = userId;
         entity.updatedAt = ZonedDateTime.now();
         gatewayProviderCollection.replace(entity);
+        invalidateRouting();
         return toView(entity);
     }
 
     public void delete(String id, String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         getEntity(id);
         if (hasModels(id)) throw new BadRequestException("gateway provider has models configured: " + id);
         gatewayProviderCollection.delete(id);
+        invalidateRouting();
     }
 
     public TestGatewayProviderResponse test(String id, String userId) {
-        requireAdmin(userId);
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
         var entity = getEntity(id);
         var result = test(entity);
 
@@ -97,22 +113,13 @@ public class GatewayProviderService {
         var result = new TestGatewayProviderResponse();
         try {
             GatewayNetworkGuard.validateOutboundUrl(testUrl(entity), Boolean.TRUE.equals(entity.allowPrivateNetwork));
-            var client = HTTPClient.builder()
-                    .connectTimeout(Duration.ofSeconds(valueOrDefault(entity.connectTimeoutSeconds, 10)))
-                    .timeout(Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, 30)))
-                    .build();
             var request = new HTTPRequest(HTTPMethod.GET, testUrl(entity));
             request.headers.put("Content-Type", "application/json");
-            var apiKey = secret(entity);
-            if (!isBlank(apiKey)) {
-                if ("azure".equals(entity.type)) {
-                    request.headers.put("api-key", apiKey);
-                } else {
-                    request.headers.put("Authorization", "Bearer " + apiKey);
-                }
-            }
+            request.connectTimeout = Duration.ofSeconds(valueOrDefault(entity.connectTimeoutSeconds, 10));
+            request.timeout = Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, 30));
+            GatewaySupport.applyAuth(entity, request, secret(entity));
 
-            var response = client.execute(request);
+            var response = CLIENT.execute(request);
             result.ok = response.statusCode >= 200 && response.statusCode < 300;
             result.status = result.ok ? "ok" : "failed";
             result.message = result.ok ? "Connected" : truncate("HTTP " + response.statusCode + ": " + response.text(), 300);
@@ -131,7 +138,7 @@ public class GatewayProviderService {
         var baseUrl = stripTrailingSlash(entity.baseUrl);
         if ("azure".equals(entity.type)) {
             var version = isBlank(entity.apiVersion) ? "2024-10-21" : entity.apiVersion;
-            return baseUrl + "/openai/deployments?api-version=" + version;
+            return baseUrl + "/openai/deployments?api-version=" + urlEncode(version);
         }
         return baseUrl + "/models";
     }
@@ -189,12 +196,6 @@ public class GatewayProviderService {
         }
     }
 
-    private void requireAdmin(String userId) {
-        if (userId == null) throw new ForbiddenException("admin required");
-        var user = userCollection.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
-        if (!"admin".equals(user.role)) throw new ForbiddenException("admin required");
-    }
-
     private GatewayProviderView toView(GatewayProviderConfig entity) {
         var view = new GatewayProviderView();
         view.id = entity.id;
@@ -227,7 +228,7 @@ public class GatewayProviderService {
         var trimmed = trimToNull(value);
         if (trimmed == null) return;
         try {
-            var parsed = com.fasterxml.jackson.databind.json.JsonMapper.builder().build().readValue(trimmed, Object.class);
+            var parsed = GatewayJson.MAPPER.readValue(trimmed, Object.class);
             if (!(parsed instanceof java.util.Map<?, ?>)) throw new BadRequestException("requestExtraBody must be a JSON object");
         } catch (BadRequestException e) {
             throw e;
@@ -239,6 +240,10 @@ public class GatewayProviderService {
     private String secret(GatewayProviderConfig entity) {
         if (entity.apiKeyEncrypted != null) return secretProtector.unprotect(entity.apiKeyEncrypted);
         return secretProtector.unprotect(entity.apiKey);
+    }
+
+    private void invalidateRouting() {
+        if (gatewayRoutingEngine != null) gatewayRoutingEngine.invalidate();
     }
 
     private String normalizeType(String type) {
@@ -266,32 +271,5 @@ public class GatewayProviderService {
         if (isBlank(secret)) return null;
         if (secret.length() <= 8) return "********";
         return secret.substring(0, 4) + "..." + secret.substring(secret.length() - 4);
-    }
-
-    private String trimToNull(String value) {
-        if (value == null) return null;
-        var trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    private String stripTrailingSlash(String value) {
-        var result = value;
-        while (result.endsWith("/")) {
-            result = result.substring(0, result.length() - 1);
-        }
-        return result;
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
-    }
-
-    private long valueOrDefault(Long value, long defaultValue) {
-        return value == null ? defaultValue : value;
-    }
-
-    private String truncate(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) return value;
-        return value.substring(0, maxLength);
     }
 }

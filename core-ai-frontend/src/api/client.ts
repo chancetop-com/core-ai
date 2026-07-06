@@ -941,6 +941,18 @@ export interface ListGatewayModelsResponse {
   models: GatewayModel[];
 }
 
+export interface GatewayAvailableModel {
+  modelId: string;
+  displayName?: string | null;
+  providerName?: string | null;
+  endpointTypes?: string[] | null;
+  supportsVision?: boolean | null;
+}
+
+export interface ListGatewayAvailableModelsResponse {
+  models: GatewayAvailableModel[];
+}
+
 export interface GatewayDiscoveredModel {
   id: string;
   displayName?: string;
@@ -1040,6 +1052,8 @@ export const api = {
       request<TestGatewayProviderResponse>(`/api/gateway/providers/${id}/test`, { method: 'POST' }),
     listModels: () =>
       request<ListGatewayModelsResponse>('/api/gateway/models'),
+    listAvailableModels: () =>
+      request<ListGatewayAvailableModelsResponse>('/api/gateway/models/available'),
     createModel: (data: GatewayModelRequest) =>
       request<GatewayModel>('/api/gateway/models', { method: 'POST', body: JSON.stringify(data) }),
     updateModel: (id: string, data: GatewayModelRequest) =>
