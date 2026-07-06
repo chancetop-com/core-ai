@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Save, Settings } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, RefreshCw, Save, Settings } from 'lucide-react';
 import { api, type GatewayModel, type SystemSettings as SystemSettingsData } from '../../api/client';
 
 export default function SystemSettings() {
@@ -102,18 +102,12 @@ export default function SystemSettings() {
         <div className="p-5 space-y-5">
           <label className="block">
             <span className="block text-sm font-medium mb-2">Extraction model</span>
-            <select
+            <ModelSelect
               value={memoryExtractionModel}
-              onChange={event => setMemoryExtractionModel(event.target.value)}
-              className="input w-full"
-            >
-              <option value="">Default ({settings?.default_memory_extraction_model || 'not configured'})</option>
-              {chatModels.map(model => (
-                <option key={model.id} value={model.modelId}>
-                  {model.displayName || model.modelId}{model.providerName ? ` · ${model.providerName}` : ''}
-                </option>
-              ))}
-            </select>
+              models={chatModels}
+              defaultModel={settings?.default_memory_extraction_model}
+              onChange={setMemoryExtractionModel}
+            />
             <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
               Only enabled gateway models that support chat completions can be selected.
             </span>
@@ -138,6 +132,73 @@ export default function SystemSettings() {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ModelSelect({ value, models, defaultModel, onChange }: {
+  value: string;
+  models: GatewayModel[];
+  defaultModel?: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  const options = [
+    { value: '', label: `Default (${defaultModel || 'not configured'})` },
+    ...models.map(model => ({
+      value: model.modelId,
+      label: `${model.displayName || model.modelId}${model.providerName ? ` · ${model.providerName}` : ''}`,
+    })),
+  ];
+
+  const selectedLabel = options.find(o => o.value === value)?.label || 'Select model...';
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none flex items-center justify-between gap-2 cursor-pointer"
+        style={{
+          background: 'var(--color-bg-tertiary)',
+          borderColor: 'var(--color-border)',
+          color: value ? 'var(--color-text)' : 'var(--color-text-secondary)',
+        }}>
+        <span className="truncate">{selectedLabel}</span>
+        <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          style={{ color: 'var(--color-text-secondary)' }} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-full rounded-lg border shadow-lg py-1 max-h-60 overflow-auto"
+          style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+          {options.map(option => (
+            <button key={option.value}
+              onClick={() => { onChange(option.value); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm cursor-pointer transition-colors"
+              style={{
+                color: option.value === value ? 'var(--color-primary)' : 'var(--color-text)',
+                fontWeight: option.value === value ? 600 : 400,
+                background: option.value === value ? 'var(--color-primary-bg)' : 'transparent',
+              }}
+              onMouseEnter={e => { if (option.value !== value) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
+              onMouseLeave={e => { if (option.value !== value) e.currentTarget.style.background = 'transparent'; }}>
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

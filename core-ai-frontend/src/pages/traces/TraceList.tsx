@@ -937,6 +937,20 @@ function TimeRangeControl({ range, startFrom, startTo, onChange }: {
   startTo: string;
   onChange: (patch: Partial<TraceFilter>) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
   const handleChange = (value: string) => {
     if (value === 'custom') {
       onChange({ range: 'custom' });
@@ -944,17 +958,42 @@ function TimeRangeControl({ range, startFrom, startTo, onChange }: {
       // Preset or "All time" — drop manual datetime values so they don't bleed through
       onChange({ range: value, startFrom: '', startTo: '' });
     }
+    setOpen(false);
   };
+
+  const selectedLabel = TIME_PRESETS.find(p => p.key === range)?.label || 'Select...';
+
   return (
     <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm"
       style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
       <Clock size={14} />
-      <select value={range}
-        onChange={event => handleChange(event.target.value)}
-        className="bg-transparent border-0 outline-none cursor-pointer"
-        style={{ color: 'var(--color-text)', fontWeight: 500 }}>
-        {TIME_PRESETS.map(preset => <option key={preset.key} value={preset.key}>{preset.label}</option>)}
-      </select>
+      <div className="relative inline-flex" ref={ref}>
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="bg-transparent border-0 outline-none cursor-pointer whitespace-nowrap"
+          style={{ color: 'var(--color-text)', fontWeight: 500 }}>
+          {selectedLabel}
+        </button>
+        {open && (
+          <div className="absolute left-0 top-full mt-1 z-50 min-w-full rounded-md border shadow-lg py-1"
+            style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+            {TIME_PRESETS.map(preset => (
+              <button key={preset.key}
+                onClick={() => handleChange(preset.key)}
+                className="w-full text-left px-3 py-1.5 text-sm cursor-pointer whitespace-nowrap transition-colors"
+                style={{
+                  color: preset.key === range ? 'var(--color-primary)' : preset.key === '' ? 'var(--color-text-secondary)' : 'var(--color-text)',
+                  fontWeight: preset.key === range ? 600 : 400,
+                  background: preset.key === range ? 'var(--color-primary-bg)' : 'transparent',
+                }}
+                onMouseEnter={e => { if (preset.key !== range) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
+                onMouseLeave={e => { if (preset.key !== range) e.currentTarget.style.background = 'transparent'; }}>
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       {range === 'custom' && (
         <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
           {startFrom || startTo ? `${formatRangeLabel(startFrom)} → ${formatRangeLabel(startTo)}` : 'set below'}
