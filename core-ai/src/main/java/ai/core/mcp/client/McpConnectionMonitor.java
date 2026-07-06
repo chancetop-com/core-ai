@@ -103,11 +103,30 @@ public class McpConnectionMonitor implements AutoCloseable {
     }
 
     /**
-     * Perform heartbeat check for all connected clients.
+     * Perform heartbeat check for all connected clients and recovery check for FAILED servers.
      */
     private void performHeartbeatCheck() {
         var clients = clientsSupplier.get();
         var configs = configsSupplier.get();
+
+        // Periodic recovery check: detect FAILED servers and attempt reconnection.
+        // Once a server enters FAILED state (e.g. max reconnect attempts exhausted),
+        // the existing heartbeat loop below skips it because only CONNECTED clients
+        // are checked. This loop ensures FAILED servers are periodically re-evaluated
+        // and given a chance to recover when the underlying service becomes available again.
+        for (var entry : configs.entrySet()) {
+            String serverName = entry.getKey();
+            McpServerConfig config = entry.getValue();
+            if (config == null || !config.isAutoReconnect() || closed) {
+                continue;
+            }
+            var currentState = stateGetter.apply(serverName);
+            if (currentState == McpClientManager.ConnectionState.FAILED) {
+                LOGGER.info("Periodic recovery: resetting reconnect state for FAILED server: {}", serverName);
+                resetReconnectAttempts(serverName);
+                scheduleReconnect(serverName);
+            }
+        }
 
         for (var entry : clients.entrySet()) {
             String serverName = entry.getKey();
