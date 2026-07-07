@@ -2,6 +2,7 @@ package ai.core.server.sandbox;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.internal.http.CustomHTTPClientImpl;
+import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.tool.ToolCallResult;
@@ -30,6 +31,11 @@ import java.util.Map;
 public class SandboxClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxClient.class);
 
+    private static final HTTPClient SHARED_POLL_CLIENT = new PatchedHTTPClientBuilder()
+            .connectTimeout(Duration.ofSeconds(2))
+            .timeout(Duration.ofSeconds(3))
+            .buildCached();
+
     private final String baseUrl;
     private final String ip;
     private final int port;
@@ -40,24 +46,20 @@ public class SandboxClient {
         this.port = port;
         this.baseUrl = "http://" + ip + ":" + port;
         var timeoutMs = timeoutSeconds > 0 ? timeoutSeconds * 1000L : SandboxConstants.DEFAULT_TOOL_TIMEOUT_MS;
-        this.httpClient = HTTPClient.builder()
+        this.httpClient = new PatchedHTTPClientBuilder()
                 .connectTimeout(Duration.ofSeconds(3))
                 .timeout(Duration.ofMillis(timeoutMs))
-                .build();
+                .buildCached();
     }
 
     public void waitForReady(int maxWaitMs) {
         var url = baseUrl + "/health";
         var start = System.currentTimeMillis();
-        var pollClient = HTTPClient.builder()
-                .connectTimeout(Duration.ofSeconds(2))
-                .timeout(Duration.ofSeconds(3))
-                .build();
         try {
             while (System.currentTimeMillis() - start < maxWaitMs) {
                 try {
                     var req = new HTTPRequest(HTTPMethod.GET, url);
-                    var resp = pollClient.execute(req);
+                    var resp = SHARED_POLL_CLIENT.execute(req);
                     if (resp.statusCode == 200) {
                         LOGGER.info("sandbox runtime ready: url={}, elapsed={}ms", baseUrl, System.currentTimeMillis() - start);
                         return;
@@ -73,10 +75,6 @@ public class SandboxClient {
                 }
             }
             throw new RuntimeException("sandbox runtime health check timed out after " + maxWaitMs + "ms: url=" + baseUrl);
-        } finally {
-            if (pollClient instanceof CustomHTTPClientImpl) {
-                ((CustomHTTPClientImpl) pollClient).close();
-            }
         }
     }
 

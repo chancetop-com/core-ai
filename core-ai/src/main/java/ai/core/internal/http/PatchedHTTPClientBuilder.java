@@ -41,6 +41,8 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -92,6 +94,49 @@ public final class PatchedHTTPClientBuilder {
     // todo
 //    PatchedHTTPClientBuilder() {
 //    }
+
+    /**
+     * Cache of HTTP client instances keyed by configuration fingerprint.
+     * When {@link #buildCached()} is called, the cache is consulted first.
+     * Clearing the cache is not needed because configurations are static at startup;
+     * if reconfiguration is required, the application should restart.
+     */
+    private static final ConcurrentMap<String, HTTPClient> CLIENT_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Build an HTTP client, caching the result so that subsequent calls with the
+     * same configuration return the same cached instance.
+     * <p>
+     * The cache key is derived from all configurable fields of this builder.
+     * Instances returned from the cache share the underlying {@link OkHttpClient}
+     * and its connection pool / thread pool, reducing per-session overhead.
+     */
+    public HTTPClient buildCached() {
+        String key = cacheKey();
+        // Using computeIfAbsent ensures at most one client is built per unique config
+        return CLIENT_CACHE.computeIfAbsent(key, ignored -> build());
+    }
+
+    /**
+     * Derives a cache key from the current builder configuration.
+     * All fields that affect the resulting {@link OkHttpClient} are included.
+     */
+    private String cacheKey() {
+        // trustStore and keyManagers are compared by object identity (not deep content)
+        // because they are set once from static config and never change at runtime.
+        return "connectTimeout=" + connectTimeout.toMillis()
+             + "|timeout=" + timeout.toMillis()
+             + "|keepAlive=" + keepAlive.toMillis()
+             + "|enableCookie=" + enableCookie
+             + "|enableFallbackDNSCache=" + enableFallbackDNSCache
+             + "|userAgent=" + userAgent
+             + "|trustAll=" + trustAll
+             + "|trustStore=" + System.identityHashCode(trustStore)
+             + "|keyManagers=" + System.identityHashCode(keyManagers)
+             + "|maxRetries=" + maxRetries
+             + "|retryWaitTime=" + retryWaitTime.toMillis()
+             + "|proxy=" + (proxy == null ? "null" : proxy.toString());
+    }
 
     public HTTPClient build() {
         var watch = new StopWatch();

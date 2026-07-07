@@ -2,6 +2,7 @@ package ai.core.mcp.server.apiserver;
 
 import ai.core.api.apidefinition.ApiDefinition;
 import ai.core.api.apidefinition.ApiDefinitionType;
+import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
@@ -24,6 +25,14 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public class DynamicApiCaller {
+    /**
+     * Shared HTTP client for dynamic API calls.
+     * Uses buildCached() so all callers share the same underlying connection pool.
+     */
+    private static final HTTPClient SHARED_CLIENT = new PatchedHTTPClientBuilder()
+            .trustAll()
+            .buildCached();
+
     private final Map<String, ApiDefinition.Operation> operationMap;
     private final Map<String, Map<String, ApiDefinitionType>> typeMap;
     private final Map<String, ApiDefinition> apiDefinitionMap;
@@ -70,7 +79,7 @@ public class DynamicApiCaller {
         var apiDefinition = apiDefinitionMap.get(name);
         var baseUrl = apiDefinition.baseUrl.replaceAll("/+$", "");
         var url = baseUrl + operation.path;
-        var client = HTTPClient.builder().trustAll().build();
+        var client = SHARED_CLIENT;
         for (var pathParam : operation.pathParams) {
             if (!argsMap.containsKey(pathParam.name)) {
                 throw new IllegalArgumentException("Missing path parameter: " + pathParam.name);

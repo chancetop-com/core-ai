@@ -9,6 +9,7 @@ import ai.core.api.server.serviceapi.ServiceAdditionalView;
 import ai.core.api.server.serviceapi.ServiceApiView;
 import ai.core.api.server.serviceapi.TypeAdditionalView;
 import ai.core.api.server.serviceapi.UpdateApiRequest;
+import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.server.apimcp.serviceapi.domain.FieldAdditional;
 import ai.core.server.apimcp.serviceapi.domain.OperationAdditional;
 import ai.core.server.apimcp.serviceapi.domain.PathParamAdditional;
@@ -32,6 +33,14 @@ import java.util.UUID;
  * @author stephen
  */
 public class ServiceApiService {
+    /**
+     * Shared HTTP client for fetching API schemas from sys-api endpoints.
+     * Uses buildCached() so all callers share the same underlying connection pool.
+     */
+    private static final HTTPClient SHARED_CLIENT = new PatchedHTTPClientBuilder()
+            .trustAll()
+            .buildCached();
+
     @Inject
     MongoCollection<ServiceApi> apiMongoCollection;
     @Inject
@@ -84,10 +93,9 @@ public class ServiceApiService {
 
     public void updateFromSysApi(String id, String url, String operator) {
         var serviceApi = apiMongoCollection.get(id).orElseThrow(() -> new NotFoundException("service api not found: " + id));
-        var client = HTTPClient.builder().trustAll().build();
         var req = new HTTPRequest(HTTPMethod.GET, url);
         req.headers.put("Content-Type", "application/json");
-        var rsp = client.execute(req);
+        var rsp = SHARED_CLIENT.execute(req);
         serviceApi.url = url;
         serviceApi.payload = rsp.text();
         serviceApi.updatedBy = operator;
