@@ -17,6 +17,7 @@ import ai.core.api.server.tool.TestMcpToolRequest;
 import ai.core.api.server.tool.TestMcpToolResponse;
 import ai.core.api.server.tool.ToolRegistryView;
 import ai.core.api.server.tool.UpdateMcpServerRequest;
+import ai.core.mcp.client.McpClientManager;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.tool.InternalApiToolLoader;
 import ai.core.server.tool.ToolRegistryService;
@@ -120,6 +121,10 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
         var response = new McpServerStatusResponse();
         response.serverId = id;
         response.state = state.name();
+        if (state == McpClientManager.ConnectionState.CONNECTING
+            || state == McpClientManager.ConnectionState.NOT_CONNECTED) {
+            response.message = "Connection in progress, check status endpoint for completion";
+        }
         return response;
     }
 
