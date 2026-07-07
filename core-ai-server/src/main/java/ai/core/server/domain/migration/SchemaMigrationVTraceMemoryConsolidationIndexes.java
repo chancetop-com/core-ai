@@ -23,7 +23,8 @@ import core.framework.mongo.Mongo;
 public class SchemaMigrationVTraceMemoryConsolidationIndexes implements SchemaMigration {
     @Override
     public String version() {
-        return "20260706001";
+        // 20260706001 is claimed by SchemaMigrationVGatewayModelModelIdIndex (same-day collision)
+        return "20260706004";
     }
 
     @Override
