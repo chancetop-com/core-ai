@@ -30,12 +30,20 @@ import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * @author stephen
@@ -45,6 +53,20 @@ public class ToolRegistryService {
     private static final String CONFIG_PREFIX = "config:";
     private static final String BUILTIN_PREFIX = "builtin:";
     private static final String API_TOOL_ID = "builtin-service-api";
+
+    // Virtual-thread executor for async MCP connect operations.
+    // Connection tasks are I/O-bound (HTTP calls to upstream MCP servers / sandbox runtime),
+    // so virtual threads let us block without consuming a carrier (platform) thread.
+    private static final ExecutorService MCP_CONNECT_EXECUTOR = Executors.newThreadPerTaskExecutor(
+        Thread.ofVirtual().name("mcp-connect-", 0).factory()
+    );
+
+    // Maximum wall-clock time a single connectMcpServer call may wait for the MCP server
+    // to finish its initialization handshake before the HTTP response is returned.
+    // If the server is still initialising after this period the response carries the
+    // current (CONNECTING / NOT_CONNECTED) state, and initialisation proceeds in the
+    // background.  The frontend can poll GET …/status for completion.
+    private static final Duration CONNECT_OPERATION_TIMEOUT = Duration.ofSeconds(15);
 
     private final Map<String, ToolRegistryEntry> tools = new ConcurrentHashMap<>();
     private final Map<String, List<ToolCall>> dynamicToolSets = new ConcurrentHashMap<>();
@@ -749,23 +771,73 @@ public class ToolRegistryService {
         var entity = requireMcpEntity(serverId);
         if (!Boolean.TRUE.equals(entity.enabled)) throw new RuntimeException("mcp server is disabled, id=" + serverId);
 
-        if (isSandboxHosted(entity)) {
-            mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
-        } else {
-            mcpConnectionManager.registerMcpServer(entity);
-        }
         var mcpManager = McpClientManagerRegistry.getManager();
         if (mcpManager == null) throw new RuntimeException("mcp manager not initialized");
 
-        var state = mcpManager.getState(entity.id);
-        if (state == McpClientManager.ConnectionState.CONNECTED) return state;
+        // Fast-fail: don't attempt connection if the server is already in a bad state.
+        var currentState = mcpManager.getState(entity.id);
+        if (currentState == McpClientManager.ConnectionState.FAILED
+            || currentState == McpClientManager.ConnectionState.RECONNECTING) {
+            LOGGER.warn("mcp server is in {} state, skipping connect, id={}", currentState, serverId);
+            return currentState;
+        }
+        if (currentState == McpClientManager.ConnectionState.CONNECTED) return currentState;
+
+        // ── Register / ensure the server is known to the manager ──────────────
+        // For non-sandbox servers registration is a fast in-memory operation; for
+        // sandbox-hosted servers ensureRegisteredOnDiscovery may POST to the sandbox
+        // runtime (potentially slow), so it runs inside the async task below.
+        if (!isSandboxHosted(entity)) {
+            mcpConnectionManager.registerMcpServer(entity);
+        }
+
+        // Re-read state after possible registration
+        currentState = mcpManager.getState(entity.id);
+        if (currentState == McpClientManager.ConnectionState.CONNECTED) return currentState;
+        if (currentState == McpClientManager.ConnectionState.CONNECTING) {
+            // Another request already started connecting — return immediately.
+            return currentState;
+        }
+
+        // ── Submit the actual connection work to a virtual-thread executor ────
+        // The HTTP response thread returns as soon as the background task completes
+        // OR the CONNECT_OPERATION_TIMEOUT elapses, whichever comes first.
+        // If the timeout fires first the connection continues in the background.
+        Future<McpClientManager.ConnectionState> future = MCP_CONNECT_EXECUTOR.submit(() -> {
+            try {
+                // Sandbox-hosted servers need the sandbox MCP process started first.
+                // This is done here (inside the async task) because it may block for
+                // up to MCP_STARTUP_TIMEOUT_SECONDS (180 s).
+                if (isSandboxHosted(entity)) {
+                    mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
+                }
+                mcpManager.getClient(entity.id);
+            } catch (McpClientManager.McpClientException e) {
+                LOGGER.warn("failed to connect mcp server, id={}, reason={}", serverId, e.getMessage());
+            } catch (Exception e) {
+                LOGGER.warn("failed to connect mcp server, id={}", serverId, e);
+            }
+            return mcpManager.getState(entity.id);
+        });
 
         try {
-            mcpManager.getClient(entity.id);
-        } catch (Exception e) {
-            LOGGER.warn("failed to connect mcp server, id={}", serverId, e);
+            return future.get(CONNECT_OPERATION_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            // The connection is still in progress — don't cancel it, let it finish
+            // in the background.  Return the current state so the caller (typically
+            // the frontend) can poll GET …/status for completion.
+            LOGGER.info("connect mcp server timed out after {}, continuing in background, id={}",
+                CONNECT_OPERATION_TIMEOUT, serverId);
+            return mcpManager.getState(entity.id);
+        } catch (CancellationException e) {
+            return mcpManager.getState(entity.id);
+        } catch (ExecutionException e) {
+            LOGGER.warn("failed to connect mcp server, id={}", serverId, e.getCause());
+            return mcpManager.getState(entity.id);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return mcpManager.getState(entity.id);
         }
-        return mcpManager.getState(entity.id);
     }
 
     public ToolCallResult callMcpServerTool(String serverId, String toolName, String argumentsJson) {

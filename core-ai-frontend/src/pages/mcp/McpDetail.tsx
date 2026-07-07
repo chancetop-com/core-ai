@@ -68,11 +68,47 @@ export default function McpDetail() {
 
   const handleConnect = async () => {
     setConnecting(true);
+    setError(null);
+    let finalState: string | null = null;
     try {
       const r = await api.tools.connectMcpServer(id);
       setState(r.state);
-      // Refresh tools after connecting
-      if (r.state === 'CONNECTED') {
+      setStateMessage(r.message);
+      finalState = r.state;
+
+      // If the server returned a non-terminal state (CONNECTING / NOT_CONNECTED),
+      // the connection is being established asynchronously on the backend.
+      // Poll the status endpoint with exponential backoff until the state
+      // settles to CONNECTED or FAILED.
+      const terminalStates = new Set(['CONNECTED', 'FAILED', 'DISCONNECTED']);
+      if (!terminalStates.has(r.state)) {
+        const MAX_POLL_MS = 120_000;        // give up after 2 minutes
+        const BASE_INTERVAL_MS = 1_000;     // start at 1s
+        const MAX_INTERVAL_MS = 15_000;     // cap at 15s
+        const startTime = Date.now();
+        let attempt = 0;
+
+        while (Date.now() - startTime < MAX_POLL_MS) {
+          // Exponential backoff: base * 2^attempt, capped
+          const delay = Math.min(BASE_INTERVAL_MS * (1 << attempt), MAX_INTERVAL_MS);
+          await new Promise(resolve => setTimeout(resolve, delay));
+
+          const status = await api.tools.getMcpServerStatus(id);
+          setState(status.state);
+          setStateMessage(status.message);
+          finalState = status.state;
+
+          if (status.state === 'CONNECTED') break;
+          if (status.state === 'FAILED') {
+            setStateMessage(status.message || 'Connection failed');
+            break;
+          }
+          attempt++;
+        }
+      }
+
+      // If we're now connected, fetch the tool list
+      if (finalState === 'CONNECTED') {
         const t = await api.tools.listMcpServerTools(id);
         setTools(t.tools || []);
       }
