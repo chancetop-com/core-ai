@@ -109,9 +109,19 @@ public class McpClientService implements AutoCloseable {
     }
 
     public List<McpSchema.Tool> listToolsRaw() {
-        var result = client.listTools();
-        var tools = result.tools();
-        return tools != null ? tools : List.of();
+        try {
+            var result = client.listTools();
+            var tools = result.tools();
+            return tools != null ? tools : List.of();
+        } catch (McpClientManager.McpClientException e) {
+            throw e;
+        } catch (Exception e) {
+            if (isConnectionError(e)) {
+                throw new McpClientManager.McpClientException(
+                    "MCP transport error listing tools on " + serverName + ": " + e.getMessage(), e);
+            }
+            throw e;
+        }
     }
 
     public ToolCallResult callToolWithResult(String name, String text) {
@@ -120,13 +130,26 @@ public class McpClientService implements AutoCloseable {
 
     public ToolCallResult callToolWithResult(String name, Map<String, Object> arguments) {
         var request = new McpSchema.CallToolRequest(name, arguments);
-        var result = client.callTool(request);
+        try {
+            var result = client.callTool(request);
 
-        if (result.isError() != null && result.isError()) {
-            return ToolCallResult.failed(extractErrorMessage(result));
+            if (result.isError() != null && result.isError()) {
+                return ToolCallResult.failed(extractErrorMessage(result));
+            }
+
+            return extractToolCallResult(result);
+        } catch (Exception e) {
+            // Connection-level errors (network, socket, timeout) should propagate
+            // to McpClientManager to trigger reconnection
+            if (isConnectionError(e)) {
+                throw new McpClientManager.McpClientException(
+                    "MCP transport error calling tool " + name + " on " + serverName + ": " + e.getMessage(), e);
+            }
+            // Application-level errors (e.g., HTTP 405 from MCP server, invalid tool name,
+            // JSON-RPC errors) should NOT trigger reconnection — return a failed result instead
+            LOGGER.warn("MCP tool call failed for {}/{}: {}", serverName, name, e.getMessage());
+            return ToolCallResult.failed("MCP tool call failed: " + e.getMessage());
         }
-
-        return extractToolCallResult(result);
     }
 
     public McpSyncClient getMcpClient() {
@@ -143,6 +166,29 @@ public class McpClientService implements AutoCloseable {
 
     public String getServerName() {
         return serverName;
+    }
+
+    /**
+     * Determines whether an exception indicates a connection-level failure
+     * (e.g., network down, host unreachable, socket closed) as opposed to an
+     * application-level error (e.g., HTTP 405, invalid tool name, JSON-RPC error).
+     * <p>
+     Only connection-level errors should trigger MCP client reconnection.
+     */
+    private boolean isConnectionError(Throwable e) {
+        var cause = e;
+        while (cause != null) {
+            if (cause instanceof java.net.ConnectException ||
+                cause instanceof java.net.SocketException ||
+                cause instanceof java.net.UnknownHostException ||
+                cause instanceof java.net.NoRouteToHostException ||
+                cause instanceof java.net.SocketTimeoutException ||
+                cause instanceof java.util.concurrent.TimeoutException) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     public McpServerConfig getConfig() {

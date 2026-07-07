@@ -203,7 +203,7 @@ public class McpClientManager implements AutoCloseable {
     public List<McpSchema.Tool> safeListTools(String serverName, List<String> namespaces) {
         try {
             return getClient(serverName).listTools(namespaces);
-        } catch (Exception first) {
+        } catch (McpClientException first) {
             LOGGER.warn("MCP listTools failed for {}, sync reconnect once: {}", serverName, first.getMessage());
             handleDisconnection(serverName);
             if (!reconnectNow(serverName)) {
@@ -217,13 +217,18 @@ public class McpClientManager implements AutoCloseable {
     public ToolCallResult safeCallTool(String serverName, String name, String text) {
         try {
             return getClient(serverName).callToolWithResult(name, text);
-        } catch (Exception e) {
+        } catch (McpClientException e) {
             LOGGER.warn("MCP callTool failed for {}/{}, scheduling reconnect: {}", serverName, name, e.getMessage());
             if (clients.containsKey(serverName)) {
                 handleDisconnection(serverName);
                 getConnectionMonitor().scheduleReconnect(serverName);
             }
             return ToolCallResult.failed("MCP server " + serverName + " unavailable: " + e.getMessage());
+        } catch (Exception e) {
+            // Application-level error (e.g., HTTP 405 from MCP server, invalid tool name) —
+            // do NOT trigger reconnection, just return the failure result
+            LOGGER.warn("MCP callTool failed for {}/{}: {}", serverName, name, e.getMessage());
+            return ToolCallResult.failed("MCP tool call failed: " + e.getMessage());
         }
     }
 
