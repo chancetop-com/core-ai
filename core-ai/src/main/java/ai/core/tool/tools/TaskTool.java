@@ -4,15 +4,21 @@ import ai.core.AgentRuntimeException;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.Task;
-import ai.core.llm.LLMProvider;
+import ai.core.agent.profile.AgentProfile;
+import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.defaultagents.DefaultCodeSimplifierAgent;
 import ai.core.defaultagents.DeepResearchAgent;
 import ai.core.defaultagents.DefaultExploreAgent;
 import ai.core.defaultagents.DefaultGeneralAgent;
+import ai.core.llm.LLMProvider;
+import ai.core.prompt.PromptInject;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.registry.ToolRegistry;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -175,6 +181,7 @@ public class TaskTool extends ToolCall {
         subContext.setTokenCostCallback(context.getTokenCostCallback());
         subContext.setSubAgentConfigs(context.getSubAgentConfigs());
         subContext.setToolRegistry(context.getToolRegistry());
+        subContext.setAgentProfileRegistry(context.getAgentProfileRegistry());
         return subContext;
     }
 
@@ -183,6 +190,13 @@ public class TaskTool extends ToolCall {
         var model = resolveModel(subagentType, context);
         var maxTurnNumber = resolveMaxTurnNumber(subagentType, context);
         var toolRegistry = context.getToolRegistry();
+        AgentProfileRegistry profileRegistry = context.getAgentProfileRegistry();
+        if (profileRegistry != null) {
+            AgentProfile profile = profileRegistry.get(subagentType).orElse(null);
+            if (profile != null && !"builtin".equals(profile.source())) {
+                return buildAgentFromProfile(profile, llmProvider, model, maxTurnNumber, toolRegistry, context);
+            }
+        }
         if (DeepResearchAgent.AGENT_NAME.equals(subagentType)) {
             return DeepResearchAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
@@ -196,6 +210,32 @@ public class TaskTool extends ToolCall {
             return DefaultGeneralAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
         throw new RuntimeException("Unknown subagent type: " + subagentType);
+    }
+
+    private Agent buildAgentFromProfile(AgentProfile profile, LLMProvider llmProvider, String model, int maxTurnNumber, ToolRegistry toolRegistry, ExecutionContext context) {
+        var builder = Agent.builder()
+                .name(profile.name())
+                .description(profile.description())
+                .systemPrompt(profile.systemPrompt() != null ? profile.systemPrompt() : "")
+                .llmProvider(llmProvider)
+                .model(profile.model() != null ? profile.model() : model)
+                .maxTurn(profile.maxTurnNumber() != null ? profile.maxTurnNumber() : maxTurnNumber)
+                .streamingCallback(context.getStreamingCallback())
+                .agentLifecycle(context.getLifecycle())
+                .toolRegistry(toolRegistry);
+        if (profile.tools() != null && !profile.tools().isEmpty()) {
+            builder.toolNames(new ArrayList<>(profile.tools()));
+        }
+        if (context.getPromptSections() != null) {
+            builder.systemPromptSections(context.getPromptSections().stream()
+                    .filter(s -> s.type() == PromptInject.SectionType.ENVIRONMENT
+                            || s.type() == PromptInject.SectionType.INSTRUCTIONS)
+                    .toList());
+        }
+        if (profile.temperature() != null) {
+            builder.temperature(profile.temperature());
+        }
+        return builder.build();
     }
 
     private int resolveMaxTurnNumber(String subagentType, ExecutionContext context) {

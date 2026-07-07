@@ -7,6 +7,7 @@ import ai.core.llm.domain.Usage;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.BackgroundTaskManager;
+import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.prompt.PromptInject;
 import ai.core.tool.registry.ToolRegistry;
@@ -58,6 +59,7 @@ public final class ExecutionContext {
     private Consumer<Usage> tokenCostCallback;
     private Map<String, SubAgentConfig> subAgentConfigs;
     private ToolRegistry toolRegistry;
+    private AgentProfileRegistry agentProfileRegistry;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
@@ -232,6 +234,14 @@ public final class ExecutionContext {
 
     public void setToolRegistry(ToolRegistry toolRegistry) {
         this.toolRegistry = toolRegistry;
+    }
+
+    public AgentProfileRegistry getAgentProfileRegistry() {
+        return agentProfileRegistry;
+    }
+
+    public void setAgentProfileRegistry(AgentProfileRegistry agentProfileRegistry) {
+        this.agentProfileRegistry = agentProfileRegistry;
     }
 
     public static class Builder {
