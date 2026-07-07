@@ -31,7 +31,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -141,29 +142,35 @@ public class AgentMemoryConsolidationJob implements Job {
         var processed = new AtomicInteger(0);
         var failed = new AtomicInteger(0);
 
-        try (var scope = new StructuredTaskScope<Object>()) {
+        var futures = new ArrayList<Future<?>>();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (var agentId : agentIds) {
                 if (ZonedDateTime.now().isAfter(deadline)) {
                     LOGGER.warn("memory consolidation timeout reached, skipping remaining {} agents",
                             agentIds.size() - processed.get() - failed.get());
                     break;
                 }
-                var currentAgentId = agentId;
-                scope.fork(() -> {
+                futures.add(executor.submit(() -> {
                     try {
-                        processAgent(currentAgentId);
+                        processAgent(agentId);
                         processed.incrementAndGet();
                     } catch (Exception e) {
-                        LOGGER.error("failed to consolidate memory for agent={}", currentAgentId, e);
+                        LOGGER.error("failed to consolidate memory for agent={}", agentId, e);
                         failed.incrementAndGet();
                     }
-                    return null;
-                });
+                }));
             }
-            scope.join();
-        } catch (InterruptedException e) {
-            LOGGER.warn("memory consolidation interrupted", e);
-            Thread.currentThread().interrupt();
+        }
+        for (var future : futures) {
+            try {
+                future.get();
+            } catch (InterruptedException e) {
+                LOGGER.warn("memory consolidation interrupted", e);
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                // already logged inside the task
+                LOGGER.warn("memory consolidation task failed unexpectedly", e);
+            }
         }
 
         LOGGER.info("memory consolidation completed: processed={}, failed={}, total={}",
