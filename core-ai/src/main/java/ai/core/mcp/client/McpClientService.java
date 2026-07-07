@@ -13,6 +13,7 @@ import io.modelcontextprotocol.client.transport.StdioClientTransport;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.modelcontextprotocol.spec.ProtocolVersions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,18 @@ public class McpClientService implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpClientService.class);
     private static final String SDK_DEFAULT_STREAMABLE_ENDPOINT = "/mcp";
     private static final String SDK_DEFAULT_SSE_ENDPOINT = "/sse";
+
+    /**
+     * Supported protocol versions for Streamable HTTP transport.
+     * {@link ProtocolVersions#MCP_2025_11_25} is excluded because it is marked
+     * {@code @Deprecated} in the SDK and is not yet widely supported by MCP servers
+     * (e.g., clickhouse-mcp only supports up to 2025-06-18).
+     */
+    private static final List<String> SUPPORTED_PROTOCOL_VERSIONS = List.of(
+            ProtocolVersions.MCP_2024_11_05,
+            ProtocolVersions.MCP_2025_03_26,
+            ProtocolVersions.MCP_2025_06_18
+    );
 
     private final McpSyncClient client;
     private final McpClientTransport transport;
@@ -333,12 +346,14 @@ public class McpClientService implements AutoCloseable {
 
             var builder = HttpClientStreamableHttpTransport.builder(baseUrl)
                 .connectTimeout(config.getConnectTimeout())
-                .endpoint(endpoint);
+                .endpoint(endpoint)
+                .supportedProtocolVersions(SUPPORTED_PROTOCOL_VERSIONS);
             return applyHeadersAndBuild(builder, config);
         }
 
         var builder = HttpClientStreamableHttpTransport.builder(url)
-            .connectTimeout(config.getConnectTimeout());
+            .connectTimeout(config.getConnectTimeout())
+            .supportedProtocolVersions(SUPPORTED_PROTOCOL_VERSIONS);
 
         if (endpoint != null && !endpoint.isBlank()) {
             builder.endpoint(endpoint);
