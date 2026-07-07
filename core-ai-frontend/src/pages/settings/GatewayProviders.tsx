@@ -204,10 +204,14 @@ export default function GatewayProviders() {
   };
 
   const removeProvider = async (provider: GatewayProvider) => {
-    if (!window.confirm(`Delete ${provider.name}?`)) return;
+    const modelCount = models.filter(model => model.providerId === provider.id).length;
+    const confirmMessage = modelCount > 0
+      ? `Delete ${provider.name}? This will also delete ${modelCount} model${modelCount === 1 ? '' : 's'} configured under this provider.`
+      : `Delete ${provider.name}?`;
+    if (!window.confirm(confirmMessage)) return;
     setError('');
     try {
-      await api.gateway.deleteProvider(provider.id);
+      await api.gateway.deleteProvider(provider.id, modelCount > 0);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete gateway provider');

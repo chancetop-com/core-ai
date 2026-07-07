@@ -1,10 +1,22 @@
 const BASE = '';
 
 function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  // Accept: application/json makes the server return a structured {message} error body
+  // instead of an HTML error page, so failures below can surface the real reason.
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
   const apiKey = localStorage.getItem('apiKey');
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
   return headers;
+}
+
+async function errorMessage(res: Response): Promise<string> {
+  try {
+    const body = await res.json();
+    if (body && typeof body.message === 'string' && body.message) return body.message;
+  } catch {
+    // response wasn't JSON (e.g. proxy/gateway error page) — fall through to the generic message
+  }
+  return `${res.status} ${res.statusText}`;
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -22,7 +34,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     }
     throw new Error('Unauthorized');
   }
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await errorMessage(res));
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
@@ -88,10 +100,7 @@ export interface GenerateApiKeyForUserResponse {
 }
 
 async function requestWithAuth<T>(url: string, options?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const apiKey = localStorage.getItem('apiKey');
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-  const res = await fetch(`${BASE}${url}`, { headers, ...options });
+  const res = await fetch(`${BASE}${url}`, { headers: getAuthHeaders(), ...options });
   if (res.status === 401) {
     const apiKeyStored = localStorage.getItem('apiKey');
     if (apiKeyStored !== 'local') {
@@ -101,7 +110,7 @@ async function requestWithAuth<T>(url: string, options?: RequestInit): Promise<T
     }
     throw new Error('Unauthorized');
   }
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await errorMessage(res));
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
@@ -1047,8 +1056,8 @@ export const api = {
       request<GatewayProvider>('/api/gateway/providers', { method: 'POST', body: JSON.stringify(data) }),
     updateProvider: (id: string, data: GatewayProviderRequest) =>
       request<GatewayProvider>(`/api/gateway/providers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    deleteProvider: (id: string) =>
-      request<void>(`/api/gateway/providers/${id}`, { method: 'DELETE' }),
+    deleteProvider: (id: string, cascade?: boolean) =>
+      request<void>(`/api/gateway/providers/${id}${cascade ? '?cascade=true' : ''}`, { method: 'DELETE' }),
     testProvider: (id: string) =>
       request<TestGatewayProviderResponse>(`/api/gateway/providers/${id}/test`, { method: 'POST' }),
     listModels: () =>
@@ -1207,11 +1216,11 @@ export const api = {
           formData.append(f.name, f);
         }
       }
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = { 'Accept': 'application/json' };
       const apiKey = localStorage.getItem('apiKey');
       if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
       const res = await fetch('/api/skills/upload', { method: 'POST', headers, body: formData });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      if (!res.ok) throw new Error(await errorMessage(res));
       return res.json();
     },
   },

@@ -88,10 +88,13 @@ public class GatewayProviderService {
         return toView(entity);
     }
 
-    public void delete(String id, String userId) {
+    public void delete(String id, String userId, boolean cascadeModels) {
         GatewayAdminGuard.requireAdmin(userCollection, userId);
         getEntity(id);
-        if (hasModels(id)) throw new BadRequestException("gateway provider has models configured: " + id);
+        if (hasModels(id)) {
+            if (!cascadeModels) throw new BadRequestException("gateway provider has models configured: " + id);
+            gatewayModelCollection.delete(Filters.eq("provider_id", id));
+        }
         gatewayProviderCollection.delete(id);
         invalidateRouting();
     }

@@ -102,14 +102,28 @@ class GatewayProviderServiceTest {
     }
 
     @Test
-    void deleteRejectsProviderWithModels() {
+    void deleteRejectsProviderWithModelsUnlessCascading() {
         var service = serviceWithUser(admin("admin-1"));
         when(service.gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(provider("provider-1")));
         var model = new GatewayModelConfig();
         model.id = "model-1";
         when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of(model));
 
-        assertThrows(BadRequestException.class, () -> service.delete("provider-1", "admin-1"));
+        assertThrows(BadRequestException.class, () -> service.delete("provider-1", "admin-1", false));
+    }
+
+    @Test
+    void deleteCascadesModelsWhenRequested() {
+        var service = serviceWithUser(admin("admin-1"));
+        when(service.gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(provider("provider-1")));
+        var model = new GatewayModelConfig();
+        model.id = "model-1";
+        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of(model));
+
+        service.delete("provider-1", "admin-1", true);
+
+        verify(service.gatewayModelCollection).delete(any(org.bson.conversions.Bson.class));
+        verify(service.gatewayProviderCollection).delete("provider-1");
     }
 
     @Test
@@ -117,7 +131,7 @@ class GatewayProviderServiceTest {
         var service = serviceWithUser(admin("admin-1"));
         when(service.gatewayProviderCollection.get("missing")).thenReturn(Optional.empty());
 
-        assertThrows(core.framework.web.exception.NotFoundException.class, () -> service.delete("missing", "admin-1"));
+        assertThrows(core.framework.web.exception.NotFoundException.class, () -> service.delete("missing", "admin-1", false));
     }
 
     @SuppressWarnings("unchecked")

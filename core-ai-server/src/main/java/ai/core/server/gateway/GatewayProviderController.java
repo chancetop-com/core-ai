@@ -33,7 +33,8 @@ public class GatewayProviderController {
     }
 
     public Response delete(Request request) {
-        gatewayProviderService.delete(request.pathParam("id"), userId());
+        var cascadeModels = "true".equalsIgnoreCase(request.queryParams().get("cascade"));
+        gatewayProviderService.delete(request.pathParam("id"), userId(), cascadeModels);
         return Response.empty().status(HTTPStatus.NO_CONTENT);
     }
 
