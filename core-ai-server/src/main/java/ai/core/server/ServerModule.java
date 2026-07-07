@@ -226,6 +226,9 @@ public class ServerModule extends Module {
         // AgentSessionManager injects ChannelRegistry for bridge cleanup.
         bindChannelRegistry();
 
+        // SystemSettingsService must be bound before bindService() because LLMCallExecutor and AgentRunner inject it
+        bind(SystemSettingsService.class);
+
         bindService();
         bindAuthService();
         bindGitHubService();
@@ -243,7 +246,6 @@ public class ServerModule extends Module {
         bindChannels();
 
         bind(PodLocalExecutor.class);
-        bind(SystemSettingsService.class);
         bindWebService();
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
         schedule().fixedRate("tool-registry-sync", bind(ToolRegistrySyncJob.class), Duration.ofSeconds(30));
