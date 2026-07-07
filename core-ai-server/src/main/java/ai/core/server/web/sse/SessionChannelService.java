@@ -29,6 +29,15 @@ public class SessionChannelService {
 
     private final Map<String, SessionChannelState> stateMap = new ConcurrentHashMap<>();
 
+    /**
+     * Returns true if a local session state exists for the given session ID.
+     * This indicates that an SSE client is (or was recently) connected to this JVM,
+     * allowing in-process event delivery to bypass Redis pub/sub.
+     */
+    public boolean hasSession(String sessionId) {
+        return stateMap.containsKey(sessionId);
+    }
+
     public void connect(Channel<SseBaseEvent> channel, String sessionId) {
         var state = stateMap.computeIfAbsent(sessionId, k -> new SessionChannelState());
 
