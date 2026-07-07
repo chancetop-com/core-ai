@@ -17,6 +17,12 @@ public class SystemSettings {
     @Field(name = "memory_extraction_model")
     public String memoryExtractionModel;
 
+    @Field(name = "llm_model")
+    public String llmModel;
+
+    @Field(name = "llm_model_multimodal")
+    public String llmMultiModalModel;
+
     @Field(name = "created_by")
     public String createdBy;
 

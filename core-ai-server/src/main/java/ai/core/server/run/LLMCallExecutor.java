@@ -14,6 +14,7 @@ import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
@@ -40,6 +41,9 @@ public class LLMCallExecutor {
 
     @Inject
     SystemPromptService systemPromptService;
+
+    @Inject
+    SystemSettingsService systemSettingsService;
 
     public Result execute(AgentDefinition definition, String input) {
         return execute(definition, input, null);
@@ -108,11 +112,15 @@ public class LLMCallExecutor {
     }
 
     private String resolveModel(AgentPublishedConfig config, String fallback) {
-        return config != null ? config.model : fallback;
+        var model = config != null ? config.model : fallback;
+        if (model == null) model = systemSettingsService.llmModel();
+        return model;
     }
 
     private String resolveMultiModalModel(AgentPublishedConfig config, String fallback) {
-        return config != null ? config.multiModalModel : fallback;
+        var model = config != null ? config.multiModalModel : fallback;
+        if (model == null) model = systemSettingsService.llmMultiModalModel();
+        return model;
     }
 
     private boolean hasAttachments(List<LLMCallRequest.Attachment> attachments) {

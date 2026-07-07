@@ -255,7 +255,16 @@ public class ServerModule extends Module {
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
                 .orElse(AgentMemoryConsolidationJob.DEFAULT_EXTRACTION_MODEL);
-        bean(SystemSettingsService.class).defaultMemoryExtractionModel = memoryConsolidationJob.extractionModel;
+        var systemSettingsService = bean(SystemSettingsService.class);
+        systemSettingsService.defaultMemoryExtractionModel = memoryConsolidationJob.extractionModel;
+        systemSettingsService.defaultLlmModel = property("llm.model")
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .orElse(null);
+        systemSettingsService.defaultLlmMultiModalModel = property("llm.model.multimodal")
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .orElse(null);
         schedule().fixedRate("agent-memory-consolidation", memoryConsolidationJob, Duration.ofHours(1));
         registerTrace();
         registerSystemPrompt();

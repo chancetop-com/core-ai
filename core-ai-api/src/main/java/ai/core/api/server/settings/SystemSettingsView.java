@@ -14,6 +14,18 @@ public class SystemSettingsView {
     @Property(name = "default_memory_extraction_model")
     public String defaultMemoryExtractionModel;
 
+    @Property(name = "llm_model")
+    public String llmModel;
+
+    @Property(name = "default_llm_model")
+    public String defaultLlmModel;
+
+    @Property(name = "llm_model_multimodal")
+    public String llmMultiModalModel;
+
+    @Property(name = "default_llm_model_multimodal")
+    public String defaultLlmMultiModalModel;
+
     @Property(name = "created_by")
     public String createdBy;
 

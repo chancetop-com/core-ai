@@ -22,6 +22,8 @@ public class SystemSettingsService {
     private static final String SETTINGS_ID = "default";
 
     public String defaultMemoryExtractionModel = AgentMemoryConsolidationJob.DEFAULT_EXTRACTION_MODEL;
+    public String defaultLlmModel;
+    public String defaultLlmMultiModalModel;
 
     @Inject
     MongoCollection<SystemSettings> systemSettingsCollection;
@@ -40,6 +42,10 @@ public class SystemSettingsService {
         if (request == null) throw new BadRequestException("request is required");
         var memoryExtractionModel = normalizeModel(request.memoryExtractionModel);
         validateMemoryExtractionModel(memoryExtractionModel);
+        var llmModel = normalizeModel(request.llmModel);
+        validateChatModel(llmModel);
+        var llmMultiModalModel = normalizeModel(request.llmMultiModalModel);
+        validateChatModel(llmMultiModalModel);
 
         var now = ZonedDateTime.now();
         var entity = entity();
@@ -49,11 +55,15 @@ public class SystemSettingsService {
             entity.createdBy = userId;
             entity.createdAt = now;
             entity.memoryExtractionModel = memoryExtractionModel;
+            entity.llmModel = llmModel;
+            entity.llmMultiModalModel = llmMultiModalModel;
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.insert(entity);
         } else {
             entity.memoryExtractionModel = memoryExtractionModel;
+            entity.llmModel = llmModel;
+            entity.llmMultiModalModel = llmMultiModalModel;
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.replace(entity);
@@ -65,6 +75,18 @@ public class SystemSettingsService {
         var entity = entity();
         var configured = entity == null ? null : normalizeModel(entity.memoryExtractionModel);
         return configured == null ? defaultMemoryExtractionModel : configured;
+    }
+
+    public String llmModel() {
+        var entity = entity();
+        var configured = entity == null ? null : normalizeModel(entity.llmModel);
+        return configured == null ? defaultLlmModel : configured;
+    }
+
+    public String llmMultiModalModel() {
+        var entity = entity();
+        var configured = entity == null ? null : normalizeModel(entity.llmMultiModalModel);
+        return configured == null ? defaultLlmMultiModalModel : configured;
     }
 
     private SystemSettings entity() {
@@ -85,10 +107,28 @@ public class SystemSettingsService {
         }
     }
 
+    private void validateChatModel(String model) {
+        if (model == null) return;
+        var query = new Query();
+        query.filter = Filters.and(
+                Filters.eq("model_id", model),
+                Filters.eq("enabled", true),
+                Filters.eq("endpoint_types", "chat.completions")
+        );
+        query.limit = 1;
+        if (gatewayModelCollection.find(query).isEmpty()) {
+            throw new BadRequestException("llm model must be an enabled gateway model with chat.completions: " + model);
+        }
+    }
+
     private SystemSettingsView toView(SystemSettings entity) {
         var view = new SystemSettingsView();
         view.memoryExtractionModel = entity == null ? null : normalizeModel(entity.memoryExtractionModel);
         view.defaultMemoryExtractionModel = defaultMemoryExtractionModel;
+        view.llmModel = entity == null ? null : normalizeModel(entity.llmModel);
+        view.defaultLlmModel = defaultLlmModel;
+        view.llmMultiModalModel = entity == null ? null : normalizeModel(entity.llmMultiModalModel);
+        view.defaultLlmMultiModalModel = defaultLlmMultiModalModel;
         view.createdBy = entity == null ? null : entity.createdBy;
         view.updatedBy = entity == null ? null : entity.updatedBy;
         view.createdAt = entity == null ? null : entity.createdAt;

@@ -9,6 +9,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.server.artifact.AgentRunArtifactSink;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.sandbox.SandboxLifecycle;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.memory.AgentMemoryService;
@@ -143,6 +144,9 @@ public class AgentRunner {
     DatasetRecordService datasetRecordService;
     @Inject
     TelemetryConfig telemetryConfig;
+
+    @Inject
+    SystemSettingsService systemSettingsService;
 
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
         return run(definition, input, trigger, null, null);
@@ -421,7 +425,9 @@ public class AgentRunner {
             systemPrompt = appendSopPriorityDeclaration(systemPrompt);
         }
         var model = config != null ? config.model : definition.model;
+        if (model == null) model = systemSettingsService.llmModel();
         var multiModalModel = config != null ? config.multiModalModel : definition.multiModalModel;
+        if (multiModalModel == null) multiModalModel = systemSettingsService.llmMultiModalModel();
         var temperature = config != null ? config.temperature : definition.temperature;
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
         skillToolAssembler.attach(config != null ? config.skillIds : definition.skillIds, registry);
