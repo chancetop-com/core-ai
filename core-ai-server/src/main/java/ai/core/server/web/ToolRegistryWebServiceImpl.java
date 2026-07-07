@@ -24,11 +24,16 @@ import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
+import core.framework.util.StopWatch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author stephen
  */
 public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistryWebServiceImpl.class);
+
     @Inject
     ToolRegistryService toolRegistryService;
 
@@ -89,6 +94,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
 
     @Override
     public McpServerToolsResponse listMcpServerTools(String id) {
+        var watch = new StopWatch();
         var entity = toolRegistryService.getTool(id);
         var toolDetails = toolRegistryService.listMcpServerToolDetails(id);
         var response = new McpServerToolsResponse();
@@ -101,17 +107,20 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
             info.inputSchema = t.inputSchema() != null ? JsonUtil.toJsonNotOnlyPublic(t.inputSchema()) : null;
             return info;
         }).toList();
+        LOGGER.debug("listMcpServerTools completed, id={}, tools={}, elapsed={}", id, response.tools.size(), watch.elapsed());
         return response;
     }
 
     @Override
     public McpServerStatusResponse getMcpServerStatus(String id) {
+        var watch = new StopWatch();
         var entity = toolRegistryService.getTool(id);
         var state = toolRegistryService.getMcpServerState(id);
         var response = new McpServerStatusResponse();
         response.serverId = id;
         response.state = state.name();
         response.message = entity.enabled ? null : "server is disabled";
+        LOGGER.debug("getMcpServerStatus completed, id={}, state={}, elapsed={}", id, state, watch.elapsed());
         return response;
     }
 
