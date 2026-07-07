@@ -424,7 +424,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                     }).toList() : null;
             var payload = JsonUtil.toJson(Map.of("tools", toolRefs != null ? toolRefs : List.of()));
             var command = SessionCommand.loadTools(sessionId, userId, payload, rpcClient.newRequestId());
-            return rpcClient.call(command, LoadToolsResponse.class);
+            return rpcClient.call(command, LoadToolsResponse.class, PodLocalExecutor.LONG_TIMEOUT);
         }
     }
 
