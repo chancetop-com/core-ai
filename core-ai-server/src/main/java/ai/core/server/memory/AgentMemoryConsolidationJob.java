@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
+import core.framework.log.ActionLogContext;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.scheduler.Job;
@@ -24,6 +25,7 @@ import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -130,6 +132,8 @@ public class AgentMemoryConsolidationJob implements Job {
 
     @Override
     public void execute(JobContext context) {
+        // This job can take 16-70s+ due to LLM calls (120s timeout), so override the default 10s maxProcessTime
+        ActionLogContext.maxProcessTime(Duration.ofMinutes(2));
         var agentIds = collectAgentIds();
         if (agentIds.isEmpty()) {
             LOGGER.debug("no agents with traces found");
