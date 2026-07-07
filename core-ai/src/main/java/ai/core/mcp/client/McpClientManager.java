@@ -239,8 +239,37 @@ public class McpClientManager implements AutoCloseable {
         } catch (Exception e) {
             LOGGER.warn("Sync reconnect failed for server {}: {}", serverName, e.getMessage());
             updateState(serverName, ConnectionState.FAILED);
+
+            // Check if this is an authentication/permission error — retrying will never succeed,
+            // so mark the server as permanently failed to prevent reconnect storms.
+            if (isAuthError(e)) {
+                getConnectionMonitor().markPermanentlyFailed(serverName);
+                LOGGER.error("Permanent failure for server {}: reconnection stopped due to authentication error. " +
+                    "Check the MCP server configuration (credentials, session ID, etc.).", serverName);
+            }
+
             return false;
         }
+    }
+
+    /**
+     * Determine whether the exception is caused by an authentication/permission error
+     * that cannot be resolved by retrying the connection.
+     */
+    private boolean isAuthError(Exception e) {
+        String message = e.getMessage();
+        if (message == null) {
+            var cause = e.getCause();
+            if (cause != null) {
+                message = cause.getMessage();
+            }
+        }
+        if (message == null) return false;
+        var lower = message.toLowerCase();
+        return lower.contains("401") || lower.contains("unauthorized")
+            || lower.contains("session id is required") || lower.contains("403")
+            || lower.contains("forbidden") || lower.contains("authentication failed")
+            || lower.contains("auth failed");
     }
 
     public void addListener(ConnectionStateListener listener) {

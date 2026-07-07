@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -25,6 +26,7 @@ public class McpConnectionMonitor implements AutoCloseable {
 
     private final Map<String, AtomicInteger> reconnectAttempts = new ConcurrentHashMap<>();
     private final Map<String, ScheduledFuture<?>> reconnectTasks = new ConcurrentHashMap<>();
+    private final Set<String> permanentlyFailedServers = ConcurrentHashMap.newKeySet();
     private final Supplier<Map<String, McpServerConfig>> configsSupplier;
     private final Supplier<Map<String, McpClientService>> clientsSupplier;
     private final Function<String, McpClientManager.ConnectionState> stateGetter;
@@ -122,6 +124,9 @@ public class McpConnectionMonitor implements AutoCloseable {
             }
             var currentState = stateGetter.apply(serverName);
             if (currentState == McpClientManager.ConnectionState.FAILED) {
+                if (permanentlyFailedServers.contains(serverName)) {
+                    continue; // Skip periodic recovery for permanently failed servers (e.g., auth errors)
+                }
                 LOGGER.info("Periodic recovery: resetting reconnect state for FAILED server: {}", serverName);
                 resetReconnectAttempts(serverName);
                 scheduleReconnect(serverName);
@@ -282,6 +287,23 @@ public class McpConnectionMonitor implements AutoCloseable {
     }
 
     /**
+     * Mark a server as permanently failed (e.g., due to authentication error).
+     * Permanently failed servers are excluded from periodic recovery checks.
+     */
+    public void markPermanentlyFailed(String serverName) {
+        permanentlyFailedServers.add(serverName);
+        cancelReconnectTask(serverName);
+        LOGGER.error("MCP server {} marked as permanently failed, will not attempt further recovery", serverName);
+    }
+
+    /**
+     * Check if a server has been marked as permanently failed.
+     */
+    public boolean isPermanentlyFailed(String serverName) {
+        return permanentlyFailedServers.contains(serverName);
+    }
+
+    /**
      * Initialize tracking for a server.
      */
     public void addServer(String serverName) {
@@ -294,6 +316,7 @@ public class McpConnectionMonitor implements AutoCloseable {
     public void removeServer(String serverName) {
         cancelReconnectTask(serverName);
         reconnectAttempts.remove(serverName);
+        permanentlyFailedServers.remove(serverName);
     }
 
     /**
