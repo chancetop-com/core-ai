@@ -129,7 +129,14 @@ public class LazySandbox implements Sandbox {
         synchronized (this) {
             if (delegate != null) {
                 try {
-                    manager.release(delegate);
+                    if (isDelegateTracked()) {
+                        manager.release(delegate);
+                    } else {
+                        // Sandbox was already removed from manager by cleanupExpired() or a prior release.
+                        // Do not call manager.release() again — the provider resource is already gone.
+                        // The delegate reference is still non-null, so we just discard it here.
+                        LOGGER.debug("sandbox delegate already released, skipping manager.release: id={}", delegate.getId());
+                    }
                     dispatchEvent(SandboxEventType.TERMINATED);
                 } finally {
                     delegate = null;
