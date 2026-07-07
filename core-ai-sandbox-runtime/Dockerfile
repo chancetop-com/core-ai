@@ -30,7 +30,13 @@ RUN pip install --no-cache-dir \
     pillow openpyxl nodriver weasyprint
 
 # Layer 3.5: uv (fast Python package manager with uvx runner)
-RUN pip install --no-cache-dir uv
+# Using the official binary release instead of pip install to ensure both uv and uvx
+# are available in PATH (pip install uv may not install uvx as a separate command).
+ARG UV_VERSION=0.11.26
+RUN curl -fsSL https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz \
+    -o /tmp/uv.tar.gz && \
+    tar xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1 && \
+    rm /tmp/uv.tar.gz
 
 # npm-installed node-gyp bundles its own gyp; replace Debian's hardcoded path
 RUN npm install -g node-gyp && \
