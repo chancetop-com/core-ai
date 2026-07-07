@@ -994,6 +994,10 @@ export interface ImportGatewayModelsRequest {
 export interface SystemSettings {
   memory_extraction_model?: string | null;
   default_memory_extraction_model?: string;
+  llm_model?: string | null;
+  default_llm_model?: string;
+  llm_model_multimodal?: string | null;
+  default_llm_model_multimodal?: string;
   created_by?: string;
   updated_by?: string;
   created_at?: string;
@@ -1002,6 +1006,8 @@ export interface SystemSettings {
 
 export interface SystemSettingsRequest {
   memory_extraction_model?: string | null;
+  llm_model?: string | null;
+  llm_model_multimodal?: string | null;
 }
 
 export const api = {
