@@ -24,12 +24,14 @@ import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.util.StopWatch;
 import core.framework.web.exception.ConflictException;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,6 +52,17 @@ public class ToolRegistryService {
     private final Map<String, List<ToolCall>> dynamicToolSets = new ConcurrentHashMap<>();
     private final McpServerConnectionManager mcpConnectionManager;
     private ToolRefResolver toolRefResolver;
+
+    // Cache for MCP server tool details to avoid repeated connections during batch polling
+    private static final long TOOL_DETAILS_CACHE_TTL_NANOS = Duration.ofSeconds(30).toNanos();
+    private final Map<String, CachedToolDetails> toolDetailsCache = new ConcurrentHashMap<>();
+
+    // Cache for MCP server state to reduce contention during batch status polling
+    private static final long STATUS_CACHE_TTL_NANOS = Duration.ofSeconds(2).toNanos();
+    private final Map<String, CachedState> stateCache = new ConcurrentHashMap<>();
+
+    private record CachedToolDetails(List<McpSchema.Tool> tools, long createdAtNanos) {}
+    private record CachedState(McpClientManager.ConnectionState state, long createdAtNanos) {}
 
     @Inject
     MongoCollection<ToolRegistryEntry> toolRegistryCollection;
@@ -385,6 +398,7 @@ public class ToolRegistryService {
     }
 
     public ToolRegistryEntry enableMcpServer(String id) {
+        invalidateMcpServerCache(id);
         if (id.startsWith(CONFIG_PREFIX)) throw new RuntimeException("cannot enable/disable mcp server from configuration");
         if (id.startsWith(BUILTIN_PREFIX)) throw new RuntimeException("cannot enable/disable builtin tool set");
 
@@ -405,6 +419,7 @@ public class ToolRegistryService {
     }
 
     public ToolRegistryEntry disableMcpServer(String id) {
+        invalidateMcpServerCache(id);
         if (id.startsWith(CONFIG_PREFIX)) throw new RuntimeException("cannot enable/disable mcp server from configuration");
         if (id.startsWith(BUILTIN_PREFIX)) throw new RuntimeException("cannot enable/disable builtin tool set");
 
@@ -709,19 +724,44 @@ public class ToolRegistryService {
     }
 
     public List<McpSchema.Tool> listMcpServerToolDetails(String serverId) {
+        var watch = new StopWatch();
         var entity = requireMcpEntity(serverId);
+
+        // Check cache first for batch-polling scenarios
+        var cached = toolDetailsCache.get(serverId);
+        if (cached != null && System.nanoTime() - cached.createdAtNanos() < TOOL_DETAILS_CACHE_TTL_NANOS) {
+            LOGGER.debug("listMcpServerToolDetails cache hit, id={}", serverId);
+            return cached.tools();
+        }
+
         if (isSandboxHosted(entity)) {
             // Tool browsing for a sandbox-hosted server: lazily start on discovery.
             mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
         }
+
         var mcpManager = McpClientManagerRegistry.getManager();
         if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
+            toolDetailsCache.put(serverId, new CachedToolDetails(List.of(), System.nanoTime()));
             return List.of();
         }
+
+        // Short-circuit if server is in FAILED or RECONNECTING state — avoid blocking on connection attempts
+        var currentState = mcpManager.getState(entity.id);
+        if (currentState == McpClientManager.ConnectionState.FAILED
+            || currentState == McpClientManager.ConnectionState.RECONNECTING) {
+            LOGGER.debug("listMcpServerToolDetails short-circuit, id={}, state={}", serverId, currentState);
+            toolDetailsCache.put(serverId, new CachedToolDetails(List.of(), System.nanoTime()));
+            return List.of();
+        }
+
         try {
-            return mcpManager.safeListTools(entity.id);
+            var tools = mcpManager.safeListTools(entity.id);
+            toolDetailsCache.put(serverId, new CachedToolDetails(tools, System.nanoTime()));
+            LOGGER.debug("listMcpServerToolDetails completed, id={}, tools={}, elapsed={}", serverId, tools.size(), watch.elapsed());
+            return tools;
         } catch (Exception e) {
-            LOGGER.warn("failed to list tool details from mcp server, id={}", serverId, e);
+            LOGGER.warn("failed to list tool details from mcp server, id={}, elapsed={}", serverId, watch.elapsed(), e);
+            toolDetailsCache.put(serverId, new CachedToolDetails(List.of(), System.nanoTime()));
             return List.of();
         }
     }
@@ -737,15 +777,26 @@ public class ToolRegistryService {
     }
 
     public McpClientManager.ConnectionState getMcpServerState(String serverId) {
+        // Short-term cache to avoid redundant lookups during batch polling
+        var cached = stateCache.get(serverId);
+        if (cached != null && System.nanoTime() - cached.createdAtNanos() < STATUS_CACHE_TTL_NANOS) {
+            return cached.state();
+        }
+
         var entity = requireMcpEntity(serverId);
         var mcpManager = McpClientManagerRegistry.getManager();
+        McpClientManager.ConnectionState state;
         if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
-            return McpClientManager.ConnectionState.NOT_CONNECTED;
+            state = McpClientManager.ConnectionState.NOT_CONNECTED;
+        } else {
+            state = mcpManager.getState(entity.id);
         }
-        return mcpManager.getState(entity.id);
+        stateCache.put(serverId, new CachedState(state, System.nanoTime()));
+        return state;
     }
 
     public McpClientManager.ConnectionState connectMcpServer(String serverId) {
+        invalidateMcpServerCache(serverId);
         var entity = requireMcpEntity(serverId);
         if (!Boolean.TRUE.equals(entity.enabled)) throw new RuntimeException("mcp server is disabled, id=" + serverId);
 
@@ -766,6 +817,11 @@ public class ToolRegistryService {
             LOGGER.warn("failed to connect mcp server, id={}", serverId, e);
         }
         return mcpManager.getState(entity.id);
+    }
+
+    private void invalidateMcpServerCache(String serverId) {
+        toolDetailsCache.remove(serverId);
+        stateCache.remove(serverId);
     }
 
     public ToolCallResult callMcpServerTool(String serverId, String toolName, String argumentsJson) {
