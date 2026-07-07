@@ -59,10 +59,14 @@ class McpServerConnectionManager {
         }
         try {
             var sandboxClient = sandboxService.getDiscoverySandboxClient();
-            var serverConfig = buildSandboxBackedConfig(entry, sandboxClient);
-            mcpManager.addServer(serverConfig);
-            LOGGER.info("registered sandbox-hosted mcp server on discovery sandbox, id={}", entry.id);
-            return true;
+            try {
+                var serverConfig = buildSandboxBackedConfig(entry, sandboxClient);
+                mcpManager.addServer(serverConfig);
+                LOGGER.info("registered sandbox-hosted mcp server on discovery sandbox, id={}", entry.id);
+                return true;
+            } finally {
+                sandboxClient.close();
+            }
         } catch (Exception e) {
             LOGGER.warn("failed to register sandbox-hosted mcp server on discovery, id={}: {}", entry.id, e.getMessage());
             return false;
@@ -90,6 +94,8 @@ class McpServerConnectionManager {
         } catch (Exception e) {
             LOGGER.warn("failed to register sandbox-hosted mcp server on session, id={}: {}", entry.id, e.getMessage());
             return false;
+        } finally {
+            sandboxClient.close();
         }
     }
 

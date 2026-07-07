@@ -227,6 +227,29 @@ public class AgentRunner {
         }, delaySeconds, TimeUnit.SECONDS);
     }
 
+    /**
+     * Gracefully shut down the executor and timeout scheduler, releasing their thread pools.
+     * Called during application shutdown to prevent thread leaks.
+     */
+    public void shutdown() {
+        LOGGER.info("shutting down agent runner");
+        executorService.shutdown();
+        timeoutScheduler.shutdown();
+        try {
+            if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+            if (!timeoutScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                timeoutScheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            timeoutScheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        LOGGER.info("agent runner shutdown complete");
+    }
+
     public void cancel(String runId) {
         var future = runningFutures.get(runId);
         if (future != null) {

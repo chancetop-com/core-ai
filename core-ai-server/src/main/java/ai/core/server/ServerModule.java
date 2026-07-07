@@ -307,6 +307,7 @@ public class ServerModule extends Module {
         bind(DatasetRecordService.class);
         bind(ai.core.server.agent.SubAgentAssembler.class);
         bind(AgentRunner.class);
+        onShutdown(bean(AgentRunner.class)::shutdown);
         bind(AgentScheduler.class);
         bind(ChannelService.class);
         bind(SessionChannelService.class);

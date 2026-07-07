@@ -1,6 +1,7 @@
 package ai.core.server.sandbox;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.internal.http.CustomHTTPClientImpl;
 import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.tool.ToolCallResult;
@@ -52,25 +53,31 @@ public class SandboxClient {
                 .connectTimeout(Duration.ofSeconds(2))
                 .timeout(Duration.ofSeconds(3))
                 .build();
-        while (System.currentTimeMillis() - start < maxWaitMs) {
-            try {
-                var req = new HTTPRequest(HTTPMethod.GET, url);
-                var resp = pollClient.execute(req);
-                if (resp.statusCode == 200) {
-                    LOGGER.info("sandbox runtime ready: url={}, elapsed={}ms", baseUrl, System.currentTimeMillis() - start);
-                    return;
+        try {
+            while (System.currentTimeMillis() - start < maxWaitMs) {
+                try {
+                    var req = new HTTPRequest(HTTPMethod.GET, url);
+                    var resp = pollClient.execute(req);
+                    if (resp.statusCode == 200) {
+                        LOGGER.info("sandbox runtime ready: url={}, elapsed={}ms", baseUrl, System.currentTimeMillis() - start);
+                        return;
+                    }
+                } catch (Exception e) {
+                    LOGGER.warn("sandbox runtime health check failed: url={}, elapsed={}ms, error={}", baseUrl, System.currentTimeMillis() - start, e.getMessage());
                 }
-            } catch (Exception e) {
-                LOGGER.warn("sandbox runtime health check failed: url={}, elapsed={}ms, error={}", baseUrl, System.currentTimeMillis() - start, e.getMessage());
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+            throw new RuntimeException("sandbox runtime health check timed out after " + maxWaitMs + "ms: url=" + baseUrl);
+        } finally {
+            if (pollClient instanceof CustomHTTPClientImpl) {
+                ((CustomHTTPClientImpl) pollClient).close();
             }
         }
-        throw new RuntimeException("sandbox runtime health check timed out after " + maxWaitMs + "ms: url=" + baseUrl);
     }
 
     public String getIp() {
@@ -207,6 +214,9 @@ public class SandboxClient {
     }
 
     public void close() {
+        if (httpClient instanceof CustomHTTPClientImpl) {
+            ((CustomHTTPClientImpl) httpClient).close();
+        }
     }
 
     // ---- MCP server management ----
