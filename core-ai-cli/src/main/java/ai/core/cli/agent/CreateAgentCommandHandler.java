@@ -5,16 +5,11 @@ import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.llm.LLMProvider;
-import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.Message;
-import ai.core.llm.domain.RoleType;
-import ai.core.utils.JsonUtil;
+import ai.core.llm.domain.ResponseFormat;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 /**
@@ -113,25 +108,8 @@ class CreateAgentCommandHandler {
 
     private GeneratedConfig generateConfig(String userDescription) {
         String prompt = "User wants an agent that: " + userDescription;
-        var messages = new ArrayList<Message>();
-        messages.add(Message.of(RoleType.SYSTEM, LLM_SYSTEM_PROMPT));
-        messages.add(Message.of(RoleType.USER, prompt));
-        var request = CompletionRequest.of(messages, null, 0.7, model, "create-agent");
-        var response = llmProvider.completion(request);
-        String text = response.choices.get(0).message.content;
-        String json = extractJson(text);
-        return JsonUtil.fromJson(GeneratedConfig.class, json);
-    }
-
-    private String extractJson(String text) {
-        if (text == null) return "{}";
-        String trimmed = text.trim();
-        int start = trimmed.indexOf('{');
-        int end = trimmed.lastIndexOf('}');
-        if (start >= 0 && end > start) {
-            return trimmed.substring(start, end + 1);
-        }
-        return "{}";
+        return llmProvider.completionFormat(LLM_SYSTEM_PROMPT, prompt, model,
+                GeneratedConfig.class, ResponseFormat.jsonObject(), null);
     }
 
     private String editField(String fieldName, String current) {
