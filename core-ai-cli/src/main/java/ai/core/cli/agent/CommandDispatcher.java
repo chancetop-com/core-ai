@@ -31,6 +31,7 @@ public class CommandDispatcher {
     private final String defaultServerUrl;
     private final AgentProfileRegistry agentProfileRegistry;
     private final Path workspace;
+    private final CreateAgentCommandHandler createAgentHandler;
 
     CommandDispatcher(TerminalUI ui, ModelPicker modelPicker,
                       AtomicReference<String> switchSessionId,
@@ -47,6 +48,8 @@ public class CommandDispatcher {
         this.defaultServerUrl = defaultServerUrl;
         this.agentProfileRegistry = agentProfileRegistry;
         this.workspace = workspace;
+        this.createAgentHandler = new CreateAgentCommandHandler(ui, session.getAgent().getLLMProvider(),
+                modelPicker.getCurrentModelName(), workspace, agentProfileRegistry);
     }
 
     public void dispatch(String trimmed, BlockingQueue<String> queue) {
@@ -146,6 +149,10 @@ public class CommandDispatcher {
     private boolean dispatchAgentCommand(String lower) {
         if ("/agents".equals(lower)) {
             listAgents();
+            return true;
+        }
+        if ("/agents create".equals(lower)) {
+            createAgentHandler.handle();
             return true;
         }
         if (lower.startsWith("/agents create ")) {

@@ -178,6 +178,10 @@ public class AgentSessionRunner {
     public RemoteConfig getRemoteConfig() {
         return remoteConfig.get();
     }
+
+    Agent getAgent() {
+        return agent;
+    }
     private void printBanner() {
         BannerPrinter.print(ui.getWriter(), modelName, VersionUtil.getCurrentVersion(), null);
         LOGGER.debug("terminal: type={}, jline={}, ansi={}", ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
