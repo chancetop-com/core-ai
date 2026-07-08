@@ -16,6 +16,7 @@ import ai.core.server.memory.AgentMemory;
 import ai.core.server.memory.AgentMemoryExtractionCursor;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.SessionFeedback;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.FileRecord;
@@ -87,6 +88,7 @@ public class ServerApp extends App {
         mongo.collection(SystemSettings.class);
         mongo.collection(ChatMessage.class);
         mongo.collection(ChatSession.class);
+        mongo.collection(SessionFeedback.class);
 
         // trace collections
         mongo.collection(Trace.class);

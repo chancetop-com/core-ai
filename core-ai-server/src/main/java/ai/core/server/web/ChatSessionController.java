@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.SessionFeedback;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.web.auth.AuthContext;
@@ -9,14 +10,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.inject.Inject;
+import core.framework.mongo.MongoCollection;
 import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.WebContext;
 
+import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * @author Xander
@@ -30,6 +34,8 @@ public class ChatSessionController {
     ChatMessageService chatMessageService;
     @Inject
     SandboxSnapshotService sandboxSnapshotService;
+    @Inject
+    MongoCollection<SessionFeedback> sessionFeedbackCollection;
 
     public Response list(Request request) {
         var userId = AuthContext.userId(webContext);
@@ -103,6 +109,92 @@ public class ChatSessionController {
         var ok = chatMessageService.updateSessionTitle(userId, sessionId, title);
         if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
         return jsonResponse(Map.of("updated", true));
+    }
+
+    @SuppressWarnings("unchecked")
+    public Response submitFeedback(Request request) {
+        var userId = AuthContext.userId(webContext);
+        if (userId == null) return Response.text("unauthorized").status(HTTPStatus.UNAUTHORIZED);
+        var sessionId = request.pathParam("sessionId");
+        var session = chatMessageService.getSessionMeta(sessionId);
+        if (session == null || session.deletedAt != null) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
+        if (session.userId != null && !userId.equals(session.userId)) return Response.text("forbidden").status(HTTPStatus.FORBIDDEN);
+
+        Map<String, Object> body;
+        try {
+            var bytes = request.body().get();
+            if (bytes.length == 0) return Response.text("body required").status(HTTPStatus.BAD_REQUEST);
+            body = MAPPER.readValue(bytes, Map.class);
+        } catch (Exception e) {
+            return Response.text("invalid request body").status(HTTPStatus.BAD_REQUEST);
+        }
+
+        var feedback = new SessionFeedback();
+        feedback.id = UUID.randomUUID().toString();
+        feedback.sessionId = sessionId;
+        feedback.userId = userId;
+        feedback.agentId = session.agentId;
+        feedback.createdAt = ZonedDateTime.now();
+
+        // Layer 1
+        feedback.outcome = stringField(body, "outcome");
+
+        // Layer 2
+        feedback.failureReasons = listField(body, "failure_reasons");
+        feedback.failureDetail = stringField(body, "failure_detail");
+
+        // Layer 3
+        feedback.understandingRating = intField(body, "understanding_rating");
+        feedback.problemSolvingRating = intField(body, "problem_solving_rating");
+        feedback.toolUsageRating = intField(body, "tool_usage_rating");
+        feedback.communicationRating = intField(body, "communication_rating");
+        feedback.outcomeRating = intField(body, "outcome_rating");
+
+        // Layer 4
+        feedback.proactivityFit = stringField(body, "proactivity_fit");
+        feedback.decisionFit = stringField(body, "decision_fit");
+
+        // Layer 5
+        feedback.trustLevel = stringField(body, "trust_level");
+
+        // Free text
+        feedback.comment = stringField(body, "comment");
+
+        // Auto-collected
+        feedback.modelId = stringField(body, "model_id");
+        feedback.tokenCount = longField(body, "token_count");
+        feedback.sessionDurationMs = longField(body, "session_duration_ms");
+        feedback.toolCallCount = intField(body, "tool_call_count");
+        feedback.toolErrorCount = intField(body, "tool_error_count");
+        feedback.messageCount = intField(body, "message_count");
+        feedback.source = stringField(body, "source");
+
+        sessionFeedbackCollection.insert(feedback);
+        return jsonResponse(Map.of("id", feedback.id, "created", true));
+    }
+
+    private static String stringField(Map<String, Object> body, String key) {
+        var val = body.get(key);
+        return val == null ? null : val.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> listField(Map<String, Object> body, String key) {
+        var val = body.get(key);
+        if (val instanceof List) return (List<String>) val;
+        return null;
+    }
+
+    private static Integer intField(Map<String, Object> body, String key) {
+        var val = body.get(key);
+        if (val instanceof Number) return ((Number) val).intValue();
+        return null;
+    }
+
+    private static Long longField(Map<String, Object> body, String key) {
+        var val = body.get(key);
+        if (val instanceof Number) return ((Number) val).longValue();
+        return null;
     }
 
     private String parseTitle(Request request) {

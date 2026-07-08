@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
-import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
+import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact, SessionFeedback } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import type { IdName } from '../../api/session';
@@ -20,6 +20,7 @@ import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 
 const VoiceTranscriberSidebar = lazy(() => import('./components/VoiceTranscriberSidebar'));
 const ArtifactDrawer = lazy(() => import('./components/ArtifactDrawer'));
+const FeedbackModal = lazy(() => import('./components/FeedbackModal'));
 
 const DRAFT_CHAT_SESSION_ID = '__new_chat_draft__';
 
@@ -132,6 +133,7 @@ export default function Chat() {
   const [datasets, setDatasets] = useState<{ id: string; name: string }[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [showVoiceSidebar, setShowVoiceSidebar] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
   const [activeSandboxTerminal, setActiveSandboxTerminal] = useState<SandboxTerminalSpec | null>(null);
   const [sessionArtifacts, setSessionArtifacts] = useState<SessionArtifact[]>(() => {
@@ -1267,6 +1269,36 @@ export default function Chat() {
   const selectedAgent = useMemo(() => agents.find(a => a.id === selectedAgentId), [agents, selectedAgentId]);
   const agentVariableEntries = useMemo(() => Object.entries(selectedAgent?.variables || {}), [selectedAgent]);
 
+  // Session stats for auto-collection in feedback
+  const sessionStats = useMemo(() => {
+    let toolCount = 0;
+    let toolErrors = 0;
+    for (const msg of messages) {
+      const toolsSeg = msg.segments?.find(s => s.type === 'tools');
+      if (toolsSeg && toolsSeg.type === 'tools') {
+        for (const t of toolsSeg.tools) {
+          if (t.type === 'start') toolCount++;
+          if (t.type === 'result' && (t.resultStatus === 'ERROR' || t.resultStatus === 'error')) toolErrors++;
+        }
+      }
+    }
+    let durationMs = 0;
+    const timestamps = messages.map(m => m.timestamp).filter(Boolean);
+    if (timestamps.length >= 2) {
+      const first = new Date(timestamps[0]!).getTime();
+      const last = new Date(timestamps[timestamps.length - 1]!).getTime();
+      durationMs = Math.max(0, last - first);
+    }
+    return { toolCount, toolErrors, durationMs };
+  }, [messages]);
+
+  const handleSubmitFeedback = useCallback(async (feedback: SessionFeedback) => {
+    if (!sessionId) return;
+    await sessionApi.submitFeedback(sessionId, feedback);
+  }, [sessionId]);
+
+  const hasHadAgentReply = useMemo(() => messages.some(m => m.role === 'agent' && hasAnySegments(m.segments)), [messages]);
+
   // Fetch available skills for picker
   const fetchSkills = useCallback(async () => {
     setSkillsLoading(true);
@@ -1535,6 +1567,8 @@ export default function Chat() {
         onOpenArtifact={openArtifact}
         onOpenSandboxTerminal={openSandboxTerminal}
         onApproval={handleApproval}
+        showFeedback={status === 'idle' && !!sessionId && hasHadAgentReply}
+        onFeedbackClick={() => setShowFeedbackModal(true)}
       />
 
       <ChatComposer
@@ -1666,6 +1700,21 @@ export default function Chat() {
       )}
       {activeSandboxTerminal && (
         <SandboxTerminalPanel sandbox={activeSandboxTerminal} onClose={() => setActiveSandboxTerminal(null)} />
+      )}
+      {showFeedbackModal && sessionId && (
+        <Suspense fallback={null}>
+          <FeedbackModal
+            sessionId={sessionId}
+            agentId={selectedAgentId}
+            messageCount={messages.length}
+            toolCallCount={sessionStats.toolCount}
+            toolErrorCount={sessionStats.toolErrors}
+            sessionDurationMs={sessionStats.durationMs}
+            source="chat"
+            onSubmit={handleSubmitFeedback}
+            onClose={() => setShowFeedbackModal(false)}
+          />
+        </Suspense>
       )}
     </div>
   );

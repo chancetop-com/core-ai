@@ -26,11 +26,11 @@ export default function CopyButton({ text }: { text: string }) {
   };
   return (
     <button onClick={handleCopy}
-      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs cursor-pointer transition-opacity hover:opacity-100"
+      className="inline-flex items-center gap-1 text-[11px] leading-none cursor-pointer hover:underline"
       style={{
-        color: copied ? 'var(--color-success)' : 'var(--color-text-secondary)',
-        background: 'var(--color-bg-tertiary)',
-        border: '1px solid var(--color-border)',
+        background: 'none',
+        border: 'none',
+        color: copied ? 'var(--color-success)' : 'var(--color-text-muted)',
       }}
       title={copied ? 'Copied' : 'Copy message'}>
       {copied ? <Check size={12} /> : <Copy size={12} />}

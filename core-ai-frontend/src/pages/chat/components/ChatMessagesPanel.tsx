@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import type { PluggableList } from 'unified';
-import { Bot, ChevronDown, ChevronRight, Loader2, Paperclip, Shield, ShieldOff, Sparkles, User } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, Sparkles, User } from 'lucide-react';
 import type { SessionArtifact } from '../../../api/session';
 import type { ChatMessage, MessageSegment, PlanTodo, SandboxSegment, SandboxTerminalSpec, ToolsSegment } from '../types';
 import { formatMessageTime, formatMessageTimeFull, getMessageText } from '../utils';
@@ -89,6 +89,8 @@ interface ChatMessageRowProps {
   onOpenArtifact: (spec: ArtifactSpec) => void;
   onOpenSandboxTerminal: (spec: SandboxTerminalSpec) => void;
   onApproval: (decision: 'APPROVE' | 'DENY') => void;
+  showFeedback: boolean;
+  onFeedbackClick?: () => void;
 }
 
 const ChatMessageRow = memo(function ChatMessageRow({
@@ -103,6 +105,8 @@ const ChatMessageRow = memo(function ChatMessageRow({
   onOpenArtifact,
   onOpenSandboxTerminal,
   onApproval,
+  showFeedback,
+  onFeedbackClick,
 }: ChatMessageRowProps) {
   const sandboxSeg = msg.segments?.find(s => s.type === 'sandbox') as SandboxSegment | undefined;
   const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
@@ -213,7 +217,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
             ))}
           </div>
         )}
-        {(msg.timestamp || hasTextSegments(msg.segments)) && (
+        {(msg.timestamp || hasTextSegments(msg.segments) || showFeedback) && (
           <div className={`flex items-center gap-2 mt-1 ${msg.role === 'user' ? 'justify-end' : ''}`}>
             {msg.timestamp && (
               <span className="text-[11px] leading-none select-none"
@@ -222,10 +226,19 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 {formatMessageTime(msg.timestamp)}
               </span>
             )}
+            {showFeedback && (
+              <button
+                type="button"
+                onClick={onFeedbackClick}
+                className="inline-flex items-center gap-1 text-[11px] leading-none cursor-pointer hover:underline"
+                style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)' }}
+              >
+                <MessageSquareHeart size={12} />
+                Feedback
+              </button>
+            )}
             {hasTextSegments(msg.segments) && (
-              <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                <CopyButton text={getMessageText(msg)} />
-              </span>
+              <CopyButton text={getMessageText(msg)} />
             )}
           </div>
         )}
@@ -292,6 +305,8 @@ interface ChatMessagesPanelProps {
   onOpenArtifact: (spec: ArtifactSpec) => void;
   onOpenSandboxTerminal: (spec: SandboxTerminalSpec) => void;
   onApproval: (decision: 'APPROVE' | 'DENY') => void;
+  showFeedback?: boolean;
+  onFeedbackClick?: () => void;
 }
 
 const ChatMessagesPanel = memo(function ChatMessagesPanel({
@@ -318,12 +333,20 @@ const ChatMessagesPanel = memo(function ChatMessagesPanel({
   onOpenArtifact,
   onOpenSandboxTerminal,
   onApproval,
+  showFeedback,
+  onFeedbackClick,
 }: ChatMessagesPanelProps) {
   const renderableMessages = useMemo<VisibleMessage[]>(() => (
     messages
       .map((msg, index) => ({ msg, index }))
       .filter(({ msg, index }) => shouldRenderMessage(msg, index, messages.length, status))
   ), [messages, status]);
+  const lastAgentMsgIndex = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'agent') return i;
+    }
+    return -1;
+  }, [messages]);
   const hiddenMessageCount = Math.max(0, renderableMessages.length - visibleMessageLimit);
   const visibleMessages = hiddenMessageCount > 0
     ? renderableMessages.slice(hiddenMessageCount)
@@ -464,6 +487,8 @@ const ChatMessagesPanel = memo(function ChatMessagesPanel({
               onOpenArtifact={onOpenArtifact}
               onOpenSandboxTerminal={onOpenSandboxTerminal}
               onApproval={onApproval}
+              showFeedback={showFeedback === true && index === lastAgentMsgIndex}
+              onFeedbackClick={onFeedbackClick}
             />
           );
         })}

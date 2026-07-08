@@ -218,6 +218,35 @@ export interface CreateSessionOptions {
   dataset_configs?: { dataset_id: string; permission: string; is_output?: boolean }[];
 }
 
+export interface SessionFeedback {
+  // Layer 1: Outcome
+  outcome: 'COMPLETED' | 'PARTIAL' | 'FAILED';
+  // Layer 2: Failure Reasons
+  failure_reasons?: string[];
+  failure_detail?: string;
+  // Layer 3: Ratings (1-5)
+  understanding_rating?: number;
+  problem_solving_rating?: number;
+  tool_usage_rating?: number;
+  communication_rating?: number;
+  outcome_rating?: number;
+  // Layer 4: Work-style Fit
+  proactivity_fit?: 'TOO_ACTIVE' | 'JUST_RIGHT' | 'TOO_CONSERVATIVE';
+  decision_fit?: 'SHOULD_DECIDE' | 'SHOULD_ASK' | 'JUST_RIGHT';
+  // Layer 5: Trust
+  trust_level?: 'FULLY_TRUST' | 'MOSTLY_TRUST' | 'NEED_CONFIRM' | 'WOULD_NOT_USE';
+  // Free text
+  comment?: string;
+  // Auto-collected
+  model_id?: string;
+  token_count?: number;
+  session_duration_ms?: number;
+  tool_call_count?: number;
+  tool_error_count?: number;
+  message_count?: number;
+  source?: string;
+}
+
 export const sessionApi = {
   create: (agentId: string, options?: CreateSessionOptions | Record<string, unknown>) => {
     // Support legacy call signature: create(agentId, config)
@@ -274,6 +303,12 @@ export const sessionApi = {
     request<{ updated: boolean }>(`/api/chat/sessions/${sessionId}`, {
       method: 'PUT',
       body: JSON.stringify({ title }),
+    }),
+
+  submitFeedback: (sessionId: string, feedback: SessionFeedback) =>
+    request<{ id: string; created: boolean }>(`/api/chat/sessions/${sessionId}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify(feedback),
     }),
 
   loadTools: (sessionId: string, tools: ToolRef[]) =>
