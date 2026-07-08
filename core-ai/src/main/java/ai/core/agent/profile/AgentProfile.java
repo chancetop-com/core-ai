@@ -20,6 +20,7 @@ public class AgentProfile {
     private String path;
     private String source;
     private int priority;
+    private String reasoningEffort;
 
     public String name() {
         return name;
@@ -117,6 +118,15 @@ public class AgentProfile {
 
     public AgentProfile priority(int priority) {
         this.priority = priority;
+        return this;
+    }
+
+    public String reasoningEffort() {
+        return reasoningEffort;
+    }
+
+    public AgentProfile reasoningEffort(String reasoningEffort) {
+        this.reasoningEffort = reasoningEffort;
         return this;
     }
 }

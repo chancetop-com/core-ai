@@ -7,10 +7,12 @@ import ai.core.agent.Task;
 import ai.core.agent.profile.AgentProfile;
 import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.defaultagents.DefaultCodeSimplifierAgent;
-import ai.core.defaultagents.DeepResearchAgent;
 import ai.core.defaultagents.DefaultExploreAgent;
 import ai.core.defaultagents.DefaultGeneralAgent;
+import ai.core.defaultagents.DeepResearchAgent;
 import ai.core.llm.LLMProvider;
+import ai.core.llm.domain.ReasoningEffort;
+import ai.core.llm.domain.Tool;
 import ai.core.prompt.PromptInject;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
@@ -19,6 +21,7 @@ import ai.core.tool.registry.ToolRegistry;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -30,14 +33,14 @@ public class TaskTool extends ToolCall {
     public static final String TOOL_NAME = "task";
     private static final String TOOL_DESC = """
             Launch a new agent to handle complex, multistep tasks autonomously.
-            
+
             Available agent types and the tools they have access to:
-            
+
             %s
-            
+
             When using the Task tool, you must specify a subagent_type parameter to select which agent type to use.
-            
-            
+
+
             Usage notes:
             1. Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses
             2. When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result. The output includes a task_id you can reuse later to continue the same subagent session.
@@ -45,9 +48,9 @@ public class TaskTool extends ToolCall {
             4. The agent's outputs should generally be trusted
             5. Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent. Tell it how to verify its work if possible (e.g., relevant test commands).
             6. If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
-            
+
             Example usage (NOTE: The agents below are fictional examples for illustration only - use the actual agents listed above):
-            
+
             <example_agent_descriptions>
             "code-reviewer": use this agent after you are done writing a significant piece of code
             "greeting-responder": use this agent when to respond to user greetings with a friendly joke
@@ -83,6 +86,21 @@ public class TaskTool extends ToolCall {
             </example>
             
             """;
+
+    @Override
+    public Tool toTool(ExecutionContext context) {
+        if (context != null && context.getAgentProfileRegistry() != null) {
+            var profiles = context.getAgentProfileRegistry().listAll();
+            if (!profiles.isEmpty()) {
+                var sb = new StringBuilder();
+                for (var profile : profiles) {
+                    sb.append("- ").append(profile.name()).append(": ").append(profile.description()).append("\n");
+                }
+                setDescription(TOOL_DESC.replace("%s", sb.toString()));
+            }
+        }
+        return super.toTool(context);
+    }
 
     public static Builder builder() {
         return new Builder();
@@ -193,10 +211,15 @@ public class TaskTool extends ToolCall {
         AgentProfileRegistry profileRegistry = context.getAgentProfileRegistry();
         if (profileRegistry != null) {
             AgentProfile profile = profileRegistry.get(subagentType).orElse(null);
-            if (profile != null && !"builtin".equals(profile.source())) {
+            if (profile != null) {
                 return buildAgentFromProfile(profile, llmProvider, model, maxTurnNumber, toolRegistry, context);
             }
+            throw new RuntimeException("Unknown subagent type: " + subagentType);
         }
+        return createBuiltinAgent(subagentType, llmProvider, model, maxTurnNumber, toolRegistry, context);
+    }
+
+    private Agent createBuiltinAgent(String subagentType, LLMProvider llmProvider, String model, int maxTurnNumber, ToolRegistry toolRegistry, ExecutionContext context) {
         if (DeepResearchAgent.AGENT_NAME.equals(subagentType)) {
             return DeepResearchAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
@@ -226,11 +249,13 @@ public class TaskTool extends ToolCall {
         if (profile.tools() != null && !profile.tools().isEmpty()) {
             builder.toolNames(new ArrayList<>(profile.tools()));
         }
-        if (context.getPromptSections() != null) {
-            builder.systemPromptSections(context.getPromptSections().stream()
-                    .filter(s -> s.type() == PromptInject.SectionType.ENVIRONMENT
-                            || s.type() == PromptInject.SectionType.INSTRUCTIONS)
-                    .toList());
+        builder.systemPromptSections(context.getPromptSections().stream()
+                .filter(s -> s.type() == PromptInject.SectionType.ENVIRONMENT
+                        || s.type() == PromptInject.SectionType.INSTRUCTIONS
+                        || s.type() == PromptInject.SectionType.MEMORY)
+                .toList());
+        if (profile.reasoningEffort() != null) {
+            builder.reasoningEffort(ReasoningEffort.valueOf(profile.reasoningEffort().toUpperCase(Locale.ROOT)));
         }
         if (profile.temperature() != null) {
             builder.temperature(profile.temperature());

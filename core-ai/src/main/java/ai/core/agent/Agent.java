@@ -276,7 +276,7 @@ public class Agent extends Node<Agent> {
         var agentOut = new StringBuilder();
         do {
             if (isCancelled()) break;
-            var mat = toolRegistry.materialize();
+            var mat = toolRegistry.materialize(getExecutionContext());
             var turnMsgList = turn(getMessages(), mat, constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);

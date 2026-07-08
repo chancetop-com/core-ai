@@ -16,26 +16,10 @@ import java.util.List;
 public class BuiltinAgentProfileProvider implements AgentProfileProvider {
 
     private static final List<AgentProfile> PROFILES = List.of(
-            new AgentProfile()
-                    .name(DeepResearchAgent.AGENT_NAME)
-                    .description(DeepResearchAgent.AGENT_DESCRIPTION)
-                    .source("builtin")
-                    .priority(0),
-            new AgentProfile()
-                    .name(DefaultExploreAgent.AGENT_NAME)
-                    .description(DefaultExploreAgent.AGENT_DESCRIPTION)
-                    .source("builtin")
-                    .priority(0),
-            new AgentProfile()
-                    .name(DefaultCodeSimplifierAgent.AGENT_NAME)
-                    .description(DefaultCodeSimplifierAgent.AGENT_DESCRIPTION)
-                    .source("builtin")
-                    .priority(0),
-            new AgentProfile()
-                    .name(DefaultGeneralAgent.AGENT_NAME)
-                    .description(DefaultGeneralAgent.AGENT_DESCRIPTION)
-                    .source("builtin")
-                    .priority(0)
+            DeepResearchAgent.profile(),
+            DefaultExploreAgent.profile(),
+            DefaultCodeSimplifierAgent.profile(),
+            DefaultGeneralAgent.profile()
     );
 
     @Override

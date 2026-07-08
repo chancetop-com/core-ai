@@ -2,6 +2,7 @@ package ai.core.defaultagents;
 
 import ai.core.agent.Agent;
 import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.agent.profile.AgentProfile;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.ReasoningEffort;
@@ -33,6 +34,17 @@ public class DeepResearchAgent {
     private static final List<String> TOOL_NAMES = List.of(
             WriteTodosTool.WT_TOOL_NAME, ToolProvider.BUILTIN_FILES, ToolProvider.BUILTIN_WEB
     );
+
+    public static AgentProfile profile() {
+        return new AgentProfile()
+                .name(AGENT_NAME)
+                .description(AGENT_DESCRIPTION)
+                .systemPrompt(buildSystemPrompt())
+                .tools(TOOL_NAMES)
+                .reasoningEffort("high")
+                .source("builtin")
+                .priority(0);
+    }
 
     public static Agent of(ToolRegistry toolRegistry, LLMProvider llmProvider, String model, StreamingCallback streamingCallback,
                            List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects, Integer maxTurnNumber) {

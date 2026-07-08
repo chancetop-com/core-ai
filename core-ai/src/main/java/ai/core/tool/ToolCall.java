@@ -162,10 +162,14 @@ public abstract class ToolCall {
 
     @Override
     public String toString() {
-        return JsonUtil.toJson(toTool());
+        return JsonUtil.toJson(toTool(null));
     }
 
     public Tool toTool() {
+        return toTool(null);
+    }
+
+    public Tool toTool(ExecutionContext context) {
         var tool = new Tool();
         tool.type = ToolType.FUNCTION;
         var func = new Function();

@@ -1,5 +1,6 @@
 package ai.core.tool.registry;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.llm.domain.Tool;
 import ai.core.tool.ToolCall;
 import org.slf4j.Logger;
@@ -57,6 +58,10 @@ public class ToolRegistry {
     }
 
     public ToolMaterialization materialize() {
+        return materialize(null);
+    }
+
+    public ToolMaterialization materialize(ExecutionContext context) {
         var collected = collectTools();
         var definitions = new ArrayList<Tool>();
         var dispatchMap = new LinkedHashMap<String, ToolCall>();
@@ -64,7 +69,7 @@ public class ToolRegistry {
         for (var entry : collected.tools.entrySet()) {
             var tool = entry.getValue();
             if (tool.getExposure() == ToolExposure.DIRECT) {
-                definitions.add(tool.toTool());
+                definitions.add(tool.toTool(context));
             }
             dispatchMap.put(entry.getKey(), tool);
         }
