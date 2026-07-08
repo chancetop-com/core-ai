@@ -9,9 +9,10 @@
 
 在 core-ai 现有 task 机制基础上，增加主 agent 对后台 task 的生命周期管理能力：
 
-1. **Resume（恢复）**: 主 agent 可以向已存在的子 agent 发送新消息，继续之前的会话
-2. **Cancel（取消）**: 主 agent 可以取消正在运行的后台 agent，回收资源
-3. **Interrupt（中断）**: 主 agent 可以中断当前 turn 但不终止 agent，保留会话继续
+1. **Status（状态查询）**: 主 agent 可以查询后台 task 的运行状态、进度、输出摘要
+2. **Resume（恢复）**: 主 agent 可以向已存在的子 agent 发送新消息，继续之前的会话
+3. **Cancel（取消）**: 主 agent 可以取消正在运行的后台 agent，回收资源
+4. **Interrupt（中断）**: 主 agent 可以中断当前 turn 但不终止 agent，保留会话继续
 
 ## 二、现状分析
 
@@ -229,6 +230,55 @@ public class BackgroundTaskManager {
             .filter(t -> !t.isTerminal())
             .toList();
     }
+
+    /** 获取单个 task 的详细信息 */
+    public Optional<TaskInfo> getTaskInfo(String taskId) {
+        var task = tasks.get(taskId);
+        if (task == null) return Optional.empty();
+        return Optional.of(TaskInfo.from(task));
+    }
+
+    /** 列出所有 task（含最近完成的），供主 agent 了解全局 */
+    public List<TaskInfo> listAllTaskInfo() {
+        return tasks.values().stream()
+            .map(TaskInfo::from)
+            .toList();
+    }
+}
+```
+
+**TaskInfo** — 对外暴露的 task 状态快照（不可变 record）：
+
+```java
+public record TaskInfo(
+    String taskId,
+    String description,
+    String taskType,
+    TaskStatus status,
+    int turnsCompleted,
+    int toolCallsMade,
+    long tokensUsed,
+    int outputLength,
+    long startedAtMs,
+    long elapsedMs
+) {
+    public static TaskInfo from(Task task) {
+        var agent = task.getSubAgent();
+        var usage = agent != null ? agent.getCurrentTokenUsage() : null;
+        var messages = agent != null ? agent.getMessages() : List.of();
+        return new TaskInfo(
+            task.taskId,
+            task.taskName,
+            task.getTaskType(),
+            task.getStatus(),
+            countTurns(messages),
+            countToolCalls(messages),
+            usage != null ? usage.getTotalTokens() : 0,
+            estimateOutputLength(agent),
+            task.getStartTime(),
+            System.currentTimeMillis() - task.getStartTime()
+        );
+    }
 }
 ```
 
@@ -305,6 +355,68 @@ public class BackgroundTaskManager {
     <can-resume>true</can-resume>
   </task-interrupted>
 ```
+
+#### 4.3.4 TaskStatusTool — 查询 task 状态
+
+```
+工具名: task_status
+参数:
+  - task_id (String, optional): 要查询的 task ID。不传时列出所有活跃 task
+
+行为:
+  1. 如果提供 task_id: 查询单个 task 的详细状态
+  2. 如果不提供 task_id: 列出当前所有活跃（非终止）的 task 摘要
+  3. 返回结构化状态信息
+
+返回（单个 task）:
+  <task-status>
+    <task-id>sa-abc12345</task-id>
+    <task-type>general</task-type>
+    <description>analyze auth module</description>
+    <status>running</status>
+    <progress>
+      <turns-completed>12</turns-completed>
+      <tool-calls-made>8</tool-calls-made>
+      <tokens-used>15420</tokens-used>
+      <output-length>2048</output-length>
+    </progress>
+    <timing>
+      <started-at>2026-07-07T10:30:00Z</started-at>
+      <elapsed-ms>45000</elapsed-ms>
+    </timing>
+  </task-status>
+
+返回（task 列表，无 task_id 参数）:
+  <task-list>
+    <active-count>3</active-count>
+    <tasks>
+      <task>
+        <task-id>sa-abc12345</task-id>
+        <description>analyze auth module</description>
+        <status>running</status>
+        <turns>12</turns>
+      </task>
+      <task>
+        <task-id>sa-def67890</task-id>
+        <description>fix login bug</description>
+        <status>interrupted</status>
+        <turns>5</turns>
+      </task>
+      <task>
+        <task-id>sa-ghi11111</task-id>
+        <description>write tests for API</description>
+        <status>completed</status>
+        <turns>8</turns>
+      </task>
+    </tasks>
+  </task-list>
+```
+
+**设计要点**:
+- `task_id` 为可选参数：传了查单个，不传列全部。LLM 通常不知道有哪些 task_id 存在，需要先列出来
+- 返回 `turns-completed`、`tool-calls-made`、`tokens-used` 帮助主 agent 判断进度和资源消耗
+- 已完成的 task 也在列表中（一段时间内），让主 agent 看到完整图景
+- 输出摘要（`output-length` 或最后 N 行的 preview），让主 agent 知道产出了什么
 
 ### 4.4 现有 TaskTool 增强
 
@@ -429,6 +541,7 @@ TaskLifecycleManager.resumeTask(taskId, message)
 | 工具名 | 参数 | 用途 |
 |--------|------|------|
 | `task` (增强) | +resume 语义 | 创建新 task 或 resume 已有 task |
+| `task_status` | task_id? | 查询单个 task 状态或列出所有活跃 task |
 | `task_send_message` | task_id, message, resume? | 向运行中 agent 发消息/恢复执行 |
 | `task_cancel` | task_id | 取消指定 task |
 | `task_interrupt` | task_id | 中断当前 turn，保留 agent |
@@ -525,16 +638,18 @@ BackgroundTaskManager
 
 ## 七、实现计划
 
-### 阶段 1: 基础能力（Task 状态 + Cancel）
+### 阶段 1: 基础能力（Task 状态 + Status + Cancel）
 
 **改动范围**: `Task.java`, `BackgroundTaskManager.java`, `TaskTool.java`（微调）
 
 1. Task 增加 `TaskStatus` 状态机
-2. BackgroundTaskManager 增加 `getTask()`, `cancelTask()`, `listByParent()` 方法
-3. 新增 `task_cancel` 工具
-4. Task 中持有 Agent 引用，支持 cancel 时级联取消子 agent
+2. BackgroundTaskManager 增加 `getTask()`, `getTaskInfo()`, `cancelTask()`, `listAllTaskInfo()` 方法
+3. 新增 `TaskInfo` record（对外暴露的 task 状态快照）
+4. 新增 `task_status` 工具（查询单个/列出全部）
+5. 新增 `task_cancel` 工具
+6. Task 中持有 Agent 引用，支持 cancel 时级联取消子 agent
 
-**产出**: 主 agent 可以取消指定后台 agent
+**产出**: 主 agent 可以查询后台 agent 状态 + 取消指定后台 agent
 
 ### 阶段 2: Resume 能力
 
@@ -574,9 +689,11 @@ BackgroundTaskManager
 |------|---------|------|
 | `core-ai/src/main/java/ai/core/agent/Task.java` | 修改 | 增加 TaskStatus 状态机、Agent 引用、interrupt()/sendMessage() |
 | `core-ai/src/main/java/ai/core/agent/TaskStatus.java` | 新增 | Task 状态枚举 |
+| `core-ai/src/main/java/ai/core/agent/TaskInfo.java` | 新增 | Task 状态快照 record |
 | `core-ai/src/main/java/ai/core/agent/TaskOperationResult.java` | 新增 | Task 操作结果 record |
-| `core-ai/src/main/java/ai/core/session/BackgroundTaskManager.java` | 修改 | 增加 getTask/cancelTask/interruptTask/sendMessage/listByParent |
+| `core-ai/src/main/java/ai/core/session/BackgroundTaskManager.java` | 修改 | 增加 getTask/getTaskInfo/cancelTask/interruptTask/sendMessage/listAllTaskInfo |
 | `core-ai/src/main/java/ai/core/tool/tools/TaskTool.java` | 修改 | task_id resume 语义增强 |
+| `core-ai/src/main/java/ai/core/tool/tools/TaskStatusTool.java` | 新增 | 查询 task 状态/列出活跃 task |
 | `core-ai/src/main/java/ai/core/tool/tools/TaskSendMessageTool.java` | 新增 | 发送消息/恢复执行的工具 |
 | `core-ai/src/main/java/ai/core/tool/tools/TaskCancelTool.java` | 新增 | 取消 task 的工具 |
 | `core-ai/src/main/java/ai/core/tool/tools/TaskInterruptTool.java` | 新增 | 中断 task 当前 turn 的工具 |

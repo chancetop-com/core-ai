@@ -312,8 +312,9 @@ OpenCode 的 "task" 本质是 **Session**。恢复从 SQLite 重建：
 - **PersistenceProvider**: 已有抽象持久化层
 
 ### 需要补充的能力
-1. **Resume**: 核心缺失。需要从持久化历史重建 agent 执行上下文，继续执行
-2. **Agent 级别的 Cancel/Interrupt API**: 目前 cancel 在 session/turn 层面，需要 agent 级别的操作入口
-3. **取消上下文标记**: 取消后向对话历史注入通知，告知模型中断原因
-4. **Agent 生命周期事件**: resume/cancel/interrupt 的事件回调机制
-5. **统一的 Task 管理入口**: TaskManager 从 list+submit 升级为完整的 CRUD + 生命周期管理
+1. **Status 查询**: 核心缺失。主 agent 无法查询后台 agent 的运行状态、进度、部分输出，无法做多 agent 协调
+2. **Resume**: 核心缺失。需要从持久化历史重建 agent 执行上下文，继续执行
+3. **Agent 级别的 Cancel/Interrupt API**: 目前 cancel 在 session/turn 层面，需要 agent 级别的操作入口
+4. **取消上下文标记**: 取消后向对话历史注入通知，告知模型中断原因
+5. **Agent 生命周期事件**: resume/cancel/interrupt 的事件回调机制
+6. **统一的 Task 管理入口**: TaskManager 从 list+submit 升级为完整的 CRUD + 生命周期管理
