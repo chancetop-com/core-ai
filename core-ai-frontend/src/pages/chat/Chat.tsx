@@ -614,7 +614,12 @@ export default function Chat() {
               const existingIdx = segments.findIndex(s => s.type === 'text');
               if (existingIdx >= 0) {
                 const existing = segments[existingIdx] as MessageSegment & { type: 'text' };
-                segments[existingIdx] = { ...existing, content: existing.content + chunk };
+                // text arriving after tools/thinking means a new agent turn — insert
+                // a paragraph break and move the text segment to the end so subsequent
+                // chunks of the same turn append directly to the active segment
+                const updated = { ...existing, content: existing.content + '\n\n' + chunk };
+                segments.splice(existingIdx, 1);
+                segments.push(updated);
               } else {
                 segments.push({ type: 'text', content: chunk });
               }

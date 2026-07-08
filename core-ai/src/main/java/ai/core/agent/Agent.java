@@ -277,6 +277,11 @@ public class Agent extends Node<Agent> {
         do {
             if (isCancelled()) break;
             var mat = toolRegistry.materialize(getExecutionContext());
+            // for turns after the first, insert a paragraph break into the final output
+            // so persisted chat history and page reloads display each turn separately
+            if (!agentOut.isEmpty()) {
+                agentOut.append("\n\n");
+            }
             var turnMsgList = turn(getMessages(), mat, constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
