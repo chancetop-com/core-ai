@@ -215,16 +215,16 @@ const ChatMessageRow = memo(function ChatMessageRow({
         )}
         {(msg.timestamp || hasTextSegments(msg.segments)) && (
           <div className={`flex items-center gap-2 mt-1 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+            {hasTextSegments(msg.segments) && (
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                <CopyButton text={getMessageText(msg)} />
+              </span>
+            )}
             {msg.timestamp && (
               <span className="text-[11px] leading-none select-none"
                 title={formatMessageTimeFull(msg.timestamp)}
                 style={{ color: 'var(--color-text-muted)' }}>
                 {formatMessageTime(msg.timestamp)}
-              </span>
-            )}
-            {hasTextSegments(msg.segments) && (
-              <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                <CopyButton text={getMessageText(msg)} />
               </span>
             )}
           </div>
