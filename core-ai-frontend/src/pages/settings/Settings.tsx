@@ -1,4 +1,4 @@
-import { Activity, PlugZap, Settings as SettingsIcon, Shield, User } from 'lucide-react';
+import { Activity, ListChecks, PlugZap, Settings as SettingsIcon, Shield, User } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
 
@@ -51,6 +51,18 @@ export default function Settings() {
                 })}>
                 <User size={16} />
                 User Management
+              </NavLink>
+              <NavLink to="/settings/tasks"
+                className={() =>
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
+                }
+                style={({ isActive }) => ({
+                  background: isActive ? 'var(--color-primary-bg)' : 'transparent',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                  fontWeight: isActive ? 500 : 400,
+                })}>
+                <ListChecks size={16} />
+                System Tasks
               </NavLink>
               <NavLink to="/settings/gateway"
                 className={() =>

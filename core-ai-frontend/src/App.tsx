@@ -166,6 +166,7 @@ export default function App() {
                       {user?.role === 'admin' && <Route path="system" element={<SystemSettingsPage />} />}
                       {user?.role === 'admin' && <Route index element={<Dashboard />} />}
                       {user?.role === 'admin' && <Route path="users" element={<UserManagement />} />}
+                      {user?.role === 'admin' && <Route path="tasks" element={<Tasks />} />}
                       {user?.role !== 'admin' && <Route index element={<Navigate to="/settings/api-keys" replace />} />}
                     </Route>
                     <Route path="*" element={<Navigate to={defaultPath} replace />} />

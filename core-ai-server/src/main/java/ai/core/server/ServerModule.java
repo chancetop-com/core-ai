@@ -172,6 +172,11 @@ import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.service.PromptService;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
+import ai.core.server.trace.maintenance.TraceDailyMaintenanceJob;
+import ai.core.server.trace.maintenance.TraceDailyMaintenanceService;
+import ai.core.server.trace.maintenance.TraceDailyMaintenanceTask;
+import ai.core.server.task.TaskController;
+import ai.core.server.task.TaskRunner;
 import ai.core.server.trace.web.ingest.IngestController;
 import ai.core.server.trace.web.otlp.OTLPController;
 import ai.core.server.trace.web.prompt.PromptController;
@@ -229,6 +234,8 @@ public class ServerModule extends Module {
         // SystemSettingsService must be bound before bindService() because LLMCallExecutor and AgentRunner inject it
         bind(SystemSettingsService.class);
 
+        var taskRunner = bind(TaskRunner.class);   // must be before bindService() — TaskController injects it
+
         bindService();
         bindAuthService();
         bindGitHubService();
@@ -268,6 +275,10 @@ public class ServerModule extends Module {
                 .filter(s -> !s.isBlank())
                 .orElse(null);
         schedule().fixedRate("agent-memory-consolidation", memoryConsolidationJob, Duration.ofHours(1));
+        bind(TraceDailyMaintenanceService.class);
+        var traceDailyMaintenanceTask = bind(TraceDailyMaintenanceTask.class);
+        onStartup(() -> taskRunner.register(traceDailyMaintenanceTask));
+        schedule().fixedRate("trace-daily-maintenance", bind(TraceDailyMaintenanceJob.class), Duration.ofHours(1));
         registerTrace();
         registerSystemPrompt();
         registerCapabilities();
@@ -348,6 +359,11 @@ public class ServerModule extends Module {
         bind(ForYouService.class);
         bind(ai.core.server.artifact.ArtifactService.class);
         bind(SessionCreateHelper.class);
+
+        var taskController = bind(TaskController.class);
+        http().route(HTTPMethod.GET, "/api/admin/tasks", taskController::list);
+        http().route(HTTPMethod.PUT, "/api/admin/tasks/:taskId/retry", taskController::retry);
+        http().route(HTTPMethod.POST, "/api/admin/tasks", taskController::run);
 
         bindWorkflow();
     }

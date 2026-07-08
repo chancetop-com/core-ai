@@ -115,6 +115,18 @@ async function requestWithAuth<T>(url: string, options?: RequestInit): Promise<T
   return text ? JSON.parse(text) : (undefined as T);
 }
 
+export interface BackgroundTask {
+  id: string;
+  type: string;
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | null;
+  status_text?: string;
+  claimed_by?: string;
+  started_at?: string;
+  completed_at?: string;
+  retry_count?: number;
+  logs?: string[];
+}
+
 export const adminApi = {
   listUsers: () =>
     requestWithAuth<ListUsersResponse>('/api/auth/users'),
@@ -134,6 +146,13 @@ export const adminApi = {
   resetUserPassword: (email: string, password: string) =>
     requestWithAuth<void>('/api/auth/users/reset-password',
       { method: 'POST', body: JSON.stringify({ email, password }) }),
+  listTasks: (type?: string, limit?: number) =>
+    requestWithAuth<{ tasks: BackgroundTask[] }>(`/api/admin/tasks?${new URLSearchParams({ ...(type ? { type } : {}), limit: String(limit ?? 20) })}`),
+  retryTask: (taskId: string) =>
+    requestWithAuth<{ retry_accepted: boolean; task_id: string }>(`/api/admin/tasks/${encodeURIComponent(taskId)}/retry`, { method: 'PUT' }),
+  triggerTask: (type: string, date: string) =>
+    requestWithAuth<{ task_accepted: boolean; task_id: string }>('/api/admin/tasks',
+      { method: 'POST', body: JSON.stringify({ type, date }) }),
 };
 
 export interface Trace {

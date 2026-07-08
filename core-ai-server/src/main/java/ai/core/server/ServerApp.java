@@ -11,6 +11,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ArtifactRef;
+import ai.core.server.domain.BackgroundTask;
 import ai.core.server.memory.AgentMemory;
 import ai.core.server.memory.AgentMemoryExtractionCursor;
 import ai.core.server.domain.ChatMessage;
@@ -37,6 +38,7 @@ import ai.core.server.sandbox.snapshot.SandboxSnapshotDoc;
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trigger.domain.Trigger;
 import core.framework.module.App;
@@ -121,5 +123,9 @@ public class ServerApp extends App {
         // sandbox snapshot collections
         mongo.collection(SandboxSnapshotDoc.class);
         mongo.collection(SandboxEpochDoc.class);
+
+        // task collections
+        mongo.collection(BackgroundTask.class);
+        mongo.collection(TraceDailyStats.class);
     }
 }
