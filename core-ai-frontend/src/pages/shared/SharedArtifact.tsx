@@ -69,6 +69,7 @@ function renderPreview(file: SharedArtifactResponse, state: FileState) {
   const isImage = contentType.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(lowerName);
   const isHtml = contentType === 'text/html' || /\.html?$/.test(lowerName);
   const isMarkdown = contentType === 'text/markdown' || /\.(md|markdown)$/.test(lowerName);
+  const isPdf = contentType === 'application/pdf' || /\.pdf$/i.test(lowerName);
 
   if (isJsonFile(file) && state.fileText != null) {
     return <JsonTreeView value={state.fileText} />;
@@ -86,6 +87,9 @@ function renderPreview(file: SharedArtifactResponse, state: FileState) {
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={REHYPE_PLUGINS}>{state.fileText}</ReactMarkdown>
       </div>
     );
+  }
+  if (isPdf) {
+    return <iframe src={state.fileBlobUrl} title={file.file_name} className="w-full h-full border-0" />;
   }
   if (isTextFile(file) && state.fileText != null) {
     return (
