@@ -168,7 +168,29 @@ class CreateAgentCommandHandler {
             Files.createDirectories(agentsDir);
             String desc = description != null && !description.isBlank() ? description : "Custom agent: " + name;
             String prompt = systemPrompt != null ? systemPrompt : "You are " + name + ".";
-            String content = "---\ndescription: \"" + desc.replace("\"", "\\\"") + "\"\n---\n\n" + prompt + "\n";
+            String escapedDesc = desc.replace("\"", "\\\"");
+            String content = """
+                    ---
+                    description: "%s"
+                    # Optional fields (uncomment to enable):
+                    # model: sonnet
+                    # temperature: 0.8
+                    # maxTurnNumber: 200
+                    # reasoningEffort: low | medium | high | max
+                    # tools:
+                    #   - Read
+                    #   - Bash
+                    #   - Glob
+                    #   - Grep
+                    #   - Write
+                    #   - Edit
+                    #   - task
+                    #   - WebSearch
+                    #   - WebFetch
+                    ---
+
+                    %s
+                    """.formatted(escapedDesc, prompt);
             Files.writeString(file, content);
             if (registry != null) {
                 registry.invalidateCache();

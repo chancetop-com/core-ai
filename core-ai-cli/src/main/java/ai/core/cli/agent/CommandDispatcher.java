@@ -185,8 +185,28 @@ public class CommandDispatcher {
         }
         try {
             Files.createDirectories(agentsDir);
-            String template = "---\ndescription: \"TODO: describe when to use this agent\"\n---\n\n"
-                    + "You are " + name + ". Describe what you do and how you should work.\n";
+            String template = """
+                    ---
+                    description: "TODO: describe when to use this agent"
+                    # Optional fields (uncomment to enable):
+                    # model: sonnet
+                    # temperature: 0.8
+                    # maxTurnNumber: 200
+                    # reasoningEffort: low | medium | high | max
+                    # tools:
+                    #   - Read
+                    #   - Bash
+                    #   - Glob
+                    #   - Grep
+                    #   - Write
+                    #   - Edit
+                    #   - task
+                    #   - WebSearch
+                    #   - WebFetch
+                    ---
+
+                    You are %s. Describe what you do and how you should work.
+                    """.formatted(name);
             Files.writeString(file, template);
             agentProfileRegistry.invalidateCache();
             ui.printStreamingChunk(AnsiTheme.CMD_NAME + "  Created " + file + AnsiTheme.RESET + "\n");

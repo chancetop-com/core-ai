@@ -122,14 +122,6 @@ public class FilesystemAgentProfileProvider implements AgentProfileProvider {
                 }
                 profile.tools(toolList);
             }
-            if (data.containsKey("disallowedTools") && data.get("disallowedTools") instanceof List<?> dtools) {
-                List<String> disallowedList = new ArrayList<>();
-                for (Object t : dtools) {
-                    if (t instanceof String s) disallowedList.add(s);
-                }
-                profile.disallowedTools(disallowedList);
-            }
-
             return profile;
         } catch (Exception e) {
             LOGGER.warn("failed to parse YAML frontmatter in {}", file, e);

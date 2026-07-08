@@ -16,7 +16,6 @@ public class AgentProfile {
     private Double temperature;
     private Integer maxTurnNumber;
     private List<String> tools;
-    private List<String> disallowedTools;
     private String path;
     private String source;
     private int priority;
@@ -82,15 +81,6 @@ public class AgentProfile {
 
     public AgentProfile tools(List<String> tools) {
         this.tools = tools;
-        return this;
-    }
-
-    public List<String> disallowedTools() {
-        return disallowedTools;
-    }
-
-    public AgentProfile disallowedTools(List<String> disallowedTools) {
-        this.disallowedTools = disallowedTools;
         return this;
     }
 
