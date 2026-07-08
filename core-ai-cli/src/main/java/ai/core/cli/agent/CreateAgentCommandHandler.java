@@ -171,6 +171,7 @@ class CreateAgentCommandHandler {
             String escapedDesc = desc.replace("\"", "\\\"");
             String content = """
                     ---
+                    name: %s
                     description: "%s"
                     # Optional fields (uncomment to enable):
                     # model: sonnet
@@ -190,7 +191,7 @@ class CreateAgentCommandHandler {
                     ---
 
                     %s
-                    """.formatted(escapedDesc, prompt);
+                    """.formatted(name, escapedDesc, prompt);
             Files.writeString(file, content);
             if (registry != null) {
                 registry.invalidateCache();

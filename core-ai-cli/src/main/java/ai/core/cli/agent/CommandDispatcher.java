@@ -187,6 +187,7 @@ public class CommandDispatcher {
             Files.createDirectories(agentsDir);
             String template = """
                     ---
+                    name: %s
                     description: "TODO: describe when to use this agent"
                     # Optional fields (uncomment to enable):
                     # model: sonnet
@@ -206,7 +207,7 @@ public class CommandDispatcher {
                     ---
 
                     You are %s. Describe what you do and how you should work.
-                    """.formatted(name);
+                    """.formatted(name, name);
             Files.writeString(file, template);
             agentProfileRegistry.invalidateCache();
             ui.printStreamingChunk(AnsiTheme.CMD_NAME + "  Created " + file + AnsiTheme.RESET + "\n");

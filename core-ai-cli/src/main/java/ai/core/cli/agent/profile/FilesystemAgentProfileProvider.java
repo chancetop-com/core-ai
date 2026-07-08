@@ -73,15 +73,15 @@ public class FilesystemAgentProfileProvider implements AgentProfileProvider {
             return null;
         }
 
-        String name = deriveName(file);
+        String fileName = deriveName(file);
         var matcher = FRONTMATTER_PATTERN.matcher(content);
         if (matcher.find()) {
-            return parseWithFrontmatter(name, matcher.group(1), content.substring(matcher.end()).trim(), file);
+            return parseWithFrontmatter(fileName, matcher.group(1), content.substring(matcher.end()).trim(), file);
         }
-        return parseWithoutFrontmatter(name, content, file);
+        return parseWithoutFrontmatter(fileName, content, file);
     }
 
-    private AgentProfile parseWithFrontmatter(String name, String yamlStr, String body, Path file) {
+    private AgentProfile parseWithFrontmatter(String fileName, String yamlStr, String body, Path file) {
         try {
             LoaderOptions options = new LoaderOptions();
             options.setCodePointLimit(1024 * 1024);
@@ -90,6 +90,11 @@ public class FilesystemAgentProfileProvider implements AgentProfileProvider {
             if (data == null) {
                 LOGGER.warn("empty YAML frontmatter in {}", file);
                 return null;
+            }
+
+            String name = (String) data.getOrDefault("name", fileName);
+            if (name == null || name.isBlank()) {
+                name = fileName;
             }
 
             String description = (String) data.get("description");
