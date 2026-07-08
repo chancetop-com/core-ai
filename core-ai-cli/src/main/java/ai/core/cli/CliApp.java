@@ -483,6 +483,10 @@ public class CliApp {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
         }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.a2aAutoDiscover());
         var agent = CliAgent.of(agentConfig);
+        var registry = agent.getExecutionContext().getAgentProfileRegistry();
+        if (registry != null) {
+            ui.setAgentProfiles(registry.listAll().stream().map(p -> p.name()).toList());
+        }
         var defaultServerUrl = ctx.props().property("core.server.url").orElse(null);
         var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds(), defaultServerUrl);
         return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);

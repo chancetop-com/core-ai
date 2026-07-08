@@ -74,6 +74,7 @@ public class TerminalUI {
     private final PrintWriter writer;
     private final LineReader jlineReader;
     private final SlashCommandCompleter slashCompleter;
+    private final AgentNameCompleter agentNameCompleter;
     private final BufferedReader simpleReader;
     private final PasteBuffer pasteBuffer = new PasteBuffer();
     private final TerminalPasteHandler pasteHandler;
@@ -97,11 +98,13 @@ public class TerminalUI {
             this.writer = terminal != null ? terminal.writer() : new PrintWriter(System.out, true, StandardCharsets.UTF_8);
             this.jlineReader = null;
             this.slashCompleter = null;
+            this.agentNameCompleter = null;
             this.simpleReader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
             this.pasteHandler = new TerminalPasteHandler(terminal, this.writer);
         } else {
             this.writer = wrapWriter(terminal.writer());
             this.slashCompleter = new SlashCommandCompleter();
+            this.agentNameCompleter = new AgentNameCompleter();
             this.pasteHandler = new TerminalPasteHandler(terminal, this.writer);
             this.jlineReader = buildJLineReader();
             this.simpleReader = null;
@@ -116,6 +119,10 @@ public class TerminalUI {
 
     public void resetSlashCommands() {
         if (slashCompleter != null) slashCompleter.resetCommands();
+    }
+
+    public void setAgentProfiles(java.util.List<String> names) {
+        if (agentNameCompleter != null) agentNameCompleter.setAgentNames(names);
     }
 
     public void printStreamingChunk(String chunk) {
@@ -266,7 +273,7 @@ public class TerminalUI {
         var reader = LineReaderBuilder.builder()
                 .terminal(terminal)
                 .appName("core-ai")
-                .completer(new org.jline.reader.impl.completer.AggregateCompleter(slashCompleter, new FileReferenceCompleter()))
+                .completer(new org.jline.reader.impl.completer.AggregateCompleter(slashCompleter, agentNameCompleter, new FileReferenceCompleter()))
                 .build();
         reader.setOpt(LineReader.Option.AUTO_LIST);
         reader.setOpt(LineReader.Option.AUTO_MENU);
