@@ -434,21 +434,20 @@ public class CliAgent {
         }
 
         private static List<Path> findProjectInstructions(Path workspace) {
-            var found = new ArrayList<Path>();
             var coreAiDir = workspace.resolve(".core-ai");
             for (var fileName : PROJECT_FILES) {
                 var file = coreAiDir.resolve(fileName);
                 if (Files.isRegularFile(file)) {
-                    found.add(file);
+                    return List.of(file);
                 }
             }
             for (var fileName : PROJECT_FILES) {
                 var file = workspace.resolve(fileName);
-                if (Files.isRegularFile(file) && found.stream().noneMatch(p -> p.getFileName().toString().equals(fileName))) {
-                    found.add(file);
+                if (Files.isRegularFile(file)) {
+                    return List.of(file);
                 }
             }
-            return found;
+            return List.of();
         }
     }
 
