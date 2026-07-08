@@ -384,24 +384,17 @@ public class AgentSessionManager {
 
     public List<ToolRef> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {
         var session = getSession(sessionId);
-        var tools = new ArrayList<ToolCall>();
-        var loadedRefs = new ArrayList<ToolRef>();
-        var missingRefs = new ArrayList<ToolRef>();
-        for (var ref : toolRefs) {
-            var resolved = toolRegistryService.resolveToolRefs(List.of(ref), sessionId);
-            if (resolved.isEmpty()) {
-                missingRefs.add(ref);
-            } else {
-                tools.addAll(resolved);
-                loadedRefs.add(ref);
-            }
-        }
-        if (!missingRefs.isEmpty()) {
-            throw new NotFoundException("no tools found for refs: " + missingRefs);
+        // Resolve ALL refs in a single call so that MCP sandbox-hosted server
+        // startups run in parallel (via prepareSessionMcpServers parallelStream),
+        // avoiding sequential per-server delays that compound when servers are
+        // slow or unreachable.
+        var tools = toolRegistryService.resolveToolRefs(toolRefs, sessionId);
+        if (tools.isEmpty()) {
+            throw new NotFoundException("no tools found for refs: " + toolRefs);
         }
         session.loadTools(tools);
-        chatMessageService.addLoadedTools(sessionId, loadedRefs);
-        return loadedRefs;
+        chatMessageService.addLoadedTools(sessionId, toolRefs);
+        return toolRefs;
     }
 
     public List<String> unloadSkills(String sessionId, List<String> skillIds) {

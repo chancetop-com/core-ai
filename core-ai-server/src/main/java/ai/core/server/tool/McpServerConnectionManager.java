@@ -123,6 +123,12 @@ class McpServerConnectionManager {
         resolved.put("endpoint", "mcp");
         resolved.put("headers", Map.of("X-Mcp-Server-Id", entry.id));
         resolved.put("transport", "streamable_http");
+        // Use shorter timeouts for sandbox-backed MCP connections so that
+        // unreachable or slow servers don't block the caller (session creation,
+        // tool browsing) for extended periods. User-configured values in the
+        // original entry take precedence over these defaults.
+        resolved.put("connectTimeout", (long) SandboxConstants.SESSION_MCP_CONNECT_TIMEOUT_SECONDS);
+        resolved.put("initializationTimeout", (long) SandboxConstants.SESSION_MCP_INIT_TIMEOUT_SECONDS);
         copyIfPresent(configMap, resolved, "requestTimeout");
         copyIfPresent(configMap, resolved, "initializationTimeout");
         copyIfPresent(configMap, resolved, "connectTimeout");

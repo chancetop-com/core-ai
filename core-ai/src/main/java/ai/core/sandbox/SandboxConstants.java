@@ -67,6 +67,16 @@ public final class SandboxConstants {
     // that a stuck MCP server does not cause session creation to take minutes.
     public static final int SESSION_MCP_STARTUP_TIMEOUT_SECONDS = 30;
 
+    // Per-server HTTP connect timeout (seconds) for MCP servers during session creation.
+    // Shorter than the global default (10s) so unreachable servers fail fast without
+    // blocking session creation. See McpServerConfig.connectTimeout default.
+    public static final int SESSION_MCP_CONNECT_TIMEOUT_SECONDS = 5;
+
+    // Per-server MCP initialization timeout (seconds) during session creation.
+    // Shorter than the global default (60s) so stuck initialize handshakes don't
+    // delay session creation. See McpServerConfig.initializationTimeout default.
+    public static final int SESSION_MCP_INIT_TIMEOUT_SECONDS = 10;
+
     private SandboxConstants() {
     }
 }
