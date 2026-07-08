@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, Star, Sparkles, Pencil, Brain } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
+import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
 
 const EXPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
@@ -46,6 +47,8 @@ export default function AgentList() {
   const [query, setQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated_at' | 'created_at'>(DEFAULT_SORT_BY);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const fileRef = useRef<HTMLInputElement>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,7 +64,7 @@ export default function AgentList() {
     loadingKeysRef.current[tab] = key;
     setPageLoading(true);
     try {
-      const res = await api.agents.list(tab === 'my', trimmed || undefined, limit, pageFor(offset, limit), sortBy, tab === 'my' ? false : undefined);
+      const res = await api.agents.list(tab === 'my', trimmed || undefined, limit, pageFor(offset, limit), sortBy, tab === 'my' && !isAdmin ? false : undefined);
       if (requestId !== reqIdRef.current[tab]) return;
       if (tab === 'my') {
         setMyAgents(res.agents || []);
@@ -77,7 +80,7 @@ export default function AgentList() {
       if (loadingKeysRef.current[tab] === key) loadingKeysRef.current[tab] = null;
       if (requestId === reqIdRef.current[tab]) setPageLoading(false);
     }
-  }, [limit, sortBy]);
+  }, [limit, sortBy, isAdmin]);
 
   const loadMyAgents = () => {
     loadedKeysRef.current.my = null;
@@ -89,7 +92,7 @@ export default function AgentList() {
     const myKey = agentPageKey('my', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY);
     const otherKey = agentPageKey('other', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY);
     Promise.all([
-      api.agents.list(true, undefined, DEFAULT_LIMIT, 1, DEFAULT_SORT_BY, false),
+      api.agents.list(true, undefined, DEFAULT_LIMIT, 1, DEFAULT_SORT_BY, isAdmin ? undefined : false),
       api.agents.list(false, undefined, DEFAULT_LIMIT, 1, DEFAULT_SORT_BY),
     ]).then(([myRes, otherRes]) => {
       setMyAgents(myRes.agents || []);
@@ -99,6 +102,7 @@ export default function AgentList() {
       loadedKeysRef.current.my = myKey;
       loadedKeysRef.current.other = otherKey;
     }).finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

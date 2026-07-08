@@ -60,7 +60,7 @@ public final class PublishLLMCallTool extends ToolCall {
 
             var userId = context != null ? context.getUserId() : null;
             var view = agentDefinitionService.create(request, userId != null ? userId : "system");
-            agentDefinitionService.publish(view.id);
+            agentDefinitionService.publish(view.id, userId != null ? userId : "system");
 
             var result = new StringBuilder(256);
             result.append("LLM Call API published successfully!\n\nID: ")

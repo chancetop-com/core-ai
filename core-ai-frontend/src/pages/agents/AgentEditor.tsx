@@ -6,6 +6,7 @@ import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDe
 import { sessionApi } from '../../api/session';
 import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
+import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
@@ -23,6 +24,8 @@ export default function AgentEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isNew = id === 'new';
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
   const [agent, setAgent] = useState<AgentDefinition | null>(isNew ? { ...NEW_AGENT_SKELETON } : null);
   const [loading, setLoading] = useState(!isNew);
@@ -439,6 +442,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           dataset_config: agent.dataset_config,
           sandbox_config: agent.sandbox_config,
           enable_memory: agent.enable_memory,
+          system_default: agent.system_default,
         } as any);
         navigate(`/agents/${created.id}`);
         return;
@@ -464,6 +468,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           dataset_config: agent.dataset_config,
           sandbox_config: agent.sandbox_config,
           enable_memory: agent.enable_memory,
+          system_default: agent.system_default,
         } as any);
         setAgent(updated);
       setSaveSuccess(true);
@@ -1040,6 +1045,21 @@ The system prompt should define how this agent behaves, its capabilities, and it
                     When on, the agent learns from completed runs and reuses that experience in later runs. Publish to apply changes to live runs.
                   </p>
                 </div>
+
+                {isAdmin && (
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox"
+                      checked={agent.system_default === true}
+                      onChange={e => update('system_default', e.target.checked)}
+                      className="w-4 h-4 rounded accent-[var(--color-accent)]" />
+                    <span className="text-sm font-medium">System default</span>
+                  </label>
+                  <p className="text-xs mt-1 ml-6" style={{ color: 'var(--color-text-tertiary)' }}>
+                    When enabled, this agent appears in the "Default" section for all users in Chat. Only admins can change this.
+                  </p>
+                </div>
+                )}
               </div>
             )}
           </div>
@@ -1723,6 +1743,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
               <div className="flex justify-between"><dt>Created by</dt><dd>{agent.created_by || '-'}</dd></div>
               <div className="flex justify-between"><dt>Timeout</dt><dd>{agent.timeout_seconds || 600}s</dd></div>
               <div className="flex justify-between"><dt>Published</dt><dd>{agent.published_at ? new Date(agent.published_at).toLocaleString() : '-'}</dd></div>
+              <div className="flex justify-between"><dt>System Default</dt><dd>{agent.system_default ? 'Yes' : 'No'}</dd></div>
             </dl>
           </div>
 

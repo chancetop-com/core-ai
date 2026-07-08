@@ -1,5 +1,6 @@
 package ai.core.server.agentbuilder;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.api.server.tool.ToolRefView;
 import ai.core.server.agent.AgentDefinitionService;
@@ -32,8 +33,13 @@ public final class UpdateAgentDraftTool extends ToolCall {
     }
 
     @Override
-    @SuppressWarnings({"unchecked", "checkstyle:MethodLength", "PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar"})
     public ToolCallResult execute(String text) {
+        return execute(text, null);
+    }
+
+    @Override
+    @SuppressWarnings({"unchecked", "checkstyle:MethodLength", "PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar"})
+    public ToolCallResult execute(String text, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         try {
             var args = JSON.fromJSON(Map.class, text);
@@ -85,7 +91,8 @@ public final class UpdateAgentDraftTool extends ToolCall {
             request.inputTemplate = (String) args.get("input_template");
             request.multiModalModel = (String) args.get("multi_modal_model");
 
-            var view = agentDefinitionService.update(agentId, request);
+            var userId = context != null ? context.getUserId() : null;
+            var view = agentDefinitionService.update(agentId, request, userId);
 
             var result = new StringBuilder(256);
             result.append("Agent draft updated successfully!\n\n")

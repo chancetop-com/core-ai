@@ -91,6 +91,12 @@ public class AgentDefinitionService {
         entity.sandboxConfig = request.sandboxConfig != null ? fromSandboxConfigView(request.sandboxConfig) : null;
         entity.datasetConfig = toDatasetConfigs(request.datasetConfig);
         entity.enableMemory = Boolean.TRUE.equals(request.enableMemory);
+        if (Boolean.TRUE.equals(request.systemDefault)) {
+            if (!isAdmin(userId)) {
+                throw new core.framework.web.exception.ForbiddenException("only admin can create system default agents");
+            }
+            entity.systemDefault = true;
+        }
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -284,9 +290,11 @@ public class AgentDefinitionService {
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
     }
 
-    public AgentDefinitionView update(String id, UpdateAgentRequest request) {
+    public AgentDefinitionView update(String id, UpdateAgentRequest request, String userId) {
         var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+
+        requireAdminForSystemDefault(entity, userId);
 
         if (request.name != null) entity.name = request.name;
         if (request.description != null) entity.description = request.description;
@@ -307,15 +315,23 @@ public class AgentDefinitionService {
         if (request.sandboxConfig != null) entity.sandboxConfig = fromSandboxConfigView(request.sandboxConfig);
         if (request.datasetConfig != null) entity.datasetConfig = toDatasetConfigs(request.datasetConfig);
         if (request.enableMemory != null) entity.enableMemory = request.enableMemory;
+        if (request.systemDefault != null) {
+            if (Boolean.TRUE.equals(request.systemDefault) && !isAdmin(userId)) {
+                throw new core.framework.web.exception.ForbiddenException("only admin can set agents as system default");
+            }
+            entity.systemDefault = request.systemDefault;
+        }
         entity.updatedAt = ZonedDateTime.now();
 
         agentDefinitionCollection.replace(entity);
         return toView(entity);
     }
 
-    public AgentDefinitionView publish(String id) {
+    public AgentDefinitionView publish(String id, String userId) {
         var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+
+        requireAdminForSystemDefault(entity, userId);
 
         entity.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
         entity.skillIds = IdLists.cleanOrNull(entity.skillIds);
@@ -376,7 +392,10 @@ public class AgentDefinitionService {
         return toView(entity);
     }
 
-    public void delete(String id) {
+    public void delete(String id, String userId) {
+        var entity = agentDefinitionCollection.get(id)
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+        requireAdminForSystemDefault(entity, userId);
         agentDefinitionCollection.delete(id);
     }
 
@@ -572,5 +591,16 @@ public class AgentDefinitionService {
             return definition.datasetConfig;
         }
         return null;
+    }
+
+    private void requireAdminForSystemDefault(AgentDefinition entity, String userId) {
+        if (!Boolean.TRUE.equals(entity.systemDefault)) return;
+        if (userId == null || !isAdmin(userId)) {
+            throw new core.framework.web.exception.ForbiddenException("only admin can modify built-in agents");
+        }
+    }
+
+    private boolean isAdmin(String userId) {
+        return userCollection.get(userId).map(u -> "admin".equals(u.role)).orElse(false);
     }
 }

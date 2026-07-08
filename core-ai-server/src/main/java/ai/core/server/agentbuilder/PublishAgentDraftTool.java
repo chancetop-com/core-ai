@@ -1,5 +1,6 @@
 package ai.core.server.agentbuilder;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.DefinitionType;
 import ai.core.tool.ToolCall;
@@ -30,8 +31,13 @@ public final class PublishAgentDraftTool extends ToolCall {
     }
 
     @Override
-    @SuppressWarnings({"unchecked", "PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar"})
     public ToolCallResult execute(String text) {
+        return execute(text, null);
+    }
+
+    @Override
+    @SuppressWarnings({"unchecked", "PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar"})
+    public ToolCallResult execute(String text, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         try {
             var args = JSON.fromJSON(Map.class, text);
@@ -48,7 +54,8 @@ public final class PublishAgentDraftTool extends ToolCall {
                     .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            var view = agentDefinitionService.publish(agentId);
+            var userId = context != null ? context.getUserId() : null;
+            var view = agentDefinitionService.publish(agentId, userId);
 
             var result = new StringBuilder(256);
             result.append("Agent published successfully!\n\n")

@@ -60,14 +60,14 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     public AgentDefinitionView update(String id, UpdateAgentRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
-        return agentDefinitionService.update(id, request);
+        return agentDefinitionService.update(id, request, userId);
     }
 
     @Override
     public AgentDefinitionView publish(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
-        return agentDefinitionService.publish(id);
+        return agentDefinitionService.publish(id, userId);
     }
 
     @Override
@@ -81,7 +81,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     public void delete(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
-        agentDefinitionService.delete(id);
+        agentDefinitionService.delete(id, userId);
     }
 
     @Override

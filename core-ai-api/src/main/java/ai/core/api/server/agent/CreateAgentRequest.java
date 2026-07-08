@@ -68,4 +68,7 @@ public class CreateAgentRequest {
 
     @Property(name = "dataset_config")
     public List<AgentDatasetConfigView> datasetConfig;
+
+    @Property(name = "system_default")
+    public Boolean systemDefault;
 }
