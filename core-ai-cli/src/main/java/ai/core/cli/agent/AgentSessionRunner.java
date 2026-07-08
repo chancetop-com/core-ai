@@ -238,7 +238,7 @@ public class AgentSessionRunner {
         var dispatcher = new CommandDispatcher(
                 ui, modelPicker, switchSessionId, remoteConfig,
                 new HandlerContext(commands, memoryCommand, memoryEnabled), this, defaultServerUrl,
-                agent.getExecutionContext().getAgentProfileRegistry());
+                agent.getExecutionContext().getAgentProfileRegistry(), workspace);
         boolean showFrame = true;
         while (true) {
             try {

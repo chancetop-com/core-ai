@@ -11,6 +11,9 @@ import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,12 +30,14 @@ public class CommandDispatcher {
     private final HandlerContext handlers;
     private final String defaultServerUrl;
     private final AgentProfileRegistry agentProfileRegistry;
+    private final Path workspace;
 
     CommandDispatcher(TerminalUI ui, ModelPicker modelPicker,
                       AtomicReference<String> switchSessionId,
                       AtomicReference<RemoteConfig> remoteConfig,
                       HandlerContext handlers, AgentSessionRunner session,
-                      String defaultServerUrl, AgentProfileRegistry agentProfileRegistry) {
+                      String defaultServerUrl, AgentProfileRegistry agentProfileRegistry,
+                      Path workspace) {
         this.ui = ui;
         this.session = session;
         this.modelPicker = modelPicker;
@@ -41,6 +46,7 @@ public class CommandDispatcher {
         this.handlers = handlers;
         this.defaultServerUrl = defaultServerUrl;
         this.agentProfileRegistry = agentProfileRegistry;
+        this.workspace = workspace;
     }
 
     public void dispatch(String trimmed, BlockingQueue<String> queue) {
@@ -142,15 +148,62 @@ public class CommandDispatcher {
             listAgents();
             return true;
         }
-        if (lower.startsWith("/agents")) {
-            if (agentProfileRegistry == null) {
-                ui.printStreamingChunk(AnsiTheme.MUTED + "  Agent profiles not available.\n" + AnsiTheme.RESET);
-            } else {
-                ui.printStreamingChunk(AnsiTheme.MUTED + "  Use /agents to list agents, /agents create <name> to create one.\n" + AnsiTheme.RESET);
-            }
+        if (lower.startsWith("/agents create ")) {
+            String name = lower.substring("/agents create ".length()).trim();
+            createAgent(name);
+            return true;
+        }
+        if (lower.startsWith("/agents delete ")) {
+            String name = lower.substring("/agents delete ".length()).trim();
+            deleteAgent(name);
             return true;
         }
         return false;
+    }
+
+    private void createAgent(String name) {
+        if (agentProfileRegistry == null || workspace == null) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Agent profiles not available.\n" + AnsiTheme.RESET);
+            return;
+        }
+        if (!name.matches("[a-zA-Z0-9][a-zA-Z0-9-]*")) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Invalid agent name. Use letters, numbers, and hyphens.\n" + AnsiTheme.RESET);
+            return;
+        }
+        Path agentsDir = workspace.resolve(".core-ai").resolve("agents");
+        Path file = agentsDir.resolve(name + ".md");
+        if (Files.exists(file)) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  Agent '" + name + "' already exists.\n" + AnsiTheme.RESET);
+            return;
+        }
+        try {
+            Files.createDirectories(agentsDir);
+            String template = "---\ndescription: \"TODO: describe when to use this agent\"\n---\n\n"
+                    + "You are " + name + ". Describe what you do and how you should work.\n";
+            Files.writeString(file, template);
+            agentProfileRegistry.invalidateCache();
+            ui.printStreamingChunk(AnsiTheme.CMD_NAME + "  Created " + file + AnsiTheme.RESET + "\n");
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Edit this file to customize the agent, then use @"
+                    + name + " <prompt> to invoke it.\n" + AnsiTheme.RESET);
+        } catch (IOException e) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to create agent: " + e.getMessage() + "\n" + AnsiTheme.RESET);
+        }
+    }
+
+    private void deleteAgent(String name) {
+        Path agentsDir = workspace.resolve(".core-ai").resolve("agents");
+        Path file = agentsDir.resolve(name + ".md");
+        if (!Files.exists(file)) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  Agent '" + name + "' not found.\n" + AnsiTheme.RESET);
+            return;
+        }
+        try {
+            Files.delete(file);
+            agentProfileRegistry.invalidateCache();
+            ui.printStreamingChunk(AnsiTheme.CMD_NAME + "  Deleted " + file + AnsiTheme.RESET + "\n");
+        } catch (IOException e) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to delete agent: " + e.getMessage() + "\n" + AnsiTheme.RESET);
+        }
     }
 
     private void listAgents() {
