@@ -1,5 +1,7 @@
 package ai.core.agent;
 
+import ai.core.agent.atmention.AtMentionParser;
+import ai.core.agent.atmention.AtMentionResult;
 import ai.core.agent.internal.AgentHelper;
 import ai.core.agent.slashcommand.SlashCommandParser;
 import ai.core.context.Compression;
@@ -112,7 +114,7 @@ public class Agent extends Node<Agent> {
     }
 
     private void chatCommand(String query, Map<String, Object> variables) {
-        chatTurns(query, variables, this::constructionFakeSlashCommandAssistantMsg);
+        chatTurns(query, variables, wrapFirstTurn(this::constructionFakeSlashCommandAssistantMsg));
     }
 
     private void chatLoops(String query, Map<String, Object> variables, boolean skipReflection) {
@@ -151,9 +153,54 @@ public class Agent extends Node<Agent> {
     private void commandOrLoops(String query, Map<String, Object> variables, boolean skipReflection) {
         if (SlashCommandParser.isSlashCommand(query)) {
             chatCommand(query, variables);
+        } else if (isAtMention(query)) {
+            chatAtMention(query, variables);
         } else {
             chatLoops(query, variables, skipReflection);
         }
+    }
+
+    private boolean isAtMention(String query) {
+        return AtMentionParser.isAtMention(query) && getExecutionContext() != null
+                && getExecutionContext().getAgentProfileRegistry() != null;
+    }
+
+    private void chatAtMention(String query, Map<String, Object> variables) {
+        chatTurns(query, variables, wrapFirstTurn(this::constructionFakeAtMentionAssistantMsg));
+    }
+
+    private BiFunction<List<Message>, List<Tool>, Choice> wrapFirstTurn(BiFunction<List<Message>, List<Tool>, Choice> firstTurnBuilder) {
+        return (messages, tools) -> {
+            if (RoleType.TOOL.equals(messages.getLast().role)) {
+                return handLLM(messages, tools);
+            }
+            return firstTurnBuilder.apply(messages, tools);
+        };
+    }
+
+    private Choice constructionFakeAtMentionAssistantMsg(List<Message> messages, List<Tool> tools) {
+        String query = messages.getLast().getTextContent();
+        var registry = getExecutionContext().getAgentProfileRegistry();
+        var result = AtMentionParser.parse(query, registry);
+        if (result.isEmpty()) {
+            return Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT,
+                    "Error: Unknown agent. Use /agents to list available agents.", "assistant", null, null, ""));
+        }
+        AtMentionResult mention = result.get();
+        String taskArgs = "{\"subagent_type\":\"" + mention.agentName()
+                + "\",\"prompt\":\"" + escapeJson(mention.prompt())
+                + "\",\"description\":\"" + escapeJson(truncateDescription(mention.prompt())) + "\"}";
+        var functionCall = FunctionCall.of(AgentHelper.generateToolCallId(), "function", "task", taskArgs);
+        return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall), ""));
+    }
+
+    private String escapeJson(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    private String truncateDescription(String prompt) {
+        return prompt.length() > 50 ? prompt.substring(0, 47) + "..." : prompt;
     }
 
     private void reflectionLoop(Map<String, Object> variables) {
@@ -252,10 +299,10 @@ public class Agent extends Node<Agent> {
         String query = messages.getLast().getTextContent();
         var command = SlashCommandParser.parse(query);
         if (command.isNotValid()) {
-            return Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments"));
+            return Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments", "assistant", null, null, ""));
         } else {
             var functionCall = FunctionCall.of(AgentHelper.generateToolCallId(), "function", command.getToolName(), command.hasArguments() ? command.getArguments() : "{}");
-            return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall)));
+            return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall), ""));
         }
     }
 
