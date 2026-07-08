@@ -32,8 +32,12 @@ class CreateAgentCommandHandler {
             Include what tools it should prefer and how it should structure its responses. \
             Keep it concise but thorough (3-8 paragraphs).
 
-            Output ONLY valid JSON (no markdown fences, no other text):
-            {"name": "...", "description": "...", "systemPrompt": "..."}""";
+            Output ONLY a JSON object with exactly these keys (no markdown fences, no other text):
+            {
+              "name": "kebab-case-agent-name",
+              "description": "One-line description of when to use this agent",
+              "systemPrompt": "Detailed system prompt defining the agent's behavior..."
+            }""";
 
     private final TerminalUI ui;
     private final LLMProvider llmProvider;
