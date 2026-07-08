@@ -8,6 +8,9 @@ import java.util.List;
 public final class SlashCommandRegistry {
 
     private static final List<SlashCommand> COMMANDS = List.of(
+            new SlashCommand("/agents", "List custom agents"),
+            new SlashCommand("/agents create", "Create a new custom agent"),
+            new SlashCommand("/agents delete <name>", "Delete a custom agent"),
             new SlashCommand("/help", "Show available commands"),
             new SlashCommand("/model", "Show or switch model (/model <name>)"),
             new SlashCommand("/stats", "Show session statistics and token usage"),

@@ -1,5 +1,7 @@
 package ai.core.cli.agent;
 
+import ai.core.agent.profile.AgentProfile;
+import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.cli.auth.AuthCommandHandler;
 import ai.core.cli.command.McpCommandHandler;
 import ai.core.cli.command.HandlerContext;
@@ -24,12 +26,13 @@ public class CommandDispatcher {
     private final AtomicReference<RemoteConfig> remoteConfig;
     private final HandlerContext handlers;
     private final String defaultServerUrl;
+    private final AgentProfileRegistry agentProfileRegistry;
 
     CommandDispatcher(TerminalUI ui, ModelPicker modelPicker,
                       AtomicReference<String> switchSessionId,
                       AtomicReference<RemoteConfig> remoteConfig,
                       HandlerContext handlers, AgentSessionRunner session,
-                      String defaultServerUrl) {
+                      String defaultServerUrl, AgentProfileRegistry agentProfileRegistry) {
         this.ui = ui;
         this.session = session;
         this.modelPicker = modelPicker;
@@ -37,12 +40,14 @@ public class CommandDispatcher {
         this.remoteConfig = remoteConfig;
         this.handlers = handlers;
         this.defaultServerUrl = defaultServerUrl;
+        this.agentProfileRegistry = agentProfileRegistry;
     }
 
     public void dispatch(String trimmed, BlockingQueue<String> queue) {
         var lower = trimmed.toLowerCase(Locale.ROOT);
         if (dispatchSessionCommand(lower, queue)) return;
         if (dispatchConfigCommand(trimmed, lower, queue)) return;
+        if (dispatchAgentCommand(lower)) return;
         if (dispatchPluginCommand(trimmed, lower, queue)) return;
         handlers.commands().handle(trimmed);
     }
@@ -130,6 +135,45 @@ public class CommandDispatcher {
             return true;
         }
         return false;
+    }
+
+    private boolean dispatchAgentCommand(String lower) {
+        if ("/agents".equals(lower)) {
+            listAgents();
+            return true;
+        }
+        if (lower.startsWith("/agents")) {
+            if (agentProfileRegistry == null) {
+                ui.printStreamingChunk(AnsiTheme.MUTED + "  Agent profiles not available.\n" + AnsiTheme.RESET);
+            } else {
+                ui.printStreamingChunk(AnsiTheme.MUTED + "  Use /agents to list agents, /agents create <name> to create one.\n" + AnsiTheme.RESET);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void listAgents() {
+        if (agentProfileRegistry == null) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Agent profiles not available.\n" + AnsiTheme.RESET);
+            return;
+        }
+        var profiles = agentProfileRegistry.listAll();
+        if (profiles.isEmpty()) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  No agents registered.\n" + AnsiTheme.RESET);
+            return;
+        }
+        var sb = new StringBuilder("Available agents:\n");
+        for (AgentProfile profile : profiles) {
+            sb.append(String.format("  %s%-24s %s%s %s[%s]%s\n",
+                    AnsiTheme.CMD_NAME, profile.name(),
+                    AnsiTheme.CMD_DESC, profile.description(),
+                    AnsiTheme.MUTED, profile.source(), AnsiTheme.RESET));
+            if (profile.path() != null) {
+                sb.append(String.format("    %spath: %s%s\n", AnsiTheme.MUTED, profile.path(), AnsiTheme.RESET));
+            }
+        }
+        ui.printStreamingChunk(sb.toString());
     }
 
     private boolean dispatchPluginCommand(String trimmed, String lower, BlockingQueue<String> queue) {

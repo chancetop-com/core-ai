@@ -237,7 +237,8 @@ public class AgentSessionRunner {
     private void readInputLoop(BlockingQueue<String> queue, Semaphore readyForInput) {
         var dispatcher = new CommandDispatcher(
                 ui, modelPicker, switchSessionId, remoteConfig,
-                new HandlerContext(commands, memoryCommand, memoryEnabled), this, defaultServerUrl);
+                new HandlerContext(commands, memoryCommand, memoryEnabled), this, defaultServerUrl,
+                agent.getExecutionContext().getAgentProfileRegistry());
         boolean showFrame = true;
         while (true) {
             try {

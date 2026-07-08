@@ -5,6 +5,9 @@ import ai.core.agent.AgentBuilder;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.SubAgentConfig;
+import ai.core.agent.profile.AgentProfileRegistry;
+import ai.core.agent.profile.BuiltinAgentProfileProvider;
+import ai.core.cli.agent.profile.FilesystemAgentProfileProvider;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
@@ -112,6 +115,7 @@ public class CliAgent {
                 .promptSections(constructPromptSection(config, hookOutput))
                 .build();
         execCtx.setSubAgentConfigs(config.subAgentConfigs);
+        execCtx.setAgentProfileRegistry(buildAgentProfileRegistry(config));
         agent.setExecutionContext(execCtx);
         return agent;
     }
@@ -446,6 +450,23 @@ public class CliAgent {
             }
             return found;
         }
+    }
+
+    private static AgentProfileRegistry buildAgentProfileRegistry(Config config) {
+        var registry = new AgentProfileRegistry();
+        registry.addProvider(new BuiltinAgentProfileProvider());
+
+        Path userAgentsDir = Path.of(System.getProperty("user.home"), ".core-ai", "agents");
+        if (Files.isDirectory(userAgentsDir)) {
+            registry.addProvider(new FilesystemAgentProfileProvider("user", userAgentsDir, 50));
+        }
+
+        Path workspaceAgentsDir = config.workspace.resolve(".core-ai").resolve("agents");
+        if (Files.isDirectory(workspaceAgentsDir)) {
+            registry.addProvider(new FilesystemAgentProfileProvider("workspace", workspaceAgentsDir, 100));
+        }
+
+        return registry;
     }
 
     record HookPrompt(String output) implements PromptInject {
