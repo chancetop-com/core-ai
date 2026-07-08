@@ -381,6 +381,57 @@ export interface LLMCallResponse {
   token_usage: Record<string, number>;
 }
 
+export interface ExperimentRun {
+  id: string;
+  agent_id: string;
+  session_id: string;
+  run_id: string;
+  enabled: boolean;
+  enabled_layers: string[];
+  ranking_strategy: string;
+  top_k: number;
+  injection_probability: number;
+  injection_decision: boolean;
+  injected_memory_ids: string[];
+  injected_memory_count: number;
+  layer_breakdown: Record<string, number>;
+  prompt_tokens: number;
+  outcome: string;
+  user_rating: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListExperimentRunsResponse {
+  runs: ExperimentRun[];
+  total: number;
+}
+
+export interface ExperimentConfigItem {
+  id: string;
+  agent_id: string;
+  enabled: boolean;
+  enabled_layers: string[];
+  ranking_strategy: string;
+  top_k: number;
+  injection_probability: number;
+}
+
+export interface ListExperimentConfigsResponse {
+  configs: ExperimentConfigItem[];
+  total: number;
+}
+
+export interface AgentMemoryExperimentConfig {
+  id: string;
+  agent_id: string;
+  enabled: boolean;
+  injection_probability: number;
+  enabled_layers: string[];
+  top_k: number;
+  ranking_strategy: string;
+}
+
 export interface ConvertJavaToSchemaResponse {
   schema: string | null;
   error: string | null;
@@ -1453,6 +1504,26 @@ export const api = {
       if (userId) params.set('user_id', userId);
       return request<ListSharedArtifactsResponse>(`/api/artifacts/shared?${params}`);
     },
+  },
+  experiments: {
+    listRuns: (agentId?: string, skip = 0, limit = 10) => {
+      const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+      if (agentId) params.set('agentId', agentId);
+      return request<ListExperimentRunsResponse>(`/api/memory-experiments/runs?${params}`);
+    },
+    getRun: (id: string) => request<ExperimentRun>(`/api/memory-experiments/runs/${id}`),
+    listConfigs: (skip = 0, limit = 10) => {
+      const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+      return request<ListExperimentConfigsResponse>(`/api/memory-experiments/configs?${params}`);
+    },
+    getConfig: (agentId: string) => request<AgentMemoryExperimentConfig>(`/api/agents/${agentId}/memory-experiment-config`),
+    saveConfig: (agentId: string, data: AgentMemoryExperimentConfig) =>
+      request<AgentMemoryExperimentConfig>(`/api/agents/${agentId}/memory-experiment-config`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    deleteConfig: (agentId: string) =>
+      request<{ ok: true }>(`/api/agents/${agentId}/memory-experiment-config`, { method: 'DELETE' }),
   },
 };
 

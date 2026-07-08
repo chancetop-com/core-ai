@@ -70,6 +70,13 @@ import ai.core.server.memory.AgentMemoryController;
 import ai.core.server.memory.AgentMemoryService;
 import ai.core.server.memory.AgentMemoryView;
 import ai.core.server.memory.ListAgentMemoriesResponse;
+import ai.core.server.memory.experiment.AgentMemoryExperimentConfigView;
+import ai.core.server.memory.experiment.AgentMemoryExperimentController;
+import ai.core.server.memory.experiment.AgentMemoryExperimentService;
+import ai.core.server.memory.experiment.ExperimentConfigListItemView;
+import ai.core.server.memory.experiment.ExperimentRunView;
+import ai.core.server.memory.experiment.ListExperimentConfigsResponse;
+import ai.core.server.memory.experiment.ListExperimentRunsResponse;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.run.AgentRunService;
 import ai.core.server.run.LLMCallExecutor;
@@ -324,6 +331,7 @@ public class ServerModule extends Module {
         ai.core.server.agentbuilder.PublishAgentDraftTool.publicUrl = publicUrl;
         bind(SystemPromptService.class);
         bind(AgentMemoryService.class);
+        bind(AgentMemoryExperimentService.class);
         bind(LLMCallExecutor.class);
         bind(DatasetService.class);
         bind(DatasetRecordService.class);
@@ -355,6 +363,14 @@ public class ServerModule extends Module {
 
         var memoryController = bind(AgentMemoryController.class);
         http().route(HTTPMethod.GET, "/api/agents/:id/memories", memoryController::list);
+        http().route(HTTPMethod.GET, "/api/agents/:id/memory-experiment-config", memoryController::getExperimentConfig);
+        http().route(HTTPMethod.PUT, "/api/agents/:id/memory-experiment-config", memoryController::saveExperimentConfig);
+
+        var experimentController = bind(AgentMemoryExperimentController.class);
+        http().route(HTTPMethod.GET, "/api/memory-experiments/runs", experimentController::listRuns);
+        http().route(HTTPMethod.GET, "/api/memory-experiments/runs/:id", experimentController::getRun);
+        http().route(HTTPMethod.GET, "/api/memory-experiments/configs", experimentController::listConfigs);
+        http().route(HTTPMethod.DELETE, "/api/agents/:id/memory-experiment-config", experimentController::deleteConfig);
 
         bind(ForYouService.class);
         bind(ai.core.server.artifact.ArtifactService.class);
@@ -493,6 +509,11 @@ public class ServerModule extends Module {
         http().bean(BlobUploadCredentialView.class);
         http().bean(AgentMemoryView.class);
         http().bean(ListAgentMemoriesResponse.class);
+        http().bean(AgentMemoryExperimentConfigView.class);
+        http().bean(ExperimentRunView.class);
+        http().bean(ListExperimentRunsResponse.class);
+        http().bean(ExperimentConfigListItemView.class);
+        http().bean(ListExperimentConfigsResponse.class);
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
 
         // prefer a dedicated gateway.secret.key; keep the mongo-uri-derived key as decrypt-only

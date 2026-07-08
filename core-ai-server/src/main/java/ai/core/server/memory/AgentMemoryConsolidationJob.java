@@ -6,6 +6,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatMessage;
+import ai.core.server.memory.experiment.MemoryLayer;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanType;
@@ -456,7 +457,7 @@ public class AgentMemoryConsolidationJob implements Job {
                     memory.id = UUID.randomUUID().toString();
                     memory.agentId = agentId;
                     memory.type = "TRAJECTORY";
-                    memory.layer = AgentMemory.LAYER_TRAJECTORIES;
+                    memory.layer = MemoryLayer.trajectories;
                     memory.content = formatTrajectoryContent(item);
                     memory.createdAt = now;
                     memory.updatedAt = now;
@@ -473,7 +474,7 @@ public class AgentMemoryConsolidationJob implements Job {
                     memory.id = UUID.randomUUID().toString();
                     memory.agentId = agentId;
                     memory.type = item.has("type") ? item.get("type").asText() : null;
-                    memory.layer = AgentMemory.LAYER_METHODS;
+                    memory.layer = MemoryLayer.methods;
                     memory.content = item.get("content").asText();
                     memory.createdAt = now;
                     memory.updatedAt = now;

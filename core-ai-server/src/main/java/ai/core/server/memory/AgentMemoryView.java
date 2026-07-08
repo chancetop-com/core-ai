@@ -1,5 +1,6 @@
 package ai.core.server.memory;
 
+import ai.core.server.memory.experiment.MemoryLayerView;
 import core.framework.api.json.Property;
 
 import java.time.ZonedDateTime;
@@ -19,7 +20,7 @@ public class AgentMemoryView {
     public String type;
 
     @Property(name = "layer")
-    public String layer;
+    public MemoryLayerView layer;
 
     @Property(name = "content")
     public String content;

@@ -7,6 +7,7 @@ import ai.core.api.server.session.SessionConfig;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.util.IdLists;
+import ai.core.prompt.PromptInject;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ListToolProvider;
@@ -84,8 +85,8 @@ public class SessionSubAgentManager {
 
     public Agent buildAgent(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,
                             String agentName, Map<String, Object> extraSystemVars, String agentId,
-                            List<AbstractLifecycle> extraLifecycles) {
-        return subAgentAssembler.buildAgent(config, toolRegistry, context, agentName, extraSystemVars, agentId, extraLifecycles);
+                            List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject) {
+        return subAgentAssembler.buildAgent(config, toolRegistry, context, agentName, extraSystemVars, agentId, extraLifecycles, memoryInject);
     }
 
     public static ToolRegistry toolsToRegistry(List<ToolCall> tools) {

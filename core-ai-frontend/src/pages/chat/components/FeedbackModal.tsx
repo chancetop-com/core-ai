@@ -62,7 +62,6 @@ interface FeedbackModalProps {
 // Steps: 0=outcome, 1=failureReasons, 2=ratings, 3=workStyle&trust, 4=comment&submit
 type Step = 0 | 1 | 2 | 3 | 4;
 
-const STEP_LABELS = ['Outcome', 'Issues', 'Ratings', 'Style', 'Done'];
 
 export default function FeedbackModal({
   sessionId: _sessionId,

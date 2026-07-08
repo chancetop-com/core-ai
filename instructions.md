@@ -68,5 +68,12 @@ references [README.md](docs/en/README.md)
 ** MongoDB query filters: import `com.mongodb.client.model.Filters` (NOT `core.framework.mongo.Filters`) **
 ** `MongoCollection.find()` returns `List<T>` directly, NOT a stream — no `.toList()` needed **
 
+** Enum constraints — `@MongoEnumValue` (entity) and `@Property` (view) are MUTUALLY EXCLUSIVE **
+** MongoDB entities: every enum value MUST have `@MongoEnumValue("...")` — otherwise `[FAILED_TO_START] mongo enum must have @MongoEnumValue` **
+** WebService views/DTOs: every enum value MUST have `@Property(name="...")` — otherwise `[FAILED_TO_START] enum must have @Property` **
+** Cannot put both annotations on the same enum class — core-ng enforces strict entity/view separation **
+** If an enum is used in BOTH entity and view, create separate mirror enums (e.g. `MemoryLayer` for entity + `MemoryLayerView` for view) **
+** In controller conversion methods, map between them explicitly (e.g. `MemoryLayerView.from(entityLayer)` / `viewLayer.toEntity()`) **
+
 ** SchemaMigration version MUST be bumped when modifying migration logic — otherwise already-executed migrations won't re-run on existing environments **
 ** `$setOnInsert` only applies on document creation — to update fields in existing documents, use a separate `$set` update **

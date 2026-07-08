@@ -49,6 +49,9 @@ const OpenClaw = lazy(() => import('./pages/openclaw/OpenClaw'));
 const ForYou = lazy(() => import('./pages/for-you/ForYou'));
 const ArtifactList = lazy(() => import('./pages/artifacts/ArtifactList'));
 const SharedArtifact = lazy(() => import('./pages/shared/SharedArtifact'));
+const MemoryExperiment = lazy(() => import('./pages/experiments/MemoryExperimentList'));
+const MemoryExperimentRunDetail = lazy(() => import('./pages/experiments/MemoryExperimentRunDetail'));
+const MemoryExperimentConfigDetail = lazy(() => import('./pages/experiments/MemoryExperimentConfigDetail'));
 
 function PageFallback() {
   return (
@@ -135,6 +138,9 @@ export default function App() {
                     <Route path="/agents/:id" element={<AgentEditor />} />
                     <Route path="/agents/:id/memories" element={<AgentMemory />} />
                     <Route path="/runs/:id" element={<RunDetail />} />
+                    <Route path="/experiments/memory" element={<MemoryExperiment />} />
+                    <Route path="/experiments/memory/runs/:id" element={<MemoryExperimentRunDetail />} />
+                    <Route path="/experiments/memory/configs/:id" element={<MemoryExperimentConfigDetail />} />
                     <Route path="/workflows/explore" element={<WorkflowExplore />} />
                     <Route path="/workflows" element={<WorkflowList />} />
                     <Route path="/workflows/:id/runs" element={<WorkflowRuns />} />

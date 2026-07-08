@@ -2,6 +2,7 @@ package ai.core.server.web;
 
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.SessionFeedback;
+import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.web.auth.AuthContext;
@@ -36,6 +37,8 @@ public class ChatSessionController {
     SandboxSnapshotService sandboxSnapshotService;
     @Inject
     MongoCollection<SessionFeedback> sessionFeedbackCollection;
+    @Inject
+    AgentMemoryExperimentService memoryExperimentService;
 
     public Response list(Request request) {
         var userId = AuthContext.userId(webContext);
@@ -170,6 +173,10 @@ public class ChatSessionController {
         feedback.source = stringField(body, "source");
 
         sessionFeedbackCollection.insert(feedback);
+
+        // patch experiment run outcome
+        memoryExperimentService.recordOutcome(sessionId, feedback.outcome, feedback.outcomeRating);
+
         return jsonResponse(Map.of("id", feedback.id, "created", true));
     }
 

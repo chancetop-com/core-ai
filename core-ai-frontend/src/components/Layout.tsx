@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Database, Files, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Database, Files, FlaskConical, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -44,6 +44,7 @@ export default function Layout() {
       '/triggers/channels': 'Channels',
       '/triggers/openclaw': 'OpenClaw',
       '/triggers/schedule': 'Scheduler',
+      '/experiments/memory': 'Agent Memory',
     };
     const path = location.pathname;
     const title = titles[path]
@@ -72,6 +73,7 @@ export default function Layout() {
     if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
     if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule' || pathname === '/triggers/channels' || pathname === '/triggers/openclaw';
     if (to === '/for-you') return pathname === '/for-you' || pathname.startsWith('/for-you/');
+    if (to === '/experiments') return pathname.startsWith('/experiments/');
     return pathname === to;
   };
 
@@ -98,6 +100,9 @@ export default function Layout() {
     ]},
     { to: '/skills', icon: Sparkles, label: 'Skills', show: true },
     { to: '/datasets', icon: Database, label: 'Datasets', show: true },
+    { to: '/experiments', icon: FlaskConical, label: 'Experiments', show: true, children: [
+      { to: '/experiments/memory', icon: FlaskConical, label: 'Agent Memory', show: true },
+    ]},
   ].filter(item => item.show);
 
   return (

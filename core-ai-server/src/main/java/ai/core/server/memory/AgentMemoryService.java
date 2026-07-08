@@ -1,6 +1,7 @@
 package ai.core.server.memory;
 
 import ai.core.prompt.PromptInject;
+import ai.core.server.memory.experiment.MemoryLayer;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -53,7 +54,7 @@ public class AgentMemoryService {
      * (DOMAIN_KNOWLEDGE, GOTCHA only — no workflow patterns).
      */
     public PromptInject buildMemoryPromptInject(String agentId) {
-        var memories = findByAgentIdAndLayer(agentId, AgentMemory.LAYER_KNOWLEDGE);
+        var memories = findByAgentIdAndLayer(agentId, MemoryLayer.knowledge.name());
         if (memories.isEmpty()) return null;
         return new AgentMemoryPromptInject(formatKnowledgePrompt(memories));
     }
@@ -105,7 +106,7 @@ public class AgentMemoryService {
             }
             memory.agentId = agentId;
             memoryCollection.insert(memory);
-            if (AgentMemory.LAYER_METHODS.equals(memory.layer)) {
+            if (memory.layer == MemoryLayer.methods) {
                 hasLayer2 = true;
             }
         }
@@ -119,7 +120,7 @@ public class AgentMemoryService {
         var query = new Query();
         query.filter = Filters.and(
                 Filters.eq("agent_id", agentId),
-                Filters.eq("layer", AgentMemory.LAYER_METHODS)
+                Filters.eq("layer", MemoryLayer.methods.name())
         );
         query.sort = Sorts.ascending("created_at");
         var all = memoryCollection.find(query);
@@ -141,14 +142,14 @@ public class AgentMemoryService {
         filters.add(Filters.eq("agent_id", agentId));
 
         if ("methods".equals(layer)) {
-            filters.add(Filters.eq("layer", AgentMemory.LAYER_METHODS));
+            filters.add(Filters.eq("layer", MemoryLayer.methods.name()));
         } else if ("trajectories".equals(layer)) {
-            filters.add(Filters.eq("layer", AgentMemory.LAYER_TRAJECTORIES));
+            filters.add(Filters.eq("layer", MemoryLayer.trajectories.name()));
         } else {
             // "all": search both Layer 2 and Layer 3
             filters.add(Filters.or(
-                    Filters.eq("layer", AgentMemory.LAYER_METHODS),
-                    Filters.eq("layer", AgentMemory.LAYER_TRAJECTORIES)
+                    Filters.eq("layer", MemoryLayer.methods.name()),
+                    Filters.eq("layer", MemoryLayer.trajectories.name())
             ));
         }
 
@@ -170,7 +171,7 @@ public class AgentMemoryService {
         var cutoff = ZonedDateTime.now().minusDays(retentionDays);
         var filter = Filters.and(
                 Filters.eq("agent_id", agentId),
-                Filters.eq("layer", AgentMemory.LAYER_TRAJECTORIES),
+                Filters.eq("layer", MemoryLayer.trajectories.name()),
                 Filters.lt("created_at", cutoff)
         );
         var count = memoryCollection.count(filter);

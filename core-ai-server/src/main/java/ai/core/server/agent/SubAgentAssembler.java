@@ -11,6 +11,7 @@ import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
+import ai.core.prompt.PromptInject;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
@@ -73,7 +74,7 @@ public class SubAgentAssembler {
         var config = toSessionConfig(definition);
         var toolRegistry = resolveToolsToRegistry(definition, sessionId);
         skillToolAssembler.attach(resolveSkillIds(definition), toolRegistry);
-        return buildAgent(config, toolRegistry, null, definition.name, null, definition.id, null);
+        return buildAgent(config, toolRegistry, null, definition.name, null, definition.id, null, null);
     }
 
     private List<String> resolveSkillIds(AgentDefinition definition) {
@@ -116,7 +117,7 @@ public class SubAgentAssembler {
     @SuppressWarnings({"checkstyle:NestedIfDepth", "checkstyle:ParameterNumber"})
     public Agent buildAgent(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context, String agentName,
                             Map<String, Object> extraSystemVars, String agentId,
-                            List<AbstractLifecycle> extraLifecycles) {
+                            List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
                 .name(agentName != null && !agentName.isBlank() ? agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
@@ -153,6 +154,9 @@ public class SubAgentAssembler {
         }
         if (extraLifecycles != null && !extraLifecycles.isEmpty()) {
             builder.agentLifecycle(extraLifecycles);
+        }
+        if (memoryInject != null) {
+            builder.systemPromptSection(memoryInject);
         }
         return builder.build();
     }

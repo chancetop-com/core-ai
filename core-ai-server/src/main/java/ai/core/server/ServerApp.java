@@ -14,6 +14,8 @@ import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.BackgroundTask;
 import ai.core.server.memory.AgentMemory;
 import ai.core.server.memory.AgentMemoryExtractionCursor;
+import ai.core.server.memory.experiment.AgentMemoryExperimentConfig;
+import ai.core.server.memory.experiment.AgentMemoryExperimentRun;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.SessionFeedback;
@@ -121,6 +123,10 @@ public class ServerApp extends App {
         // memory collections
         mongo.collection(AgentMemory.class);
         mongo.collection(AgentMemoryExtractionCursor.class);
+
+        // memory experiment collections
+        mongo.collection(AgentMemoryExperimentConfig.class);
+        mongo.collection(AgentMemoryExperimentRun.class);
 
         // sandbox snapshot collections
         mongo.collection(SandboxSnapshotDoc.class);

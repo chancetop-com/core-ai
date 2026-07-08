@@ -14,6 +14,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.memory.AgentMemoryService;
 import ai.core.server.memory.SearchMemoryTool;
+import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.tool.registry.ListToolProvider;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
@@ -127,6 +128,9 @@ public class AgentRunner {
 
     @Inject
     AgentMemoryService agentMemoryService;
+
+    @Inject
+    AgentMemoryExperimentService memoryExperimentService;
 
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
@@ -458,8 +462,14 @@ public class AgentRunner {
         if (maxTurns != null) builder.maxTurn(maxTurns);
         injectDatasetSystemVars(builder, config, definition);
         if (AgentMemoryService.memoryEnabled(enableMemory)) {
-            var memoryInject = agentMemoryService.buildMemoryPromptInject(definition.id);
-            if (memoryInject != null) builder.systemPromptSection(memoryInject);
+            var injectionResult = memoryExperimentService.prepareInjection(definition.id);
+            if (injectionResult.injected && injectionResult.promptInject != null) {
+                builder.systemPromptSection(injectionResult.promptInject);
+            }
+            // record experiment run — sessionId is "run:<id>" for scheduled runs;
+            // outcome will be patched later via feedback for chat sessions
+            var experimentConfig = memoryExperimentService.resolveConfig(definition.id);
+            memoryExperimentService.startRun(definition.id, "run:" + runEntity.id, runEntity.id, experimentConfig, injectionResult);
         }
         if (sandbox != null) {
             builder.addAgentLifecycle(new SandboxLifecycle(fileService,

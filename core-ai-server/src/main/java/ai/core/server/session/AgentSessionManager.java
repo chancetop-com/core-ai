@@ -46,6 +46,7 @@ import ai.core.server.web.sse.SessionChannelService;
 import ai.core.tool.tools.InternalUrlResolver;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
+import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
@@ -112,6 +113,8 @@ public class AgentSessionManager {
     ChannelRegistry channelRegistry;
     @Inject
     SubAgentAssembler subAgentAssembler;
+    @Inject
+    AgentMemoryExperimentService memoryExperimentService;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -181,7 +184,8 @@ public class AgentSessionManager {
         }
         var agent = subAgentManager().buildAgent(effectiveConfig,
                 toolRegistry, context, null, extraVars, null,
-                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null);
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
+                null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
@@ -247,9 +251,20 @@ public class AgentSessionManager {
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
                 .build();
         if (sandbox2 != null) context.sandbox(sandbox2);
+
+        // Memory experiment: prepare injection and record run
+        var injectionResult = memoryExperimentService.prepareInjection(definition.id);
+        var memoryInject = injectionResult.injected ? injectionResult.promptInject : null;
+
         var agent = subAgentManager().buildAgent(config,
                 toolRegistry, context, definition.name, extraVars, definition.id,
-                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null);
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
+                memoryInject);
+
+        // record experiment run for this session
+        var experimentConfig = memoryExperimentService.resolveConfig(definition.id);
+        memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);
+
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));

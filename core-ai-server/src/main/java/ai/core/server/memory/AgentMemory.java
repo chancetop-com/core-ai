@@ -1,5 +1,6 @@
 package ai.core.server.memory;
 
+import ai.core.server.memory.experiment.MemoryLayer;
 import core.framework.mongo.Collection;
 import core.framework.mongo.Field;
 import core.framework.mongo.Id;
@@ -12,11 +13,6 @@ import java.util.List;
  */
 @Collection(name = "agent_memories")
 public class AgentMemory {
-    // Layer constants for V2 three-tier memory architecture
-    public static final String LAYER_KNOWLEDGE = "knowledge";     // Layer 1: auto-injected (DOMAIN_KNOWLEDGE, GOTCHA)
-    public static final String LAYER_METHODS = "methods";         // Layer 2: on-demand (WORKFLOW_PATTERN, TOOL_USAGE, EFFICIENCY)
-    public static final String LAYER_TRAJECTORIES = "trajectories"; // Layer 3: append-only session summaries
-
     @Id
     public String id;
 
@@ -27,7 +23,7 @@ public class AgentMemory {
     public String type;
 
     @Field(name = "layer")
-    public String layer;
+    public MemoryLayer layer;
 
     @Field(name = "content")
     public String content;
