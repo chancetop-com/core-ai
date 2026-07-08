@@ -76,7 +76,7 @@ public class SandboxManager {
             // created outside the tracking path. Still release the provider resource as a safety net.
             provider.release(sandbox);
             untrackedReleaseCount.incrementAndGet();
-            LOGGER.warn("released sandbox not tracked: id={}, hostname={}, image={}, status={}, untrackedTotal={}",
+            LOGGER.debug("released sandbox not tracked: id={}, hostname={}, image={}, status={}, untrackedTotal={}",
                     sandbox.getId(), sandbox.hostname(), sandbox.image(), sandbox.getStatus(), untrackedReleaseCount.get());
         }
     }
