@@ -266,41 +266,14 @@ public class TraceDailyMaintenanceService {
             return 0;
         }
 
-        String blobName = String.format("traces-archive/%s/%s.json.gz",
+        String blobPrefix = String.format("traces-archive/%s/%s",
                 cutoffDate.format(YEAR_MONTH), cutoffDate);
-        Path tempFile = null;
         List<String> allTraceIds = new ArrayList<>(totalCount);
+        int totalSpanCount = 0;
+        int part = 1;
+        int offset = 0;
 
         try {
-            tempFile = Files.createTempFile("traces-archive-", ".json.gz");
-            int totalSpanCount = writeArchiveBatched(tempFile, cutoff, allTraceIds);
-
-            storageService.uploadObject(archiveContainer, blobName, tempFile);
-            LOGGER.info("uploaded archive blob: container={}, blob={}, size={} bytes",
-                    archiveContainer, blobName, Files.size(tempFile));
-
-            // Delete spans first (child records), then traces (parent records)
-            deleteSpansBatched(allTraceIds);
-            traceCollection.delete(Filters.lt("started_at", cutoff));
-            LOGGER.info("archived {} traces + {} spans to blob {}, cutoff={}",
-                    totalCount, totalSpanCount, blobName, cutoff);
-        } catch (IOException e) {
-            throw new RuntimeException("failed to write archive to temp file", e);
-        } finally {
-            deleteTempFileQuietly(tempFile);
-        }
-        return totalCount;
-    }
-
-    /**
-     * Stream traces + spans to a gzipped temp file in batches.
-     * Returns the total number of spans written.
-     */
-    private int writeArchiveBatched(Path tempFile, ZonedDateTime cutoff, List<String> allTraceIds) throws IOException {
-        int totalSpanCount = 0;
-        int offset = 0;
-        try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(tempFile));
-             var writer = new BufferedWriter(new OutputStreamWriter(gzipOut))) {
             while (true) {
                 var batchQuery = new Query();
                 batchQuery.filter = Filters.lt("started_at", cutoff);
@@ -311,22 +284,63 @@ public class TraceDailyMaintenanceService {
                 if (batch.isEmpty()) break;
 
                 var spansByTraceId = findSpansByTraceIds(batch);
+
+                int spanCount = writeAndUploadPart(blobPrefix, part, batch, spansByTraceId);
+                totalSpanCount += spanCount;
+
                 for (var trace : batch) {
-                    writeArchiveLine(writer, "trace", trace);
-                    var spans = spansByTraceId.getOrDefault(trace.traceId, List.of());
-                    for (var span : spans) {
-                        writeArchiveLine(writer, "span", span);
-                    }
-                    totalSpanCount += spans.size();
                     if (trace.traceId != null) allTraceIds.add(trace.traceId);
                 }
+
+                LOGGER.info("archive part {}: {} traces + {} spans uploaded", part, batch.size(), spanCount);
                 offset += batch.size();
-                LOGGER.info("archive batch written: {} traces, offset={}", batch.size(), offset);
+                part++;
+            }
+
+            // All parts uploaded successfully — safe to delete from MongoDB
+            deleteSpansBatched(allTraceIds);
+            traceCollection.delete(Filters.lt("started_at", cutoff));
+            LOGGER.info("archived {} traces + {} spans in {} parts to {}, cutoff={}",
+                    totalCount, totalSpanCount, part - 1, blobPrefix, cutoff);
+        } catch (IOException e) {
+            throw new RuntimeException("failed to write archive part", e);
+        }
+        return totalCount;
+    }
+
+    /**
+     * Write one batch of traces + spans to a temp file, upload it as a part
+     * blob, and clean up the temp file.  Returns the number of spans written.
+     */
+    private int writeAndUploadPart(String blobPrefix, int part, List<Trace> batch,
+                                    Map<String, List<Span>> spansByTraceId) throws IOException {
+        Path tempFile = null;
+        try {
+            tempFile = Files.createTempFile("traces-archive-part-", ".json.gz");
+            int spanCount = writeBatchToFile(tempFile, batch, spansByTraceId);
+            String blobName = String.format("%s/part-%04d.json.gz", blobPrefix, part);
+            storageService.uploadObject(archiveContainer, blobName, tempFile);
+            return spanCount;
+        } finally {
+            deleteTempFileQuietly(tempFile);
+        }
+    }
+
+    private int writeBatchToFile(Path file, List<Trace> batch,
+                                  Map<String, List<Span>> spansByTraceId) throws IOException {
+        int spanCount = 0;
+        try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(file));
+             var writer = new BufferedWriter(new OutputStreamWriter(gzipOut))) {
+            for (var trace : batch) {
+                writeArchiveLine(writer, "trace", trace);
+                var spans = spansByTraceId.getOrDefault(trace.traceId, List.of());
+                for (var span : spans) {
+                    writeArchiveLine(writer, "span", span);
+                }
+                spanCount += spans.size();
             }
         }
-        LOGGER.info("serialized {} traces + {} spans to temp file, size={} bytes",
-                allTraceIds.size(), totalSpanCount, Files.size(tempFile));
-        return totalSpanCount;
+        return spanCount;
     }
 
     private void deleteSpansBatched(List<String> traceIds) {
