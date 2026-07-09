@@ -1,24 +1,39 @@
 package ai.core.server.trace.maintenance;
 
+import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
+import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.zip.GZIPOutputStream;
 
 /**
- * Aggregates per-user per-agent daily token/cost stats from the traces collection
- * into trace_daily_stats for fast Dashboard queries.
+ * Daily trace maintenance: aggregates per-user per-agent token/cost stats from
+ * the traces collection into trace_daily_stats for fast Dashboard queries,
+ * and archives traces older than the retention window to object storage.
  *
  * @author cyril
  */
@@ -26,6 +41,7 @@ public class TraceDailyMaintenanceService {
     private static final Logger LOGGER = LoggerFactory.getLogger(TraceDailyMaintenanceService.class);
     private static final String NO_AGENT = "(no agent)";
     private static final ZoneId UTC = ZoneId.of("UTC");
+    private static final DateTimeFormatter YEAR_MONTH = DateTimeFormatter.ofPattern("yyyy-MM");
 
     private static long getLong(org.bson.Document doc, String key) {
         Number value = doc.get(key, Number.class);
@@ -46,11 +62,45 @@ public class TraceDailyMaintenanceService {
         return 0.0;
     }
 
+    @SuppressWarnings("unchecked")
+    static double computeP90(List<Object> values) {
+        if (values == null || values.isEmpty()) return 0.0;
+        var nums = values.stream()
+            .filter(v -> v instanceof Number)
+            .mapToDouble(v -> ((Number) v).doubleValue())
+            .sorted()
+            .toArray();
+        if (nums.length == 0) return 0.0;
+        // P90 = value at ceil(0.90 * n) position (1-indexed), i.e. index ceil(0.90*n) - 1
+        int idx = (int) Math.ceil(0.90 * nums.length) - 1;
+        return nums[Math.max(idx, 0)];
+    }
+
     @Inject
     MongoCollection<TraceDailyStats> statsCollection;
 
     @Inject
     MongoCollection<Trace> traceCollection;
+
+    @Inject
+    MongoCollection<Span> spanCollection;
+
+    // Archive configuration — set by ServerModule after object storage is initialized
+    ObjectStorageService storageService;
+    String archiveContainer;
+    int retentionDays = 30;
+
+    public void setStorageService(ObjectStorageService storageService) {
+        this.storageService = storageService;
+    }
+
+    public void setArchiveContainer(String archiveContainer) {
+        this.archiveContainer = archiveContainer;
+    }
+
+    public void setRetentionDays(int retentionDays) {
+        this.retentionDays = retentionDays;
+    }
 
     /**
      * Aggregate stats for a specific date and upsert into trace_daily_stats.
@@ -174,17 +224,133 @@ public class TraceDailyMaintenanceService {
         return created + replaced;
     }
 
-    @SuppressWarnings("unchecked")
-    static double computeP90(List<Object> values) {
-        if (values == null || values.isEmpty()) return 0.0;
-        var nums = values.stream()
-            .filter(v -> v instanceof Number)
-            .mapToDouble(v -> ((Number) v).doubleValue())
-            .sorted()
-            .toArray();
-        if (nums.length == 0) return 0.0;
-        // P90 = value at ceil(0.90 * n) position (1-indexed), i.e. index ceil(0.90*n) - 1
-        int idx = (int) Math.ceil(0.90 * nums.length) - 1;
-        return nums[Math.max(idx, 0)];
+    // --- Archive ---
+
+    /**
+     * Archive all traces with {@code started_at < cutoff} and their spans to
+     * object storage as NDJSON (gzipped), then delete them from MongoDB.
+     *
+     * <p>Each line is a JSON object with a {@code _type} field ({@code "trace"}
+     * or {@code "span"}) so archived data can be distinguished on restore.</p>
+     *
+     * <p>Safety check: skips archive if trace_daily_stats does not cover the
+     * cutoff date (stats must exist before raw data is deleted).</p>
+     *
+     * @param cutoff traces strictly before this instant are archived
+     * @return number of traces archived and deleted, or -1 if skipped
+     */
+    @SuppressWarnings({"checkstyle:ExecutableStatementCount", "checkstyle:MethodLength"})
+    public int archiveTraces(ZonedDateTime cutoff) {
+        if (storageService == null || archiveContainer == null) {
+            LOGGER.warn("archive skipped: object storage not configured, cutoff={}", cutoff);
+            return -1;
+        }
+
+        LocalDate cutoffDate = cutoff.toLocalDate();
+
+        // Safety: verify stats cover the cutoff date before deleting raw data
+        long statsCount = countStatsForDate(cutoffDate);
+        if (statsCount == 0) {
+            LOGGER.warn("archive skipped: no trace_daily_stats for {}, cutoff={}", cutoffDate, cutoff);
+            return -1;
+        }
+
+        // Query traces to archive
+        var query = new Query();
+        query.filter = Filters.lt("started_at", cutoff);
+        query.sort = Sorts.ascending("started_at");
+        var traces = traceCollection.find(query);
+        int traceCount = traces.size();
+
+        if (traceCount == 0) {
+            LOGGER.info("no traces to archive, cutoff={}", cutoff);
+            return 0;
+        }
+
+        // Query all spans for these traces in one batch
+        Map<String, List<Span>> spansByTraceId = findSpansByTraceIds(traces);
+
+        // NDJSON (trace + spans) → gzip → temp file → upload → delete
+        String blobName = String.format("traces-archive/%s/%s.json.gz",
+                cutoffDate.format(YEAR_MONTH), cutoffDate);
+        Path tempFile;
+        try {
+            tempFile = writeArchiveToTempFile(traces, spansByTraceId);
+        } catch (IOException e) {
+            throw new RuntimeException("failed to write archive to temp file", e);
+        }
+        try {
+            storageService.uploadObject(archiveContainer, blobName, tempFile);
+            LOGGER.info("uploaded archive blob: container={}, blob={}", archiveContainer, blobName);
+
+            // Delete spans first (child records), then traces (parent records)
+            List<String> traceIds = traces.stream()
+                    .map(t -> t.traceId)
+                    .filter(id -> id != null && !id.isEmpty())
+                    .toList();
+            if (!traceIds.isEmpty()) {
+                long deletedSpans = spanCollection.delete(Filters.in("trace_id", traceIds));
+                LOGGER.info("deleted {} spans, cutoff={}", deletedSpans, cutoff);
+            }
+            traceCollection.delete(Filters.lt("started_at", cutoff));
+            LOGGER.info("archived {} traces (with spans) to blob, cutoff={}", traceCount, cutoff);
+        } finally {
+            deleteTempFileQuietly(tempFile);
+        }
+        return traceCount;
+    }
+
+    private Path writeArchiveToTempFile(List<Trace> traces, Map<String, List<Span>> spansByTraceId) throws IOException {
+        Path tempFile = Files.createTempFile("traces-archive-", ".json.gz");
+        int spanCount = 0;
+        try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(tempFile));
+             var writer = new BufferedWriter(new OutputStreamWriter(gzipOut))) {
+            for (var trace : traces) {
+                writeArchiveLine(writer, "trace", trace);
+                List<Span> spans = spansByTraceId.getOrDefault(trace.traceId, List.of());
+                for (var span : spans) {
+                    writeArchiveLine(writer, "span", span);
+                    spanCount++;
+                }
+            }
+        }
+        LOGGER.info("serialized {} traces + {} spans to temp file, size={} bytes",
+                traces.size(), spanCount, Files.size(tempFile));
+        return tempFile;
+    }
+
+    private void writeArchiveLine(BufferedWriter writer, String type, Object obj) throws IOException {
+        String json = JsonUtil.toJson(obj);
+        writer.write("{\"_type\":\"");
+        writer.write(type);
+        writer.write("\",");
+        writer.write(json, 1, json.length() - 1);
+        writer.newLine();
+    }
+
+    private Map<String, List<Span>> findSpansByTraceIds(List<Trace> traces) {
+        List<String> traceIds = traces.stream()
+                .map(t -> t.traceId)
+                .filter(id -> id != null && !id.isEmpty())
+                .toList();
+        if (traceIds.isEmpty()) return Map.of();
+        var spanQuery = new Query();
+        spanQuery.filter = Filters.in("trace_id", traceIds);
+        return spanCollection.find(spanQuery).stream()
+                .filter(s -> s.traceId != null)
+                .collect(Collectors.groupingBy(s -> s.traceId));
+    }
+
+    private void deleteTempFileQuietly(Path tempFile) {
+        if (tempFile == null) return;
+        try {
+            Files.deleteIfExists(tempFile);
+        } catch (IOException e) {
+            LOGGER.warn("failed to delete temp file: {}", tempFile, e);
+        }
+    }
+
+    private long countStatsForDate(LocalDate date) {
+        return statsCollection.count(Filters.eq("date", date.atStartOfDay(UTC)));
     }
 }

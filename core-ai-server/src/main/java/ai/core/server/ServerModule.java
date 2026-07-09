@@ -179,6 +179,8 @@ import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.service.PromptService;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
+import ai.core.server.trace.maintenance.TraceArchivingJob;
+import ai.core.server.trace.maintenance.TraceArchivingTask;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceJob;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceService;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceTask;
@@ -206,6 +208,7 @@ public class ServerModule extends Module {
     private SandboxService sandboxService;
     private ToolRegistryService toolRegistryService;   // shared with bindWorkflow() for the tool node executors
     private FileService fileService;                   // shared with bindWorkflow() (CODE staging) and sandbox staging
+    private ObjectStorageService objectStorage;        // shared with trace maintenance for archiving
 
     @Override
     protected void initialize() {
@@ -283,9 +286,19 @@ public class ServerModule extends Module {
                 .orElse(null);
         schedule().fixedRate("agent-memory-consolidation", memoryConsolidationJob, Duration.ofHours(1));
         bind(TraceDailyMaintenanceService.class);
+        if (objectStorage != null) {
+            var maintenanceService = bean(TraceDailyMaintenanceService.class);
+            maintenanceService.setStorageService(objectStorage);
+            String container = property("trace.archive.container")
+                    .orElse(property("azure.blob.multimodal.container").orElse("traces-archive"));
+            maintenanceService.setArchiveContainer(container);
+        }
         var traceDailyMaintenanceTask = bind(TraceDailyMaintenanceTask.class);
         onStartup(() -> taskRunner.register(traceDailyMaintenanceTask));
         schedule().fixedRate("trace-daily-maintenance", bind(TraceDailyMaintenanceJob.class), Duration.ofHours(1));
+        var traceArchivingTask = bind(TraceArchivingTask.class);
+        onStartup(() -> taskRunner.register(traceArchivingTask));
+        schedule().fixedRate("trace-archive", bind(TraceArchivingJob.class), Duration.ofHours(1));
         registerTrace();
         registerSystemPrompt();
         registerCapabilities();
@@ -465,7 +478,7 @@ public class ServerModule extends Module {
         var minioPublicBaseUrl = property("storage.minio.public.base.url").orElse(null);
 
         var provider = property("sys.storage.provider").orElse("");
-        ObjectStorageService objectStorage = null;
+        objectStorage = null;
 
         if (provider.isEmpty() || "azure".equals(provider)) {
             var sasService = AzureBlobSasService.tryCreate(azureAccountName, azureAccountKey);
