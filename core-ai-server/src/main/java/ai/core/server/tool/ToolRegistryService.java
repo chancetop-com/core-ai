@@ -267,6 +267,18 @@ public class ToolRegistryService {
         dynamicToolSets.put(name, toolCalls);
     }
 
+    public List<BuiltinToolInfo> listBuiltinGroupTools(String groupId) {
+        var tools = dynamicToolSets.get(groupId);
+        if (tools == null) return List.of();
+        return tools.stream().map(t -> {
+            var schema = t.toJsonSchema();
+            return new BuiltinToolInfo(t.getName(), t.getDescription(),
+                schema != null ? JsonUtil.toJson(schema) : null);
+        }).toList();
+    }
+
+    public record BuiltinToolInfo(String name, String description, String inputSchema) {}
+
     /**
      * Registers a builtin tool group so it appears in the tool registry UI and can be
      * dynamically configured for agents. Both stores the tools in dynamicToolSets for

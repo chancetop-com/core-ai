@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.api.server.ToolRegistryWebService;
+import ai.core.api.server.tool.BuiltinGroupToolsResponse;
 import ai.core.api.server.tool.CreateMcpServerRequest;
 import ai.core.api.server.tool.ImportMcpServersRequest;
 import ai.core.api.server.tool.ImportMcpServersResponse;
@@ -108,6 +109,23 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
             return info;
         }).toList();
         LOGGER.debug("listMcpServerTools completed, id={}, tools={}, elapsed={}", id, response.tools.size(), watch.elapsed());
+        return response;
+    }
+
+    @Override
+    public BuiltinGroupToolsResponse listBuiltinGroupTools(String id) {
+        var entity = toolRegistryService.getTool(id);
+        var tools = toolRegistryService.listBuiltinGroupTools(id);
+        var response = new BuiltinGroupToolsResponse();
+        response.groupId = id;
+        response.groupName = entity.name;
+        response.tools = tools.stream().map(t -> {
+            var info = new BuiltinGroupToolsResponse.ToolInfo();
+            info.name = t.name();
+            info.description = t.description();
+            info.inputSchema = t.inputSchema();
+            return info;
+        }).toList();
         return response;
     }
 

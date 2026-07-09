@@ -1,5 +1,6 @@
 package ai.core.api.server;
 
+import ai.core.api.server.tool.BuiltinGroupToolsResponse;
 import ai.core.api.server.tool.CreateMcpServerRequest;
 import ai.core.api.server.tool.ImportMcpServersRequest;
 import ai.core.api.server.tool.ImportMcpServersResponse;
@@ -66,6 +67,10 @@ public interface ToolRegistryWebService {
     @GET
     @Path("/api/tools/mcp-servers/:id/tools")
     McpServerToolsResponse listMcpServerTools(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/tools/builtin/:id/tools")
+    BuiltinGroupToolsResponse listBuiltinGroupTools(@PathParam("id") String id);
 
     @GET
     @Path("/api/tools/mcp-servers/:id/status")
