@@ -453,6 +453,7 @@ function renderPreview(spec: ArtifactSpec, state: FileState & FileSourceState) {
     const isImage = spec.contentType?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(lowerName);
     const isHtml = spec.contentType === 'text/html' || /\.html?$/.test(lowerName);
     const isMarkdown = spec.contentType === 'text/markdown' || /\.(md|markdown)$/.test(lowerName);
+    const isPdf = spec.contentType === 'application/pdf' || /\.pdf$/i.test(lowerName);
     const isJson = isJsonFileArtifact(spec);
     if (isJson && state.fileText != null) {
       return <JsonTreeView value={state.fileText} />;
@@ -470,6 +471,9 @@ function renderPreview(spec: ArtifactSpec, state: FileState & FileSourceState) {
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={REHYPE_PLUGINS}>{state.fileText}</ReactMarkdown>
         </div>
       );
+    }
+    if (isPdf) {
+      return <iframe src={state.fileBlobUrl} title={spec.title} className="w-full h-full border-0" />;
     }
     return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>Preview not available for this file type. Use the download button.</div>;
   }
