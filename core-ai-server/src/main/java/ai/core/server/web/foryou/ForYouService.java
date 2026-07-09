@@ -6,11 +6,16 @@ import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.domain.TraceDailyStats;
+import com.mongodb.client.model.Accumulators;
+import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
+import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import org.bson.Document;
 
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
@@ -22,6 +27,18 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 public class ForYouService {
+    private static final ZoneId UTC = ZoneId.of("UTC");
+
+    private static long getLong(Document doc, String key) {
+        Number value = doc.get(key, Number.class);
+        return value != null ? value.longValue() : 0L;
+    }
+
+    private static double getDouble(Document doc, String key) {
+        Number value = doc.get(key, Number.class);
+        return value != null ? value.doubleValue() : 0.0;
+    }
+
     @Inject
     MongoCollection<UserReport> reportCollection;
 
@@ -33,6 +50,9 @@ public class ForYouService {
 
     @Inject
     MongoCollection<Trace> traceCollection;
+
+    @Inject
+    MongoCollection<TraceDailyStats> statsCollection;
 
     @Inject
     ChatMessageService chatMessageService;
@@ -173,14 +193,16 @@ public class ForYouService {
 
     @SuppressWarnings({"checkstyle:MethodLength", "checkstyle:ExecutableStatementCount"})
     public TokenUsageData tokenUsage(String userId, String range, String fromDate, String toDate) {
+        LocalDate today = LocalDate.now(UTC);
+
         ZonedDateTime start;
         ZonedDateTime end;
 
         if (fromDate != null && !fromDate.isBlank() && toDate != null && !toDate.isBlank()) {
-            start = LocalDate.parse(fromDate).atStartOfDay(ZoneId.of("UTC"));
-            end = LocalDate.parse(toDate).plusDays(1).atStartOfDay(ZoneId.of("UTC"));
+            start = LocalDate.parse(fromDate).atStartOfDay(UTC);
+            end = LocalDate.parse(toDate).plusDays(1).atStartOfDay(UTC);
         } else {
-            var now = ZonedDateTime.now(ZoneId.of("UTC"));
+            var now = ZonedDateTime.now(UTC);
             int days = switch (range) {
                 case "yesterday" -> 1;
                 case "7d" -> 7;
@@ -191,26 +213,40 @@ public class ForYouService {
             end = now;
         }
 
+        Map<LocalDate, DailyUsage> dailyMap = new TreeMap<>();
+
+        // Today: live traces (not yet aggregated into trace_daily_stats)
+        boolean includeToday = end.isAfter(today.atStartOfDay(UTC))
+            && !start.isAfter(today.atStartOfDay(UTC));
+        if (includeToday) {
+            accumulateFromTraces(dailyMap, userId, today.atStartOfDay(UTC), end);
+        }
+
+        // Historical: trace_daily_stats (pre-aggregated, dates strictly before today)
+        LocalDate historicalEnd = end.minusSeconds(1).toLocalDate();
+        if (!historicalEnd.isBefore(today)) {
+            historicalEnd = today.minusDays(1);
+        }
+        boolean includeHistorical = !start.toLocalDate().isAfter(historicalEnd);
+        if (includeHistorical) {
+            accumulateFromStats(dailyMap, userId, start.toLocalDate(), historicalEnd);
+        }
+
+        return buildResult(dailyMap);
+    }
+
+    private void accumulateFromTraces(Map<LocalDate, DailyUsage> dailyMap, String userId,
+                                       ZonedDateTime start, ZonedDateTime end) {
         var query = new Query();
         query.filter = Filters.and(
             Filters.eq("user_id", userId),
             Filters.gte("started_at", start),
             Filters.lt("started_at", end)
         );
-        query.sort = Sorts.ascending("started_at");
         var traces = traceCollection.find(query);
-
-        // Aggregate daily
-        Map<LocalDate, DailyUsage> dailyMap = new TreeMap<>();
-        long totalInput = 0;
-        long totalOutput = 0;
-        long totalCached = 0;
-        double totalCost = 0;
-
         for (var trace : traces) {
             if (trace.startedAt == null) continue;
-
-            var date = trace.startedAt.withZoneSameInstant(ZoneId.of("UTC")).toLocalDate();
+            var date = trace.startedAt.withZoneSameInstant(UTC).toLocalDate();
             var daily = dailyMap.computeIfAbsent(date, d -> new DailyUsage());
 
             long input = trace.inputTokens != null ? trace.inputTokens : 0;
@@ -223,20 +259,52 @@ public class ForYouService {
             daily.totalTokens += trace.totalTokens != null ? trace.totalTokens : (input + output);
             daily.cachedTokens += cached;
             daily.costUsd += cost;
-
-            totalInput += input;
-            totalOutput += output;
-            totalCached += cached;
-            totalCost += cost;
         }
+    }
+
+    private void accumulateFromStats(Map<LocalDate, DailyUsage> dailyMap, String userId,
+                                      LocalDate from, LocalDate to) {
+        var aggregate = new Aggregate<Document>();
+        aggregate.resultClass = Document.class;
+        aggregate.pipeline = List.of(
+            Aggregates.match(Filters.and(
+                Filters.eq("user_id", userId),
+                Filters.gte("date", from.atStartOfDay(UTC)),
+                Filters.lte("date", to.atStartOfDay(UTC))
+            )),
+            Aggregates.group(
+                new Document("date", "$date"),
+                Accumulators.sum("input_tokens", "$input_tokens"),
+                Accumulators.sum("output_tokens", "$output_tokens"),
+                Accumulators.sum("total_tokens", "$total_tokens"),
+                Accumulators.sum("cached_tokens", "$cached_tokens"),
+                Accumulators.sum("cost_usd", "$cost_usd")
+            )
+        );
+        var rows = statsCollection.aggregate(aggregate);
+        for (var row : rows) {
+            var dateDoc = row.get("_id", Document.class);
+            if (dateDoc == null) continue;
+            Object dateObj = dateDoc.get("date");
+            if (!(dateObj instanceof java.util.Date d)) continue;
+            LocalDate date = d.toInstant().atZone(UTC).toLocalDate();
+            var daily = dailyMap.computeIfAbsent(date, k -> new DailyUsage());
+
+            daily.inputTokens += getLong(row, "input_tokens");
+            daily.outputTokens += getLong(row, "output_tokens");
+            daily.totalTokens += getLong(row, "total_tokens");
+            daily.cachedTokens += getLong(row, "cached_tokens");
+            daily.costUsd += getDouble(row, "cost_usd");
+        }
+    }
+
+    private TokenUsageData buildResult(Map<LocalDate, DailyUsage> dailyMap) {
+        long totalInput = 0;
+        long totalOutput = 0;
+        long totalCached = 0;
+        double totalCost = 0;
 
         var data = new TokenUsageData();
-        data.totalInputTokens = totalInput;
-        data.totalOutputTokens = totalOutput;
-        data.totalTokens = totalInput + totalOutput;
-        data.totalCachedTokens = totalCached;
-        data.totalCostUsd = Math.round(totalCost * 10000.0) / 10000.0;
-
         data.daily = new ArrayList<>();
         for (var entry : dailyMap.entrySet()) {
             var d = entry.getValue();
@@ -248,8 +316,18 @@ public class ForYouService {
             item.cachedTokens = d.cachedTokens;
             item.costUsd = Math.round(d.costUsd * 10000.0) / 10000.0;
             data.daily.add(item);
+
+            totalInput += d.inputTokens;
+            totalOutput += d.outputTokens;
+            totalCached += d.cachedTokens;
+            totalCost += d.costUsd;
         }
 
+        data.totalInputTokens = totalInput;
+        data.totalOutputTokens = totalOutput;
+        data.totalTokens = totalInput + totalOutput;
+        data.totalCachedTokens = totalCached;
+        data.totalCostUsd = Math.round(totalCost * 10000.0) / 10000.0;
         return data;
     }
 
