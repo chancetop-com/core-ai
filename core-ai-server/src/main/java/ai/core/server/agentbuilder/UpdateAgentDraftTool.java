@@ -1,6 +1,8 @@
 package ai.core.server.agentbuilder;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.api.server.agent.AgentDatasetConfigView;
+import ai.core.api.server.agent.SandboxConfigView;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.api.server.tool.ToolRefView;
 import ai.core.server.agent.AgentDefinitionService;
@@ -60,6 +62,7 @@ public final class UpdateAgentDraftTool extends ToolCall {
             request.name = (String) args.get("name");
             request.description = (String) args.get("description");
             request.systemPrompt = (String) args.get("system_prompt");
+            request.systemPromptId = (String) args.get("system_prompt_id");
             request.model = (String) args.get("model");
 
             var temperatureObj = args.get("temperature");
@@ -91,6 +94,77 @@ public final class UpdateAgentDraftTool extends ToolCall {
             request.inputTemplate = (String) args.get("input_template");
             request.multiModalModel = (String) args.get("multi_modal_model");
 
+            // New fields
+            var subAgentIds = (List<String>) args.get("subagent_ids");
+            if (subAgentIds != null) {
+                request.subAgentIds = subAgentIds;
+            }
+
+            var skillIds = (List<String>) args.get("skill_ids");
+            if (skillIds != null) {
+                request.skillIds = skillIds;
+            }
+
+            var variables = (Map<String, String>) args.get("variables");
+            if (variables != null) {
+                request.variables = variables;
+            }
+
+            var enableMemoryObj = args.get("enable_memory");
+            if (enableMemoryObj instanceof Boolean b) {
+                request.enableMemory = b;
+            }
+
+            var responseSchema = (String) args.get("response_schema");
+            if (responseSchema != null) {
+                request.responseSchema = responseSchema;
+            }
+
+            // sandbox_config (Map -> SandboxConfigView)
+            var sandboxConfigObj = args.get("sandbox_config");
+            if (sandboxConfigObj instanceof Map<?, ?> sandboxMap) {
+                var sc = new SandboxConfigView();
+                var enabledObj = sandboxMap.get("enabled");
+                if (enabledObj instanceof Boolean b) sc.enabled = b;
+                sc.image = (String) sandboxMap.get("image");
+                var memoryLimitObj = sandboxMap.get("memory_limit_mb");
+                if (memoryLimitObj instanceof Number n) sc.memoryLimitMb = n.intValue();
+                var cpuLimitObj = sandboxMap.get("cpu_limit_millicores");
+                if (cpuLimitObj instanceof Number n) sc.cpuLimitMillicores = n.intValue();
+                var timeoutSecObj = sandboxMap.get("timeout_seconds");
+                if (timeoutSecObj instanceof Number n) sc.timeoutSeconds = n.intValue();
+                var networkEnabledObj = sandboxMap.get("network_enabled");
+                if (networkEnabledObj instanceof Boolean b) sc.networkEnabled = b;
+                sc.gitRepoUrl = (String) sandboxMap.get("git_repo_url");
+                sc.gitBranch = (String) sandboxMap.get("git_branch");
+                sc.tmpSizeLimit = (String) sandboxMap.get("tmp_size_limit");
+                var maxAsyncObj = sandboxMap.get("max_async_tasks");
+                if (maxAsyncObj instanceof Number n) sc.maxAsyncTasks = n.intValue();
+                sc.envVars = (Map<String, String>) sandboxMap.get("env_vars");
+                request.sandboxConfig = sc;
+            }
+
+            // dataset_config (List<Map> -> List<AgentDatasetConfigView>)
+            var datasetConfigObj = args.get("dataset_config");
+            if (datasetConfigObj instanceof List<?> datasetList) {
+                var configs = new ArrayList<AgentDatasetConfigView>();
+                for (var item : datasetList) {
+                    if (item instanceof Map<?, ?> dm) {
+                        var dc = new AgentDatasetConfigView();
+                        dc.datasetId = (String) dm.get("dataset_id");
+                        dc.permission = (String) dm.get("permission");
+                        var isOutputObj = dm.get("is_output");
+                        if (isOutputObj instanceof Boolean b) dc.isOutput = b;
+                        if (dc.datasetId != null) {
+                            configs.add(dc);
+                        }
+                    }
+                }
+                if (!configs.isEmpty()) {
+                    request.datasetConfig = configs;
+                }
+            }
+
             var userId = context != null ? context.getUserId() : null;
             var view = agentDefinitionService.update(agentId, request, userId);
 
@@ -103,6 +177,7 @@ public final class UpdateAgentDraftTool extends ToolCall {
             if (request.name != null) result.append("  - name\n");
             if (request.description != null) result.append("  - description\n");
             if (request.systemPrompt != null) result.append("  - system_prompt\n");
+            if (request.systemPromptId != null) result.append("  - system_prompt_id\n");
             if (request.model != null) result.append("  - model\n");
             if (request.temperature != null) result.append("  - temperature\n");
             if (request.maxTurns != null) result.append("  - max_turns\n");
@@ -110,6 +185,13 @@ public final class UpdateAgentDraftTool extends ToolCall {
             if (request.tools != null) result.append("  - tools\n");
             if (request.inputTemplate != null) result.append("  - input_template\n");
             if (request.multiModalModel != null) result.append("  - multi_modal_model\n");
+            if (request.subAgentIds != null) result.append("  - subagent_ids\n");
+            if (request.skillIds != null) result.append("  - skill_ids\n");
+            if (request.variables != null) result.append("  - variables\n");
+            if (request.enableMemory != null) result.append("  - enable_memory\n");
+            if (request.responseSchema != null) result.append("  - response_schema\n");
+            if (request.sandboxConfig != null) result.append("  - sandbox_config\n");
+            if (request.datasetConfig != null) result.append("  - dataset_config\n");
 
             return ToolCallResult.completed(result.toString())
                 .withDuration(System.currentTimeMillis() - startTime);
@@ -119,6 +201,7 @@ public final class UpdateAgentDraftTool extends ToolCall {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private static class Builder extends ToolCall.Builder<Builder, UpdateAgentDraftTool> {
         private final UpdateAgentDraftTool tool;
 
@@ -139,13 +222,22 @@ public final class UpdateAgentDraftTool extends ToolCall {
                 ToolCallParameters.ParamSpec.of(String.class, "name", "New name for the agent (optional)"),
                 ToolCallParameters.ParamSpec.of(String.class, "description", "New description (optional)"),
                 ToolCallParameters.ParamSpec.of(String.class, "system_prompt", "New system prompt (optional)"),
+                ToolCallParameters.ParamSpec.of(String.class, "system_prompt_id", "New system prompt template ID (optional)"),
                 ToolCallParameters.ParamSpec.of(String.class, "model", "New LLM model (optional)"),
                 ToolCallParameters.ParamSpec.of(Double.class, "temperature", "New temperature 0-1 (optional)"),
                 ToolCallParameters.ParamSpec.of(Integer.class, "max_turns", "New maximum conversation turns (optional)"),
                 ToolCallParameters.ParamSpec.of(Integer.class, "timeout_seconds", "New timeout in seconds (optional)"),
                 ToolCallParameters.ParamSpec.of(List.class, "tool_ids", "New list of builtin tool IDs (optional, replaces existing)"),
                 ToolCallParameters.ParamSpec.of(String.class, "input_template", "New input template (optional)"),
-                ToolCallParameters.ParamSpec.of(String.class, "multi_modal_model", "New multimodal model (optional, set to empty string to clear)")
+                ToolCallParameters.ParamSpec.of(String.class, "multi_modal_model", "New multimodal model (optional, set to empty string to clear)"),
+                // New fields
+                ToolCallParameters.ParamSpec.of(List.class, "subagent_ids", "New list of sub-agent IDs (optional, replaces existing)"),
+                ToolCallParameters.ParamSpec.of(List.class, "skill_ids", "New list of skill IDs (optional, replaces existing)"),
+                ToolCallParameters.ParamSpec.of(Map.class, "sandbox_config", "New sandbox configuration object (optional). Fields: enabled (Boolean), image (String), memory_limit_mb (Integer), cpu_limit_millicores (Integer), timeout_seconds (Integer), network_enabled (Boolean), git_repo_url (String), git_branch (String), tmp_size_limit (String), max_async_tasks (Integer), env_vars (Map<String,String>)"),
+                ToolCallParameters.ParamSpec.of(List.class, "dataset_config", "New list of dataset configuration objects (optional). Each item: {dataset_id: String, permission: 'READ'|'WRITE'|'FULL', is_output: Boolean}"),
+                ToolCallParameters.ParamSpec.of(Map.class, "variables", "New input variable mappings (optional, Map<String,String>)"),
+                ToolCallParameters.ParamSpec.of(Boolean.class, "enable_memory", "Enable agent memory (optional)"),
+                ToolCallParameters.ParamSpec.of(String.class, "response_schema", "New response JSON Schema for structured output (optional)")
             ));
             build(tool);
         }
