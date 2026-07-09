@@ -1,10 +1,8 @@
 package ai.core.server.agentbuilder;
 
-import ai.core.server.agent.AgentDefinitionService;
-import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
-import ai.core.server.skill.SkillService;
+import ai.core.server.selfharness.SelfHarnessTools;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
@@ -12,39 +10,21 @@ import core.framework.inject.Inject;
 import java.util.List;
 
 /**
- * @author stephen
+ * Agent builder session tools — now delegates agent management tools to the
+ * {@link SelfHarnessTools} builtin group so they can be dynamically configured
+ * for any agent, not just the builder.
  */
 public class AgentBuilderTools {
     @Inject
-    AgentDefinitionService agentDefinitionService;
-
-    @Inject
     ToolRegistryService toolRegistryService;
 
-    @Inject
-    SkillService skillService;
-
-    @Inject
-    DatasetService datasetService;
-
     public void initialize() {
-        var listTool = ListAgentsTool.create(agentDefinitionService);
-        var createTool = CreateAgentDraftTool.create(agentDefinitionService);
-        var updateTool = UpdateAgentDraftTool.create(agentDefinitionService);
-        var publishTool = PublishAgentDraftTool.create(agentDefinitionService);
-        var getDetailTool = GetAgentDetailTool.create(agentDefinitionService);
-        var listSkillsTool = ListSkillsTool.create(skillService);
-        var listDatasetsTool = ListDatasetsTool.create(datasetService);
-        var listToolsTool = ListToolsTool.create(toolRegistryService);
-        toolRegistryService.registerToolSet("builtin-agent-builder", List.of(
-            listTool, createTool, updateTool, publishTool,
-            getDetailTool, listSkillsTool, listDatasetsTool, listToolsTool
-        ));
+        // The self-harness tool group is registered by SelfHarnessTools.initialize().
     }
 
     public List<ToolCall> tools() {
-        var agentBuilderRef = ToolRef.of("builtin-agent-builder", ToolSourceType.BUILTIN);
+        var selfHarnessRef = ToolRef.of(SelfHarnessTools.TOOL_SET_NAME, ToolSourceType.BUILTIN);
         var allToolsRef = ToolRef.of("builtin-all", ToolSourceType.BUILTIN);
-        return toolRegistryService.resolveToolRefs(List.of(agentBuilderRef, allToolsRef));
+        return toolRegistryService.resolveToolRefs(List.of(selfHarnessRef, allToolsRef));
     }
 }

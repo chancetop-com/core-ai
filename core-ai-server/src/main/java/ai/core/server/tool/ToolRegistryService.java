@@ -267,6 +267,26 @@ public class ToolRegistryService {
         dynamicToolSets.put(name, toolCalls);
     }
 
+    /**
+     * Registers a builtin tool group so it appears in the tool registry UI and can be
+     * dynamically configured for agents. Both stores the tools in dynamicToolSets for
+     * resolution and creates a {@link ToolRegistryEntry} in the tools map for visibility.
+     */
+    public void registerBuiltinToolGroup(String name, String category, String description, List<ToolCall> toolCalls) {
+        dynamicToolSets.put(name, toolCalls);
+        var registry = new ToolRegistryEntry();
+        registry.id = name;
+        registry.name = name.substring(BUILTIN_PREFIX.length());
+        registry.type = ToolType.BUILTIN;
+        registry.category = category;
+        registry.enabled = true;
+        registry.description = description;
+        registry.config = Map.of();
+        registry.createdAt = ZonedDateTime.now();
+        tools.put(registry.id, registry);
+        LOGGER.info("registered builtin tool group, name={}, category={}, tools={}", name, category, toolCalls.size());
+    }
+
     public ToolRegistryEntry createMcpServer(String name, String description, String category, Map<String, String> config, Boolean enabled) {
         return createMcpServerInternal(name, description, category, config, enabled, null);
     }

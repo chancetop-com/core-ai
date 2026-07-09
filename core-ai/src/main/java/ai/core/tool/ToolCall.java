@@ -195,7 +195,7 @@ public abstract class ToolCall {
 
     public JsonSchema toJsonSchema() {
         var schema = JsonSchemaUtil.toJsonSchema(parameters);
-        if ("mcp".equals(sourceType) || "api".equals(sourceType)) {
+        if ("mcp".equals(sourceType) || "api".equals(sourceType) || "self-harness".equals(sourceType)) {
             if (schema.properties == null) {
                 schema.properties = new LinkedHashMap<>();
             }

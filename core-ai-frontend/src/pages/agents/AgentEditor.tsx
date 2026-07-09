@@ -1281,7 +1281,23 @@ The system prompt should define how this agent behaves, its capabilities, and it
             <ToolSection
               title="Builtin"
               color="#f59e0b"
-              items={allTools.filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api')}
+              items={allTools.filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api' && t.category !== 'Self Harness')}
+              selectedIds={agent.tools?.map((t: ToolRef) => t.id) || []}
+              onToggle={(id, selected) => {
+                if (selected) {
+                  update('tools', agent.tools.filter((t: ToolRef) => t.id !== id));
+                } else {
+                  const tool = allTools.find(t => t.id === id);
+                  update('tools', [...(agent.tools || []), { id, type: 'BUILTIN', source: tool?.category }]);
+                }
+              }}
+            />
+
+            {/* Self Harness Tools */}
+            <ToolSection
+              title="Self Harness"
+              color="#06b6d4"
+              items={allTools.filter(t => t.category === 'Self Harness')}
               selectedIds={agent.tools?.map((t: ToolRef) => t.id) || []}
               onToggle={(id, selected) => {
                 if (selected) {

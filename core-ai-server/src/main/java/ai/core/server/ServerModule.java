@@ -34,6 +34,8 @@ import ai.core.server.blob.ObjectStorageService;
 import ai.core.api.server.blob.BlobUploadCredentialView;
 import ai.core.server.agentbuilder.AgentBuilderTools;
 import ai.core.server.llmcall.LLMCallBuilderTools;
+import ai.core.server.selfharness.SelfHarnessApiCaller;
+import ai.core.server.selfharness.SelfHarnessTools;
 import ai.core.server.web.sse.LiteLLMProxyChannelListener;
 import ai.core.server.web.sse.SseAuthInterceptor;
 import ai.core.server.web.CorsInterceptor;
@@ -300,6 +302,13 @@ public class ServerModule extends Module {
         onStartup(() -> taskRunner.register(traceArchivingTask));
         schedule().fixedRate("trace-archive", bind(TraceArchivingJob.class), Duration.ofHours(1));
         registerTrace();
+
+        // self-harness tools — depends on AgentDefinitionService, SkillService,
+        // DatasetService, ChatMessageService, TraceService, ToolRegistryService
+        bind(SelfHarnessApiCaller.class);
+        var selfHarnessTools = bind(SelfHarnessTools.class);
+        onStartup(selfHarnessTools::initialize);
+
         registerSystemPrompt();
         registerCapabilities();
         registerForYou();
@@ -340,8 +349,6 @@ public class ServerModule extends Module {
     private void bindService() {
         var publicUrl = property("sys.public.url").orElse("http://localhost:8080");
         ai.core.server.run.SubmitArtifactsTool.publicUrl = publicUrl;
-        ai.core.server.agentbuilder.CreateAgentDraftTool.publicUrl = publicUrl;
-        ai.core.server.agentbuilder.PublishAgentDraftTool.publicUrl = publicUrl;
         bind(SystemPromptService.class);
         bind(AgentMemoryService.class);
         bind(AgentMemoryExperimentService.class);
@@ -369,6 +376,7 @@ public class ServerModule extends Module {
         triggerService.publicUrl = publicUrl;
         var ocgSandboxService = bind(OcgSandboxService.class);
         ocgSandboxService.publicUrl = publicUrl;
+
         onStartup(ocgSandboxService::recoverOnStartup);
         var ocgCallbackPool = bind(OcgCallbackPool.class);
         onShutdown(ocgCallbackPool::shutdown);

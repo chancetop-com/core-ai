@@ -164,6 +164,7 @@ export default function ChatConfigModal(props: ChatConfigModalProps) {
 
 function ToolsTab(props: ChatConfigModalProps) {
   const [showBuiltin, setShowBuiltin] = useState(false);
+  const [showSelfHarness, setShowSelfHarness] = useState(false);
   const [showMcp, setShowMcp] = useState(false);
   const [showApi, setShowApi] = useState(false);
   const [apiApps, setApiApps] = useState<ApiAppView[]>([]);
@@ -185,7 +186,10 @@ function ToolsTab(props: ChatConfigModalProps) {
 
   // Prioritize active tools/servers so they show first; sort is stable.
   const builtinTools = props.availableTools
-    .filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api')
+    .filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api' && t.category !== 'Self Harness')
+    .sort((a, b) => Number(isIdActive(b.id)) - Number(isIdActive(a.id)));
+  const selfHarnessTools = props.availableTools
+    .filter(t => t.category === 'Self Harness')
     .sort((a, b) => Number(isIdActive(b.id)) - Number(isIdActive(a.id)));
   const mcpTools = props.availableTools
     .filter(t => t.type === 'MCP')
@@ -236,6 +240,18 @@ function ToolsTab(props: ChatConfigModalProps) {
           <ToolCheckItem key={t.id} name={t.name} description={t.description}
             state={props.loadedToolIds.has(t.id) ? 'loaded' : props.preToolIds.has(t.id) ? 'pending' : props.selectedToolIds.has(t.id) ? 'selected' : 'none'}
             color="#f59e0b"
+            onToggle={() => !props.loadedToolIds.has(t.id) && props.onToggleTool(t.id)} />
+        ))}
+      </ToolGroupSection>
+
+      {/* Self Harness */}
+      <ToolGroupSection title="Self Harness" color="#06b6d4"
+        count={selfHarnessTools.filter(t => isIdActive(t.id)).length} total={selfHarnessTools.length}
+        open={showSelfHarness} onToggle={() => setShowSelfHarness(!showSelfHarness)}>
+        {selfHarnessTools.map(t => (
+          <ToolCheckItem key={t.id} name={t.name} description={t.description}
+            state={props.loadedToolIds.has(t.id) ? 'loaded' : props.preToolIds.has(t.id) ? 'pending' : props.selectedToolIds.has(t.id) ? 'selected' : 'none'}
+            color="#06b6d4"
             onToggle={() => !props.loadedToolIds.has(t.id) && props.onToggleTool(t.id)} />
         ))}
       </ToolGroupSection>
