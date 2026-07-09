@@ -730,6 +730,8 @@ export interface AgentScheduleView {
   enabled: boolean;
   input: string;
   variables?: Record<string, string>;
+  channel_id?: string;
+  channel_recipient_id?: string;
   concurrency_policy: string;
   next_run_at: string;
   created_at: string;
@@ -748,6 +750,8 @@ export interface CreateScheduleRequest {
   timezone?: string;
   input?: string;
   variables?: Record<string, string>;
+  channel_id?: string;
+  channel_recipient_id?: string;
   concurrency_policy?: string;
 }
 
@@ -759,6 +763,8 @@ export interface UpdateScheduleRequest {
   enabled?: boolean;
   input?: string;
   variables?: Record<string, string>;
+  channel_id?: string;
+  channel_recipient_id?: string;
   concurrency_policy?: string;
 }
 

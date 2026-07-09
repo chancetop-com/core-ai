@@ -33,6 +33,8 @@ public class AgentScheduleService {
         entity.enabled = true;
         entity.input = request.input;
         entity.variables = request.variables;
+        entity.channelId = request.channelId;
+        entity.channelRecipientId = request.channelRecipientId;
         entity.concurrencyPolicy = request.concurrencyPolicy != null
             ? ConcurrencyPolicy.valueOf(request.concurrencyPolicy)
             : ConcurrencyPolicy.SKIP;
@@ -80,6 +82,8 @@ public class AgentScheduleService {
         if (request.enabled != null) entity.enabled = request.enabled;
         if (request.input != null) entity.input = request.input;
         if (request.variables != null) entity.variables = request.variables;
+        if (request.channelId != null) entity.channelId = request.channelId;
+        if (request.channelRecipientId != null) entity.channelRecipientId = request.channelRecipientId;
         if (request.concurrencyPolicy != null) entity.concurrencyPolicy = ConcurrencyPolicy.valueOf(request.concurrencyPolicy);
         entity.updatedAt = ZonedDateTime.now();
 
@@ -110,6 +114,8 @@ public class AgentScheduleService {
         view.enabled = entity.enabled;
         view.input = entity.input;
         view.variables = entity.variables;
+        view.channelId = entity.channelId;
+        view.channelRecipientId = entity.channelRecipientId;
         view.concurrencyPolicy = entity.concurrencyPolicy.name();
         view.nextRunAt = entity.nextRunAt;
         view.createdAt = entity.createdAt;

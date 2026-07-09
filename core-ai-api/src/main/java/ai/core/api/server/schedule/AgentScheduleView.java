@@ -41,6 +41,12 @@ public class AgentScheduleView {
     @Property(name = "variables")
     public Map<String, String> variables;
 
+    @Property(name = "channel_id")
+    public String channelId;
+
+    @Property(name = "channel_recipient_id")
+    public String channelRecipientId;
+
     @Property(name = "concurrency_policy")
     public String concurrencyPolicy;
 

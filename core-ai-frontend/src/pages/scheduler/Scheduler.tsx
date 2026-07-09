@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Calendar, Edit2, Trash2, X, Play } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, AgentScheduleView, CreateScheduleRequest, UpdateScheduleRequest } from '../../api/client';
+import type { AgentDefinition, AgentScheduleView, ChannelView, CreateScheduleRequest, UpdateScheduleRequest } from '../../api/client';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
 import CronEditor, { describeCron, isOnceCron } from './CronEditor';
 
@@ -17,6 +17,8 @@ interface EditorState {
   timezone: string;
   input: string;
   variables?: Record<string, string>;
+  channelId: string;
+  channelRecipientId: string;
   concurrencyPolicy: ConcurrencyPolicy;
   enabled: boolean;
 }
@@ -34,6 +36,8 @@ function emptyEditor(): EditorState {
     timezone: 'Asia/Shanghai',
     input: '',
     variables: undefined,
+    channelId: '',
+    channelRecipientId: '',
     concurrencyPolicy: 'SKIP',
     enabled: true,
   };
@@ -54,6 +58,7 @@ function formatTime(iso: string) {
 export default function Scheduler() {
   const [schedules, setSchedules] = useState<AgentScheduleView[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
+  const [channels, setChannels] = useState<ChannelView[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterAgentId, setFilterAgentId] = useState<string>('');
   const [filterEnabled, setFilterEnabled] = useState<'all' | 'enabled' | 'disabled'>('all');
@@ -61,10 +66,11 @@ export default function Scheduler() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([api.schedules.list(), api.agents.list()])
-      .then(([scheduleRes, agentRes]) => {
+    Promise.all([api.schedules.list(), api.agents.list(), api.channels.list()])
+      .then(([scheduleRes, agentRes, channelRes]) => {
         setSchedules(scheduleRes.schedules || []);
         setAgents(agentRes.agents || []);
+        setChannels(channelRes.channels || []);
       })
       .finally(() => setLoading(false));
   };
@@ -105,6 +111,8 @@ export default function Scheduler() {
     timezone: s.timezone || 'UTC',
     input: s.input || '',
     variables: s.variables,
+    channelId: s.channel_id || '',
+    channelRecipientId: s.channel_recipient_id || '',
     concurrencyPolicy: (s.concurrency_policy as ConcurrencyPolicy) || 'SKIP',
     enabled: s.enabled,
   });
@@ -127,6 +135,8 @@ export default function Scheduler() {
           timezone: editor.timezone,
           input: editor.input.trim() ? editor.input : '',
           variables,
+          channel_id: editor.channelId || undefined,
+          channel_recipient_id: editor.channelRecipientId || undefined,
           concurrency_policy: editor.concurrencyPolicy,
           enabled: editor.enabled,
         };
@@ -140,6 +150,8 @@ export default function Scheduler() {
           timezone: editor.timezone,
           input: editor.input.trim() ? editor.input : '',
           variables,
+          channel_id: editor.channelId || undefined,
+          channel_recipient_id: editor.channelRecipientId || undefined,
           concurrency_policy: editor.concurrencyPolicy,
         };
         await api.schedules.create(payload);
@@ -219,6 +231,7 @@ export default function Scheduler() {
                 <th className="text-left px-4 py-3 font-medium">Agent</th>
                 <th className="text-left px-4 py-3 font-medium">Cron</th>
                 <th className="text-left px-4 py-3 font-medium">Timezone</th>
+                <th className="text-left px-4 py-3 font-medium">Channel</th>
                 <th className="text-left px-4 py-3 font-medium">Policy</th>
                 <th className="text-left px-4 py-3 font-medium">Next Run</th>
                 <th className="text-left px-4 py-3 font-medium">Enabled</th>
@@ -258,6 +271,16 @@ export default function Scheduler() {
                     )}
                   </td>
                   <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{s.timezone}</td>
+                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                    {s.channel_id ? (
+                      <span className="px-2 py-0.5 rounded text-xs"
+                        style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#1d4ed8' }}>
+                        {s.channel_id}
+                      </span>
+                    ) : (
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className="px-2 py-0.5 rounded text-xs"
                       style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
@@ -382,6 +405,46 @@ export default function Scheduler() {
                 <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
                   SKIP: drop tick if previous still running. QUEUE: wait and run after. PARALLEL: run in parallel.
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Channel Output (optional)</label>
+                <select value={editor.channelId}
+                  onChange={e => {
+                    const cid = e.target.value;
+                    const channel = channels.find(c => c.channelId === cid);
+                    setEditor({
+                      ...editor,
+                      channelId: cid,
+                      channelRecipientId: cid && !channel ? '' : editor.channelRecipientId,
+                    });
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+                  <option value="">No channel (output saved to run history)</option>
+                  {channels.filter(c => c.enabled).map(c => (
+                    <option key={c.channelId} value={c.channelId}>
+                      {c.channelId} ({c.channelType})
+                    </option>
+                  ))}
+                </select>
+                {editor.channelId && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                      Recipient ID <span className="font-normal">(e.g. Slack channel ID, Telegram chat ID)</span>
+                    </label>
+                    <input value={editor.channelRecipientId}
+                      onChange={e => setEditor({ ...editor, channelRecipientId: e.target.value })}
+                      placeholder="Channel recipient identifier"
+                      className="w-full px-3 py-2 rounded-lg border text-sm"
+                      style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+                  </div>
+                )}
+                {channels.length === 0 && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    No channels configured. Configure one in channel settings to send output to a messaging platform.
+                  </p>
+                )}
               </div>
 
               <div>

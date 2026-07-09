@@ -47,6 +47,12 @@ public class AgentSchedule {
     @Field(name = "variables")
     public Map<String, String> variables;
 
+    @Field(name = "channel_id")
+    public String channelId;
+
+    @Field(name = "channel_recipient_id")
+    public String channelRecipientId;
+
     @NotNull
     @Field(name = "concurrency_policy")
     public ConcurrencyPolicy concurrencyPolicy;

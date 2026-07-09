@@ -8,6 +8,9 @@ import ai.core.llm.LLMProviders;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.artifact.AgentRunArtifactSink;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.channel.ChannelConfigStore;
+import ai.core.server.channel.ChannelMessage;
+import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.domain.AgentDefinition;
@@ -152,16 +155,33 @@ public class AgentRunner {
     @Inject
     SystemSettingsService systemSettingsService;
 
+    @Inject
+    ChannelConfigStore channelConfigStore;
+
+    @Inject
+    ChannelRegistry channelRegistry;
+
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
-        return run(definition, input, trigger, null, null);
+        return run(definition, input, trigger, null, null, null, null);
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId, Map<String, String> runtimeVariables) {
-        return run(definition, input, trigger, scheduleId, runtimeVariables, null);
+        return run(definition, input, trigger, scheduleId, runtimeVariables, null, null, null);
+    }
+
+    public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
+                      Map<String, String> runtimeVariables, String channelId, String channelRecipientId) {
+        return run(definition, input, trigger, scheduleId, runtimeVariables, null, channelId, channelRecipientId);
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
                       Map<String, String> runtimeVariables, WorkflowRunContext workflowContext) {
+        return run(definition, input, trigger, scheduleId, runtimeVariables, workflowContext, null, null);
+    }
+
+    private String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
+                       Map<String, String> runtimeVariables, WorkflowRunContext workflowContext,
+                       String channelId, String channelRecipientId) {
         var resolvedVariables = new HashMap<String, Object>();
         if (runtimeVariables != null) {
             resolvedVariables.putAll(runtimeVariables);
@@ -193,6 +213,7 @@ public class AgentRunner {
                         sandboxService.ensurePendingFilesUploaded(runId);
                     }
                     execute(runEntity, definition, sandbox, resolvedVariables, traceContext);
+                    sendToChannelIfConfigured(runEntity, channelId, channelRecipientId);
                 } finally {
                     scheduleSandboxRelease(runId, trigger);
                 }
@@ -716,6 +737,28 @@ public class AgentRunner {
             }
         } catch (Exception e) {
             LOGGER.warn("failed to extract dataset record, datasetId={}, runId={}", outputDatasetId, runId, e);
+        }
+    }
+
+    private void sendToChannelIfConfigured(AgentRun runEntity, String channelId, String channelRecipientId) {
+        if (channelId == null || channelId.isBlank()) return;
+        if (channelRecipientId == null || channelRecipientId.isBlank()) return;
+
+        var channel = channelConfigStore.load(channelId);
+        if (channel == null) {
+            LOGGER.warn("channel not found for scheduled run delivery, channelId={}, runId={}", channelId, runEntity.id);
+            return;
+        }
+
+        try {
+            var outbound = channelRegistry.outbound(channel.channelType);
+            var message = ChannelMessage.text(runEntity.output);
+            outbound.sendMessage(message, channelRecipientId, channelRecipientId, null, channel.config);
+            LOGGER.info("sent scheduled run output to channel, runId={}, channelId={}, channelType={}",
+                    runEntity.id, channelId, channel.channelType);
+        } catch (Exception e) {
+            LOGGER.warn("failed to send scheduled run output to channel, runId={}, channelId={}",
+                    runEntity.id, channelId, e);
         }
     }
 }
