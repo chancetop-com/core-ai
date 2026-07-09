@@ -3,7 +3,16 @@ package ai.core.sandbox;
 import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCallResult;
 
+import java.util.List;
+import java.util.Map;
+
 /**
+ * Standard sandbox abstraction — every sandbox backend implements this interface.
+ * <p>
+ * The caller (ToolExecutor, CodeExecutor, MCP manager, skill tool, etc.) works against
+ * this contract only. Switching the underlying provider (Docker/K8s, E2B, CubeSandbox)
+ * is a configuration change with zero caller-side modifications.
+ *
  * @author stephen
  */
 public interface Sandbox extends AutoCloseable {
@@ -17,34 +26,34 @@ public interface Sandbox extends AutoCloseable {
     String getId();
 
     /** Returns the human-readable hostname of this sandbox (e.g. pod name, container id). */
-    default String hostname() {
-        return getId();
-    }
+    String hostname();
 
-    default void materializeSkill(String name, String version, byte[] tarBytes) {
-        throw new UnsupportedOperationException("materializeSkill not supported by this sandbox");
-    }
+    /** Materialize a skill archive into the sandbox filesystem. */
+    void materializeSkill(String name, String version, byte[] tarBytes);
 
-    default SandboxFile downloadFile(String path) {
-        throw new UnsupportedOperationException("downloadFile not supported by this sandbox");
-    }
+    /** Download a file from the sandbox filesystem. */
+    SandboxFile downloadFile(String path);
 
-    /** Uploads file content to the sandbox at the specified path. */
-    default void uploadFile(String path, byte[] content) {
-        throw new UnsupportedOperationException("uploadFile not supported by this sandbox");
-    }
+    /** Upload file content to the sandbox at the specified path. */
+    void uploadFile(String path, byte[] content);
 
-    default String ip() {
-        return null;
-    }
+    String ip();
 
-    default int port() {
-        return 0;
-    }
+    int port();
 
-    default String image() {
-        return null;
-    }
+    String image();
+
+    // ---- MCP server lifecycle (started inside the sandbox, bridged through the runtime) ----
+
+    /** Start an MCP server process inside the sandbox. The returned id can be used to
+     *  construct the bridge endpoint via {@link #getMcpEndpoint()} with header {@code X-Mcp-Server-Id}. */
+    String startMcpServer(String id, String command, List<String> args, Map<String, String> env, int timeoutSeconds);
+
+    /** Stop an MCP server process previously started via {@link #startMcpServer}. */
+    void stopMcpServer(String id);
+
+    /** Returns the base endpoint for the runtime's MCP JSON-RPC bridge, e.g. {@code http://ip:port/mcp}. */
+    String getMcpEndpoint();
 
     @Override
     void close();

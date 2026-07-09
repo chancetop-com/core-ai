@@ -4,7 +4,6 @@ import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.server.channel.ChannelConfigStore;
-import ai.core.server.sandbox.SandboxClient;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.tool.tools.ShellCommandTool;
 import ai.core.utils.JsonUtil;
@@ -345,23 +344,18 @@ public class OcgSandboxService {
     }
 
     private String runCommand(Sandbox sandbox, String command, int timeoutSeconds, boolean runInBackground) {
-        var client = new SandboxClient(sandbox.ip(), sandbox.port(), timeoutSeconds);
-        try {
-            var result = client.execute(ShellCommandTool.TOOL_NAME, JsonUtil.toJson(Map.of(
-                    "command", command,
-                    "timeout", timeoutSeconds,
-                    "run_in_background", runInBackground)), null);
-            if (!result.isCompleted()) {
-                throw new RuntimeException(result.getResult());
-            }
-            var output = result.getResult();
-            if (isCommandFailure(output)) {
-                throw new RuntimeException(output);
-            }
-            return output != null ? output : "";
-        } finally {
-            client.close();
+        var result = sandbox.execute(ShellCommandTool.TOOL_NAME, JsonUtil.toJson(Map.of(
+                "command", command,
+                "timeout", timeoutSeconds,
+                "run_in_background", runInBackground)), null);
+        if (!result.isCompleted()) {
+            throw new RuntimeException(result.getResult());
         }
+        var output = result.getResult();
+        if (isCommandFailure(output)) {
+            throw new RuntimeException(output);
+        }
+        return output != null ? output : "";
     }
 
     private boolean isCommandFailure(String output) {

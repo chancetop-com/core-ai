@@ -352,20 +352,12 @@ public class SandboxService {
     }
 
     private void stopSessionMcpProcesses(String sessionId, Sandbox sandbox, Set<String> serverIds) {
-        var ip = sandbox.ip();
-        var port = sandbox.port();
-        if (ip == null || port == 0) return;
-        var client = new SandboxClient(ip, port, 30);
-        try {
-            for (var id : serverIds) {
-                try {
-                    client.stopMcpServer(id);
-                } catch (Exception e) {
-                    LOGGER.warn("failed to stop mcp server in session sandbox: session={}, serverId={}: {}", sessionId, id, e.getMessage());
-                }
+        for (var id : serverIds) {
+            try {
+                sandbox.stopMcpServer(id);
+            } catch (Exception e) {
+                LOGGER.warn("failed to stop mcp server in session sandbox: session={}, serverId={}: {}", sessionId, id, e.getMessage());
             }
-        } finally {
-            client.close();
         }
     }
 

@@ -60,7 +60,16 @@ class McpServerConnectionManager {
         try {
             var sandboxClient = sandboxService.getDiscoverySandboxClient();
             try {
-                var serverConfig = buildSandboxBackedConfig(entry, sandboxClient);
+                var configMap = new HashMap<String, Object>();
+                configMap.putAll(entry.config);
+                var command = (String) configMap.get("command");
+                if (command == null || command.isBlank()) {
+                    throw new IllegalArgumentException("command is required for sandbox-hosted mcp server");
+                }
+                var args = parseArgsList(configMap.get("args"));
+                var env = McpServerConfig.parseEnv(configMap.get("env"));
+                sandboxClient.startMcpServer(entry.id, command, args, env);
+                var serverConfig = discoverySandboxConfig(entry, sandboxClient.getBaseUrl());
                 mcpManager.addServer(serverConfig);
                 LOGGER.info("registered sandbox-hosted mcp server on discovery sandbox, id={}", entry.id);
                 return true;
@@ -71,6 +80,38 @@ class McpServerConnectionManager {
             LOGGER.warn("failed to register sandbox-hosted mcp server on discovery, id={}: {}", entry.id, e.getMessage());
             return false;
         }
+    }
+
+    private McpServerConfig discoverySandboxConfig(ToolRegistryEntry entry, String baseUrl) {
+        var configMap = new HashMap<String, Object>();
+        configMap.putAll(entry.config);
+        var resolved = new HashMap<String, Object>();
+        resolved.put("url", baseUrl);
+        resolved.put("endpoint", "mcp");
+        resolved.put("headers", Map.of("X-Mcp-Server-Id", entry.id));
+        resolved.put("transport", "streamable_http");
+        resolved.put("connectTimeout", (long) SandboxConstants.SESSION_MCP_CONNECT_TIMEOUT_SECONDS);
+        resolved.put("initializationTimeout", (long) SandboxConstants.SESSION_MCP_INIT_TIMEOUT_SECONDS);
+        copyIfPresent(configMap, resolved, "requestTimeout");
+        copyIfPresent(configMap, resolved, "initializationTimeout");
+        copyIfPresent(configMap, resolved, "connectTimeout");
+        return McpServerConfig.fromMap(entry.id, resolved);
+    }
+
+    private McpServerConfig buildSandboxBackedConfig(ToolRegistryEntry entry, Sandbox sandbox) {
+        var configMap = new HashMap<String, Object>();
+        configMap.putAll(entry.config);
+        var resolved = new HashMap<String, Object>();
+        resolved.put("url", sandbox.getMcpEndpoint());
+        resolved.put("endpoint", "mcp");
+        resolved.put("headers", Map.of("X-Mcp-Server-Id", entry.id));
+        resolved.put("transport", "streamable_http");
+        resolved.put("connectTimeout", (long) SandboxConstants.SESSION_MCP_CONNECT_TIMEOUT_SECONDS);
+        resolved.put("initializationTimeout", (long) SandboxConstants.SESSION_MCP_INIT_TIMEOUT_SECONDS);
+        copyIfPresent(configMap, resolved, "requestTimeout");
+        copyIfPresent(configMap, resolved, "initializationTimeout");
+        copyIfPresent(configMap, resolved, "connectTimeout");
+        return McpServerConfig.fromMap(entry.id, resolved);
     }
 
     // Register a sandbox-hosted MCP server in a session-scoped manager, starting the
@@ -85,55 +126,24 @@ class McpServerConnectionManager {
     boolean registerOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox, int startupTimeoutSeconds) {
         if (!isSandboxHosted(entry.config)) return false;
         if (sessionManager.hasServer(entry.id)) return true;
-        var ip = sandbox.ip();
-        var port = sandbox.port();
-        if (ip == null || port == 0) {
-            LOGGER.warn("session sandbox ip/port not available for mcp server {}", entry.id);
-            return false;
-        }
-        var sandboxClient = new SandboxClient(ip, port, startupTimeoutSeconds);
         try {
-            var serverConfig = buildSandboxBackedConfig(entry, sandboxClient);
+            var configMap = new HashMap<String, Object>();
+            configMap.putAll(entry.config);
+            var command = (String) configMap.get("command");
+            if (command == null || command.isBlank()) {
+                throw new IllegalArgumentException("command is required for sandbox-hosted mcp server");
+            }
+            var args = parseArgsList(configMap.get("args"));
+            var env = McpServerConfig.parseEnv(configMap.get("env"));
+            sandbox.startMcpServer(entry.id, command, args, env, startupTimeoutSeconds);
+            var serverConfig = buildSandboxBackedConfig(entry, sandbox);
             sessionManager.addServer(serverConfig);
-            LOGGER.info("registered sandbox-hosted mcp server on session sandbox, id={}, ip={}, startupTimeout={}s", entry.id, ip, startupTimeoutSeconds);
+            LOGGER.info("registered sandbox-hosted mcp server on session sandbox, id={}, ip={}, startupTimeout={}s", entry.id, sandbox.ip(), startupTimeoutSeconds);
             return true;
         } catch (Exception e) {
             LOGGER.warn("failed to register sandbox-hosted mcp server on session, id={}: {}", entry.id, e.getMessage());
             return false;
-        } finally {
-            sandboxClient.close();
         }
-    }
-
-    private McpServerConfig buildSandboxBackedConfig(ToolRegistryEntry entry, SandboxClient sandboxClient) {
-        var configMap = new HashMap<String, Object>();
-        configMap.putAll(entry.config);
-        var command = (String) configMap.get("command");
-        if (command == null || command.isBlank()) {
-            throw new IllegalArgumentException("command is required for sandbox-hosted mcp server");
-        }
-        var args = parseArgsList(configMap.get("args"));
-        var env = McpServerConfig.parseEnv(configMap.get("env"));
-
-        sandboxClient.startMcpServer(entry.id, command, args, env);
-
-        // Transform to STREAMABLE_HTTP config pointing at the sandbox runtime bridge.
-        var resolved = new HashMap<String, Object>();
-        resolved.put("url", sandboxClient.getBaseUrl());
-        resolved.put("endpoint", "mcp");
-        resolved.put("headers", Map.of("X-Mcp-Server-Id", entry.id));
-        resolved.put("transport", "streamable_http");
-        // Use shorter timeouts for sandbox-backed MCP connections so that
-        // unreachable or slow servers don't block the caller (session creation,
-        // tool browsing) for extended periods. User-configured values in the
-        // original entry take precedence over these defaults.
-        resolved.put("connectTimeout", (long) SandboxConstants.SESSION_MCP_CONNECT_TIMEOUT_SECONDS);
-        resolved.put("initializationTimeout", (long) SandboxConstants.SESSION_MCP_INIT_TIMEOUT_SECONDS);
-        copyIfPresent(configMap, resolved, "requestTimeout");
-        copyIfPresent(configMap, resolved, "initializationTimeout");
-        copyIfPresent(configMap, resolved, "connectTimeout");
-
-        return McpServerConfig.fromMap(entry.id, resolved);
     }
 
     void unregisterMcpServer(String serverId) {

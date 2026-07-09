@@ -10,8 +10,9 @@ import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.SocketException;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -109,6 +110,26 @@ public class AgentSandbox implements Sandbox {
     @Override
     public String image() {
         return image;
+    }
+
+    @Override
+    public String startMcpServer(String id, String command, List<String> args, Map<String, String> env, int timeoutSeconds) {
+        var client = new SandboxClient(runtimeClient.getIp(), runtimeClient.getPort(), timeoutSeconds);
+        try {
+            return client.startMcpServer(id, command, args, env);
+        } finally {
+            client.close();
+        }
+    }
+
+    @Override
+    public void stopMcpServer(String id) {
+        runtimeClient.stopMcpServer(id);
+    }
+
+    @Override
+    public String getMcpEndpoint() {
+        return runtimeClient.getMcpEndpoint();
     }
 
     @Override

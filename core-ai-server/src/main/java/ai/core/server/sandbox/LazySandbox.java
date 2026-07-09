@@ -13,6 +13,8 @@ import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -86,6 +88,35 @@ public class LazySandbox implements Sandbox {
         ensureReady();
         snapshotDirty = true;
         delegate.uploadFile(path, content);
+    }
+
+    @Override
+    public String hostname() {
+        var current = delegate;
+        return current != null ? current.hostname() : "pending";
+    }
+
+    @Override
+    public String startMcpServer(String id, String command, List<String> args, Map<String, String> env, int timeoutSeconds) {
+        ensureReady();
+        return delegate.startMcpServer(id, command, args, env, timeoutSeconds);
+    }
+
+    @Override
+    public void stopMcpServer(String id) {
+        var current = delegate;
+        if (current != null) {
+            current.stopMcpServer(id);
+        }
+    }
+
+    @Override
+    public String getMcpEndpoint() {
+        var current = delegate;
+        if (current == null) {
+            throw new IllegalStateException("sandbox not ready, cannot get MCP endpoint");
+        }
+        return current.getMcpEndpoint();
     }
 
     @Override
