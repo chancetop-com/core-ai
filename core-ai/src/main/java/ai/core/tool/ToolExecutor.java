@@ -14,6 +14,11 @@ import io.opentelemetry.context.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -74,6 +79,12 @@ public class ToolExecutor {
         var sandbox = context.getSandbox();
         var useSandbox = sandbox != null && sandbox.shouldIntercept(tool.getName());
 
+        // strip save_to_file from args before validation and tool execution
+        String saveToFile = extractSaveToFile(args);
+        if (saveToFile != null) {
+            functionCall.function.arguments = JsonUtil.toJson(args);
+        }
+
         var validationResult = validate(tool, args, useSandbox);
         if (validationResult != null) {
             return validationResult;
@@ -85,8 +96,6 @@ public class ToolExecutor {
         ToolCallResult result;
         if (useSandbox) {
             LOGGER.debug("sandbox intercepting tool: {}", tool.getName());
-            // Wrap sandbox execution in a tool span too, otherwise sandbox-intercepted tools (e.g. a sub-agent's
-            // file/bash operations) produce no TOOL span and never appear in the trace timeline.
             result = traceToolSpan(functionCall, tool.isSubAgent(), () -> sandbox.execute(tool.getName(), functionCall.function.arguments, context));
             result.withStats("executionMode", "sandbox");
             result.withStats("sandboxId", sandbox.getId());
@@ -97,8 +106,69 @@ public class ToolExecutor {
         result.withToolName(tool.getName()).withDuration(System.currentTimeMillis() - startTime);
         handleAsyncResult(result, tool, functionCall, context);
 
+        if (saveToFile != null && result.isCompleted()) {
+            result = saveResultToFile(saveToFile, result, sandbox, tool.getName());
+        }
+
         LOGGER.debug("tool {} completed in {}ms, stats: {}", result.getToolName(), result.getDurationMs(), result.getStats());
         return result;
+    }
+
+    private static String timestamp() {
+        return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+    }
+
+    private String extractSaveToFile(Map<String, Object> args) {
+        var value = args.remove(ToolCall.SAVE_TO_FILE_PARAM);
+        if (value == null) return null;
+        var saveToFile = value.toString();
+        if (saveToFile.isBlank() || "auto".equals(saveToFile)) {
+            return "/workspace/tool_result_" + timestamp() + ".json";
+        }
+        if (!saveToFile.startsWith("/")) {
+            return "/workspace/" + saveToFile;
+        }
+        return saveToFile;
+    }
+
+    private ToolCallResult saveResultToFile(String filePath, ToolCallResult result, ai.core.sandbox.Sandbox sandbox, String toolName) {
+        var content = result.getResult();
+        if (content == null) return result;
+        if (content.length() > ToolCall.MAX_SAVE_TO_FILE_SIZE) {
+            double mb = content.length() / (1024.0 * 1024.0);
+            return result.withResult(String.format(
+                "save_to_file failed: result size (%.1f MB) exceeds limit (10 MB). Use pagination or filtering to reduce result size.", mb));
+        }
+        try {
+            var prettyContent = content;
+            try {
+                var parsed = JsonUtil.OBJECT_MAPPER.readValue(content, Object.class);
+                prettyContent = JsonUtil.OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(parsed);
+            } catch (Exception ignored) {
+                // not valid JSON, write as-is
+            }
+            writeFile(sandbox, filePath, prettyContent.getBytes(StandardCharsets.UTF_8));
+
+            var schemaJson = ToolCall.buildSchemaJson(content);
+            if (schemaJson != null) {
+                var schemaPath = filePath.replaceAll("\\.json$", "") + ".schema.json";
+                writeFile(sandbox, schemaPath, schemaJson.getBytes(StandardCharsets.UTF_8));
+            }
+
+            return result.withResult(ToolCall.buildSaveResultMessage(content, filePath));
+        } catch (Exception e) {
+            LOGGER.warn("save_to_file failed for tool {}, falling back to inline result", toolName, e);
+            return result;
+        }
+    }
+
+    private void writeFile(ai.core.sandbox.Sandbox sandbox, String path, byte[] bytes) throws Exception {
+        if (sandbox != null) {
+            sandbox.uploadFile(path, bytes);
+            return;
+        }
+        var localPath = path.startsWith("/workspace/") ? path.substring("/workspace/".length()) : path;
+        Files.write(Path.of(localPath), bytes);
     }
 
     private ToolCallResult validate(ToolCall tool, Map<String, Object> args, boolean useSandbox) {

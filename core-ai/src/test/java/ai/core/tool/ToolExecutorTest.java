@@ -3,6 +3,7 @@ package ai.core.tool;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.sandbox.Sandbox;
+import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.RecordingSpanProcessor;
@@ -12,6 +13,7 @@ import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -122,6 +124,53 @@ class ToolExecutorTest {
             @Override
             public String getId() {
                 return "test-sandbox";
+            }
+
+            @Override
+            public String hostname() {
+                return "test-sandbox";
+            }
+
+            @Override
+            public void materializeSkill(String name, String version, byte[] tarBytes) {
+            }
+
+            @Override
+            public SandboxFile downloadFile(String path) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public void uploadFile(String path, byte[] content) {
+            }
+
+            @Override
+            public String ip() {
+                return "127.0.0.1";
+            }
+
+            @Override
+            public int port() {
+                return 8080;
+            }
+
+            @Override
+            public String image() {
+                return "test-image";
+            }
+
+            @Override
+            public String startMcpServer(String id, String command, List<String> args, Map<String, String> env, int timeoutSeconds) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public void stopMcpServer(String id) {
+            }
+
+            @Override
+            public String getMcpEndpoint() {
+                return "http://127.0.0.1:8080/mcp";
             }
 
             @Override
