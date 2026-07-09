@@ -12,6 +12,7 @@ import ai.core.api.server.AgentSessionWebService;
 import ai.core.api.server.SkillWebService;
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.NotificationWebService;
+import ai.core.api.server.notification.NotificationSseEvent;
 import ai.core.api.server.UserWebService;
 import ai.core.api.server.settings.SystemSettingsWebService;
 import ai.core.api.server.trigger.TriggerWebService;
@@ -335,7 +336,7 @@ public class ServerModule extends Module {
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
         sseConfig.listen(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_STREAM, StreamResponse.class, bind(A2AStreamChannelListener.class));
         sseConfig.listen(HTTPMethod.POST, "/api/litellm/v1/chat/completions", Object.class, bind(LiteLLMProxyChannelListener.class));
-        sseConfig.listen(HTTPMethod.PUT, "/api/notifications/events", Object.class, bind(NotificationChannelListener.class));
+        sseConfig.listen(HTTPMethod.PUT, "/api/notifications/events", NotificationSseEvent.class, bind(NotificationChannelListener.class));
         registerStaticFiles();
     }
 

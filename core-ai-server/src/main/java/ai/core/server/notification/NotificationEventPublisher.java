@@ -1,5 +1,6 @@
 package ai.core.server.notification;
 
+import ai.core.api.server.notification.NotificationSseEvent;
 import ai.core.server.domain.Notification;
 import core.framework.web.sse.Channel;
 import org.slf4j.Logger;
@@ -19,9 +20,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class NotificationEventPublisher {
     private static final Logger LOGGER = LoggerFactory.getLogger(NotificationEventPublisher.class);
 
-    private final Map<String, Channel<Object>> channels = new ConcurrentHashMap<>();
+    private final Map<String, Channel<NotificationSseEvent>> channels = new ConcurrentHashMap<>();
 
-    public void connect(String userId, Channel<Object> channel) {
+    public void connect(String userId, Channel<NotificationSseEvent> channel) {
         var old = channels.put(userId, channel);
         if (old != null) {
             old.close();
@@ -39,7 +40,20 @@ public class NotificationEventPublisher {
     public void push(String userId, Notification notification) {
         var channel = channels.get(userId);
         if (channel != null) {
-            channel.send(notification);
+            channel.send(toEvent(notification));
         }
+    }
+
+    private static NotificationSseEvent toEvent(Notification n) {
+        var event = new NotificationSseEvent();
+        event.id = n.id;
+        event.category = n.category.name();
+        event.type = n.type.name();
+        event.title = n.title;
+        event.message = n.message;
+        event.agentId = n.agentId;
+        event.sessionId = n.sessionId;
+        event.createdAt = n.createdAt;
+        return event;
     }
 }

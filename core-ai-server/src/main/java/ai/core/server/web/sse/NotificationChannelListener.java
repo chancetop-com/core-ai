@@ -1,5 +1,6 @@
 package ai.core.server.web.sse;
 
+import ai.core.api.server.notification.NotificationSseEvent;
 import ai.core.server.notification.NotificationEventPublisher;
 import core.framework.inject.Inject;
 import core.framework.web.Request;
@@ -13,7 +14,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author stephen
  */
-public class NotificationChannelListener implements ChannelListener<Object> {
+public class NotificationChannelListener implements ChannelListener<NotificationSseEvent> {
     private static final String USER_ID_KEY = "ntf-user-id";
     private static final Logger LOGGER = LoggerFactory.getLogger(NotificationChannelListener.class);
 
@@ -21,7 +22,7 @@ public class NotificationChannelListener implements ChannelListener<Object> {
     NotificationEventPublisher eventPublisher;
 
     @Override
-    public void onConnect(Request request, Channel<Object> channel, String lastEventId) {
+    public void onConnect(Request request, Channel<NotificationSseEvent> channel, String lastEventId) {
         var userId = request.queryParams().get(USER_ID_KEY);
         if (userId == null || userId.isBlank()) {
             channel.close();
@@ -33,7 +34,7 @@ public class NotificationChannelListener implements ChannelListener<Object> {
     }
 
     @Override
-    public void onClose(Channel<Object> channel) {
+    public void onClose(Channel<NotificationSseEvent> channel) {
         var userId = (String) channel.context().get(USER_ID_KEY);
         if (userId != null) {
             eventPublisher.disconnect(userId);
