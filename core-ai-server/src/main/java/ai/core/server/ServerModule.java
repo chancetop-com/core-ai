@@ -132,6 +132,7 @@ import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.notification.NotificationEventPublisher;
 import ai.core.server.notification.NotificationService;
 import ai.core.server.notification.NotificationTools;
+import ai.core.server.notification.SendNotificationHandler;
 import ai.core.server.user.UserService;
 import ai.core.server.trigger.TriggerController;
 import ai.core.server.trigger.TriggerService;
@@ -321,6 +322,7 @@ public class ServerModule extends Module {
 
         // notification tools — system-level tools for push notifications
         // NotificationService + NotificationEventPublisher are bound earlier (before bindService)
+        bind(SendNotificationHandler.class);
         var notificationTools = bind(NotificationTools.class);
         onStartup(notificationTools::initialize);
 

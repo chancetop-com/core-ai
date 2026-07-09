@@ -9,6 +9,7 @@ import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,7 +58,12 @@ public class NotificationService {
         if (status != null) {
             filters = Filters.and(filters, Filters.eq("status", status));
         }
-        return notificationCollection.find(filters, Sorts.descending("created_at"), offset, limit);
+        var query = new Query();
+        query.filter = filters;
+        query.sort = Sorts.descending("created_at");
+        query.skip = offset;
+        query.limit = limit;
+        return notificationCollection.find(query);
     }
 
     public long count(String userId, NotificationCategory category, NotificationStatus status) {
