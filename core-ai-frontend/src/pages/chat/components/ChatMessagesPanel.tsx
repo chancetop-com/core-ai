@@ -219,12 +219,8 @@ const ChatMessageRow = memo(function ChatMessageRow({
         )}
         {(msg.timestamp || hasTextSegments(msg.segments) || showFeedback) && (
           <div className={`flex items-center gap-2 mt-1 ${msg.role === 'user' ? 'justify-end' : ''}`}>
-            {msg.timestamp && (
-              <span className="text-[11px] leading-none select-none"
-                title={formatMessageTimeFull(msg.timestamp)}
-                style={{ color: 'var(--color-text-muted)' }}>
-                {formatMessageTime(msg.timestamp)}
-              </span>
+            {hasTextSegments(msg.segments) && (
+              <CopyButton text={getMessageText(msg)} />
             )}
             {showFeedback && (
               <button
@@ -237,8 +233,12 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 Feedback
               </button>
             )}
-            {hasTextSegments(msg.segments) && (
-              <CopyButton text={getMessageText(msg)} />
+            {msg.timestamp && (
+              <span className="text-[11px] leading-none select-none"
+                title={formatMessageTimeFull(msg.timestamp)}
+                style={{ color: 'var(--color-text-muted)' }}>
+                {formatMessageTime(msg.timestamp)}
+              </span>
             )}
           </div>
         )}
