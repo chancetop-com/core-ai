@@ -2,9 +2,12 @@ package ai.core.server.workflow;
 
 import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.NodeRunStatus;
+import ai.core.server.domain.NotificationCategory;
+import ai.core.server.domain.NotificationType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.notification.NotificationService;
 import ai.core.server.sandbox.SandboxService;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
@@ -65,6 +68,9 @@ public class WorkflowRunner {
     @Inject
     SandboxService sandboxService;
 
+    @Inject
+    NotificationService notificationService;
+
     /** Drive a run on a background thread. The claim is idempotent — a concurrent claim elsewhere just no-ops. */
     public void submit(String runId) {
         driverPool.execute(() -> {
@@ -102,6 +108,9 @@ public class WorkflowRunner {
             }
             if (status == RunStatus.PAUSED) {
                 pause(runId);   // parked on human input — not terminal, resume endpoint will wake it
+                notificationService.create(run.userId, null, run.sessionId,
+                    NotificationCategory.SYSTEM, NotificationType.PAUSE,
+                    "Workflow Paused", "Workflow \"" + run.workflowId + "\" is paused and waiting for human input");
                 return true;
             }
             boolean completed = status == RunStatus.COMPLETED;
@@ -109,6 +118,12 @@ public class WorkflowRunner {
             boolean finalized = terminate(runId, status, status == RunStatus.FAILED ? failureSummary(runId) : null,
                 endRun != null ? endRun.output : null,
                 endRun != null && endRun.artifacts != null ? endRun.artifacts : List.of());
+            if (finalized && (status == RunStatus.FAILED || status == RunStatus.CANCELLED)) {
+                var title = status == RunStatus.FAILED ? "Workflow Failed" : "Workflow Cancelled";
+                var msg = "Workflow \"" + run.workflowId + "\" has " + status.name().toLowerCase();
+                notificationService.create(run.userId, null, run.sessionId,
+                    NotificationCategory.SYSTEM, NotificationType.TERMINATE, title, msg);
+            }
             if (finalized && run.parentRunId != null) {
                 runCollection.get(runId).ifPresent(this::wakeParent);   // sub-workflow: settle parent + resume it
             }
@@ -123,6 +138,11 @@ public class WorkflowRunner {
             }
             LOGGER.error("workflow run failed to advance, runId={}", runId, e);
             boolean finalized = terminate(runId, RunStatus.FAILED, e.getMessage(), null, List.of());
+            if (finalized && run != null) {
+                notificationService.create(run.userId, null, run.sessionId,
+                    NotificationCategory.SYSTEM, NotificationType.TERMINATE,
+                    "Workflow Failed", "Workflow \"" + run.workflowId + "\" encountered an error");
+            }
             if (finalized && run != null && run.parentRunId != null) {
                 runCollection.get(runId).ifPresent(this::wakeParent);
             }

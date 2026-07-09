@@ -24,6 +24,7 @@ import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.server.domain.Notification;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.SystemSettings;
@@ -135,5 +136,8 @@ public class ServerApp extends App {
         // task collections
         mongo.collection(BackgroundTask.class);
         mongo.collection(TraceDailyStats.class);
+
+        // notification collection
+        mongo.collection(Notification.class);
     }
 }

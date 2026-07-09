@@ -11,6 +11,7 @@ import ai.core.api.server.AgentScheduleWebService;
 import ai.core.api.server.AgentSessionWebService;
 import ai.core.api.server.SkillWebService;
 import ai.core.api.server.ToolRegistryWebService;
+import ai.core.api.server.NotificationWebService;
 import ai.core.api.server.UserWebService;
 import ai.core.api.server.settings.SystemSettingsWebService;
 import ai.core.api.server.trigger.TriggerWebService;
@@ -128,6 +129,9 @@ import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillUploadController;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.notification.NotificationEventPublisher;
+import ai.core.server.notification.NotificationService;
+import ai.core.server.notification.NotificationTools;
 import ai.core.server.user.UserService;
 import ai.core.server.trigger.TriggerController;
 import ai.core.server.trigger.TriggerService;
@@ -160,11 +164,13 @@ import ai.core.server.web.WorkflowWebServiceImpl;
 import ai.core.server.web.AgentScheduleWebServiceImpl;
 import ai.core.server.web.sse.AgentSessionChannelListener;
 import ai.core.server.web.sse.ChannelService;
+import ai.core.server.web.sse.NotificationChannelListener;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.server.web.AgentSessionWebServiceImpl;
 import ai.core.server.web.FileWebServiceImpl;
 import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
+import ai.core.server.web.NotificationWebServiceImpl;
 import ai.core.server.web.AuthWebServiceImpl;
 import ai.core.server.web.UserWebServiceImpl;
 import ai.core.server.web.SystemSettingsWebServiceImpl;
@@ -248,6 +254,10 @@ public class ServerModule extends Module {
 
         var taskRunner = bind(TaskRunner.class);   // must be before bindService() — TaskController injects it
 
+        // NotificationService must be bound before bindService() — WorkflowRunner injects it
+        bind(NotificationService.class);
+        bind(NotificationEventPublisher.class);
+
         bindService();
         bindAuthService();
         bindGitHubService();
@@ -309,6 +319,11 @@ public class ServerModule extends Module {
         var selfHarnessTools = bind(SelfHarnessTools.class);
         onStartup(selfHarnessTools::initialize);
 
+        // notification tools — system-level tools for push notifications
+        // NotificationService + NotificationEventPublisher are bound earlier (before bindService)
+        var notificationTools = bind(NotificationTools.class);
+        onStartup(notificationTools::initialize);
+
         registerSystemPrompt();
         registerCapabilities();
         registerForYou();
@@ -317,6 +332,7 @@ public class ServerModule extends Module {
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
         sseConfig.listen(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_STREAM, StreamResponse.class, bind(A2AStreamChannelListener.class));
         sseConfig.listen(HTTPMethod.POST, "/api/litellm/v1/chat/completions", Object.class, bind(LiteLLMProxyChannelListener.class));
+        sseConfig.listen(HTTPMethod.PUT, "/api/notifications/events", Object.class, bind(NotificationChannelListener.class));
         registerStaticFiles();
     }
 
@@ -596,6 +612,7 @@ public class ServerModule extends Module {
         api().service(UserWebService.class, bind(UserWebServiceImpl.class));
         api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
         api().service(ToolRegistryWebService.class, bind(ToolRegistryWebServiceImpl.class));
+        api().service(NotificationWebService.class, bind(NotificationWebServiceImpl.class));
         api().service(AgentDefinitionWebService.class, bind(AgentDefinitionWebServiceImpl.class));
         api().service(AgentRunWebService.class, bind(AgentRunWebServiceImpl.class));
         api().service(WorkflowWebService.class, bind(WorkflowWebServiceImpl.class));
