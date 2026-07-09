@@ -255,9 +255,10 @@ public class ServerModule extends Module {
 
         var taskRunner = bind(TaskRunner.class);   // must be before bindService() — TaskController injects it
 
-        // NotificationService must be bound before bindService() — WorkflowRunner injects it
-        bind(NotificationService.class);
+        // NotificationService must be bound before bindService() — WorkflowRunner injects it.
+        // NotificationEventPublisher must be bound first — NotificationService injects it.
         bind(NotificationEventPublisher.class);
+        bind(NotificationService.class);
 
         bindService();
         bindAuthService();
