@@ -15,7 +15,7 @@ import core.framework.mongo.Mongo;
 public class SchemaMigrationVTraceDailyStatsAgent implements SchemaMigration {
     @Override
     public String version() {
-        return "20260008010";
+        return "20260707001";
     }
 
     @Override
