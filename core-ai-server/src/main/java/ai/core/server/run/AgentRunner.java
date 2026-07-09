@@ -468,8 +468,11 @@ public class AgentRunner {
             }
             // record experiment run — sessionId is "run:<id>" for scheduled runs;
             // outcome will be patched later via feedback for chat sessions
-            var experimentConfig = memoryExperimentService.resolveConfig(definition.id);
-            memoryExperimentService.startRun(definition.id, "run:" + runEntity.id, runEntity.id, experimentConfig, injectionResult);
+            // only record when user has explicitly configured an experiment
+            var experimentConfig = memoryExperimentService.getConfig(definition.id);
+            if (experimentConfig != null) {
+                memoryExperimentService.startRun(definition.id, "run:" + runEntity.id, runEntity.id, experimentConfig, injectionResult);
+            }
         }
         if (sandbox != null) {
             builder.addAgentLifecycle(new SandboxLifecycle(fileService,
