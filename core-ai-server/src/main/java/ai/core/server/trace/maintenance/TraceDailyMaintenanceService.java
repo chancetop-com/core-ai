@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -42,6 +43,7 @@ public class TraceDailyMaintenanceService {
     private static final String NO_AGENT = "(no agent)";
     private static final ZoneId UTC = ZoneId.of("UTC");
     private static final DateTimeFormatter YEAR_MONTH = DateTimeFormatter.ofPattern("yyyy-MM");
+    private static final int ARCHIVE_BATCH_SIZE = 1000;
 
     private static long getLong(org.bson.Document doc, String key) {
         Number value = doc.get(key, Number.class);
@@ -236,6 +238,9 @@ public class TraceDailyMaintenanceService {
      * <p>Safety check: skips archive if trace_daily_stats does not cover the
      * cutoff date (stats must exist before raw data is deleted).</p>
      *
+     * <p>Processes traces in batches ({@value #ARCHIVE_BATCH_SIZE} at a time)
+     * to keep memory bounded regardless of total trace count.</p>
+     *
      * @param cutoff traces strictly before this instant are archived
      * @return number of traces archived and deleted, or -1 if skipped
      */
@@ -255,68 +260,83 @@ public class TraceDailyMaintenanceService {
             return -1;
         }
 
-        // Query traces to archive
-        var query = new Query();
-        query.filter = Filters.lt("started_at", cutoff);
-        query.sort = Sorts.ascending("started_at");
-        var traces = traceCollection.find(query);
-        int traceCount = traces.size();
-
-        if (traceCount == 0) {
+        int totalCount = (int) traceCollection.count(Filters.lt("started_at", cutoff));
+        if (totalCount == 0) {
             LOGGER.info("no traces to archive, cutoff={}", cutoff);
             return 0;
         }
 
-        // Query all spans for these traces in one batch
-        Map<String, List<Span>> spansByTraceId = findSpansByTraceIds(traces);
-
-        // NDJSON (trace + spans) → gzip → temp file → upload → delete
         String blobName = String.format("traces-archive/%s/%s.json.gz",
                 cutoffDate.format(YEAR_MONTH), cutoffDate);
-        Path tempFile;
+        Path tempFile = null;
+        List<String> allTraceIds = new ArrayList<>(totalCount);
+
         try {
-            tempFile = writeArchiveToTempFile(traces, spansByTraceId);
-        } catch (IOException e) {
-            throw new RuntimeException("failed to write archive to temp file", e);
-        }
-        try {
+            tempFile = Files.createTempFile("traces-archive-", ".json.gz");
+            int totalSpanCount = writeArchiveBatched(tempFile, cutoff, allTraceIds);
+
             storageService.uploadObject(archiveContainer, blobName, tempFile);
-            LOGGER.info("uploaded archive blob: container={}, blob={}", archiveContainer, blobName);
+            LOGGER.info("uploaded archive blob: container={}, blob={}, size={} bytes",
+                    archiveContainer, blobName, Files.size(tempFile));
 
             // Delete spans first (child records), then traces (parent records)
-            List<String> traceIds = traces.stream()
-                    .map(t -> t.traceId)
-                    .filter(id -> id != null && !id.isEmpty())
-                    .toList();
-            if (!traceIds.isEmpty()) {
-                long deletedSpans = spanCollection.delete(Filters.in("trace_id", traceIds));
-                LOGGER.info("deleted {} spans, cutoff={}", deletedSpans, cutoff);
-            }
+            deleteSpansBatched(allTraceIds);
             traceCollection.delete(Filters.lt("started_at", cutoff));
-            LOGGER.info("archived {} traces (with spans) to blob, cutoff={}", traceCount, cutoff);
+            LOGGER.info("archived {} traces + {} spans to blob {}, cutoff={}",
+                    totalCount, totalSpanCount, blobName, cutoff);
+        } catch (IOException e) {
+            throw new RuntimeException("failed to write archive to temp file", e);
         } finally {
             deleteTempFileQuietly(tempFile);
         }
-        return traceCount;
+        return totalCount;
     }
 
-    private Path writeArchiveToTempFile(List<Trace> traces, Map<String, List<Span>> spansByTraceId) throws IOException {
-        Path tempFile = Files.createTempFile("traces-archive-", ".json.gz");
-        int spanCount = 0;
+    /**
+     * Stream traces + spans to a gzipped temp file in batches.
+     * Returns the total number of spans written.
+     */
+    private int writeArchiveBatched(Path tempFile, ZonedDateTime cutoff, List<String> allTraceIds) throws IOException {
+        int totalSpanCount = 0;
+        int offset = 0;
         try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(tempFile));
              var writer = new BufferedWriter(new OutputStreamWriter(gzipOut))) {
-            for (var trace : traces) {
-                writeArchiveLine(writer, "trace", trace);
-                List<Span> spans = spansByTraceId.getOrDefault(trace.traceId, List.of());
-                for (var span : spans) {
-                    writeArchiveLine(writer, "span", span);
-                    spanCount++;
+            while (true) {
+                var batchQuery = new Query();
+                batchQuery.filter = Filters.lt("started_at", cutoff);
+                batchQuery.sort = Sorts.ascending("started_at");
+                batchQuery.skip = offset;
+                batchQuery.limit = ARCHIVE_BATCH_SIZE;
+                var batch = traceCollection.find(batchQuery);
+                if (batch.isEmpty()) break;
+
+                var spansByTraceId = findSpansByTraceIds(batch);
+                for (var trace : batch) {
+                    writeArchiveLine(writer, "trace", trace);
+                    var spans = spansByTraceId.getOrDefault(trace.traceId, List.of());
+                    for (var span : spans) {
+                        writeArchiveLine(writer, "span", span);
+                    }
+                    totalSpanCount += spans.size();
+                    if (trace.traceId != null) allTraceIds.add(trace.traceId);
                 }
+                offset += batch.size();
+                LOGGER.info("archive batch written: {} traces, offset={}", batch.size(), offset);
             }
         }
         LOGGER.info("serialized {} traces + {} spans to temp file, size={} bytes",
-                traces.size(), spanCount, Files.size(tempFile));
-        return tempFile;
+                allTraceIds.size(), totalSpanCount, Files.size(tempFile));
+        return totalSpanCount;
+    }
+
+    private void deleteSpansBatched(List<String> traceIds) {
+        if (traceIds.isEmpty()) return;
+        for (int i = 0; i < traceIds.size(); i += ARCHIVE_BATCH_SIZE) {
+            int end = Math.min(i + ARCHIVE_BATCH_SIZE, traceIds.size());
+            var subList = traceIds.subList(i, end);
+            long deleted = spanCollection.delete(Filters.in("trace_id", subList));
+            LOGGER.info("deleted {} spans, batch {}-{}/{}", deleted, i, end, traceIds.size());
+        }
     }
 
     private void writeArchiveLine(BufferedWriter writer, String type, Object obj) throws IOException {
