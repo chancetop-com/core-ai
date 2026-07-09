@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.api.server.NotificationWebService;
+import ai.core.api.server.notification.ListNotificationsRequest;
 import ai.core.api.server.notification.ListNotificationsResponse;
 import ai.core.api.server.notification.NotificationView;
 import ai.core.api.server.notification.UnreadCountResponse;
@@ -22,12 +23,12 @@ public class NotificationWebServiceImpl implements NotificationWebService {
     WebContext webContext;
 
     @Override
-    public ListNotificationsResponse list(String category, String status, Integer offset, Integer limit) {
+    public ListNotificationsResponse list(ListNotificationsRequest request) {
         var userId = AuthContext.userId(webContext);
-        var categoryEnum = category != null ? NotificationCategory.valueOf(category.toUpperCase()) : null;
-        var statusEnum = status != null ? NotificationStatus.valueOf(status.toUpperCase()) : null;
-        int off = offset != null ? offset : 0;
-        int lim = limit != null ? limit : 50;
+        var categoryEnum = request.category != null ? NotificationCategory.valueOf(request.category.toUpperCase()) : null;
+        var statusEnum = request.status != null ? NotificationStatus.valueOf(request.status.toUpperCase()) : null;
+        int off = request.offset != null ? request.offset : 0;
+        int lim = request.limit != null ? request.limit : 50;
 
         var notifications = notificationService.list(userId, categoryEnum, statusEnum, off, lim);
         long total = notificationService.count(userId, categoryEnum, statusEnum);
