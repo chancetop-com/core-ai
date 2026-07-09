@@ -1,8 +1,10 @@
 package ai.core.server.agentbuilder;
 
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
+import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
@@ -19,12 +21,25 @@ public class AgentBuilderTools {
     @Inject
     ToolRegistryService toolRegistryService;
 
+    @Inject
+    SkillService skillService;
+
+    @Inject
+    DatasetService datasetService;
+
     public void initialize() {
         var listTool = ListAgentsTool.create(agentDefinitionService);
         var createTool = CreateAgentDraftTool.create(agentDefinitionService);
         var updateTool = UpdateAgentDraftTool.create(agentDefinitionService);
         var publishTool = PublishAgentDraftTool.create(agentDefinitionService);
-        toolRegistryService.registerToolSet("builtin-agent-builder", List.of(listTool, createTool, updateTool, publishTool));
+        var getDetailTool = GetAgentDetailTool.create(agentDefinitionService);
+        var listSkillsTool = ListSkillsTool.create(skillService);
+        var listDatasetsTool = ListDatasetsTool.create(datasetService);
+        var listToolsTool = ListToolsTool.create(toolRegistryService);
+        toolRegistryService.registerToolSet("builtin-agent-builder", List.of(
+            listTool, createTool, updateTool, publishTool,
+            getDetailTool, listSkillsTool, listDatasetsTool, listToolsTool
+        ));
     }
 
     public List<ToolCall> tools() {
