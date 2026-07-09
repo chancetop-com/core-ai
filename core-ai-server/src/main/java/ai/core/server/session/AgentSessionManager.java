@@ -262,8 +262,11 @@ public class AgentSessionManager {
                 memoryInject);
 
         // record experiment run for this session
-        var experimentConfig = memoryExperimentService.resolveConfig(definition.id);
-        memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);
+        // only record when user has explicitly configured an experiment
+        var experimentConfig = memoryExperimentService.getConfig(definition.id);
+        if (experimentConfig != null) {
+            memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);
+        }
 
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessionRef[0] = session;
