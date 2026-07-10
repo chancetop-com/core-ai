@@ -92,11 +92,11 @@ export default function Notifications() {
   const categoryLabel = (c: string) => c === 'AGENT' ? 'Agent' : c === 'SYSTEM' ? 'System' : c;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold">Notifications</h2>
+          <h1 className="text-2xl font-semibold">Notifications</h1>
           {unreadCount > 0 && (
             <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-medium rounded-full"
               style={{ background: 'var(--color-primary)', color: '#fff' }}>
@@ -136,7 +136,7 @@ export default function Notifications() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
         {loading ? (
           <div className="flex items-center justify-center h-40">
             <Loader2 size={24} className="animate-spin" style={{ color: 'var(--color-text-secondary)' }} />
@@ -156,7 +156,7 @@ export default function Notifications() {
             {notifications.map(n => (
               <div
                 key={n.id}
-                className={`px-6 py-3 transition-colors ${n.status === 'UNREAD' ? '' : 'opacity-70'}`}
+                className={`px-4 py-3 transition-colors ${n.status === 'UNREAD' ? '' : 'opacity-70'}`}
                 style={n.status === 'UNREAD' ? { background: 'var(--color-bg-secondary)' } : {}}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -205,7 +205,7 @@ export default function Notifications() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 px-6 py-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="flex items-center justify-center gap-2 mt-4">
           <button
             disabled={page === 0}
             onClick={() => handleGoTo(page - 1)}
