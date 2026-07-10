@@ -82,11 +82,7 @@ class SandboxModule extends Module {
     private String resolveServerUrlFromSandbox(String defaultHost) {
         var configured = property("sys.sandbox.server.url").orElse(null);
         if (configured != null && !configured.isBlank()) return trimTrailingSlash(configured.trim());
-        var publicUrl = property("sys.public.url").orElse("http://localhost:8080");
-        var uri = URI.create(publicUrl);
-        var scheme = uri.getScheme() != null ? uri.getScheme() : "http";
-        var port = resolvePublicUrlPort(uri);
-        return scheme + "://" + defaultHost + (port != null ? ":" + port : "");
+        return "http://" + defaultHost + ":8080";
     }
 
     private Integer resolvePublicUrlPort(URI uri) {
