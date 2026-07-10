@@ -30,7 +30,7 @@ final class SessionDatasetHelper {
 
     void addDatasetToolsToRegistry(ToolRegistry registry, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
         if (datasetConfig == null || datasetConfig.isEmpty()) return;
-        var accessRegistry = DatasetAccessRegistry.from(datasetConfig);
+        var accessRegistry = DatasetAccessRegistry.from(datasetConfig, datasetService);
         registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, agentId, sessionId));
     }
 
@@ -81,7 +81,7 @@ final class SessionDatasetHelper {
         var dp = new AgentDatasetConfig();
         dp.datasetId = config.datasetId;
         dp.permission = DatasetPermission.FULL;
-        var accessRegistry = DatasetAccessRegistry.from(List.of(dp));
+        var accessRegistry = DatasetAccessRegistry.from(List.of(dp), datasetService);
         registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, "default", sessionId));
         return registry;
     }

@@ -300,7 +300,7 @@ public class AgentRunBuilder {
     private void addDatasetTools(ToolRegistry registry, AgentDefinition definition, String runId) {
         var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
         if (datasetConfig == null || datasetConfig.isEmpty()) return;
-        var accessRegistry = DatasetAccessRegistry.from(datasetConfig);
+        var accessRegistry = DatasetAccessRegistry.from(datasetConfig, datasetService);
         registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, definition.id, runId));
     }
 
