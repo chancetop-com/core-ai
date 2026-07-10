@@ -104,6 +104,20 @@ public class SessionCommandQueue {
         }
     }
 
+    /**
+     * Removes all TASK_NOTIFICATION commands from the queue.
+     * Called after a turn is cancelled to prevent stale task notifications
+     * from spawning spurious turns.
+     */
+    public void drainTaskNotifications() {
+        lock.lock();
+        try {
+            queue.removeIf(cmd -> cmd.mode() == CommandMode.TASK_NOTIFICATION);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public enum CommandMode {
         USER_INPUT(0),
         TASK_NOTIFICATION(1);

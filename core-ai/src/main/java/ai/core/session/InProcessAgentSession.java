@@ -126,11 +126,13 @@ public class InProcessAgentSession implements AgentSession {
             debug("tool call denied: " + e.getMessage());
             dispatch(TurnCompleteEvent.cancelled(sessionId));
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            commandQueue.drainTaskNotifications();
         } catch (Throwable e) {
             if (agent.isCancelled()) {
                 debug("agent run cancelled");
                 dispatch(TurnCompleteEvent.cancelled(sessionId));
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+                commandQueue.drainTaskNotifications();
                 return;
             }
             debug("agent run failed: " + e);
@@ -171,6 +173,7 @@ public class InProcessAgentSession implements AgentSession {
             debug("agent run cancelled");
             dispatch(TurnCompleteEvent.cancelled(sessionId));
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            commandQueue.drainTaskNotifications();
             return;
         }
         if (agent.hasPersistenceProvider()) {
@@ -206,6 +209,7 @@ public class InProcessAgentSession implements AgentSession {
             debug("agent run cancelled");
             dispatch(TurnCompleteEvent.cancelled(sessionId));
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            commandQueue.drainTaskNotifications();
             return;
         }
         if (agent.hasPersistenceProvider()) {
