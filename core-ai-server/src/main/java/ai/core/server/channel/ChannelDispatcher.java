@@ -122,7 +122,7 @@ public class ChannelDispatcher {
             if (definition == null) {
                 throw new IllegalStateException("agent not found: " + channel.agentId);
             }
-            var result = sessionManager.createSessionFromAgent(definition, config, userId, "channel:" + channel.channelType);
+            var result = sessionManager.createSessionFromAgent(definition, config, userId, "channel");
             var sessionId = result.sessionId();
 
             conversationSessionMap.put(conversationKey, sessionId);
@@ -132,7 +132,7 @@ public class ChannelDispatcher {
         }
 
         // Fallback: no agent configured, use default agent
-        var sessionId = sessionManager.createSession(config, userId, "channel:" + channel.channelType);
+        var sessionId = sessionManager.createSession(config, userId, "channel");
         conversationSessionMap.put(conversationKey, sessionId);
         LOGGER.info("created channel session (default agent), channelId={}, type={}, sessionId={}, userId={}",
                 channel.channelId, channel.channelType, sessionId, userId);

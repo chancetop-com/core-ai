@@ -38,6 +38,7 @@ export function sourceColors(source?: string): SourcePalette {
     case 'llm_api':  return { label: 'LLM API',   color: '#f59e0b' };
     case 'external': return { label: 'External',  color: '#64748b' };
     case 'cli':      return { label: 'CLI',       color: '#14b8a6' };
+    case 'channel':  return { label: 'Channel',   color: '#f97316' };
     case 'system':   return { label: 'System',    color: '#06b6d4' };
     default:         return { label: 'Unknown',   color: '#94a3b8' };
   }

@@ -105,7 +105,7 @@ public class ChannelSyncController implements Controller {
             } catch (NotFoundException e) {
                 sessionCache.remove(userField, sessionId);
                 var config = new SessionConfig();
-                var result = sessionManager.createSessionFromAgent(agent, config, userId, "channel-" + channelId);
+                var result = sessionManager.createSessionFromAgent(agent, config, userId, "channel");
                 sessionId = result.sessionId();
                 sessionCache.put(userField, sessionId);
                 initialMessageCount = 0;
@@ -119,7 +119,7 @@ public class ChannelSyncController implements Controller {
                 sessionCache.remove(userField);
             }
             var config = new SessionConfig();
-            var result = sessionManager.createSessionFromAgent(agent, config, userId, "channel-" + channelId);
+            var result = sessionManager.createSessionFromAgent(agent, config, userId, "channel");
             sessionId = result.sessionId();
             initialMessageCount = 0;
             if (userField != null) {
