@@ -125,6 +125,7 @@ import ai.core.server.sandbox.snapshot.SandboxSnapshotCleanupJob;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.skill.MarketplaceService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
@@ -702,6 +703,7 @@ public class ServerModule extends Module {
     }
     private void registerSkill() {
         bind(SkillService.class);
+        bind(MarketplaceService.class);
         bind(MongoSkillProvider.class);
         bind(new SkillArchiveBuilder());
         bind(ai.core.server.skill.SkillToolAssembler.class);

@@ -49,6 +49,8 @@ export default function Layout() {
     const path = location.pathname;
     const title = titles[path]
       || (path.startsWith('/agents/') ? 'Agent Detail' : null)
+      || (path.startsWith('/skills/marketplace/') ? 'Marketplace Repo' : null)
+      || (path.startsWith('/skills/') ? 'Skill Detail' : null)
       || (path.startsWith('/traces/') ? 'Trace Detail' : null)
       || (path.startsWith('/runs/') ? 'Run Detail' : null)
       || (path.startsWith('/system-prompts/') ? 'System Prompt' : null)

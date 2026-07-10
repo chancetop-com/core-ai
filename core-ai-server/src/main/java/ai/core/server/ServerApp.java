@@ -26,6 +26,7 @@ import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.Notification;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -85,6 +86,7 @@ public class ServerApp extends App {
         mongo.collection(GatewayModelConfig.class);
         mongo.collection(GatewayProviderConfig.class);
         mongo.collection(SkillDefinition.class);
+        mongo.collection(MarketplaceRepo.class);
         mongo.collection(SchemaVersion.class);
 
         mongo.collection(SystemPrompt.class);

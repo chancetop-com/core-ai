@@ -40,6 +40,7 @@ const ApiTools = lazy(() => import('./pages/api-tools/ApiTools'));
 const ApiToolDetail = lazy(() => import('./pages/api-tools/ApiToolDetail'));
 const SkillList = lazy(() => import('./pages/skills/SkillList'));
 const SkillEditor = lazy(() => import('./pages/skills/SkillEditor'));
+const MarketplaceRepoDetail = lazy(() => import('./pages/skills/MarketplaceRepoDetail'));
 const DatasetList = lazy(() => import('./pages/datasets/DatasetList'));
 const DatasetEditor = lazy(() => import('./pages/datasets/DatasetEditor'));
 const DatasetRecords = lazy(() => import('./pages/datasets/DatasetRecords'));
@@ -162,6 +163,7 @@ export default function App() {
                     <Route path="/api-tools" element={<ApiTools />} />
                     <Route path="/api-tools/:id" element={<ApiToolDetail />} />
                     <Route path="/skills" element={<SkillList />} />
+                    <Route path="/skills/marketplace/:repoId" element={<MarketplaceRepoDetail />} />
                     <Route path="/skills/:id/edit" element={<SkillEditor />} />
                     <Route path="/datasets" element={<DatasetList />} />
                     <Route path="/datasets/:id" element={<DatasetEditor />} />

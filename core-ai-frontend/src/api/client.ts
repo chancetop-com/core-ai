@@ -472,18 +472,51 @@ export interface ListRunsResponse {
 }
 
 export interface SkillDefinition {
-  id: string;
-  namespace: string;
-  name: string;
-  qualified_name: string;
-  description: string;
-  source_type: 'UPLOAD' | 'REPO';
-  allowed_tools: string[];
-  metadata: Record<string, string>;
-  version: string;
-  user_id: string;
-  created_at: string;
-  updated_at: string;
+    id: string;
+    namespace: string;
+    name: string;
+    qualified_name: string;
+    description: string;
+    source_type: 'UPLOAD' | 'REPO';
+    allowed_tools: string[];
+    metadata: Record<string, string>;
+    version: string;
+    user_id: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface MarketplaceRepoView {
+    id: string;
+    name: string;
+    repo_url: string;
+    description: string;
+    icon_url: string;
+    skill_count: number;
+    featured: boolean;
+    category: string;
+    installed: boolean;
+    created_at: string;
+}
+
+export interface MarketplaceListResponse {
+    repos: MarketplaceRepoView[];
+    uploaded_count: number;
+}
+
+export interface MarketplaceRepoDetailResponse {
+    id: string;
+    name: string;
+    repo_url: string;
+    description: string;
+    icon_url: string;
+    branch: string;
+    skill_path: string;
+    skill_count: number;
+    category: string;
+    installed: boolean;
+    created_at: string;
+    skills: SkillDefinition[];
 }
 
 export interface ListSkillsResponse {
@@ -1268,44 +1301,59 @@ export const api = {
     test: (promptId: string, data: { model: string; userMessage: string; variables?: Record<string, string> }) =>
       request<SystemPromptTestResult>(`/api/system-prompts/${promptId}/test`, { method: 'POST', body: JSON.stringify(data) }),
   },
-  skills: {
-    list: (namespace?: string, sourceType?: string, q?: string, userId?: string, offset?: number, limit?: number, searchIn?: string) => {
-      const params = new URLSearchParams();
-      if (namespace) params.set('namespace', namespace);
-      if (sourceType) params.set('source_type', sourceType);
-      if (q) params.set('q', q);
-      if (searchIn) params.set('search_in', searchIn);
-      if (userId) params.set('user_id', userId);
-      if (offset !== undefined) params.set('offset', String(offset));
-      if (limit !== undefined) params.set('limit', String(limit));
-      return request<ListSkillsResponse>(`/api/skills${params.toString() ? `?${params}` : ''}`);
+    skills: {
+        list: (namespace?: string, sourceType?: string, q?: string, userId?: string, offset?: number, limit?: number, searchIn?: string) => {
+            const params = new URLSearchParams();
+            if (namespace) params.set('namespace', namespace);
+            if (sourceType) params.set('source_type', sourceType);
+            if (q) params.set('q', q);
+            if (searchIn) params.set('search_in', searchIn);
+            if (userId) params.set('user_id', userId);
+            if (offset !== undefined) params.set('offset', String(offset));
+            if (limit !== undefined) params.set('limit', String(limit));
+            return request<ListSkillsResponse>(`/api/skills${params.toString() ? `?${params}` : ''}`);
+        },
+        get: (id: string) =>
+            request<SkillDefinition>(`/api/skills/${id}`),
+        update: (id: string, data: UpdateSkillRequest) =>
+            request<SkillDefinition>(`/api/skills/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+        delete: (id: string) =>
+            request<void>(`/api/skills/${id}`, { method: 'DELETE' }),
+        sync: (id: string) =>
+            request<SkillDefinition>(`/api/skills/${id}/sync`, { method: 'POST' }),
+        download: (id: string) =>
+            request<SkillDownloadResponse>(`/api/skills/${id}/download`),
+        upload: async (skillFile: File, resourceFiles?: File[]): Promise<SkillDefinition> => {
+            const formData = new FormData();
+            formData.append('skill_file', skillFile);
+            if (resourceFiles) {
+                for (const f of resourceFiles) {
+                    formData.append(f.name, f);
+                }
+            }
+            const headers: Record<string, string> = { 'Accept': 'application/json' };
+            const apiKey = localStorage.getItem('apiKey');
+            if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+            const res = await fetch('/api/skills/upload', { method: 'POST', headers, body: formData });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            return res.json();
+        },
+        registerFromRepo: (repoUrl: string, branch?: string, skillPath?: string) =>
+            request<{ skills: SkillDefinition[] }>('/api/skills/repo', {
+                method: 'POST',
+                body: JSON.stringify({ repo_url: repoUrl, branch, skill_path: skillPath }),
+            }),
+        getMarketplace: () =>
+            request<MarketplaceListResponse>('/api/skills/marketplace'),
+        getMarketplaceRepo: (repoId: string) =>
+            request<MarketplaceRepoDetailResponse>(`/api/skills/marketplace/${repoId}`),
+        installMarketplaceRepo: (repoId: string) =>
+            request<{ skills: SkillDefinition[] }>(`/api/skills/marketplace/${repoId}/install`, { method: 'POST' }),
+        deleteMarketplaceRepo: (repoId: string) =>
+            request<void>(`/api/skills/marketplace/${repoId}`, { method: 'DELETE' }),
+        createMarketplaceRepo: (data: { repo_url: string; branch?: string }) =>
+            request<MarketplaceRepoView>('/api/skills/marketplace', { method: 'POST', body: JSON.stringify(data) }),
     },
-    get: (id: string) =>
-      request<SkillDefinition>(`/api/skills/${id}`),
-    update: (id: string, data: UpdateSkillRequest) =>
-      request<SkillDefinition>(`/api/skills/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (id: string) =>
-      request<void>(`/api/skills/${id}`, { method: 'DELETE' }),
-    sync: (id: string) =>
-      request<SkillDefinition>(`/api/skills/${id}/sync`, { method: 'POST' }),
-    download: (id: string) =>
-      request<SkillDownloadResponse>(`/api/skills/${id}/download`),
-    upload: async (skillFile: File, resourceFiles?: File[]): Promise<SkillDefinition> => {
-      const formData = new FormData();
-      formData.append('skill_file', skillFile);
-      if (resourceFiles) {
-        for (const f of resourceFiles) {
-          formData.append(f.name, f);
-        }
-      }
-      const headers: Record<string, string> = { 'Accept': 'application/json' };
-      const apiKey = localStorage.getItem('apiKey');
-      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-      const res = await fetch('/api/skills/upload', { method: 'POST', headers, body: formData });
-      if (!res.ok) throw new Error(await errorMessage(res));
-      return res.json();
-    },
-  },
   tools: {
     list: (category?: string) => {
       const params = category ? `?category=${category}` : '';

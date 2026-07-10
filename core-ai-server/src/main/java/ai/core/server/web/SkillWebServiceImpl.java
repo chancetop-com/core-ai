@@ -3,13 +3,19 @@ package ai.core.server.web;
 import ai.core.api.server.SkillWebService;
 import ai.core.api.server.skill.ListSkillsRequest;
 import ai.core.api.server.skill.ListSkillsResponse;
+import ai.core.api.server.skill.MarketplaceListResponse;
+import ai.core.api.server.skill.MarketplaceRepoDetailResponse;
+import ai.core.api.server.skill.CreateMarketplaceRepoRequest;
+import ai.core.api.server.skill.MarketplaceRepoView;
 import ai.core.api.server.skill.RegisterRepoSkillRequest;
 import ai.core.api.server.skill.RegisterRepoSkillsResponse;
 import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillDownloadResponse;
 import ai.core.api.server.skill.UpdateSkillRequest;
+import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
+import ai.core.server.skill.MarketplaceService;
 import ai.core.server.skill.SkillService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
@@ -23,6 +29,9 @@ import java.util.List;
 public class SkillWebServiceImpl implements SkillWebService {
     @Inject
     SkillService skillService;
+
+    @Inject
+    MarketplaceService marketplaceService;
 
     @Inject
     WebContext webContext;
@@ -105,6 +114,76 @@ public class SkillWebServiceImpl implements SkillWebService {
             }).toList();
         }
         return response;
+    }
+
+    @Override
+    public MarketplaceRepoView createMarketplaceRepo(CreateMarketplaceRepoRequest request) {
+        var repo = marketplaceService.register(request.repoUrl, request.branch);
+        var view = toRepoView(repo);
+        view.installed = true;
+        return view;
+    }
+
+    @Override
+    public MarketplaceListResponse marketplace() {
+        var repos = marketplaceService.listRepos();
+        long uploadedCount = marketplaceService.countUploadedSkills();
+        var response = new MarketplaceListResponse();
+        response.repos = repos.stream().map(repo -> {
+            var view = toRepoView(repo);
+            view.installed = marketplaceService.isInstalled(repo.id);
+            return view;
+        }).toList();
+        response.uploadedCount = uploadedCount;
+        return response;
+    }
+
+    @Override
+    public MarketplaceRepoDetailResponse marketplaceRepo(String repoId) {
+        var repo = marketplaceService.getRepo(repoId);
+        var skills = marketplaceService.listRepoSkills(repoId);
+        var response = new MarketplaceRepoDetailResponse();
+        response.id = repo.id;
+        response.name = repo.name;
+        response.repoUrl = repo.repoUrl;
+        response.description = repo.description;
+        response.iconUrl = repo.iconUrl;
+        response.branch = repo.branch;
+        response.skillPath = repo.skillPath;
+        response.skillCount = repo.skillCount;
+        response.category = repo.category;
+        response.installed = !skills.isEmpty();
+        response.createdAt = repo.createdAt;
+        response.skills = skills.stream().map(this::toView).toList();
+        return response;
+    }
+
+    @Override
+    public RegisterRepoSkillsResponse installMarketplaceRepo(String repoId) {
+        var userId = AuthContext.userId(webContext);
+        var skills = marketplaceService.installRepo(userId, repoId);
+        var response = new RegisterRepoSkillsResponse();
+        response.skills = skills.stream().map(this::toView).toList();
+        return response;
+    }
+
+    @Override
+    public void deleteMarketplaceRepo(String repoId) {
+        marketplaceService.delete(repoId);
+    }
+
+    private MarketplaceRepoView toRepoView(MarketplaceRepo repo) {
+        var view = new MarketplaceRepoView();
+        view.id = repo.id;
+        view.name = repo.name;
+        view.repoUrl = repo.repoUrl;
+        view.description = repo.description;
+        view.iconUrl = repo.iconUrl;
+        view.skillCount = repo.skillCount;
+        view.featured = repo.featured;
+        view.category = repo.category;
+        view.createdAt = repo.createdAt;
+        return view;
     }
 
     private SkillDefinitionView toView(SkillDefinition entity) {
