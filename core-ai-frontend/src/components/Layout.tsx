@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Database, Files, FlaskConical, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bell, Bot, Calendar, ChevronRight, Database, Files, FlaskConical, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -39,6 +39,7 @@ export default function Layout() {
       '/skills': 'Skills',
       '/datasets': 'Datasets',
       '/settings': 'Settings',
+      '/notifications': 'Notifications',
       '/triggers': 'Triggers',
       '/triggers/webhook': 'Webhook Triggers',
       '/triggers/channels': 'Channels',
@@ -210,6 +211,12 @@ export default function Layout() {
               {user.name || user.userId}
             </div>
           )}
+          <button onClick={() => navigate('/notifications')}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
+            style={{ color: 'var(--color-text-secondary)' }}>
+            <Bell size={16} />
+            {!collapsed && 'Notifications'}
+          </button>
           <button onClick={() => navigate('/settings')}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
             style={{ color: 'var(--color-text-secondary)' }}>

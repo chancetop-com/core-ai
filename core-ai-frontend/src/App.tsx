@@ -50,6 +50,7 @@ const OpenClaw = lazy(() => import('./pages/openclaw/OpenClaw'));
 const ForYou = lazy(() => import('./pages/for-you/ForYou'));
 const ArtifactList = lazy(() => import('./pages/artifacts/ArtifactList'));
 const SharedArtifact = lazy(() => import('./pages/shared/SharedArtifact'));
+const NotificationsPage = lazy(() => import('./pages/notifications/Notifications'));
 const MemoryExperiment = lazy(() => import('./pages/experiments/MemoryExperimentList'));
 const MemoryExperimentRunDetail = lazy(() => import('./pages/experiments/MemoryExperimentRunDetail'));
 const MemoryExperimentConfigDetail = lazy(() => import('./pages/experiments/MemoryExperimentConfigDetail'));
@@ -177,6 +178,7 @@ export default function App() {
                       {user?.role === 'admin' && <Route path="tasks" element={<Tasks />} />}
                       {user?.role !== 'admin' && <Route index element={<Navigate to="/settings/api-keys" replace />} />}
                     </Route>
+                    <Route path="/notifications" element={<NotificationsPage />} />
                     <Route path="*" element={<Navigate to={defaultPath} replace />} />
                   </Route>
                 )}

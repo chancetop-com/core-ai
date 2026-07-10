@@ -1119,6 +1119,28 @@ export interface SystemSettingsRequest {
   llm_model_multimodal?: string | null;
 }
 
+export interface NotificationView {
+  id: string;
+  category: string;
+  type: string;
+  title: string;
+  message: string;
+  agent_id?: string;
+  session_id?: string;
+  status: string;
+  created_at: string;
+  read_at?: string;
+}
+
+export interface ListNotificationsResponse {
+  notifications: NotificationView[];
+  total: number;
+}
+
+export interface UnreadCountResponse {
+  unread_count: number;
+}
+
 export const api = {
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
@@ -1558,6 +1580,20 @@ export const api = {
       if (userId) params.set('user_id', userId);
       return request<ListSharedArtifactsResponse>(`/api/artifacts/shared?${params}`);
     },
+  },
+  notifications: {
+    list: (category?: string, status?: string, offset = 0, limit = 20) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (category) params.set('category', category);
+      if (status) params.set('status', status);
+      return request<ListNotificationsResponse>(`/api/notifications?${params}`);
+    },
+    unreadCount: () =>
+      request<UnreadCountResponse>('/api/notifications/unread-count'),
+    markRead: (id: string) =>
+      request<void>(`/api/notifications/${id}/read`, { method: 'POST' }),
+    markAllRead: () =>
+      request<void>('/api/notifications/read-all', { method: 'POST' }),
   },
   experiments: {
     listRuns: (agentId?: string, skip = 0, limit = 10) => {
