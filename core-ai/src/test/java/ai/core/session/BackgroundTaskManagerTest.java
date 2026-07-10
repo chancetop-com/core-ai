@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class BackgroundTaskManagerTest {
 
     @Test
+    @SuppressWarnings({"checkstyle:NestedTryDepth", "PMD.UseTryWithResources"})
     void backgroundTaskKeepsSubmittingTraceContext() throws Exception {
         var spans = new RecordingSpanProcessor();
         var tracerProvider = SdkTracerProvider.builder()

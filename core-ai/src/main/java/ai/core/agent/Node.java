@@ -208,7 +208,7 @@ public abstract class Node<T extends Node<T>> {
     private String aroundExecute(BiFunction<String, Map<String, Object>, String> exec, String query) {
         try {
             AtomicReference<String> queryRef = new AtomicReference<>(query);
-            agentLifecycles.forEach(alc -> alc.beforeAgentRun(Node.this, queryRef, getExecutionContext()));
+            agentLifecycles.forEach(alc -> alc.beforeAgentRun(this, queryRef, getExecutionContext()));
             var rs = exec.apply(queryRef.get(), getExecutionContext().getCustomVariables());
             AtomicReference<String> resultRef = new AtomicReference<>(rs);
             agentLifecycles.forEach(alc -> alc.afterAgentRun(queryRef.get(), resultRef, getExecutionContext()));

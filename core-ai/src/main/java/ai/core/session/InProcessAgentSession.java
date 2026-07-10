@@ -43,7 +43,6 @@ public class InProcessAgentSession implements AgentSession {
     private final SessionCommandQueue commandQueue;
     private final TurnDriver turnDriver;
     private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
-    private volatile Thread executingThread;
     private final ServerPermissionLifecycle permissionLifecycle;
 
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
@@ -106,7 +105,7 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     private void executeCommands(SessionCommandQueue.CommandBatch batch) {
-        executingThread = Thread.currentThread();
+        var executingThread = Thread.currentThread();
         var turnToken = agent.getCancellationToken().createChild();
         agent.getExecutionContext().setCancellationToken(turnToken);
         var threadUnbind = turnToken.bindThread(executingThread);
@@ -142,7 +141,6 @@ public class InProcessAgentSession implements AgentSession {
         } finally {
             threadUnbind.run();
             turnToken.disconnect();
-            executingThread = null;
         }
     }
 

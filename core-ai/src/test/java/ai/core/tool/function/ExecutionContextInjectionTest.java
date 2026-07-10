@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -139,7 +140,7 @@ class ExecutionContextInjectionTest {
         assertTrue(result.isCompleted());
         assertTrue(result.getResult().contains("hello.html"));
         // the internal object must not leak into the serialized arguments
-        assertTrue(!result.getResult().contains("internal_url_resolver"));
+        assertFalse(result.getResult().contains("internal_url_resolver"));
     }
 
     @Test
@@ -246,7 +247,7 @@ class ExecutionContextInjectionTest {
 
     // mimics FileDownloadUrlResolver: no public getters, so Jackson cannot serialize it
     @SuppressWarnings("unused")
-    private static class NonSerializableResolver {
-        private final String secret = "internal-only";
+    private static final class NonSerializableResolver {
+        private static final String SECRET = "internal-only";
     }
 }

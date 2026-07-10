@@ -178,6 +178,7 @@ class SubAgentToolCallTest {
     }
 
     @Test
+    @SuppressWarnings({"checkstyle:NestedTryDepth", "PMD.UseTryWithResources"})
     void subAgentExecutionKeepsParentTraceContext() {
         var spans = new RecordingSpanProcessor();
         var tracerProvider = SdkTracerProvider.builder()

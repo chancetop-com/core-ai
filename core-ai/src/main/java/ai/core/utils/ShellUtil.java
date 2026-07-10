@@ -3,6 +3,7 @@ package ai.core.utils;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -41,18 +42,23 @@ public class ShellUtil {
                     .directory(workDir.toFile())
                     .redirectErrorStream(true)
                     .start();
-            try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                var sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (!sb.isEmpty()) sb.append('\n');
-                    sb.append(line);
-                }
-                process.waitFor(5, TimeUnit.SECONDS);
-                return sb.toString().trim();
-            }
+            return readProcessOutput(process);
         } catch (Exception e) {
             return "";
+        }
+    }
+
+    private static String readProcessOutput(Process process) throws Exception {
+        try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            var sb = new StringBuilder();
+            String line = reader.readLine();
+            while (line != null) {
+                if (!sb.isEmpty()) sb.append('\n');
+                sb.append(line);
+                line = reader.readLine();
+            }
+            process.waitFor(5, TimeUnit.SECONDS);
+            return sb.toString().trim();
         }
     }
 

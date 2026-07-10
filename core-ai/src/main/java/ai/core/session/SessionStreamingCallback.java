@@ -12,8 +12,6 @@ import ai.core.api.server.session.TextChunkEvent;
 
 import ai.core.llm.domain.FunctionCall;
 import core.framework.util.Strings;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -22,7 +20,6 @@ import java.util.function.Consumer;
  * @author stephen
  */
 public class SessionStreamingCallback implements StreamingCallback {
-    private static final Logger LOGGER = LoggerFactory.getLogger(SessionStreamingCallback.class);
 
     private final String sessionId;
     private final Consumer<AgentEvent> dispatcher;

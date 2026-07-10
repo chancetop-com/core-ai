@@ -41,6 +41,13 @@ public class LiteLLMProvider extends LLMProvider {
     private static final int MAX_RETRIES = 3;
     private static final Duration RETRY_WAIT_TIME = Duration.ofSeconds(3);
 
+    /**
+     * Whether this model name selects the /responses transport instead of /chat/completions.
+     */
+    public static boolean isResponsesModel(String model) {
+        return LiteLLMResponsesBridge.isResponsesModel(model);
+    }
+
     private volatile String url;
     private volatile String token;
     private final HTTPClient client;
@@ -85,13 +92,6 @@ public class LiteLLMProvider extends LLMProvider {
      */
     public CompletionResponse delegateCompletionStream(CompletionRequest dto, StreamingCallback callback) {
         return doCompletionStream(dto, callback);
-    }
-
-    /**
-     * Whether this model name selects the /responses transport instead of /chat/completions.
-     */
-    public static boolean isResponsesModel(String model) {
-        return LiteLLMResponsesBridge.isResponsesModel(model);
     }
 
     @Override

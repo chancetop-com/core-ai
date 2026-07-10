@@ -21,6 +21,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class ToolExecutorTest {
     private static final AttributeKey<Boolean> TOOL_IS_SUB_AGENT = AttributeKey.booleanKey("tool.is_sub_agent");
 
+    private static ToolCall tool(String toolName, boolean isSubAgent) {
+        return new FakeToolCall(toolName, isSubAgent);
+    }
+
+    private static Sandbox fakeSandbox(String interceptedToolName) {
+        return new FakeSandbox(interceptedToolName);
+    }
+
     @Test
     void marksSubAgentToolSpanWithIsSubAgentAttribute() {
         var spans = new RecordingSpanProcessor();
@@ -81,101 +89,104 @@ class ToolExecutorTest {
         }
     }
 
-    // Parameter is named toolName, not name: ToolCall.name is a package-private field, and since this
-    // test lives in the same package (ai.core.tool), a parameter called "name" would be shadowed by
-    // that inherited field inside the anonymous subclass body below instead of binding to this method's argument.
-    private static ToolCall tool(String toolName, boolean isSubAgent) {
-        return new ToolCall() {
-            {
-                setName(toolName);
-                setDescription("test tool");
-                setParameters(List.of());
-            }
+    @SuppressWarnings("PMD.ConstructorCallsOverridableMethod")
+    private static class FakeToolCall extends ToolCall {
+        private final boolean subAgent;
 
-            @Override
-            public boolean isSubAgent() {
-                return isSubAgent;
-            }
+        FakeToolCall(String toolName, boolean isSubAgent) {
+            setName(toolName);
+            setDescription("test tool");
+            setParameters(List.of());
+            subAgent = isSubAgent;
+        }
 
-            @Override
-            public ToolCallResult execute(String arguments) {
-                return ToolCallResult.completed("ok");
-            }
-        };
+        @Override
+        public boolean isSubAgent() {
+            return subAgent;
+        }
+
+        @Override
+        public ToolCallResult execute(String arguments) {
+            return ToolCallResult.completed("ok");
+        }
     }
 
-    private static Sandbox fakeSandbox(String interceptedToolName) {
-        return new Sandbox() {
-            @Override
-            public boolean shouldIntercept(String toolName) {
-                return interceptedToolName.equals(toolName);
-            }
+    private static class FakeSandbox implements Sandbox {
+        private final String interceptedToolName;
 
-            @Override
-            public ToolCallResult execute(String toolName, String arguments, ExecutionContext context) {
-                return ToolCallResult.completed("sandboxed: " + toolName);
-            }
+        FakeSandbox(String interceptedToolName) {
+            this.interceptedToolName = interceptedToolName;
+        }
 
-            @Override
-            public SandboxStatus getStatus() {
-                return SandboxStatus.READY;
-            }
+        @Override
+        public boolean shouldIntercept(String toolName) {
+            return interceptedToolName.equals(toolName);
+        }
 
-            @Override
-            public String getId() {
-                return "test-sandbox";
-            }
+        @Override
+        public ToolCallResult execute(String toolName, String arguments, ExecutionContext context) {
+            return ToolCallResult.completed("sandboxed: " + toolName);
+        }
 
-            @Override
-            public String hostname() {
-                return "test-sandbox";
-            }
+        @Override
+        public SandboxStatus getStatus() {
+            return SandboxStatus.READY;
+        }
 
-            @Override
-            public void materializeSkill(String name, String version, byte[] tarBytes) {
-            }
+        @Override
+        public String getId() {
+            return "test-sandbox";
+        }
 
-            @Override
-            public SandboxFile downloadFile(String path) {
-                throw new UnsupportedOperationException();
-            }
+        @Override
+        public String hostname() {
+            return "test-sandbox";
+        }
 
-            @Override
-            public void uploadFile(String path, byte[] content) {
-            }
+        @Override
+        public void materializeSkill(String name, String version, byte[] tarBytes) {
+        }
 
-            @Override
-            public String ip() {
-                return "127.0.0.1";
-            }
+        @Override
+        public SandboxFile downloadFile(String path) {
+            throw new UnsupportedOperationException();
+        }
 
-            @Override
-            public int port() {
-                return 8080;
-            }
+        @Override
+        public void uploadFile(String path, byte[] content) {
+        }
 
-            @Override
-            public String image() {
-                return "test-image";
-            }
+        @Override
+        public String ip() {
+            return "127.0.0.1";
+        }
 
-            @Override
-            public String startMcpServer(String id, String command, List<String> args, Map<String, String> env, int timeoutSeconds) {
-                throw new UnsupportedOperationException();
-            }
+        @Override
+        public int port() {
+            return 8080;
+        }
 
-            @Override
-            public void stopMcpServer(String id) {
-            }
+        @Override
+        public String image() {
+            return "test-image";
+        }
 
-            @Override
-            public String getMcpEndpoint() {
-                return "http://127.0.0.1:8080/mcp";
-            }
+        @Override
+        public String startMcpServer(String id, String command, List<String> args, Map<String, String> env, int timeoutSeconds) {
+            throw new UnsupportedOperationException();
+        }
 
-            @Override
-            public void close() {
-            }
-        };
+        @Override
+        public void stopMcpServer(String id) {
+        }
+
+        @Override
+        public String getMcpEndpoint() {
+            return "http://127.0.0.1:8080/mcp";
+        }
+
+        @Override
+        public void close() {
+        }
     }
 }

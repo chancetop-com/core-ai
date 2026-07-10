@@ -33,6 +33,8 @@ public final class BashReadOnlyChecker {
 
     static final Set<String> WRAPPERS = Set.of("command", "builtin", "exec", "time", "nohup");
 
+    static final Set<String> CONTROL_OPS = Set.of("&&", "||", ";", "|", "&");
+
     public static boolean isReadOnly(String command) {
         if (command == null || command.isBlank()) return false;
 
@@ -49,8 +51,6 @@ public final class BashReadOnlyChecker {
         }
         return true;
     }
-
-    static final Set<String> CONTROL_OPS = Set.of("&&", "||", ";", "|", "&");
 
     static List<List<String>> splitByControlOps(List<Lexer.Tok> tokens) {
         List<List<String>> groups = new ArrayList<>();
@@ -78,9 +78,9 @@ public final class BashReadOnlyChecker {
         List<String> args = words.subList(i + 1, words.size());
 
         if (READONLY.contains(cmd)) return !hasWriteFlag(cmd, args);
-        if (cmd.equals("git")) return isGitReadOnly(args);
-        if (cmd.equals("sed")) return args.stream().noneMatch(a -> a.equals("-i") || a.startsWith("-i"));
-        if (cmd.equals("docker")) return isDockerReadOnly(args);
+        if ("git".equals(cmd)) return isGitReadOnly(args);
+        if ("sed".equals(cmd)) return args.stream().noneMatch(a -> "-i".equals(a) || a.startsWith("-i"));
+        if ("docker".equals(cmd)) return isDockerReadOnly(args);
 
         return false;
     }
@@ -92,7 +92,7 @@ public final class BashReadOnlyChecker {
 
     static boolean isGitReadOnly(List<String> args) {
         for (String a : args) {
-            if (a.equals("-c") || a.startsWith("--exec-path") || a.startsWith("--config-env"))
+            if ("-c".equals(a) || a.startsWith("--exec-path") || a.startsWith("--config-env"))
                 return false;
         }
         return args.stream().filter(a -> !a.startsWith("-")).findFirst()
@@ -111,25 +111,12 @@ public final class BashReadOnlyChecker {
     }
 
     static final class Lexer {
-        sealed interface Tok permits Word, Op {}
-        record Word(String text) implements Tok {}
-        record Op(String op) implements Tok {}
-
-        static final class Result {
-            final List<Tok> tokens = new ArrayList<>();
-            boolean unsafe = false;
-            String reason = "";
-
-            void markUnsafe(String r) {
-                unsafe = true;
-                if (reason.isEmpty()) reason = r;
-            }
-        }
 
         static Result tokenize(String s) {
             Result res = new Result();
             StringBuilder cur = new StringBuilder();
-            int n = s.length(), i = 0;
+            int n = s.length();
+            int i = 0;
 
             while (i < n) {
                 char c = s.charAt(i);
@@ -250,6 +237,21 @@ public final class BashReadOnlyChecker {
         static boolean isVarStart(char c) {
             return Character.isLetterOrDigit(c) || c == '_' || c == '@' || c == '*'
                     || c == '#' || c == '?' || c == '!' || c == '-' || c == '$';
+        }
+
+        sealed interface Tok permits Word, Op { }
+        record Word(String text) implements Tok { }
+        record Op(String op) implements Tok { }
+
+        static final class Result {
+            final List<Tok> tokens = new ArrayList<>();
+            boolean unsafe = false;
+            String reason = "";
+
+            void markUnsafe(String r) {
+                unsafe = true;
+                if (reason.isEmpty()) reason = r;
+            }
         }
     }
 }

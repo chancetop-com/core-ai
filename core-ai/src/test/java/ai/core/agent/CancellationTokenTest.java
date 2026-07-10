@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -156,7 +155,7 @@ class CancellationTokenTest {
     void cancelShouldOnlyInvokeCallbacksOnce() {
         var token = CancellationToken.create();
         var count = new AtomicInteger(0);
-        token.onCancel(() -> count.incrementAndGet());
+        token.onCancel(count::incrementAndGet);
         token.cancel();
         token.cancel();
         assertEquals(1, count.get(), "callback should be invoked exactly once");
@@ -166,13 +165,13 @@ class CancellationTokenTest {
     void resetThenReCancelShouldInvokeNewCallback() {
         var token = CancellationToken.create();
         var count = new AtomicInteger(0);
-        token.onCancel(() -> count.incrementAndGet());
+        token.onCancel(count::incrementAndGet);
         token.cancel();
         assertEquals(1, count.get());
 
         token.reset();
         var newCallbackCount = new AtomicInteger(0);
-        token.onCancel(() -> newCallbackCount.incrementAndGet());
+        token.onCancel(newCallbackCount::incrementAndGet);
         token.cancel();
         assertEquals(1, newCallbackCount.get(), "new callback should be invoked after reset and re-cancel");
         assertEquals(1, count.get(), "old callback should not be invoked again after reset");
@@ -313,7 +312,7 @@ class CancellationTokenTest {
 
         token.onCancel(() -> order.add("NOTIFY"));
         token.bindThread(Thread.currentThread());  // INTERRUPT
-        token.bindResource(() -> {});  // CLOSE
+        token.bindResource(() -> { });  // CLOSE
         token.cancel();
 
         assertEquals(java.util.List.of("NOTIFY"), order.subList(0, 1));
@@ -353,7 +352,9 @@ class CancellationTokenTest {
         var token = CancellationToken.create();
         var secondFired = new AtomicBoolean(false);
 
-        token.onCancel(() -> { throw new RuntimeException("boom"); });
+        token.onCancel(() -> {
+            throw new RuntimeException("boom");
+        });
         token.onCancel(() -> secondFired.set(true));
 
         token.cancel();
@@ -408,7 +409,7 @@ class CancellationTokenTest {
             try {
                 Thread.sleep(50);
             } catch (InterruptedException e) {
-                // ignore
+                Thread.currentThread().interrupt();
             }
             token.cancel();
         }).start();

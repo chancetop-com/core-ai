@@ -46,10 +46,6 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
         }
     }
 
-    private static McpToolCall buildToolCall(McpSchema.Tool tool, McpClientManager manager, String serverName) {
-        return buildToolCall(tool, manager, serverName, serverName);
-    }
-
     private static McpToolCall buildToolCall(McpSchema.Tool tool, McpClientManager manager, String serverName, String displayName) {
         return McpToolCall.builder()
                 .name(tool.name())

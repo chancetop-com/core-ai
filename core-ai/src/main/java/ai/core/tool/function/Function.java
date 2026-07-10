@@ -38,7 +38,7 @@ public class Function extends ToolCall {
                     return;
                 }
                 // skip null/blank values so empty agent variables do not overwrite arguments provided by the model
-                if (customValue == null || (customValue instanceof String strValue && strValue.isBlank())) {
+                if (customValue == null || customValue instanceof String strValue && strValue.isBlank()) {
                     return;
                 }
                 argsMap.put(key, customValue);

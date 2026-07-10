@@ -7,4 +7,5 @@
     <suppress checks="FileLengthCheck" files=".*Test\.java"/>
     <suppress checks="MethodLength" files=".*Test\.java"/>
     <suppress checks="FileLengthCheck" files="LanguageSeparators\.java"/>
+    <suppress checks="ExecutableStatementCount|MethodLength" files="BashReadOnlyChecker\.java"/>
 </suppressions>

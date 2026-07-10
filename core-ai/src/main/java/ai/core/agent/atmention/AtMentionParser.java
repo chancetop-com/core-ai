@@ -18,9 +18,6 @@ public final class AtMentionParser {
     private static final Pattern PATTERN = Pattern.compile(
             "^@([\\w-]+)\\s+(.+)$", Pattern.DOTALL);
 
-    private AtMentionParser() {
-    }
-
     public static Optional<AtMentionResult> parse(String input, AgentProfileRegistry registry) {
         if (input == null || input.isBlank()) return Optional.empty();
         Matcher m = PATTERN.matcher(input.trim());
@@ -39,5 +36,8 @@ public final class AtMentionParser {
     public static boolean isAtMention(String query) {
         if (query == null || query.isBlank()) return false;
         return PATTERN.matcher(query.trim()).matches();
+    }
+
+    private AtMentionParser() {
     }
 }

@@ -1,12 +1,10 @@
 package ai.core.defaultagents;
 
 import ai.core.agent.Agent;
-import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.agent.ExecutionContext;
 import ai.core.agent.profile.AgentProfile;
-import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.prompt.PromptInject;
-import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
@@ -45,17 +43,17 @@ public class DefaultExploreAgent {
                 .priority(0);
     }
 
-    public static Agent of(ToolRegistry toolRegistry, LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects, Integer maxTurnNumber) {
+    public static Agent of(ToolRegistry toolRegistry, LLMProvider llmProvider, String model, ExecutionContext context, Integer maxTurnNumber) {
         Objects.requireNonNull(toolRegistry, "toolRegistry is required");
         var prompt = buildSystemPrompt();
         return Agent.builder()
                 .name(AGENT_NAME)
-                .streamingCallback(streamingCallback)
+                .streamingCallback(context.getStreamingCallback())
                 .model(model)
-                .agentLifecycle(lifecycles)
+                .agentLifecycle(context.getLifecycle())
                 .description(AGENT_DESCRIPTION)
                 .systemPrompt(prompt)
-                .systemPromptSections(resolvePromptInjects(promptInjects))
+                .systemPromptSections(resolvePromptInjects(context.getPromptSections()))
                 .toolRegistry(toolRegistry)
                 .toolNames(TOOL_NAMES)
                 .llmProvider(llmProvider)
@@ -64,6 +62,7 @@ public class DefaultExploreAgent {
     }
 
     private static List<PromptInject> resolvePromptInjects(List<PromptInject> promptInjects) {
+        if (promptInjects == null) return List.of();
         return promptInjects.stream().filter(promptInject -> List.of(
                 PromptInject.SectionType.ENVIRONMENT,
                 PromptInject.SectionType.INSTRUCTIONS,

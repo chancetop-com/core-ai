@@ -55,7 +55,7 @@ public class GetMcpServerInstructionsTool extends ToolCall {
                     .withDuration(System.currentTimeMillis() - startTime);
         }
 
-        var sb = new StringBuilder("Connected MCP servers:\n");
+        var sb = new StringBuilder(200).append("Connected MCP servers:\n");
         for (var entry : allClients.entrySet()) {
             String name = entry.getKey();
             sb.append("- ").append(name);

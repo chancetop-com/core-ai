@@ -1,43 +1,28 @@
 package ai.core.agent;
 
-import ai.core.agent.doomloop.DoomLoopLifecycle;
-import ai.core.agent.doomloop.DoomLoopStrategy;
-import ai.core.agent.doomloop.RepetitiveCallStrategy;
-import ai.core.agent.doomloop.TaskReminderStrategy;
-import ai.core.agent.doomloop.TodoReminderStrategy;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.lifecycle.ResponseValidationLifecycle;
 import ai.core.context.Compression;
 import ai.core.context.CompressionLifecycle;
 import ai.core.context.ToolCallPruning;
-import ai.core.context.ToolCallPruningLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.memory.Memory;
 import ai.core.memory.MemoryConfig;
-import ai.core.memory.MemoryLifecycle;
+
 import ai.core.prompt.PromptInject;
-import ai.core.prompt.langfuse.LangfusePrompt;
-import ai.core.prompt.langfuse.LangfusePromptProvider;
-import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
 import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.reflection.ReflectionListener;
 import ai.core.skill.SkillRegistry;
-import ai.core.termination.terminations.MaxRoundTermination;
-import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.registry.ListToolProvider;
-import ai.core.tool.registry.ToolExposure;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.SkillTool;
 import ai.core.tool.tools.SubAgentToolCall;
-import ai.core.tool.tools.ToolActivationTool;
-import ai.core.tool.tools.WriteTodoTaskTool;
-import ai.core.tool.tools.WriteTodosTool;
 import core.framework.util.Lists;
 import core.framework.util.Maps;
 
@@ -50,39 +35,39 @@ import java.util.Set;
  * @author stephen
  */
 public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
-    private String systemPrompt;
-    private final List<PromptInject> systemPromptSections = new ArrayList<>();
-    private String promptTemplate;
-    private LLMProvider llmProvider;
-    private final List<ToolCall> toolCalls = Lists.newArrayList();
+    String systemPrompt;
+    final List<PromptInject> systemPromptSections = new ArrayList<>();
+    String promptTemplate;
+    LLMProvider llmProvider;
+    final List<ToolCall> toolCalls = Lists.newArrayList();
     private List<String> toolNames;
-    private ToolRegistry toolRegistry;
-    private RagConfig ragConfig;
-    private Double temperature;
-    private String model;
-    private String multiModalModel;
-    private ReflectionConfig reflectionConfig;
-    private ReflectionListener reflectionListener;
-    private Boolean useGroupContext = false;
-    private Boolean enableReflection = false;
-    private Integer maxTurnNumber;
-    private Compression compression;
+    ToolRegistry toolRegistry;
+    RagConfig ragConfig;
+    Double temperature;
+    String model;
+    String multiModalModel;
+    ReflectionConfig reflectionConfig;
+    ReflectionListener reflectionListener;
+    Boolean useGroupContext = false;
+    Boolean enableReflection = false;
+    Integer maxTurnNumber;
+    Compression compression;
     private boolean compressionEnabled = true;
-    private boolean toolCallPruningEnabled = false;
-    private ToolCallPruning.Config toolCallPruningConfig;
-    private ReasoningEffort reasoningEffort;
-    private boolean doomLoopEnabled = true;
-    private int doomLoopWindowSize = 4;
-    private int doomLoopThreshold = 3;
-    private Memory memory;
-    private MemoryConfig memoryConfig;
+    boolean toolCallPruningEnabled = false;
+    ToolCallPruning.Config toolCallPruningConfig;
+    ReasoningEffort reasoningEffort;
+    boolean doomLoopEnabled = true;
+    int doomLoopWindowSize = 4;
+    int doomLoopThreshold = 3;
+    Memory memory;
+    MemoryConfig memoryConfig;
     private SkillRegistry skillRegistry;
-    private List<SubAgentToolCall> subAgents = Lists.newArrayList();
-    private String langfuseSystemPromptName;
-    private String langfusePromptTemplateName;
-    private Integer langfusePromptVersion;
-    private String langfusePromptLabel;
-    private final Map<String, Object> extraSystemVariables = Maps.newHashMap();
+    List<SubAgentToolCall> subAgents = Lists.newArrayList();
+    String langfuseSystemPromptName;
+    String langfusePromptTemplateName;
+    Integer langfusePromptVersion;
+    String langfusePromptLabel;
+    final Map<String, Object> extraSystemVariables = Maps.newHashMap();
 
     public AgentBuilder promptTemplate(String promptTemplate) {
         this.promptTemplate = promptTemplate;
@@ -341,20 +326,20 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         }
         build(agent);
         configureSubAgents();
-        configureToolCallPruning();
-        configureMemory();
-        configureDoomLoop();
+        AgentAssembler.configureToolCallPruning(this);
+        AgentAssembler.configureMemory(this);
+        AgentAssembler.configureDoomLoop(this);
         configureResponseValidation();
         configureCompression();
 
         // Fetch prompts from Langfuse if configured
-        fetchLangfusePromptsIfConfigured();
+        AgentAssembler.fetchLangfusePromptsIfConfigured(this);
         configureSkills();
-        configureToolDiscovery();
+        AgentAssembler.configureToolDiscovery(this);
         configureSystemPrompt();
         configureToolRegistry();
 
-        copyValue(agent);
+        AgentAssembler.assemble(this, agent);
 
         afterAgentBuildLifecycle(agent);
         return agent;
@@ -402,73 +387,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.systemPrompt = !sb.isEmpty() ? sb.toString() : "you are a helpful assistant";
     }
 
-    private void copyValue(Agent agent) {
-        agent.systemPrompt = this.systemPrompt;
-        agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
-        agent.maxTurnNumber = this.maxTurnNumber == null ? 100 : this.maxTurnNumber;
-        agent.temperature = this.temperature;
-        agent.model = this.model;
-        agent.multiModalModel = this.multiModalModel;
-        agent.llmProvider = this.llmProvider;
-        if (agent.llmProvider == null) {
-            throw new Error("llmProvider is required for agent, please set it with llmProvider() method");
-        }
-        agent.toolRegistry = this.toolRegistry;
-        agent.subAgents = this.subAgents;
-        agent.ragConfig = this.ragConfig;
-        agent.reflectionConfig = this.reflectionConfig;
-        agent.reflectionListener = this.reflectionListener;
-        agent.useGroupContext = this.useGroupContext;
-        agent.setPersistence(new AgentPersistence());
-        agent.agentLifecycles = new ArrayList<>(agentLifecycles);
-        agent.compression = this.compression;
-        agent.reasoningEffort = this.reasoningEffort;
-        if (this.enableReflection && this.reflectionConfig == null) {
-            agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
-        }
-        if (agent.reflectionConfig != null) {
-            agent.setMaxRound(agent.reflectionConfig.maxRound());
-            agent.addTermination(new MaxRoundTermination());
-            agent.addTermination(new StopMessageTermination());
-        }
-        if (agent.ragConfig == null) {
-            agent.ragConfig = new RagConfig();
-        }
-        agent.getSystemVariables().putAll(extraSystemVariables);
-    }
-
-    private void configureToolCallPruning() {
-        if (this.toolCallPruningEnabled) {
-            var pruningCfg = this.toolCallPruningConfig != null ? this.toolCallPruningConfig : ToolCallPruning.Config.defaultConfig();
-            agentLifecycles.addFirst(new ToolCallPruningLifecycle(new ToolCallPruning(pruningCfg.keepRecentSegments(), pruningCfg.excludeToolNames())));
-        }
-    }
-
-    private void configureDoomLoop() {
-        var strategies = new ArrayList<DoomLoopStrategy>();
-        if (doomLoopEnabled) {
-            strategies.add(new RepetitiveCallStrategy(doomLoopWindowSize, doomLoopThreshold));
-        }
-        boolean hasTaskV2 = hasTool(WriteTodoTaskTool.TOOL_NAME_CREATE);
-        if (hasTaskV2) {
-            strategies.add(new TaskReminderStrategy());
-        }
-        boolean hasWriteTodos = hasTool(WriteTodosTool.WT_TOOL_NAME);
-        if (hasWriteTodos) {
-            strategies.add(new TodoReminderStrategy());
-        }
-        if (!strategies.isEmpty()) {
-            agentLifecycles.add(new DoomLoopLifecycle(strategies));
-        }
-    }
-
-    private boolean hasTool(String toolName) {
-        if (toolRegistry != null) {
-            return toolRegistry.getToolCalls().stream().anyMatch(t -> toolName.equals(t.getName()));
-        }
-        return toolCalls.stream().anyMatch(t -> toolName.equals(t.getName()));
-    }
-
     private void configureResponseValidation() {
         agentLifecycles.add(new ResponseValidationLifecycle());
     }
@@ -488,52 +406,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (toolCalls.stream().noneMatch(t -> SkillTool.TOOL_NAME.equals(t.getName()))) {
             toolCalls.add(SkillTool.builder().registry(skillRegistry).build());
         }
-    }
-
-    private void configureToolDiscovery() {
-        var discoverableTools = toolCalls.stream().filter(ToolCall::isDiscoverable).toList();
-        if (!discoverableTools.isEmpty()) {
-            for (var tool : discoverableTools) {
-                tool.setLlmVisible(false);
-                tool.setExposure(ToolExposure.DEFERRED);
-            }
-            toolCalls.add(ToolActivationTool.builder().allToolCalls(toolCalls).build());
-        }
-    }
-
-    private void configureMemory() {
-        if (this.memory == null) return;
-        var config = this.memoryConfig != null ? this.memoryConfig : MemoryConfig.defaultConfig();
-        var lifecycle = new MemoryLifecycle(this.memory, config.getMaxRecallRecords());
-        agentLifecycles.add(lifecycle);
-        if (config.isAutoRecall()) {
-            toolCalls.add(lifecycle.getMemoryRecallTool());
-        }
-    }
-
-    private void fetchLangfusePromptsIfConfigured() {
-        if (langfuseSystemPromptName == null && langfusePromptTemplateName == null) return;
-        var provider = LangfusePromptProviderRegistry.getProvider();
-        if (provider == null) {
-            throw new IllegalStateException("Langfuse prompts are configured but Langfuse provider is not initialized. "
-                    + "Please configure langfuse.prompt.base.url in your properties file.");
-        }
-        try {
-            if (langfuseSystemPromptName != null) {
-                this.systemPrompt = fetchLangfusePrompt(provider, langfuseSystemPromptName).getPromptContent();
-            }
-            if (langfusePromptTemplateName != null) {
-                this.promptTemplate = fetchLangfusePrompt(provider, langfusePromptTemplateName).getPromptContent();
-            }
-        } catch (LangfusePromptProvider.LangfusePromptException e) {
-            throw new RuntimeException("Failed to fetch prompts from Langfuse", e);
-        }
-    }
-
-    private LangfusePrompt fetchLangfusePrompt(LangfusePromptProvider provider, String name) throws LangfusePromptProvider.LangfusePromptException {
-        if (langfusePromptVersion != null) return provider.getPrompt(name, langfusePromptVersion);
-        if (langfusePromptLabel != null) return provider.getPromptByLabel(name, langfusePromptLabel);
-        return provider.getPrompt(name);
     }
 
     @Override

@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Serial;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -249,8 +250,7 @@ public class McpClientManager implements AutoCloseable {
             // so mark the server as permanently failed to prevent reconnect storms.
             if (isAuthError(e)) {
                 getConnectionMonitor().markPermanentlyFailed(serverName);
-                LOGGER.error("Permanent failure for server {}: reconnection stopped due to authentication error. " +
-                    "Check the MCP server configuration (credentials, session ID, etc.).", serverName);
+                LOGGER.error("Permanent failure for server {}: reconnection stopped due to authentication error. Check the MCP server configuration (credentials, session ID, etc.).", serverName);
             }
 
             return false;
@@ -270,7 +270,7 @@ public class McpClientManager implements AutoCloseable {
             }
         }
         if (message == null) return false;
-        var lower = message.toLowerCase();
+        var lower = message.toLowerCase(Locale.ENGLISH);
         return lower.contains("401") || lower.contains("unauthorized")
             || lower.contains("session id is required") || lower.contains("403")
             || lower.contains("forbidden") || lower.contains("authentication failed")

@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import java.io.Serial;
+import java.util.Locale;
 
 /**
  * Thrown by {@link CancellationToken#throwIfCancelled()} when the token has been cancelled.
@@ -19,8 +20,18 @@ public class CancellationException extends RuntimeException {
         this.reason = null;
     }
 
+    public CancellationException(Throwable cause) {
+        super("operation cancelled", cause);
+        this.reason = null;
+    }
+
     public CancellationException(CancelReason reason) {
-        super("operation cancelled: " + reason.name().toLowerCase());
+        super("operation cancelled: " + reason.name().toLowerCase(Locale.ROOT));
+        this.reason = reason;
+    }
+
+    public CancellationException(CancelReason reason, Throwable cause) {
+        super("operation cancelled: " + reason.name().toLowerCase(Locale.ROOT), cause);
         this.reason = reason;
     }
 

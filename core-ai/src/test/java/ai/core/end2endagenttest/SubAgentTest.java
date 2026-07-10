@@ -37,7 +37,7 @@ class SubAgentTest extends IntegrationTest {
         }
         toolRegistry.registerProvider(ListToolProvider.of(BuiltinTools.FILE_READ_ONLY));
 
-        var exploreAgent = DefaultExploreAgent.of(toolRegistry, llmProviders.getProvider(), null, null, List.of(), List.of(), null);
+        var exploreAgent = DefaultExploreAgent.of(toolRegistry, llmProviders.getProvider(), null, ExecutionContext.empty(), null);
 
         var agent = Agent.builder()
                 .name("sub-agent-test-agent")

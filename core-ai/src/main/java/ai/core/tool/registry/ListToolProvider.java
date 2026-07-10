@@ -16,6 +16,14 @@ import java.util.stream.Collectors;
  * @author Lim Chen
  */
 public class ListToolProvider implements ToolProvider {
+    public static ListToolProvider of(List<ToolCall> tools) {
+        return new ListToolProvider(tools);
+    }
+
+    public static ListToolProvider of(String id, List<ToolCall> tools) {
+        return new ListToolProvider(id, tools);
+    }
+
     private final String id;
     private final List<ToolCall> tools;
 
@@ -26,14 +34,6 @@ public class ListToolProvider implements ToolProvider {
     public ListToolProvider(String id, List<ToolCall> tools) {
         this.id = id;
         this.tools = tools;
-    }
-
-    public static ListToolProvider of(List<ToolCall> tools) {
-        return new ListToolProvider(tools);
-    }
-
-    public static ListToolProvider of(String id, List<ToolCall> tools) {
-        return new ListToolProvider(id, tools);
     }
 
     @Override

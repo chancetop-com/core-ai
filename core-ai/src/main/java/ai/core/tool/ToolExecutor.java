@@ -35,6 +35,19 @@ import java.util.function.Supplier;
 public class ToolExecutor {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolExecutor.class);
 
+    private static String timestamp() {
+        return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+    }
+
+    private static String prettyContent(String content) {
+        try {
+            var parsed = JsonUtil.OBJECT_MAPPER.readValue(content, Object.class);
+            return JsonUtil.OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(parsed);
+        } catch (Exception ignored) {
+            return content;
+        }
+    }
+
     private final List<AbstractLifecycle> lifecycles;
     private final AgentTracer tracer;
     private final Consumer<NodeStatus> statusUpdater;
@@ -114,10 +127,6 @@ public class ToolExecutor {
         return result;
     }
 
-    private static String timestamp() {
-        return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-    }
-
     private String extractSaveToFile(Map<String, Object> args) {
         var value = args.remove(ToolCall.SAVE_TO_FILE_PARAM);
         if (value == null) return null;
@@ -140,22 +149,16 @@ public class ToolExecutor {
                 "save_to_file failed: result size (%.1f MB) exceeds limit (10 MB). Use pagination or filtering to reduce result size.", mb));
         }
         try {
-            var prettyContent = content;
-            try {
-                var parsed = JsonUtil.OBJECT_MAPPER.readValue(content, Object.class);
-                prettyContent = JsonUtil.OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(parsed);
-            } catch (Exception ignored) {
-                // not valid JSON, write as-is
-            }
+            var prettyContent = prettyContent(content);
             writeFile(sandbox, filePath, prettyContent.getBytes(StandardCharsets.UTF_8));
 
-            var schemaJson = ToolCall.buildSchemaJson(content);
+            var schemaJson = ToolResultFormatter.buildSchemaJson(content);
             if (schemaJson != null) {
                 var schemaPath = filePath.replaceAll("\\.json$", "") + ".schema.json";
                 writeFile(sandbox, schemaPath, schemaJson.getBytes(StandardCharsets.UTF_8));
             }
 
-            return result.withResult(ToolCall.buildSaveResultMessage(content, filePath));
+            return result.withResult(ToolResultFormatter.buildSaveResultMessage(content, filePath));
         } catch (Exception e) {
             LOGGER.warn("save_to_file failed for tool {}, falling back to inline result", toolName, e);
             return result;

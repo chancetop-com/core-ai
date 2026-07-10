@@ -20,7 +20,6 @@ import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ToolRegistry;
 
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -87,6 +86,10 @@ public class TaskTool extends ToolCall {
             
             """;
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
     @Override
     public Tool toTool(ExecutionContext context) {
         if (context != null && context.getAgentProfileRegistry() != null) {
@@ -94,16 +97,12 @@ public class TaskTool extends ToolCall {
             if (!profiles.isEmpty()) {
                 var sb = new StringBuilder();
                 for (var profile : profiles) {
-                    sb.append("- ").append(profile.name()).append(": ").append(profile.description()).append("\n");
+                    sb.append("- ").append(profile.name()).append(": ").append(profile.description()).append('\n');
                 }
                 setDescription(TOOL_DESC.replace("%s", sb.toString()));
             }
         }
         return super.toTool(context);
-    }
-
-    public static Builder builder() {
-        return new Builder();
     }
 
     @Override
@@ -221,16 +220,16 @@ public class TaskTool extends ToolCall {
 
     private Agent createBuiltinAgent(String subagentType, LLMProvider llmProvider, String model, int maxTurnNumber, ToolRegistry toolRegistry, ExecutionContext context) {
         if (DeepResearchAgent.AGENT_NAME.equals(subagentType)) {
-            return DeepResearchAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
+            return DeepResearchAgent.of(toolRegistry, llmProvider, model, context, maxTurnNumber);
         }
         if (DefaultExploreAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultExploreAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
+            return DefaultExploreAgent.of(toolRegistry, llmProvider, model, context, maxTurnNumber);
         }
         if (DefaultCodeSimplifierAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultCodeSimplifierAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
+            return DefaultCodeSimplifierAgent.of(toolRegistry, llmProvider, model, context, maxTurnNumber);
         }
         if (DefaultGeneralAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultGeneralAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
+            return DefaultGeneralAgent.of(toolRegistry, llmProvider, model, context, maxTurnNumber);
         }
         throw new RuntimeException("Unknown subagent type: " + subagentType);
     }

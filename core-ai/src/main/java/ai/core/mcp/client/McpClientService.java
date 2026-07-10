@@ -3,25 +3,17 @@ package ai.core.mcp.client;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import ai.core.utils.SystemUtil;
-import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
-import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
-import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
 
-import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.ProtocolVersions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
@@ -30,20 +22,6 @@ import java.util.concurrent.TimeoutException;
  */
 public class McpClientService implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpClientService.class);
-    private static final String SDK_DEFAULT_STREAMABLE_ENDPOINT = "/mcp";
-    private static final String SDK_DEFAULT_SSE_ENDPOINT = "/sse";
-
-    /**
-     * Supported protocol versions for Streamable HTTP transport.
-     * {@link ProtocolVersions#MCP_2025_11_25} is excluded because it is marked
-     * {@code @Deprecated} in the SDK and is not yet widely supported by MCP servers
-     * (e.g., clickhouse-mcp only supports up to 2025-06-18).
-     */
-    private static final List<String> SUPPORTED_PROTOCOL_VERSIONS = List.of(
-            ProtocolVersions.MCP_2024_11_05,
-            ProtocolVersions.MCP_2025_03_26,
-            ProtocolVersions.MCP_2025_06_18
-    );
 
     private final McpSyncClient client;
     private final McpClientTransport transport;
@@ -57,11 +35,11 @@ public class McpClientService implements AutoCloseable {
         McpClientTransport createdTransport = null;
         McpSyncClient createdClient = null;
         try {
-            createdTransport = createTransport(config);
+            createdTransport = McpTransportFactory.createTransport(config);
             if (createdTransport instanceof StdioClientTransport stdioTransport) {
                 extractProcessFromTransport(stdioTransport);
             }
-            createdClient = createClient(createdTransport, config);
+            createdClient = McpTransportFactory.createClient(createdTransport, config);
         } catch (RuntimeException e) {
             closeQuietly(createdClient, createdTransport);
             throw e;
@@ -178,12 +156,12 @@ public class McpClientService implements AutoCloseable {
     private boolean isConnectionError(Throwable e) {
         var cause = e;
         while (cause != null) {
-            if (cause instanceof java.net.ConnectException ||
-                cause instanceof java.net.SocketException ||
-                cause instanceof java.net.UnknownHostException ||
-                cause instanceof java.net.NoRouteToHostException ||
-                cause instanceof java.net.SocketTimeoutException ||
-                cause instanceof java.util.concurrent.TimeoutException) {
+            if (cause instanceof java.net.ConnectException
+                || cause instanceof java.net.SocketException
+                || cause instanceof java.net.UnknownHostException
+                || cause instanceof java.net.NoRouteToHostException
+                || cause instanceof java.net.SocketTimeoutException
+                || cause instanceof TimeoutException) {
                 return true;
             }
             cause = cause.getCause();
@@ -310,17 +288,6 @@ public class McpClientService implements AutoCloseable {
         }
     }
 
-    private McpSyncClient createClient(McpClientTransport transport, McpServerConfig config) {
-        var syncClient = McpClient.sync(transport)
-            .requestTimeout(config.getRequestTimeout())
-            .initializationTimeout(config.getInitializationTimeout())
-            .build();
-        syncClient.initialize();
-        LOGGER.debug("MCP client initialized: name={}, transport={}, requestTimeout={}s",
-            config.getName(), config.getTransportType(), config.getRequestTimeout().toSeconds());
-        return syncClient;
-    }
-
     private void extractProcessFromTransport(StdioClientTransport transport) {
         // Try to find Process field by scanning all declared fields
         for (Field field : StdioClientTransport.class.getDeclaredFields()) {
@@ -339,119 +306,6 @@ public class McpClientService implements AutoCloseable {
             }
         }
         LOGGER.warn("No Process field found in StdioClientTransport, subprocess cleanup may not work properly");
-    }
-
-    private McpClientTransport createTransport(McpServerConfig config) {
-        return switch (config.getTransportType()) {
-            case STDIO -> createStdioTransport(config);
-            case STREAMABLE_HTTP -> createStreamableHttpTransport(config);
-            case SSE -> createSseTransport(config);
-            case SANDBOX_HOSTED -> throw new IllegalStateException(
-                "SANDBOX_HOSTED transport must be resolved to STREAMABLE_HTTP before creating transport. " +
-                "The server module should transform the config with sandbox URL.");
-        };
-    }
-
-    private McpClientTransport createStdioTransport(McpServerConfig config) {
-        var command = config.getCommand();
-        var args = config.getArgs() != null ? new ArrayList<>(config.getArgs()) : new ArrayList<String>();
-
-        if (SystemUtil.detectPlatform().isWindows() && isWindowsScriptCommand(command)) {
-            args.addFirst(command);
-            args.addFirst("/c");
-            command = "cmd.exe";
-        }
-
-        var paramsBuilder = ServerParameters.builder(command);
-
-        if (!args.isEmpty()) {
-            paramsBuilder.args(args);
-        }
-
-        if (config.getEnv() != null && !config.getEnv().isEmpty()) {
-            paramsBuilder.env(config.getEnv());
-        }
-
-        return new StdioClientTransport(paramsBuilder.build(), McpJsonDefaults.getMapper());
-    }
-
-    private boolean isWindowsScriptCommand(String command) {
-        var cmd = command.toLowerCase(Locale.ROOT);
-        return cmd.equals("npx") || cmd.equals("npm") || cmd.equals("node")
-                || cmd.equals("pnpm") || cmd.equals("yarn") || cmd.equals("bun")
-                || cmd.endsWith(".cmd") || cmd.endsWith(".bat");
-    }
-
-    private McpClientTransport createStreamableHttpTransport(McpServerConfig config) {
-        String url = config.getUrl();
-        String endpoint = config.getEndpoint();
-
-        if ((endpoint == null || endpoint.isBlank()) && url.endsWith(SDK_DEFAULT_STREAMABLE_ENDPOINT)) {
-            String baseUrl = url.substring(0, url.length() - SDK_DEFAULT_STREAMABLE_ENDPOINT.length()) + "/";
-            endpoint = SDK_DEFAULT_STREAMABLE_ENDPOINT.substring(1); // "mcp" (relative)
-
-            var builder = HttpClientStreamableHttpTransport.builder(baseUrl)
-                .connectTimeout(config.getConnectTimeout())
-                .endpoint(endpoint)
-                .supportedProtocolVersions(SUPPORTED_PROTOCOL_VERSIONS);
-            return applyHeadersAndBuild(builder, config);
-        }
-
-        var builder = HttpClientStreamableHttpTransport.builder(url)
-            .connectTimeout(config.getConnectTimeout())
-            .supportedProtocolVersions(SUPPORTED_PROTOCOL_VERSIONS);
-
-        if (endpoint != null && !endpoint.isBlank()) {
-            builder.endpoint(endpoint);
-        }
-
-        return applyHeadersAndBuild(builder, config);
-    }
-
-    private McpClientTransport applyHeadersAndBuild(HttpClientStreamableHttpTransport.Builder builder, McpServerConfig config) {
-        if (config.getHeaders() != null && !config.getHeaders().isEmpty()) {
-            builder.customizeRequest(requestBuilder -> {
-                for (var entry : config.getHeaders().entrySet()) {
-                    requestBuilder.header(entry.getKey(), entry.getValue());
-                }
-            });
-        }
-        return builder.build();
-    }
-
-    private McpClientTransport createSseTransport(McpServerConfig config) {
-        String url = config.getUrl();
-        String endpoint = config.getEndpoint();
-
-        if ((endpoint == null || endpoint.isBlank()) && url.endsWith(SDK_DEFAULT_SSE_ENDPOINT)) {
-            String baseUrl = url.substring(0, url.length() - SDK_DEFAULT_SSE_ENDPOINT.length()) + "/";
-            endpoint = SDK_DEFAULT_SSE_ENDPOINT.substring(1); // "sse" (relative)
-
-            var builder = HttpClientSseClientTransport.builder(baseUrl)
-                .connectTimeout(config.getConnectTimeout())
-                .sseEndpoint(endpoint);
-            return applySseHeadersAndBuild(builder, config);
-        }
-
-        var builder = HttpClientSseClientTransport.builder(url)
-            .connectTimeout(config.getConnectTimeout());
-
-        if (endpoint != null && !endpoint.isBlank()) {
-            builder.sseEndpoint(endpoint);
-        }
-
-        return applySseHeadersAndBuild(builder, config);
-    }
-
-    private McpClientTransport applySseHeadersAndBuild(HttpClientSseClientTransport.Builder builder, McpServerConfig config) {
-        if (config.getHeaders() != null && !config.getHeaders().isEmpty()) {
-            builder.customizeRequest(requestBuilder -> {
-                for (var entry : config.getHeaders().entrySet()) {
-                    requestBuilder.header(entry.getKey(), entry.getValue());
-                }
-            });
-        }
-        return builder.build();
     }
 
     private ToolCallResult extractToolCallResult(McpSchema.CallToolResult result) {

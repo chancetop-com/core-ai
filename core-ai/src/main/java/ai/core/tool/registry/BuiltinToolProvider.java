@@ -15,6 +15,11 @@ import java.util.Map;
  * @author Lim Chen
  */
 public class BuiltinToolProvider implements ToolProvider {
+    public static BuiltinToolProvider fromSet(String setName) {
+        var tools = BuiltinTools.GROUPED_SETS.getOrDefault(setName, List.of());
+        return new BuiltinToolProvider(setName, tools);
+    }
+
     private final String id;
     private final Map<String, ToolCall> tools;
 
@@ -25,11 +30,6 @@ public class BuiltinToolProvider implements ToolProvider {
             map.put(tc.getName(), tc);
         }
         this.tools = Map.copyOf(map);
-    }
-
-    public static BuiltinToolProvider fromSet(String setName) {
-        var tools = BuiltinTools.GROUPED_SETS.getOrDefault(setName, List.of());
-        return new BuiltinToolProvider(setName, tools);
     }
 
     @Override

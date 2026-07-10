@@ -3,6 +3,7 @@ package ai.core.session;
 import ai.core.agent.CancellationToken;
 import ai.core.agent.Task;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import ai.core.tool.subagent.SubagentOutputSink;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import io.opentelemetry.context.Context;
 import org.slf4j.Logger;
@@ -20,6 +21,30 @@ public class BackgroundTaskManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BackgroundTaskManager.class);
 
+    private static TaskRunResult runAgentWithSink(Supplier<String> agentRunner, SubagentOutputSink sink, String taskId) {
+        String status;
+        String result = null;
+        String error = null;
+        try {
+            result = agentRunner.get();
+            sink.write(result != null ? result : "");
+            status = "completed";
+        } catch (Exception e) {
+            if (Thread.currentThread().isInterrupted()) {
+                status = "cancelled";
+                error = e.getMessage();
+                LOGGER.debug("background task interrupted, taskId={}", taskId);
+            } else {
+                status = "failed";
+                error = e.getMessage();
+                LOGGER.warn("background task failed, taskId={}, error={}", taskId, e.getMessage());
+            }
+        } finally {
+            sink.close();
+        }
+        return new TaskRunResult(status, result, error);
+    }
+
     private final List<Task> tasks = new CopyOnWriteArrayList<>();
     private final SessionCommandQueue commandQueue;
     private final SubagentOutputSinkFactory sinkFactory;
@@ -31,6 +56,7 @@ public class BackgroundTaskManager {
         this.executor = AsyncToolTaskExecutor.getInstance().getExecutor();
     }
 
+    @SuppressWarnings("PMD.UseTryWithResources")
     public TaskHandle submit(String taskId, Supplier<String> agentRunner, CancellationToken token) {
         LOGGER.debug("submitting background task, taskId={}", taskId);
         var sink = sinkFactory.create(taskId);
@@ -40,29 +66,10 @@ public class BackgroundTaskManager {
         var future = executor.submit(() -> {
             var scope = otelContext.makeCurrent();
             try {
-                String status;
-                String result = null;
-                String error = null;
-                try {
-                    result = agentRunner.get();
-                    sink.write(result != null ? result : "");
-                    status = "completed";
-                } catch (Exception e) {
-                    if (Thread.currentThread().isInterrupted()) {
-                        status = "cancelled";
-                        error = e.getMessage();
-                        LOGGER.debug("background task interrupted, taskId={}", taskId);
-                    } else {
-                        status = "failed";
-                        error = e.getMessage();
-                        LOGGER.warn("background task failed, taskId={}, error={}", taskId, e.getMessage());
-                    }
-                } finally {
-                    sink.close();
-                }
-                LOGGER.debug("background task finished, taskId={}, status={}", taskId, status);
+                var runResult = runAgentWithSink(agentRunner, sink, taskId);
+                LOGGER.debug("background task finished, taskId={}, status={}", taskId, runResult.status);
                 if (notified.compareAndSet(false, true)) {
-                    commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error));
+                    commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, runResult.status, outputRef, runResult.result, runResult.error));
                 }
             } finally {
                 scope.close();
@@ -118,5 +125,8 @@ public class BackgroundTaskManager {
     }
 
     public record TaskHandle(String outputRef, Future<?> future) {
+    }
+
+    private record TaskRunResult(String status, String result, String error) {
     }
 }

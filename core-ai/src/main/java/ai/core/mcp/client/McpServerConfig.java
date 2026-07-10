@@ -18,8 +18,8 @@ public class McpServerConfig {
     public static StdioBuilder stdio(String command) {
         return new StdioBuilder(command);
     }
-    public static HttpBuilder http(String url) {
-        return new HttpBuilder(url);
+    public static HttpServerConfigBuilder http(String url) {
+        return new HttpServerConfigBuilder(url);
     }
     public static McpServerConfig fromMap(String serverName, Map<String, Object> config) {
         String transport = (String) config.get("transport");
@@ -167,34 +167,34 @@ public class McpServerConfig {
         }
         return Map.of();
     }
-    private String name;
-    private TransportType transportType;
+    String name;
+    TransportType transportType;
 
     // STDIO transport fields
-    private String command;
-    private List<String> args;
-    private Map<String, String> env;
+    String command;
+    List<String> args;
+    Map<String, String> env;
 
     // HTTP transport fields
-    private String url;
-    private String endpoint;
-    private Map<String, String> headers;
+    String url;
+    String endpoint;
+    Map<String, String> headers;
 
     // Timeout configuration
-    private Duration connectTimeout = Duration.ofSeconds(10);
-    private Duration requestTimeout = Duration.ofSeconds(60);
-    private Duration initializationTimeout = Duration.ofSeconds(60);
+    Duration connectTimeout = Duration.ofSeconds(10);
+    Duration requestTimeout = Duration.ofSeconds(60);
+    Duration initializationTimeout = Duration.ofSeconds(60);
 
     // Reconnect configuration
-    private boolean autoReconnect = true;
-    private int maxReconnectAttempts = 3;
-    private Duration reconnectInterval = Duration.ofSeconds(5);
-    private Duration reconnectBackoffMax = Duration.ofSeconds(60);
+    boolean autoReconnect = true;
+    int maxReconnectAttempts = 3;
+    Duration reconnectInterval = Duration.ofSeconds(5);
+    Duration reconnectBackoffMax = Duration.ofSeconds(60);
 
     // Heartbeat configuration
-    private boolean enableHeartbeat = true;
-    private Duration heartbeatInterval = Duration.ofSeconds(30);
-    private Duration heartbeatTimeout = Duration.ofSeconds(10);
+    boolean enableHeartbeat = true;
+    Duration heartbeatInterval = Duration.ofSeconds(30);
+    Duration heartbeatTimeout = Duration.ofSeconds(10);
     public String getName() {
         return name;
     }
@@ -258,13 +258,7 @@ public class McpServerConfig {
     public boolean isSandboxHosted() {
         return transportType == TransportType.SANDBOX_HOSTED;
     }
-    public enum TransportType {
-        STDIO,
-        STREAMABLE_HTTP,
-        SSE,
-        SANDBOX_HOSTED
-    }
-    private interface CommonConfigBuilder<T> {
+    interface CommonConfigBuilder<T> {
         void enableHeartbeat(boolean enable);
         void heartbeatInterval(Duration interval);
         void heartbeatTimeout(Duration timeout);
@@ -373,120 +367,6 @@ public class McpServerConfig {
         public McpServerConfig build() {
             if (config.command == null || config.command.isBlank()) {
                 throw new IllegalArgumentException("command is required for STDIO transport");
-            }
-            return config;
-        }
-    }
-    public static final class HttpBuilder implements CommonConfigBuilder<HttpBuilder> {
-
-        // strip BOM, zero-width chars and surrounding whitespace/quotes that may
-        // sneak in via copy-paste or DB import and break URI parsing
-        private static String sanitizeUrl(String url) {
-            if (url == null) return null;
-            var cleaned = url.replaceAll("[\\uFEFF\\u200B\\u200C\\u200D\\u2060]", "").strip();
-            if (cleaned.length() >= 2) {
-                char first = cleaned.charAt(0);
-                char last = cleaned.charAt(cleaned.length() - 1);
-                if ((first == '"' || first == '\'') && first == last) {
-                    cleaned = cleaned.substring(1, cleaned.length() - 1).strip();
-                }
-            }
-            return cleaned;
-        }
-
-        private final McpServerConfig config = new McpServerConfig();
-
-        private HttpBuilder(String url) {
-            config.transportType = TransportType.STREAMABLE_HTTP;
-            config.url = sanitizeUrl(url);
-            config.headers = new HashMap<>();
-        }
-
-        public HttpBuilder name(String name) {
-            config.name = name;
-            return this;
-        }
-
-        public HttpBuilder endpoint(String endpoint) {
-            config.endpoint = endpoint;
-            return this;
-        }
-
-        public HttpBuilder transportType(TransportType transportType) {
-            if (transportType == TransportType.STDIO) {
-                throw new IllegalArgumentException("Use stdio() builder for STDIO transport");
-            }
-            config.transportType = transportType;
-            return this;
-        }
-
-        public HttpBuilder headers(Map<String, String> headers) {
-            config.headers = new HashMap<>(headers);
-            return this;
-        }
-
-        public HttpBuilder header(String key, String value) {
-            config.headers.put(key, value);
-            return this;
-        }
-
-        public HttpBuilder bearerToken(String token) {
-            return header("Authorization", "Bearer " + token);
-        }
-
-        @Override
-        public void connectTimeout(Duration timeout) {
-            config.connectTimeout = timeout;
-        }
-
-        @Override
-        public void requestTimeout(Duration timeout) {
-            config.requestTimeout = timeout;
-        }
-
-        @Override
-        public void initializationTimeout(Duration timeout) {
-            config.initializationTimeout = timeout;
-        }
-
-        @Override
-        public void autoReconnect(boolean autoReconnect) {
-            config.autoReconnect = autoReconnect;
-        }
-
-        @Override
-        public void maxReconnectAttempts(int maxAttempts) {
-            config.maxReconnectAttempts = maxAttempts;
-        }
-
-        @Override
-        public void reconnectInterval(Duration interval) {
-            config.reconnectInterval = interval;
-        }
-
-        public HttpBuilder reconnectBackoffMax(Duration max) {
-            config.reconnectBackoffMax = max;
-            return this;
-        }
-
-        @Override
-        public void enableHeartbeat(boolean enable) {
-            config.enableHeartbeat = enable;
-        }
-
-        @Override
-        public void heartbeatInterval(Duration interval) {
-            config.heartbeatInterval = interval;
-        }
-
-        @Override
-        public void heartbeatTimeout(Duration timeout) {
-            config.heartbeatTimeout = timeout;
-        }
-
-        public McpServerConfig build() {
-            if (config.url == null || config.url.isBlank()) {
-                throw new IllegalArgumentException("url is required for HTTP transport");
             }
             return config;
         }

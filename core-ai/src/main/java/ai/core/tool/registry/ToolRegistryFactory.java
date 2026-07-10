@@ -22,9 +22,6 @@ public final class ToolRegistryFactory {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistryFactory.class);
 
-    private ToolRegistryFactory() {
-    }
-
     public static ToolRegistry create(FactoryContext context) {
         var registry = new ToolRegistry();
 
@@ -69,9 +66,11 @@ public final class ToolRegistryFactory {
                     var expandedTool = dispatchMap.get(tc.getName());
                     if (expandedTool != null) {
                         individualTools.putIfAbsent(tc.getName(), expandedTool);
-                    } else {
-                        expandedTool = searchAcrossProviders(source, tc.getName());
-                        if (expandedTool != null) individualTools.putIfAbsent(tc.getName(), expandedTool);
+                        continue;
+                    }
+                    expandedTool = searchAcrossProviders(source, tc.getName());
+                    if (expandedTool != null) {
+                        individualTools.putIfAbsent(tc.getName(), expandedTool);
                     }
                 }
             }
@@ -120,5 +119,8 @@ public final class ToolRegistryFactory {
         } else {
             return BuiltinTools.FILE_RW;
         }
+    }
+
+    private ToolRegistryFactory() {
     }
 }

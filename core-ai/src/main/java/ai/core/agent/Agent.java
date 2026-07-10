@@ -1,34 +1,21 @@
 package ai.core.agent;
 
 import ai.core.agent.atmention.AtMentionParser;
-import ai.core.agent.atmention.AtMentionResult;
 import ai.core.agent.internal.AgentHelper;
 import ai.core.agent.slashcommand.SlashCommandParser;
 import ai.core.context.Compression;
-import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
-import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.domain.Content;
-import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
-import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.ReasoningEffort;
-import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
-import ai.core.rag.SimilaritySearchRequest;
 import ai.core.reflection.ReflectionConfig;
-import ai.core.reflection.ReflectionEvaluation;
-import ai.core.reflection.ReflectionEvaluator;
-import ai.core.reflection.ReflectionHistory;
 import ai.core.reflection.ReflectionListener;
-import ai.core.reflection.ReflectionStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
@@ -39,20 +26,16 @@ import ai.core.tool.registry.ToolMaterialization;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.crypto.Hash;
-import core.framework.json.JSON;
 import core.framework.util.Maps;
 import io.opentelemetry.api.trace.SpanContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -63,8 +46,8 @@ public class Agent extends Node<Agent> {
         return new AgentBuilder();
     }
 
-    private final Logger logger = LoggerFactory.getLogger(Agent.class);
-    private CancellationToken rootToken;
+    final Logger logger = LoggerFactory.getLogger(Agent.class);
+    CancellationToken rootToken;
     String systemPrompt;
     String promptTemplate;
     LLMProvider llmProvider;
@@ -85,7 +68,7 @@ public class Agent extends Node<Agent> {
     // Span context of the LLM call whose response triggered the current tool execution, scoped to THIS agent.
     // Kept per-agent (not on the shared ExecutionContext) so a parent agent and its sub-agents each track
     // their own triggering LLM span and tool spans nest under the correct agent subtree.
-    private volatile SpanContext lastLLMSpanContext;
+    volatile SpanContext lastLLMSpanContext;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -114,7 +97,7 @@ public class Agent extends Node<Agent> {
     }
 
     private void chatCommand(String query, Map<String, Object> variables) {
-        chatTurns(query, variables, wrapFirstTurn(this::constructionFakeSlashCommandAssistantMsg));
+        chatTurns(query, variables, SyntheticMessageFactory.wrapFirstTurn(this, (m, t) -> SyntheticMessageFactory.constructionFakeSlashCommandAssistantMsg(this, m, t)));
     }
 
     private void chatLoops(String query, Map<String, Object> variables, boolean skipReflection) {
@@ -127,14 +110,14 @@ public class Agent extends Node<Agent> {
 
         prompt = new MustachePromptTemplate().execute(prompt, context, Hash.md5Hex(promptTemplate));
 
-        chatTurns(prompt, variables, this::handLLM);
+        chatTurns(prompt, variables, (m, t) -> ModelGateway.handLLM(this, m, t));
 
         if (reflectionConfig != null && reflectionConfig.enabled() && !skipReflection) {
-            reflectionLoop(variables);
+            ReflectionOrchestrator.reflectionLoop(this, variables);
         }
     }
 
-    private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
+    String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
         boolean isFirstExecution = getInput() == null;
         if (isFirstExecution) {
             setInput(query);
@@ -166,104 +149,7 @@ public class Agent extends Node<Agent> {
     }
 
     private void chatAtMention(String query, Map<String, Object> variables) {
-        chatTurns(query, variables, wrapFirstTurn(this::constructionFakeAtMentionAssistantMsg));
-    }
-
-    private BiFunction<List<Message>, List<Tool>, Choice> wrapFirstTurn(BiFunction<List<Message>, List<Tool>, Choice> firstTurnBuilder) {
-        return (messages, tools) -> {
-            if (RoleType.TOOL.equals(messages.getLast().role)) {
-                return handLLM(messages, tools);
-            }
-            return firstTurnBuilder.apply(messages, tools);
-        };
-    }
-
-    private Choice constructionFakeAtMentionAssistantMsg(List<Message> messages, List<Tool> tools) {
-        String query = messages.getLast().getTextContent();
-        var registry = getExecutionContext().getAgentProfileRegistry();
-        var result = AtMentionParser.parse(query, registry);
-        if (result.isEmpty()) {
-            return Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT,
-                    "Error: Unknown agent. Use /agents to list available agents.", "assistant", null, null, ""));
-        }
-        AtMentionResult mention = result.get();
-        String taskArgs = "{\"subagent_type\":\"" + mention.agentName()
-                + "\",\"prompt\":\"" + escapeJson(mention.prompt())
-                + "\",\"description\":\"" + escapeJson(truncateDescription(mention.prompt())) + "\"}";
-        var functionCall = FunctionCall.of(AgentHelper.generateToolCallId(), "function", "task", taskArgs);
-        return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall), ""));
-    }
-
-    private String escapeJson(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-    }
-
-    private String truncateDescription(String prompt) {
-        return prompt.length() > 50 ? prompt.substring(0, 47) + "..." : prompt;
-    }
-
-    private void reflectionLoop(Map<String, Object> variables) {
-        ReflectionHistory history = new ReflectionHistory(getId(), getName(), getInput(), reflectionConfig.evaluationCriteria());
-        int currentRound = 1;
-        setRound(currentRound);
-        if (reflectionListener != null)
-            reflectionListener.onReflectionStart(this, getInput(), reflectionConfig.evaluationCriteria());
-        while (currentRound <= reflectionConfig.maxRound()) {
-            throwIfCancelled();
-            setRound(currentRound);
-            Instant roundStart = Instant.now();
-            String solutionToEvaluate = getOutput();
-            logger.debug("Reflection round: {}/{}, agent: {}", currentRound, reflectionConfig.maxRound(), getName());
-            if (reflectionListener != null) reflectionListener.onBeforeRound(this, currentRound, solutionToEvaluate);
-            var evalRequest = new ReflectionEvaluator.EvaluationRequest(
-                    getInput(), getOutput(), getName(), getLLMProvider(),
-                    getTemperature(), getModel(), reflectionConfig, variables);
-            ReflectionEvaluator.EvaluationResult evalResult = ReflectionEvaluator.evaluate(evalRequest);
-            addTokenCost(evalResult.usage());
-            String evaluationJson = evalResult.evaluationJson();
-            ReflectionEvaluation evaluation = JSON.fromJSON(ReflectionEvaluation.class, evaluationJson);
-            if (!AgentHelper.isValidEvaluation(evaluation)) {
-                logger.error("Invalid evaluation score: {}, terminating reflection", evaluation.getScore());
-                history.complete(ReflectionStatus.FAILED);
-                if (reflectionListener != null) reflectionListener.onError(this, currentRound,
-                        new IllegalStateException("Invalid evaluation score: " + evaluation.getScore()));
-                return;
-            }
-            logger.debug("Round {} evaluation: score={}, pass={}, continue={}",
-                    currentRound, evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
-            history.addRound(new ReflectionHistory.ReflectionRound(currentRound, solutionToEvaluate, evaluationJson,
-                    evaluation, Duration.between(roundStart, Instant.now()), (long) getCurrentTokenUsage().getTotalTokens()));
-            if (AgentHelper.shouldTerminateReflection(reflectionConfig, evaluation, currentRound)) {
-                logger.debug("Reflection terminating: score={}, pass={}", evaluation.getScore(), evaluation.isPass());
-                notifyTerminationReason(evaluation, currentRound);
-                break;
-            }
-            doExecute(ReflectionEvaluator.buildImprovementPrompt(evaluationJson, evaluation), variables, true);
-            if (reflectionListener != null)
-                reflectionListener.onAfterRound(this, currentRound, getOutput(), evaluation);
-            currentRound++;
-        }
-        if (currentRound > reflectionConfig.maxRound() && reflectionListener != null) {
-            int finalScore = history.getRounds().isEmpty() ? 0 : history.getRounds().getLast().getEvaluation().getScore();
-            reflectionListener.onMaxRoundsReached(this, finalScore);
-        }
-        history.complete(determineCompletionStatus(history));
-        if (reflectionListener != null) reflectionListener.onReflectionComplete(this, history);
-    }
-
-    private void notifyTerminationReason(ReflectionEvaluation eval, int round) {
-        if (reflectionListener == null) return;
-        if (eval.isPass() && eval.getScore() >= 8) reflectionListener.onScoreAchieved(this, eval.getScore(), round);
-        else if (!eval.isShouldContinue()) reflectionListener.onNoImprovement(this, eval.getScore(), round);
-    }
-
-    private ReflectionStatus determineCompletionStatus(ReflectionHistory history) {
-        if (history.getRounds().size() >= reflectionConfig.maxRound()) return ReflectionStatus.COMPLETED_MAX_ROUNDS;
-        if (history.getRounds().isEmpty()) return ReflectionStatus.COMPLETED_SUCCESS;
-        var lastEval = history.getRounds().getLast().getEvaluation();
-        if (lastEval.isPass() && lastEval.getScore() >= 8) return ReflectionStatus.COMPLETED_SUCCESS;
-        return lastEval.isShouldContinue() ? ReflectionStatus.COMPLETED_SUCCESS : ReflectionStatus.COMPLETED_NO_IMPROVEMENT;
+        chatTurns(query, variables, SyntheticMessageFactory.wrapFirstTurn(this, (m, t) -> SyntheticMessageFactory.constructionFakeAtMentionAssistantMsg(this, m, t)));
     }
 
     protected void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
@@ -299,18 +185,6 @@ public class Agent extends Node<Agent> {
         return agentOut.toString();
     }
 
-    private Choice constructionFakeSlashCommandAssistantMsg(List<Message> messages, List<Tool> tools) {
-        logger.debug("all tools size is {}", tools.size());
-        String query = messages.getLast().getTextContent();
-        var command = SlashCommandParser.parse(query);
-        if (command.isNotValid()) {
-            return Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments", "assistant", null, null, ""));
-        } else {
-            var functionCall = FunctionCall.of(AgentHelper.generateToolCallId(), "function", command.getToolName(), command.hasArguments() ? command.getArguments() : "{}");
-            return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall), ""));
-        }
-    }
-
     public List<Message> turn(List<Message> messages, ToolMaterialization toolMaterialization, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         var resultMsg = new ArrayList<Message>();
         var choice = constructionAssistantMsg.apply(messages, toolMaterialization.definitions());
@@ -320,50 +194,6 @@ public class Agent extends Node<Agent> {
             resultMsg.addAll(funcMsg);
         }
         return resultMsg;
-    }
-
-    private Choice handLLM(List<Message> messages, List<Tool> tools) {
-        var effectiveModel = resolveEffectiveModel(messages);
-        var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), effectiveModel, this.getName(), null, null, reasoningEffort));
-        // Reset before each LLM call; any tool spans triggered by this call will nest under it.
-        this.lastLLMSpanContext = null;
-        return aroundLLM(r -> llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(getStreamingCallback()), sc -> this.lastLLMSpanContext = sc), req);
-    }
-
-    private String resolveEffectiveModel(List<Message> messages) {
-        if (multiModalModel == null) return model;
-        for (var message : messages) {
-            if (message.content == null) continue;
-            for (var content : message.content) {
-                if (content.type == Content.ContentType.IMAGE_URL || content.type == Content.ContentType.FILE) {
-                    return multiModalModel;
-                }
-            }
-        }
-        return model;
-    }
-
-    private Choice aroundLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
-        agentLifecycles.forEach(alc -> alc.beforeModel(request, getExecutionContext()));
-        var resp = callLLM(func, request);
-
-        for (var lifecycle : agentLifecycles) {
-            var retryMessages = lifecycle.onModelResponse(request, resp, getExecutionContext());
-            if (retryMessages != null && !retryMessages.isEmpty()) {
-                retryMessages.forEach(this::addMessage);
-                resp = callLLM(func, request);
-                break;
-            }
-        }
-
-        return resp.choices.getFirst();
-    }
-
-    private CompletionResponse callLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
-        var resp = func.apply(request);
-        addTokenCost(resp.usage);
-        agentLifecycles.forEach(alc -> alc.afterModel(request, resp, getExecutionContext()));
-        return resp;
     }
 
     public List<Message> handleFunc(Message funcMsg, Map<String, ToolCall> dispatchMap) {
@@ -424,21 +254,7 @@ public class Agent extends Node<Agent> {
     }
 
     private void rag(String query, Map<String, Object> variables) {
-        if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
-            throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
-        var ragQuery = query;
-        if (ragConfig.enableQueryRewriting()) {
-            ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query);
-        }
-        var rsp = ragConfig.llmProvider().embeddings(new EmbeddingRequest(List.of(ragQuery)));
-        addTokenCost(rsp.usage);
-        var embedding = rsp.embeddings.getFirst().embedding;
-        var docs = ragConfig.vectorStore().similaritySearch(SimilaritySearchRequest.builder()
-                .embedding(embedding)
-                .threshold(ragConfig.threshold())
-                .topK(ragConfig.topK()).build());
-        var context = ragConfig.llmProvider().rerankings(RerankingRequest.of(ragQuery, docs.stream().map(v -> v.content).toList())).rerankedDocuments.getFirst();
-        variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
+        RagPipeline.execute(ragConfig, query, variables, this::addTokenCost);
     }
 
     public Boolean isUseGroupContext() {
@@ -531,7 +347,7 @@ public class Agent extends Node<Agent> {
     public void restoreHistory(List<Message> messages) {
         if (messages == null || messages.isEmpty()) return;
 
-        if (isInterruptionMarker(messages.getLast())) {
+        if (AgentInterruptionHandler.isInterruptionMarker(messages.getLast())) {
             logger.debug("detected persisted interruption marker in history");
         }
 
@@ -539,103 +355,34 @@ public class Agent extends Node<Agent> {
     }
 
     public String continueWithInjectedMessage() {
-        return runTurnsLoop(this::handLLM);
-    }
-
-    public CancellationToken getCancellationToken() {
-        if (rootToken == null) {
-            rootToken = CancellationToken.create();
-        }
-        return rootToken;
+        return runTurnsLoop((m, t) -> ModelGateway.handLLM(this, m, t));
     }
 
     public void cancel() {
-        boolean alreadyCancelled = getCancellationToken().isCancelled();
-        getCancellationToken().cancel();
-        if (!alreadyCancelled) {
-            injectInterruptionMarker();
-            persistInterruptionMarkerIfExists();
-        }
+        AgentInterruptionHandler.cancel(this);
+    }
+
+    public CancellationToken getCancellationToken() {
+        return AgentInterruptionHandler.getCancellationToken(this);
     }
 
     public void resetCancellation() {
-        getCancellationToken().reset();
+        AgentInterruptionHandler.getCancellationToken(this).reset();
     }
 
     public boolean isCancelled() {
         return getExecutionContext().isCancelled();
     }
 
-    private void throwIfCancelled() {
-        getExecutionContext().throwIfCancelled();
-    }
-
-    private void injectInterruptionMarker() {
-        var token = getCancellationToken();
-        var reason = token.getReason();
-        if (!shouldInjectMarker(reason)) return;
-
-        var marker = reason == CancelReason.USER_CANCELLED
-                ? "<system-reminder>The user interrupted the previous action. Do not continue what you were doing.</system-reminder>"
-                : reason == CancelReason.REPLACED
-                ? "<system-reminder>The previous turn was replaced by a new request. The results above may be incomplete.</system-reminder>"
-                : "<system-reminder>The previous action was cancelled (reason: " + reason.name().toLowerCase() + ").</system-reminder>";
-
-        addMessage(Message.of(RoleType.USER, marker));
-    }
-
-    private static boolean shouldInjectMarker(CancelReason reason) {
-        return reason == CancelReason.USER_CANCELLED
-                || reason == CancelReason.REPLACED
-                || reason == CancelReason.TIMEOUT;
-    }
-
-    private void persistInterruptionMarkerIfExists() {
-        if (!hasPersistenceProvider()) return;
-        var sessionId = getExecutionContext().getSessionId();
-        if (sessionId != null) {
-            save(sessionId);
-        }
-    }
-
-    private static boolean isInterruptionMarker(Message msg) {
-        if (msg.role != RoleType.USER) return false;
-        var text = msg.getTextContent();
-        return text != null && text.startsWith("<system-reminder>The previous");
-    }
-
     private void normalizeMessages() {
-        var messages = getMessages();
-        java.util.Set<String> toolResultIds = new java.util.HashSet<>();
-        java.util.Set<String> orphanToolUses = new java.util.LinkedHashSet<>();
-
-        for (var msg : messages) {
-            if (msg.role == RoleType.TOOL && msg.toolCallId != null) {
-                toolResultIds.add(msg.toolCallId);
-            }
-        }
-        for (var msg : messages) {
-            if (msg.role == RoleType.ASSISTANT && msg.toolCalls != null) {
-                for (var tc : msg.toolCalls) {
-                    if (!toolResultIds.contains(tc.id)) {
-                        orphanToolUses.add(tc.id);
-                    }
-                }
-            }
-        }
-
-        for (var orphanId : orphanToolUses) {
-            addMessage(Message.of(RoleType.TOOL,
-                    "Error: Tool execution was cancelled or interrupted.",
-                    "system", orphanId, null));
-        }
+        MessageNormalizer.normalize(this);
     }
 
     @Override
     public ExecutionContext getExecutionContext() {
         var context = super.getExecutionContext();
         if (context.getCancellationToken() == null) {
-            context.setCancellationToken(getCancellationToken());
+            context.setCancellationToken(AgentInterruptionHandler.getCancellationToken(this));
         }
         context.setLlmProvider(llmProvider);
         context.setModel(model);

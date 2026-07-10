@@ -25,9 +25,6 @@ public class ToolRegistry {
     private final Map<String, ToolProvider> providers = new ConcurrentHashMap<>();
     private final Map<String, Map<String, ToolCall>> providerCache = new ConcurrentHashMap<>();
 
-    public ToolRegistry() {
-    }
-
     public void registerProvider(ToolProvider provider) {
         if (provider == null) {
             LOGGER.debug("null provider");
@@ -110,8 +107,6 @@ public class ToolRegistry {
         return provider.provide();
     }
 
-    private record CollectResult(Map<String, ToolCall> tools, Map<String, String> toolProviderIndex) {}
-
     public ToolProvider getProvider(String providerId) {
         return providers.get(providerId);
     }
@@ -119,4 +114,6 @@ public class ToolRegistry {
     public Map<String, ToolProvider> providers() {
         return Map.copyOf(providers);
     }
+
+    private record CollectResult(Map<String, ToolCall> tools, Map<String, String> toolProviderIndex) { }
 }

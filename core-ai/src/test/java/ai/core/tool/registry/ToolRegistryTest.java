@@ -5,6 +5,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.ToolCallResult;
+import ai.core.utils.Platform;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author Lim Chen
  */
 class ToolRegistryTest {
+
+    // -- helpers --
+
+    static ToolProvider createProvider(String id, int priority, Map<String, ToolCall> tools) {
+        return new SimpleToolProvider(id, priority, tools);
+    }
+
+    static ToolCall newEchoTool(String name, String description, ToolExposure exposure) {
+        var tool = new EchoTool(name, description);
+        if (exposure != null) {
+            tool.setExposure(exposure);
+        }
+        return tool;
+    }
+
     private ToolRegistry registry;
     private ExecutionContext ctx;
 
@@ -32,12 +48,30 @@ class ToolRegistryTest {
                 .build();
     }
 
+    @Test
+    void shouldResolveToolByName() {
+        var tool = new EchoTool("test_echo", "test tool");
+        registry.registerProvider(ListToolProvider.of(List.of(tool)));
+
+        var resolved = registry.materialize().getDispatchMap().get("test_echo");
+        assertNotNull(resolved);
+        assertEquals("test_echo", resolved.getName());
+    }
+
+    @Test
+    void shouldReturnNullForUnknownName() {
+        registry.registerProvider(ListToolProvider.of(List.of()));
+
+        var resolved = registry.materialize().getDispatchMap().get("nonexistent");
+        assertNull(resolved);
+    }
+
     @Nested
     class BuiltinProvider {
         @Test
         void shouldProvideBuiltinTools() {
             var provider = BuiltinToolProvider.fromSet("builtin-all");
-            assertEquals(ToolProvider.BUILTIN, provider.id());
+            assertEquals(ToolProvider.BUILTIN_ALL, provider.id());
             assertEquals(10, provider.priority());
         }
 
@@ -179,7 +213,7 @@ class ToolRegistryTest {
     class Factory {
         @Test
         void shouldCreateRegistryWithBuiltinTools() {
-            var factoryRegistry = ToolRegistryFactory.create(new FactoryContext(null, null, false));
+            var factoryRegistry = ToolRegistryFactory.create(new FactoryContext(Platform.WINDOWS_X64, null, false));
 
             var mat = factoryRegistry.materialize();
             var names = mat.definitions().stream().map(t -> t.function.name).toList();
@@ -189,35 +223,36 @@ class ToolRegistryTest {
         }
     }
 
-    // -- helpers --
+    // -- inner types --
 
-    static ToolProvider createProvider(String id, int priority, Map<String, ToolCall> tools) {
-        return new ToolProvider() {
-            @Override
-            public String id() {
-                return id;
-            }
+    static class SimpleToolProvider implements ToolProvider {
+        private final String id;
+        private final int priority;
+        private final Map<String, ToolCall> tools;
 
-            @Override
-            public int priority() {
-                return priority;
-            }
-
-            @Override
-            public Map<String, ToolCall> provide() {
-                return tools;
-            }
-        };
-    }
-
-    static ToolCall newEchoTool(String name, String description, ToolExposure exposure) {
-        var tool = new EchoTool(name, description);
-        if (exposure != null) {
-            tool.setExposure(exposure);
+        SimpleToolProvider(String id, int priority, Map<String, ToolCall> tools) {
+            this.id = id;
+            this.priority = priority;
+            this.tools = tools;
         }
-        return tool;
+
+        @Override
+        public String id() {
+            return id;
+        }
+
+        @Override
+        public int priority() {
+            return priority;
+        }
+
+        @Override
+        public Map<String, ToolCall> provide() {
+            return tools;
+        }
     }
 
+    @SuppressWarnings("PMD.ConstructorCallsOverridableMethod")
     static class EchoTool extends ToolCall {
         EchoTool(String name, String description) {
             setName(name);
@@ -236,23 +271,5 @@ class ToolRegistryTest {
         public ToolCallResult execute(String arguments) {
             return ToolCallResult.completed("echo: " + arguments);
         }
-    }
-
-    @Test
-    void shouldResolveToolByName() {
-        var tool = new EchoTool("test_echo", "test tool");
-        registry.registerProvider(ListToolProvider.of(List.of(tool)));
-
-        var resolved = registry.materialize().getDispatchMap().get("test_echo");
-        assertNotNull(resolved);
-        assertEquals("test_echo", resolved.getName());
-    }
-
-    @Test
-    void shouldReturnNullForUnknownName() {
-        registry.registerProvider(ListToolProvider.of(List.of()));
-
-        var resolved = registry.materialize().getDispatchMap().get("nonexistent");
-        assertNull(resolved);
     }
 }

@@ -2,6 +2,7 @@ package ai.core.utils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -62,6 +63,8 @@ public final class PowershellReadOnlyChecker {
 
     static final Set<String> WRAPPERS = Set.of("command", "builtin", "exec", "time", "nohup");
 
+    static final Set<String> CONTROL_OPS = Set.of("&&", "||", ";", "|", "&");
+
     public static boolean isReadOnly(String command) {
         if (command == null || command.isBlank()) return false;
 
@@ -78,8 +81,6 @@ public final class PowershellReadOnlyChecker {
         }
         return true;
     }
-
-    static final Set<String> CONTROL_OPS = Set.of("&&", "||", ";", "|", "&");
 
     static List<List<String>> splitByControlOps(List<Lexer.Tok> tokens) {
         List<List<String>> groups = new ArrayList<>();
@@ -100,16 +101,16 @@ public final class PowershellReadOnlyChecker {
 
     static boolean isSingleReadOnly(List<String> words) {
         int i = 0;
-        while (i < words.size() && WRAPPERS.contains(words.get(i).toLowerCase())) i++;
+        while (i < words.size() && WRAPPERS.contains(words.get(i).toLowerCase(Locale.ENGLISH))) i++;
         if (i >= words.size()) return false;
 
         String raw = words.get(i);
-        String cmd = basename(raw).toLowerCase();
+        String cmd = basename(raw).toLowerCase(Locale.ENGLISH);
         List<String> args = words.subList(i + 1, words.size());
 
         if (READONLY.contains(cmd)) return !hasWriteFlag(cmd, args);
-        if (cmd.equals("git")) return isGitReadOnly(args);
-        if (cmd.equals("docker")) return isDockerReadOnly(args);
+        if ("git".equals(cmd)) return isGitReadOnly(args);
+        if ("docker".equals(cmd)) return isDockerReadOnly(args);
 
         return false;
     }
@@ -117,12 +118,12 @@ public final class PowershellReadOnlyChecker {
     static boolean hasWriteFlag(String cmd, List<String> args) {
         Set<String> bad = WRITE_FLAGS.get(cmd);
         if (bad == null) return false;
-        return args.stream().anyMatch(a -> bad.contains(a.toLowerCase()));
+        return args.stream().anyMatch(a -> bad.contains(a.toLowerCase(Locale.ENGLISH)));
     }
 
     static boolean isGitReadOnly(List<String> args) {
         for (String a : args) {
-            if (a.equals("-c") || a.startsWith("--exec-path") || a.startsWith("--config-env"))
+            if ("-c".equals(a) || a.startsWith("--exec-path") || a.startsWith("--config-env"))
                 return false;
         }
         return args.stream().filter(a -> !a.startsWith("-")).findFirst()
@@ -141,25 +142,12 @@ public final class PowershellReadOnlyChecker {
     }
 
     static final class Lexer {
-        sealed interface Tok permits Word, Op {}
-        record Word(String text) implements Tok {}
-        record Op(String op) implements Tok {}
-
-        static final class Result {
-            final List<Tok> tokens = new ArrayList<>();
-            boolean unsafe = false;
-            String reason = "";
-
-            void markUnsafe(String r) {
-                unsafe = true;
-                if (reason.isEmpty()) reason = r;
-            }
-        }
-
+        @SuppressWarnings({"checkstyle:MethodLength", "checkstyle:ExecutableStatementCount"})
         static Result tokenize(String s) {
             Result res = new Result();
             StringBuilder cur = new StringBuilder();
-            int n = s.length(), i = 0;
+            int n = s.length();
+            int i = 0;
 
             while (i < n) {
                 char c = s.charAt(i);
@@ -279,6 +267,21 @@ public final class PowershellReadOnlyChecker {
             if (!cur.isEmpty()) {
                 res.tokens.add(new Word(cur.toString()));
                 cur.setLength(0);
+            }
+        }
+
+        sealed interface Tok permits Word, Op { }
+        record Word(String text) implements Tok { }
+        record Op(String op) implements Tok { }
+
+        static final class Result {
+            final List<Tok> tokens = new ArrayList<>();
+            boolean unsafe = false;
+            String reason = "";
+
+            void markUnsafe(String r) {
+                unsafe = true;
+                if (reason.isEmpty()) reason = r;
             }
         }
     }

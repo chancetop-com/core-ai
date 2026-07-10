@@ -3,6 +3,8 @@ package ai.core.agent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -47,16 +49,9 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * @author lim
  */
-public class CancellationToken {
+public final class CancellationToken {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CancellationToken.class);
-
-    private enum CancelPhase {
-        NOTIFY,
-        INTERRUPT,
-        CLOSE,
-        ABORT
-    }
 
     private static final ScheduledExecutorService SCHEDULER =
             Executors.newSingleThreadScheduledExecutor(r -> {
@@ -65,24 +60,21 @@ public class CancellationToken {
                 return t;
             });
 
-    private final CancellationToken parent;
-    private final CopyOnWriteArrayList<CancellationToken> children = new CopyOnWriteArrayList<>();
-    private final AtomicBoolean cancelled = new AtomicBoolean(false);
-    private volatile CancelReason reason;
-    private final ConcurrentHashMap<CancelPhase, CopyOnWriteArrayList<Runnable>> phaseActions = new ConcurrentHashMap<>();
-
-    {
-        for (var phase : CancelPhase.values()) {
-            phaseActions.put(phase, new CopyOnWriteArrayList<>());
-        }
-    }
-
     public static CancellationToken create() {
         return new CancellationToken(null);
     }
 
+    private final CancellationToken parent;
+    private final List<CancellationToken> children = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean cancelled = new AtomicBoolean(false);
+    private volatile CancelReason reason;
+    private final Map<CancelPhase, List<Runnable>> phaseActions = new ConcurrentHashMap<>();
+
     private CancellationToken(CancellationToken parent) {
         this.parent = parent;
+        for (var phase : CancelPhase.values()) {
+            phaseActions.put(phase, new CopyOnWriteArrayList<>());
+        }
     }
 
     public CancellationToken createChild() {
@@ -122,7 +114,7 @@ public class CancellationToken {
 
         LOGGER.debug("cancelling token, reason={}, child={}, actionCount={}",
                 reason, isChild(),
-                phaseActions.values().stream().mapToInt(CopyOnWriteArrayList::size).sum());
+                phaseActions.values().stream().mapToInt(List::size).sum());
 
         boolean skipCloseAndAbort = reason == CancelReason.NEW_MESSAGE_INTERRUPT;
         if (skipCloseAndAbort) {
@@ -185,6 +177,25 @@ public class CancellationToken {
         return onCancel(CancelPhase.NOTIFY, action);
     }
 
+    private Runnable onCancel(CancelPhase phase, Runnable action) {
+        var list = phaseActions.get(phase);
+        list.add(action);
+        if (isCancelled()) {
+            // Remove from list first to prevent double execution — cancel() might have already
+            // iterated this phase and run the action. Then run it exactly once ourselves.
+            list.remove(action);
+            boolean skipCloseAndAbort = getReason() == CancelReason.NEW_MESSAGE_INTERRUPT;
+            if (!skipCloseAndAbort || phase != CancelPhase.CLOSE && phase != CancelPhase.ABORT) {
+                try {
+                    action.run();
+                } catch (Exception e) {
+                    LOGGER.debug("cleanup action failed in onCancel", e);
+                }
+            }
+        }
+        return () -> list.remove(action);
+    }
+
     public Runnable bindThread(Thread thread) {
         return onCancel(CancelPhase.INTERRUPT, thread::interrupt);
     }
@@ -194,7 +205,7 @@ public class CancellationToken {
             try {
                 resource.close();
             } catch (Exception e) {
-                // ignore close errors
+                LOGGER.debug("resource close error", e);
             }
         });
     }
@@ -208,7 +219,7 @@ public class CancellationToken {
             } catch (TimeoutException e) {
                 process.destroyForcibly();
             } catch (Exception e) {
-                // process already exited or errored
+                LOGGER.debug("process exit error", e);
             }
         });
     }
@@ -225,7 +236,7 @@ public class CancellationToken {
     }
 
     public <T> T orCancel(CompletableFuture<T> future, long timeoutMs)
-            throws CancellationException, TimeoutException, ExecutionException {
+            throws TimeoutException, ExecutionException {
         throwIfCancelled();
         var deregister = onCancel(CancelPhase.INTERRUPT, () -> future.cancel(true));
         try {
@@ -233,10 +244,10 @@ public class CancellationToken {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             var r = getReason();
-            throw r != null ? new CancellationException(r) : new CancellationException();
+            throw r != null ? new CancellationException(r, e) : new CancellationException(e);
         } catch (java.util.concurrent.CancellationException e) {
             var r = getReason();
-            throw r != null ? new CancellationException(r) : new CancellationException();
+            throw r != null ? new CancellationException(r, e) : new CancellationException(e);
         } catch (TimeoutException | ExecutionException e) {
             throw e;
         } finally {
@@ -244,22 +255,10 @@ public class CancellationToken {
         }
     }
 
-    private Runnable onCancel(CancelPhase phase, Runnable action) {
-        var list = phaseActions.get(phase);
-        list.add(action);
-        if (isCancelled()) {
-            // Remove from list first to prevent double execution — cancel() might have already
-            // iterated this phase and run the action. Then run it exactly once ourselves.
-            list.remove(action);
-            boolean skipCloseAndAbort = getReason() == CancelReason.NEW_MESSAGE_INTERRUPT;
-            if (!skipCloseAndAbort || (phase != CancelPhase.CLOSE && phase != CancelPhase.ABORT)) {
-                try {
-                    action.run();
-                } catch (Exception e) {
-                    // ignore
-                }
-            }
-        }
-        return () -> list.remove(action);
+    private enum CancelPhase {
+        NOTIFY,
+        INTERRUPT,
+        CLOSE,
+        ABORT
     }
 }
