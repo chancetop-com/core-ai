@@ -93,7 +93,7 @@ public class ChannelSyncController implements Controller {
 
         var userField = (String) payload.get("user");
         var asyncOcg = callbackUrl != null && !callbackUrl.isBlank();
-        var isNewConversation = !asyncOcg && countUserMessages(payload) == 1;
+        var isNewConversation = !asyncOcg && countUserMessages(payload) == 1 && (userField == null || !sessionCache.containsKey(userField));
 
         String sessionId;
         int initialMessageCount;
