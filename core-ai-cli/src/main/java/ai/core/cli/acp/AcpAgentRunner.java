@@ -107,7 +107,7 @@ public class AcpAgentRunner {
         registerAuthListener(result);
 
         var ctx = new AgentContext(result,
-                props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(false),
+                props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true),
                 props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(false),
                 props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false),
                 props.property("agent.max.turn").map(Integer::parseInt).orElse(100),

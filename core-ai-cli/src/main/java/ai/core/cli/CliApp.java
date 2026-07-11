@@ -338,7 +338,7 @@ public class CliApp {
             }
         });
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
-        boolean memory = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(false);
+        boolean memory = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true);
         boolean dailyLogs = props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(false);
         boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
         boolean todoV2 = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(false);

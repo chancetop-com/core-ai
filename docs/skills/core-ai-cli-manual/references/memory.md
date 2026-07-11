@@ -20,7 +20,7 @@ Session → daily-logs → episodes → knowledge wiki pages
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `agent.memory.enabled` | `false` | Master switch |
+| `agent.memory.enabled` | `true` | Master switch |
 | `agent.memory.daily.logs.enabled` | `false` | Enable 4-layer pipeline (vs. direct wiki-only) |
 | `agent.memory.prompt.extraction` | `false` | Incremental extraction after each prompt |
 | `agent.memory.timezone` | system | Timezone for timestamps (e.g. `Asia/Shanghai`) |

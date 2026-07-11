@@ -51,13 +51,13 @@ For detailed reference, read the relevant file:
 
 | Property | Interactive | Headless | Serve | ACP |
 |----------|------------|----------|-------|-----|
-| `agent.memory.enabled` | `false` | `false` | `true` | `false` |
+| `agent.memory.enabled` | `true` | `true` | `true` | `true` |
 | `agent.memory.daily.logs.enabled` | `false` | `false` | `false` | `false` |
 | `agent.memory.prompt.extraction` | `false` | n/a | n/a | n/a |
 | `agent.coding.enabled` | `false` | `false` | `false` | `false` |
 | `agent.todo.v2.enabled` | `false` | `false` | `false` | n/a |
 
-All boolean feature flags default to `false` unless noted. Interactive mode = `core-ai`, Headless = `core-ai --prompt`, Serve = `core-ai --serve`, ACP = `core-ai --acp-agent`.
+All boolean feature flags default to `false` unless noted. `agent.memory.enabled` defaults to `true`. Interactive mode = `core-ai`, Headless = `core-ai --prompt`, Serve = `core-ai --serve`, ACP = `core-ai --acp-agent`.
 
 ## Writing Configuration
 
