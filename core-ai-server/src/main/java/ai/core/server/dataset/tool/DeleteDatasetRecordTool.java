@@ -32,8 +32,7 @@ public final class DeleteDatasetRecordTool extends ToolCall {
 
     private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
         var sb = new StringBuilder(512);
-        sb.append("Delete a record from a dataset.\n");
-        sb.append("Provide the dataset_id and record_id to delete.\n");
+        sb.append("Delete a record from a dataset.\nProvide the dataset_id and record_id to delete.\n");
         sb.append(QueryDatasetRecordsTool.buildAvailableDatasetsSection(datasetService, registry));
         return sb.toString();
     }
@@ -45,12 +44,10 @@ public final class DeleteDatasetRecordTool extends ToolCall {
         );
     }
 
-    private final DatasetService datasetService;
     private final DatasetRecordService recordService;
     private final DatasetAccessRegistry registry;
 
     private DeleteDatasetRecordTool(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
-        this.datasetService = datasetService;
         this.recordService = recordService;
         this.registry = registry;
     }

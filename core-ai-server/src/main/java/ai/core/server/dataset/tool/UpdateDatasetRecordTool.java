@@ -34,8 +34,7 @@ public final class UpdateDatasetRecordTool extends ToolCall {
 
     private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
         var sb = new StringBuilder(512);
-        sb.append("Update an existing record in a dataset.\n");
-        sb.append("Provide the dataset_id, record_id, and the updated field values as a JSON object.\n");
+        sb.append("Update an existing record in a dataset.\nProvide the dataset_id, record_id, and the updated field values as a JSON object.\n");
         sb.append(QueryDatasetRecordsTool.buildAvailableDatasetsSection(datasetService, registry));
         return sb.toString();
     }

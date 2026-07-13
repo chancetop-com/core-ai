@@ -6,7 +6,6 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
-import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.BuiltinToolProvider;
 import ai.core.tool.mcp.McpToolCalls;
@@ -123,8 +122,8 @@ public class ToolRefResolver {
         var parsed = ToolRef.parseMcpToolId(toolRef.id, toolRef.source);
         if (parsed != null) {
             var serverId = parsed.serverId();
-            var toolName = parsed.toolName();
             if (serverId != null) {
+                var toolName = parsed.toolName();
                 var mgr = pickManager(serverId, sessionMgr);
                 if (mgr != null && mgr.hasServer(serverId)) {
                     result.addAll(loadMcpToolSafe(mgr, serverId, toolName));

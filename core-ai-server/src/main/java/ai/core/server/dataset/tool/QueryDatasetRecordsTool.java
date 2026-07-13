@@ -36,20 +36,19 @@ public final class QueryDatasetRecordsTool extends ToolCall {
 
     private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
         var sb = new StringBuilder(512);
-        sb.append("Query records from a dataset by dataset_id.\n");
-        sb.append("Use this tool to search, filter, and retrieve records by time range and field projection.\n");
+        sb.append("Query records from a dataset by dataset_id.\nUse this tool to search, filter, and retrieve records by time range and field projection.\n");
         sb.append(buildAvailableDatasetsSection(datasetService, registry));
         return sb.toString();
     }
 
     static String buildAvailableDatasetsSection(DatasetService datasetService, DatasetAccessRegistry registry) {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(256);
         sb.append("\nAvailable datasets (specify dataset_id to choose):\n");
         for (var entry : registry.allowedDatasets().entrySet()) {
             var dataset = datasetService.get(entry.getKey());
             if (dataset == null) continue;
             sb.append("- \"").append(dataset.name).append("\" (id: ").append(entry.getKey())
-              .append(", permission: ").append(entry.getValue().name()).append(")");
+              .append(", permission: ").append(entry.getValue().name()).append(')');
             if (dataset.schema != null && !dataset.schema.isEmpty()) {
                 sb.append("\n  schema: ");
                 var fieldDescs = dataset.schema.stream()
@@ -57,7 +56,7 @@ public final class QueryDatasetRecordsTool extends ToolCall {
                     .toList();
                 sb.append(String.join(", ", fieldDescs));
             }
-            sb.append("\n");
+            sb.append('\n');
         }
         return sb.toString();
     }
@@ -73,12 +72,10 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         );
     }
 
-    private final DatasetService datasetService;
     private final DatasetRecordService recordService;
     private final DatasetAccessRegistry registry;
 
     private QueryDatasetRecordsTool(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
-        this.datasetService = datasetService;
         this.recordService = recordService;
         this.registry = registry;
     }

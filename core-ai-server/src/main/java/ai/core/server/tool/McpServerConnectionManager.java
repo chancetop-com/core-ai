@@ -6,7 +6,6 @@ import ai.core.mcp.client.McpServerConfig;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.server.domain.ToolRegistryEntry;
-import ai.core.server.sandbox.SandboxClient;
 import ai.core.server.sandbox.SandboxService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +19,36 @@ import java.util.Map;
  */
 class McpServerConnectionManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpServerConnectionManager.class);
+
+    private static boolean isSandboxHosted(Map<String, String> config) {
+        var transport = config.get("transport");
+        return "sandbox_hosted".equalsIgnoreCase(transport);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> parseArgsList(Object argsValue) {
+        if (argsValue == null) return List.of();
+        if (argsValue instanceof List<?> list) {
+            return list.stream().map(Object::toString).toList();
+        }
+        // args might be a JSON array string (when stored in Map<String,String>)
+        var str = argsValue.toString().trim();
+        if (str.startsWith("[") && str.endsWith("]")) {
+            try {
+                var parsed = ai.core.utils.JsonUtil.fromJson(List.class, str);
+                return (List<String>) parsed;
+            } catch (Exception e) {
+                LOGGER.warn("failed to parse args as JSON array, treating as single arg: {}", str);
+            }
+        }
+        return List.of(str);
+    }
+
+    private static void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
+        if (source.containsKey(key)) {
+            target.put(key, source.get(key));
+        }
+    }
 
     private SandboxService sandboxService;
 
@@ -59,23 +88,20 @@ class McpServerConnectionManager {
         }
         try {
             var sandboxClient = sandboxService.getDiscoverySandboxClient();
-            try {
-                var configMap = new HashMap<String, Object>();
-                configMap.putAll(entry.config);
-                var command = (String) configMap.get("command");
-                if (command == null || command.isBlank()) {
-                    throw new IllegalArgumentException("command is required for sandbox-hosted mcp server");
-                }
-                var args = parseArgsList(configMap.get("args"));
-                var env = McpServerConfig.parseEnv(configMap.get("env"));
-                sandboxClient.startMcpServer(entry.id, command, args, env);
-                var serverConfig = discoverySandboxConfig(entry, sandboxClient.getBaseUrl());
-                mcpManager.addServer(serverConfig);
-                LOGGER.info("registered sandbox-hosted mcp server on discovery sandbox, id={}", entry.id);
-                return true;
-            } finally {
-                sandboxClient.close();
+            var configMap = new HashMap<String, Object>();
+            configMap.putAll(entry.config);
+            var command = (String) configMap.get("command");
+            if (command == null || command.isBlank()) {
+                LOGGER.warn("command is required for sandbox-hosted mcp server, id={}", entry.id);
+                return false;
             }
+            var args = parseArgsList(configMap.get("args"));
+            var env = McpServerConfig.parseEnv(configMap.get("env"));
+            sandboxClient.startMcpServer(entry.id, command, args, env);
+            var serverConfig = discoverySandboxConfig(entry, sandboxClient.getBaseUrl());
+            mcpManager.addServer(serverConfig);
+            LOGGER.info("registered sandbox-hosted mcp server on discovery sandbox, id={}", entry.id);
+            return true;
         } catch (Exception e) {
             LOGGER.warn("failed to register sandbox-hosted mcp server on discovery, id={}: {}", entry.id, e.getMessage());
             return false;
@@ -131,7 +157,8 @@ class McpServerConnectionManager {
             configMap.putAll(entry.config);
             var command = (String) configMap.get("command");
             if (command == null || command.isBlank()) {
-                throw new IllegalArgumentException("command is required for sandbox-hosted mcp server");
+                LOGGER.warn("command is required for sandbox-hosted mcp server, id={}", entry.id);
+                return false;
             }
             var args = parseArgsList(configMap.get("args"));
             var env = McpServerConfig.parseEnv(configMap.get("env"));
@@ -191,35 +218,5 @@ class McpServerConnectionManager {
             McpClientManagerRegistry.setManager(mcpManager);
         }
         return mcpManager;
-    }
-
-    private static boolean isSandboxHosted(Map<String, String> config) {
-        var transport = config.get("transport");
-        return "sandbox_hosted".equalsIgnoreCase(transport);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<String> parseArgsList(Object argsValue) {
-        if (argsValue == null) return List.of();
-        if (argsValue instanceof List<?> list) {
-            return list.stream().map(Object::toString).toList();
-        }
-        // args might be a JSON array string (when stored in Map<String,String>)
-        var str = argsValue.toString().trim();
-        if (str.startsWith("[") && str.endsWith("]")) {
-            try {
-                var parsed = ai.core.utils.JsonUtil.fromJson(List.class, str);
-                return (List<String>) parsed;
-            } catch (Exception e) {
-                LOGGER.warn("failed to parse args as JSON array, treating as single arg: {}", str);
-            }
-        }
-        return List.of(str);
-    }
-
-    private static void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
-        if (source.containsKey(key)) {
-            target.put(key, source.get(key));
-        }
     }
 }

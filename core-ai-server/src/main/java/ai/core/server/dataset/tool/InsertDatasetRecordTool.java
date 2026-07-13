@@ -37,8 +37,7 @@ public final class InsertDatasetRecordTool extends ToolCall {
 
     private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
         var sb = new StringBuilder(512);
-        sb.append("Insert a new record into a dataset.\n");
-        sb.append("Provide the data as a JSON object and the target dataset_id.\n");
+        sb.append("Insert a new record into a dataset.\nProvide the data as a JSON object and the target dataset_id.\n");
         sb.append(QueryDatasetRecordsTool.buildAvailableDatasetsSection(datasetService, registry));
         return sb.toString();
     }
