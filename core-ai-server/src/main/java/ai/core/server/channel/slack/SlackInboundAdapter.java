@@ -75,7 +75,7 @@ public class SlackInboundAdapter implements ChannelInboundAdapter {
         try {
             ts = Long.parseLong(timestamp);
         } catch (NumberFormatException e) {
-            throw new ForbiddenException("invalid slack timestamp", "INVALID_SLACK_TIMESTAMP");
+            throw new ForbiddenException("invalid slack timestamp: " + e.getMessage(), "INVALID_SLACK_TIMESTAMP", e);
         }
         if (Math.abs(Instant.now().getEpochSecond() - ts) > MAX_TIMESTAMP_DRIFT_SECONDS) {
             throw new ForbiddenException("slack timestamp too old");
@@ -119,7 +119,7 @@ public class SlackInboundAdapter implements ChannelInboundAdapter {
 
         // Skip bot messages and subtypes we don't handle
         if (isBotMessage(eventWrapper)) return null;
-        if (isIgnoredSubtype(eventWrapper, config)) return null;
+        if (isIgnoredSubtype(eventWrapper)) return null;
 
         var event = new InboundEvent();
 
@@ -169,7 +169,7 @@ public class SlackInboundAdapter implements ChannelInboundAdapter {
         return "bot_message".equals(subtype);
     }
 
-    private boolean isIgnoredSubtype(Map<String, Object> event, Map<String, String> config) {
+    private boolean isIgnoredSubtype(Map<String, Object> event) {
         var subtype = stringField(event, "subtype");
         if (subtype == null) return false;
         // Always ignore these Slack subtypes

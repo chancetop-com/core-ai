@@ -17,6 +17,12 @@ import java.util.Map;
 public class ChannelEventBridge implements AgentEventListener {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChannelEventBridge.class);
 
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return "null";
+        if (s.length() <= maxLen) return s;
+        return s.substring(0, maxLen) + "...(truncated)";
+    }
+
     private final ChannelOutboundAdapter outbound;
     private final String channelUserId;
     private final String conversationId;
@@ -87,11 +93,5 @@ public class ChannelEventBridge implements AgentEventListener {
                         channelUserId, event.toolName, e);
             }
         }
-    }
-
-    private static String truncate(String s, int maxLen) {
-        if (s == null) return "null";
-        if (s.length() <= maxLen) return s;
-        return s.substring(0, maxLen) + "...(truncated)";
     }
 }

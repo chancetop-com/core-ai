@@ -79,8 +79,6 @@ public class ChannelDispatcher {
                 || DENY_PATTERN.matcher(event.messageText).find();
     }
 
-    private record ToolDecision(String callId, ApprovalDecision decision) {}
-
     private ToolDecision parseDecision(InboundEvent event) {
         if ("tool_decision".equals(event.commandType) && event.toolCallId != null && event.toolDecision != null) {
             var decision = "approve".equalsIgnoreCase(event.toolDecision) ? ApprovalDecision.APPROVE : ApprovalDecision.DENY;
@@ -152,4 +150,6 @@ public class ChannelDispatcher {
         if (channel.userId != null) return channel.userId;
         return "channel:" + channel.channelType + ":" + event.channelUserId;
     }
+
+    private record ToolDecision(String callId, ApprovalDecision decision) { }
 }

@@ -65,9 +65,9 @@ public interface ChannelOutboundAdapter {
     default void sendApprovalRequest(String channelUserId, String conversationId,
                                       ToolApprovalRequestEvent event, String threadId,
                                       Map<String, String> config) {
-        var text = "Approve tool `" + event.toolName + "`?\n" +
-                   "Arguments: " + truncate(event.arguments, 200) + "\n" +
-                   "Reply `approve " + event.callId + "` or `deny " + event.callId + "`.";
+        var text = "Approve tool `" + event.toolName + "`?\n"
+                   + "Arguments: " + truncate(event.arguments, 200) + "\n"
+                   + "Reply `approve " + event.callId + "` or `deny " + event.callId + "`.";
         sendText(channelUserId, conversationId, text, threadId, config);
     }
 

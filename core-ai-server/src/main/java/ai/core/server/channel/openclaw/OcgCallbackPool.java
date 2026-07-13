@@ -19,7 +19,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -136,13 +135,14 @@ public class OcgCallbackPool {
                     LOGGER.info("OCG callback success, url={}, attempt={}", url, attempt);
                     return;
                 }
-                throw new RuntimeException("HTTP " + response.statusCode + ": " + response.text());
-            } catch (Exception e) {
-                if (attempt == 3) {
-                    LOGGER.error("OCG callback failed after 3 attempts, url={}, replyLen={}", url, reply.length(), e);
-                } else {
-                    sleep(2000L * attempt);
-                }
+                LOGGER.warn("OCG callback HTTP {}, url={}, attempt={}, body={}", response.statusCode, url, attempt, response.text());
+            } catch (RuntimeException e) {
+                LOGGER.warn("OCG callback IO error, url={}, attempt={}: {}", url, attempt, e.getMessage());
+            }
+            if (attempt == 3) {
+                LOGGER.error("OCG callback failed after 3 attempts, url={}, replyLen={}", url, reply.length());
+            } else {
+                sleep(2000L * attempt);
             }
         }
     }

@@ -26,6 +26,12 @@ public class TelegramOutboundAdapter implements ChannelOutboundAdapter {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(10);
     private static final int MAX_TEXT_LENGTH = 4000; // Telegram limit is 4096
 
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return "null";
+        if (s.length() <= maxLen) return s;
+        return s.substring(0, maxLen) + "...";
+    }
+
     private final HTTPClient httpClient = new PatchedHTTPClientBuilder()
             .timeout(HTTP_TIMEOUT)
             .build();
@@ -55,11 +61,11 @@ public class TelegramOutboundAdapter implements ChannelOutboundAdapter {
         var token = config.get("bot_token");
         if (token == null || token.isBlank()) return;
 
-        var text = "Approve tool `" + event.toolName + "`?\n" +
-                   "Arguments: " + truncate(event.arguments, 150) + "\n" +
-                   "Reply:\n" +
-                   "`approve " + event.callId + "`\n" +
-                   "`deny " + event.callId + "`";
+        var text = "Approve tool `" + event.toolName + "`?\n"
+                   + "Arguments: " + truncate(event.arguments, 150) + "\n"
+                   + "Reply:\n"
+                   + "`approve " + event.callId + "`\n"
+                   + "`deny " + event.callId + "`";
 
         var body = buildMessageBody(conversationId, text, threadId);
         sendMessage(token, body);
@@ -107,11 +113,5 @@ public class TelegramOutboundAdapter implements ChannelOutboundAdapter {
         } catch (Exception e) {
             LOGGER.warn("failed to send telegram message, chatId={}", body.get("chat_id"), e);
         }
-    }
-
-    private static String truncate(String s, int maxLen) {
-        if (s == null) return "null";
-        if (s.length() <= maxLen) return s;
-        return s.substring(0, maxLen) + "...";
     }
 }

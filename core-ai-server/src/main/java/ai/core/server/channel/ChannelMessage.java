@@ -8,14 +8,6 @@ import java.util.function.Consumer;
  */
 public class ChannelMessage {
 
-    public String text;
-
-    public String mediaUrl;
-
-    public String mediaType;
-
-    public Map<String, String> custom;
-
     public static ChannelMessage text(String text) {
         var msg = new ChannelMessage();
         msg.text = text;
@@ -29,6 +21,14 @@ public class ChannelMessage {
         msg.mediaType = mediaType;
         return msg;
     }
+
+    public String text;
+
+    public String mediaUrl;
+
+    public String mediaType;
+
+    public Map<String, String> custom;
 
     public ChannelMessage with(Consumer<ChannelMessage> modifier) {
         modifier.accept(this);

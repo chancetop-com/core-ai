@@ -154,7 +154,7 @@ public class OcgConfigController {
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
-            throw new BadRequestException("invalid configJson: " + e.getMessage());
+            throw new BadRequestException("invalid configJson: " + e.getMessage(), "INVALID_CONFIG_JSON", e);
         }
     }
 

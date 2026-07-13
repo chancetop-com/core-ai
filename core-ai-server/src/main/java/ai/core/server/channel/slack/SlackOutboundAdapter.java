@@ -26,6 +26,12 @@ public class SlackOutboundAdapter implements ChannelOutboundAdapter {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(10);
     private static final int MAX_TEXT_LENGTH = 3000; // Slack message limit safety margin
 
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return "null";
+        if (s.length() <= maxLen) return s;
+        return s.substring(0, maxLen) + "...";
+    }
+
     private final HTTPClient httpClient = new PatchedHTTPClientBuilder()
             .timeout(HTTP_TIMEOUT)
             .build();
@@ -55,11 +61,11 @@ public class SlackOutboundAdapter implements ChannelOutboundAdapter {
         var token = config.get("bot_token");
         if (token == null || token.isBlank()) return;
 
-        var text = "Approve tool `" + event.toolName + "`?\n" +
-                   "Arguments: " + truncate(event.arguments, 150) + "\n" +
-                   "Reply:\n" +
-                   "`approve " + event.callId + "`\n" +
-                   "`deny " + event.callId + "`";
+        var text = "Approve tool `" + event.toolName + "`?\n"
+                   + "Arguments: " + truncate(event.arguments, 150) + "\n"
+                   + "Reply:\n"
+                   + "`approve " + event.callId + "`\n"
+                   + "`deny " + event.callId + "`";
 
         var body = buildMessageBody(conversationId, text, threadId);
         postMessage(token, body);
@@ -110,11 +116,5 @@ public class SlackOutboundAdapter implements ChannelOutboundAdapter {
         } catch (Exception e) {
             LOGGER.warn("failed to send slack message, channel={}", body.get("channel"), e);
         }
-    }
-
-    private static String truncate(String s, int maxLen) {
-        if (s == null) return "null";
-        if (s.length() <= maxLen) return s;
-        return s.substring(0, maxLen) + "...";
     }
 }
