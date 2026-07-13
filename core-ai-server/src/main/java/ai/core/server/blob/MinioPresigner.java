@@ -8,7 +8,6 @@ import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -25,6 +24,44 @@ class MinioPresigner {
     private static final String SERVICE = "s3";
     private static final String TERMINATION = "aws4_request";
     private static final String UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
+
+    private static byte[] hmac(byte[] key, String data) throws Exception {
+        var mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(key, "HmacSHA256"));
+        return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String sha256(String data) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            var hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(hash);
+        } catch (Exception e) {
+            throw new RuntimeException("failed to compute SHA-256", e);
+        }
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        var sb = new StringBuilder(bytes.length * 2);
+        for (var b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    private static String urlEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private static String encodePath(String path) {
+        return URLEncoder.encode(path, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    private static String stripTrailingSlash(String s) {
+        var result = s;
+        while (result.endsWith("/")) result = result.substring(0, result.length() - 1);
+        return result;
+    }
 
     private final String endpoint;
     private final String region;
@@ -78,7 +115,7 @@ class MinioPresigner {
         return new PreSignedResult(presignedUrl, rawUrl, bucket, key, timestamp);
     }
 
-    private String buildCanonicalRequest(String method, String bucket, String key, LinkedHashMap<String, String> queryParams, String host) {
+    private String buildCanonicalRequest(String method, String bucket, String key, Map<String, String> queryParams, String host) {
         var resourcePath = "/" + bucket + "/" + key;
         var canonicalQuery = buildCanonicalQuery(queryParams);
         var canonicalHeaders = "host:" + host + "\n";
@@ -92,7 +129,7 @@ class MinioPresigner {
                 + UNSIGNED_PAYLOAD;
     }
 
-    private String buildCanonicalQuery(LinkedHashMap<String, String> params) {
+    private String buildCanonicalQuery(Map<String, String> params) {
         var sb = new StringBuilder();
         for (var entry : params.entrySet()) {
             if (!sb.isEmpty()) sb.append('&');
@@ -126,30 +163,6 @@ class MinioPresigner {
         }
     }
 
-    private static byte[] hmac(byte[] key, String data) throws Exception {
-        var mac = Mac.getInstance("HmacSHA256");
-        mac.init(new SecretKeySpec(key, "HmacSHA256"));
-        return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String sha256(String data) {
-        try {
-            var digest = MessageDigest.getInstance("SHA-256");
-            var hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));
-            return bytesToHex(hash);
-        } catch (Exception e) {
-            throw new RuntimeException("failed to compute SHA-256", e);
-        }
-    }
-
-    private static String bytesToHex(byte[] bytes) {
-        var sb = new StringBuilder(bytes.length * 2);
-        for (var b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
-
     private String buildCredential(String date) {
         return date + "/" + region + "/" + SERVICE + "/" + TERMINATION;
     }
@@ -175,19 +188,6 @@ class MinioPresigner {
                     .append(urlEncode(entry.getValue()));
         }
         return sb.toString();
-    }
-
-    private static String urlEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private static String encodePath(String path) {
-        return URLEncoder.encode(path, StandardCharsets.UTF_8).replace("+", "%20");
-    }
-
-    private static String stripTrailingSlash(String s) {
-        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
-        return s;
     }
 
     record PreSignedResult(String presignedUrl, String rawUrl, String bucket, String key, String timestamp) {

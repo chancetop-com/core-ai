@@ -22,14 +22,6 @@ public class AzureBlobSasService {
     private static final String SAS_VERSION = "2018-11-09";
     private static final DateTimeFormatter EXPIRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
 
-    private final String accountName;
-    private final byte[] accountKey;
-
-    public AzureBlobSasService(String accountName, String accountKey) {
-        this.accountName = accountName;
-        this.accountKey = Base64.getDecoder().decode(accountKey);
-    }
-
     public static AzureBlobSasService tryCreate(String accountName, String accountKey) {
         if (accountName == null || accountName.isBlank() || accountKey == null || accountKey.isBlank() || "***".equals(accountKey)) {
             return null;
@@ -40,6 +32,21 @@ public class AzureBlobSasService {
             LOGGER.warn("Azure Blob Storage account key is not valid base64, blob upload will be unavailable", e);
             return null;
         }
+    }
+
+    private static String buildCanonicalizedResource(String containerName, String blobName, String signedResource) {
+        if ("b".equals(signedResource) && blobName != null) {
+            return containerName + "/" + blobName;
+        }
+        return containerName;
+    }
+
+    private final String accountName;
+    private final byte[] accountKey;
+
+    public AzureBlobSasService(String accountName, String accountKey) {
+        this.accountName = accountName;
+        this.accountKey = Base64.getDecoder().decode(accountKey);
     }
 
     public SasResult generateContainerSas(String containerName, String blobName, int expiryMinutes) {
@@ -151,13 +158,6 @@ public class AzureBlobSasService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to compute HMAC-SHA256 for SAS token", e);
         }
-    }
-
-    private static String buildCanonicalizedResource(String containerName, String blobName, String signedResource) {
-        if ("b".equals(signedResource) && blobName != null) {
-            return containerName + "/" + blobName;
-        }
-        return containerName;
     }
 
     private String buildQueryString(Map<String, String> params) {

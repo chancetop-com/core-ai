@@ -20,6 +20,16 @@ import java.time.Duration;
  */
 public class AzureObjectStorageService implements ObjectStorageService {
     private static final Logger LOGGER = LoggerFactory.getLogger(AzureObjectStorageService.class);
+    private static final Duration TRANSFER_TIMEOUT = Duration.ofMinutes(10);
+
+    // best-effort cleanup of a partially written download; must not mask the original failure
+    private static void deletePartialFileQuietly(Path target) {
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException e) {
+            LOGGER.warn("failed to delete partial download file: {}", target, e);
+        }
+    }
 
     private final AzureBlobSasService sasService;
     private final String publicBaseUrl;
@@ -51,7 +61,7 @@ public class AzureObjectStorageService implements ObjectStorageService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != 200) {
-                throw new IOException("download failed: status=" + response.statusCode() + ", container=" + container + ", blob=" + blobName);
+                throw new RuntimeException("download failed: status=" + response.statusCode() + ", container=" + container + ", blob=" + blobName);
             }
             LOGGER.info("downloaded blob: container={}, blob={}, size={}", container, blobName, response.body().length);
             return response.body();
@@ -62,8 +72,6 @@ public class AzureObjectStorageService implements ObjectStorageService {
             throw new RuntimeException("interrupted while downloading blob", e);
         }
     }
-
-    private static final Duration TRANSFER_TIMEOUT = Duration.ofMinutes(10);
 
     @Override
     public void uploadObject(String container, String blobName, Path file) {
@@ -77,7 +85,7 @@ public class AzureObjectStorageService implements ObjectStorageService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 201) {
-                throw new IOException("upload failed: status=" + response.statusCode() + ", body=" + response.body());
+                throw new RuntimeException("upload failed: status=" + response.statusCode() + ", body=" + response.body());
             }
             LOGGER.info("uploaded blob: container={}, blob={}, size={}", container, blobName, Files.size(file));
         } catch (IOException e) {
@@ -99,10 +107,9 @@ public class AzureObjectStorageService implements ObjectStorageService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofFile(target));
             if (response.statusCode() != 200) {
-                throw new IOException("download failed: status=" + response.statusCode() + ", container=" + container + ", blob=" + blobName);
+                throw new RuntimeException("download failed: status=" + response.statusCode() + ", container=" + container + ", blob=" + blobName);
             }
         } catch (IOException e) {
-            // clean up the partial file on any failure path, including mid-stream errors
             deletePartialFileQuietly(target);
             throw new RuntimeException("failed to download blob: container=" + container + ", blob=" + blobName, e);
         } catch (InterruptedException e) {
@@ -111,15 +118,6 @@ public class AzureObjectStorageService implements ObjectStorageService {
             throw new RuntimeException("interrupted while downloading blob", e);
         }
         LOGGER.info("downloaded blob to file: container={}, blob={}, size={}", container, blobName, target.toFile().length());
-    }
-
-    // best-effort cleanup of a partially written download; must not mask the original failure
-    private static void deletePartialFileQuietly(Path target) {
-        try {
-            Files.deleteIfExists(target);
-        } catch (IOException e) {
-            LOGGER.warn("failed to delete partial download file: {}", target, e);
-        }
     }
 
     @Override
@@ -133,7 +131,7 @@ public class AzureObjectStorageService implements ObjectStorageService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 202 && response.statusCode() != 404) {
-                throw new IOException("delete failed: status=" + response.statusCode() + ", body=" + response.body());
+                throw new RuntimeException("delete failed: status=" + response.statusCode() + ", body=" + response.body());
             }
             LOGGER.info("deleted blob: container={}, blob={}, status={}", container, blobName, response.statusCode());
         } catch (IOException e) {

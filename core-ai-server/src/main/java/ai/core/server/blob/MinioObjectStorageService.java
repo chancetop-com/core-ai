@@ -20,6 +20,23 @@ import java.time.Duration;
  */
 public class MinioObjectStorageService implements ObjectStorageService {
     private static final Logger LOGGER = LoggerFactory.getLogger(MinioObjectStorageService.class);
+    private static final Duration TRANSFER_TIMEOUT = Duration.ofMinutes(10);
+
+    private static String stripTrailingSlash(String s) {
+        if (s == null) return null;
+        var result = s;
+        while (result.endsWith("/")) result = result.substring(0, result.length() - 1);
+        return result;
+    }
+
+    // best-effort cleanup of a partially written download; must not mask the original failure
+    private static void deletePartialFileQuietly(Path target) {
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException e) {
+            LOGGER.warn("failed to delete partial download file: {}", target, e);
+        }
+    }
 
     private final MinioPresigner presigner;
     private final String publicBaseUrl;
@@ -53,7 +70,7 @@ public class MinioObjectStorageService implements ObjectStorageService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != 200) {
-                throw new IOException("download failed: status=" + response.statusCode() + ", bucket=" + container + ", key=" + blobName);
+                throw new RuntimeException("download failed: status=" + response.statusCode() + ", bucket=" + container + ", key=" + blobName);
             }
             LOGGER.info("downloaded object: bucket={}, key={}, size={}", container, blobName, response.body().length);
             return response.body();
@@ -64,14 +81,6 @@ public class MinioObjectStorageService implements ObjectStorageService {
             throw new RuntimeException("interrupted while downloading object", e);
         }
     }
-
-    private static String stripTrailingSlash(String s) {
-        if (s == null) return null;
-        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
-        return s;
-    }
-
-    private static final Duration TRANSFER_TIMEOUT = Duration.ofMinutes(10);
 
     @Override
     public void uploadObject(String container, String blobName, Path file) {
@@ -84,7 +93,7 @@ public class MinioObjectStorageService implements ObjectStorageService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new IOException("upload failed: status=" + response.statusCode() + ", body=" + response.body());
+                throw new RuntimeException("upload failed: status=" + response.statusCode() + ", body=" + response.body());
             }
             LOGGER.info("uploaded object: bucket={}, key={}, size={}", container, blobName, Files.size(file));
         } catch (IOException e) {
@@ -106,25 +115,15 @@ public class MinioObjectStorageService implements ObjectStorageService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofFile(target));
             if (response.statusCode() != 200) {
-                throw new IOException("download failed: status=" + response.statusCode() + ", bucket=" + container + ", key=" + blobName);
+                throw new RuntimeException("download failed: status=" + response.statusCode() + ", bucket=" + container + ", key=" + blobName);
             }
         } catch (IOException e) {
-            // clean up the partial file on any failure path, including mid-stream errors
             deletePartialFileQuietly(target);
             throw new RuntimeException("failed to download object: bucket=" + container + ", key=" + blobName, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             deletePartialFileQuietly(target);
             throw new RuntimeException("interrupted while downloading object", e);
-        }
-    }
-
-    // best-effort cleanup of a partially written download; must not mask the original failure
-    private static void deletePartialFileQuietly(Path target) {
-        try {
-            Files.deleteIfExists(target);
-        } catch (IOException e) {
-            LOGGER.warn("failed to delete partial download file: {}", target, e);
         }
     }
 
@@ -139,7 +138,7 @@ public class MinioObjectStorageService implements ObjectStorageService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 204 && response.statusCode() != 200 && response.statusCode() != 404) {
-                throw new IOException("delete failed: status=" + response.statusCode() + ", body=" + response.body());
+                throw new RuntimeException("delete failed: status=" + response.statusCode() + ", body=" + response.body());
             }
         } catch (IOException e) {
             throw new RuntimeException("failed to delete object: bucket=" + container + ", key=" + blobName, e);
