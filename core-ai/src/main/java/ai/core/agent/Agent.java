@@ -163,15 +163,18 @@ public class Agent extends Node<Agent> {
         do {
             if (isCancelled()) break;
             var mat = toolRegistry.materialize(getExecutionContext());
-            // for turns after the first, insert a paragraph break into the final output
-            // so persisted chat history and page reloads display each turn separately
-            if (!agentOut.isEmpty()) {
-                agentOut.append("\n\n");
-            }
             var turnMsgList = turn(getMessages(), mat, constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
-            agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining("")));
+            var turnText = turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining(""));
+            // insert a paragraph break between turns that produce text,
+            // so persisted chat history and page reloads display each text output separately
+            if (!turnText.isEmpty()) {
+                if (!agentOut.isEmpty()) {
+                    agentOut.append("\n\n");
+                }
+                agentOut.append(turnText);
+            }
             currentIteCount++;
         } while (!isCancelled()
                 && AgentHelper.lastIsToolMsg(getMessages())
