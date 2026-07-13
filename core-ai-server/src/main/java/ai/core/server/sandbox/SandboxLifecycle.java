@@ -19,6 +19,11 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class SandboxLifecycle extends AbstractLifecycle {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxLifecycle.class);
 
+    private static boolean hasSubmitArtifactsTool(Agent agent) {
+        return agent.getToolCalls().stream()
+                .anyMatch(t -> SubmitArtifactsTool.TOOL_NAME.equals(t.getName()));
+    }
+
     private final FileService fileService;
     private final ArtifactSink artifactSink;
 
@@ -49,10 +54,5 @@ public final class SandboxLifecycle extends AbstractLifecycle {
         agent.setSystemPrompt(SubmitArtifactsTool.appendInstructions(agent.getSystemPrompt()));
 
         LOGGER.debug("SandboxLifecycle: injected sandbox tools/instructions, sessionId={}", context.getSessionId());
-    }
-
-    private static boolean hasSubmitArtifactsTool(Agent agent) {
-        return agent.getToolCalls().stream()
-                .anyMatch(t -> SubmitArtifactsTool.TOOL_NAME.equals(t.getName()));
     }
 }

@@ -45,26 +45,10 @@ public class SandboxSnapshotClient {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() != 200) {
-                String error;
-                try (InputStream in = response.body()) {
-                    error = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                }
-                throw new IOException("snapshot capture failed: status=" + response.statusCode() + ", body=" + error);
+                throw new RuntimeException("snapshot capture failed: status=" + response.statusCode() + ", body=" + readErrorBody(response));
             }
             var digest = sha256();
-            long size = 0;
-            try (InputStream in = response.body(); OutputStream out = Files.newOutputStream(targetFile)) {
-                var buffer = new byte[64 * 1024];
-                int read;
-                while ((read = in.read(buffer)) != -1) {
-                    size += read;
-                    if (size > MAX_ARCHIVE_BYTES) {
-                        throw new IOException("snapshot archive exceeds max size (" + MAX_ARCHIVE_BYTES + " bytes)");
-                    }
-                    digest.update(buffer, 0, read);
-                    out.write(buffer, 0, read);
-                }
-            }
+            long size = readResponseBody(response, targetFile, digest);
             var fileCount = parseIntHeader(response, "X-Snapshot-File-Count");
             var runtimeVersion = response.headers().firstValue("X-Snapshot-Runtime-Version").orElse("unknown");
             var sha = HexFormat.of().formatHex(digest.digest());
@@ -78,6 +62,32 @@ public class SandboxSnapshotClient {
         }
     }
 
+    private String readErrorBody(HttpResponse<InputStream> response) throws IOException {
+        try (InputStream in = response.body()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private long readResponseBody(HttpResponse<InputStream> response, Path targetFile, MessageDigest digest) throws IOException {
+        long size = 0;
+        try (InputStream in = response.body();
+             OutputStream out = Files.newOutputStream(targetFile)) {
+            var buffer = new byte[64 * 1024];
+            int read;
+            while (true) {
+                read = in.read(buffer);
+                if (read == -1) break;
+                size += read;
+                if (size > MAX_ARCHIVE_BYTES) {
+                    throw new IOException("snapshot archive exceeds max size (" + MAX_ARCHIVE_BYTES + " bytes)");
+                }
+                digest.update(buffer, 0, read);
+                out.write(buffer, 0, read);
+            }
+        }
+        return size;
+    }
+
     public void restore(String ip, int port, Path tarFile, String sha256) {
         var uri = URI.create("http://" + ip + ":" + port + "/snapshot/restore");
         try {
@@ -88,7 +98,7 @@ public class SandboxSnapshotClient {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new IOException("snapshot restore failed: status=" + response.statusCode() + ", body=" + response.body());
+                throw new RuntimeException("snapshot restore failed: status=" + response.statusCode() + ", body=" + response.body());
             }
             LOGGER.info("snapshot restored into runtime: ip={}, response={}", ip, response.body());
         } catch (IOException e) {
@@ -110,14 +120,11 @@ public class SandboxSnapshotClient {
             if (response.statusCode() != 200) return "unknown";
             var health = JSON.fromJSON(HealthResponse.class, response.body());
             return health.version != null ? health.version : "unknown";
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             LOGGER.warn("failed to fetch runtime version from {}:{}: {}", ip, port, e.getMessage());
             return "unknown";
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return "unknown";
-        } catch (RuntimeException e) {
-            LOGGER.warn("failed to fetch runtime version from {}:{}: {}", ip, port, e.getMessage());
             return "unknown";
         }
     }

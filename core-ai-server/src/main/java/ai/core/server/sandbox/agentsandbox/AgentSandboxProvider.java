@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -31,6 +30,7 @@ public class AgentSandboxProvider implements SandboxProvider {
     private final boolean useHostPort;
     private final String templateName;
     private final String warmPoolName;
+    private final AgentSandboxCleanupService cleanupService;
 
     public AgentSandboxProvider(AgentSandboxProviderConfig config) {
         this.client = config.client;
@@ -40,6 +40,7 @@ public class AgentSandboxProvider implements SandboxProvider {
         this.useHostPort = config.useHostPort;
         this.templateName = config.templateName;
         this.warmPoolName = config.warmPoolName != null ? config.warmPoolName : "default";
+        this.cleanupService = new AgentSandboxCleanupService(client, extensionsClient, kubernetesClient);
     }
 
     private boolean useWarmPool() {
@@ -394,97 +395,7 @@ public class AgentSandboxProvider implements SandboxProvider {
     // --- Cleanup ---
 
     public void cleanupExpiredSandboxes(int maxLifetimeSeconds) {
-        // Always try to cleanup both types to handle orphaned resources
-        if (extensionsClient != null) {
-            cleanupExpiredClaims(maxLifetimeSeconds);
-        }
-        cleanupExpiredDirectSandboxes(maxLifetimeSeconds);
-    }
-
-    private void cleanupExpiredClaims(int maxLifetimeSeconds) {
-        try {
-            var now = Instant.now();
-            var claims = extensionsClient.listClaims("core-ai/component=sandbox");
-            for (var claim : claims) {
-                cleanupExpiredClaim(claim, now, maxLifetimeSeconds);
-            }
-        } catch (Exception e) {
-            LOGGER.warn("failed to run sandbox claim cleanup", e);
-        }
-    }
-
-    private void cleanupExpiredClaim(AgentSandboxExtensionsClient.SandboxClaim claim, Instant now, int maxLifetimeSeconds) {
-        try {
-            if (claim.metadata == null || claim.metadata.creationTimestamp == null) return;
-            var deadline = claimDeadline(claim, maxLifetimeSeconds);
-            if (now.isAfter(deadline)) {
-                LOGGER.info("deleting expired sandbox claim: name={}, deadline={}", claim.getName(), deadline);
-                deleteServiceSilently("svc-" + claim.getName());
-                extensionsClient.deleteClaim(claim.getName());
-            }
-        } catch (Exception e) {
-            LOGGER.warn("failed to cleanup sandbox claim: {}", claim.getName(), e);
-        }
-    }
-
-    // Prefer the renewable shutdownTime so an active (renewed) claim is not deleted; fall back to
-    // creationTimestamp + maxLifetime for orphans that have no shutdownTime set.
-    private Instant claimDeadline(AgentSandboxExtensionsClient.SandboxClaim claim, int maxLifetimeSeconds) {
-        if (claim.spec != null && claim.spec.lifecycle != null && claim.spec.lifecycle.shutdownTime != null) {
-            try {
-                return ZonedDateTime.parse(claim.spec.lifecycle.shutdownTime).toInstant();
-            } catch (Exception e) {
-                LOGGER.warn("invalid shutdownTime on claim {}: {}", claim.getName(), claim.spec.lifecycle.shutdownTime);
-            }
-        }
-        return ZonedDateTime.parse(claim.metadata.creationTimestamp).toInstant().plus(maxLifetimeSeconds, ChronoUnit.SECONDS);
-    }
-
-    private void cleanupExpiredDirectSandboxes(int maxLifetimeSeconds) {
-        try {
-            var now = Instant.now();
-            var sandboxes = client.listSandboxes("core-ai/component=sandbox");
-            for (var cr : sandboxes) {
-                cleanupExpiredDirectSandbox(cr, now, maxLifetimeSeconds);
-            }
-        } catch (Exception e) {
-            LOGGER.warn("failed to run agent sandbox cleanup", e);
-        }
-    }
-
-    private void cleanupExpiredDirectSandbox(AgentSandboxClient.SandboxCR cr, Instant now, int maxLifetimeSeconds) {
-        try {
-            if (cr.metadata == null || cr.metadata.creationTimestamp == null) return;
-            var deadline = sandboxDeadline(cr, maxLifetimeSeconds);
-            if (now.isAfter(deadline)) {
-                LOGGER.info("deleting expired agent sandbox CR: name={}, deadline={}", cr.getName(), deadline);
-                deleteServiceSilently("svc-" + cr.getName());
-                client.deleteSandbox(cr.getName());
-            }
-        } catch (Exception e) {
-            LOGGER.warn("failed to cleanup agent sandbox CR: {}", cr.getName(), e);
-        }
-    }
-
-    // Prefer the renewable spec.shutdownTime; fall back to creationTimestamp + maxLifetime for orphans.
-    private Instant sandboxDeadline(AgentSandboxClient.SandboxCR cr, int maxLifetimeSeconds) {
-        if (cr.spec != null && cr.spec.shutdownTime != null) {
-            try {
-                return ZonedDateTime.parse(cr.spec.shutdownTime).toInstant();
-            } catch (Exception e) {
-                LOGGER.warn("invalid shutdownTime on sandbox CR {}: {}", cr.getName(), cr.spec.shutdownTime);
-            }
-        }
-        return ZonedDateTime.parse(cr.metadata.creationTimestamp).toInstant().plus(maxLifetimeSeconds, ChronoUnit.SECONDS);
-    }
-
-    private void deleteServiceSilently(String serviceName) {
-        if (kubernetesClient == null) return;
-        try {
-            kubernetesClient.deleteService(serviceName);
-        } catch (Exception e) {
-            LOGGER.debug("failed to delete service: {}", serviceName, e);
-        }
+        cleanupService.cleanupExpiredSandboxes(maxLifetimeSeconds);
     }
 
     private String sanitizeLabel(String value) {

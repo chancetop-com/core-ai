@@ -13,8 +13,6 @@ import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,13 +40,24 @@ public class SandboxService {
         return config;
     }
 
+    private static SandboxConfig createDiscoveryConfig() {
+        var config = new SandboxConfig();
+        config.enabled = true;
+        config.memoryLimitMb = 512;
+        config.cpuLimitMillicores = 500;
+        config.networkEnabled = false;
+        config.timeoutSeconds = 86_400; // 24 hours
+        return config;
+    }
+
     private final SandboxManager sandboxManager;
     private final SandboxConfig defaultConfig;
     private final ScheduledExecutorService cleanupScheduler;
     private final String serverUrlFromSandbox;
     private final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
     private final Set<String> persistentSessionIds = ConcurrentHashMap.newKeySet();
-    private final Map<String, List<PendingFile>> pendingFiles = new ConcurrentHashMap<>();
+    @SuppressWarnings("this-escape")
+    private final SandboxFileService sandboxFileService = new SandboxFileService(this);
     // Per-session McpClientManager + the MCP server ids started on that session's sandbox.
     // Sandbox-hosted MCP servers live in these per-session managers (not the global one),
     // so concurrent sessions don't collide on shared server ids.
@@ -58,8 +67,8 @@ public class SandboxService {
     private volatile LazySandbox discoverySandbox;
 
     private final boolean enabled;
-    private ObjectStorageService storageService;
-    private FileService fileService;
+    ObjectStorageService storageService;
+    FileService fileService;
     private SandboxSnapshotService snapshotService;
 
     public SandboxService() {
@@ -105,6 +114,16 @@ public class SandboxService {
         return createSandbox(config, sessionId, userId, null);
     }
 
+    public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId, Consumer<SandboxEvent> eventDispatcher) {
+        return create(config, sessionId, userId, eventDispatcher, null);
+    }
+
+    public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId, boolean persistent) {
+        var sandbox = createSandbox(config, sessionId, userId, null);
+        if (persistent && sandbox != null) persistentSessionIds.add(sessionId);
+        return sandbox;
+    }
+
     // Reuse the session's sandbox if one already exists, else create it — atomically, so concurrent callers (e.g.
     // parallel CODE nodes in one workflow run sharing a single per-run sandbox) don't race to create duplicates.
     // The caller owns the lifecycle: it must releaseSandbox(sessionId) when done.
@@ -119,10 +138,6 @@ public class SandboxService {
             LOGGER.info("sandbox created (shared) for session: {}, config={}", sid, effectiveConfig);
             return new LazySandbox(effectiveConfig, sandboxManager, null, sid, userId, () -> onSandboxReady(sid));
         });
-    }
-
-    public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId, Consumer<SandboxEvent> eventDispatcher) {
-        return create(config, sessionId, userId, eventDispatcher, null);
     }
 
     /** Chat-session sandboxes only: adds snapshot capture/restore. Run/workflow/OCG sandboxes never snapshot. */
@@ -144,130 +159,30 @@ public class SandboxService {
         return lazySandbox;
     }
 
-    public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId, boolean persistent) {
-        var sandbox = createSandbox(config, sessionId, userId, null);
-        if (persistent && sandbox != null) persistentSessionIds.add(sessionId);
-        return sandbox;
-    }
-
     public void addPendingFile(String sessionId, String fileName, String container, String blobName) {
-        pendingFiles.computeIfAbsent(sessionId, k -> Collections.synchronizedList(new ArrayList<>()))
-                .add(new PendingFile(fileName, container, blobName));
-        LOGGER.info("[ENQUEUE] pending file added: session={}, file={}, blob={}/{}, totalFilesForSession={}",
-                sessionId, fileName, container, blobName, pendingFiles.get(sessionId).size());
+        sandboxFileService.addPendingFile(sessionId, fileName, container, blobName);
     }
 
     /** Queue a workflow input file (a FileRecord) to be staged at {@code targetPath} in the session's sandbox. */
     public void addStagedFile(String sessionId, StagedFile file) {
-        pendingFiles.computeIfAbsent(sessionId, k -> Collections.synchronizedList(new ArrayList<>()))
-                .add(new PendingFile(file.fileName(), null, null, file.fileId(), file.targetPath()));
-        LOGGER.info("staged file queued: session={}, file={}, target={}", sessionId, file.fileName(), file.targetPath());
+        sandboxFileService.addStagedFile(sessionId, file);
     }
 
     public void ensurePendingFilesUploaded(String sessionId) {
-        var files = pendingFiles.get(sessionId);
-        if (files == null || files.isEmpty()) {
-            return;
-        }
-        var sandbox = sessionSandboxes.get(sessionId);
-        LOGGER.info("[UPLOAD] ensurePendingFilesUploaded called, sessionId={}, sandboxExists={}, sandboxType={}",
-                sessionId, sandbox != null, sandbox != null ? sandbox.getClass().getSimpleName() : "null");
-        if (sandbox == null) {
-            LOGGER.info("no sandbox for session {}, pending files will be uploaded when sandbox is created", sessionId);
-            return;
-        }
-        if (sandbox instanceof LazySandbox lazy) {
-            LOGGER.info("[UPLOAD] calling lazy.ensureReady(), sandboxId={}, status={}", lazy.getId(), lazy.getStatus());
-            lazy.ensureReady();
-            LOGGER.info("[UPLOAD] lazy.ensureReady() returned, sandboxId={}, status={}", lazy.getId(), lazy.getStatus());
-        }
-        uploadPendingFiles(sessionId);
+        sandboxFileService.ensurePendingFilesUploaded(sessionId);
     }
 
     /** Upload the given files directly to the session's sandbox, bypassing the pendingFiles queue.
      *  Used when file metadata is carried in the command payload (cross-pod safe). */
     public void uploadFiles(String sessionId, List<PendingFile> files) {
-        if (files == null || files.isEmpty()) return;
-        var sandbox = sessionSandboxes.get(sessionId);
-        LOGGER.info("[UPLOAD] uploadFiles called, sessionId={}, sandboxExists={}, fileCount={}",
-                sessionId, sandbox != null, files.size());
-        if (sandbox == null) {
-            LOGGER.warn("no sandbox for session {}, cannot upload files", sessionId);
-            return;
-        }
-        if (sandbox instanceof LazySandbox lazy) {
-            lazy.ensureReady();
-        }
-        for (var file : files) {
-            if (file.fileId() != null) {
-                stageFileRecord(sandbox, sessionId, file);
-            } else if (!uploadBlobFile(sandbox, sessionId, file)) {
-                LOGGER.warn("failed to upload file to sandbox: session={}, file={}", sessionId, file.fileName());
-            }
-        }
-    }
-
-    private void uploadPendingFiles(String sessionId) {
-        var files = pendingFiles.get(sessionId);
-        LOGGER.info("[UPLOAD] uploadPendingFiles called, sessionId={}, filesExist={}, fileCount={}",
-                sessionId, files != null, files != null ? files.size() : 0);
-        if (files == null || files.isEmpty()) {
-            LOGGER.info("[UPLOAD] no pending files for sessionId={}, total pending sessions={}", sessionId, pendingFiles.size());
-            return;
-        }
-
-        var sandbox = sessionSandboxes.get(sessionId);
-        if (sandbox == null) {
-            LOGGER.warn("no sandbox found for session {} when uploading pending files", sessionId);
-            return;
-        }
-
-        LOGGER.info("[UPLOAD] uploading {} files for sessionId={}, sandboxId={}", files.size(), sessionId, sandbox.getId());
-        for (var file : files) {
-            if (file.fileId() != null) {
-                // workflow artifact staging: a failure here must be deterministic for the consumer, so it throws
-                // (the caller — ensurePendingFilesUploaded before the agent loop / CODE executor — fails the run)
-                stageFileRecord(sandbox, sessionId, file);
-            } else if (!uploadBlobFile(sandbox, sessionId, file)) {
-                return;   // chat upload path keeps its original behavior: abort, keep the queue, retry on next trigger
-            }
-        }
-        pendingFiles.remove(sessionId);
-        LOGGER.info("[UPLOAD] all {} files uploaded and removed from queue, sessionId={}", files.size(), sessionId);
-    }
-
-    private void stageFileRecord(Sandbox sandbox, String sessionId, PendingFile file) {
-        if (fileService == null) {
-            throw new IllegalStateException("fileService not configured, cannot stage input file " + file.fileName());
-        }
-        try {
-            var data = fileService.getBytes(fileService.get(file.fileId()));
-            sandbox.uploadFile(file.targetPath(), data);
-            LOGGER.info("staged file uploaded: session={}, target={}, size={}", sessionId, file.targetPath(), data.length);
-        } catch (RuntimeException e) {
-            throw new IllegalStateException("failed to stage input file " + file.fileName() + " into sandbox: " + e.getMessage(), e);
-        }
-    }
-
-    private boolean uploadBlobFile(Sandbox sandbox, String sessionId, PendingFile file) {
-        if (storageService == null) {
-            LOGGER.warn("storageService not configured, cannot upload pending files for session {}", sessionId);
-            return false;
-        }
-        try {
-            LOGGER.info("[UPLOAD] downloading blob: container={}, blobName={}", file.container(), file.blobName());
-            var data = storageService.downloadObject(file.container(), file.blobName());
-            LOGGER.info("[UPLOAD] blob downloaded: size={} bytes, uploading to /tmp/{}", data.length, file.fileName());
-            sandbox.uploadFile("/tmp/" + file.fileName(), data);
-            LOGGER.info("pending file uploaded: session={}, file={}", sessionId, file.fileName());
-            return true;
-        } catch (Exception e) {
-            LOGGER.error("failed to upload pending file to sandbox: session={}, file={}", sessionId, file.fileName(), e);
-            return false;
-        }
+        sandboxFileService.uploadFiles(sessionId, files);
     }
 
     public Sandbox getSandbox(String sessionId) {
+        return sessionSandboxes.get(sessionId);
+    }
+
+    Sandbox sessionSandbox(String sessionId) {
         return sessionSandboxes.get(sessionId);
     }
 
@@ -311,7 +226,7 @@ public class SandboxService {
         if (!enabled) return;
         var sandbox = sessionSandboxes.remove(sessionId);
         persistentSessionIds.remove(sessionId);
-        pendingFiles.remove(sessionId);
+        sandboxFileService.clear(sessionId);
         // Stop the MCP processes started in this session's sandbox (best-effort — the
         // sandbox close that follows will reap them anyway, but explicit stop keeps the
         // runtime's process map tidy when sandboxes are pooled/reused).
@@ -365,54 +280,46 @@ public class SandboxService {
     // Uploads files queued before the sandbox existed. MCP processes are started
     // lazily at resolveToolRefs time (per-session, on demand), not here.
     private void onSandboxReady(String sessionId) {
-        uploadPendingFiles(sessionId);
+        sandboxFileService.ensurePendingFilesUploaded(sessionId);
     }
 
     // ---- Discovery sandbox (global, long-running) ----
 
-    public synchronized SandboxClient getDiscoverySandboxClient() {
-        if (!enabled) throw new IllegalStateException("sandbox is not enabled");
-        final int maxAttempts = 3;
-        for (int attempt = 0; attempt < maxAttempts; attempt++) {
-            if (discoverySandbox == null) {
-                var discoveryConfig = createDiscoveryConfig();
-                discoverySandbox = new LazySandbox(discoveryConfig, sandboxManager, null, "discovery", "system", null);
-                LOGGER.info("discovery sandbox created (attempt {}/{})", attempt + 1, maxAttempts);
+    public SandboxClient getDiscoverySandboxClient() {
+        synchronized (this) {
+            if (!enabled) throw new IllegalStateException("sandbox is not enabled");
+            final int maxAttempts = 3;
+            for (int attempt = 0; attempt < maxAttempts; attempt++) {
+                if (discoverySandbox == null) {
+                    var discoveryConfig = createDiscoveryConfig();
+                    discoverySandbox = new LazySandbox(discoveryConfig, sandboxManager, null, "discovery", "system", null);
+                    LOGGER.info("discovery sandbox created (attempt {}/{})", attempt + 1, maxAttempts);
+                }
+                discoverySandbox.ensureReady();
+                var ip = discoverySandbox.ip();
+                var port = discoverySandbox.port();
+                if (ip == null || port == 0) {
+                    throw new IllegalStateException("discovery sandbox ip/port not available");
+                }
+                var client = new SandboxClient(ip, port, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+                // Quick health check — ensures the sandbox runtime is actually reachable.
+                // When the underlying pod has been deleted (e.g. warm-pool template update),
+                // the LazySandbox still reports READY with the stale IP. In that case the
+                // health check fails, we close & reset discoverySandbox and retry with a
+                // freshly acquired pod.
+                try {
+                    client.waitForReady(5_000);
+                    LOGGER.info("discovery sandbox ready: ip={}, port={}", ip, port);
+                    return client;
+                } catch (Exception e) {
+                    LOGGER.warn("discovery sandbox unreachable (attempt {}/{}): ip={}, port={}, error={}",
+                            attempt + 1, maxAttempts, ip, port, e.getMessage());
+                    discoverySandbox.close();
+                    discoverySandbox = null;
+                }
             }
-            discoverySandbox.ensureReady();
-            var ip = discoverySandbox.ip();
-            var port = discoverySandbox.port();
-            if (ip == null || port == 0) {
-                throw new IllegalStateException("discovery sandbox ip/port not available");
-            }
-            var client = new SandboxClient(ip, port, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
-            // Quick health check — ensures the sandbox runtime is actually reachable.
-            // When the underlying pod has been deleted (e.g. warm-pool template update),
-            // the LazySandbox still reports READY with the stale IP. In that case the
-            // health check fails, we close & reset discoverySandbox and retry with a
-            // freshly acquired pod.
-            try {
-                client.waitForReady(5_000);
-                LOGGER.info("discovery sandbox ready: ip={}, port={}", ip, port);
-                return client;
-            } catch (Exception e) {
-                LOGGER.warn("discovery sandbox unreachable (attempt {}/{}): ip={}, port={}, error={}",
-                        attempt + 1, maxAttempts, ip, port, e.getMessage());
-                discoverySandbox.close();
-                discoverySandbox = null;
-            }
+            throw new IllegalStateException("discovery sandbox failed after " + maxAttempts + " attempts");
         }
-        throw new IllegalStateException("discovery sandbox failed after " + maxAttempts + " attempts");
-    }
-
-    private static SandboxConfig createDiscoveryConfig() {
-        var config = new SandboxConfig();
-        config.enabled = true;
-        config.memoryLimitMb = 512;
-        config.cpuLimitMillicores = 500;
-        config.networkEnabled = false;
-        config.timeoutSeconds = 86_400; // 24 hours
-        return config;
     }
 
     public boolean hasSandbox(String sessionId) {
@@ -459,7 +366,7 @@ public class SandboxService {
         }
         sessionSandboxes.clear();
         persistentSessionIds.clear();
-        pendingFiles.clear();
+        sandboxFileService.clearAll();
         for (var mgr : sessionMcpManagers.values()) {
             try {
                 mgr.close();

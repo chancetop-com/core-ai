@@ -13,7 +13,6 @@ import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import core.framework.module.Module;
 
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -38,8 +37,6 @@ class SandboxModule extends Module {
 
         SandboxProvider provider;
         String serverUrlFromSandbox;
-        var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
-        var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
         if (providerName.equalsIgnoreCase("kubernetes")) {
             provider = createKubernetesSandboxProvider();
             serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
@@ -47,6 +44,8 @@ class SandboxModule extends Module {
             provider = createAgentSandboxProvider();
             serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
         } else if (providerName.equalsIgnoreCase("docker")) {
+            var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
+            var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
             provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
             serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
         } else {
@@ -83,14 +82,6 @@ class SandboxModule extends Module {
         var configured = property("sys.sandbox.server.url").orElse(null);
         if (configured != null && !configured.isBlank()) return trimTrailingSlash(configured.trim());
         return "http://" + defaultHost + ":8080";
-    }
-
-    private Integer resolvePublicUrlPort(URI uri) {
-        if (uri.getPort() >= 0) return uri.getPort();
-        var scheme = uri.getScheme();
-        if ("http".equalsIgnoreCase(scheme)) return 80;
-        if ("https".equalsIgnoreCase(scheme)) return 443;
-        return null;
     }
 
     private String trimTrailingSlash(String url) {

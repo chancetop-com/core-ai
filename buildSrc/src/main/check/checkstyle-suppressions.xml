@@ -8,4 +8,6 @@
     <suppress checks="MethodLength" files=".*Test\.java"/>
     <suppress checks="FileLengthCheck" files="LanguageSeparators\.java"/>
     <suppress checks="ExecutableStatementCount|MethodLength" files="BashReadOnlyChecker\.java"/>
+    <!-- ServerModule reads all properties unconditionally to satisfy core-ng property validator -->
+    <suppress checks="MoveVariableInsideIf" files="ServerModule\.java"/>
 </suppressions>

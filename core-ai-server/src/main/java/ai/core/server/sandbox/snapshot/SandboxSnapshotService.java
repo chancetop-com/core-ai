@@ -261,7 +261,9 @@ public class SandboxSnapshotService {
         try (var in = Files.newInputStream(file)) {
             var buffer = new byte[64 * 1024];
             int read;
-            while ((read = in.read(buffer)) != -1) {
+            while (true) {
+                read = in.read(buffer);
+                if (read == -1) break;
                 digest.update(buffer, 0, read);
             }
         }

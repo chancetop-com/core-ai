@@ -43,6 +43,7 @@ public class LazySandbox implements Sandbox {
         this(config, manager, eventDispatcher, sessionId, userId, postAcquireHook, null);
     }
 
+    @SuppressWarnings("checkstyle:ParameterNumber")
     public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, String sessionId, String userId,
                        Runnable postAcquireHook, SandboxSnapshotService snapshotService) {
         this.config = config;
@@ -249,10 +250,6 @@ public class LazySandbox implements Sandbox {
 
     private void dispatchEvent(SandboxEventType type) {
         dispatchEvent(type, null, null);
-    }
-
-    private void dispatchEvent(SandboxEventType type, Long durationMs) {
-        dispatchEvent(type, durationMs, null);
     }
 
     private void dispatchEvent(SandboxEventType type, Long durationMs, String readyMessage) {

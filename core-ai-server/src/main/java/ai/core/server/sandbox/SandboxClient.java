@@ -47,37 +47,46 @@ public class SandboxClient {
     }
 
     public void waitForReady(int maxWaitMs) {
-        var url = baseUrl + "/health";
-        var start = System.currentTimeMillis();
         var pollClient = HTTPClient.builder()
                 .connectTimeout(Duration.ofSeconds(2))
                 .timeout(Duration.ofSeconds(3))
                 .build();
         try {
-            while (System.currentTimeMillis() - start < maxWaitMs) {
-                try {
-                    var req = new HTTPRequest(HTTPMethod.GET, url);
-                    var resp = pollClient.execute(req);
-                    if (resp.statusCode == 200) {
-                        LOGGER.info("sandbox runtime ready: url={}, elapsed={}ms", baseUrl, System.currentTimeMillis() - start);
-                        return;
-                    }
-                } catch (Exception e) {
-                    LOGGER.warn("sandbox runtime health check failed: url={}, elapsed={}ms, error={}", baseUrl, System.currentTimeMillis() - start, e.getMessage());
-                }
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-            throw new RuntimeException("sandbox runtime health check timed out after " + maxWaitMs + "ms: url=" + baseUrl);
+            pollUntilReady(pollClient, maxWaitMs);
         } finally {
             if (pollClient instanceof CustomHTTPClientImpl) {
                 ((CustomHTTPClientImpl) pollClient).close();
             }
         }
+    }
+
+    private void pollUntilReady(HTTPClient pollClient, int maxWaitMs) {
+        var url = baseUrl + "/health";
+        var start = System.currentTimeMillis();
+        while (System.currentTimeMillis() - start < maxWaitMs) {
+            if (healthCheckOnce(pollClient, url, start)) return;
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        throw new RuntimeException("sandbox runtime health check timed out after " + maxWaitMs + "ms: url=" + baseUrl);
+    }
+
+    private boolean healthCheckOnce(HTTPClient pollClient, String url, long start) {
+        try {
+            var req = new HTTPRequest(HTTPMethod.GET, url);
+            var resp = pollClient.execute(req);
+            if (resp.statusCode == 200) {
+                LOGGER.info("sandbox runtime ready: url={}, elapsed={}ms", baseUrl, System.currentTimeMillis() - start);
+                return true;
+            }
+        } catch (Exception e) {
+            LOGGER.warn("sandbox runtime health check failed: url={}, elapsed={}ms, error={}", baseUrl, System.currentTimeMillis() - start, e.getMessage());
+        }
+        return false;
     }
 
     public String getIp() {
