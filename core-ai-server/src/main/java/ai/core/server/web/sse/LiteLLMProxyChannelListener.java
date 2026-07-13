@@ -1,6 +1,5 @@
 package ai.core.server.web.sse;
 
-import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.streaming.StreamingCallback;

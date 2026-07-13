@@ -85,9 +85,11 @@ public class WeClawInboundAdapter implements ChannelInboundAdapter {
             if (content instanceof String text && !text.isBlank()) return text;
             if (content instanceof List<?> parts) {
                 for (var part : parts) {
-                    if (part instanceof Map<?, ?> partMap && "text".equals(partMap.get("type"))) {
-                        var text = (String) partMap.get("text");
-                        if (text != null && !text.isBlank()) return text;
+                    if (part instanceof Map<?, ?> partMap
+                            && "text".equals(partMap.get("type"))
+                            && partMap.get("text") instanceof String s
+                            && !s.isBlank()) {
+                        return s;
                     }
                 }
             }

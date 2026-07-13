@@ -78,8 +78,8 @@ public class WeClawOutboundAdapter implements ChannelOutboundAdapter {
     public void sendRaw(String action, Map<String, Object> payload,
                          String channelUserId, String conversationId,
                          Map<String, String> config) {
-        var apiBase = config.getOrDefault("weclaw_api_base", DEFAULT_API_BASE);
         if ("send".equals(action)) {
+            var apiBase = config.getOrDefault("weclaw_api_base", DEFAULT_API_BASE);
             if (!payload.containsKey("to")) {
                 payload.put("to", channelUserId);
             }

@@ -134,9 +134,9 @@ public class SessionChannelService {
     }
 
     private void setEventType(SseBaseEvent sseEvent) {
-        if (sseEvent instanceof ai.core.api.server.session.sse.SseTextChunkEvent) {
+        if (sseEvent instanceof SseTextChunkEvent) {
             sseEvent.type = EventType.TEXT_CHUNK;
-        } else if (sseEvent instanceof ai.core.api.server.session.sse.SseReasoningChunkEvent) {
+        } else if (sseEvent instanceof SseReasoningChunkEvent) {
             sseEvent.type = EventType.REASONING_CHUNK;
         } else if (sseEvent instanceof ai.core.api.server.session.sse.SseToolStartEvent) {
             sseEvent.type = EventType.TOOL_START;
@@ -148,9 +148,9 @@ public class SessionChannelService {
             sseEvent.type = EventType.TOOL_APPROVAL_REQUEST;
         } else if (sseEvent instanceof SseTurnCompleteEvent) {
             sseEvent.type = EventType.TURN_COMPLETE;
-        } else if (sseEvent instanceof ai.core.api.server.session.sse.SseErrorEvent) {
+        } else if (sseEvent instanceof SseErrorEvent) {
             sseEvent.type = EventType.ERROR;
-        } else if (sseEvent instanceof ai.core.api.server.session.sse.SseStatusChangeEvent) {
+        } else if (sseEvent instanceof SseStatusChangeEvent) {
             sseEvent.type = EventType.STATUS_CHANGE;
         } else if (sseEvent instanceof ai.core.api.server.session.sse.SseCompressionEvent) {
             sseEvent.type = EventType.COMPRESSION;

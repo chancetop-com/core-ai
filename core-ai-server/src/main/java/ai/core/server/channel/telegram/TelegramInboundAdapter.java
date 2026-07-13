@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -108,7 +109,7 @@ public class TelegramInboundAdapter implements ChannelInboundAdapter {
         var matcher = TOOL_DECISION_PATTERN.matcher(event.messageText);
         if (matcher.find()) {
             event.commandType = "tool_decision";
-            event.toolDecision = matcher.group(1).toLowerCase();
+            event.toolDecision = matcher.group(1).toLowerCase(Locale.ROOT);
             if ("allow".equals(event.toolDecision)) event.toolDecision = "approve";
             if ("reject".equals(event.toolDecision)) event.toolDecision = "deny";
             event.toolCallId = matcher.group(2);

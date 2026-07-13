@@ -10,10 +10,6 @@ import java.util.Objects;
 public class ToolRef {
     private static final String MCP_TOOL_PREFIX = "mcp-tool:";
 
-    /** Parsed serverId and toolName of an individual MCP tool ref. */
-    public record McpToolId(String serverId, String toolName) {
-    }
-
     /**
      * Parse an individual MCP tool ref id of the form "mcp-tool:{serverId}:{toolName}",
      * or "mcp-tool:{toolName}" with the serverId supplied via the source field.
@@ -100,5 +96,9 @@ public class ToolRef {
     @Override
     public String toString() {
         return "ToolRef{id=" + id + ", type=" + type + ", source=" + source + "}";
+    }
+
+    /** Parsed serverId and toolName of an individual MCP tool ref. */
+    public record McpToolId(String serverId, String toolName) {
     }
 }

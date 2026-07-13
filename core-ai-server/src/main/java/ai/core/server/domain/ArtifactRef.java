@@ -15,27 +15,6 @@ import java.util.List;
  * @author Xander
  */
 public class ArtifactRef {
-    @Field(name = "file_id")
-    public String fileId;
-
-    @Field(name = "file_name")
-    public String fileName;
-
-    @Field(name = "content_type")
-    public String contentType;
-
-    @Field(name = "size")
-    public Long size;
-
-    @Field(name = "url")
-    public String url;
-
-    @Field(name = "title")
-    public String title;
-
-    @Field(name = "description")
-    public String description;
-
     /** Map a submitted run artifact to a downstream reference; {@code url} is the caller-resolvable download URL. */
     public static ArtifactRef of(AgentRunArtifact artifact, String url) {
         var ref = new ArtifactRef();
@@ -61,4 +40,25 @@ public class ArtifactRef {
         }
         return merged;
     }
+
+    @Field(name = "file_id")
+    public String fileId;
+
+    @Field(name = "file_name")
+    public String fileName;
+
+    @Field(name = "content_type")
+    public String contentType;
+
+    @Field(name = "size")
+    public Long size;
+
+    @Field(name = "url")
+    public String url;
+
+    @Field(name = "title")
+    public String title;
+
+    @Field(name = "description")
+    public String description;
 }

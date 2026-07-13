@@ -114,7 +114,7 @@ public class ChannelAdminController {
         var view = new ChannelConfigView();
         view.channelId = channelId;
         view.channelType = (String) payload.getOrDefault("channelType", "slack");
-        view.enabled = payload.containsKey("enabled") ? Boolean.TRUE.equals(payload.get("enabled")) : true;
+        view.enabled = !payload.containsKey("enabled") || Boolean.TRUE.equals(payload.get("enabled"));
         view.agentId = (String) payload.get("agentId");
         view.userId = (String) payload.get("userId");
         view.sessionTtlMinutes = payload.get("sessionTtlMinutes") instanceof Number n ? n.intValue() : 60;

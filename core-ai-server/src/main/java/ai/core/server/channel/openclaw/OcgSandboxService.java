@@ -44,46 +44,53 @@ public class OcgSandboxService {
 
     public String publicUrl;
 
-    public synchronized void startSandbox(String ocgConfigId) {
-        var config = loadConfig(ocgConfigId);
-        if (config.sandboxId != null && !config.sandboxId.isBlank()) {
-            throw new BadRequestException("OCG sandbox already started: " + ocgConfigId);
-        }
-        var channel = channelConfigStore.load(config.channelId);
-        if (channel == null) throw new BadRequestException("channel not found: " + config.channelId);
-        if (!OPENCLAW_CHANNEL_TYPE.equals(channel.channelType)) {
-            throw new BadRequestException("channel " + config.channelId + " is not openclaw");
-        }
+    public void startSandbox(String ocgConfigId) {
+        synchronized (this) {
+            var config = loadConfig(ocgConfigId);
+            if (config.sandboxId != null && !config.sandboxId.isBlank()) {
+                throw new BadRequestException("OCG sandbox already started: " + ocgConfigId);
+            }
+            var channel = channelConfigStore.load(config.channelId);
+            if (channel == null) throw new BadRequestException("channel not found: " + config.channelId);
+            if (!OPENCLAW_CHANNEL_TYPE.equals(channel.channelType)) {
+                throw new BadRequestException("channel " + config.channelId + " is not openclaw");
+            }
 
-        var sessionId = sandboxSessionId(config.id);
-        var sandbox = sandboxService.createSandbox(buildSandboxConfig(), sessionId, "system", true);
-        if (sandbox == null) throw new BadRequestException("sandbox is disabled");
-        try {
-            sandboxService.ensureSandboxReady(sessionId);
-            runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " && chmod 777 " + TERMINAL_WORK_DIR, 10);
-            var sandboxIp = sandbox.ip();
-            if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
-            uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
-            startGatewayProcess(sandbox);
-            waitForGatewayProcess(sandbox, config.id);
-            config.sandboxId = sandbox.getId();
-            config.sandboxIp = sandboxIp;
-            config.updatedAt = ZonedDateTime.now();
-            ocgConfigStore.store(config);
-            LOGGER.info("OCG sandbox started, id={}, sandboxId={}, ip={}", config.id, config.sandboxId, config.sandboxIp);
-        } catch (RuntimeException e) {
-            sandboxService.releaseSandbox(sessionId);
-            throw e;
+            var sessionId = sandboxSessionId(config.id);
+            var sandbox = sandboxService.createSandbox(buildSandboxConfig(), sessionId, "system", true);
+            if (sandbox == null) throw new BadRequestException("sandbox is disabled");
+            boolean committed = false;
+            try {
+                sandboxService.ensureSandboxReady(sessionId);
+                runCommand(sandbox, "mkdir -p " + TERMINAL_WORK_DIR + " && chmod 777 " + TERMINAL_WORK_DIR, 10);
+                var sandboxIp = sandbox.ip();
+                if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
+                uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
+                startGatewayProcess(sandbox);
+                waitForGatewayProcess(sandbox, config.id);
+                config.sandboxId = sandbox.getId();
+                config.sandboxIp = sandboxIp;
+                config.updatedAt = ZonedDateTime.now();
+                ocgConfigStore.store(config);
+                committed = true;
+                LOGGER.info("OCG sandbox started, id={}, sandboxId={}, ip={}", config.id, config.sandboxId, config.sandboxIp);
+            } finally {
+                if (!committed) {
+                    sandboxService.releaseSandbox(sessionId);
+                }
+            }
         }
     }
 
-    public synchronized void stopSandbox(String ocgConfigId) {
-        var config = loadConfig(ocgConfigId);
-        if (config.sandboxId != null && !config.sandboxId.isBlank()) {
-            sandboxService.releaseSandbox(sandboxSessionId(config.id));
+    public void stopSandbox(String ocgConfigId) {
+        synchronized (this) {
+            var config = loadConfig(ocgConfigId);
+            if (config.sandboxId != null && !config.sandboxId.isBlank()) {
+                sandboxService.releaseSandbox(sandboxSessionId(config.id));
+            }
+            ocgConfigStore.clearSandbox(config.id);
+            LOGGER.info("OCG sandbox stopped, id={}", config.id);
         }
-        ocgConfigStore.clearSandbox(config.id);
-        LOGGER.info("OCG sandbox stopped, id={}", config.id);
     }
 
     public String getStatus(String ocgConfigId) {
@@ -102,19 +109,21 @@ public class OcgSandboxService {
         }
     }
 
-    public synchronized void restartGateway(String ocgConfigId) {
-        var config = loadConfig(ocgConfigId);
-        var sandbox = requireSandbox(ocgConfigId);
-        var sandboxIp = sandbox.ip();
-        if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
-        uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
-        stopGatewayProcess(sandbox);
-        startGatewayProcess(sandbox);
-        waitForGatewayProcess(sandbox, config.id);
-        config.sandboxIp = sandboxIp;
-        config.updatedAt = ZonedDateTime.now();
-        ocgConfigStore.store(config);
-        LOGGER.info("OCG gateway restarted, id={}", ocgConfigId);
+    public void restartGateway(String ocgConfigId) {
+        synchronized (this) {
+            var config = loadConfig(ocgConfigId);
+            var sandbox = requireSandbox(ocgConfigId);
+            var sandboxIp = sandbox.ip();
+            if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");
+            uploadRuntimeConfig(sandbox, config, sandboxIp, sandbox.port());
+            stopGatewayProcess(sandbox);
+            startGatewayProcess(sandbox);
+            waitForGatewayProcess(sandbox, config.id);
+            config.sandboxIp = sandboxIp;
+            config.updatedAt = ZonedDateTime.now();
+            ocgConfigStore.store(config);
+            LOGGER.info("OCG gateway restarted, id={}", ocgConfigId);
+        }
     }
 
     public void runTerminalCommand(String ocgConfigId, String command) {
@@ -205,7 +214,7 @@ public class OcgSandboxService {
         try {
             payload = (Map<String, Object>) JsonUtil.fromJson(Map.class, config.configJson);
         } catch (Exception e) {
-            throw new BadRequestException("invalid configJson: " + e.getMessage());
+            throw new BadRequestException("invalid configJson: " + e.getMessage(), "INVALID_CONFIG_JSON", e);
         }
         var runtimeConfig = new LinkedHashMap<String, Object>();
         if (payload.containsKey("channels")) {

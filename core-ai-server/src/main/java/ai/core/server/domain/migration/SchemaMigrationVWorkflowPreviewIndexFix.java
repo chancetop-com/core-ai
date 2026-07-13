@@ -5,6 +5,8 @@ import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 
 import core.framework.mongo.Mongo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.TimeUnit;
 
@@ -18,6 +20,8 @@ import java.util.concurrent.TimeUnit;
  * @author Xander
  */
 public class SchemaMigrationVWorkflowPreviewIndexFix implements SchemaMigration {
+    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaMigrationVWorkflowPreviewIndexFix.class);
+
     @Override
     public String version() {
         return "20260608003";
@@ -34,7 +38,7 @@ public class SchemaMigrationVWorkflowPreviewIndexFix implements SchemaMigration 
             mongo.dropIndex("workflow_published_versions",
                 Indexes.compoundIndex(Indexes.ascending("workflow_id"), Indexes.ascending("version")));
         } catch (RuntimeException e) {
-            // index not present (fresh environment) — nothing to drop
+            LOGGER.debug("legacy unique index not present, skipping drop: {}", e.getMessage());
         }
         // expire preview snapshots a day after creation; the partial filter leaves real published versions untouched
         mongo.createIndex("workflow_published_versions", Indexes.ascending("published_at"),

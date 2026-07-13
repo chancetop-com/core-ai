@@ -12,15 +12,6 @@ import java.util.List;
  * @author Xander
  */
 public class ScopeFrame {
-    @Field(name = "scope_type")
-    public ScopeType scopeType;
-
-    @Field(name = "container_node_id")
-    public String containerNodeId;
-
-    @Field(name = "index")
-    public Integer index;
-
     /** Canonical, stable key for the (run_id, node_id, scope_path_key) unique index. Root scope = "". */
     public static String canonicalKey(List<ScopeFrame> scopePath) {
         if (scopePath == null || scopePath.isEmpty()) {
@@ -35,4 +26,13 @@ public class ScopeFrame {
         }
         return builder.toString();
     }
+
+    @Field(name = "scope_type")
+    public ScopeType scopeType;
+
+    @Field(name = "container_node_id")
+    public String containerNodeId;
+
+    @Field(name = "index")
+    public Integer index;
 }
