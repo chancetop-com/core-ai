@@ -45,7 +45,10 @@ public class TraceDailyMaintenanceService {
     private static final ZoneId UTC = ZoneId.of("UTC");
     private static final DateTimeFormatter YEAR_MONTH = DateTimeFormatter.ofPattern("yyyy-MM");
     private static final int ARCHIVE_BATCH_SIZE = 300;
-    private static final int MAX_SPANS_PER_PART = 5000;
+    // Azure single PUT Blob limit is 256MB. With typical ~50KB serialized span size,
+    // 2000 spans produce ~100MB. Even with outliers (200KB/span) we stay under 256MB.
+    private static final int MAX_SPANS_PER_PART = 2000;
+    private static final long MAX_PART_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB safety threshold
 
     private static long getLong(org.bson.Document doc, String key) {
         Number value = doc.get(key, Number.class);
@@ -373,6 +376,11 @@ public class TraceDailyMaintenanceService {
         try {
             tempFile = Files.createTempFile("traces-archive-part-", ".json.gz");
             int spanCount = writeBatchToFile(tempFile, batch, spansByTraceId);
+            long fileSize = Files.size(tempFile);
+            if (fileSize > MAX_PART_SIZE_BYTES) {
+                LOGGER.warn("archive part {} exceeds {} bytes (actual={}), upload may fail with 413",
+                        part, MAX_PART_SIZE_BYTES, fileSize);
+            }
             String blobName = String.format("%s/part-%04d.json.gz", blobPrefix, part);
             storageService.uploadObject(archiveContainer, blobName, tempFile);
             return spanCount;

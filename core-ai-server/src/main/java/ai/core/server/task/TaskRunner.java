@@ -146,7 +146,12 @@ public class TaskRunner {
             record.retryCount = retryCount;
             LOGGER.info("task completed successfully, taskId={}, type={}", taskId, task.type());
         } catch (Exception e) {
-            ctx.log("ERROR: " + e.getMessage());
+            String message = e.getMessage();
+            Throwable cause = e.getCause();
+            if (cause != null && cause.getMessage() != null) {
+                message += " (cause: " + cause.getMessage() + ")";
+            }
+            ctx.log("ERROR: " + message);
             record.status = TaskStatus.FAILED;
             record.statusText = ctx.statusText();
             record.retryCount = retryCount;
