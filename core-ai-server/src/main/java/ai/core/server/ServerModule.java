@@ -85,6 +85,8 @@ import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.run.AgentRunService;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.run.AgentRunner;
+import ai.core.server.run.AgentRunTracer;
+import ai.core.server.run.AgentRunBuilder;
 import ai.core.server.workflow.AgentRunGateway;
 import ai.core.server.workflow.MongoAgentRunGateway;
 import ai.core.server.workflow.MongoWorkflowGraphLoader;
@@ -380,6 +382,8 @@ public class ServerModule extends Module {
         bind(DatasetService.class);
         bind(DatasetRecordService.class);
         bind(ai.core.server.agent.SubAgentAssembler.class);
+        bind(AgentRunTracer.class);
+        bind(AgentRunBuilder.class);
         bind(AgentRunner.class);
         onShutdown(bean(AgentRunner.class)::shutdown);
         bind(AgentScheduler.class);

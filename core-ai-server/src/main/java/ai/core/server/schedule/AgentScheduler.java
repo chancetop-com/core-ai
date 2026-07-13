@@ -114,7 +114,7 @@ public class AgentScheduler {
         var publishedConfig = definition.get().publishedConfig;
         var input = schedule.input != null && !schedule.input.isBlank() ? schedule.input : publishedConfig.inputTemplate;
         agentRunner.run(definition.get(), input, TriggerType.SCHEDULE, schedule.id, schedule.variables,
-                schedule.channelId, schedule.channelRecipientId);
+                new AgentRunner.ChannelTarget(schedule.channelId, schedule.channelRecipientId));
         LOGGER.info("triggered scheduled run, scheduleId={}, agentId={}", schedule.id, schedule.agentId);
     }
 

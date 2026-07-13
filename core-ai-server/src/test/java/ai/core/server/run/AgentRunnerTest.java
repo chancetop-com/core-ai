@@ -23,6 +23,6 @@ class AgentRunnerTest {
         var definition = new AgentDefinition();
         definition.id = "id-1";
         definition.name = displayName;
-        return AgentRunner.safeNodeName(definition);
+        return AgentRunBuilder.safeNodeName(definition);
     }
 }
