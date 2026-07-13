@@ -72,7 +72,7 @@ public class GatewayModelController {
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
-            throw new BadRequestException("invalid request body: " + e.getMessage());
+            throw new BadRequestException("invalid request body: " + e.getMessage(), "BAD_REQUEST", e);
         }
     }
 
@@ -83,7 +83,7 @@ public class GatewayModelController {
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
-            throw new BadRequestException("invalid request body: " + e.getMessage());
+            throw new BadRequestException("invalid request body: " + e.getMessage(), "BAD_REQUEST", e);
         }
     }
 

@@ -17,6 +17,7 @@ import core.framework.web.exception.BadRequestException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static ai.core.server.gateway.GatewaySupport.hasText;
 import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
@@ -24,14 +25,14 @@ import static ai.core.server.gateway.GatewaySupport.urlEncode;
 import static ai.core.server.gateway.GatewaySupport.valueOrDefault;
 
 public class GatewayProxyService {
-    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {
-    };
     private static final ContentType EVENT_STREAM = ContentType.create("text/event-stream", StandardCharsets.UTF_8);
     // shared client with a high ceiling; effective limits come from per-request timeouts set in applyTimeouts
     private static final HTTPClient CLIENT = HTTPClient.builder()
             .connectTimeout(Duration.ofSeconds(10))
             .timeout(Duration.ofMinutes(10))
             .build();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
     @Inject
     GatewayRoutingEngine routingEngine;
@@ -77,8 +78,6 @@ public class GatewayProxyService {
 
     private Response proxy(byte[] body, GatewayEndpointType endpoint) {
         var call = prepare(body, endpoint);
-        // buffered fallback for streaming clients not sending Accept: text/event-stream;
-        // those with the header are served incrementally by the SSE channel listener
         if (call.stream()) return bufferedStream(call);
         return response(execute(call.request(), call.provider()));
     }
@@ -89,7 +88,6 @@ public class GatewayProxyService {
         var provider = selection.provider();
         var outgoingBody = new LinkedHashMap<>(requestBody);
         mergeExtraBody(outgoingBody, provider.requestExtraBody);
-        // routed model always wins, provider extra body must not override it
         outgoingBody.put("model", selection.upstreamModel());
 
         var url = endpointUrl(provider, endpoint, selection.upstreamModel());
@@ -104,16 +102,13 @@ public class GatewayProxyService {
 
     private String endpointUrl(GatewayProviderConfig provider, GatewayEndpointType endpoint, String model) {
         var baseUrl = stripTrailingSlash(provider.baseUrl);
-        if ("azure".equals(provider.type)) {
-            var version = hasText(provider.apiVersion) ? provider.apiVersion : "2024-10-21";
-            if (endpoint == GatewayEndpointType.CHAT_COMPLETIONS) {
-                if (!hasText(model)) throw new BadRequestException("azure chat gateway requires a deployment model");
-                return baseUrl + "/openai/deployments/" + urlEncode(model) + "/chat/completions?api-version=" + urlEncode(version);
-            }
-            //todo verify Azure Responses API path/version against a real Azure deployment (may need /openai/v1/responses)
+        if (!"azure".equals(provider.type)) return baseUrl + endpoint.path;
+        var version = hasText(provider.apiVersion) ? provider.apiVersion : "2024-10-21";
+        if (endpoint != GatewayEndpointType.CHAT_COMPLETIONS) {
             return baseUrl + "/openai/responses?api-version=" + urlEncode(version);
         }
-        return baseUrl + endpoint.path;
+        if (!hasText(model)) throw new BadRequestException("azure chat gateway requires a deployment model");
+        return baseUrl + "/openai/deployments/" + urlEncode(model) + "/chat/completions?api-version=" + urlEncode(version);
     }
 
     private String apiKey(GatewayProviderConfig provider) {
@@ -170,20 +165,20 @@ public class GatewayProxyService {
         return code >= 200 && code < 300 ? HTTPStatus.OK : HTTPStatus.BAD_GATEWAY;
     }
 
-    private void mergeExtraBody(LinkedHashMap<String, Object> body, String extraBody) {
+    private void mergeExtraBody(Map<String, Object> body, String extraBody) {
         if (!hasText(extraBody)) return;
         try {
             body.putAll(GatewayJson.MAPPER.readValue(extraBody, MAP_TYPE));
         } catch (Exception e) {
-            throw new BadRequestException("invalid provider extra body JSON: " + e.getMessage());
+            throw new BadRequestException("invalid provider extra body JSON: " + e.getMessage(), "BAD_REQUEST", e);
         }
     }
 
-    private LinkedHashMap<String, Object> parseBody(byte[] body) {
+    private Map<String, Object> parseBody(byte[] body) {
         try {
             return GatewayJson.MAPPER.readValue(body, MAP_TYPE);
         } catch (Exception e) {
-            throw new BadRequestException("invalid JSON body: " + e.getMessage());
+            throw new BadRequestException("invalid JSON body: " + e.getMessage(), "BAD_REQUEST", e);
         }
     }
 

@@ -236,7 +236,7 @@ public class GatewayProviderService {
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
-            throw new BadRequestException("requestExtraBody must be valid JSON: " + e.getMessage());
+            throw new BadRequestException("requestExtraBody must be valid JSON: " + e.getMessage(), "BAD_REQUEST", e);
         }
     }
 

@@ -41,6 +41,34 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     // so we stop holding a node-pool thread for it. Mirrors AgentRunner.STALE_RUN_THRESHOLD_SECONDS.
     private static final long STALE_SECONDS = 1800;
 
+    // Snapshot-only definition: AgentRunner reads everything from publishedConfig; sandbox_config is lifted to the
+    // top-level field that SandboxService.getEffectiveConfig reads, so the run honors the snapshot's sandbox too.
+    static AgentDefinition transientDefinition(WorkflowNode node, String userId, AgentPublishedConfig snapshot) {
+        var definition = new AgentDefinition();
+        definition.id = String.valueOf(node.config().get("agent_id"));
+        definition.name = configString(node, "agent_name");
+        definition.userId = userId;
+        definition.type = "LLM".equals(node.type()) ? DefinitionType.LLM_CALL : DefinitionType.AGENT;
+        definition.status = AgentStatus.PUBLISHED;
+        definition.publishedConfig = snapshot;
+        definition.sandboxConfig = snapshot.sandboxConfig;
+        return definition;
+    }
+
+    private static String configString(WorkflowNode node, String key) {
+        Object value = node.config().get(key);
+        return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : null;
+    }
+
+    private static void sleep() {
+        try {
+            Thread.sleep(POLL_INTERVAL_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while awaiting child agent run", e);
+        }
+    }
+
     @Inject
     AgentRunner agentRunner;
 
@@ -112,33 +140,5 @@ public class MongoAgentRunGateway implements AgentRunGateway {
             throw new IllegalStateException("no embedded agent snapshot for node " + nodeId);
         }
         return JSON.fromJSON(AgentPublishedConfig.class, snapshotJson);
-    }
-
-    // Snapshot-only definition: AgentRunner reads everything from publishedConfig; sandbox_config is lifted to the
-    // top-level field that SandboxService.getEffectiveConfig reads, so the run honors the snapshot's sandbox too.
-    static AgentDefinition transientDefinition(WorkflowNode node, String userId, AgentPublishedConfig snapshot) {
-        var definition = new AgentDefinition();
-        definition.id = String.valueOf(node.config().get("agent_id"));
-        definition.name = configString(node, "agent_name");
-        definition.userId = userId;
-        definition.type = "LLM".equals(node.type()) ? DefinitionType.LLM_CALL : DefinitionType.AGENT;
-        definition.status = AgentStatus.PUBLISHED;
-        definition.publishedConfig = snapshot;
-        definition.sandboxConfig = snapshot.sandboxConfig;
-        return definition;
-    }
-
-    private static String configString(WorkflowNode node, String key) {
-        Object value = node.config().get(key);
-        return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : null;
-    }
-
-    private static void sleep() {
-        try {
-            Thread.sleep(POLL_INTERVAL_MS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while awaiting child agent run", e);
-        }
     }
 }

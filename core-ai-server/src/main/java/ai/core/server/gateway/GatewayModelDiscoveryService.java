@@ -98,9 +98,11 @@ public class GatewayModelDiscoveryService {
                 throw new BadRequestException("provider models endpoint failed: HTTP " + response.statusCode + ": " + truncate(response.text(), 300));
             }
             return parse(response.body == null ? new byte[0] : response.body);
+        } catch (BadRequestException e) {
+            throw e;
         } catch (Exception e) {
             if ("litellm".equals(provider.type) && url.endsWith("/model/info")) return List.of();
-            throw new BadRequestException("failed to discover gateway models: " + e.getMessage());
+            throw new BadRequestException("failed to discover gateway models: " + e.getMessage(), "BAD_REQUEST", e);
         }
     }
 
@@ -115,7 +117,7 @@ public class GatewayModelDiscoveryService {
             }
             return models;
         } catch (Exception e) {
-            throw new BadRequestException("invalid provider models response: " + e.getMessage());
+            throw new BadRequestException("invalid provider models response: " + e.getMessage(), "BAD_REQUEST", e);
         }
     }
 

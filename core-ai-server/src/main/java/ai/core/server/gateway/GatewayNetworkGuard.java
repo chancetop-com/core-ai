@@ -31,7 +31,7 @@ final class GatewayNetworkGuard {
                 }
             }
         } catch (UnknownHostException e) {
-            throw new BadRequestException("gateway provider host cannot be resolved: " + host);
+            throw new BadRequestException("gateway provider host cannot be resolved: " + host, "BAD_REQUEST", e);
         }
     }
 
@@ -39,7 +39,7 @@ final class GatewayNetworkGuard {
         try {
             return URI.create(url);
         } catch (IllegalArgumentException e) {
-            throw new BadRequestException("invalid gateway provider URL: " + e.getMessage());
+            throw new BadRequestException("invalid gateway provider URL: " + e.getMessage(), "BAD_REQUEST", e);
         }
     }
 

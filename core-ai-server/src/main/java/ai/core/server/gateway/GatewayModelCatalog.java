@@ -5,9 +5,6 @@ import java.util.List;
 import java.util.Locale;
 
 final class GatewayModelCatalog {
-    private GatewayModelCatalog() {
-    }
-
     static GatewayModelMetadata enrich(GatewayModelMetadata source) {
         var endpoints = source.endpointTypes();
         if (endpoints == null || endpoints.isEmpty()) endpoints = inferEndpoints(source.id());
@@ -30,7 +27,6 @@ final class GatewayModelCatalog {
         if (containsAny(value, "embedding", "embed", "whisper", "tts", "image", "moderation")) return List.of();
         var endpoints = new ArrayList<String>();
         endpoints.add(GatewayModelService.ENDPOINT_CHAT_COMPLETIONS);
-        // o-series reasoning models (o1/o3/o4...), not any id starting with "o" (e.g. openai/..., openrouter/...)
         if (value.matches("o\\d.*") || value.startsWith("gpt-4.1") || value.startsWith("gpt-5")) {
             endpoints.add(GatewayModelService.ENDPOINT_RESPONSES);
         }
@@ -42,5 +38,8 @@ final class GatewayModelCatalog {
             if (value.contains(token)) return true;
         }
         return false;
+    }
+
+    private GatewayModelCatalog() {
     }
 }

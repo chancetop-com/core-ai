@@ -27,6 +27,24 @@ public class GatewayModelService {
     static final String ENDPOINT_CHAT_COMPLETIONS = "chat.completions";
     static final String ENDPOINT_RESPONSES = "responses";
 
+    static List<String> normalizeEndpointTypes(List<String> endpointTypes) {
+        var values = endpointTypes.stream()
+                .filter(endpointType -> endpointType != null && !endpointType.isBlank())
+                .map(endpointType -> normalizeEndpointType(endpointType.trim()))
+                .distinct()
+                .toList();
+        if (values.isEmpty()) throw new BadRequestException("endpointTypes must include at least one endpoint");
+        return values;
+    }
+
+    private static String normalizeEndpointType(String value) {
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "chat", "chat.completion", "chat.completions" -> ENDPOINT_CHAT_COMPLETIONS;
+            case "response", "responses" -> ENDPOINT_RESPONSES;
+            default -> throw new BadRequestException("unsupported endpoint type: " + value);
+        };
+    }
+
     @Inject
     MongoCollection<GatewayModelConfig> gatewayModelCollection;
     @Inject
@@ -51,48 +69,7 @@ public class GatewayModelService {
         });
         var discoveredModels = discoveredModels(provider);
 
-        // first pass: validate and stage every item, so one bad item fails the batch before any write
-        var staged = new ArrayList<StagedImport>();
-        var seenUpstream = new HashSet<String>();
-        for (var item : request.models) {
-            if (isBlank(item.upstreamModel)) throw new BadRequestException("upstreamModel is required");
-            var upstreamModel = item.upstreamModel.trim();
-            if (!seenUpstream.add(upstreamModel)) throw new BadRequestException("duplicate upstreamModel in import request: " + upstreamModel);
-            var metadata = discoveredModels.get(upstreamModel);
-            if (metadata == null && !discoveredModels.isEmpty()) {
-                throw new BadRequestException("gateway model is not available from provider discovery: " + upstreamModel);
-            }
-            if (metadata == null) {
-                metadata = GatewayModelCatalog.enrich(new GatewayModelMetadata(upstreamModel, null, null, null, null, null, null, null, null));
-            }
-            if (metadata.endpointTypes() == null || metadata.endpointTypes().isEmpty()) {
-                throw new BadRequestException("gateway does not support model endpoint type: " + upstreamModel);
-            }
-
-            var entity = existingByUpstream.get(upstreamModel);
-            var create = entity == null;
-            if (create) {
-                entity = new GatewayModelConfig();
-                entity.id = UUID.randomUUID().toString();
-                entity.modelId = trimToNull(item.alias) == null ? upstreamModel : item.alias.trim();
-                entity.providerId = provider.id;
-                entity.upstreamModel = upstreamModel;
-                entity.createdBy = userId;
-                entity.createdAt = now;
-            } else if (trimToNull(item.alias) != null) {
-                entity.modelId = item.alias.trim();
-            }
-
-            applyMetadata(entity, metadata);
-            if (item.enabled != null) entity.enabled = item.enabled;
-            if (entity.enabled == null) entity.enabled = Boolean.TRUE;
-            if (item.priority != null) entity.priority = item.priority;
-            if (entity.priority == null) entity.priority = 100L;
-            entity.updatedBy = userId;
-            entity.updatedAt = now;
-            staged.add(new StagedImport(entity, create));
-        }
-
+        var staged = stage(request, provider, existingByUpstream, discoveredModels, userId, now);
         var imported = new ListGatewayModelsResponse();
         imported.models = staged.stream().map(change -> {
             if (change.create) {
@@ -167,6 +144,53 @@ public class GatewayModelService {
         invalidateRouting();
     }
 
+    private List<StagedImport> stage(ImportGatewayModelsRequest request, GatewayProviderConfig provider,
+                                      Map<String, GatewayModelConfig> existingByUpstream,
+                                      Map<String, GatewayModelMetadata> discoveredModels,
+                                      String userId, ZonedDateTime now) {
+        var staged = new ArrayList<StagedImport>();
+        var seenUpstream = new HashSet<String>();
+        for (var item : request.models) {
+            if (isBlank(item.upstreamModel)) throw new BadRequestException("upstreamModel is required");
+            var upstreamModel = item.upstreamModel.trim();
+            if (!seenUpstream.add(upstreamModel)) throw new BadRequestException("duplicate upstreamModel in import request: " + upstreamModel);
+            var metadata = discoveredModels.get(upstreamModel);
+            if (metadata == null && !discoveredModels.isEmpty()) {
+                throw new BadRequestException("gateway model is not available from provider discovery: " + upstreamModel);
+            }
+            if (metadata == null) {
+                metadata = GatewayModelCatalog.enrich(new GatewayModelMetadata(upstreamModel, null, null, null, null, null, null, null, null));
+            }
+            if (metadata.endpointTypes() == null || metadata.endpointTypes().isEmpty()) {
+                throw new BadRequestException("gateway does not support model endpoint type: " + upstreamModel);
+            }
+
+            var entity = existingByUpstream.get(upstreamModel);
+            var create = entity == null;
+            if (create) {
+                entity = new GatewayModelConfig();
+                entity.id = UUID.randomUUID().toString();
+                entity.modelId = trimToNull(item.alias) == null ? upstreamModel : item.alias.trim();
+                entity.providerId = provider.id;
+                entity.upstreamModel = upstreamModel;
+                entity.createdBy = userId;
+                entity.createdAt = now;
+            } else if (trimToNull(item.alias) != null) {
+                entity.modelId = item.alias.trim();
+            }
+
+            applyMetadata(entity, metadata);
+            if (item.enabled != null) entity.enabled = item.enabled;
+            if (entity.enabled == null) entity.enabled = Boolean.TRUE;
+            if (item.priority != null) entity.priority = item.priority;
+            if (entity.priority == null) entity.priority = 100L;
+            entity.updatedBy = userId;
+            entity.updatedAt = now;
+            staged.add(new StagedImport(entity, create));
+        }
+        return staged;
+    }
+
     private void apply(GatewayModelConfig entity, GatewayModelRequest request, boolean create) {
         if (specified(request, "modelId", create)) entity.modelId = request.modelId.trim();
         if (specified(request, "displayName", create)) entity.displayName = trimToNull(request.displayName);
@@ -189,8 +213,6 @@ public class GatewayModelService {
     }
 
     private void applyMetadata(GatewayModelConfig entity, GatewayModelMetadata metadata) {
-        // discovery metadata refreshes known values but never clears fields it has no data for,
-        // so manual edits survive a re-import
         if (metadata.displayName() != null && entity.displayName == null) entity.displayName = metadata.displayName();
         if (metadata.endpointTypes() != null && !metadata.endpointTypes().isEmpty()) entity.endpointTypes = normalizeEndpointTypes(metadata.endpointTypes());
         if (metadata.contextWindow() != null) entity.contextWindow = metadata.contextWindow();
@@ -202,7 +224,6 @@ public class GatewayModelService {
     }
 
     private void rejectDuplicateModelId(GatewayModelConfig entity) {
-        // duplicate modelIds across providers are allowed (priority failover); within one provider they are a config mistake
         var duplicate = providerModels(entity.providerId).stream()
                 .anyMatch(model -> !model.id.equals(entity.id) && entity.modelId.equals(model.modelId));
         if (duplicate) throw new BadRequestException("gateway model already exists for provider: " + entity.modelId);
@@ -288,24 +309,6 @@ public class GatewayModelService {
 
     private boolean specified(GatewayModelRequest request, String field, boolean create) {
         return create || request.hasField(field);
-    }
-
-    static List<String> normalizeEndpointTypes(List<String> endpointTypes) {
-        var values = endpointTypes.stream()
-                .filter(endpointType -> endpointType != null && !endpointType.isBlank())
-                .map(endpointType -> normalizeEndpointType(endpointType.trim()))
-                .distinct()
-                .toList();
-        if (values.isEmpty()) throw new BadRequestException("endpointTypes must include at least one endpoint");
-        return values;
-    }
-
-    private static String normalizeEndpointType(String value) {
-        return switch (value.toLowerCase(Locale.ROOT)) {
-            case "chat", "chat.completion", "chat.completions" -> ENDPOINT_CHAT_COMPLETIONS;
-            case "response", "responses" -> ENDPOINT_RESPONSES;
-            default -> throw new BadRequestException("unsupported endpoint type: " + value);
-        };
     }
 
     private record StagedImport(GatewayModelConfig entity, boolean create) {

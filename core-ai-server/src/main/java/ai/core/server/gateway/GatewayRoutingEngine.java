@@ -88,11 +88,10 @@ public class GatewayRoutingEngine {
                 var route = modelRoute.get();
                 return new GatewayRoute(route.provider, route.model.upstreamModel);
             }
-            if (!registeredModels.isEmpty()) {
-                var modelExists = registeredModels.stream().anyMatch(route -> requestedModel.equals(route.model.modelId));
-                if (modelExists) throw new BadRequestException("gateway model does not support endpoint: " + requestedModel);
-                throw new BadRequestException("no enabled gateway model matches model: " + requestedModel);
-            }
+            var modelExists = !registeredModels.isEmpty()
+                    && registeredModels.stream().anyMatch(route -> requestedModel.equals(route.model.modelId));
+            if (modelExists) throw new BadRequestException("gateway model does not support endpoint: " + requestedModel);
+            if (!registeredModels.isEmpty()) throw new BadRequestException("no enabled gateway model matches model: " + requestedModel);
             return legacyRoute(requestedModel, endpoint, snapshot.providers);
         }
 
@@ -169,9 +168,7 @@ public class GatewayRoutingEngine {
                     .max(Comparator.comparingInt(provider -> provider.modelPrefix.length()));
             if (byPrefix.isPresent()) {
                 var provider = byPrefix.get();
-                var upstreamModel = requestedModel.substring(provider.modelPrefix.length());
-                if (upstreamModel.isBlank()) upstreamModel = defaultModel(provider, endpoint);
-                if (!hasText(upstreamModel)) throw new BadRequestException("model is required after gateway prefix: " + provider.modelPrefix);
+                var upstreamModel = resolveUpstreamModel(requestedModel, provider, endpoint);
                 return new GatewayRoute(provider, upstreamModel);
             }
             var fallback = providers.stream().filter(provider -> !hasText(provider.modelPrefix)).findFirst();
@@ -234,6 +231,14 @@ public class GatewayRoutingEngine {
 
     private boolean supportsEndpoint(GatewayModelConfig model, GatewayEndpointType endpoint) {
         return model.endpointTypes == null || model.endpointTypes.isEmpty() || model.endpointTypes.contains(endpoint.id);
+    }
+
+    private String resolveUpstreamModel(String requestedModel, GatewayProviderConfig provider, GatewayEndpointType endpoint) {
+        var upstreamModel = requestedModel.substring(provider.modelPrefix.length());
+        if (!upstreamModel.isBlank()) return upstreamModel;
+        var model = defaultModel(provider, endpoint);
+        if (!hasText(model)) throw new BadRequestException("model is required after gateway prefix: " + provider.modelPrefix);
+        return model;
     }
 
     private String stripPrefix(String model, String prefix) {
