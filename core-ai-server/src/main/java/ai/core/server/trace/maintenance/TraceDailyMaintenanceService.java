@@ -43,7 +43,7 @@ public class TraceDailyMaintenanceService {
     private static final String NO_AGENT = "(no agent)";
     private static final ZoneId UTC = ZoneId.of("UTC");
     private static final DateTimeFormatter YEAR_MONTH = DateTimeFormatter.ofPattern("yyyy-MM");
-    private static final int ARCHIVE_BATCH_SIZE = 1000;
+    private static final int ARCHIVE_BATCH_SIZE = 300;
 
     private static long getLong(org.bson.Document doc, String key) {
         Number value = doc.get(key, Number.class);
@@ -273,7 +273,7 @@ public class TraceDailyMaintenanceService {
 
         String blobPrefix = (archivePrefix != null ? archivePrefix + "/" : "")
                 + String.format("traces-archive/%s/%s", cutoffDate.format(YEAR_MONTH), cutoffDate);
-        List<String> allTraceIds = new ArrayList<>(totalCount);
+        List<String> allTraceIds = new ArrayList<>();
         int totalSpanCount = 0;
         int part = 1;
         int offset = 0;
@@ -296,9 +296,11 @@ public class TraceDailyMaintenanceService {
                 for (var trace : batch) {
                     if (trace.traceId != null) allTraceIds.add(trace.traceId);
                 }
+                int batchSize = batch.size();
+                batch.clear(); // release trace objects after IDs collected
 
-                LOGGER.info("archive part {}: {} traces + {} spans uploaded", part, batch.size(), spanCount);
-                offset += batch.size();
+                LOGGER.info("archive part {}: {} traces + {} spans uploaded", part, batchSize, spanCount);
+                offset += batchSize;
                 part++;
             }
 
@@ -323,6 +325,8 @@ public class TraceDailyMaintenanceService {
         try {
             tempFile = Files.createTempFile("traces-archive-part-", ".json.gz");
             int spanCount = writeBatchToFile(tempFile, batch, spansByTraceId);
+            // Release span objects before the potentially slow upload — the file is already written
+            spansByTraceId.clear();
             String blobName = String.format("%s/part-%04d.json.gz", blobPrefix, part);
             storageService.uploadObject(archiveContainer, blobName, tempFile);
             return spanCount;
