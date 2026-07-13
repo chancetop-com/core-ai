@@ -297,12 +297,37 @@ public class TraceDailyMaintenanceService {
                 // memory under control even for span-heavy traces
                 int start = 0;
                 while (start < batch.size()) {
+                    int sc = spanCounts.getOrDefault(batch.get(start).traceId, 0);
+
+                    if (sc > MAX_SPANS_PER_PART) {
+                        // Single trace with excessive spans — split across multiple parts
+                        Trace trace = batch.get(start);
+                        var allSpans = loadSpansForTraces(List.of(trace.traceId))
+                                .getOrDefault(trace.traceId, List.of());
+                        int chunks = (allSpans.size() + MAX_SPANS_PER_PART - 1) / MAX_SPANS_PER_PART;
+                        for (int c = 0; c < allSpans.size(); c += MAX_SPANS_PER_PART) {
+                            int chunkEnd = Math.min(c + MAX_SPANS_PER_PART, allSpans.size());
+                            int chunkSpanCount = uploadSingleTracePart(blobPrefix, part, trace,
+                                    allSpans.subList(c, chunkEnd));
+                            totalSpanCount += chunkSpanCount;
+                            LOGGER.info("archive part {}: 1 trace + {} spans uploaded (oversized {}/{})",
+                                    part, chunkSpanCount, c / MAX_SPANS_PER_PART + 1, chunks);
+                            part++;
+                        }
+                        allSpans.clear();
+                        if (trace.traceId != null) allTraceIds.add(trace.traceId);
+                        offset++;
+                        start++;
+                        continue;
+                    }
+
                     int end = start;
                     int accumulatedSpans = 0;
                     while (end < batch.size()) {
-                        int sc = spanCounts.getOrDefault(batch.get(end).traceId, 0);
-                        if (accumulatedSpans > 0 && accumulatedSpans + sc > MAX_SPANS_PER_PART) break;
-                        accumulatedSpans += sc;
+                        int sc2 = spanCounts.getOrDefault(batch.get(end).traceId, 0);
+                        if (sc2 > MAX_SPANS_PER_PART) break; // handled in next outer iteration
+                        if (accumulatedSpans > 0 && accumulatedSpans + sc2 > MAX_SPANS_PER_PART) break;
+                        accumulatedSpans += sc2;
                         end++;
                     }
 
@@ -351,6 +376,32 @@ public class TraceDailyMaintenanceService {
             String blobName = String.format("%s/part-%04d.json.gz", blobPrefix, part);
             storageService.uploadObject(archiveContainer, blobName, tempFile);
             return spanCount;
+        } finally {
+            deleteTempFileQuietly(tempFile);
+        }
+    }
+
+    /**
+     * Write one trace + a chunk of its spans to a temp file and upload.
+     * Used when a single trace has more spans than {@link #MAX_SPANS_PER_PART}
+     * — the trace line is repeated in each chunk-part so each file is
+     * self-contained.
+     */
+    private int uploadSingleTracePart(String blobPrefix, int part, Trace trace,
+                                       List<Span> spanChunk) throws IOException {
+        Path tempFile = null;
+        try {
+            tempFile = Files.createTempFile("traces-archive-part-", ".json.gz");
+            try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(tempFile));
+                 var writer = new BufferedWriter(new OutputStreamWriter(gzipOut))) {
+                writeArchiveLine(writer, "trace", trace);
+                for (var span : spanChunk) {
+                    writeArchiveLine(writer, "span", span);
+                }
+            }
+            String blobName = String.format("%s/part-%04d.json.gz", blobPrefix, part);
+            storageService.uploadObject(archiveContainer, blobName, tempFile);
+            return spanChunk.size();
         } finally {
             deleteTempFileQuietly(tempFile);
         }
