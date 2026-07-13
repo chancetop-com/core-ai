@@ -26,6 +26,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -44,6 +45,7 @@ public class TraceDailyMaintenanceService {
     private static final ZoneId UTC = ZoneId.of("UTC");
     private static final DateTimeFormatter YEAR_MONTH = DateTimeFormatter.ofPattern("yyyy-MM");
     private static final int ARCHIVE_BATCH_SIZE = 300;
+    private static final int MAX_SPANS_PER_PART = 5000;
 
     private static long getLong(org.bson.Document doc, String key) {
         Number value = doc.get(key, Number.class);
@@ -289,19 +291,31 @@ public class TraceDailyMaintenanceService {
                 if (batch.isEmpty()) break;
 
                 var spansByTraceId = findSpansByTraceIds(batch);
+                int totalSpans = spansByTraceId.values().stream().mapToInt(List::size).sum();
 
-                int spanCount = writeAndUploadPart(blobPrefix, part, batch, spansByTraceId);
-                totalSpanCount += spanCount;
+                if (totalSpans > MAX_SPANS_PER_PART) {
+                    // This batch has disproportionately many spans — split into sub-parts
+                    var result = uploadWithSpanSplit(blobPrefix, part, offset, batch, spansByTraceId, allTraceIds);
+                    totalSpanCount += result.addedSpanCount;
+                    offset = result.nextOffset;
+                    part = result.nextPart;
+                    batch.clear();
+                    spansByTraceId.clear();
+                } else {
+                    int spanCount = writeAndUploadPart(blobPrefix, part, batch, spansByTraceId);
+                    totalSpanCount += spanCount;
 
-                for (var trace : batch) {
-                    if (trace.traceId != null) allTraceIds.add(trace.traceId);
+                    for (var trace : batch) {
+                        if (trace.traceId != null) allTraceIds.add(trace.traceId);
+                    }
+                    int batchSize = batch.size();
+                    batch.clear(); // release trace objects after IDs collected
+                    spansByTraceId.clear(); // release span objects after upload
+
+                    LOGGER.info("archive part {}: {} traces + {} spans uploaded", part, batchSize, spanCount);
+                    offset += batchSize;
+                    part++;
                 }
-                int batchSize = batch.size();
-                batch.clear(); // release trace objects after IDs collected
-
-                LOGGER.info("archive part {}: {} traces + {} spans uploaded", part, batchSize, spanCount);
-                offset += batchSize;
-                part++;
             }
 
             // All parts uploaded successfully — safe to delete from MongoDB
@@ -325,14 +339,58 @@ public class TraceDailyMaintenanceService {
         try {
             tempFile = Files.createTempFile("traces-archive-part-", ".json.gz");
             int spanCount = writeBatchToFile(tempFile, batch, spansByTraceId);
-            // Release span objects before the potentially slow upload — the file is already written
-            spansByTraceId.clear();
             String blobName = String.format("%s/part-%04d.json.gz", blobPrefix, part);
             storageService.uploadObject(archiveContainer, blobName, tempFile);
             return spanCount;
         } finally {
             deleteTempFileQuietly(tempFile);
         }
+    }
+
+    /**
+     * Result of splitting a span-heavy batch across multiple upload parts.
+     */
+    private record SpanSplitResult(int nextOffset, int nextPart, int addedSpanCount) {
+    }
+
+    /**
+     * Upload a single batch as multiple sub-parts when its span count exceeds
+     * {@link #MAX_SPANS_PER_PART}.  Each sub-part stays under the Azure 256 MB
+     * single-PUT limit (~200 MB gzipped ≈ 5,000 spans).
+     */
+    private SpanSplitResult uploadWithSpanSplit(String blobPrefix, int part, int offset,
+                                                 List<Trace> batch,
+                                                 Map<String, List<Span>> spansByTraceId,
+                                                 List<String> allTraceIds) throws IOException {
+        int totalSpanCount = 0;
+        int start = 0;
+        while (start < batch.size()) {
+            int end = start;
+            int subSpanCount = 0;
+            Map<String, List<Span>> subSpanMap = new LinkedHashMap<>();
+
+            while (end < batch.size() && subSpanCount < MAX_SPANS_PER_PART) {
+                Trace t = batch.get(end);
+                List<Span> spans = spansByTraceId.getOrDefault(t.traceId, List.of());
+                subSpanCount += spans.size();
+                subSpanMap.put(t.traceId, spans);
+                end++;
+            }
+
+            List<Trace> subBatch = new ArrayList<>(batch.subList(start, end));
+            int spanCount = writeAndUploadPart(blobPrefix, part, subBatch, subSpanMap);
+            totalSpanCount += spanCount;
+
+            for (var trace : subBatch) {
+                if (trace.traceId != null) allTraceIds.add(trace.traceId);
+            }
+            LOGGER.info("archive part {}: {} traces + {} spans uploaded (span-split)",
+                    part, subBatch.size(), spanCount);
+            offset += subBatch.size();
+            part++;
+            start = end;
+        }
+        return new SpanSplitResult(offset, part, totalSpanCount);
     }
 
     private int writeBatchToFile(Path file, List<Trace> batch,
