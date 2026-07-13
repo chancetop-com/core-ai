@@ -49,6 +49,7 @@ public class TraceDailyMaintenanceService {
     // 2000 spans produce ~100MB. Even with outliers (200KB/span) we stay under 256MB.
     private static final int MAX_SPANS_PER_PART = 2000;
     private static final long MAX_PART_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB safety threshold
+    private static final int MAX_TRACE_IDS_PER_SPAN_QUERY = 50; // batch span queries to avoid Mongo socket read timeout
 
     private static long getLong(org.bson.Document doc, String key) {
         Number value = doc.get(key, Number.class);
@@ -483,14 +484,23 @@ public class TraceDailyMaintenanceService {
     /**
      * Load Span objects for a sub-set of trace IDs.  Called per sub-batch
      * so the number of spans loaded at any time stays bounded.
+     * <p>Queries are batched ({@value #MAX_TRACE_IDS_PER_SPAN_QUERY} trace IDs
+     * at a time) to avoid Mongo socket read timeouts when individual span
+     * documents are large.</p>
      */
     private Map<String, List<Span>> loadSpansForTraces(List<String> traceIds) {
         if (traceIds.isEmpty()) return Map.of();
-        var spanQuery = new Query();
-        spanQuery.filter = Filters.in("trace_id", traceIds);
-        return spanCollection.find(spanQuery).stream()
-                .filter(s -> s.traceId != null)
-                .collect(Collectors.groupingBy(s -> s.traceId));
+        Map<String, List<Span>> result = new LinkedHashMap<>();
+        for (int i = 0; i < traceIds.size(); i += MAX_TRACE_IDS_PER_SPAN_QUERY) {
+            int end = Math.min(i + MAX_TRACE_IDS_PER_SPAN_QUERY, traceIds.size());
+            var subIds = traceIds.subList(i, end);
+            var spanQuery = new Query();
+            spanQuery.filter = Filters.in("trace_id", subIds);
+            spanCollection.find(spanQuery).stream()
+                    .filter(s -> s.traceId != null)
+                    .forEach(s -> result.computeIfAbsent(s.traceId, k -> new ArrayList<>()).add(s));
+        }
+        return result;
     }
 
     private void deleteTempFileQuietly(Path tempFile) {
