@@ -50,6 +50,7 @@ public class TraceDailyMaintenanceService {
     private static final int MAX_SPANS_PER_PART = 2000;
     private static final long MAX_PART_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB safety threshold
     private static final int MAX_TRACE_IDS_PER_SPAN_QUERY = 50; // batch span queries to avoid Mongo socket read timeout
+    private static final int SPAN_DELETE_BATCH_SIZE = 30; // delete spans in small batches to avoid Mongo response timeout
 
     private static long getLong(org.bson.Document doc, String key) {
         Number value = doc.get(key, Number.class);
@@ -362,34 +363,34 @@ public class TraceDailyMaintenanceService {
     /**
      * Delete traces and their spans from MongoDB that were previously
      * uploaded to object storage by {@link #uploadArchive(ZonedDateTime)}.
-     * Safe to call multiple times — both span deletion (per trace_id) and
-     * trace deletion (per cutoff) are idempotent.
+     * Spans are deleted in lockstep with trace batches — no full ID
+     * collection in memory — to keep each MongoDB operation small and
+     * avoid socket read timeouts.
+     * <p>Safe to call multiple times: both span deletion (per trace_id,
+     * uses the {@code trace_id} index) and trace deletion (per cutoff)
+     * are idempotent.</p>
      */
     public void deleteArchivedTraces(ZonedDateTime cutoff) {
-        List<String> allTraceIds = collectTraceIds(cutoff);
-        LOGGER.info("deleting spans for {} traces before {}", allTraceIds.size(), cutoff);
-        deleteSpansBatched(allTraceIds);
-        long deleted = traceCollection.delete(Filters.lt("started_at", cutoff));
-        LOGGER.info("deleted {} traces with started_at < {}", deleted, cutoff);
-    }
-
-    private List<String> collectTraceIds(ZonedDateTime cutoff) {
-        List<String> ids = new ArrayList<>();
         int offset = 0;
+        long totalSpansDeleted = 0;
         while (true) {
             var batchQuery = new Query();
             batchQuery.filter = Filters.lt("started_at", cutoff);
-            batchQuery.sort = Sorts.ascending("started_at");
+            batchQuery.sort = Sorts.ascending("_id");
             batchQuery.skip = offset;
-            batchQuery.limit = ARCHIVE_BATCH_SIZE;
+            batchQuery.limit = SPAN_DELETE_BATCH_SIZE;
             var batch = traceCollection.find(batchQuery);
             if (batch.isEmpty()) break;
-            for (var trace : batch) {
-                if (trace.traceId != null) ids.add(trace.traceId);
-            }
+
+            var traceIds = extractTraceIds(batch);
+            long deleted = spanCollection.delete(Filters.in("trace_id", traceIds));
+            totalSpansDeleted += deleted;
             offset += batch.size();
         }
-        return ids;
+        LOGGER.info("deleted {} spans total for traces with started_at < {}", totalSpansDeleted, cutoff);
+
+        long deleted = traceCollection.delete(Filters.lt("started_at", cutoff));
+        LOGGER.info("deleted {} traces with started_at < {}", deleted, cutoff);
     }
 
     /**
@@ -465,16 +466,6 @@ public class TraceDailyMaintenanceService {
         writer.write("\",");
         writer.write(json, 1, json.length() - 1);
         writer.newLine();
-    }
-
-    private void deleteSpansBatched(List<String> traceIds) {
-        if (traceIds.isEmpty()) return;
-        for (int i = 0; i < traceIds.size(); i += ARCHIVE_BATCH_SIZE) {
-            int end = Math.min(i + ARCHIVE_BATCH_SIZE, traceIds.size());
-            var subList = traceIds.subList(i, end);
-            long deleted = spanCollection.delete(Filters.in("trace_id", subList));
-            LOGGER.info("deleted {} spans, batch {}-{}/{}", deleted, i, end, traceIds.size());
-        }
     }
 
     private static List<String> extractTraceIds(List<Trace> traces) {
