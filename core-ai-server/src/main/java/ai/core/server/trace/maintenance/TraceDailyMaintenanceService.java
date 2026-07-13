@@ -90,6 +90,7 @@ public class TraceDailyMaintenanceService {
     // Archive configuration — set by ServerModule after object storage is initialized
     ObjectStorageService storageService;
     String archiveContainer;
+    String archivePrefix;
     int retentionDays = 30;
 
     public void setStorageService(ObjectStorageService storageService) {
@@ -98,6 +99,10 @@ public class TraceDailyMaintenanceService {
 
     public void setArchiveContainer(String archiveContainer) {
         this.archiveContainer = archiveContainer;
+    }
+
+    public void setArchivePrefix(String archivePrefix) {
+        this.archivePrefix = archivePrefix;
     }
 
     public void setRetentionDays(int retentionDays) {
@@ -266,8 +271,8 @@ public class TraceDailyMaintenanceService {
             return 0;
         }
 
-        String blobPrefix = String.format("traces-archive/%s/%s",
-                cutoffDate.format(YEAR_MONTH), cutoffDate);
+        String blobPrefix = (archivePrefix != null ? archivePrefix + "/" : "")
+                + String.format("traces-archive/%s/%s", cutoffDate.format(YEAR_MONTH), cutoffDate);
         List<String> allTraceIds = new ArrayList<>(totalCount);
         int totalSpanCount = 0;
         int part = 1;

@@ -208,6 +208,8 @@ import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 
@@ -308,6 +310,7 @@ public class ServerModule extends Module {
             String container = property("trace.archive.container")
                     .orElse(property("azure.blob.multimodal.container").orElse("traces-archive"));
             maintenanceService.setArchiveContainer(container);
+            maintenanceService.setArchivePrefix(resolveArchivePrefix());
         }
         var traceDailyMaintenanceTask = bind(TraceDailyMaintenanceTask.class);
         onStartup(() -> taskRunner.register(traceDailyMaintenanceTask));
@@ -837,5 +840,30 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.DELETE, "/api/for-you/todos/:id", controller::deleteTodo);
         http().route(HTTPMethod.GET, "/api/for-you/files", controller::listFiles);
         http().route(HTTPMethod.GET, "/api/for-you/token-usage", controller::tokenUsage);
+    }
+
+    /**
+     * Resolve archive blob prefix for multi-environment isolation.
+     * Priority: {@code trace.archive.blob.prefix} config property, then
+     * K8s namespace file (for pod deployments), then null (no prefix).
+     */
+    private String resolveArchivePrefix() {
+        String prefix = property("trace.archive.blob.prefix").orElse(null);
+        if (prefix != null) {
+            LOGGER.info("trace archive prefix from config: {}", prefix);
+            return prefix;
+        }
+        try {
+            Path namespaceFile = Path.of("/var/run/secrets/kubernetes.io/serviceaccount/namespace");
+            if (Files.exists(namespaceFile)) {
+                prefix = Files.readString(namespaceFile).strip();
+                LOGGER.info("trace archive prefix from k8s namespace: {}", prefix);
+                return prefix;
+            }
+        } catch (IOException e) {
+            LOGGER.warn("failed to read k8s namespace file", e);
+        }
+        LOGGER.info("no trace archive prefix configured, blobs stored at root");
+        return null;
     }
 }
