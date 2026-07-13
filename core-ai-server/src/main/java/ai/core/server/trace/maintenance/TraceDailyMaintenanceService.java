@@ -290,32 +290,41 @@ public class TraceDailyMaintenanceService {
                 var batch = traceCollection.find(batchQuery);
                 if (batch.isEmpty()) break;
 
-                var spansByTraceId = findSpansByTraceIds(batch);
-                int totalSpans = spansByTraceId.values().stream().mapToInt(List::size).sum();
+                var traceIds = extractTraceIds(batch);
+                var spanCounts = getSpanCountsByTraceId(traceIds);
 
-                if (totalSpans > MAX_SPANS_PER_PART) {
-                    // This batch has disproportionately many spans — split into sub-parts
-                    var result = uploadWithSpanSplit(blobPrefix, part, offset, batch, spansByTraceId, allTraceIds);
-                    totalSpanCount += result.addedSpanCount;
-                    offset = result.nextOffset;
-                    part = result.nextPart;
-                    batch.clear();
-                    spansByTraceId.clear();
-                } else {
-                    int spanCount = writeAndUploadPart(blobPrefix, part, batch, spansByTraceId);
+                // Process traces in span-bounded sub-batches to keep per-part
+                // memory under control even for span-heavy traces
+                int start = 0;
+                while (start < batch.size()) {
+                    int end = start;
+                    int accumulatedSpans = 0;
+                    while (end < batch.size()) {
+                        int sc = spanCounts.getOrDefault(batch.get(end).traceId, 0);
+                        if (accumulatedSpans > 0 && accumulatedSpans + sc > MAX_SPANS_PER_PART) break;
+                        accumulatedSpans += sc;
+                        end++;
+                    }
+
+                    var subBatch = new ArrayList<>(batch.subList(start, end));
+                    var subTraceIds = extractTraceIds(subBatch);
+                    var spansByTraceId = loadSpansForTraces(subTraceIds);
+
+                    int spanCount = writeAndUploadPart(blobPrefix, part, subBatch, spansByTraceId);
                     totalSpanCount += spanCount;
 
-                    for (var trace : batch) {
+                    for (var trace : subBatch) {
                         if (trace.traceId != null) allTraceIds.add(trace.traceId);
                     }
-                    int batchSize = batch.size();
-                    batch.clear(); // release trace objects after IDs collected
-                    spansByTraceId.clear(); // release span objects after upload
+                    spansByTraceId.clear();
 
-                    LOGGER.info("archive part {}: {} traces + {} spans uploaded", part, batchSize, spanCount);
-                    offset += batchSize;
+                    LOGGER.info("archive part {}: {} traces + {} spans uploaded",
+                            part, subBatch.size(), spanCount);
+                    offset += subBatch.size();
                     part++;
+                    start = end;
                 }
+                batch.clear();
             }
 
             // All parts uploaded successfully — safe to delete from MongoDB
@@ -347,52 +356,6 @@ public class TraceDailyMaintenanceService {
         }
     }
 
-    /**
-     * Result of splitting a span-heavy batch across multiple upload parts.
-     */
-    private record SpanSplitResult(int nextOffset, int nextPart, int addedSpanCount) {
-    }
-
-    /**
-     * Upload a single batch as multiple sub-parts when its span count exceeds
-     * {@link #MAX_SPANS_PER_PART}.  Each sub-part stays under the Azure 256 MB
-     * single-PUT limit (~200 MB gzipped ≈ 5,000 spans).
-     */
-    private SpanSplitResult uploadWithSpanSplit(String blobPrefix, int part, int offset,
-                                                 List<Trace> batch,
-                                                 Map<String, List<Span>> spansByTraceId,
-                                                 List<String> allTraceIds) throws IOException {
-        int totalSpanCount = 0;
-        int start = 0;
-        while (start < batch.size()) {
-            int end = start;
-            int subSpanCount = 0;
-            Map<String, List<Span>> subSpanMap = new LinkedHashMap<>();
-
-            while (end < batch.size() && subSpanCount < MAX_SPANS_PER_PART) {
-                Trace t = batch.get(end);
-                List<Span> spans = spansByTraceId.getOrDefault(t.traceId, List.of());
-                subSpanCount += spans.size();
-                subSpanMap.put(t.traceId, spans);
-                end++;
-            }
-
-            List<Trace> subBatch = new ArrayList<>(batch.subList(start, end));
-            int spanCount = writeAndUploadPart(blobPrefix, part, subBatch, subSpanMap);
-            totalSpanCount += spanCount;
-
-            for (var trace : subBatch) {
-                if (trace.traceId != null) allTraceIds.add(trace.traceId);
-            }
-            LOGGER.info("archive part {}: {} traces + {} spans uploaded (span-split)",
-                    part, subBatch.size(), spanCount);
-            offset += subBatch.size();
-            part++;
-            start = end;
-        }
-        return new SpanSplitResult(offset, part, totalSpanCount);
-    }
-
     private int writeBatchToFile(Path file, List<Trace> batch,
                                   Map<String, List<Span>> spansByTraceId) throws IOException {
         int spanCount = 0;
@@ -410,6 +373,15 @@ public class TraceDailyMaintenanceService {
         return spanCount;
     }
 
+    private void writeArchiveLine(BufferedWriter writer, String type, Object obj) throws IOException {
+        String json = JsonUtil.toJson(obj);
+        writer.write("{\"_type\":\"");
+        writer.write(type);
+        writer.write("\",");
+        writer.write(json, 1, json.length() - 1);
+        writer.newLine();
+    }
+
     private void deleteSpansBatched(List<String> traceIds) {
         if (traceIds.isEmpty()) return;
         for (int i = 0; i < traceIds.size(); i += ARCHIVE_BATCH_SIZE) {
@@ -420,20 +392,40 @@ public class TraceDailyMaintenanceService {
         }
     }
 
-    private void writeArchiveLine(BufferedWriter writer, String type, Object obj) throws IOException {
-        String json = JsonUtil.toJson(obj);
-        writer.write("{\"_type\":\"");
-        writer.write(type);
-        writer.write("\",");
-        writer.write(json, 1, json.length() - 1);
-        writer.newLine();
-    }
-
-    private Map<String, List<Span>> findSpansByTraceIds(List<Trace> traces) {
-        List<String> traceIds = traces.stream()
+    private static List<String> extractTraceIds(List<Trace> traces) {
+        return traces.stream()
                 .map(t -> t.traceId)
                 .filter(id -> id != null && !id.isEmpty())
                 .toList();
+    }
+
+    /**
+     * Lightweight aggregation: returns span count per trace_id.
+     * Uses a Mongo $group pipeline that only transmits one integer per trace,
+     * avoiding the memory cost of loading full Span objects.
+     */
+    private Map<String, Integer> getSpanCountsByTraceId(List<String> traceIds) {
+        if (traceIds.isEmpty()) return Map.of();
+        var aggregate = new Aggregate<org.bson.Document>();
+        aggregate.resultClass = org.bson.Document.class;
+        aggregate.pipeline = List.of(
+                Aggregates.match(Filters.in("trace_id", traceIds)),
+                Aggregates.group("$trace_id", Accumulators.sum("count", 1))
+        );
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (var doc : spanCollection.aggregate(aggregate)) {
+            String traceId = doc.getString("_id");
+            int count = doc.getInteger("count", 0);
+            if (traceId != null) counts.put(traceId, count);
+        }
+        return counts;
+    }
+
+    /**
+     * Load Span objects for a sub-set of trace IDs.  Called per sub-batch
+     * so the number of spans loaded at any time stays bounded.
+     */
+    private Map<String, List<Span>> loadSpansForTraces(List<String> traceIds) {
         if (traceIds.isEmpty()) return Map.of();
         var spanQuery = new Query();
         spanQuery.filter = Filters.in("trace_id", traceIds);
