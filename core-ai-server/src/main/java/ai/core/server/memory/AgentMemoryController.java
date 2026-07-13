@@ -13,6 +13,38 @@ import core.framework.web.Response;
  * @author stephen
  */
 public class AgentMemoryController {
+    private static AgentMemoryExperimentConfigView toView(AgentMemoryExperimentConfig config) {
+        var v = new AgentMemoryExperimentConfigView();
+        v.id = config.id;
+        v.agentId = config.agentId;
+        v.enabled = config.enabled;
+        v.injectionProbability = config.injectionProbability;
+        v.enabledLayers = config.enabledLayers != null
+                ? config.enabledLayers.stream().map(MemoryLayerView::from).toList()
+                : null;
+        v.topK = config.topK;
+        v.rankingStrategy = config.rankingStrategy != null
+                ? RankingStrategyView.from(config.rankingStrategy)
+                : null;
+        return v;
+    }
+
+    private static AgentMemoryExperimentConfig toEntity(AgentMemoryExperimentConfigView view, String agentId) {
+        var config = new AgentMemoryExperimentConfig();
+        config.id = view.id;
+        config.agentId = agentId;
+        config.enabled = view.enabled;
+        config.injectionProbability = view.injectionProbability;
+        config.enabledLayers = view.enabledLayers != null
+                ? view.enabledLayers.stream().map(MemoryLayerView::toEntity).toList()
+                : null;
+        config.topK = view.topK;
+        config.rankingStrategy = view.rankingStrategy != null
+                ? view.rankingStrategy.toEntity()
+                : null;
+        return config;
+    }
+
     @Inject
     AgentMemoryService agentMemoryService;
 
@@ -52,37 +84,5 @@ public class AgentMemoryController {
         var config = toEntity(view, agentId);
         var saved = agentMemoryExperimentService.saveConfig(config);
         return Response.bean(toView(saved));
-    }
-
-    private static AgentMemoryExperimentConfigView toView(AgentMemoryExperimentConfig config) {
-        var v = new AgentMemoryExperimentConfigView();
-        v.id = config.id;
-        v.agentId = config.agentId;
-        v.enabled = config.enabled;
-        v.injectionProbability = config.injectionProbability;
-        v.enabledLayers = config.enabledLayers != null
-                ? config.enabledLayers.stream().map(MemoryLayerView::from).toList()
-                : null;
-        v.topK = config.topK;
-        v.rankingStrategy = config.rankingStrategy != null
-                ? RankingStrategyView.from(config.rankingStrategy)
-                : null;
-        return v;
-    }
-
-    private static AgentMemoryExperimentConfig toEntity(AgentMemoryExperimentConfigView view, String agentId) {
-        var config = new AgentMemoryExperimentConfig();
-        config.id = view.id;
-        config.agentId = agentId;
-        config.enabled = view.enabled;
-        config.injectionProbability = view.injectionProbability;
-        config.enabledLayers = view.enabledLayers != null
-                ? view.enabledLayers.stream().map(MemoryLayerView::toEntity).toList()
-                : null;
-        config.topK = view.topK;
-        config.rankingStrategy = view.rankingStrategy != null
-                ? view.rankingStrategy.toEntity()
-                : null;
-        return config;
     }
 }

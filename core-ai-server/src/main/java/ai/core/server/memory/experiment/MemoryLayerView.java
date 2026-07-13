@@ -10,14 +10,14 @@ import core.framework.api.json.Property;
  */
 public enum MemoryLayerView {
     @Property(name = "knowledge")
-    knowledge,
+    KNOWLEDGE,
     @Property(name = "methods")
-    methods,
+    METHODS,
     @Property(name = "trajectories")
-    trajectories;
+    TRAJECTORIES;
 
     public static MemoryLayerView from(MemoryLayer layer) {
-        if (layer == null) return knowledge;
+        if (layer == null) return KNOWLEDGE;
         return valueOf(layer.name());
     }
 

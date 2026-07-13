@@ -11,6 +11,42 @@ import core.framework.web.Response;
  * @author stephen
  */
 public class AgentMemoryExperimentController {
+    private static ExperimentRunView toRunView(AgentMemoryExperimentRun r) {
+        var v = new ExperimentRunView();
+        v.id = r.id;
+        v.agentId = r.agentId;
+        v.sessionId = r.sessionId;
+        v.runId = r.runId;
+        v.enabled = r.enabled;
+        v.enabledLayers = r.enabledLayers != null
+                ? r.enabledLayers.stream().map(MemoryLayerView::from).toList()
+                : null;
+        v.rankingStrategy = r.rankingStrategy != null
+                ? RankingStrategyView.from(r.rankingStrategy)
+                : null;
+        v.topK = r.topK;
+        v.injectionProbability = r.injectionProbability;
+        v.injectionDecision = r.injectionDecision;
+        v.injectedMemoryIds = r.injectedMemoryIds;
+        v.injectedMemoryCount = r.injectedMemoryCount;
+        v.layerBreakdown = r.layerBreakdown;
+        v.promptTokens = r.promptTokens;
+        v.outcome = r.outcome;
+        v.userRating = r.userRating;
+        v.createdAt = r.createdAt;
+        v.updatedAt = r.updatedAt;
+        return v;
+    }
+
+    private static int parseIntOrDefault(String value, int defaultValue) {
+        if (value == null || value.isBlank()) return defaultValue;
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
     @Inject
     AgentMemoryExperimentService service;
 
@@ -97,41 +133,5 @@ public class AgentMemoryExperimentController {
         var agentId = request.pathParam("id");
         service.deleteConfig(agentId);
         return Response.text("deleted");
-    }
-
-    private static ExperimentRunView toRunView(AgentMemoryExperimentRun r) {
-        var v = new ExperimentRunView();
-        v.id = r.id;
-        v.agentId = r.agentId;
-        v.sessionId = r.sessionId;
-        v.runId = r.runId;
-        v.enabled = r.enabled;
-        v.enabledLayers = r.enabledLayers != null
-                ? r.enabledLayers.stream().map(MemoryLayerView::from).toList()
-                : null;
-        v.rankingStrategy = r.rankingStrategy != null
-                ? RankingStrategyView.from(r.rankingStrategy)
-                : null;
-        v.topK = r.topK;
-        v.injectionProbability = r.injectionProbability;
-        v.injectionDecision = r.injectionDecision;
-        v.injectedMemoryIds = r.injectedMemoryIds;
-        v.injectedMemoryCount = r.injectedMemoryCount;
-        v.layerBreakdown = r.layerBreakdown;
-        v.promptTokens = r.promptTokens;
-        v.outcome = r.outcome;
-        v.userRating = r.userRating;
-        v.createdAt = r.createdAt;
-        v.updatedAt = r.updatedAt;
-        return v;
-    }
-
-    private static int parseIntOrDefault(String value, int defaultValue) {
-        if (value == null || value.isBlank()) return defaultValue;
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
     }
 }

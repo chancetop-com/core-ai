@@ -12,6 +12,7 @@ import org.bson.conversions.Bson;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -54,7 +55,7 @@ public class AgentMemoryService {
      * (DOMAIN_KNOWLEDGE, GOTCHA only — no workflow patterns).
      */
     public PromptInject buildMemoryPromptInject(String agentId) {
-        var memories = findByAgentIdAndLayer(agentId, MemoryLayer.knowledge.name());
+        var memories = findByAgentIdAndLayer(agentId, MemoryLayer.KNOWLEDGE.mongoValue());
         if (memories.isEmpty()) return null;
         return new AgentMemoryPromptInject(formatKnowledgePrompt(memories));
     }
@@ -70,7 +71,7 @@ public class AgentMemoryService {
             }
         }
 
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(256);
         sb.append("## Agent Knowledge\n\n");
         if (!domainKnowledge.isEmpty()) {
             sb.append("### Domain Knowledge\n");
@@ -86,8 +87,7 @@ public class AgentMemoryService {
             }
             sb.append('\n');
         }
-        sb.append("These are verified knowledge and known pitfalls from past experience. ");
-        sb.append("They do NOT override the skill SOP.\n");
+        sb.append("These are verified knowledge and known pitfalls from past experience. They do NOT override the skill SOP.\n");
         return sb.toString();
     }
 
@@ -106,7 +106,7 @@ public class AgentMemoryService {
             }
             memory.agentId = agentId;
             memoryCollection.insert(memory);
-            if (memory.layer == MemoryLayer.methods) {
+            if (memory.layer == MemoryLayer.METHODS) {
                 hasLayer2 = true;
             }
         }
@@ -120,7 +120,7 @@ public class AgentMemoryService {
         var query = new Query();
         query.filter = Filters.and(
                 Filters.eq("agent_id", agentId),
-                Filters.eq("layer", MemoryLayer.methods.name())
+                Filters.eq("layer", MemoryLayer.METHODS.mongoValue())
         );
         query.sort = Sorts.ascending("created_at");
         var all = memoryCollection.find(query);
@@ -142,19 +142,19 @@ public class AgentMemoryService {
         filters.add(Filters.eq("agent_id", agentId));
 
         if ("methods".equals(layer)) {
-            filters.add(Filters.eq("layer", MemoryLayer.methods.name()));
+            filters.add(Filters.eq("layer", MemoryLayer.METHODS.mongoValue()));
         } else if ("trajectories".equals(layer)) {
-            filters.add(Filters.eq("layer", MemoryLayer.trajectories.name()));
+            filters.add(Filters.eq("layer", MemoryLayer.TRAJECTORIES.mongoValue()));
         } else {
             // "all": search both Layer 2 and Layer 3
             filters.add(Filters.or(
-                    Filters.eq("layer", MemoryLayer.methods.name()),
-                    Filters.eq("layer", MemoryLayer.trajectories.name())
+                    Filters.eq("layer", MemoryLayer.METHODS.mongoValue()),
+                    Filters.eq("layer", MemoryLayer.TRAJECTORIES.mongoValue())
             ));
         }
 
         // keyword filter on content
-        var lowerQuery = query.toLowerCase();
+        var lowerQuery = query.toLowerCase(Locale.ROOT);
         filters.add(Filters.regex("content", ".*" + java.util.regex.Pattern.quote(lowerQuery) + ".*", "i"));
 
         var mongoQuery = new Query();
@@ -171,7 +171,7 @@ public class AgentMemoryService {
         var cutoff = ZonedDateTime.now().minusDays(retentionDays);
         var filter = Filters.and(
                 Filters.eq("agent_id", agentId),
-                Filters.eq("layer", MemoryLayer.trajectories.name()),
+                Filters.eq("layer", MemoryLayer.TRAJECTORIES.mongoValue()),
                 Filters.lt("created_at", cutoff)
         );
         var count = memoryCollection.count(filter);

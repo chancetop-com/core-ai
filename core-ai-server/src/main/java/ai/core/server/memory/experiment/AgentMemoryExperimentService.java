@@ -96,9 +96,8 @@ public class AgentMemoryExperimentService {
 
         // Layer 1: Should Inject?
         if (!Boolean.TRUE.equals(config.enabled)) return MemoryInjectionResult.skipped();
-        if (config.injectionProbability != null && config.injectionProbability < 1.0) {
-            if (random.nextDouble() > config.injectionProbability) return MemoryInjectionResult.skipped();
-        }
+        if (config.injectionProbability != null && config.injectionProbability < 1.0
+                && random.nextDouble() > config.injectionProbability) return MemoryInjectionResult.skipped();
 
         // Layer 2: Which layers?
         var activeLayers = config.enabledLayers;
@@ -121,7 +120,7 @@ public class AgentMemoryExperimentService {
         var memoryIds = ranked.stream().map(m -> m.id).collect(Collectors.toList());
         var layerBreakdown = new LinkedHashMap<String, Integer>();
         for (var m : ranked) {
-            var key = m.layer != null ? m.layer.name() : MemoryLayer.knowledge.name();
+            var key = m.layer != null ? m.layer.mongoValue() : MemoryLayer.KNOWLEDGE.mongoValue();
             layerBreakdown.merge(key, 1, Integer::sum);
         }
         int estimatedTokens = estimateTokens(formatted);
@@ -131,7 +130,7 @@ public class AgentMemoryExperimentService {
     private List<AgentMemory> fetchMemoryPool(String agentId, List<MemoryLayer> layers) {
         var all = new ArrayList<AgentMemory>();
         for (var layer : layers) {
-            all.addAll(memoryService.findByAgentIdAndLayer(agentId, layer.name()));
+            all.addAll(memoryService.findByAgentIdAndLayer(agentId, layer.mongoValue()));
         }
         return all;
     }
@@ -167,7 +166,7 @@ public class AgentMemoryExperimentService {
 
     private String formatAsMarkdown(List<AgentMemory> memories) {
         var byLayer = groupByLayer(memories);
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(256);
         sb.append("## Agent Memory\n\n");
         for (var entry : byLayer.entrySet()) {
             sb.append("### ").append(layerLabel(entry.getKey())).append('\n');
@@ -185,7 +184,7 @@ public class AgentMemoryExperimentService {
             map.put(layer, new ArrayList<>());
         }
         for (var m : memories) {
-            map.computeIfAbsent(m.layer != null ? m.layer : MemoryLayer.knowledge, k -> new ArrayList<>()).add(m);
+            map.computeIfAbsent(m.layer != null ? m.layer : MemoryLayer.KNOWLEDGE, k -> new ArrayList<>()).add(m);
         }
         map.values().removeIf(List::isEmpty);
         return map;
@@ -193,9 +192,9 @@ public class AgentMemoryExperimentService {
 
     private String layerLabel(MemoryLayer layer) {
         return switch (layer) {
-            case knowledge -> "Knowledge";
-            case methods -> "Methods";
-            case trajectories -> "Trajectories";
+            case KNOWLEDGE -> "Knowledge";
+            case METHODS -> "Methods";
+            case TRAJECTORIES -> "Trajectories";
         };
     }
 

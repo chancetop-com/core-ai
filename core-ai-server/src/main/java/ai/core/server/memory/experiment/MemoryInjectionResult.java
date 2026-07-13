@@ -13,21 +13,6 @@ import java.util.Map;
  * @author stephen
  */
 public class MemoryInjectionResult {
-    /** The formatted prompt section ready to inject, or null if injection was skipped. */
-    public PromptInject promptInject;
-
-    /** IDs of all memories that were selected for injection. */
-    public List<String> injectedMemoryIds;
-
-    /** Layer → count breakdown. */
-    public Map<String, Integer> layerBreakdown;
-
-    /** Approximate token count of the injected memory section. */
-    public int estimatedTokens;
-
-    /** Whether injection actually happened (probability check passed). */
-    public boolean injected;
-
     public static MemoryInjectionResult skipped() {
         var result = new MemoryInjectionResult();
         result.injected = false;
@@ -44,4 +29,19 @@ public class MemoryInjectionResult {
         result.promptInject = new AgentMemoryPromptInject(formattedContent);
         return result;
     }
+
+    /** The formatted prompt section ready to inject, or null if injection was skipped. */
+    public PromptInject promptInject;
+
+    /** IDs of all memories that were selected for injection. */
+    public List<String> injectedMemoryIds;
+
+    /** Layer → count breakdown. */
+    public Map<String, Integer> layerBreakdown;
+
+    /** Approximate token count of the injected memory section. */
+    public int estimatedTokens;
+
+    /** Whether injection actually happened (probability check passed). */
+    public boolean injected;
 }

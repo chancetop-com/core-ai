@@ -60,50 +60,8 @@ public class AgentMemoryConsolidationJob implements Job {
     private static final int MESSAGE_LOOKBACK_SECONDS = 5;
     private static final int MESSAGE_LOOKAHEAD_SECONDS = 30;
     private static final int TRAJECTORY_MAX_CHARS = 500;
-    private static final int PROCESSING_TIMEOUT_SECONDS = 55; // stay under 60s monitoring threshold
+    private static final int PROCESSING_TIMEOUT_SECONDS = 55;
     public static final String DEFAULT_EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
-
-    // V2 prompt: extract-only, no REFINE/MERGE.
-    // Two-part output: trajectory summaries (Layer 3) + reusable patterns (Layer 2).
-    private static final String EXTRACTION_PROMPT = """
-            You analyze an agent's execution traces and produce two things:
-
-            1. A concise session trajectory summary (≤%d chars each)
-            2. New reusable patterns observed in these traces
-
-            ## Execution traces
-            %s
-
-            ## Task
-
-            ### Part 1: Trajectory summaries
-            For each session, write a short summary of what happened — the user request,
-            key decisions made, tools used, and final outcome. Keep each summary under %d characters.
-            Do NOT generalize or abstract — record what actually happened, faithfully.
-
-            ### Part 2: Reusable patterns
-            Extract new patterns that the agent can reuse in future runs.
-            Only extract truly general patterns, not one-off facts about specific inputs.
-            Classify each into one of: WORKFLOW_PATTERN | TOOL_USAGE | EFFICIENCY
-
-            Rules:
-            - DO NOT modify or merge with any previous memories — only extract what's NEW in these traces
-            - Skip patterns already obvious from the SOP or system prompt
-            - Keep each pattern under 200 words
-            - Be specific and actionable
-
-            Output ONLY valid JSON (no markdown fences, no extra text):
-            {
-              "trajectories": [
-                { "session_id": "...", "summary": "..." }
-              ],
-              "patterns": [
-                { "type": "EFFICIENCY", "content": "..." },
-                { "type": "TOOL_USAGE", "content": "..." }
-              ]
-            }
-            """;
-
     private static final String EXCLUDED_AGENT_NAME = "assistant";
 
     @Inject
@@ -136,13 +94,10 @@ public class AgentMemoryConsolidationJob implements Job {
             LOGGER.debug("no agents with traces found");
             return;
         }
-
         LOGGER.info("memory consolidation starting for {} agents", agentIds.size());
-
         var deadline = ZonedDateTime.now().plusSeconds(PROCESSING_TIMEOUT_SECONDS);
         var processed = new AtomicInteger(0);
         var failed = new AtomicInteger(0);
-
         var futures = new ArrayList<Future<?>>();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (var agentId : agentIds) {
@@ -151,15 +106,7 @@ public class AgentMemoryConsolidationJob implements Job {
                             agentIds.size() - processed.get() - failed.get());
                     break;
                 }
-                futures.add(executor.submit(() -> {
-                    try {
-                        processAgent(agentId);
-                        processed.incrementAndGet();
-                    } catch (Exception e) {
-                        LOGGER.error("failed to consolidate memory for agent={}", agentId, e);
-                        failed.incrementAndGet();
-                    }
-                }));
+                futures.add(executor.submit(() -> processAgentAsync(agentId, processed, failed)));
             }
         }
         for (var future : futures) {
@@ -169,11 +116,9 @@ public class AgentMemoryConsolidationJob implements Job {
                 LOGGER.warn("memory consolidation interrupted", e);
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
-                // already logged inside the task
                 LOGGER.warn("memory consolidation task failed unexpectedly", e);
             }
         }
-
         LOGGER.info("memory consolidation completed: processed={}, failed={}, total={}",
                 processed.get(), failed.get(), agentIds.size());
     }
@@ -201,6 +146,16 @@ public class AgentMemoryConsolidationJob implements Job {
         return ids;
     }
 
+    private void processAgentAsync(String agentId, AtomicInteger processed, AtomicInteger failed) {
+        try {
+            processAgent(agentId);
+            processed.incrementAndGet();
+        } catch (Exception e) {
+            LOGGER.error("failed to consolidate memory for agent={}", agentId, e);
+            failed.incrementAndGet();
+        }
+    }
+
     private void processAgent(String agentId) {
         var definition = agentDefinitionCollection.get(agentId).orElse(null);
         if (definition == null) {
@@ -214,7 +169,6 @@ public class AgentMemoryConsolidationJob implements Job {
         }
         var cursor = agentMemoryService.getCursor(agentId);
         var since = cursor != null ? cursor.lastProcessedAt : ZonedDateTime.now().minusYears(10);
-
         var cutoff = ZonedDateTime.now().minusHours(IDLE_THRESHOLD_HOURS);
         var query = new Query();
         query.filter = Filters.and(
@@ -226,31 +180,24 @@ public class AgentMemoryConsolidationJob implements Job {
         query.sort = Sorts.ascending("started_at");
         query.limit = MAX_TRACES_PER_AGENT;
         var traces = traceCollection.find(query);
-
         if (traces.size() < MIN_TRACES_FOR_EXTRACTION) {
             LOGGER.debug("agent={} has {} new traces, skipping (min={})", agentId, traces.size(), MIN_TRACES_FOR_EXTRACTION);
             return;
         }
-
         if (!hasMeaningfulInteractions(traces)) {
             LOGGER.debug("agent={} has no meaningful interactions, advancing cursor without extraction", agentId);
             advanceCursor(agentId, traces);
             return;
         }
-
         var tracesText = buildSessionLog(traces);
-        var prompt = EXTRACTION_PROMPT.formatted(TRAJECTORY_MAX_CHARS, tracesText, TRAJECTORY_MAX_CHARS);
+        var prompt = MemoryConsolidationPrompt.EXTRACTION_PROMPT.formatted(TRAJECTORY_MAX_CHARS, tracesText, TRAJECTORY_MAX_CHARS);
         var response = callLLM(prompt);
         var result = parseV2Response(response, agentId, traces);
-
         if (!result.isEmpty()) {
             agentMemoryService.appendMemories(agentId, result);
         }
-
         advanceCursor(agentId, traces);
-
-        LOGGER.info("memory V2 appended for agent={}, total={}, traces={}",
-                agentId, result.size(), traces.size());
+        LOGGER.info("memory V2 appended for agent={}, total={}, traces={}", agentId, result.size(), traces.size());
     }
 
     private void advanceCursor(String agentId, List<Trace> traces) {
@@ -264,18 +211,13 @@ public class AgentMemoryConsolidationJob implements Job {
     private String buildSessionLog(List<Trace> traces) {
         var allMessages = queryChatMessages(traces);
         if (allMessages.isEmpty()) return "(no session data)";
-
         var systemPrompt = extractSystemPrompt(traces);
         var bySession = allMessages.stream()
                 .collect(Collectors.groupingBy(m -> m.sessionId, LinkedHashMap::new, Collectors.toList()));
-
-        var sb = new StringBuilder();
-
+        var sb = new StringBuilder(256);
         if (systemPrompt != null) {
-            sb.append("## System Prompt\n");
-            sb.append(truncate(systemPrompt, 2000)).append("\n\n");
+            sb.append("## System Prompt\n").append(truncate(systemPrompt, 2000)).append("\n\n");
         }
-
         int totalChars = sb.length();
         for (var entry : bySession.entrySet()) {
             if (totalChars > 50000) break;
@@ -283,7 +225,6 @@ public class AgentMemoryConsolidationJob implements Job {
             totalChars += section.length();
             sb.append(section);
         }
-
         return sb.toString();
     }
 
@@ -296,24 +237,24 @@ public class AgentMemoryConsolidationJob implements Job {
         );
         query.sort = Sorts.ascending("started_at");
         query.limit = 5;
-
         var spans = spanCollection.find(query);
         for (var span : spans) {
+            if (span.input == null || span.input.isBlank()) continue;
+            JsonNode node;
             try {
-                if (span.input != null && !span.input.isBlank()) {
-                    var node = new ObjectMapper().readTree(span.input);
-                    var messages = node.get("messages");
-                    if (messages != null && messages.isArray()) {
-                        for (var msg : messages) {
-                            var role = msg.get("role");
-                            if (role != null && "system".equals(role.asText())) {
-                                return extractTextContent(msg);
-                            }
-                        }
-                    }
-                }
+                node = new ObjectMapper().readTree(span.input);
             } catch (Exception e) {
-                // skip malformed span inputs
+                LOGGER.warn("failed to parse span input JSON: {}", e.getMessage());
+                continue;
+            }
+            if (node == null) continue;
+            var messages = node.get("messages");
+            if (messages == null || !messages.isArray()) continue;
+            for (var msg : messages) {
+                var role = msg.get("role");
+                if (role != null && "system".equals(role.asText())) {
+                    return extractTextContent(msg);
+                }
             }
         }
         return null;
@@ -344,7 +285,6 @@ public class AgentMemoryConsolidationJob implements Job {
         if (!traceIds.isEmpty()) {
             filters.add(Filters.in("trace_id", traceIds));
         }
-
         for (var trace : traces) {
             if (trace.sessionId == null || trace.sessionId.isBlank() || trace.startedAt == null) continue;
             var end = trace.completedAt != null ? trace.completedAt : trace.startedAt;
@@ -359,7 +299,6 @@ public class AgentMemoryConsolidationJob implements Job {
 
     private List<ChatMessage> queryChatMessagesByFilters(List<Bson> filters) {
         if (filters.isEmpty()) return List.of();
-
         var query = new Query();
         query.filter = filters.size() == 1 ? filters.getFirst() : Filters.or(filters);
         query.sort = Sorts.ascending("created_at");
@@ -369,31 +308,26 @@ public class AgentMemoryConsolidationJob implements Job {
 
     private boolean hasMeaningfulInteractions(List<Trace> traces) {
         var messages = queryChatMessages(traces);
-
         var userTurns = messages.stream()
                 .filter(m -> "user".equals(m.role))
                 .count();
-
         var toolCalls = messages.stream()
                 .filter(m -> "agent".equals(m.role))
                 .filter(m -> m.tools != null)
                 .mapToLong(m -> m.tools.size())
                 .sum();
-
         if (userTurns >= MIN_MEANINGFUL_USER_TURNS) return true;
         return toolCalls >= MIN_TOOL_CALLS_FOR_SHORT_SESSION;
     }
 
     private String formatSessionLog(String sessionId, List<ChatMessage> messages) {
-        var sb = new StringBuilder();
-        sb.append("## Session ").append(sessionId).append("\n");
-
+        var sb = new StringBuilder(256);
+        sb.append("## Session ").append(sessionId).append('\n');
         int turnNum = 0;
         for (var msg : messages) {
             if ("user".equals(msg.role)) {
                 turnNum++;
-                sb.append("\n### Turn ").append(turnNum).append("\n");
-                sb.append("User: ").append(truncate(msg.content, 3000)).append("\n");
+                sb.append("\n### Turn ").append(turnNum).append("\nUser: ").append(truncate(msg.content, 3000)).append('\n');
             } else if ("agent".equals(msg.role)) {
                 sb.append("Agent:");
                 if (msg.thinking != null && !msg.thinking.isBlank()) {
@@ -402,23 +336,28 @@ public class AgentMemoryConsolidationJob implements Job {
                 if (msg.tools != null && !msg.tools.isEmpty()) {
                     sb.append("\n  Tools used:");
                     for (var tool : msg.tools) {
-                        sb.append("\n    -> ").append(tool.name).append("(").append(truncate(tool.arguments, 500)).append(")");
-                        if (tool.result != null && !tool.result.isBlank()) {
-                            sb.append(" = ").append(truncate(tool.result, 500));
-                        }
-                        if (tool.status != null && !"success".equalsIgnoreCase(tool.status)) {
-                            sb.append(" [").append(tool.status).append("]");
-                        }
+                        sb.append("\n    -> ").append(tool.name)
+                                .append('(').append(truncate(tool.arguments, 500)).append(')');
+                        appendToolResult(sb, tool);
                     }
                 }
-                sb.append("\n");
+                sb.append('\n');
                 if (msg.content != null && !msg.content.isBlank()) {
-                    sb.append(truncate(msg.content, 3000)).append("\n");
+                    sb.append(truncate(msg.content, 3000)).append('\n');
                 }
             }
         }
-        sb.append("\n");
+        sb.append('\n');
         return sb.toString();
+    }
+
+    private void appendToolResult(StringBuilder sb, ChatMessage.ToolCallRecord tool) {
+        if (tool.result != null && !tool.result.isBlank()) {
+            sb.append(" = ").append(truncate(tool.result, 500));
+        }
+        if (tool.status != null && !"success".equalsIgnoreCase(tool.status)) {
+            sb.append(" [").append(tool.status).append(']');
+        }
     }
 
     private String truncate(String text, int maxLen) {
@@ -433,7 +372,6 @@ public class AgentMemoryConsolidationJob implements Job {
         var model = systemSettingsService.memoryExtractionModel();
         var request = CompletionRequest.of(msgs, null, provider.config.getTemperature(), model, "memory-consolidator");
         request.setTimeoutSeconds(120);
-
         var response = provider.completion(request);
         if (response != null && response.choices != null && !response.choices.isEmpty()) {
             return response.choices.getFirst().message.content;
@@ -448,8 +386,6 @@ public class AgentMemoryConsolidationJob implements Job {
             var om = new ObjectMapper();
             var node = om.readTree(json);
             var now = ZonedDateTime.now();
-
-            // Part 1: trajectory summaries (Layer 3)
             var trajectories = node.get("trajectories");
             if (trajectories != null && trajectories.isArray()) {
                 for (var item : trajectories) {
@@ -457,7 +393,7 @@ public class AgentMemoryConsolidationJob implements Job {
                     memory.id = UUID.randomUUID().toString();
                     memory.agentId = agentId;
                     memory.type = "TRAJECTORY";
-                    memory.layer = MemoryLayer.trajectories;
+                    memory.layer = MemoryLayer.TRAJECTORIES;
                     memory.content = formatTrajectoryContent(item);
                     memory.createdAt = now;
                     memory.updatedAt = now;
@@ -465,8 +401,6 @@ public class AgentMemoryConsolidationJob implements Job {
                     memories.add(memory);
                 }
             }
-
-            // Part 2: patterns (Layer 2)
             var patterns = node.get("patterns");
             if (patterns != null && patterns.isArray()) {
                 for (var item : patterns) {
@@ -474,7 +408,7 @@ public class AgentMemoryConsolidationJob implements Job {
                     memory.id = UUID.randomUUID().toString();
                     memory.agentId = agentId;
                     memory.type = item.has("type") ? item.get("type").asText() : null;
-                    memory.layer = MemoryLayer.methods;
+                    memory.layer = MemoryLayer.METHODS;
                     memory.content = item.get("content").asText();
                     memory.createdAt = now;
                     memory.updatedAt = now;

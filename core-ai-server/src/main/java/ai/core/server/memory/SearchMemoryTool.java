@@ -40,6 +40,17 @@ public final class SearchMemoryTool extends ToolCall {
             is a distilled pattern or a raw session record.
             """;
 
+    private static List<ToolCallParameter> parameters() {
+        return ToolCallParameters.of(
+                ToolCallParameters.ParamSpec.of(String.class, "query", "Natural language search query (e.g. \"restaurant SEO keyword strategy\", \"API authentication pattern\")").required(),
+                ToolCallParameters.ParamSpec.of(String.class, "layer", "Memory layer to search: 'methods' (extracted patterns), 'trajectories' (session summaries), or 'all' (default)")
+                        .optional()
+                        .enums(List.of("methods", "trajectories", "all")),
+                ToolCallParameters.ParamSpec.of(Integer.class, "limit", "Maximum results to return (default 5)")
+                        .optional()
+        );
+    }
+
     private final String agentId;
     private final AgentMemoryService agentMemoryService;
 
@@ -53,17 +64,6 @@ public final class SearchMemoryTool extends ToolCall {
         setDirectReturn(false);
         setLlmVisible(true);
         setDiscoverable(false);
-    }
-
-    private static List<ToolCallParameter> parameters() {
-        return ToolCallParameters.of(
-                ToolCallParameters.ParamSpec.of(String.class, "query", "Natural language search query (e.g. \"restaurant SEO keyword strategy\", \"API authentication pattern\")").required(),
-                ToolCallParameters.ParamSpec.of(String.class, "layer", "Memory layer to search: 'methods' (extracted patterns), 'trajectories' (session summaries), or 'all' (default)")
-                        .optional()
-                        .enums(List.of("methods", "trajectories", "all")),
-                ToolCallParameters.ParamSpec.of(Integer.class, "limit", "Maximum results to return (default 5)")
-                        .optional()
-        );
     }
 
     @Override
@@ -101,20 +101,19 @@ public final class SearchMemoryTool extends ToolCall {
     }
 
     private String formatResults(List<AgentMemory> results) {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(128);
         sb.append("Found ").append(results.size()).append(" matching memories:\n\n");
         for (int i = 0; i < results.size(); i++) {
             var m = results.get(i);
-            sb.append("--- Memory ").append(i + 1).append(" ---\n");
-            sb.append("Layer: ").append(m.layer).append("\n");
+            sb.append("--- Memory ").append(i + 1).append(" ---\nLayer: ").append(m.layer).append('\n');
             if (m.type != null) {
-                sb.append("Type: ").append(m.type).append("\n");
+                sb.append("Type: ").append(m.type).append('\n');
             }
-            sb.append("Content: ").append(m.content).append("\n");
+            sb.append("Content: ").append(m.content).append('\n');
             if (m.createdAt != null) {
-                sb.append("Recorded: ").append(m.createdAt).append("\n");
+                sb.append("Recorded: ").append(m.createdAt).append('\n');
             }
-            sb.append("\n");
+            sb.append('\n');
         }
         return sb.toString();
     }
