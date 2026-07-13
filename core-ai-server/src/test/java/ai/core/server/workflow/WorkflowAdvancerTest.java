@@ -37,7 +37,7 @@ class WorkflowAdvancerTest {
         var journal = new InMemoryWorkflowJournal();
         var executor = new ScriptedExecutor();
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
 
         assertEquals(RunStatus.COMPLETED, status);
         assertEquals(List.of("start", "a", "end"), executor.executed);
@@ -57,7 +57,7 @@ class WorkflowAdvancerTest {
             : new NodeOutcome.Normal("{}");
 
         RunStatus status = WorkflowAdvancer.drive(
-            graph, run("{\"name\":\"Ada\"}"), journal, executor, SAME_THREAD, () -> false);
+            graph, run("{\"name\":\"Ada\"}"), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
 
         assertEquals(RunStatus.COMPLETED, status);
         assertEquals("{\"name\":\"Ada\"}", journal.inputJson("run-1", "start"));
@@ -81,7 +81,7 @@ class WorkflowAdvancerTest {
             ? new StartExecutor().execute(ctx)
             : new NodeOutcome.Normal("{}");
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
 
         assertEquals(RunStatus.COMPLETED, status);
         String snapshot = journal.inputJson("run-1", "http");
@@ -103,7 +103,7 @@ class WorkflowAdvancerTest {
         var executor = new ScriptedExecutor();
         executor.branch("if", "eL");
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
 
         assertEquals(RunStatus.COMPLETED, status);
         assertTrue(executor.executed.contains("left"));
@@ -121,7 +121,7 @@ class WorkflowAdvancerTest {
         var executor = new ScriptedExecutor();
         executor.fail("a");
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
 
         assertEquals(RunStatus.FAILED, status);   // provisional: a retryable failure terminalizes the run (retry is P5)
         assertEquals(NodeRunStatus.FAILED_RETRYABLE, journal.status("run-1", "a"));
@@ -138,7 +138,7 @@ class WorkflowAdvancerTest {
         journal.seedCompleted("run-1", "a");
         var executor = new ScriptedExecutor();
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
 
         assertEquals(RunStatus.COMPLETED, status);
         assertEquals(List.of("end"), executor.executed);   // start/a reused from the journal, only end ran
@@ -154,7 +154,7 @@ class WorkflowAdvancerTest {
         var executor = new ScriptedExecutor();
         executor.branch("start", "noSuchEdge");
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
 
         assertEquals(RunStatus.FAILED, status);
         assertEquals(NodeRunStatus.SKIPPED, journal.status("run-1", "end"));
@@ -173,7 +173,7 @@ class WorkflowAdvancerTest {
             var journal = new InMemoryWorkflowJournal();
             var executor = new ScriptedExecutor();
 
-            RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, pool, () -> false);
+            RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, pool), () -> false);
 
             assertEquals(RunStatus.COMPLETED, status);   // join over 3 concurrent branches; awaitAny actually parks
             assertTrue(executor.executed.containsAll(List.of("a", "b", "c", "end")));
@@ -194,7 +194,7 @@ class WorkflowAdvancerTest {
             var executor = new ScriptedExecutor();
             executor.fail("bad");
 
-            RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, pool, () -> false);
+            RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, pool), () -> false);
 
             assertEquals(RunStatus.FAILED, status);
             assertEquals(NodeRunStatus.FAILED_RETRYABLE, journal.status("run-1", "bad"));
@@ -223,7 +223,7 @@ class WorkflowAdvancerTest {
             };
 
             CompletableFuture<RunStatus> driving = CompletableFuture.supplyAsync(
-                () -> WorkflowAdvancer.drive(graph, run(), journal, executor, pool, cancel::get));
+                () -> WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, pool), cancel::get));
             assertTrue(started.await(2, TimeUnit.SECONDS));   // slow node is in flight, drive parked in awaitAny
             cancel.set(true);                                  // cancel arrives mid-drive
             release.countDown();                               // let the in-flight node finish
@@ -249,7 +249,7 @@ class WorkflowAdvancerTest {
             return new NodeOutcome.Normal("{}");
         };
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
 
         assertEquals(RunStatus.FAILED, status);   // drive returns instead of leaving 'a' stuck RUNNING forever
         assertEquals(NodeRunStatus.FAILED_RETRYABLE, journal.status("run-1", "a"));
@@ -276,7 +276,7 @@ class WorkflowAdvancerTest {
             };
 
             CompletableFuture<RunStatus> driving = CompletableFuture.supplyAsync(
-                () -> WorkflowAdvancer.drive(graph, run(), journal, executor, pool, () -> false, held::get));
+                () -> WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, pool), () -> false, held::get));
             assertTrue(started.await(2, TimeUnit.SECONDS));   // slow node in flight, drive parked in awaitAny
             held.set(false);                                   // lease lost to another replica
             release.countDown();                               // let the in-flight node finish
@@ -300,14 +300,14 @@ class WorkflowAdvancerTest {
             : new NodeOutcome.Normal("{}");
 
         // first drive parks the run on the human-input node — out-edges stay PENDING, downstream not reached
-        RunStatus paused = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus paused = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
         assertEquals(RunStatus.PAUSED, paused);
         assertEquals(NodeRunStatus.WAITING, journal.status("run-1", "ask"));
         assertNull(journal.status("run-1", "end"));
 
         // the resume endpoint settles the waiting node to COMPLETED; re-driving (re-fold) continues to the end
         journal.seedCompleted("run-1", "ask");
-        RunStatus completed = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus completed = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
         assertEquals(RunStatus.COMPLETED, completed);
         assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "end"));
     }
@@ -327,7 +327,7 @@ class WorkflowAdvancerTest {
             default -> new NodeOutcome.Normal("{}");
         };
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
 
         assertEquals(RunStatus.PAUSED, status);   // a still-WAITING human node keeps the run resumable past a sibling failure
         assertEquals(NodeRunStatus.WAITING, journal.status("run-1", "ask"));
@@ -365,7 +365,7 @@ class WorkflowAdvancerTest {
             };
 
             CompletableFuture<RunStatus> driving = CompletableFuture.supplyAsync(
-                () -> WorkflowAdvancer.drive(graph, run(), journal, executor, pool, () -> false));
+                () -> WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, pool), () -> false));
 
             assertTrue(slowStarted.await(2, TimeUnit.SECONDS));                 // slow sibling is in flight
             assertTrue(awaitUntil(() -> journal.status("run-1", "ask") == NodeRunStatus.WAITING));   // human node parked

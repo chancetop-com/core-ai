@@ -23,22 +23,6 @@ import java.util.Objects;
  * @author Xander
  */
 public class IfElseExecutor implements NodeExecutor {
-    @Override
-    public NodeOutcome execute(NodeContext ctx) {
-        Map<String, Object> config = ctx.node().config();
-        List<?> cases = config.get("cases") instanceof List<?> list ? list : List.of();
-        for (Object element : cases) {
-            if (element instanceof Map<?, ?> caseMap && matches(caseMap, ctx.pool())) {
-                String edgeId = str(caseMap.get("edge_id"));
-                if (edgeId != null) {
-                    return new NodeOutcome.Branch("{}", List.of(edgeId));
-                }
-            }
-        }
-        String elseEdge = str(config.get("else_edge_id"));
-        return new NodeOutcome.Branch("{}", elseEdge != null ? List.of(elseEdge) : List.of());
-    }
-
     private static boolean matches(Map<?, ?> caseMap, VariablePool pool) {
         List<?> conditions = caseMap.get("conditions") instanceof List<?> list ? list : List.of();
         if (conditions.isEmpty()) {
@@ -94,5 +78,21 @@ public class IfElseExecutor implements NodeExecutor {
 
     private static String str(Object value) {
         return value == null ? null : value instanceof String string ? string : String.valueOf(value);
+    }
+
+    @Override
+    public NodeOutcome execute(NodeContext ctx) {
+        Map<String, Object> config = ctx.node().config();
+        List<?> cases = config.get("cases") instanceof List<?> list ? list : List.of();
+        for (Object element : cases) {
+            if (element instanceof Map<?, ?> caseMap && matches(caseMap, ctx.pool())) {
+                String edgeId = str(caseMap.get("edge_id"));
+                if (edgeId != null) {
+                    return new NodeOutcome.Branch("{}", List.of(edgeId));
+                }
+            }
+        }
+        String elseEdge = str(config.get("else_edge_id"));
+        return new NodeOutcome.Branch("{}", elseEdge != null ? List.of(elseEdge) : List.of());
     }
 }

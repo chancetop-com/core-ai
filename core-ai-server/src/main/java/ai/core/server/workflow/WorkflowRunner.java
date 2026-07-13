@@ -45,6 +45,10 @@ public class WorkflowRunner {
     private static final int HEARTBEAT_PERIOD_SECONDS = LEASE_SECONDS / 3;
     private static final int HEARTBEAT_THREADS = 4;   // a blocked renew on one run must not starve the others
 
+    private static boolean isTerminal(RunStatus status) {
+        return status == RunStatus.COMPLETED || status == RunStatus.FAILED || status == RunStatus.TIMEOUT || status == RunStatus.CANCELLED;
+    }
+
     private final ExecutorService nodePool = Executors.newFixedThreadPool(MAX_CONCURRENT_NODES);
     private final ExecutorService driverPool = Executors.newFixedThreadPool(MAX_CONCURRENT_RUNS);
     private final ScheduledExecutorService heartbeatScheduler = Executors.newScheduledThreadPool(HEARTBEAT_THREADS);
@@ -100,37 +104,10 @@ public class WorkflowRunner {
             run = runCollection.get(runId).orElseThrow(() -> new IllegalStateException("run not found: " + runId));
             var graph = graphLoader.load(run.versionId);
             var journal = new MongoWorkflowJournal(nodeRunCollection);
-            RunStatus status = WorkflowAdvancer.drive(graph, run, journal, nodeExecutor, nodePool,
+            RunStatus status = WorkflowAdvancer.drive(graph, run, journal,
+                new WorkflowAdvancer.ExecCtx(nodeExecutor, nodePool),
                 () -> isCancelled(runId), () -> !lostLease.get());
-            if (lostLease.get()) {
-                LOGGER.warn("lease lost mid-drive, leaving finalization to the new owner, runId={}", runId);
-                return true;
-            }
-            if (status == RunStatus.PAUSED) {
-                pause(runId);   // parked on human input — not terminal, resume endpoint will wake it
-                notificationService.create(run.userId, null, run.sessionId,
-                    NotificationCategory.SYSTEM, NotificationType.PAUSE,
-                    "Workflow Paused", "Workflow \"" + run.workflowId + "\" is paused and waiting for human input");
-                return true;
-            }
-            boolean completed = status == RunStatus.COMPLETED;
-            WorkflowNodeRun endRun = completed ? endNodeRun(runId) : null;
-            boolean finalized = terminate(runId, status, status == RunStatus.FAILED ? failureSummary(runId) : null,
-                endRun != null ? endRun.output : null,
-                endRun != null && endRun.artifacts != null ? endRun.artifacts : List.of());
-            if (finalized && (status == RunStatus.FAILED || status == RunStatus.CANCELLED)) {
-                var title = status == RunStatus.FAILED ? "Workflow Failed" : "Workflow Cancelled";
-                var msg = "Workflow \"" + run.workflowId + "\" has " + status.name().toLowerCase();
-                notificationService.create(run.userId, null, run.sessionId,
-                    NotificationCategory.SYSTEM, NotificationType.TERMINATE, title, msg);
-            }
-            if (finalized && run.parentRunId != null) {
-                runCollection.get(runId).ifPresent(this::wakeParent);   // sub-workflow: settle parent + resume it
-            }
-            if (finalized && status == RunStatus.CANCELLED) {
-                cancelChildren(runId);   // a cancelled parent takes its decoupled sub-workflow runs down with it
-            }
-            return true;
+            return handleDriveResult(runId, run, status, lostLease);
         } catch (RuntimeException e) {
             if (lostLease.get()) {
                 LOGGER.warn("lease lost mid-drive (after error), leaving finalization to the new owner, runId={}", runId, e);
@@ -139,9 +116,10 @@ public class WorkflowRunner {
             LOGGER.error("workflow run failed to advance, runId={}", runId, e);
             boolean finalized = terminate(runId, RunStatus.FAILED, e.getMessage(), null, List.of());
             if (finalized && run != null) {
-                notificationService.create(run.userId, null, run.sessionId,
+                notificationService.create(run.userId,
                     NotificationCategory.SYSTEM, NotificationType.TERMINATE,
-                    "Workflow Failed", "Workflow \"" + run.workflowId + "\" encountered an error");
+                    "Workflow Failed", "Workflow \"" + run.workflowId + "\" encountered an error",
+                    new NotificationService.CreateContext(null, run.sessionId));
             }
             if (finalized && run != null && run.parentRunId != null) {
                 runCollection.get(runId).ifPresent(this::wakeParent);
@@ -279,11 +257,11 @@ public class WorkflowRunner {
         if (child.parentRunId == null || child.parentNodeId == null || !isTerminal(child.status)) {
             return false;
         }
-        WorkflowNodeRun endRun = child.status == RunStatus.COMPLETED ? endNodeRun(child.id) : null;
         var now = ZonedDateTime.now();
         var settle = new ArrayList<Bson>();
         settle.add(Updates.set("completed_at", now));
         if (child.status == RunStatus.COMPLETED) {
+            WorkflowNodeRun endRun = endNodeRun(child.id);
             settle.add(Updates.set("status", NodeRunStatus.COMPLETED));
             settle.add(Updates.set("output", endRun != null ? endRun.output : null));
             if (endRun != null && endRun.artifacts != null && !endRun.artifacts.isEmpty()) {
@@ -359,7 +337,37 @@ public class WorkflowRunner {
         return null;
     }
 
-    private static boolean isTerminal(RunStatus status) {
-        return status == RunStatus.COMPLETED || status == RunStatus.FAILED || status == RunStatus.TIMEOUT || status == RunStatus.CANCELLED;
+    private boolean handleDriveResult(String runId, WorkflowRun run, RunStatus status, AtomicBoolean lostLease) {
+        if (lostLease.get()) {
+            LOGGER.warn("lease lost mid-drive, leaving finalization to the new owner, runId={}", runId);
+            return true;
+        }
+        if (status == RunStatus.PAUSED) {
+            pause(runId);
+            notificationService.create(run.userId,
+                NotificationCategory.SYSTEM, NotificationType.PAUSE,
+                "Workflow Paused", "Workflow \"" + run.workflowId + "\" is paused and waiting for human input",
+                new NotificationService.CreateContext(null, run.sessionId));
+            return true;
+        }
+        boolean completed = status == RunStatus.COMPLETED;
+        WorkflowNodeRun endRun = completed ? endNodeRun(runId) : null;
+        boolean finalized = terminate(runId, status, status == RunStatus.FAILED ? failureSummary(runId) : null,
+            endRun != null ? endRun.output : null,
+            endRun != null && endRun.artifacts != null ? endRun.artifacts : List.of());
+        if (finalized && (status == RunStatus.FAILED || status == RunStatus.CANCELLED)) {
+            var title = status == RunStatus.FAILED ? "Workflow Failed" : "Workflow Cancelled";
+            var msg = "Workflow \"" + run.workflowId + "\" has " + status.name().toLowerCase();
+            notificationService.create(run.userId,
+                NotificationCategory.SYSTEM, NotificationType.TERMINATE, title, msg,
+                new NotificationService.CreateContext(null, run.sessionId));
+        }
+        if (finalized && run.parentRunId != null) {
+            runCollection.get(runId).ifPresent(this::wakeParent);
+        }
+        if (finalized && status == RunStatus.CANCELLED) {
+            cancelChildren(runId);
+        }
+        return true;
     }
 }

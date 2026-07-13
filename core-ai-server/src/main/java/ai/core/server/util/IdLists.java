@@ -9,9 +9,6 @@ import java.util.Set;
  * Normalizes Mongo id arrays accepted from APIs or older stored documents.
  */
 public final class IdLists {
-    private IdLists() {
-    }
-
     public static List<String> clean(List<String> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
         Set<String> cleaned = new LinkedHashSet<>();
@@ -27,5 +24,8 @@ public final class IdLists {
     public static List<String> cleanOrNull(List<String> ids) {
         var cleaned = clean(ids);
         return cleaned.isEmpty() ? null : cleaned;
+    }
+
+    private IdLists() {
     }
 }

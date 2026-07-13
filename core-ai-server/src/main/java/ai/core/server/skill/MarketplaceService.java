@@ -22,6 +22,13 @@ import java.util.List;
 public class MarketplaceService {
     private static final Logger LOGGER = LoggerFactory.getLogger(MarketplaceService.class);
 
+    private static String deriveName(String repoUrl) {
+        String path = repoUrl.replaceFirst("^https?://[^/]+/", "");
+        path = path.replaceFirst("\\.git$", "");
+        path = path.replaceFirst("/$", "");
+        return path;
+    }
+
     @Inject
     MongoCollection<MarketplaceRepo> repoCollection;
 
@@ -86,15 +93,6 @@ public class MarketplaceService {
 
         LOGGER.info("registered marketplace repo, id={}, name={}, skills={}", repo.id, name, skills.size());
         return repo;
-    }
-
-    private static String deriveName(String repoUrl) {
-        // https://github.com/owner/repo → owner/repo
-        // https://github.com/owner/repo.git → owner/repo
-        String path = repoUrl.replaceFirst("^https?://[^/]+/", "");
-        path = path.replaceFirst("\\.git$", "");
-        path = path.replaceFirst("/$", "");
-        return path;
     }
 
     public void delete(String id) {

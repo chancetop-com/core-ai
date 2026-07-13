@@ -17,31 +17,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author Xander
  */
 class InternalApiToolLoaderTest {
-    @Test
-    @SuppressWarnings("unchecked")
-    void testListApiAppServicesIncludesInputAndOutputSchemas() {
-        var loader = new InternalApiToolLoader(new FakeApiDefinitionService(buildApi()));
+    private static ApiDefinitionType.Field field(String name, String type, boolean notNull) {
+        var field = new ApiDefinitionType.Field();
+        field.name = name;
+        field.type = type;
+        field.constraints.notNull = notNull;
+        return field;
+    }
 
-        var services = loader.listApiAppServices("test-app");
+    private static ApiDefinitionType bean(String name, ApiDefinitionType.Field... fields) {
+        var type = new ApiDefinitionType();
+        type.name = name;
+        type.type = "bean";
+        type.fields = List.of(fields);
+        return type;
+    }
 
-        assertEquals(1, services.size());
-        var operation = services.getFirst().operations().getFirst();
-        assertEquals("test_app_UserService_getUser", operation.toolName());
-        assertEquals("GetUserRequest", operation.requestType());
-        assertEquals("UserResponse", operation.responseType());
-
-        var inputSchema = JsonUtil.toMap(operation.inputSchema());
-        var inputProperties = (Map<String, Object>) inputSchema.get("properties");
-        assertTrue(inputProperties.containsKey("tenant_id"));
-        assertTrue(inputProperties.containsKey("active"));
-        assertTrue(((List<String>) inputSchema.get("required")).contains("tenant_id"));
-        assertTrue(((List<String>) inputSchema.get("required")).contains("active"));
-
-        var outputSchema = JsonUtil.toMap(operation.outputSchema());
-        var outputProperties = (Map<String, Object>) outputSchema.get("properties");
-        assertTrue(outputProperties.containsKey("id"));
-        var profile = (Map<String, Object>) outputProperties.get("profile");
-        assertNotNull(((Map<String, Object>) profile.get("properties")).get("name"));
+    private static ApiDefinition.PathParam pathParam(String name, String type) {
+        var param = new ApiDefinition.PathParam();
+        param.name = name;
+        param.type = type;
+        return param;
     }
 
     private static ApiDefinition buildApi() {
@@ -72,27 +68,31 @@ class InternalApiToolLoaderTest {
         return api;
     }
 
-    private static ApiDefinition.PathParam pathParam(String name, String type) {
-        var param = new ApiDefinition.PathParam();
-        param.name = name;
-        param.type = type;
-        return param;
-    }
+    @Test
+    @SuppressWarnings("unchecked")
+    void testListApiAppServicesIncludesInputAndOutputSchemas() {
+        var loader = new InternalApiToolLoader(new FakeApiDefinitionService(buildApi()));
 
-    private static ApiDefinitionType bean(String name, ApiDefinitionType.Field... fields) {
-        var type = new ApiDefinitionType();
-        type.name = name;
-        type.type = "bean";
-        type.fields = List.of(fields);
-        return type;
-    }
+        var services = loader.listApiAppServices("test-app");
 
-    private static ApiDefinitionType.Field field(String name, String type, boolean notNull) {
-        var field = new ApiDefinitionType.Field();
-        field.name = name;
-        field.type = type;
-        field.constraints.notNull = notNull;
-        return field;
+        assertEquals(1, services.size());
+        var operation = services.getFirst().operations().getFirst();
+        assertEquals("test_app_UserService_getUser", operation.toolName());
+        assertEquals("GetUserRequest", operation.requestType());
+        assertEquals("UserResponse", operation.responseType());
+
+        var inputSchema = JsonUtil.toMap(operation.inputSchema());
+        var inputProperties = (Map<String, Object>) inputSchema.get("properties");
+        assertTrue(inputProperties.containsKey("tenant_id"));
+        assertTrue(inputProperties.containsKey("active"));
+        assertTrue(((List<String>) inputSchema.get("required")).contains("tenant_id"));
+        assertTrue(((List<String>) inputSchema.get("required")).contains("active"));
+
+        var outputSchema = JsonUtil.toMap(operation.outputSchema());
+        var outputProperties = (Map<String, Object>) outputSchema.get("properties");
+        assertTrue(outputProperties.containsKey("id"));
+        var profile = (Map<String, Object>) outputProperties.get("profile");
+        assertNotNull(((Map<String, Object>) profile.get("properties")).get("name"));
     }
 
     private static final class FakeApiDefinitionService extends ApiDefinitionService {

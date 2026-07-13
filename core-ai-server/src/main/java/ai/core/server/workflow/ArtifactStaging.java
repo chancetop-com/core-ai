@@ -32,9 +32,6 @@ public final class ArtifactStaging {
     // bare selector form (CODE input map values): nodes.<id>.artifacts(.token)*
     private static final Pattern SELECTOR_REFERENCE = Pattern.compile("nodes\\.([A-Za-z_][A-Za-z0-9_]*)\\.artifacts((?:\\.[A-Za-z0-9_]+)*)");
 
-    private ArtifactStaging() {
-    }
-
     /** The deterministic in-sandbox path an upstream node's artifact is staged at. */
     public static String pathOf(String srcNodeId, String fileName) {
         return STAGING_ROOT + "/" + srcNodeId + "/" + sanitizeFileName(fileName);
@@ -94,12 +91,6 @@ public final class ArtifactStaging {
         return groups;
     }
 
-    public record ReferencedFiles(String nodeId, List<ArtifactRef> artifacts) {
-        public ReferencedFiles {
-            artifacts = artifacts == null ? List.of() : List.copyOf(artifacts);
-        }
-    }
-
     private static void collect(String nodeId, String suffix, VariablePool pool, Map<String, StagedFile> out) {
         for (ArtifactRef ref : referencedRefs(nodeId, suffix, pool)) {
             add(nodeId, ref, out);
@@ -149,6 +140,15 @@ public final class ArtifactStaging {
             return Integer.parseInt(token);
         } catch (NumberFormatException e) {
             return -1;
+        }
+    }
+
+    private ArtifactStaging() {
+    }
+
+    public record ReferencedFiles(String nodeId, List<ArtifactRef> artifacts) {
+        public ReferencedFiles {
+            artifacts = artifacts == null ? List.of() : List.copyOf(artifacts);
         }
     }
 }

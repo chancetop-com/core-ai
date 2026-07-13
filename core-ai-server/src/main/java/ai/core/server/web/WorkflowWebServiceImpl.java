@@ -68,6 +68,130 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     private static final long SYNC_POLL_INTERVAL_MS = 400;
     private static final int EXPLORE_DEFAULT_LIMIT = 24;
 
+    private static UnresolvedReferenceView toUnresolvedView(WorkflowPortService.UnresolvedReference ref) {
+        var view = new UnresolvedReferenceView();
+        view.nodeId = ref.nodeId();
+        view.nodeType = ref.nodeType();
+        view.refType = ref.refType();
+        view.refId = ref.refId();
+        view.message = ref.message();
+        return view;
+    }
+
+    private static WorkflowView toView(WorkflowDefinition definition) {
+        return toView(definition, null);
+    }
+
+    private static WorkflowView toView(WorkflowDefinition definition, String userName) {
+        var view = new WorkflowView();
+        view.id = definition.id;
+        view.userId = definition.userId;
+        view.userName = userName;
+        view.name = definition.name;
+        view.mode = definition.mode != null ? definition.mode.name() : null;
+        var status = WorkflowDefinitionService.statusOf(definition);
+        var visibility = WorkflowDefinitionService.visibilityOf(definition);
+        view.visibility = visibility.name();
+        view.status = status.name();
+        if ("ACTIVE".equals(view.status)) {
+            view.status = visibility == WorkflowVisibility.PUBLIC && definition.publishedVersionId != null ? "PUBLIC" : "PRIVATE";
+        }
+        view.publishedVersion = definition.publishedVersion;
+        view.publishedVersionId = definition.publishedVersionId;
+        view.draftGraph = definition.draftGraph;
+        return view;
+    }
+
+    private static WorkflowVersionView toVersionView(WorkflowPublishedVersion version, String currentPublicVersionId, boolean publicActive) {
+        var view = new WorkflowVersionView();
+        view.id = version.id;
+        view.workflowId = version.workflowId;
+        view.version = version.version;
+        view.preview = version.preview;
+        view.status = version.status != null ? version.status.name() : "ACTIVE";
+        view.sha256 = version.sha256;
+        view.publishedBy = version.publishedBy;
+        view.publishedAt = version.publishedAt;
+        view.currentPublic = publicActive && version.id.equals(currentPublicVersionId);
+        return view;
+    }
+
+    private static WorkflowRunView toRunView(WorkflowRun run) {
+        var view = new WorkflowRunView();
+        view.id = run.id;
+        view.workflowId = run.workflowId;
+        view.status = run.status != null ? run.status.name() : null;
+        view.visibility = WorkflowRunService.visibilityOf(run.visibility).name();
+        view.input = run.input;
+        view.output = run.output;
+        view.artifacts = toArtifactViews(run.artifacts);
+        view.error = run.error;
+        view.startedAt = run.startedAt;
+        view.completedAt = run.completedAt;
+        view.resumedFromRunId = run.resumedFromRunId;
+        view.resumeFromNodeId = run.resumeFromNodeId;
+        view.parentRunId = run.parentRunId;
+        view.parentNodeId = run.parentNodeId;
+        return view;
+    }
+
+    private static WorkflowVisibility runVisibility(CreateRunRequest request) {
+        if (request == null || request.visibility == null || request.visibility.isBlank()) {
+            return WorkflowVisibility.PRIVATE;
+        }
+        var trimmed = request.visibility.trim().toUpperCase();
+        for (var v : WorkflowVisibility.values()) {
+            if (v.name().equals(trimmed)) {
+                return v;
+            }
+        }
+        throw new BadRequestException("invalid run visibility: " + request.visibility);
+    }
+
+    private static NodeRunTraceMetadataView toTraceMetadataView(WorkflowNodeTraceMetadata metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        var view = new NodeRunTraceMetadataView();
+        view.agentId = metadata.agentId;
+        view.agentName = metadata.agentName;
+        view.model = metadata.model;
+        view.multiModalModel = metadata.multiModalModel;
+        view.childTraceId = metadata.childTraceId;
+        view.childStatus = metadata.childStatus;
+        view.tokenUsage = toTokenUsageMap(metadata.tokenUsage);
+        return view;
+    }
+
+    private static Map<String, Long> toTokenUsageMap(TokenUsage usage) {
+        if (usage == null) {
+            return null;
+        }
+        var map = new LinkedHashMap<String, Long>();
+        if (usage.input != null) map.put("input", usage.input);
+        if (usage.output != null) map.put("output", usage.output);
+        return map.isEmpty() ? null : map;
+    }
+
+    private static List<ArtifactView> toArtifactViews(List<ArtifactRef> refs) {
+        if (refs == null || refs.isEmpty()) {
+            return List.of();
+        }
+        return refs.stream().map(WorkflowWebServiceImpl::toArtifactView).toList();
+    }
+
+    private static ArtifactView toArtifactView(ArtifactRef ref) {
+        var view = new ArtifactView();
+        view.fileId = ref.fileId;
+        view.fileName = ref.fileName;
+        view.contentType = ref.contentType;
+        view.size = ref.size;
+        view.url = ref.url;
+        view.title = ref.title;
+        view.description = ref.description;
+        return view;
+    }
+
     @Inject
     WebContext webContext;
 
@@ -293,7 +417,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
             if (latest.status == RunStatus.PAUSED && runService.pendingInputs(latest).isEmpty()) {
                 // WORKFLOW-node waits park the parent run as PAUSED while the child workflow runs; keep sync callers
                 // blocked until the child terminal callback wakes the parent, or until the sync timeout is reached.
-            } else if (latest.status != RunStatus.PENDING && latest.status != RunStatus.RUNNING) {
+                continue;
+            }
+            if (latest.status != RunStatus.PENDING && latest.status != RunStatus.RUNNING) {
                 break;   // terminal: COMPLETED / FAILED / TIMEOUT / CANCELLED
             }
             try {
@@ -316,17 +442,6 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         response.runId = run.id;
         response.status = run.status.name();
         return response;
-    }
-
-    private static WorkflowVisibility runVisibility(CreateRunRequest request) {
-        if (request == null || request.visibility == null || request.visibility.isBlank()) {
-            return WorkflowVisibility.PRIVATE;
-        }
-        try {
-            return WorkflowVisibility.valueOf(request.visibility.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new BadRequestException("invalid run visibility: " + request.visibility);
-        }
     }
 
     @Override
@@ -401,73 +516,6 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         return response;
     }
 
-    private static UnresolvedReferenceView toUnresolvedView(WorkflowPortService.UnresolvedReference ref) {
-        var view = new UnresolvedReferenceView();
-        view.nodeId = ref.nodeId();
-        view.nodeType = ref.nodeType();
-        view.refType = ref.refType();
-        view.refId = ref.refId();
-        view.message = ref.message();
-        return view;
-    }
-
-    private static WorkflowView toView(WorkflowDefinition definition) {
-        return toView(definition, null);
-    }
-
-    private static WorkflowView toView(WorkflowDefinition definition, String userName) {
-        var view = new WorkflowView();
-        view.id = definition.id;
-        view.userId = definition.userId;
-        view.userName = userName;
-        view.name = definition.name;
-        view.mode = definition.mode != null ? definition.mode.name() : null;
-        var status = WorkflowDefinitionService.statusOf(definition);
-        var visibility = WorkflowDefinitionService.visibilityOf(definition);
-        view.visibility = visibility.name();
-        view.status = status.name();
-        if ("ACTIVE".equals(view.status)) {
-            view.status = visibility == WorkflowVisibility.PUBLIC && definition.publishedVersionId != null ? "PUBLIC" : "PRIVATE";
-        }
-        view.publishedVersion = definition.publishedVersion;
-        view.publishedVersionId = definition.publishedVersionId;
-        view.draftGraph = definition.draftGraph;
-        return view;
-    }
-
-    private static WorkflowVersionView toVersionView(WorkflowPublishedVersion version, String currentPublicVersionId, boolean publicActive) {
-        var view = new WorkflowVersionView();
-        view.id = version.id;
-        view.workflowId = version.workflowId;
-        view.version = version.version;
-        view.preview = version.preview;
-        view.status = version.status != null ? version.status.name() : "ACTIVE";
-        view.sha256 = version.sha256;
-        view.publishedBy = version.publishedBy;
-        view.publishedAt = version.publishedAt;
-        view.currentPublic = publicActive && version.id.equals(currentPublicVersionId);
-        return view;
-    }
-
-    private static WorkflowRunView toRunView(WorkflowRun run) {
-        var view = new WorkflowRunView();
-        view.id = run.id;
-        view.workflowId = run.workflowId;
-        view.status = run.status != null ? run.status.name() : null;
-        view.visibility = WorkflowRunService.visibilityOf(run.visibility).name();
-        view.input = run.input;
-        view.output = run.output;
-        view.artifacts = toArtifactViews(run.artifacts);
-        view.error = run.error;
-        view.startedAt = run.startedAt;
-        view.completedAt = run.completedAt;
-        view.resumedFromRunId = run.resumedFromRunId;
-        view.resumeFromNodeId = run.resumeFromNodeId;
-        view.parentRunId = run.parentRunId;
-        view.parentNodeId = run.parentNodeId;
-        return view;
-    }
-
     private NodeRunView toNodeRunView(WorkflowNodeRun nodeRun) {
         var view = new NodeRunView();
         view.nodeId = nodeRun.nodeId;
@@ -488,9 +536,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
                 runCollection.get(nodeRun.childRunId).ifPresent(child -> view.childWorkflowId = child.workflowId);
             } else {
                 view.childRunType = "AGENT";
-                if (view.traceId == null || view.traceId.isBlank()) {
-                    agentRunCollection.get(nodeRun.childRunId).ifPresent(child -> view.traceId = child.traceId);
-                }
+                resolveAgentTraceId(view, nodeRun.childRunId);
             }
         }
         view.spanId = nodeRun.spanId;
@@ -499,47 +545,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         return view;
     }
 
-    private static NodeRunTraceMetadataView toTraceMetadataView(WorkflowNodeTraceMetadata metadata) {
-        if (metadata == null) {
-            return null;
+    private void resolveAgentTraceId(NodeRunView view, String childRunId) {
+        if (view.traceId == null || view.traceId.isBlank()) {
+            agentRunCollection.get(childRunId).ifPresent(child -> view.traceId = child.traceId);
         }
-        var view = new NodeRunTraceMetadataView();
-        view.agentId = metadata.agentId;
-        view.agentName = metadata.agentName;
-        view.model = metadata.model;
-        view.multiModalModel = metadata.multiModalModel;
-        view.childTraceId = metadata.childTraceId;
-        view.childStatus = metadata.childStatus;
-        view.tokenUsage = toTokenUsageMap(metadata.tokenUsage);
-        return view;
-    }
-
-    private static Map<String, Long> toTokenUsageMap(TokenUsage usage) {
-        if (usage == null) {
-            return null;
-        }
-        var map = new LinkedHashMap<String, Long>();
-        if (usage.input != null) map.put("input", usage.input);
-        if (usage.output != null) map.put("output", usage.output);
-        return map.isEmpty() ? null : map;
-    }
-
-    private static List<ArtifactView> toArtifactViews(List<ArtifactRef> refs) {
-        if (refs == null || refs.isEmpty()) {
-            return List.of();
-        }
-        return refs.stream().map(WorkflowWebServiceImpl::toArtifactView).toList();
-    }
-
-    private static ArtifactView toArtifactView(ArtifactRef ref) {
-        var view = new ArtifactView();
-        view.fileId = ref.fileId;
-        view.fileName = ref.fileName;
-        view.contentType = ref.contentType;
-        view.size = ref.size;
-        view.url = ref.url;
-        view.title = ref.title;
-        view.description = ref.description;
-        return view;
     }
 }

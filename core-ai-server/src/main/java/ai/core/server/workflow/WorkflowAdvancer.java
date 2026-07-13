@@ -44,12 +44,9 @@ public final class WorkflowAdvancer {
     // finishes. Bounding the wait makes the driver re-fold periodically so the approved branch runs concurrently.
     private static final long PARKED_HUMAN_POLL_MILLIS = 500;
 
-    private WorkflowAdvancer() {
-    }
-
     public static RunStatus drive(WorkflowGraph graph, WorkflowRun run, WorkflowJournal journal,
-                                  NodeExecutor executor, Executor pool, BooleanSupplier cancelled) {
-        return drive(graph, run, journal, executor, pool, cancelled, () -> true);
+                                  ExecCtx exec, BooleanSupplier cancelled) {
+        return drive(graph, run, journal, exec, cancelled, () -> true);
     }
 
     /**
@@ -60,7 +57,9 @@ public final class WorkflowAdvancer {
      *                  checks the same flag and skips finalization so it can't overwrite the new owner.
      */
     public static RunStatus drive(WorkflowGraph graph, WorkflowRun run, WorkflowJournal journal,
-                                  NodeExecutor executor, Executor pool, BooleanSupplier cancelled, BooleanSupplier leaseHeld) {
+                                  ExecCtx exec, BooleanSupplier cancelled, BooleanSupplier leaseHeld) {
+        NodeExecutor executor = exec.executor();
+        Executor pool = exec.pool();
         var inflight = new ConcurrentHashMap<String, CompletableFuture<Void>>();
         try {
             while (true) {
@@ -85,7 +84,7 @@ public final class WorkflowAdvancer {
                         continue;   // a concurrent dispatch already owns it (unique index)
                     }
                     progressed = true;
-                    dispatch(graph, run, node, journal, executor, pool, inflight, leaseHeld);
+                    dispatch(new DispatchCtx(graph, run, node, journal, executor, pool, inflight, leaseHeld));
                 }
                 if (progressed) {
                     continue;   // re-plan immediately on any new ready/skip
@@ -100,26 +99,37 @@ public final class WorkflowAdvancer {
                     }
                     continue;
                 }
-                // inflight is empty -> the journal is now stable (recordOutcome happens-before each inflight
-                // remove). Re-plan from a fresh read: a node may have completed between the plan above and this
-                // check, so classifying from the stale frontier could wrongly report FAILED. finalState AND the
-                // waiting check must come from ONE snapshot so a concurrent settle can't make them disagree.
-                List<WorkflowNodeRun> finalRuns = journal.nodeRuns(run.id);
-                RunState finalState = RunStateAssembler.toRunState(finalRuns, ROOT_SCOPE_KEY);
-                Frontier finalFrontier = Planner.plan(graph, finalState);
-                if (finalFrontier.hasProgress()) {
-                    continue;   // a just-missed completion opened new work
+                RunStatus finalStatus = finalizeRun(graph, run, journal);
+                if (finalStatus != null) {
+                    return finalStatus;
                 }
-                return classify(finalState, finalFrontier, hasWaitingNode(finalRuns));
             }
         } finally {
             awaitAll(inflight);   // drain in-flight tasks on cancel / exception / normal exit before returning
         }
     }
 
-    private static void dispatch(WorkflowGraph graph, WorkflowRun run, WorkflowNode node, WorkflowJournal journal,
-                                 NodeExecutor executor, Executor pool, Map<String, CompletableFuture<Void>> inflight,
-                                 BooleanSupplier leaseHeld) {
+    // Returns null if replanning is needed (just-missed completion opened new work),
+    // otherwise the final run status from classify().
+    private static RunStatus finalizeRun(WorkflowGraph graph, WorkflowRun run, WorkflowJournal journal) {
+        List<WorkflowNodeRun> finalRuns = journal.nodeRuns(run.id);
+        RunState finalState = RunStateAssembler.toRunState(finalRuns, ROOT_SCOPE_KEY);
+        Frontier finalFrontier = Planner.plan(graph, finalState);
+        if (finalFrontier.hasProgress()) {
+            return null;   // a just-missed completion opened new work
+        }
+        return classify(finalState, finalFrontier, hasWaitingNode(finalRuns));
+    }
+
+    private static void dispatch(DispatchCtx dctx) {
+        WorkflowGraph graph = dctx.graph();
+        WorkflowRun run = dctx.run();
+        WorkflowNode node = dctx.node();
+        WorkflowJournal journal = dctx.journal();
+        NodeExecutor executor = dctx.executor();
+        Executor pool = dctx.pool();
+        Map<String, CompletableFuture<Void>> inflight = dctx.inflight();
+        BooleanSupplier leaseHeld = dctx.leaseHeld();
         var done = new CompletableFuture<Void>();
         inflight.put(node.id(), done);
         pool.execute(() -> {
@@ -240,5 +250,16 @@ public final class WorkflowAdvancer {
         if (futures.length > 0) {
             CompletableFuture.allOf(futures).join();
         }
+    }
+
+    private WorkflowAdvancer() {
+    }
+
+    public record ExecCtx(NodeExecutor executor, Executor pool) {
+    }
+
+    private record DispatchCtx(WorkflowGraph graph, WorkflowRun run, WorkflowNode node, WorkflowJournal journal,
+                                NodeExecutor executor, Executor pool, Map<String, CompletableFuture<Void>> inflight,
+                                BooleanSupplier leaseHeld) {
     }
 }

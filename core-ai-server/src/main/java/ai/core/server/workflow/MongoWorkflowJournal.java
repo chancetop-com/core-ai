@@ -22,6 +22,28 @@ import java.util.List;
 public class MongoWorkflowJournal implements WorkflowJournal {
     private static final int DUPLICATE_KEY = 11000;
 
+    private static WorkflowNodeRun newNodeRun(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, NodeRunStatus status) {
+        var now = ZonedDateTime.now();
+        var nodeRun = new WorkflowNodeRun();
+        nodeRun.id = nodeRunId(run.id, node.id(), scopePath);
+        nodeRun.runId = run.id;
+        nodeRun.workflowId = run.workflowId;
+        nodeRun.nodeId = node.id();
+        nodeRun.nodeType = node.type();
+        nodeRun.scopePath = scopePath.isEmpty() ? null : List.copyOf(scopePath);
+        nodeRun.scopePathKey = ScopeFrame.canonicalKey(scopePath);
+        nodeRun.status = status;
+        nodeRun.attempt = 1;
+        nodeRun.preview = run.preview;
+        nodeRun.startedAt = now;
+        nodeRun.createdAt = now;
+        return nodeRun;
+    }
+
+    private static String nodeRunId(String runId, String nodeId, List<ScopeFrame> scopePath) {
+        return runId + "|" + nodeId + "|" + ScopeFrame.canonicalKey(scopePath);
+    }
+
     private final MongoCollection<WorkflowNodeRun> collection;
 
     public MongoWorkflowJournal(MongoCollection<WorkflowNodeRun> collection) {
@@ -145,27 +167,5 @@ public class MongoWorkflowJournal implements WorkflowJournal {
                 throw e;
             }
         }
-    }
-
-    private static WorkflowNodeRun newNodeRun(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, NodeRunStatus status) {
-        var now = ZonedDateTime.now();
-        var nodeRun = new WorkflowNodeRun();
-        nodeRun.id = nodeRunId(run.id, node.id(), scopePath);
-        nodeRun.runId = run.id;
-        nodeRun.workflowId = run.workflowId;
-        nodeRun.nodeId = node.id();
-        nodeRun.nodeType = node.type();
-        nodeRun.scopePath = scopePath.isEmpty() ? null : List.copyOf(scopePath);
-        nodeRun.scopePathKey = ScopeFrame.canonicalKey(scopePath);
-        nodeRun.status = status;
-        nodeRun.attempt = 1;
-        nodeRun.preview = run.preview;
-        nodeRun.startedAt = now;
-        nodeRun.createdAt = now;
-        return nodeRun;
-    }
-
-    private static String nodeRunId(String runId, String nodeId, List<ScopeFrame> scopePath) {
-        return runId + "|" + nodeId + "|" + ScopeFrame.canonicalKey(scopePath);
     }
 }

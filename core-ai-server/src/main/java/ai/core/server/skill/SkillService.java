@@ -1,7 +1,6 @@
 package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
-import ai.core.server.domain.SkillRepoConfig;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.server.util.IdLists;
@@ -29,8 +28,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * @author stephen
@@ -38,7 +35,6 @@ import java.util.regex.Pattern;
 public class SkillService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillService.class);
     private static final int MAX_SKILL_FILE_SIZE = 10 * 1024 * 1024;
-    private static final Pattern REPO_OWNER_PATTERN = Pattern.compile("https?://[^/]+/([^/]+)/");
     private static final String SEARCH_IN_NAME_DESCRIPTION = "name_description";
     private static final String SEARCH_IN_NAME = "name";
     private static final String SEARCH_IN_METADATA = "metadata";
@@ -46,6 +42,16 @@ public class SkillService {
 
     @Inject
     MongoCollection<SkillDefinition> skillCollection;
+
+    private final SkillRepoManager repoManager;
+
+    public SkillService() {
+        this.repoManager = new SkillRepoManager(skillCollection);
+    }
+
+    public String extractRepoOwner(String repoUrl) {
+        return repoManager.extractRepoOwner(repoUrl);
+    }
 
     public SkillDefinition upload(String userId, String namespace, byte[] skillFileBytes, Map<String, byte[]> resources) {
         String content = new String(skillFileBytes, StandardCharsets.UTF_8);
@@ -85,7 +91,7 @@ public class SkillService {
     }
 
     public List<SkillDefinition> registerFromRepo(String userId, String repoUrl, String branch, String skillPath) {
-        String namespace = extractRepoOwner(repoUrl);
+        String namespace = repoManager.extractRepoOwner(repoUrl);
         if (namespace == null) {
             throw new RuntimeException("cannot extract owner from repo URL: " + repoUrl);
         }
@@ -93,7 +99,7 @@ public class SkillService {
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory("skill-repo-");
-            cloneRepo(repoUrl, branch, tempDir);
+            repoManager.cloneRepo(repoUrl, branch, tempDir);
 
             Path scanDir = skillPath != null && !skillPath.isBlank()
                 ? tempDir.resolve(skillPath)
@@ -104,7 +110,7 @@ public class SkillService {
 
             var results = new ArrayList<SkillDefinition>();
             for (var skill : skills) {
-                var entity = registerOrUpdate(userId, namespace, skill, repoUrl, branch, skillPath);
+                var entity = repoManager.registerOrUpdate(userId, namespace, skill, repoUrl, branch, skillPath);
                 results.add(entity);
             }
             LOGGER.info("registered {} skills from repo {}", results.size(), repoUrl);
@@ -112,10 +118,11 @@ public class SkillService {
         } catch (IOException e) {
             throw new RuntimeException("failed to clone repo: " + repoUrl, e);
         } finally {
-            deleteTempDir(tempDir);
+            repoManager.deleteTempDir(tempDir);
         }
     }
 
+    @SuppressWarnings("checkstyle:ParameterNumber")
     public List<SkillDefinition> list(String namespace, String sourceType, String userId, String query, String searchIn, Integer offset, Integer limit) {
         var indexedFilter = indexedFilter(namespace, sourceType);
         if (!hasInMemoryFilters(userId, query)) {
@@ -181,7 +188,7 @@ public class SkillService {
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory("skill-repo-sync-");
-            cloneRepo(config.repoUrl, config.branch, tempDir);
+            repoManager.cloneRepo(config.repoUrl, config.branch, tempDir);
 
             Path scanDir = config.skillPath != null && !config.skillPath.isBlank()
                 ? tempDir.resolve(config.skillPath)
@@ -195,8 +202,8 @@ public class SkillService {
                     Path skillDir = skill.getSkillDir() != null
                         ? Path.of(skill.getSkillDir())
                         : Path.of(skill.getPath()).getParent();
-                    entity.content = readSkillMdFromDir(skillDir);
-                    entity.resources = readResourcesFromDir(skillDir, skill.getResources());
+                    entity.content = repoManager.readSkillMdFromDir(skillDir);
+                    entity.resources = repoManager.readResourcesFromDir(skillDir, skill.getResources());
                     entity.description = skill.getDescription();
                     entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
                     entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
@@ -211,7 +218,7 @@ public class SkillService {
         } catch (IOException e) {
             throw new RuntimeException("failed to sync repo: " + config.repoUrl, e);
         } finally {
-            deleteTempDir(tempDir);
+            repoManager.deleteTempDir(tempDir);
         }
     }
 
@@ -363,45 +370,6 @@ public class SkillService {
             .build();
     }
 
-    private SkillDefinition registerOrUpdate(String userId, String namespace, SkillMetadata skill, String repoUrl, String branch, String skillPath) {
-        String qualifiedName = namespace + "/" + skill.getName();
-        Path skillDir = skill.getSkillDir() != null
-            ? Path.of(skill.getSkillDir())
-            : Path.of(skill.getPath()).getParent();
-
-        var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
-        var entity = existing.orElseGet(SkillDefinition::new);
-        if (entity.id == null) {
-            entity.id = new ObjectId().toHexString();
-            entity.createdAt = ZonedDateTime.now();
-        }
-        entity.namespace = namespace;
-        entity.name = skill.getName();
-        entity.qualifiedName = qualifiedName;
-        entity.description = skill.getDescription();
-        entity.sourceType = SkillSourceType.REPO;
-        entity.content = readSkillMdFromDir(skillDir);
-        entity.resources = readResourcesFromDir(skillDir, skill.getResources());
-        entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
-        entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
-        entity.userId = userId;
-        entity.updatedAt = ZonedDateTime.now();
-
-        var repoConfig = new SkillRepoConfig();
-        repoConfig.repoUrl = repoUrl;
-        repoConfig.branch = branch != null ? branch : "main";
-        repoConfig.skillPath = skillPath;
-        repoConfig.lastSyncedAt = ZonedDateTime.now();
-        entity.repoConfig = repoConfig;
-
-        if (existing.isPresent()) {
-            skillCollection.replace(entity);
-        } else {
-            skillCollection.insert(entity);
-        }
-        return entity;
-    }
-
     private List<SkillResource> toResources(Map<String, byte[]> resources) {
         if (resources == null || resources.isEmpty()) return null;
         var list = new ArrayList<SkillResource>(resources.size());
@@ -412,66 +380,5 @@ public class SkillService {
             list.add(r);
         }
         return list;
-    }
-
-    private String readSkillMdFromDir(Path skillDir) {
-        try {
-            return Files.readString(skillDir.resolve("SKILL.md"), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new RuntimeException("failed to read SKILL.md from " + skillDir, e);
-        }
-    }
-
-    private List<SkillResource> readResourcesFromDir(Path skillDir, List<String> paths) {
-        if (paths == null || paths.isEmpty()) return null;
-        var list = new ArrayList<SkillResource>(paths.size());
-        for (var relPath : paths) {
-            try {
-                var bytes = Files.readAllBytes(skillDir.resolve(relPath));
-                var r = new SkillResource();
-                r.path = relPath;
-                r.content = new String(bytes, StandardCharsets.UTF_8);
-                list.add(r);
-            } catch (IOException e) {
-                LOGGER.warn("failed to read resource {} in {}", relPath, skillDir, e);
-            }
-        }
-        return list.isEmpty() ? null : list;
-    }
-
-    String extractRepoOwner(String repoUrl) {
-        Matcher matcher = REPO_OWNER_PATTERN.matcher(repoUrl);
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-        return null;
-    }
-
-    private void cloneRepo(String repoUrl, String branch, Path targetDir) throws IOException {
-        String branchArg = branch != null ? branch : "main";
-        var process = new ProcessBuilder("git", "clone", "--depth", "1", "--branch", branchArg, repoUrl, targetDir.toString())
-            .redirectErrorStream(true)
-            .start();
-        try {
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                throw new IOException("git clone failed (exit=" + exitCode + "): " + output);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("git clone interrupted", e);
-        }
-    }
-
-    @SuppressWarnings("ResultOfMethodCallIgnored")
-    private void deleteTempDir(Path dir) {
-        if (dir == null) return;
-        try (var walk = Files.walk(dir)) {
-            walk.sorted(java.util.Comparator.reverseOrder())
-                .forEach(path -> path.toFile().delete());
-        } catch (IOException e) {
-            LOGGER.warn("failed to delete temp dir: {}", dir, e);
-        }
     }
 }

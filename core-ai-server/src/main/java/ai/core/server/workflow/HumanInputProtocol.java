@@ -75,7 +75,7 @@ public final class HumanInputProtocol {
         try {
             return JSON.fromJSON(Map.class, input);
         } catch (RuntimeException e) {
-            throw new BadRequestException("input must be a JSON object string");
+            throw new BadRequestException("input must be a JSON object string", "INVALID_INPUT", e);
         }
     }
 

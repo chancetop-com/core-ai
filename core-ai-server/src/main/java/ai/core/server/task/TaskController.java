@@ -22,6 +22,20 @@ import java.util.Map;
 public class TaskController {
     private static final ObjectMapper MAPPER = JsonUtil.OBJECT_MAPPER;
 
+    private static String extractType(String taskId) {
+        int idx = taskId.lastIndexOf(':');
+        if (idx <= 0) return taskId;
+        return taskId.substring(0, idx);
+    }
+
+    private static int parseInt(String s, int defaultVal) {
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return defaultVal;
+        }
+    }
+
     @Inject
     TaskRunner taskRunner;
 
@@ -70,7 +84,7 @@ public class TaskController {
         }
         Map<String, String> body;
         try {
-            body = MAPPER.readValue(rawBody, new TypeReference<>() {});
+            body = MAPPER.readValue(rawBody, new TypeReference<>() { });
         } catch (Exception e) {
             return Response.text("invalid request body: " + e.getMessage()).status(HTTPStatus.BAD_REQUEST);
         }
@@ -95,12 +109,6 @@ public class TaskController {
         return jsonResponse(Map.of("task_accepted", true, "task_id", taskId));
     }
 
-    private static String extractType(String taskId) {
-        int idx = taskId.lastIndexOf(':');
-        if (idx <= 0) return taskId;
-        return taskId.substring(0, idx);
-    }
-
     private Map<String, Object> toMap(BackgroundTask task) {
         var map = new LinkedHashMap<String, Object>();
         map.put("id", task.id);
@@ -122,14 +130,6 @@ public class TaskController {
             return Response.bytes(json).contentType(ContentType.APPLICATION_JSON);
         } catch (Exception e) {
             return Response.text("serialization error").status(HTTPStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    private static int parseInt(String s, int defaultVal) {
-        try {
-            return Integer.parseInt(s);
-        } catch (NumberFormatException e) {
-            return defaultVal;
         }
     }
 }

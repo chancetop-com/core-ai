@@ -2,6 +2,8 @@ package ai.core.server;
 
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
+import ai.core.server.blob.MinioObjectStorageService;
+import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.TokenResolver;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
@@ -11,6 +13,7 @@ import ai.core.server.sandbox.agentsandbox.AgentSandboxProviderConfig;
 import ai.core.server.sandbox.docker.DockerSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
+import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import core.framework.module.Module;
 
 import java.nio.file.Files;
@@ -55,7 +58,29 @@ class SandboxModule extends Module {
         }
         sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox);
         bind(sandboxService);
+
+        var objectStorage = (ObjectStorageService) context.beanFactory.bean(ObjectStorageService.class, null);
+        sandboxService.setStorageService(objectStorage);
+
+        configureSandboxSnapshot(objectStorage);
+
         onShutdown(sandboxService::shutdown);
+    }
+
+    private void configureSandboxSnapshot(ObjectStorageService objectStorage) {
+
+        var snapshotEnabled = "true".equalsIgnoreCase(property("sys.sandbox.snapshot.enabled").orElse("false"));
+        var snapshotContainer = property("azure.blob.snapshot.container").orElse("sandbox-snapshots");
+
+        if (objectStorage instanceof MinioObjectStorageService) {
+            var minioSnapshotBucket = property("storage.minio.snapshot.bucket").orElse("sandbox-snapshots");
+            snapshotContainer = minioSnapshotBucket;
+        }
+        var snapshotService = bean(SandboxSnapshotService.class);
+        snapshotService.configure(objectStorage, snapshotContainer, snapshotEnabled && objectStorage != null);
+        if (sandboxService != null) {
+            sandboxService.setSnapshotService(snapshotService);
+        }
     }
 
     // Sandbox lifetime in seconds, overridable via SYS_SANDBOX_TIMEOUT; defaults to createDefaultConfig (3900s).

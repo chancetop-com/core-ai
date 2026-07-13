@@ -20,6 +20,10 @@ import java.util.List;
  * @author Xander
  */
 public class ApiToolExecutor implements NodeExecutor {
+    private static String str(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
     private final ToolRegistryService toolRegistry;
 
     public ApiToolExecutor(ToolRegistryService toolRegistry) {
@@ -59,9 +63,5 @@ public class ApiToolExecutor implements NodeExecutor {
             return "{}";
         }
         return ctx.pool().renderJson(template);
-    }
-
-    private static String str(Object value) {
-        return value == null ? "" : String.valueOf(value);
     }
 }

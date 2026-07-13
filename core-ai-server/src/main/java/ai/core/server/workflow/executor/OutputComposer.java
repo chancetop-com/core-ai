@@ -36,9 +36,6 @@ import java.util.regex.Pattern;
 public final class OutputComposer {
     private static final Pattern ARTIFACTS_SELECTOR = Pattern.compile("(?:\\{\\{\\s*)?nodes\\.([A-Za-z_][A-Za-z0-9_]*)\\.artifacts(?:\\s*}})?");
 
-    private OutputComposer() {
-    }
-
     public static String compose(NodeContext ctx) {
         Object template = ctx.node().config().get("output");
         if (template instanceof String text && !text.isBlank()) {
@@ -47,7 +44,7 @@ public final class OutputComposer {
         // gather the raw output of each COMPLETED immediate predecessor (resolve() returns empty for skipped ones)
         var completed = new LinkedHashMap<String, String>();
         for (String predId : predecessorIds(ctx)) {
-            ctx.pool().resolve("nodes." + predId + ".output").ifPresent(value_ -> completed.put(predId, String.valueOf(value_)));
+            ctx.pool().resolve("nodes." + predId + ".output").ifPresent(val -> completed.put(predId, String.valueOf(val)));
         }
         if (completed.isEmpty()) {
             return "{}";   // a fired node always has >=1 completed predecessor; defensive only
@@ -173,9 +170,6 @@ public final class OutputComposer {
         return ranks;
     }
 
-    private record ArtifactGroup(String nodeId, List<ArtifactRef> artifacts, int sequence) {
-    }
-
     // "nodes.<id>.artifacts" (with optional surrounding {{ }} the editor may emit) -> the source node id.
     private static Optional<String> artifactsNodeId(String selector) {
         Matcher matcher = ARTIFACTS_SELECTOR.matcher(selector.trim());
@@ -193,5 +187,11 @@ public final class OutputComposer {
         } catch (RuntimeException e) {
             return output;
         }
+    }
+
+    private OutputComposer() {
+    }
+
+    private record ArtifactGroup(String nodeId, List<ArtifactRef> artifacts, int sequence) {
     }
 }

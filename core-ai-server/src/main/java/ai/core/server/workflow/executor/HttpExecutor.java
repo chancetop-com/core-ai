@@ -32,6 +32,76 @@ import java.util.Map;
 public class HttpExecutor implements NodeExecutor {
     // todo: per-node timeout + custom body content-type are deferred; one shared client with sane defaults for now.
     private static final int MAX_RESPONSE_BYTES = 10 * 1024 * 1024;   // bound what a response can push into the pool
+
+    // Reject non-http(s) schemes and hosts that resolve to loopback / private / link-local / any-local / multicast
+    // addresses (blocks SSRF to cloud metadata 169.254.169.254, localhost admin ports, internal services).
+    // Best-effort: a small TOCTOU window remains vs DNS rebinding; full defense needs connection-time pinning.
+    private static String rejectUnsafeUrl(String url) {
+        URI uri;
+        try {
+            uri = URI.create(url);
+        } catch (IllegalArgumentException e) {
+            return "malformed url";
+        }
+        String scheme = uri.getScheme();
+        if (scheme == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+            return "only http/https is allowed";
+        }
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            return "url has no host";
+        }
+        try {
+            for (InetAddress address : InetAddress.getAllByName(host)) {
+                if (isBlocked(address)) {
+                    return "resolves to a non-routable address (" + address.getHostAddress() + ")";
+                }
+            }
+        } catch (UnknownHostException e) {
+            return "cannot resolve host " + host;
+        }
+        return null;
+    }
+
+    private static boolean isBlocked(InetAddress address) {
+        return address.isLoopbackAddress() || address.isAnyLocalAddress() || address.isLinkLocalAddress()
+            || address.isSiteLocalAddress() || address.isMulticastAddress();
+    }
+
+    private static boolean idempotent(HTTPMethod method) {
+        return method == HTTPMethod.GET || method == HTTPMethod.HEAD;
+    }
+
+    private static String stripCrlf(String value) {
+        return value == null ? "" : value.replace("\r", "").replace("\n", "");
+    }
+
+    private static Object parseBody(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        try {
+            return JSON.fromJSON(Map.class, text);
+        } catch (RuntimeException e) {
+            return text;   // not a JSON object (text / array / scalar) -> keep the raw string
+        }
+    }
+
+    private static HTTPMethod method(String value) {
+        if (value == null || value.isBlank()) {
+            return HTTPMethod.GET;
+        }
+        try {
+            return HTTPMethod.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return HTTPMethod.GET;
+        }
+    }
+
+    private static String str(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
     private final HTTPClient httpClient = HTTPClient.builder()
         .connectTimeout(Duration.ofSeconds(10))
         .timeout(Duration.ofSeconds(60))
@@ -82,80 +152,11 @@ public class HttpExecutor implements NodeExecutor {
         }
     }
 
-    // Reject non-http(s) schemes and hosts that resolve to loopback / private / link-local / any-local / multicast
-    // addresses (blocks SSRF to cloud metadata 169.254.169.254, localhost admin ports, internal services).
-    // Best-effort: a small TOCTOU window remains vs DNS rebinding; full defense needs connection-time pinning.
-    private static String rejectUnsafeUrl(String url) {
-        URI uri;
-        try {
-            uri = URI.create(url);
-        } catch (IllegalArgumentException e) {
-            return "malformed url";
-        }
-        String scheme = uri.getScheme();
-        if (scheme == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
-            return "only http/https is allowed";
-        }
-        String host = uri.getHost();
-        if (host == null || host.isBlank()) {
-            return "url has no host";
-        }
-        try {
-            for (InetAddress address : InetAddress.getAllByName(host)) {
-                if (isBlocked(address)) {
-                    return "resolves to a non-routable address (" + address.getHostAddress() + ")";
-                }
-            }
-        } catch (UnknownHostException e) {
-            return "cannot resolve host " + host;
-        }
-        return null;
-    }
-
-    private static boolean isBlocked(InetAddress address) {
-        return address.isLoopbackAddress() || address.isAnyLocalAddress() || address.isLinkLocalAddress()
-            || address.isSiteLocalAddress() || address.isMulticastAddress();
-    }
-
-    private static boolean idempotent(HTTPMethod method) {
-        return method == HTTPMethod.GET || method == HTTPMethod.HEAD;
-    }
-
-    private static String stripCrlf(String value) {
-        return value == null ? "" : value.replace("\r", "").replace("\n", "");
-    }
-
     private String toOutput(HTTPResponse response) {
         var out = new LinkedHashMap<String, Object>();
         out.put("status", response.statusCode);
         out.put("headers", response.headers);
         out.put("body", parseBody(response.text()));   // parse JSON so downstream can navigate into it
         return JSON.toJSON(out);
-    }
-
-    private static Object parseBody(String text) {
-        if (text == null || text.isBlank()) {
-            return "";
-        }
-        try {
-            return JSON.fromJSON(Map.class, text);
-        } catch (RuntimeException e) {
-            return text;   // not a JSON object (text / array / scalar) -> keep the raw string
-        }
-    }
-
-    private static HTTPMethod method(String value) {
-        if (value == null || value.isBlank()) {
-            return HTTPMethod.GET;
-        }
-        try {
-            return HTTPMethod.valueOf(value.trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            return HTTPMethod.GET;
-        }
-    }
-
-    private static String str(Object value) {
-        return value == null ? "" : String.valueOf(value);
     }
 }

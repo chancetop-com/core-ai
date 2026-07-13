@@ -85,7 +85,7 @@ class IfElseExecutorTest {
             NodeType.END, new EndExecutor()));
         var journal = new InMemoryWorkflowJournal();
 
-        RunStatus status = WorkflowAdvancer.drive(graph, runWithKind("a"), journal, registry, Runnable::run, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, runWithKind("a"), journal, new WorkflowAdvancer.ExecCtx(registry, Runnable::run), () -> false);
 
         assertEquals(RunStatus.COMPLETED, status);
         assertTrue(gateway.started.contains("a"));

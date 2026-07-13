@@ -28,9 +28,8 @@ public class NotificationService {
     @Inject
     NotificationEventPublisher eventPublisher;
 
-    public Notification create(String userId, String agentId, String sessionId,
-                                NotificationCategory category, NotificationType type,
-                                String title, String message) {
+    public Notification create(String userId, NotificationCategory category, NotificationType type,
+                                String title, String message, CreateContext ctx) {
         var notification = new Notification();
         notification.id = new ObjectId().toHexString();
         notification.userId = userId;
@@ -38,8 +37,8 @@ public class NotificationService {
         notification.type = type;
         notification.title = title;
         notification.message = message;
-        notification.agentId = agentId;
-        notification.sessionId = sessionId;
+        notification.agentId = ctx.agentId;
+        notification.sessionId = ctx.sessionId;
         notification.status = NotificationStatus.UNREAD;
         notification.createdAt = ZonedDateTime.now();
         notificationCollection.insert(notification);
@@ -102,5 +101,8 @@ public class NotificationService {
                 Updates.set("status", NotificationStatus.READ),
                 Updates.set("read_at", ZonedDateTime.now())));
         LOGGER.info("notifications marked all read, userId={}, count={}", userId, updated);
+    }
+
+    public record CreateContext(String agentId, String sessionId) {
     }
 }

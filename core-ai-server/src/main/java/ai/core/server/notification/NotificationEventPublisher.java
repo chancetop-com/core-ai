@@ -20,6 +20,19 @@ import java.util.concurrent.ConcurrentHashMap;
 public class NotificationEventPublisher {
     private static final Logger LOGGER = LoggerFactory.getLogger(NotificationEventPublisher.class);
 
+    private static NotificationSseEvent toEvent(Notification n) {
+        var event = new NotificationSseEvent();
+        event.id = n.id;
+        event.category = n.category.name();
+        event.type = n.type.name();
+        event.title = n.title;
+        event.message = n.message;
+        event.agentId = n.agentId;
+        event.sessionId = n.sessionId;
+        event.createdAt = n.createdAt;
+        return event;
+    }
+
     private final Map<String, Channel<NotificationSseEvent>> channels = new ConcurrentHashMap<>();
 
     public void connect(String userId, Channel<NotificationSseEvent> channel) {
@@ -42,18 +55,5 @@ public class NotificationEventPublisher {
         if (channel != null) {
             channel.send(toEvent(notification));
         }
-    }
-
-    private static NotificationSseEvent toEvent(Notification n) {
-        var event = new NotificationSseEvent();
-        event.id = n.id;
-        event.category = n.category.name();
-        event.type = n.type.name();
-        event.title = n.title;
-        event.message = n.message;
-        event.agentId = n.agentId;
-        event.sessionId = n.sessionId;
-        event.createdAt = n.createdAt;
-        return event;
     }
 }

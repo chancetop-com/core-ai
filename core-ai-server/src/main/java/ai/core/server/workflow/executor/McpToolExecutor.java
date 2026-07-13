@@ -15,6 +15,10 @@ import ai.core.tool.ToolCallResult;
  * @author Xander
  */
 public class McpToolExecutor implements NodeExecutor {
+    private static String str(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
     private final ToolRegistryService toolRegistry;
 
     public McpToolExecutor(ToolRegistryService toolRegistry) {
@@ -45,9 +49,5 @@ public class McpToolExecutor implements NodeExecutor {
             return "{}";
         }
         return ctx.pool().renderJson(template);
-    }
-
-    private static String str(Object value) {
-        return value == null ? "" : String.valueOf(value);
     }
 }

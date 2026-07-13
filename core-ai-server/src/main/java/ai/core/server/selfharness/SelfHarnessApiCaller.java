@@ -63,7 +63,23 @@ public class SelfHarnessApiCaller {
     @SuppressWarnings("unchecked")
     private Object dispatch(String name, String args) {
         return switch (name) {
-            // ---- Agents ----
+            case "list_agents", "create_agent", "get_agent", "update_agent", "publish_agent" ->
+                dispatchAgent(name, args);
+            case "list_skills", "get_skill", "update_skill", "delete_skill", "download_skill" ->
+                dispatchSkill(name, args);
+            case "list_datasets", "get_dataset", "list_dataset_records" ->
+                dispatchDataset(name, args);
+            case "list_tools" ->
+                dispatchTool(name, args);
+            case "get_session_history", "list_traces", "get_trace", "get_trace_spans", "get_session_trace_summary" ->
+                dispatchSessionTrace(name, args);
+            default -> throw new IllegalArgumentException("Unknown self-harness operation: " + name);
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object dispatchAgent(String name, String args) {
+        return switch (name) {
             case "list_agents" -> {
                 var req = JSON.fromJSON(ListAgentsRequest.class, args);
                 yield agentService.list(INTERNAL_USER, req);
@@ -86,8 +102,13 @@ public class SelfHarnessApiCaller {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
                 yield agentService.publish((String) params.get("id"), INTERNAL_USER);
             }
+            default -> throw new IllegalArgumentException("Unknown agent operation: " + name);
+        };
+    }
 
-            // ---- Skills ----
+    @SuppressWarnings("unchecked")
+    private Object dispatchSkill(String name, String args) {
+        return switch (name) {
             case "list_skills" -> {
                 var req = JSON.fromJSON(ListSkillsRequest.class, args);
                 yield skillService.list(req.namespace, req.sourceType, null, req.query, req.searchIn, req.offset, req.limit);
@@ -111,8 +132,13 @@ public class SelfHarnessApiCaller {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
                 yield skillService.download((String) params.get("id"));
             }
+            default -> throw new IllegalArgumentException("Unknown skill operation: " + name);
+        };
+    }
 
-            // ---- Datasets ----
+    @SuppressWarnings("unchecked")
+    private Object dispatchDataset(String name, String args) {
+        return switch (name) {
             case "list_datasets" -> {
                 var req = JSON.fromJSON(ListDatasetsRequest.class, args);
                 var list = datasetService.list(req.query, req.offset, req.limit);
@@ -135,14 +161,19 @@ public class SelfHarnessApiCaller {
                 var result = datasetRecordService.query(queryReq);
                 yield Map.of("records", result.records(), "total", result.total());
             }
+            default -> throw new IllegalArgumentException("Unknown dataset operation: " + name);
+        };
+    }
 
-            // ---- Tools ----
-            case "list_tools" -> {
-                var req = JSON.fromJSON(ListToolsRequest.class, args);
-                yield toolRegistryService.listTools(req.category);
-            }
+    @SuppressWarnings("unchecked")
+    private Object dispatchTool(String name, String args) {
+        var req = JSON.fromJSON(ListToolsRequest.class, args);
+        return toolRegistryService.listTools(req.category);
+    }
 
-            // ---- Sessions & Traces ----
+    @SuppressWarnings("unchecked")
+    private Object dispatchSessionTrace(String name, String args) {
+        return switch (name) {
             case "get_session_history" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
                 yield chatMessageService.history((String) params.get("session_id"));
@@ -172,8 +203,7 @@ public class SelfHarnessApiCaller {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
                 yield traceService.sessionSummary((String) params.get("session_id"), INTERNAL_USER);
             }
-
-            default -> throw new IllegalArgumentException("Unknown self-harness operation: " + name);
+            default -> throw new IllegalArgumentException("Unknown session/trace operation: " + name);
         };
     }
 }

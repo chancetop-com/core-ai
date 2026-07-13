@@ -41,6 +41,27 @@ public class IngestService {
     private static final String GEN_AI_AGENT_ID = "gen_ai.agent.id";
     private static final Set<String> OPERATION_TRACE_NAMES = Set.of("agent.run", "agent.turn", "llm_call.run");
 
+    static String resolveUserId(String authUserId, Map<String, String> attributes) {
+        if (authUserId != null && !authUserId.isBlank()) return authUserId;
+        return attributes != null ? attributes.get("user.id") : null;
+    }
+
+    static String friendlyTraceName(String spanName, String agentName) {
+        var cleanAgentName = nonBlank(agentName);
+        var cleanSpanName = nonBlank(spanName);
+        if (cleanAgentName == null) return cleanSpanName;
+        if (cleanSpanName == null || OPERATION_TRACE_NAMES.contains(cleanSpanName)) return cleanAgentName;
+        return cleanSpanName;
+    }
+
+    private static String attr(Map<String, String> attributes, String key) {
+        return attributes != null ? nonBlank(attributes.get(key)) : null;
+    }
+
+    private static String nonBlank(String value) {
+        return value != null && !value.isBlank() ? value : null;
+    }
+
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
@@ -77,19 +98,6 @@ public class IngestService {
         }
 
         LOGGER.debug("ingested {} spans for {} traces", request.spans.size(), ensuredTraces.size());
-    }
-
-    static String resolveUserId(String authUserId, Map<String, String> attributes) {
-        if (authUserId != null && !authUserId.isBlank()) return authUserId;
-        return attributes != null ? attributes.get("user.id") : null;
-    }
-
-    static String friendlyTraceName(String spanName, String agentName) {
-        var cleanAgentName = nonBlank(agentName);
-        var cleanSpanName = nonBlank(spanName);
-        if (cleanAgentName == null) return cleanSpanName;
-        if (cleanSpanName == null || OPERATION_TRACE_NAMES.contains(cleanSpanName)) return cleanAgentName;
-        return cleanSpanName;
     }
 
     private void ensureTrace(String traceId, IngestSpanRequest rootSpan, IngestRequest request, String authUserId, String source) {
@@ -340,14 +348,6 @@ public class IngestService {
 
     private long safeLong(Long value) {
         return value != null ? value : 0L;
-    }
-
-    private static String attr(Map<String, String> attributes, String key) {
-        return attributes != null ? nonBlank(attributes.get(key)) : null;
-    }
-
-    private static String nonBlank(String value) {
-        return value != null && !value.isBlank() ? value : null;
     }
 
     private SpanStatus mapSpanStatus(String status, Map<String, String> attributes) {

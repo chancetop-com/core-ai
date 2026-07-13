@@ -18,9 +18,6 @@ import java.util.Set;
  * @author Xander
  */
 public final class WorkflowValidator {
-    private WorkflowValidator() {
-    }
-
     public static List<String> validate(WorkflowGraph graph) {
         List<String> errors = new ArrayList<>(GraphValidator.validate(graph));
         errors.addAll(typeErrors(graph));
@@ -101,5 +98,8 @@ public final class WorkflowValidator {
         if (value == null || String.valueOf(value).isBlank()) {
             errors.add("node " + node.id() + " (" + node.type() + ") is missing required config: " + key);
         }
+    }
+
+    private WorkflowValidator() {
     }
 }

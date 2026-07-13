@@ -18,9 +18,6 @@ import java.util.regex.Pattern;
 public final class GraphValidator {
     private static final Pattern NODE_ID = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
-    private GraphValidator() {
-    }
-
     public static List<String> validate(WorkflowGraph graph) {
         List<String> errors = new ArrayList<>();
         if (graph.nodes().isEmpty()) {
@@ -28,38 +25,12 @@ public final class GraphValidator {
             return errors;
         }
 
-        Set<String> ids = new HashSet<>();
-        for (WorkflowNode node : graph.nodes()) {
-            if (node.id() == null || !NODE_ID.matcher(node.id()).matches()) {
-                errors.add("invalid node id: " + node.id());
-            }
-            if (!ids.add(node.id())) {
-                errors.add("duplicate node id: " + node.id());
-            }
-        }
-
-        boolean dangling = false;
-        for (WorkflowEdge edge : graph.edges()) {
-            if (graph.node(edge.source()) == null) {
-                errors.add("edge " + edge.id() + " has unknown source: " + edge.source());
-                dangling = true;
-            }
-            if (graph.node(edge.target()) == null) {
-                errors.add("edge " + edge.id() + " has unknown target: " + edge.target());
-                dangling = true;
-            }
-        }
+        validateNodeIds(graph, errors);
+        boolean dangling = validateEdges(graph, errors);
 
         List<String> entries = new ArrayList<>();
         List<String> sinks = new ArrayList<>();
-        for (WorkflowNode node : graph.nodes()) {
-            if (graph.inEdges(node.id()).isEmpty()) {
-                entries.add(node.id());
-            }
-            if (graph.outEdges(node.id()).isEmpty()) {
-                sinks.add(node.id());
-            }
-        }
+        findEntriesAndSinks(graph, entries, sinks);
         if (entries.size() != 1) {
             errors.add("graph must have exactly one entry (no-in-edge) node, found " + entries.size() + ": " + entries);
         }
@@ -72,18 +43,60 @@ public final class GraphValidator {
 
         // reachability only makes sense with a single entry and no dangling edges
         if (entries.size() == 1 && !dangling) {
-            Set<String> fromEntry = reachableForward(graph, entries.get(0));
-            Set<String> toSink = reachableBackward(graph, sinks);
-            for (WorkflowNode node : graph.nodes()) {
-                if (!fromEntry.contains(node.id())) {
-                    errors.add("node " + node.id() + " is not reachable from the entry");
-                }
-                if (!toSink.contains(node.id())) {
-                    errors.add("node " + node.id() + " cannot reach any sink");
-                }
-            }
+            checkReachability(graph, entries.get(0), sinks, errors);
         }
         return errors;
+    }
+
+    private static void validateNodeIds(WorkflowGraph graph, List<String> errors) {
+        Set<String> ids = new HashSet<>();
+        for (WorkflowNode node : graph.nodes()) {
+            if (node.id() == null || !NODE_ID.matcher(node.id()).matches()) {
+                errors.add("invalid node id: " + node.id());
+            }
+            if (!ids.add(node.id())) {
+                errors.add("duplicate node id: " + node.id());
+            }
+        }
+    }
+
+    private static boolean validateEdges(WorkflowGraph graph, List<String> errors) {
+        boolean dangling = false;
+        for (WorkflowEdge edge : graph.edges()) {
+            if (graph.node(edge.source()) == null) {
+                errors.add("edge " + edge.id() + " has unknown source: " + edge.source());
+                dangling = true;
+            }
+            if (graph.node(edge.target()) == null) {
+                errors.add("edge " + edge.id() + " has unknown target: " + edge.target());
+                dangling = true;
+            }
+        }
+        return dangling;
+    }
+
+    private static void findEntriesAndSinks(WorkflowGraph graph, List<String> entries, List<String> sinks) {
+        for (WorkflowNode node : graph.nodes()) {
+            if (graph.inEdges(node.id()).isEmpty()) {
+                entries.add(node.id());
+            }
+            if (graph.outEdges(node.id()).isEmpty()) {
+                sinks.add(node.id());
+            }
+        }
+    }
+
+    private static void checkReachability(WorkflowGraph graph, String entry, List<String> sinks, List<String> errors) {
+        Set<String> fromEntry = reachableForward(graph, entry);
+        Set<String> toSink = reachableBackward(graph, sinks);
+        for (WorkflowNode node : graph.nodes()) {
+            if (!fromEntry.contains(node.id())) {
+                errors.add("node " + node.id() + " is not reachable from the entry");
+            }
+            if (!toSink.contains(node.id())) {
+                errors.add("node " + node.id() + " cannot reach any sink");
+            }
+        }
     }
 
     private static boolean hasCycle(WorkflowGraph graph) {
@@ -140,5 +153,8 @@ public final class GraphValidator {
             }
         }
         return seen;
+    }
+
+    private GraphValidator() {
     }
 }

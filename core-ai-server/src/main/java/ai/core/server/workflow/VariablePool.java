@@ -45,6 +45,98 @@ public final class VariablePool {
         return new VariablePool(outputs, artifacts, runInput);
     }
 
+    private static Optional<Object> navigate(String json, String[] parts, int from) {
+        Object current;
+        try {
+            current = parseJson(json);
+        } catch (RuntimeException e) {
+            return Optional.empty();   // base is not a JSON object/array, so a path can't be navigated into it
+        }
+        for (int i = from; i < parts.length && current != null; i++) {
+            current = step(current, parts[i]);
+        }
+        return Optional.ofNullable(current);
+    }
+
+    // One navigation hop: by key into an object, or by integer index into an array (e.g. artifacts.0.url).
+    private static Object step(Object current, String key) {
+        if (current instanceof Map<?, ?> map) {
+            return map.get(key);
+        }
+        if (current instanceof List<?> list) {
+            int index = parseIndex(key);
+            return index >= 0 && index < list.size() ? list.get(index) : null;
+        }
+        return null;
+    }
+
+    private static int parseIndex(String key) {
+        try {
+            return Integer.parseInt(key);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    private static Object parseJson(String json) {
+        String trimmed = json.trim();
+        if (trimmed.startsWith("[")) {
+            return JSON.fromJSON(List.class, json);
+        }
+        if (trimmed.startsWith("{")) {
+            return JSON.fromJSON(Map.class, json);
+        }
+        return null;   // a scalar/text base has no navigable structure
+    }
+
+    private static Object jsonValue(Object value) {
+        if (value instanceof String string) {
+            String trimmed = string.trim();
+            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                try {
+                    return JsonUtil.fromJson(Object.class, trimmed);
+                } catch (RuntimeException | Error ignored) {
+                    return string;
+                }
+            }
+        }
+        return value;
+    }
+
+    private static String stringify(Object value) {
+        if (value instanceof String string) {
+            return string;
+        }
+        if (value instanceof Number || value instanceof Boolean) {
+            return String.valueOf(value);
+        }
+        return JSON.toJSON(value);
+    }
+
+    // Escape the content of a JSON string literal (no surrounding quotes): a value placed inside "{{ … }}" can
+    // never terminate the string or inject keys, regardless of upstream content.
+    private static String jsonEscape(String value) {
+        var out = new StringBuilder(value.length() + 8);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        out.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        out.append(c);
+                    }
+                }
+            }
+        }
+        return out.toString();
+    }
+
     private final Map<String, String> nodeOutputs;
     private final Map<String, List<ArtifactRef>> nodeArtifacts;
     private final String runInput;
@@ -109,50 +201,6 @@ public final class VariablePool {
         return navigate(baseJson, parts, pathStart);
     }
 
-    private static Optional<Object> navigate(String json, String[] parts, int from) {
-        Object current;
-        try {
-            current = parseJson(json);
-        } catch (RuntimeException e) {
-            return Optional.empty();   // base is not a JSON object/array, so a path can't be navigated into it
-        }
-        for (int i = from; i < parts.length && current != null; i++) {
-            current = step(current, parts[i]);
-        }
-        return Optional.ofNullable(current);
-    }
-
-    // One navigation hop: by key into an object, or by integer index into an array (e.g. artifacts.0.url).
-    private static Object step(Object current, String key) {
-        if (current instanceof Map<?, ?> map) {
-            return map.get(key);
-        }
-        if (current instanceof List<?> list) {
-            int index = parseIndex(key);
-            return index >= 0 && index < list.size() ? list.get(index) : null;
-        }
-        return null;
-    }
-
-    private static int parseIndex(String key) {
-        try {
-            return Integer.parseInt(key);
-        } catch (NumberFormatException e) {
-            return -1;
-        }
-    }
-
-    private static Object parseJson(String json) {
-        String trimmed = json.trim();
-        if (trimmed.startsWith("[")) {
-            return JSON.fromJSON(List.class, json);
-        }
-        if (trimmed.startsWith("{")) {
-            return JSON.fromJSON(Map.class, json);
-        }
-        return null;   // a scalar/text base has no navigable structure
-    }
-
     // Serialize artifact references to a snake_case JSON array string the selector path navigates into — no bean
     // annotations needed since it goes through plain Map/List, decoupling the pool from ArtifactRef's mapping.
     // In the staged view each object also carries "path", the deterministic in-sandbox staging location.
@@ -178,6 +226,23 @@ public final class VariablePool {
     /** Substitute every {@code {{ selector }}} in the template with the resolved value's string form. */
     public String render(String template) {
         return render(template, false);
+    }
+
+    private String render(String template, boolean jsonEscape) {
+        if (template == null) {
+            return null;
+        }
+        Matcher matcher = TEMPLATE.matcher(template);
+        StringBuilder out = new StringBuilder();
+        while (matcher.find()) {
+            String value = resolve(matcher.group(1)).map(VariablePool::stringify).orElse("");
+            if (jsonEscape) {
+                value = jsonEscape(value);
+            }
+            matcher.appendReplacement(out, Matcher.quoteReplacement(value));
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     /**
@@ -213,70 +278,5 @@ public final class VariablePool {
             return list.stream().map(this::renderJsonValue).toList();
         }
         return value;
-    }
-
-    private static Object jsonValue(Object value) {
-        if (value instanceof String string) {
-            String trimmed = string.trim();
-            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-                try {
-                    return JsonUtil.fromJson(Object.class, trimmed);
-                } catch (RuntimeException | Error ignored) {
-                    return string;
-                }
-            }
-        }
-        return value;
-    }
-
-    private String render(String template, boolean jsonEscape) {
-        if (template == null) {
-            return null;
-        }
-        Matcher matcher = TEMPLATE.matcher(template);
-        StringBuilder out = new StringBuilder();
-        while (matcher.find()) {
-            String value = resolve(matcher.group(1)).map(VariablePool::stringify).orElse("");
-            if (jsonEscape) {
-                value = jsonEscape(value);
-            }
-            matcher.appendReplacement(out, Matcher.quoteReplacement(value));
-        }
-        matcher.appendTail(out);
-        return out.toString();
-    }
-
-    private static String stringify(Object value) {
-        if (value instanceof String string) {
-            return string;
-        }
-        if (value instanceof Number || value instanceof Boolean) {
-            return String.valueOf(value);
-        }
-        return JSON.toJSON(value);
-    }
-
-    // Escape the content of a JSON string literal (no surrounding quotes): a value placed inside "{{ … }}" can
-    // never terminate the string or inject keys, regardless of upstream content.
-    private static String jsonEscape(String value) {
-        var out = new StringBuilder(value.length() + 8);
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            switch (c) {
-                case '"' -> out.append("\\\"");
-                case '\\' -> out.append("\\\\");
-                case '\n' -> out.append("\\n");
-                case '\r' -> out.append("\\r");
-                case '\t' -> out.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        out.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        out.append(c);
-                    }
-                }
-            }
-        }
-        return out.toString();
     }
 }

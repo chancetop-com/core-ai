@@ -18,9 +18,6 @@ import java.util.Map;
  * @author Xander
  */
 public final class WorkflowGraphParser {
-    private WorkflowGraphParser() {
-    }
-
     public static WorkflowGraph parse(String json) {
         Map<String, Object> root = asMap(JSON.fromJSON(Map.class, json));
         List<WorkflowNode> nodes = new ArrayList<>();
@@ -56,5 +53,8 @@ public final class WorkflowGraphParser {
 
     private static String string(Object value) {
         return value == null ? null : value.toString();
+    }
+
+    private WorkflowGraphParser() {
     }
 }

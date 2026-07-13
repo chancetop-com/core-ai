@@ -63,6 +63,14 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionWebServiceImpl.class);
     private static final String SESSION_STATE_KEY = "agent-session-state";
 
+    private static ToolRefView toToolRefView(ToolRef ref) {
+        var view = new ToolRefView();
+        view.id = ref.id;
+        view.type = ref.type != null ? ref.type.name() : null;
+        view.source = ref.source;
+        return view;
+    }
+
     @Inject
     WebContext webContext;
     @Inject
@@ -189,15 +197,6 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         return result.isEmpty() ? null : result;
     }
 
-    private record BlobInfo(String container, String blobName) {
-        String fileName() {
-            var name = blobName;
-            var lastSlash = name.lastIndexOf('/');
-            if (lastSlash >= 0) name = name.substring(lastSlash + 1);
-            return name;
-        }
-    }
-
     private BlobInfo parseBlobUrl(String url) {
         // Match: https://{account}.blob.core.windows.net/{container}/{blobPath}
         var prefix = "blob.core.windows.net/";
@@ -272,14 +271,6 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         response.loadedSkillIds = IdLists.clean(meta.loadedSkillIds);
         response.loadedSubAgentIds = IdLists.clean(meta.loadedSubAgentIds);
         return response;
-    }
-
-    private static ToolRefView toToolRefView(ToolRef ref) {
-        var view = new ToolRefView();
-        view.id = ref.id;
-        view.type = ref.type != null ? ref.type.name() : null;
-        view.source = ref.source;
-        return view;
     }
 
     @Override
@@ -525,5 +516,14 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     private boolean isLocalOwner(String sessionId) {
         if (ownershipRegistry == null) return true;  // CLI / no-Redis mode
         return ownershipRegistry.isOwner(sessionId);
+    }
+
+    private record BlobInfo(String container, String blobName) {
+        String fileName() {
+            var name = blobName;
+            var lastSlash = name.lastIndexOf('/');
+            if (lastSlash >= 0) name = name.substring(lastSlash + 1);
+            return name;
+        }
     }
 }

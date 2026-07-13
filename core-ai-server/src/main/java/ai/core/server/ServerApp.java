@@ -68,13 +68,59 @@ public class ServerApp extends App {
         load(new ServiceApiModule());
         load(new McpServerModule());
         load(new McpModule());
+        load(new ObjectStorageModule());
+        load(new GatewayModule());
+        load(new TraceModule());
         load(new ServerModule());
+        load(new WorkflowModule());
+        load(new ChannelModule());
+        load(new WebModule());
     }
 
     private void registerMongo() {
         var mongo = config(MongoConfig.class);
         mongo.uri(requiredProperty("sys.mongo.uri"));
 
+        registerCoreCollections(mongo);
+
+        mongo.collection(SystemPrompt.class);
+        mongo.collection(SystemSettings.class);
+        mongo.collection(ChatMessage.class);
+        mongo.collection(ChatSession.class);
+        mongo.collection(SessionFeedback.class);
+
+        mongo.collection(Trace.class);
+        mongo.collection(Span.class);
+        mongo.view(TraceFacetRow.class);
+        mongo.collection(PromptTemplate.class);
+
+        mongo.collection(ServiceApi.class);
+        mongo.collection(Trigger.class);
+
+        mongo.collection(Dataset.class);
+        mongo.collection(DatasetRecord.class);
+
+        mongo.collection(UserReport.class);
+        mongo.collection(UserTodo.class);
+
+        registerWorkflowCollections(mongo);
+
+        mongo.collection(AgentMemory.class);
+        mongo.collection(AgentMemoryExtractionCursor.class);
+
+        mongo.collection(AgentMemoryExperimentConfig.class);
+        mongo.collection(AgentMemoryExperimentRun.class);
+
+        mongo.collection(SandboxSnapshotDoc.class);
+        mongo.collection(SandboxEpochDoc.class);
+
+        mongo.collection(BackgroundTask.class);
+        mongo.collection(TraceDailyStats.class);
+
+        mongo.collection(Notification.class);
+    }
+
+    private void registerCoreCollections(MongoConfig mongo) {
         mongo.collection(User.class);
         mongo.collection(ToolRegistryEntry.class);
         mongo.collection(AgentDefinition.class);
@@ -88,58 +134,13 @@ public class ServerApp extends App {
         mongo.collection(SkillDefinition.class);
         mongo.collection(MarketplaceRepo.class);
         mongo.collection(SchemaVersion.class);
+    }
 
-        mongo.collection(SystemPrompt.class);
-        mongo.collection(SystemSettings.class);
-        mongo.collection(ChatMessage.class);
-        mongo.collection(ChatSession.class);
-        mongo.collection(SessionFeedback.class);
-
-        // trace collections
-        mongo.collection(Trace.class);
-        mongo.collection(Span.class);
-        mongo.view(TraceFacetRow.class);
-        mongo.collection(PromptTemplate.class);
-
-        // service api collection
-        mongo.collection(ServiceApi.class);
-
-        // trigger collection
-        mongo.collection(Trigger.class);
-
-        // dataset collections
-        mongo.collection(Dataset.class);
-        mongo.collection(DatasetRecord.class);
-
-        mongo.collection(UserReport.class);
-        mongo.collection(UserTodo.class);
-
-        // workflow collections
+    private void registerWorkflowCollections(MongoConfig mongo) {
         mongo.collection(WorkflowDefinition.class);
         mongo.collection(WorkflowPublishedVersion.class);
         mongo.collection(WorkflowRun.class);
         mongo.collection(WorkflowNodeRun.class);
-        // registered as a view so the raw driver codec registry can encode it inside Updates.set("artifacts", ...)
-        // on run finalize — nested entity encoding only covers full replace(), not partial update values
         mongo.view(ArtifactRef.class);
-
-        // memory collections
-        mongo.collection(AgentMemory.class);
-        mongo.collection(AgentMemoryExtractionCursor.class);
-
-        // memory experiment collections
-        mongo.collection(AgentMemoryExperimentConfig.class);
-        mongo.collection(AgentMemoryExperimentRun.class);
-
-        // sandbox snapshot collections
-        mongo.collection(SandboxSnapshotDoc.class);
-        mongo.collection(SandboxEpochDoc.class);
-
-        // task collections
-        mongo.collection(BackgroundTask.class);
-        mongo.collection(TraceDailyStats.class);
-
-        // notification collection
-        mongo.collection(Notification.class);
     }
 }

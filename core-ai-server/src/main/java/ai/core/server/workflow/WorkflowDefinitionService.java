@@ -29,6 +29,72 @@ import java.util.regex.Pattern;
  * @author Xander
  */
 public class WorkflowDefinitionService {
+    // A detached read-only projection of another user's published workflow: same identity/metadata, but the graph is
+    // the frozen published one. Never inserted/replaced, so it can never overwrite the owner's real draft.
+    private static WorkflowDefinition readOnlyCopy(WorkflowDefinition source, String publishedGraph) {
+        var copy = new WorkflowDefinition();
+        copy.id = source.id;
+        copy.userId = source.userId;
+        copy.name = source.name;
+        copy.description = source.description;
+        copy.mode = source.mode;
+        copy.draftGraph = publishedGraph;
+        copy.visibility = source.visibility;
+        copy.status = source.status;
+        copy.publishedVersionId = source.publishedVersionId;
+        copy.publishedVersion = source.publishedVersion;
+        copy.createdAt = source.createdAt;
+        copy.updatedAt = source.updatedAt;
+        return copy;
+    }
+
+    private static Bson exploreFilter(String userId, String keyword) {
+        var conditions = baseListFilters(userId, false);
+        if (keyword != null && !keyword.isBlank()) {
+            conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
+        }
+        return Filters.and(conditions);
+    }
+
+    private static Bson listFilter(String userId, Boolean myWorkflows, String keyword) {
+        var conditions = baseListFilters(userId, myWorkflows);
+        if (keyword != null && !keyword.isBlank()) {
+            conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
+        }
+        return Filters.and(conditions);
+    }
+
+    private static ArrayList<Bson> baseListFilters(String userId, Boolean myWorkflows) {
+        var conditions = new ArrayList<Bson>();
+        if (myWorkflows != null && !myWorkflows) {
+            conditions.add(Filters.ne("user_id", userId));
+            conditions.add(Filters.ne("published_version_id", null));
+            conditions.add(Filters.or(Filters.eq("visibility", WorkflowVisibility.PUBLIC), Filters.eq("visibility", null)));
+        } else {
+            conditions.add(Filters.eq("user_id", userId));
+        }
+        conditions.add(Filters.ne("status", WorkflowDefinitionStatus.ARCHIVED));
+        conditions.add(Filters.ne("status", WorkflowDefinitionStatus.DISABLED));
+        return conditions;
+    }
+
+    public static WorkflowDefinitionStatus statusOf(WorkflowDefinition definition) {
+        return definition.status != null ? definition.status : WorkflowDefinitionStatus.ACTIVE;
+    }
+
+    public static WorkflowVisibility visibilityOf(WorkflowDefinition definition) {
+        if (definition.visibility != null) {
+            return definition.visibility;
+        }
+        return definition.publishedVersionId != null ? WorkflowVisibility.PUBLIC : WorkflowVisibility.PRIVATE;
+    }
+
+    public static boolean isPublicActive(WorkflowDefinition definition) {
+        return definition.publishedVersionId != null
+            && statusOf(definition) == WorkflowDefinitionStatus.ACTIVE
+            && visibilityOf(definition) == WorkflowVisibility.PUBLIC;
+    }
+
     @Inject
     MongoCollection<WorkflowDefinition> definitionCollection;
 
@@ -97,25 +163,6 @@ public class WorkflowDefinitionService {
         return definition.userId.equals(userId) ? version.graph : WorkflowGraphSanitizer.sanitize(version.graph);
     }
 
-    // A detached read-only projection of another user's published workflow: same identity/metadata, but the graph is
-    // the frozen published one. Never inserted/replaced, so it can never overwrite the owner's real draft.
-    private static WorkflowDefinition readOnlyCopy(WorkflowDefinition source, String publishedGraph) {
-        var copy = new WorkflowDefinition();
-        copy.id = source.id;
-        copy.userId = source.userId;
-        copy.name = source.name;
-        copy.description = source.description;
-        copy.mode = source.mode;
-        copy.draftGraph = publishedGraph;
-        copy.visibility = source.visibility;
-        copy.status = source.status;
-        copy.publishedVersionId = source.publishedVersionId;
-        copy.publishedVersion = source.publishedVersion;
-        copy.createdAt = source.createdAt;
-        copy.updatedAt = source.updatedAt;
-        return copy;
-    }
-
     public List<WorkflowDefinition> list(String userId) {
         return list(userId, null);
     }
@@ -154,36 +201,6 @@ public class WorkflowDefinitionService {
 
     public long exploreCount(String userId, String keyword) {
         return definitionCollection.count(exploreFilter(userId, keyword));
-    }
-
-    private static Bson exploreFilter(String userId, String keyword) {
-        var conditions = baseListFilters(userId, false);
-        if (keyword != null && !keyword.isBlank()) {
-            conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
-        }
-        return Filters.and(conditions);
-    }
-
-    private static Bson listFilter(String userId, Boolean myWorkflows, String keyword) {
-        var conditions = baseListFilters(userId, myWorkflows);
-        if (keyword != null && !keyword.isBlank()) {
-            conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
-        }
-        return Filters.and(conditions);
-    }
-
-    private static ArrayList<Bson> baseListFilters(String userId, Boolean myWorkflows) {
-        var conditions = new ArrayList<Bson>();
-        if (myWorkflows != null && !myWorkflows) {
-            conditions.add(Filters.ne("user_id", userId));
-            conditions.add(Filters.ne("published_version_id", null));
-            conditions.add(Filters.or(Filters.eq("visibility", WorkflowVisibility.PUBLIC), Filters.eq("visibility", null)));
-        } else {
-            conditions.add(Filters.eq("user_id", userId));
-        }
-        conditions.add(Filters.ne("status", WorkflowDefinitionStatus.ARCHIVED));
-        conditions.add(Filters.ne("status", WorkflowDefinitionStatus.DISABLED));
-        return conditions;
     }
 
     // Copy another user's published workflow into a fresh draft owned by the caller. Clones the frozen published
@@ -260,22 +277,5 @@ public class WorkflowDefinitionService {
             return false;
         }
         return runCollection.find(Filters.eq("workflow_id", definition.id)).isEmpty();
-    }
-
-    public static WorkflowDefinitionStatus statusOf(WorkflowDefinition definition) {
-        return definition.status != null ? definition.status : WorkflowDefinitionStatus.ACTIVE;
-    }
-
-    public static WorkflowVisibility visibilityOf(WorkflowDefinition definition) {
-        if (definition.visibility != null) {
-            return definition.visibility;
-        }
-        return definition.publishedVersionId != null ? WorkflowVisibility.PUBLIC : WorkflowVisibility.PRIVATE;
-    }
-
-    public static boolean isPublicActive(WorkflowDefinition definition) {
-        return definition.publishedVersionId != null
-            && statusOf(definition) == WorkflowDefinitionStatus.ACTIVE
-            && visibilityOf(definition) == WorkflowVisibility.PUBLIC;
     }
 }

@@ -38,6 +38,37 @@ import java.util.UUID;
 public class WorkflowRunService {
     private static final String ROOT_SCOPE_KEY = "";   // P0 drives root scope only; resume mirrors that
 
+    private static Bson settleHumanNode(WorkflowNode node, Boolean approve, String input) {
+        var now = ZonedDateTime.now();
+        String mode = node.config().get("mode") instanceof String value ? value : "approval";
+        if ("approval".equals(mode)) {
+            boolean approved = Boolean.TRUE.equals(approve);
+            String edgeKey = approved ? "approve_edge_id" : "reject_edge_id";
+            if (!(node.config().get(edgeKey) instanceof String edgeId) || edgeId.isBlank()) {
+                throw new BadRequestException("human-input node has no " + edgeKey);
+            }
+            return Updates.combine(
+                Updates.set("status", NodeRunStatus.COMPLETED),
+                Updates.set("chosen_edge_ids", List.of(edgeId)),   // human acts as the branch decision
+                Updates.set("output", JSON.toJSON(Map.of("approved", approved))),
+                Updates.set("completed_at", now));
+        }
+        // input mode: the human's value becomes the node output, read downstream as nodes.<id>.output
+        return Updates.combine(
+            Updates.set("status", NodeRunStatus.COMPLETED),
+            Updates.set("output", input == null || input.isBlank() ? "{}" : input),
+            Updates.set("completed_at", now));
+    }
+
+    public static WorkflowVisibility visibilityOf(WorkflowVisibility visibility) {
+        return visibility != null ? visibility : WorkflowVisibility.PRIVATE;
+    }
+
+    public static boolean canRead(WorkflowRun run, String userId) {
+        return run != null
+            && (run.userId.equals(userId) || visibilityOf(run.visibility) == WorkflowVisibility.PUBLIC);
+    }
+
     @Inject
     MongoCollection<WorkflowDefinition> definitionCollection;
 
@@ -266,34 +297,12 @@ public class WorkflowRunService {
         try {
             node = graphLoader.load(run.versionId).node(nodeId);
         } catch (RuntimeException e) {
-            throw new BadRequestException("node not found in run graph: " + nodeId);
+            throw new BadRequestException("node not found in run graph: " + nodeId, "INVALID_GRAPH", e);
         }
         if (!"HUMAN_INPUT".equals(node.type())) {
             throw new BadRequestException("node is not a human-input node: " + nodeId);
         }
         return node;
-    }
-
-    private static Bson settleHumanNode(WorkflowNode node, Boolean approve, String input) {
-        var now = ZonedDateTime.now();
-        String mode = node.config().get("mode") instanceof String value ? value : "approval";
-        if ("approval".equals(mode)) {
-            boolean approved = Boolean.TRUE.equals(approve);
-            String edgeKey = approved ? "approve_edge_id" : "reject_edge_id";
-            if (!(node.config().get(edgeKey) instanceof String edgeId) || edgeId.isBlank()) {
-                throw new BadRequestException("human-input node has no " + edgeKey);
-            }
-            return Updates.combine(
-                Updates.set("status", NodeRunStatus.COMPLETED),
-                Updates.set("chosen_edge_ids", List.of(edgeId)),   // human acts as the branch decision
-                Updates.set("output", JSON.toJSON(Map.of("approved", approved))),
-                Updates.set("completed_at", now));
-        }
-        // input mode: the human's value becomes the node output, read downstream as nodes.<id>.output
-        return Updates.combine(
-            Updates.set("status", NodeRunStatus.COMPLETED),
-            Updates.set("output", input == null || input.isBlank() ? "{}" : input),
-            Updates.set("completed_at", now));
     }
 
     /** The frozen graph the run executed: the run pins a version, the version holds the immutable graph snapshot. */
@@ -307,14 +316,5 @@ public class WorkflowRunService {
         WorkflowDefinition definition = definitionCollection.get(run.workflowId)
             .orElseThrow(() -> new NotFoundException("workflow not found for run: " + run.workflowId));
         return definition.userId.equals(userId) ? version.graph : WorkflowGraphSanitizer.sanitize(version.graph);
-    }
-
-    public static WorkflowVisibility visibilityOf(WorkflowVisibility visibility) {
-        return visibility != null ? visibility : WorkflowVisibility.PRIVATE;
-    }
-
-    public static boolean canRead(WorkflowRun run, String userId) {
-        return run != null
-            && (run.userId.equals(userId) || visibilityOf(run.visibility) == WorkflowVisibility.PUBLIC);
     }
 }

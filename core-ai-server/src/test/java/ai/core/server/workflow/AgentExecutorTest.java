@@ -115,7 +115,7 @@ class AgentExecutorTest {
             NodeType.END, new EndExecutor()));
         var journal = new InMemoryWorkflowJournal();
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, registry, Runnable::run, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(registry, Runnable::run), () -> false);
 
         assertEquals(RunStatus.COMPLETED, status);
         assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "classify"));

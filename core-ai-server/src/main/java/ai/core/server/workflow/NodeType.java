@@ -28,7 +28,7 @@ public enum NodeType {
         try {
             return NodeType.valueOf(type);
         } catch (IllegalArgumentException | NullPointerException e) {
-            throw new IllegalStateException("unknown workflow node type: " + type);
+            throw new IllegalStateException("unknown workflow node type: " + type, e);
         }
     }
 }

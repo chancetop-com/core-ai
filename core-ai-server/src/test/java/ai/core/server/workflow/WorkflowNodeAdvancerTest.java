@@ -32,7 +32,7 @@ class WorkflowNodeAdvancerTest {
             NodeType.END, new EndExecutor()));
         var journal = new InMemoryWorkflowJournal();
 
-        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, registry, Runnable::run, () -> false);
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(registry, Runnable::run), () -> false);
 
         assertEquals(RunStatus.PAUSED, status);   // parked on the sub-workflow, lease released by the runner
         assertEquals(NodeRunStatus.WAITING, journal.status("run-1", "call_sub"));

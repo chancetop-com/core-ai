@@ -17,9 +17,6 @@ import java.util.Set;
  * @author Xander
  */
 public final class RunStateAssembler {
-    private RunStateAssembler() {
-    }
-
     public static RunState toRunState(Iterable<WorkflowNodeRun> nodeRuns, String scopePathKey) {
         Map<String, NodeFact> facts = new LinkedHashMap<>();
         for (WorkflowNodeRun nodeRun : nodeRuns) {
@@ -40,5 +37,8 @@ public final class RunStateAssembler {
             case SKIPPED -> NodeFact.skipped(nodeRun.nodeId);
             case FAILED_RETRYABLE -> NodeFact.failed(nodeRun.nodeId);
         };
+    }
+
+    private RunStateAssembler() {
     }
 }

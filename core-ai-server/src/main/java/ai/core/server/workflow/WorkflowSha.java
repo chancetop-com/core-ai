@@ -11,9 +11,6 @@ import java.security.NoSuchAlgorithmException;
  * @author Xander
  */
 public final class WorkflowSha {
-    private WorkflowSha() {
-    }
-
     public static String hex(String content) {
         try {
             byte[] hash = MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8));
@@ -25,5 +22,8 @@ public final class WorkflowSha {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    private WorkflowSha() {
     }
 }

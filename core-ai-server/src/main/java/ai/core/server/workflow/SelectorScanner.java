@@ -15,9 +15,6 @@ import java.util.regex.Pattern;
 public final class SelectorScanner {
     private static final Pattern SELECTOR = Pattern.compile("\\{\\{\\s*nodes\\.([A-Za-z_][A-Za-z0-9_]*)");
 
-    private SelectorScanner() {
-    }
-
     public static List<String> referencedNodeIds(String text) {
         if (text == null) {
             return List.of();
@@ -28,5 +25,8 @@ public final class SelectorScanner {
             ids.add(matcher.group(1));
         }
         return List.copyOf(ids);
+    }
+
+    private SelectorScanner() {
     }
 }

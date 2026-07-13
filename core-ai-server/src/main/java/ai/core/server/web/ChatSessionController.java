@@ -29,6 +29,30 @@ import java.util.UUID;
 public class ChatSessionController {
     private static final ObjectMapper MAPPER = JsonUtil.OBJECT_MAPPER;
 
+    private static String stringField(Map<String, Object> body, String key) {
+        var val = body.get(key);
+        return val == null ? null : val.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> listField(Map<String, Object> body, String key) {
+        var val = body.get(key);
+        if (val instanceof List) return (List<String>) val;
+        return null;
+    }
+
+    private static Integer intField(Map<String, Object> body, String key) {
+        var val = body.get(key);
+        if (val instanceof Number) return ((Number) val).intValue();
+        return null;
+    }
+
+    private static Long longField(Map<String, Object> body, String key) {
+        var val = body.get(key);
+        if (val instanceof Number) return ((Number) val).longValue();
+        return null;
+    }
+
     @Inject
     WebContext webContext;
     @Inject
@@ -178,30 +202,6 @@ public class ChatSessionController {
         memoryExperimentService.recordOutcome(sessionId, feedback.outcome, feedback.outcomeRating);
 
         return jsonResponse(Map.of("id", feedback.id, "created", true));
-    }
-
-    private static String stringField(Map<String, Object> body, String key) {
-        var val = body.get(key);
-        return val == null ? null : val.toString();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<String> listField(Map<String, Object> body, String key) {
-        var val = body.get(key);
-        if (val instanceof List) return (List<String>) val;
-        return null;
-    }
-
-    private static Integer intField(Map<String, Object> body, String key) {
-        var val = body.get(key);
-        if (val instanceof Number) return ((Number) val).intValue();
-        return null;
-    }
-
-    private static Long longField(Map<String, Object> body, String key) {
-        var val = body.get(key);
-        if (val instanceof Number) return ((Number) val).longValue();
-        return null;
     }
 
     private String parseTitle(Request request) {

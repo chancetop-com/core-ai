@@ -33,6 +33,13 @@ import java.util.Map;
 public class SelfHarnessToolBuilder {
     private static final Logger LOGGER = LoggerFactory.getLogger(SelfHarnessToolBuilder.class);
 
+    private static Method findCallApiMethod() {
+        return Arrays.stream(SelfHarnessApiCaller.class.getMethods())
+                .filter(m -> m.getName().equals("callApi"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("callApi method not found"));
+    }
+
     private final SelfHarnessApiCaller caller;
     private final Method callApiMethod;
 
@@ -173,12 +180,5 @@ public class SelfHarnessToolBuilder {
         if (type instanceof Class<?> c) return c;
         if (type instanceof ParameterizedType pt) return (Class<?>) pt.getRawType();
         return null;
-    }
-
-    private static Method findCallApiMethod() {
-        return Arrays.stream(SelfHarnessApiCaller.class.getMethods())
-                .filter(m -> m.getName().equals("callApi"))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("callApi method not found"));
     }
 }

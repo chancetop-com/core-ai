@@ -52,48 +52,6 @@ public class CodeExecutor implements NodeExecutor {
             print(json.dumps(result, ensure_ascii=False, default=str))
         """.formatted(RESULT_SENTINEL);
 
-    private final SandboxService sandboxService;
-    private final FileService fileService;
-
-    public CodeExecutor(SandboxService sandboxService, FileService fileService) {
-        this.sandboxService = sandboxService;
-        this.fileService = fileService;
-    }
-
-    @Override
-    public NodeOutcome execute(NodeContext ctx) {
-        Object codeValue = ctx.node().config().get("code");
-        if (!(codeValue instanceof String code) || code.isBlank()) {
-            return new NodeOutcome.Fail("CODE node '" + ctx.node().id() + "' has no code", false);
-        }
-        if (sandboxService == null) {
-            return new NodeOutcome.Fail("sandbox is not configured (set sys.sandbox.provider)", false);
-        }
-        List<StagedFile> stagedFiles = stagedInputFiles(ctx);
-        String script = buildScript(code, resolveInputs(ctx, stagedFiles.isEmpty() ? ctx.pool() : ctx.pool().stagedView()));
-        // One sandbox per workflow RUN, shared by every CODE node (created lazily on first use, reused thereafter,
-        // and released by WorkflowRunner when the run ends). Amortizes container cold-start. Each script still
-        // reads inputs / writes result via the variable pool — the shared container is a cost optimization, NOT a
-        // data channel: scripts must not rely on files persisting across nodes (recovery/handoff loses them).
-        // Staged input files are the one sanctioned FS input: deterministic per-node paths, written before the run.
-        String sessionId = "wf-code:" + ctx.run().id;
-        Sandbox sandbox = sandboxService.getOrCreateSandbox(SandboxService.createDefaultConfig(), sessionId, ctx.run().userId);
-        if (sandbox == null) {
-            return new NodeOutcome.Fail("sandbox is disabled", false);
-        }
-        for (StagedFile file : stagedFiles) {
-            try {
-                sandbox.uploadFile(file.targetPath(), fileService.getBytes(fileService.get(file.fileId())));
-            } catch (RuntimeException e) {
-                // deterministic, retryable: failing fast beats running the script against a missing input file
-                return new NodeOutcome.Fail("failed to stage input file " + file.fileName() + ": " + e.getMessage(), true);
-            }
-        }
-        var exec = ExecutionContext.builder().sessionId(sessionId).userId(ctx.run().userId).sandbox(sandbox).build();
-        ToolCallResult result = sandbox.execute(PYTHON_TOOL, JSON.toJSON(Map.of("code", script)), exec);
-        return toOutcome(result);
-    }
-
     // Union of the staging sets of every input selector (a selector referencing artifacts whole / by index /
     // by .path stages the file; metadata-only references don't — same rule as AGENT templates).
     private static List<StagedFile> stagedInputFiles(NodeContext ctx) {
@@ -176,5 +134,47 @@ public class CodeExecutor implements NodeExecutor {
             // not valid JSON after all — fall through to the raw string
         }
         return value;
+    }
+
+    private final SandboxService sandboxService;
+    private final FileService fileService;
+
+    public CodeExecutor(SandboxService sandboxService, FileService fileService) {
+        this.sandboxService = sandboxService;
+        this.fileService = fileService;
+    }
+
+    @Override
+    public NodeOutcome execute(NodeContext ctx) {
+        Object codeValue = ctx.node().config().get("code");
+        if (!(codeValue instanceof String code) || code.isBlank()) {
+            return new NodeOutcome.Fail("CODE node '" + ctx.node().id() + "' has no code", false);
+        }
+        if (sandboxService == null) {
+            return new NodeOutcome.Fail("sandbox is not configured (set sys.sandbox.provider)", false);
+        }
+        List<StagedFile> stagedFiles = stagedInputFiles(ctx);
+        String script = buildScript(code, resolveInputs(ctx, stagedFiles.isEmpty() ? ctx.pool() : ctx.pool().stagedView()));
+        // One sandbox per workflow RUN, shared by every CODE node (created lazily on first use, reused thereafter,
+        // and released by WorkflowRunner when the run ends). Amortizes container cold-start. Each script still
+        // reads inputs / writes result via the variable pool — the shared container is a cost optimization, NOT a
+        // data channel: scripts must not rely on files persisting across nodes (recovery/handoff loses them).
+        // Staged input files are the one sanctioned FS input: deterministic per-node paths, written before the run.
+        String sessionId = "wf-code:" + ctx.run().id;
+        Sandbox sandbox = sandboxService.getOrCreateSandbox(SandboxService.createDefaultConfig(), sessionId, ctx.run().userId);
+        if (sandbox == null) {
+            return new NodeOutcome.Fail("sandbox is disabled", false);
+        }
+        for (StagedFile file : stagedFiles) {
+            try {
+                sandbox.uploadFile(file.targetPath(), fileService.getBytes(fileService.get(file.fileId())));
+            } catch (RuntimeException e) {
+                // deterministic, retryable: failing fast beats running the script against a missing input file
+                return new NodeOutcome.Fail("failed to stage input file " + file.fileName() + ": " + e.getMessage(), true);
+            }
+        }
+        var exec = ExecutionContext.builder().sessionId(sessionId).userId(ctx.run().userId).sandbox(sandbox).build();
+        ToolCallResult result = sandbox.execute(PYTHON_TOOL, JSON.toJSON(Map.of("code", script)), exec);
+        return toOutcome(result);
     }
 }

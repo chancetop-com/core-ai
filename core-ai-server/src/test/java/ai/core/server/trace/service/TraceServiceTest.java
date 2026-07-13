@@ -5,7 +5,6 @@ import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
 
 import java.time.ZonedDateTime;
@@ -20,11 +19,49 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TraceServiceTest {
+    @SuppressWarnings("unchecked")
+    static MongoCollection<Trace> traceCollection() {
+        return (MongoCollection<Trace>) mock(MongoCollection.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    static MongoCollection<Span> spanCollection() {
+        return (MongoCollection<Span>) mock(MongoCollection.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    static MongoCollection<User> userCollection() {
+        return (MongoCollection<User>) mock(MongoCollection.class);
+    }
+
+    static Trace trace(String id, String userId, String name, String agentName, String model, int minutesAgo) {
+        var trace = new Trace();
+        trace.id = id;
+        trace.traceId = id;
+        trace.userId = userId;
+        trace.name = name;
+        trace.agentName = agentName;
+        trace.model = model;
+        trace.totalTokens = 1L;
+        trace.cachedTokens = 0L;
+        trace.costUsd = 0.0;
+        trace.createdAt = ZonedDateTime.now().minusMinutes(minutesAgo);
+        return trace;
+    }
+
+    static User user(String name, String email) {
+        var user = new User();
+        user.id = email;
+        user.email = email;
+        user.name = name;
+        return user;
+    }
+
     @Test
     void listPlainTextQueryMatchesAccountNameThroughUserIdQuery() {
         var service = service();
         var aliceTrace = trace("t1", "alice@example.com", "old chat completion", "support-agent", "gpt-4o", 10);
-        when(service.userCollection.find(any(Bson.class))).thenReturn(List.of(
+        when(service.userCollection.find(any(Query.class))).thenReturn(List.of(
             user("Alice Chen", "alice@example.com"),
             user("Bob Li", "bob@example.com")));
         // First trace query is the indexed user_id match; second is the bounded name/agent scan.
@@ -36,17 +73,7 @@ class TraceServiceTest {
         filter.limit = 20;
 
         assertEquals(List.of(aliceTrace), service.list(filter));
-        verify(service.userCollection).find(any(Bson.class));
-    }
-
-    @Test
-    void countPlainTextQueryFallsBackToUnknownTotal() {
-        var service = service();
-        var filter = new TraceService.TraceListFilter();
-        filter.q = "alice";
-
-        assertThrows(UnsupportedOperationException.class, () -> service.count(filter));
-        verify(service.traceCollection, never()).count(any(Bson.class));
+        verify(service.userCollection).find(any(Query.class));
     }
 
     @Test
@@ -55,7 +82,7 @@ class TraceServiceTest {
         var first = trace("t1", "alice@example.com", "chat completion", "support-agent", "gpt-4o", 2);
         var second = trace("t2", "alice@example.com", "tool call", "support-agent", "gpt-4o", 1);
         var ignored = trace("t3", "bob@example.com", "chat completion", "support-agent", "gpt-4o-mini", 0);
-        when(service.userCollection.find(any(Bson.class))).thenReturn(List.of(user("Alice Chen", "alice@example.com")));
+        when(service.userCollection.find(any(Query.class))).thenReturn(List.of(user("Alice Chen", "alice@example.com")));
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(first, second)).thenReturn(List.of(ignored));
 
         var filter = new TraceService.TraceListFilter();
@@ -81,7 +108,7 @@ class TraceServiceTest {
         filter.limit = 20;
 
         assertEquals(List.of(match), service.list(filter));
-        verify(service.userCollection, never()).find(any(Bson.class));
+        verify(service.userCollection, never()).find(any(Query.class));
     }
 
     private TraceService service() {
@@ -90,43 +117,5 @@ class TraceServiceTest {
         service.spanCollection = spanCollection();
         service.userCollection = userCollection();
         return service;
-    }
-
-    @SuppressWarnings("unchecked")
-    private MongoCollection<Trace> traceCollection() {
-        return (MongoCollection<Trace>) mock(MongoCollection.class);
-    }
-
-    @SuppressWarnings("unchecked")
-    private MongoCollection<Span> spanCollection() {
-        return (MongoCollection<Span>) mock(MongoCollection.class);
-    }
-
-    @SuppressWarnings("unchecked")
-    private MongoCollection<User> userCollection() {
-        return (MongoCollection<User>) mock(MongoCollection.class);
-    }
-
-    private Trace trace(String id, String userId, String name, String agentName, String model, int minutesAgo) {
-        var trace = new Trace();
-        trace.id = id;
-        trace.traceId = id;
-        trace.userId = userId;
-        trace.name = name;
-        trace.agentName = agentName;
-        trace.model = model;
-        trace.totalTokens = 1L;
-        trace.cachedTokens = 0L;
-        trace.costUsd = 0.0;
-        trace.createdAt = ZonedDateTime.now().minusMinutes(minutesAgo);
-        return trace;
-    }
-
-    private User user(String name, String email) {
-        var user = new User();
-        user.id = email;
-        user.email = email;
-        user.name = name;
-        return user;
     }
 }

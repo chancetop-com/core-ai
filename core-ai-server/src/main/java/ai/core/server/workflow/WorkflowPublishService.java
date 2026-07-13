@@ -33,6 +33,42 @@ import java.util.UUID;
  * @author Xander
  */
 public class WorkflowPublishService {
+    // Read a node config value as a non-blank String, treating null/blank/"null" as absent.
+    private static String configValue(WorkflowNode node, String key) {
+        Object raw = node.config().get(key);
+        if (raw == null) {
+            return null;
+        }
+        String value = String.valueOf(raw);
+        return value.isBlank() || "null".equals(value) ? null : value;
+    }
+
+    // A node may reference: its owner's agents, any system-default agent, OR any PUBLISHED agent (published == public,
+    // matching the Explore/clone sharing model). The published config is then frozen into the workflow snapshot
+    // (anti-drift). Referencing another user's UNPUBLISHED/private agent stays disallowed (falls through to "you do
+    // not own"), and an owner referencing their own still-unpublished agent is caught by the publishedConfig == null check.
+    private static boolean isAccessible(AgentDefinition agent, String ownerUserId) {
+        return Boolean.TRUE.equals(agent.systemDefault)
+            || agent.userId != null && agent.userId.equals(ownerUserId)
+            || agent.publishedConfig != null;
+    }
+
+    private static boolean isWorkflowAccessible(WorkflowDefinition definition) {
+        return WorkflowDefinitionService.isPublicActive(definition);
+    }
+
+    private static void requirePublishableVersion(String definitionId, WorkflowPublishedVersion version) {
+        if (!definitionId.equals(version.workflowId)) {
+            throw new BadRequestException("workflow version does not belong to workflow: " + version.id);
+        }
+        if (Boolean.TRUE.equals(version.preview)) {
+            throw new BadRequestException("preview workflow versions cannot be published: " + version.id);
+        }
+        if (version.status == WorkflowVersionStatus.DISABLED) {
+            throw new ForbiddenException("workflow version is disabled: " + version.id);
+        }
+    }
+
     @Inject
     MongoCollection<WorkflowDefinition> definitionCollection;
 
@@ -258,16 +294,6 @@ public class WorkflowPublishService {
         return false;
     }
 
-    // Read a node config value as a non-blank String, treating null/blank/"null" as absent.
-    private static String configValue(WorkflowNode node, String key) {
-        Object raw = node.config().get(key);
-        if (raw == null) {
-            return null;
-        }
-        String value = String.valueOf(raw);
-        return value.isBlank() || "null".equals(value) ? null : value;
-    }
-
     // Embed each AGENT/LLM node's referenced Agent published config; referencing an unknown, inaccessible or
     // unpublished definition is a publish error (the workflow version must be self-contained, reproducible, and
     // must not leak another tenant's config).
@@ -298,16 +324,6 @@ public class WorkflowPublishService {
     // matching the Explore/clone sharing model). The published config is then frozen into the workflow snapshot
     // (anti-drift). Referencing another user's UNPUBLISHED/private agent stays disallowed (falls through to "you do
     // not own"), and an owner referencing their own still-unpublished agent is caught by the publishedConfig == null check.
-    private static boolean isAccessible(AgentDefinition agent, String ownerUserId) {
-        return Boolean.TRUE.equals(agent.systemDefault)
-            || (agent.userId != null && agent.userId.equals(ownerUserId))
-            || agent.publishedConfig != null;
-    }
-
-    private static boolean isWorkflowAccessible(WorkflowDefinition definition) {
-        return WorkflowDefinitionService.isPublicActive(definition);
-    }
-
     private int nextVersion(String workflowId) {
         int max = 0;
         for (WorkflowPublishedVersion existing : versionCollection.find(Filters.eq("workflow_id", workflowId))) {
@@ -316,18 +332,6 @@ public class WorkflowPublishService {
             }
         }
         return max + 1;
-    }
-
-    private static void requirePublishableVersion(String definitionId, WorkflowPublishedVersion version) {
-        if (!definitionId.equals(version.workflowId)) {
-            throw new BadRequestException("workflow version does not belong to workflow: " + version.id);
-        }
-        if (Boolean.TRUE.equals(version.preview)) {
-            throw new BadRequestException("preview workflow versions cannot be published: " + version.id);
-        }
-        if (version.status == WorkflowVersionStatus.DISABLED) {
-            throw new ForbiddenException("workflow version is disabled: " + version.id);
-        }
     }
 
     private void requireVersionReferencesPublishable(WorkflowDefinition definition, WorkflowPublishedVersion version) {

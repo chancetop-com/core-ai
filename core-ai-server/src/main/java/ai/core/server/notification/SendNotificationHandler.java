@@ -28,9 +28,9 @@ public class SendNotificationHandler {
             return "notification skipped: no user context available";
         }
 
-        notificationService.create(userId, agentId, sessionId,
+        notificationService.create(userId,
             NotificationCategory.AGENT, NotificationType.AGENT_NOTIFICATION,
-            title, message);
+            title, message, new NotificationService.CreateContext(agentId, sessionId));
 
         return "notification sent: " + title;
     }

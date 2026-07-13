@@ -75,6 +75,14 @@ class MessagingModule extends Module {
         handlerDependencies.toolRegistryService = bean(ToolRegistryService.class);
         var commandHandler = new InProcessCommandHandler(handlerDependencies);
         commandPublisher.setCommandHandler(commandHandler);
+        setupCommandConsumer(jedisPool, ownershipRegistry, commandHandler);
+
+        // Must be the final onShutdown: STAGE_5 hooks run in registration order, so closing the pool here lets
+        // every hook above finish using it first — otherwise drainPodStream hits "Pool not open" (closed too early).
+        onShutdown(jedisPool::close);
+    }
+
+    private void setupCommandConsumer(redis.clients.jedis.JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, InProcessCommandHandler commandHandler) {
         var commandConsumer = new CommandConsumer(jedisPool, commandHandler, ownershipRegistry);
         onStartup(commandConsumer::start);
         onShutdown(() -> {
@@ -90,8 +98,5 @@ class MessagingModule extends Module {
                 }
             }
         });
-        // Must be the final onShutdown: STAGE_5 hooks run in registration order, so closing the pool here lets
-        // every hook above finish using it first — otherwise drainPodStream hits "Pool not open" (closed too early).
-        onShutdown(jedisPool::close);
     }
 }

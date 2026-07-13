@@ -24,6 +24,32 @@ import java.util.List;
 public class WorkflowPortService {
     public static final String EXPORT_FORMAT = "core-ai-workflow-export/v1";
 
+    // Parse + validate the envelope without touching Mongo, so it is unit-testable. A bad envelope is a client
+    // error (400) and no draft is created.
+    public static ExportWorkflowResponse parseEnvelope(String content) {
+        ExportWorkflowResponse envelope;
+        try {
+            envelope = JSON.fromJSON(ExportWorkflowResponse.class, content);
+        } catch (RuntimeException e) {
+            throw new BadRequestException("invalid workflow export file: not valid JSON", "INVALID_IMPORT", e);
+        }
+        if (envelope == null || !EXPORT_FORMAT.equals(envelope.format)) {
+            throw new BadRequestException("unrecognized workflow export format: " + (envelope == null ? null : envelope.format));
+        }
+        if (envelope.graph == null || envelope.graph.isBlank()) {
+            throw new BadRequestException("workflow export is missing a graph");
+        }
+        if (envelope.mode != null && !"WORKFLOW".equals(envelope.mode) && !"CHATFLOW".equals(envelope.mode)) {
+            throw new BadRequestException("workflow export has an invalid mode: " + envelope.mode);
+        }
+        return envelope;
+    }
+
+    // Same own-OR-system_default rule WorkflowPublishService uses.
+    private static boolean isAccessible(AgentDefinition agent, String userId) {
+        return Boolean.TRUE.equals(agent.systemDefault) || agent.userId != null && agent.userId.equals(userId);
+    }
+
     @Inject
     WorkflowDefinitionService definitionService;
 
@@ -48,12 +74,6 @@ public class WorkflowPortService {
         return response;
     }
 
-    public record UnresolvedReference(String nodeId, String nodeType, String refType, String refId, String message) {
-    }
-
-    public record WorkflowImportResult(WorkflowDefinition definition, List<UnresolvedReference> unresolved) {
-    }
-
     public WorkflowImportResult importWorkflow(String content, String name, String userId) {
         ExportWorkflowResponse envelope = parseEnvelope(content);
         String workflowName = name != null && !name.isBlank() ? name : envelope.name;
@@ -65,27 +85,6 @@ public class WorkflowPortService {
         }
         List<UnresolvedReference> unresolved = scanReferences(envelope.graph, userId);
         return new WorkflowImportResult(definition, unresolved);
-    }
-
-    // Parse + validate the envelope without touching Mongo, so it is unit-testable. A bad envelope is a client
-    // error (400) and no draft is created.
-    public static ExportWorkflowResponse parseEnvelope(String content) {
-        ExportWorkflowResponse envelope;
-        try {
-            envelope = JSON.fromJSON(ExportWorkflowResponse.class, content);
-        } catch (RuntimeException e) {
-            throw new BadRequestException("invalid workflow export file: not valid JSON", "INVALID_IMPORT", e);
-        }
-        if (envelope == null || !EXPORT_FORMAT.equals(envelope.format)) {
-            throw new BadRequestException("unrecognized workflow export format: " + (envelope == null ? null : envelope.format));
-        }
-        if (envelope.graph == null || envelope.graph.isBlank()) {
-            throw new BadRequestException("workflow export is missing a graph");
-        }
-        if (envelope.mode != null && !"WORKFLOW".equals(envelope.mode) && !"CHATFLOW".equals(envelope.mode)) {
-            throw new BadRequestException("workflow export has an invalid mode: " + envelope.mode);
-        }
-        return envelope;
     }
 
     // Walk the executable graph and report AGENT/LLM and MCP_TOOL references that do not resolve for the importer.
@@ -141,8 +140,9 @@ public class WorkflowPortService {
         }
     }
 
-    // Same own-OR-system_default rule WorkflowPublishService uses.
-    private static boolean isAccessible(AgentDefinition agent, String userId) {
-        return Boolean.TRUE.equals(agent.systemDefault) || (agent.userId != null && agent.userId.equals(userId));
+    public record UnresolvedReference(String nodeId, String nodeType, String refType, String refId, String message) {
+    }
+
+    public record WorkflowImportResult(WorkflowDefinition definition, List<UnresolvedReference> unresolved) {
     }
 }

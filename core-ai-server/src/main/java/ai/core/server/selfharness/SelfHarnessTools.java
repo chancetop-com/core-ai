@@ -37,7 +37,18 @@ public class SelfHarnessTools {
         var builder = new SelfHarnessToolBuilder(caller);
         var tools = new ArrayList<ToolCall>();
 
-        // ---- Agents ----
+        registerAgentTools(builder, tools);
+        registerSkillTools(builder, tools);
+        registerDatasetTools(builder, tools);
+        registerToolTools(builder, tools);
+        registerSessionTraceTools(builder, tools);
+
+        toolRegistryService.registerBuiltinToolGroup(TOOL_ENTRY_ID, "Self Harness",
+                "Tools for managing agents, skills, datasets, tool registries, and inspecting session traces",
+                tools);
+    }
+
+    private void registerAgentTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
         tools.add(builder.build("list_agents", "List all agents with pagination and filtering.",
                 ListAgentsRequest.class, false));
         tools.add(builder.build("create_agent", "Create a new agent draft.",
@@ -48,8 +59,9 @@ public class SelfHarnessTools {
                 UpdateAgentRequest.class, true));
         tools.add(builder.buildWithPathParamOnly("publish_agent", "Publish an agent draft by ID.",
                 "id", "Agent ID"));
+    }
 
-        // ---- Skills ----
+    private void registerSkillTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
         tools.add(builder.build("list_skills", "List registered skills with filtering and search.",
                 ListSkillsRequest.class, false));
         tools.add(builder.buildWithPathParamOnly("get_skill", "Get skill detail by ID.",
@@ -60,8 +72,9 @@ public class SelfHarnessTools {
                 "id", "Skill ID"));
         tools.add(builder.buildWithPathParamOnly("download_skill", "Download skill content including all resources.",
                 "id", "Skill ID"));
+    }
 
-        // ---- Datasets ----
+    private void registerDatasetTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
         tools.add(builder.build("list_datasets", "List datasets with search and pagination.",
                 ListDatasetsRequest.class, false));
         tools.add(builder.buildWithPathParamOnly("get_dataset", "Get dataset detail by ID.",
@@ -74,12 +87,14 @@ public class SelfHarnessTools {
                         ToolCallParameter.builder().name("limit").description("Max records to return (default 100)").type(ToolCallParameterType.INTEGER).build(),
                         ToolCallParameter.builder().name("offset").description("Pagination offset").type(ToolCallParameterType.INTEGER).build()
                 )));
+    }
 
-        // ---- Tools ----
+    private void registerToolTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
         tools.add(builder.build("list_tools", "List tool registry entries, optionally filtered by category.",
                 ListToolsRequest.class, false));
+    }
 
-        // ---- Sessions & Traces ----
+    private void registerSessionTraceTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
         tools.add(builder.buildCustom("get_session_history",
                 "Get the full message history for a session, including content, thinking, tool calls, and trace IDs.",
                 List.of(
@@ -110,9 +125,5 @@ public class SelfHarnessTools {
                 List.of(
                         ToolCallParameter.builder().name("session_id").description("Session ID").type(ToolCallParameterType.STRING).required(true).build()
                 )));
-
-        toolRegistryService.registerBuiltinToolGroup(TOOL_ENTRY_ID, "Self Harness",
-                "Tools for managing agents, skills, datasets, tool registries, and inspecting session traces",
-                tools);
     }
 }

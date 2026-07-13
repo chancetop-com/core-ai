@@ -35,9 +35,6 @@ public final class WorkflowGraphSanitizer {
     );
     private static final List<String> SECRET_KEY_PARTS = List.of("secret", "token");
 
-    private WorkflowGraphSanitizer() {
-    }
-
     public static String sanitize(String graphJson) {
         if (graphJson == null || graphJson.isBlank()) {
             return graphJson;
@@ -77,5 +74,8 @@ public final class WorkflowGraphSanitizer {
             return true;
         }
         return SECRET_KEY_PARTS.stream().anyMatch(normalized::contains);
+    }
+
+    private WorkflowGraphSanitizer() {
     }
 }

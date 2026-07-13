@@ -35,19 +35,20 @@ public class AuthInterceptor implements Interceptor {
             return invocation.proceed();
         }
 
-        if (path.startsWith("/api/channels/")) {
-            var channelId = extractChannelId(path);
-            if (channelId != null) {
-                var channel = channelConfigStore.load(channelId);
-                if (channel != null && Boolean.FALSE.equals(channel.requireAuth)) {
-                    return invocation.proceed();
-                }
-            }
+        if (path.startsWith("/api/channels/") && channelAllowsAnonymous(path)) {
+            return invocation.proceed();
         }
 
         var userId = requestAuthenticator.authenticate(request);
         invocation.context().put(AuthContext.USER_ID_KEY, userId);
         return invocation.proceed();
+    }
+
+    private boolean channelAllowsAnonymous(String path) {
+        var channelId = extractChannelId(path);
+        if (channelId == null) return false;
+        var channel = channelConfigStore.load(channelId);
+        return channel != null && Boolean.FALSE.equals(channel.requireAuth);
     }
 
     private String extractChannelId(String path) {

@@ -16,7 +16,6 @@ import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -31,6 +30,26 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class TaskRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskRunner.class);
+
+    private static String resolvePodName() {
+        var env = System.getenv("HOSTNAME");
+        if (env != null && !env.isBlank()) return env;
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            return "unknown";
+        }
+    }
+
+    static LocalDate parseDate(String taskId) {
+        int idx = taskId.lastIndexOf(':');
+        if (idx <= 0 || idx >= taskId.length() - 1) return null;
+        try {
+            return LocalDate.parse(taskId.substring(idx + 1));
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     @Inject
     MongoCollection<BackgroundTask> taskCollection;
@@ -163,29 +182,5 @@ public class TaskRunner {
         record.logs = ctx.logs();
         record.taskState = ctx.state();
         taskCollection.replace(record);
-    }
-
-    private static String resolvePodName() {
-        var env = System.getenv("HOSTNAME");
-        if (env != null && !env.isBlank()) return env;
-        try {
-            return InetAddress.getLocalHost().getHostName();
-        } catch (UnknownHostException e) {
-            return "unknown-" + UUID.randomUUID().toString().substring(0, 8);
-        }
-    }
-
-    /**
-     * Parse a date suffix from a task ID of the form {@code TYPE:YYYY-MM-DD}.
-     * Returns {@code null} if the suffix is absent or unparseable.
-     */
-    static LocalDate parseDate(String taskId) {
-        int idx = taskId.lastIndexOf(':');
-        if (idx <= 0 || idx >= taskId.length() - 1) return null;
-        try {
-            return LocalDate.parse(taskId.substring(idx + 1));
-        } catch (Exception e) {
-            return null;
-        }
     }
 }

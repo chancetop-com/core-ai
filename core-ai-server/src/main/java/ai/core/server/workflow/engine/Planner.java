@@ -18,9 +18,6 @@ import java.util.Set;
  * @author Xander
  */
 public final class Planner {
-    private Planner() {
-    }
-
     public static Frontier plan(WorkflowGraph graph, RunState state) {
         Map<String, EdgeVerdict> verdicts = new LinkedHashMap<>();
         for (WorkflowEdge edge : graph.edges()) {
@@ -85,5 +82,8 @@ public final class Planner {
             // fire past a failure.
             case RUNNING, FAILED -> EdgeVerdict.PENDING;
         };
+    }
+
+    private Planner() {
     }
 }

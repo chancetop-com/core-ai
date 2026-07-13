@@ -29,7 +29,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 
 /**
@@ -63,15 +62,6 @@ public class TraceDailyMaintenanceService {
     }
 
     @SuppressWarnings("unchecked")
-    private static double getPercentile(org.bson.Document doc, String key) {
-        Object value = doc.get(key);
-        if (value instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Number num) {
-            return num.doubleValue();
-        }
-        return 0.0;
-    }
-
-    @SuppressWarnings("unchecked")
     static double computeP90(List<Object> values) {
         if (values == null || values.isEmpty()) return 0.0;
         var nums = values.stream()
@@ -83,6 +73,13 @@ public class TraceDailyMaintenanceService {
         // P90 = value at ceil(0.90 * n) position (1-indexed), i.e. index ceil(0.90*n) - 1
         int idx = (int) Math.ceil(0.90 * nums.length) - 1;
         return nums[Math.max(idx, 0)];
+    }
+
+    private static List<String> extractTraceIds(List<Trace> traces) {
+        return traces.stream()
+                .map(t -> t.traceId)
+                .filter(id -> id != null && !id.isEmpty())
+                .toList();
     }
 
     @Inject
@@ -112,16 +109,6 @@ public class TraceDailyMaintenanceService {
         this.archivePrefix = archivePrefix;
     }
 
-    public void setRetentionDays(int retentionDays) {
-        this.retentionDays = retentionDays;
-    }
-
-    /**
-     * Aggregate stats for a specific date and upsert into trace_daily_stats.
-     * Idempotent — safe to re-run.
-     *
-     * @return number of user-day records written
-     */
     public int aggregateDailyStats(LocalDate date) {
         ZonedDateTime dayStart = date.atStartOfDay(UTC);
         ZonedDateTime dayEnd = date.plusDays(1).atStartOfDay(UTC);
@@ -239,23 +226,6 @@ public class TraceDailyMaintenanceService {
     }
 
     // --- Archive ---
-
-    /**
-     * Archive all traces with {@code started_at < cutoff} and their spans to
-     * object storage as NDJSON (gzipped), then delete them from MongoDB.
-     *
-     * <p>Each line is a JSON object with a {@code _type} field ({@code "trace"}
-     * or {@code "span"}) so archived data can be distinguished on restore.</p>
-     *
-     * <p>Safety check: skips archive if trace_daily_stats does not cover the
-     * cutoff date (stats must exist before raw data is deleted).</p>
-     *
-     * <p>Processes traces in batches ({@value #ARCHIVE_BATCH_SIZE} at a time)
-     * to keep memory bounded regardless of total trace count.</p>
-     *
-     * @param cutoff traces strictly before this instant are archived
-     * @return number of traces archived and deleted, or -1 if skipped
-     */
     @SuppressWarnings({"checkstyle:ExecutableStatementCount", "checkstyle:MethodLength"})
     public int uploadArchive(ZonedDateTime cutoff) {
         if (storageService == null || archiveContainer == null) {
@@ -360,16 +330,6 @@ public class TraceDailyMaintenanceService {
         return totalCount;
     }
 
-    /**
-     * Delete traces and their spans from MongoDB that were previously
-     * uploaded to object storage by {@link #uploadArchive(ZonedDateTime)}.
-     * Spans are deleted in lockstep with trace batches — no full ID
-     * collection in memory — to keep each MongoDB operation small and
-     * avoid socket read timeouts.
-     * <p>Safe to call multiple times: both span deletion (per trace_id,
-     * uses the {@code trace_id} index) and trace deletion (per cutoff)
-     * are idempotent.</p>
-     */
     public void deleteArchivedTraces(ZonedDateTime cutoff) {
         int offset = 0;
         long totalSpansDeleted = 0;
@@ -393,10 +353,6 @@ public class TraceDailyMaintenanceService {
         LOGGER.info("deleted {} traces with started_at < {}", deleted, cutoff);
     }
 
-    /**
-     * Write one batch of traces + spans to a temp file, upload it as a part
-     * blob, and clean up the temp file.  Returns the number of spans written.
-     */
     private int writeAndUploadPart(String blobPrefix, int part, List<Trace> batch,
                                     Map<String, List<Span>> spansByTraceId) throws IOException {
         Path tempFile = null;
@@ -416,29 +372,27 @@ public class TraceDailyMaintenanceService {
         }
     }
 
-    /**
-     * Write one trace + a chunk of its spans to a temp file and upload.
-     * Used when a single trace has more spans than {@link #MAX_SPANS_PER_PART}
-     * — the trace line is repeated in each chunk-part so each file is
-     * self-contained.
-     */
     private int uploadSingleTracePart(String blobPrefix, int part, Trace trace,
                                        List<Span> spanChunk) throws IOException {
         Path tempFile = null;
         try {
             tempFile = Files.createTempFile("traces-archive-part-", ".json.gz");
-            try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(tempFile));
-                 var writer = new BufferedWriter(new OutputStreamWriter(gzipOut))) {
-                writeArchiveLine(writer, "trace", trace);
-                for (var span : spanChunk) {
-                    writeArchiveLine(writer, "span", span);
-                }
-            }
+            writePartToTempFile(tempFile, trace, spanChunk);
             String blobName = String.format("%s/part-%04d.json.gz", blobPrefix, part);
             storageService.uploadObject(archiveContainer, blobName, tempFile);
             return spanChunk.size();
         } finally {
             deleteTempFileQuietly(tempFile);
+        }
+    }
+
+    private void writePartToTempFile(Path tempFile, Trace trace, List<Span> spanChunk) throws IOException {
+        try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(tempFile));
+             var writer = new BufferedWriter(new OutputStreamWriter(gzipOut))) {
+            writeArchiveLine(writer, "trace", trace);
+            for (var span : spanChunk) {
+                writeArchiveLine(writer, "span", span);
+            }
         }
     }
 
@@ -468,18 +422,6 @@ public class TraceDailyMaintenanceService {
         writer.newLine();
     }
 
-    private static List<String> extractTraceIds(List<Trace> traces) {
-        return traces.stream()
-                .map(t -> t.traceId)
-                .filter(id -> id != null && !id.isEmpty())
-                .toList();
-    }
-
-    /**
-     * Lightweight aggregation: returns span count per trace_id.
-     * Uses a Mongo $group pipeline that only transmits one integer per trace,
-     * avoiding the memory cost of loading full Span objects.
-     */
     private Map<String, Integer> getSpanCountsByTraceId(List<String> traceIds) {
         if (traceIds.isEmpty()) return Map.of();
         var aggregate = new Aggregate<org.bson.Document>();
@@ -491,19 +433,14 @@ public class TraceDailyMaintenanceService {
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (var doc : spanCollection.aggregate(aggregate)) {
             String traceId = doc.getString("_id");
-            int count = doc.getInteger("count", 0);
-            if (traceId != null) counts.put(traceId, count);
+            if (traceId != null) {
+                int count = doc.getInteger("count", 0);
+                counts.put(traceId, count);
+            }
         }
         return counts;
     }
 
-    /**
-     * Load Span objects for a sub-set of trace IDs.  Called per sub-batch
-     * so the number of spans loaded at any time stays bounded.
-     * <p>Queries are batched ({@value #MAX_TRACE_IDS_PER_SPAN_QUERY} trace IDs
-     * at a time) to avoid Mongo socket read timeouts when individual span
-     * documents are large.</p>
-     */
     private Map<String, List<Span>> loadSpansForTraces(List<String> traceIds) {
         if (traceIds.isEmpty()) return Map.of();
         Map<String, List<Span>> result = new LinkedHashMap<>();

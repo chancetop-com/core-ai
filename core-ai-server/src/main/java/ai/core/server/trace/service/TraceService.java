@@ -275,7 +275,7 @@ public class TraceService {
     }
 
     private boolean matchesNamePattern(Trace trace, Pattern namePattern) {
-        return namePattern == null || (trace.name != null && namePattern.matcher(trace.name).find());
+        return namePattern == null || trace.name != null && namePattern.matcher(trace.name).find();
     }
 
     private void putTrace(Map<String, Trace> matches, Trace trace) {

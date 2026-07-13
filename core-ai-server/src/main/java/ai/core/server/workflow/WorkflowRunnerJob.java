@@ -29,6 +29,10 @@ import java.time.ZonedDateTime;
 public class WorkflowRunnerJob implements Job {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkflowRunnerJob.class);
 
+    private static boolean isTerminal(RunStatus status) {
+        return status == RunStatus.COMPLETED || status == RunStatus.FAILED || status == RunStatus.TIMEOUT || status == RunStatus.CANCELLED;
+    }
+
     @Inject
     MongoCollection<WorkflowRun> runCollection;
 
@@ -105,7 +109,4 @@ public class WorkflowRunnerJob implements Job {
             Filters.eq("status", NodeRunStatus.WAITING))).isEmpty();
     }
 
-    private static boolean isTerminal(RunStatus status) {
-        return status == RunStatus.COMPLETED || status == RunStatus.FAILED || status == RunStatus.TIMEOUT || status == RunStatus.CANCELLED;
-    }
 }

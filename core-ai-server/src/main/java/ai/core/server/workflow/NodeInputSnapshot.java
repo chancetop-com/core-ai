@@ -15,9 +15,6 @@ import java.util.Map;
  * @author Xander
  */
 final class NodeInputSnapshot {
-    private NodeInputSnapshot() {
-    }
-
     static String capture(NodeContext ctx) {
         String type = ctx.node().type();
         return switch (type) {
@@ -174,5 +171,8 @@ final class NodeInputSnapshot {
 
     private static String json(Object value) {
         return JSON.toJSON(value);
+    }
+
+    private NodeInputSnapshot() {
     }
 }
