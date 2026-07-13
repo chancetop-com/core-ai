@@ -2,7 +2,6 @@ package ai.core.server.session;
 
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
-import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
@@ -16,10 +15,10 @@ import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
 import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
-import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
+import ai.core.server.domain.ToolRef;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.run.SubmitArtifactsTool;
@@ -167,7 +166,6 @@ public class SessionRebuildManager {
         config.maxTurns = snapshot.maxTurns;
         List<AgentDatasetConfig> datasetConfig;
         if (state != null && state.config != null && state.config.datasetConfigs != null && !state.config.datasetConfigs.isEmpty()) {
-            // Session-level override: use stored datasetConfigs
             datasetConfig = state.config.datasetConfigs.stream().map(entry -> {
                 var dc = new AgentDatasetConfig();
                 dc.datasetId = entry.datasetId;
@@ -177,81 +175,88 @@ public class SessionRebuildManager {
             }).toList();
             config.datasetConfigs = state.config.datasetConfigs;
         } else if (state != null && state.config != null && hasText(state.config.datasetId)) {
-            // Backward compat: single datasetId override
             config.datasetId = state.config.datasetId;
             datasetConfig = List.of(createConfig(state.config.datasetId, DatasetPermission.READ));
         } else {
             config.datasetId = findOutputDatasetId(snapshot.datasetConfig);
             datasetConfig = snapshot.datasetConfig;
         }
-        return doRebuild(sessionId, config, snapshot.tools, userId, snapshot.agentName, state, snapshot.agentId, datasetConfig, snapshot.variables);
+        var params = new RebuildParams(sessionId, config, snapshot.tools, userId, snapshot.agentName, state, snapshot.agentId, datasetConfig, snapshot.variables);
+        return doRebuild(params);
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId, SessionState state) {
-        return doRebuild(sessionId, config, null, userId, null, state, "default", null, null);
+        return doRebuild(new RebuildParams(sessionId, config, null, userId, null, state, "default", null, null));
     }
 
-    private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ai.core.server.domain.ToolRef> toolRefs, String userId, String agentName,
-                                             SessionState state, String datasetAgentId, List<AgentDatasetConfig> datasetConfig, Map<String, String> configVars) {
-        var start = System.currentTimeMillis();
-        var agentId = state != null && state.fromAgent && state.agentConfig != null ? state.agentConfig.agentId : null;
-        var effectiveConfig = config != null ? config : new SessionConfig();
+    private SandboxSetup setupSandboxContext(String sessionId, String userId) {
         var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
                 .build() : null;
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
-
-        // Sandbox must exist before resolveToolRefs so sandbox-hosted MCP refs see
-        // a session sandbox. The session itself is created after the agent — wire
-        // the event dispatcher through a holder.
         var sessionRef = new InProcessAgentSession[1];
         if (context != null) {
             var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId,
-                    event -> { if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event); });
+                    event -> {
+                        if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
+                    });
             if (sandbox != null) context.sandbox(sandbox);
         }
+        return new SandboxSetup(context, sessionRef, sandboxOn);
+    }
 
-        List<ToolCall> tools = (toolRefs != null && !toolRefs.isEmpty())
-                ? toolRegistryService.resolveToolRefs(toolRefs, sessionId)
+    private Map<String, Object> injectConfigVars(Map<String, Object> extraVars, Map<String, String> configVars) {
+        if (configVars == null || configVars.isEmpty()) return extraVars;
+        var result = extraVars != null ? extraVars : new HashMap<String, Object>();
+        for (var entry : configVars.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) result.put(entry.getKey(), entry.getValue());
+        }
+        return result;
+    }
+
+    private InProcessAgentSession doRebuild(RebuildParams params) {
+        var start = System.currentTimeMillis();
+        var agentId = params.state != null && params.state.fromAgent && params.state.agentConfig != null ? params.state.agentConfig.agentId : null;
+        var effectiveConfig = params.config != null ? params.config : new SessionConfig();
+        var sandbox = setupSandboxContext(params.sessionId, params.userId);
+
+        List<ToolCall> tools = (params.toolRefs != null && !params.toolRefs.isEmpty())
+                ? toolRegistryService.resolveToolRefs(params.toolRefs, params.sessionId)
                 : new ArrayList<>();
-        tools = addDatasetTools(tools, datasetConfig, agentId, sessionId);
+        tools = addDatasetTools(tools, params.datasetConfig, agentId, params.sessionId);
         Map<String, Object> extraVars = null;
-        if (datasetConfig != null && !datasetConfig.isEmpty()) {
-            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
-            extraVars = buildDatasetSystemVars(datasetConfig);
+        if (params.datasetConfig != null && !params.datasetConfig.isEmpty()) {
+            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt);
+            extraVars = buildDatasetSystemVars(params.datasetConfig);
         }
-        // Inject the agent's configured variables so the system prompt template renders correctly
-        // on rebuild (history is restored as user/assistant only, so the system message is rebuilt here).
-        // Skip null keys/values: they end up in a ConcurrentHashMap during rendering, which rejects nulls.
-        if (configVars != null && !configVars.isEmpty()) {
-            if (extraVars == null) extraVars = new HashMap<>();
-            for (var entry : configVars.entrySet()) {
-                if (entry.getKey() != null && entry.getValue() != null) extraVars.put(entry.getKey(), entry.getValue());
-            }
-        }
-        var toolCount = tools != null ? tools.size() : 0;
-        var skillCount = state != null && state.skillIds != null ? state.skillIds.size() : 0;
-        var subAgentCount = state != null && state.subAgentIds != null ? state.subAgentIds.size() : 0;
-        var dynamicToolCount = state != null && state.tools != null ? state.tools.size() : 0;
-        logger.info("doRebuild start, sessionId={}, fromAgent={}, baseTools={}, dynamicTools={}, skills={}, subAgents={}",
-                sessionId, state != null && state.fromAgent, toolCount, dynamicToolCount, skillCount, subAgentCount);
-        var agent = subAgentManager.buildAgent(effectiveConfig,
-                SessionSubAgentManager.toolsToRegistry(tools),
-                context, agentName, extraVars, agentId,
-                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
-                null);
-        var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
-        sessionRef[0] = session;
-        session.setOnIdle(() -> renewSessionOwnership(sessionId));
-        session.onEvent(chatMessageService.listener(sessionId));
+        extraVars = injectConfigVars(extraVars, params.configVars);
+        logRebuildStart(params, tools);
+        var agent = subAgentManager.buildAgent(new SessionSubAgentManager.BuildAgentParams(
+                effectiveConfig, SessionSubAgentManager.toolsToRegistry(tools),
+                sandbox.context, params.agentName, extraVars, agentId,
+                sandbox.sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(params.sessionId))) : null,
+                null));
+        var session = new InProcessAgentSession(params.sessionId, agent, true, new InMemoryToolPermissionStore());
+        sandbox.sessionRef[0] = session;
+        session.setOnIdle(() -> renewSessionOwnership(params.sessionId));
+        session.onEvent(chatMessageService.listener(params.sessionId));
         if (eventPublisher != null) {
-            session.onEvent(new SseEventBridge(sessionId, eventPublisher));
+            session.onEvent(new SseEventBridge(params.sessionId, eventPublisher));
         }
-        registerSessionFromDb(sessionId, userId);
-        restoreAgentHistory(agent, sessionId);
-        restoreDynamicallyLoaded(state, sessionId, session);
-        logger.info("doRebuild done, sessionId={}, elapsedMs={}", sessionId, System.currentTimeMillis() - start);
+        registerSessionFromDb(params.sessionId, params.userId);
+        restoreAgentHistory(agent, params.sessionId);
+        restoreDynamicallyLoaded(params.state, params.sessionId, session);
+        logger.info("doRebuild done, sessionId={}, elapsedMs={}", params.sessionId, System.currentTimeMillis() - start);
         return session;
+    }
+
+    private void logRebuildStart(RebuildParams params, List<ToolCall> tools) {
+        var toolCount = tools != null ? tools.size() : 0;
+        var skillCount = params.state != null && params.state.skillIds != null ? params.state.skillIds.size() : 0;
+        var subAgentCount = params.state != null && params.state.subAgentIds != null ? params.state.subAgentIds.size() : 0;
+        var dynamicToolCount = params.state != null && params.state.tools != null ? params.state.tools.size() : 0;
+        logger.info("doRebuild start, sessionId={}, fromAgent={}, baseTools={}, dynamicTools={}, skills={}, subAgents={}",
+                params.sessionId, params.state != null && params.state.fromAgent, toolCount, dynamicToolCount, skillCount, subAgentCount);
     }
 
     private void renewSessionOwnership(String sessionId) {
@@ -337,9 +342,9 @@ public class SessionRebuildManager {
         if (datasetConfig == null || datasetConfig.isEmpty()) return tools;
         var registry = DatasetAccessRegistry.from(datasetConfig);
         var mutable = new ArrayList<ToolCall>(tools != null ? tools : List.of());
-        var effectiveAgentId = hasText(agentId) ? agentId : "default";
         mutable.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
         if (registry.hasAnyWrite()) {
+            var effectiveAgentId = hasText(agentId) ? agentId : "default";
             mutable.add(InsertDatasetRecordTool.create(effectiveAgentId, sessionId, datasetService, datasetRecordService, registry));
             mutable.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
         }
@@ -349,7 +354,7 @@ public class SessionRebuildManager {
         return mutable;
     }
 
-    private String appendDatasetInstructions(String systemPrompt, List<AgentDatasetConfig> datasetConfig) {
+    private String appendDatasetInstructions(String systemPrompt) {
         if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
         return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
     }
@@ -362,7 +367,7 @@ public class SessionRebuildManager {
             var dataset = datasetService.get(cfg.datasetId);
             if (dataset == null) continue;
             names.add(dataset.name);
-            desc.append("\n- \"").append(dataset.name).append("\" (").append(cfg.permission.name()).append(")");
+            desc.append("\n- \"").append(dataset.name).append("\" (").append(cfg.permission.name()).append(')');
             if (dataset.description != null && !dataset.description.isBlank()) {
                 desc.append(": ").append(dataset.description);
             }
@@ -393,6 +398,14 @@ public class SessionRebuildManager {
                 .orElse(null);
     }
 
+    record RebuildParams(String sessionId, SessionConfig config, List<ToolRef> toolRefs, String userId,
+                         String agentName, SessionState state, String datasetAgentId,
+                         List<AgentDatasetConfig> datasetConfig, Map<String, String> configVars) {
+    }
+
+    private record SandboxSetup(ExecutionContext context, InProcessAgentSession[] sessionRef, boolean sandboxOn) {
+    }
+
     public record Deps(ChatMessageService chatMessageService,
                         MongoCollection<AgentDefinition> agentDefinitionCollection,
                         SessionSkillManager skillManager,
@@ -405,5 +418,6 @@ public class SessionRebuildManager {
                         DatasetRecordService datasetRecordService,
                         FileService fileService,
                         EventPublisher eventPublisher,
-                        SessionOwnershipRegistry ownershipRegistry) { }
+                        SessionOwnershipRegistry ownershipRegistry) {
+    }
 }

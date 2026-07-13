@@ -26,6 +26,15 @@ import java.util.Map;
  * @author stephen
  */
 public class SessionSubAgentManager {
+
+    public static ToolRegistry toolsToRegistry(List<ToolCall> tools) {
+        var registry = ToolRegistryFactory.createEmpty();
+        if (tools != null && !tools.isEmpty()) {
+            registry.registerProvider(new ListToolProvider("session-tools", tools));
+        }
+        return registry;
+    }
+
     private final ChatMessageService chatMessageService;
     private final SubAgentAssembler subAgentAssembler;
 
@@ -83,17 +92,12 @@ public class SessionSubAgentManager {
         return subAgentAssembler.toSessionConfig(definition);
     }
 
-    public Agent buildAgent(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,
-                            String agentName, Map<String, Object> extraSystemVars, String agentId,
-                            List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject) {
-        return subAgentAssembler.buildAgent(config, toolRegistry, context, agentName, extraSystemVars, agentId, extraLifecycles, memoryInject);
+    public Agent buildAgent(BuildAgentParams params) {
+        return subAgentAssembler.buildAgent(params.config, params.toolRegistry, params.context, params.agentName, params.extraSystemVars, params.agentId, params.extraLifecycles, params.memoryInject);
     }
 
-    public static ToolRegistry toolsToRegistry(List<ToolCall> tools) {
-        var registry = ToolRegistryFactory.createEmpty();
-        if (tools != null && !tools.isEmpty()) {
-            registry.registerProvider(new ListToolProvider("session-tools", tools));
-        }
-        return registry;
+    public record BuildAgentParams(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,
+                                    String agentName, Map<String, Object> extraSystemVars, String agentId,
+                                    List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject) {
     }
 }

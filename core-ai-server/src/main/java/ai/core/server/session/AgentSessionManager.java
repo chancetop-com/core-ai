@@ -1,19 +1,13 @@
 package ai.core.server.session;
 
+import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
-import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
-import ai.core.server.dataset.tool.DatasetAccessRegistry;
-import ai.core.server.dataset.tool.DatasetToolProvider;
-import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
-import ai.core.server.dataset.tool.InsertDatasetRecordTool;
-import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
-import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDefinitionService;
@@ -34,23 +28,14 @@ import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
-import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.util.IdLists;
-import ai.core.tool.registry.BuiltinToolProvider;
-import ai.core.tool.registry.ListToolProvider;
-import ai.core.tool.registry.ToolProvider;
-import ai.core.tool.registry.ToolRegistry;
-import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.tool.tools.InternalUrlResolver;
-import ai.core.prompt.Prompts;
-import ai.core.prompt.SystemVariables;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
-import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.NotFoundException;
@@ -58,8 +43,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -119,6 +102,7 @@ public class AgentSessionManager {
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
     private SessionRebuildManager rebuildManager;
+    private SessionDatasetHelper datasetHelper;
 
     public void setEventPublisher(EventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
@@ -151,6 +135,13 @@ public class AgentSessionManager {
         return rebuildManager;
     }
 
+    private SessionDatasetHelper datasetHelper() {
+        if (datasetHelper == null) {
+            datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
+        }
+        return datasetHelper;
+    }
+
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
         session.onEvent(chatMessageService.listener(sessionId));
         session.onEvent(new SseEventBridge(sessionId, eventPublisher));
@@ -172,20 +163,20 @@ public class AgentSessionManager {
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
                 .build();
         var sandboxOn = sandboxService.isSandboxEnabled(null);
-        var toolRegistry = buildSessionToolRegistry(effectiveConfig, sessionId);
+        var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
         Map<String, Object> extraVars = null;
         if (hasText(effectiveConfig.datasetId)) {
             var dp = new AgentDatasetConfig();
             dp.datasetId = effectiveConfig.datasetId;
             dp.permission = DatasetPermission.READ;
             var datasetConfig = List.of(dp);
-            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
-            extraVars = buildDatasetSystemVars(datasetConfig);
+            effectiveConfig.systemPrompt = datasetHelper().appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
+            extraVars = datasetHelper().buildDatasetSystemVars(datasetConfig);
         }
-        var agent = subAgentManager().buildAgent(effectiveConfig,
-                toolRegistry, context, null, extraVars, null,
+        var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
+                effectiveConfig, toolRegistry, context, null, extraVars, null,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
-                null);
+                null));
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
@@ -212,64 +203,12 @@ public class AgentSessionManager {
             if (overrides.maxTurns != null) config.maxTurns = overrides.maxTurns;
         }
         var sessionId = UUID.randomUUID().toString();
-        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
-        // SessionConfig overrides: if datasetConfigs is set, use those instead of agent defaults
-        if (overrides != null && overrides.datasetConfigs != null && !overrides.datasetConfigs.isEmpty()) {
-            datasetConfig = overrides.datasetConfigs.stream().map(entry -> {
-                var perm = new AgentDatasetConfig();
-                perm.datasetId = entry.datasetId;
-                perm.permission = DatasetPermission.valueOf(entry.permission);
-                perm.isOutput = entry.isOutput;
-                return perm;
-            }).toList();
-            config.datasetConfigs = overrides.datasetConfigs;
-        } else if (overrides != null && hasText(overrides.datasetId)) {
-            // Backward compat: single datasetId override
-            var overridePerm = new AgentDatasetConfig();
-            overridePerm.datasetId = overrides.datasetId;
-            overridePerm.permission = DatasetPermission.READ;
-            datasetConfig = List.of(overridePerm);
-            config.datasetId = overrides.datasetId;
-        }
-        // Create the sandbox before resolving tools — sandbox-hosted MCP refs need
-        // the session's sandbox to register their child process. The session itself
-        // is built afterwards, so the event dispatcher is wired through a holder.
-        var sandboxConfig = sandboxService.getEffectiveConfig(definition);
-        var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
-        var sessionRef = new InProcessAgentSession[1];
-        var sandbox2 = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId,
-                event -> { if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event); });
-
-        var toolRegistry = subAgentManager().resolveToolsToRegistry(definition, sessionId);
-        addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
-        Map<String, Object> extraVars = null;
-        if (datasetConfig != null && !datasetConfig.isEmpty()) {
-            config.systemPrompt = appendDatasetInstructions(config.systemPrompt, datasetConfig);
-            extraVars = buildDatasetSystemVars(datasetConfig);
-        }
-        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
-                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
-                .build();
-        if (sandbox2 != null) context.sandbox(sandbox2);
-
-        // Memory experiment: prepare injection and record run
-        var injectionResult = memoryExperimentService.prepareInjection(definition.id);
-        var memoryInject = injectionResult.injected ? injectionResult.promptInject : null;
-
-        var agent = subAgentManager().buildAgent(config,
-                toolRegistry, context, definition.name, extraVars, definition.id,
-                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
-                memoryInject);
-
-        // record experiment run for this session
-        // only record when user has explicitly configured an experiment
-        var experimentConfig = memoryExperimentService.getConfig(definition.id);
-        if (experimentConfig != null) {
-            memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);
-        }
+        var datasetConfig = resolveDatasetConfig(definition, config, overrides);
+        var buildResult = buildAgentForDefinition(definition, sessionId, userId, config, datasetConfig);
+        var agent = buildResult.agent;
 
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
-        sessionRef[0] = session;
+        buildResult.sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, definition.id, source));
@@ -287,6 +226,64 @@ public class AgentSessionManager {
         return new SessionCreationResult(sessionId,
                 IdLists.clean(loadedSubAgentIds),
                 IdLists.clean(loadedSkillIds));
+    }
+
+    private List<AgentDatasetConfig> resolveDatasetConfig(AgentDefinition definition, SessionConfig config, SessionConfig overrides) {
+        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
+        if (overrides != null && overrides.datasetConfigs != null && !overrides.datasetConfigs.isEmpty()) {
+            datasetConfig = overrides.datasetConfigs.stream().map(entry -> {
+                var perm = new AgentDatasetConfig();
+                perm.datasetId = entry.datasetId;
+                perm.permission = DatasetPermission.valueOf(entry.permission);
+                perm.isOutput = entry.isOutput;
+                return perm;
+            }).toList();
+            config.datasetConfigs = overrides.datasetConfigs;
+        } else if (overrides != null && hasText(overrides.datasetId)) {
+            var overridePerm = new AgentDatasetConfig();
+            overridePerm.datasetId = overrides.datasetId;
+            overridePerm.permission = DatasetPermission.READ;
+            datasetConfig = List.of(overridePerm);
+            config.datasetId = overrides.datasetId;
+        }
+        return datasetConfig;
+    }
+
+    private AgentBuildResult buildAgentForDefinition(AgentDefinition definition, String sessionId, String userId,
+                                                      SessionConfig config, List<AgentDatasetConfig> datasetConfig) {
+        var sandboxConfig = sandboxService.getEffectiveConfig(definition);
+        var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
+        var sessionRef = new InProcessAgentSession[1];
+        var sandbox2 = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId,
+                event -> {
+                    if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
+                });
+
+        var toolRegistry = subAgentManager().resolveToolsToRegistry(definition, sessionId);
+        datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
+        Map<String, Object> extraVars = null;
+        if (datasetConfig != null && !datasetConfig.isEmpty()) {
+            config.systemPrompt = datasetHelper().appendDatasetInstructions(config.systemPrompt, datasetConfig);
+            extraVars = datasetHelper().buildDatasetSystemVars(datasetConfig);
+        }
+        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
+                .build();
+        if (sandbox2 != null) context.sandbox(sandbox2);
+
+        var injectionResult = memoryExperimentService.prepareInjection(definition.id);
+        var memoryInject = injectionResult.injected ? injectionResult.promptInject : null;
+
+        var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
+                config, toolRegistry, context, definition.name, extraVars, definition.id,
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
+                memoryInject));
+
+        var experimentConfig = memoryExperimentService.getConfig(definition.id);
+        if (experimentConfig != null) {
+            memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);
+        }
+        return new AgentBuildResult(agent, sessionRef);
     }
 
     private void claimOwnership(String sessionId) {
@@ -372,7 +369,10 @@ public class AgentSessionManager {
             var ip = lazy.ip();
             var port = lazy.port();
             if (ip == null || port == 0) return; // sandbox never materialized
-            if (!lazy.isDelegateTracked()) { logger.info("skip snapshot capture, sandbox already released by ttl cleanup: sessionId={}", sessionId); return; }
+            if (!lazy.isDelegateTracked()) {
+                logger.info("skip snapshot capture, sandbox already released by ttl cleanup: sessionId={}", sessionId);
+                return;
+            }
             sandboxSnapshotService.captureBeforeRelease(sessionId, lazy.userId(), lazy.snapshotEpoch(), ip, port, lazy.image());
         } catch (Exception e) {
             logger.warn("sandbox snapshot capture failed, releasing anyway: sessionId={}", sessionId, e);
@@ -402,10 +402,6 @@ public class AgentSessionManager {
 
     public List<ToolRef> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {
         var session = getSession(sessionId);
-        // Resolve ALL refs in a single call so that MCP sandbox-hosted server
-        // startups run in parallel (via prepareSessionMcpServers parallelStream),
-        // avoiding sequential per-server delays that compound when servers are
-        // slow or unreachable.
         var tools = toolRegistryService.resolveToolRefs(toolRefs, sessionId);
         if (tools.isEmpty()) {
             throw new NotFoundException("no tools found for refs: " + toolRefs);
@@ -429,83 +425,13 @@ public class AgentSessionManager {
         return subAgentManager().loadSubAgents(session, definitions);
     }
 
-    private List<ToolCall> addDatasetTools(List<ToolCall> tools, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
-        if (datasetConfig == null || datasetConfig.isEmpty()) return tools;
-        var registry = DatasetAccessRegistry.from(datasetConfig);
-        var mutable = new ArrayList<>(tools);
-        mutable.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
-        if (registry.hasAnyWrite()) {
-            mutable.add(InsertDatasetRecordTool.create(agentId, sessionId, datasetService, datasetRecordService, registry));
-            mutable.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
-        }
-        if (registry.hasAnyFull()) {
-            mutable.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, registry));
-        }
-        return mutable;
-    }
-
-    private void addDatasetToolsToRegistry(ToolRegistry registry, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
-        if (datasetConfig == null || datasetConfig.isEmpty()) return;
-        var accessRegistry = DatasetAccessRegistry.from(datasetConfig);
-        registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, agentId, sessionId));
-    }
-
-    private String appendDatasetInstructions(String systemPrompt, List<AgentDatasetConfig> datasetConfig) {
-        if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
-        return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
-    }
-
-    private Map<String, Object> buildDatasetSystemVars(List<AgentDatasetConfig> datasetConfig) {
-        if (datasetConfig == null || datasetConfig.isEmpty()) return null;
-        var first = datasetConfig.getFirst();
-        var dataset = datasetService.get(first.datasetId);
-        if (dataset == null) return null;
-        var vars = new HashMap<String, Object>();
-        vars.put(SystemVariables.AGENT_DATASET_NAME, buildDatasetNames(datasetConfig));
-        vars.put(SystemVariables.AGENT_DATASET_DESC, buildDatasetDesc(datasetConfig));
-        return vars;
-    }
-
-    private String buildDatasetNames(List<AgentDatasetConfig> datasetConfig) {
-        var names = new ArrayList<String>();
-        for (var perm : datasetConfig) {
-            var dataset = datasetService.get(perm.datasetId);
-            if (dataset != null) names.add(dataset.name);
-        }
-        return String.join(", ", names);
-    }
-
-    private String buildDatasetDesc(List<AgentDatasetConfig> datasetConfig) {
-        var sb = new StringBuilder();
-        for (var perm : datasetConfig) {
-            var dataset = datasetService.get(perm.datasetId);
-            if (dataset == null) continue;
-            sb.append("\n- \"").append(dataset.name).append("\" (").append(perm.permission.name()).append(")");
-            if (dataset.description != null && !dataset.description.isBlank()) {
-                sb.append(": ").append(dataset.description);
-            }
-        }
-        return sb.toString();
-    }
-
-    private ToolRegistry buildSessionToolRegistry(SessionConfig config, String sessionId) {
-        var registry = ToolRegistryFactory.createEmpty();
-        registry.registerProvider(BuiltinToolProvider.fromSet(ToolProvider.BUILTIN_ALL));
-        if (config == null || !hasText(config.datasetId)) return registry;
-        var dataset = datasetService.get(config.datasetId);
-        if (dataset == null) return registry;
-        var dp = new AgentDatasetConfig();
-        dp.datasetId = config.datasetId;
-        dp.permission = DatasetPermission.FULL;
-        var accessRegistry = DatasetAccessRegistry.from(List.of(dp));
-        registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, "default", sessionId));
-        return registry;
-    }
-
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
 
     public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds) {
+    }
+
+    private record AgentBuildResult(Agent agent, InProcessAgentSession[] sessionRef) {
     }
 }
