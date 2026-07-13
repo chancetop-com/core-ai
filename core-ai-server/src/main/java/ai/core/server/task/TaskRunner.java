@@ -139,6 +139,7 @@ public class TaskRunner {
     private void executeAndUpdate(AbstractTask task, String taskId, BackgroundTask record, int retryCount) {
         var ctx = new TaskContext();
         ctx.setDate(parseDate(taskId));
+        ctx.setState(record.taskState);
         try {
             task.execute(ctx);
             record.status = TaskStatus.SUCCESS;
@@ -160,6 +161,7 @@ public class TaskRunner {
 
         record.completedAt = ZonedDateTime.now();
         record.logs = ctx.logs();
+        record.taskState = ctx.state();
         taskCollection.replace(record);
     }
 

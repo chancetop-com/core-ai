@@ -256,7 +256,7 @@ public class TraceDailyMaintenanceService {
      * @return number of traces archived and deleted, or -1 if skipped
      */
     @SuppressWarnings({"checkstyle:ExecutableStatementCount", "checkstyle:MethodLength"})
-    public int archiveTraces(ZonedDateTime cutoff) {
+    public int uploadArchive(ZonedDateTime cutoff) {
         if (storageService == null || archiveContainer == null) {
             LOGGER.warn("archive skipped: object storage not configured, cutoff={}", cutoff);
             return -1;
@@ -264,7 +264,7 @@ public class TraceDailyMaintenanceService {
 
         LocalDate cutoffDate = cutoff.toLocalDate();
 
-        // Safety: verify stats cover the cutoff date before deleting raw data
+        // Safety: verify stats cover the cutoff date before archiving raw data
         long statsCount = countStatsForDate(cutoffDate);
         if (statsCount == 0) {
             LOGGER.warn("archive skipped: no trace_daily_stats for {}, cutoff={}", cutoffDate, cutoff);
@@ -279,7 +279,6 @@ public class TraceDailyMaintenanceService {
 
         String blobPrefix = (archivePrefix != null ? archivePrefix + "/" : "")
                 + String.format("traces-archive/%s/%s", cutoffDate.format(YEAR_MONTH), cutoffDate);
-        List<String> allTraceIds = new ArrayList<>();
         int totalSpanCount = 0;
         int part = 1;
         int offset = 0;
@@ -319,7 +318,6 @@ public class TraceDailyMaintenanceService {
                             part++;
                         }
                         allSpans.clear();
-                        if (trace.traceId != null) allTraceIds.add(trace.traceId);
                         offset++;
                         start++;
                         continue;
@@ -342,9 +340,6 @@ public class TraceDailyMaintenanceService {
                     int spanCount = writeAndUploadPart(blobPrefix, part, subBatch, spansByTraceId);
                     totalSpanCount += spanCount;
 
-                    for (var trace : subBatch) {
-                        if (trace.traceId != null) allTraceIds.add(trace.traceId);
-                    }
                     spansByTraceId.clear();
 
                     LOGGER.info("archive part {}: {} traces + {} spans uploaded",
@@ -356,17 +351,45 @@ public class TraceDailyMaintenanceService {
                 batch.clear();
             }
 
-            // All parts uploaded successfully — safe to delete from MongoDB
-            deleteSpansBatched(allTraceIds);
-            traceCollection.delete(Filters.lt("started_at", cutoff));
             LOGGER.info("archived {} traces + {} spans in {} parts to {}, cutoff={}",
                     totalCount, totalSpanCount, part - 1, blobPrefix, cutoff);
         } catch (Exception e) {
-            // IOException = upload/write failure; RuntimeException (e.g. MongoSocketReadTimeoutException)
-            // = failure during span deletion or trace cleanup after upload succeeded.
-            throw new RuntimeException("archive failed: " + e.getMessage(), e);
+            throw new RuntimeException("archive upload failed: " + e.getMessage(), e);
         }
         return totalCount;
+    }
+
+    /**
+     * Delete traces and their spans from MongoDB that were previously
+     * uploaded to object storage by {@link #uploadArchive(ZonedDateTime)}.
+     * Safe to call multiple times — both span deletion (per trace_id) and
+     * trace deletion (per cutoff) are idempotent.
+     */
+    public void deleteArchivedTraces(ZonedDateTime cutoff) {
+        List<String> allTraceIds = collectTraceIds(cutoff);
+        LOGGER.info("deleting spans for {} traces before {}", allTraceIds.size(), cutoff);
+        deleteSpansBatched(allTraceIds);
+        long deleted = traceCollection.delete(Filters.lt("started_at", cutoff));
+        LOGGER.info("deleted {} traces with started_at < {}", deleted, cutoff);
+    }
+
+    private List<String> collectTraceIds(ZonedDateTime cutoff) {
+        List<String> ids = new ArrayList<>();
+        int offset = 0;
+        while (true) {
+            var batchQuery = new Query();
+            batchQuery.filter = Filters.lt("started_at", cutoff);
+            batchQuery.sort = Sorts.ascending("started_at");
+            batchQuery.skip = offset;
+            batchQuery.limit = ARCHIVE_BATCH_SIZE;
+            var batch = traceCollection.find(batchQuery);
+            if (batch.isEmpty()) break;
+            for (var trace : batch) {
+                if (trace.traceId != null) ids.add(trace.traceId);
+            }
+            offset += batch.size();
+        }
+        return ids;
     }
 
     /**

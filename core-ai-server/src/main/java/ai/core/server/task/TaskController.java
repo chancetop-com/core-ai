@@ -112,6 +112,7 @@ public class TaskController {
         map.put("completed_at", task.completedAt);
         map.put("retry_count", task.retryCount);
         map.put("logs", task.logs);
+        map.put("task_state", task.taskState);
         return map;
     }
 

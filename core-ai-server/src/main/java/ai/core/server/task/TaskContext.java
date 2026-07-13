@@ -23,6 +23,7 @@ public class TaskContext {
     private final List<String> logs = new ArrayList<>();
     private String statusText;
     private LocalDate date;
+    private String state;
 
     /**
      * Append a timestamped log line.
@@ -45,6 +46,19 @@ public class TaskContext {
      */
     public LocalDate date() {
         return date;
+    }
+
+    /**
+     * Phase tracking state for multi-phase tasks. TaskRunner persists this to
+     * {@code background_tasks.task_state} so retries can resume from the last
+     * completed phase instead of restarting from scratch.
+     */
+    public String state() {
+        return state;
+    }
+
+    public void setState(String state) {
+        this.state = state;
     }
 
     // -- package-private accessors for TaskRunner --

@@ -43,4 +43,7 @@ public class BackgroundTask {
 
     @Field(name = "logs")
     public List<String> logs;
+
+    @Field(name = "task_state")
+    public String taskState;
 }
