@@ -361,8 +361,10 @@ public class TraceDailyMaintenanceService {
             traceCollection.delete(Filters.lt("started_at", cutoff));
             LOGGER.info("archived {} traces + {} spans in {} parts to {}, cutoff={}",
                     totalCount, totalSpanCount, part - 1, blobPrefix, cutoff);
-        } catch (IOException e) {
-            throw new RuntimeException("failed to write archive part", e);
+        } catch (Exception e) {
+            // IOException = upload/write failure; RuntimeException (e.g. MongoSocketReadTimeoutException)
+            // = failure during span deletion or trace cleanup after upload succeeded.
+            throw new RuntimeException("archive failed: " + e.getMessage(), e);
         }
         return totalCount;
     }
