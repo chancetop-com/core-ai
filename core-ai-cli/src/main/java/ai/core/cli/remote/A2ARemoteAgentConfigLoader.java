@@ -33,7 +33,7 @@ public final class A2ARemoteAgentConfigLoader {
         var prefix = ROOT + "." + id;
         var config = new A2ARemoteAgentConfig();
         config.id = id;
-        config.enabled = props.property(prefix + ".enabled").map(Boolean::parseBoolean).orElse(true);
+        config.enabled = props.property(prefix + ".enabled").map(Boolean::parseBoolean).orElse(Boolean.TRUE);
         config.url = props.property(prefix + ".url").orElse(null);
         config.agentId = props.property(prefix + ".agentId").orElse(null);
         config.apiKeyEnv = props.property(prefix + ".apiKeyEnv").orElse(null);

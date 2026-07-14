@@ -16,7 +16,7 @@ final class JLineDebugHandler extends Handler {
     public void publish(LogRecord record) {
         LOGGER.debug("[jline] {}", record.getMessage());
         if (record.getThrown() != null) {
-            LOGGER.debug("[jline] exception: {}", record.getThrown());
+            LOGGER.debug("[jline] exception", record.getThrown());
         }
     }
 

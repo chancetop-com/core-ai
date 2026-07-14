@@ -6,6 +6,7 @@ import ai.core.cli.memory.MemorySectionManager;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.TextUtil;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
 import ai.core.session.SessionManager;
@@ -63,6 +64,7 @@ class AgentSessionRunnerCommandHandler {
         ui.printStreamingChunk("\n");
     }
 
+    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
     void handleThinking(String trimmed) {
         String[] parts = trimmed.split("\\s+", 2);
         if (parts.length > 1 && !parts[1].isBlank()) {
@@ -159,7 +161,7 @@ class AgentSessionRunnerCommandHandler {
                 return;
             }
             ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "\u2713" + AnsiTheme.RESET + " Copied to clipboard (" + lastAssistant.length() + " chars)\n\n");
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to copy: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }

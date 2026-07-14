@@ -3,6 +3,7 @@ package ai.core.cli.ui;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.cli.DebugLog;
 import ai.core.cli.log.CliLogger;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
@@ -28,6 +29,7 @@ import java.util.logging.Level;
 /**
  * @author stephen
  */
+@edu.umd.cs.findbugs.annotations.SuppressFBWarnings("LG_LOST_LOGGER_DUE_TO_WEAK_REFERENCE")
 public class TerminalUI {
     private static final Logger LOGGER = LoggerFactory.getLogger(TerminalUI.class);
 
@@ -35,6 +37,7 @@ public class TerminalUI {
         return t == null || Terminal.TYPE_DUMB.equals(t.getType()) || Terminal.TYPE_DUMB_COLOR.equals(t.getType());
     }
 
+    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
     private static Terminal buildTerminal() throws IOException {
         LOGGER.debug("terminal: os.name={}", System.getProperty("os.name", ""));
         for (String providerName : new String[]{"ffm", "jni", "jansi"}) {

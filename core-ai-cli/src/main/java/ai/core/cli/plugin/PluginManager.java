@@ -27,6 +27,7 @@ import java.util.jar.JarInputStream;
 * description
 * createTime  2026/4/10
 **/
+@edu.umd.cs.findbugs.annotations.SuppressFBWarnings("MS_EXPOSE_REP")
 public final class PluginManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(PluginManager.class);
 
@@ -152,7 +153,8 @@ public final class PluginManager {
 
         try (var stream = Files.list(pluginsDir)) {
             stream.filter(Files::isDirectory).forEach(dir -> {
-                String name = dir.getFileName().toString();
+                Path fileNamePath = dir.getFileName();
+                String name = fileNamePath != null ? fileNamePath.toString() : dir.toString();
                 if (seen.add(name)) {
                     loadPlugin(dir).ifPresent(plugins::add);
                 }
@@ -164,8 +166,9 @@ public final class PluginManager {
 
     private Optional<Plugin> loadPlugin(Path dir) {
         String cacheKey = dir.toString();
-        if (pluginCache.containsKey(cacheKey)) {
-            return Optional.of(pluginCache.get(cacheKey));
+        Plugin cached = pluginCache.get(cacheKey);
+        if (cached != null) {
+            return Optional.of(cached);
         }
         var manifest = loadPluginManifest(dir);
         if (manifest == null) return Optional.empty();
@@ -318,7 +321,9 @@ public final class PluginManager {
     private void extractEntry(JarInputStream jar, JarEntry entry, String pluginName, Path pluginsDir) throws IOException {
         String relativePath = entry.getName().substring((PLUGINS_DIR_NAME + "/" + pluginName + "/").length());
         Path targetPath = pluginsDir.resolve(pluginName).resolve(relativePath);
-        Files.createDirectories(targetPath.getParent());
+                Path targetParent = targetPath.getParent();
+                if (targetParent == null) throw new IOException("No parent for: " + targetPath);
+                Files.createDirectories(targetParent);
 
         try (OutputStream os = Files.newOutputStream(targetPath)) {
             jar.transferTo(os);
@@ -343,8 +348,7 @@ public final class PluginManager {
 
     private void setExecutablePermissions(Path pluginsDir) {
         try (var stream = Files.walk(pluginsDir)) {
-            stream.filter(Files::isRegularFile)
-                  .filter(p -> p.toString().endsWith(".sh"))
+            stream.filter(p -> Files.isRegularFile(p) && p.toString().endsWith(".sh"))
                   .forEach(p -> p.toFile().setExecutable(true, false));
         } catch (IOException e) {
             LOGGER.warn("Failed to set executable permissions: {}", e.getMessage());

@@ -21,6 +21,7 @@ import io.undertow.server.handlers.PathTemplateHandler;
 import io.undertow.server.handlers.resource.ClassPathResourceManager;
 import io.undertow.server.handlers.resource.FileResourceManager;
 import io.undertow.server.handlers.resource.ResourceHandler;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import io.undertow.util.Methods;
@@ -28,11 +29,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xnio.Options;
 
+import java.io.IOException;
 import java.nio.file.Path;
 
 /**
  * @author stephen
  */
+@edu.umd.cs.findbugs.annotations.SuppressFBWarnings("LG_LOST_LOGGER_DUE_TO_WEAK_REFERENCE")
 public class A2AServer {
     private static final Logger LOGGER = LoggerFactory.getLogger(A2AServer.class);
 
@@ -42,6 +45,7 @@ public class A2AServer {
     private static final HttpString ACCESS_CONTROL_MAX_AGE = new HttpString("Access-Control-Max-Age");
     private static String cachedIndexHtml;
 
+    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
     private static void silenceUndertowLogs() {
         for (String name : new String[]{"io.undertow", "org.xnio", "org.jboss.threads"}) {
             java.util.logging.Logger.getLogger(name).setLevel(java.util.logging.Level.OFF);
@@ -75,7 +79,7 @@ public class A2AServer {
                 }))
                 .setWorkerThreads(8)
                 // Set worker threads to daemon mode so they don't prevent JVM shutdown
-                .setWorkerOption(Options.THREAD_DAEMON, true)
+                .setWorkerOption(Options.THREAD_DAEMON, Boolean.TRUE)
                 .build();
     }
 
@@ -173,7 +177,7 @@ public class A2AServer {
                 try {
                     cachedIndexHtml = java.nio.file.Files.readString(file.toPath());
                     return cachedIndexHtml;
-                } catch (Exception e) {
+                } catch (IOException e) {
                     LOGGER.warn("failed to load index.html: {}", e.getMessage());
                 }
             }
@@ -184,7 +188,7 @@ public class A2AServer {
                 cachedIndexHtml = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
                 return cachedIndexHtml;
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             LOGGER.warn("failed to load index.html from classpath: {}", e.getMessage());
         }
         cachedIndexHtml = "<!DOCTYPE html><html><body><h1>index.html not found</h1></body></html>";

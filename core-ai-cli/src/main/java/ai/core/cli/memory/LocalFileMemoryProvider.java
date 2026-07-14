@@ -81,7 +81,9 @@ public class LocalFileMemoryProvider implements MemoryProvider {
                     + "' (limit: " + maxBytes / 1024 + "KB)");
         }
         try {
-            Files.createDirectories(path.getParent());
+            Path parent = path.getParent();
+            if (parent == null) throw new RuntimeException("Memory path has no parent: " + path);
+            Files.createDirectories(parent);
             String line = "- " + content + "\n";
             Files.writeString(path, line, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {

@@ -3,6 +3,7 @@ package ai.core.cli.command;
 import ai.core.cli.auth.AuthService;
 import ai.core.cli.remote.RemoteApiClient;
 import ai.core.cli.remote.RemoteConfig;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.utils.JsonUtil;
@@ -247,7 +248,9 @@ public class SkillCommandHandler {
                     var path = resource.get("path");
                     var resourceContent = resource.get("content");
                     var resourceFile = skillDir.resolve(path);
-                    Files.createDirectories(resourceFile.getParent());
+                    Path resParent = resourceFile.getParent();
+                    if (resParent == null) continue;
+                    Files.createDirectories(resParent);
                     Files.writeString(resourceFile, resourceContent, StandardCharsets.UTF_8);
                 }
             }
@@ -299,7 +302,7 @@ public class SkillCommandHandler {
                           var skillMd = p.resolve("SKILL.md");
                           if (Files.isRegularFile(skillMd)) {
                               String name = parseFrontmatterName(skillMd);
-                              if (name == null) name = p.getFileName().toString();
+                              if (name == null) name = toStringOrName(p);
                               result.add(new SkillEntry(name, p, dir));
                           } else {
                               scanNamespaceDir(p, dir, result);
@@ -313,14 +316,14 @@ public class SkillCommandHandler {
     }
 
     private void scanNamespaceDir(Path namespaceDir, String source, List<SkillEntry> result) {
-        String namespace = namespaceDir.getFileName().toString();
+        Path nsFn = namespaceDir.getFileName();
+        String namespace = nsFn != null ? nsFn.toString() : namespaceDir.toString();
         try (var stream = Files.list(namespaceDir)) {
-            stream.filter(Files::isDirectory)
-                  .filter(p -> Files.isRegularFile(p.resolve("SKILL.md")))
+            stream.filter(p -> Files.isDirectory(p) && Files.isRegularFile(p.resolve("SKILL.md")))
                   .sorted()
                   .forEach(p -> {
                       String name = parseFrontmatterName(p.resolve("SKILL.md"));
-                      if (name == null) name = p.getFileName().toString();
+                      if (name == null) name = toStringOrName(p);
                       result.add(new SkillEntry(namespace + "/" + name, p, source));
                   });
         } catch (IOException ignored) {
@@ -343,6 +346,7 @@ public class SkillCommandHandler {
         return null;
     }
 
+    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
     private List<String> scanResources(Path skillDir) {
         String[] subDirs = {"scripts", "references"};
         var result = new ArrayList<String>();
@@ -352,7 +356,8 @@ public class SkillCommandHandler {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(subDir)) {
                 for (Path entry : stream) {
                     if (Files.isRegularFile(entry)) {
-                        result.add(sub + "/" + entry.getFileName().toString());
+                        Path fn = entry.getFileName();
+                        result.add(sub + "/" + (fn != null ? fn.toString() : entry.toString()));
                     }
                 }
             } catch (IOException ignored) {
@@ -361,6 +366,11 @@ public class SkillCommandHandler {
         }
         result.sort(String::compareTo);
         return result;
+    }
+
+    private static String toStringOrName(Path path) {
+        Path fn = path.getFileName();
+        return fn != null ? fn.toString() : path.toString();
     }
 
     private record SkillEntry(String name, Path dirPath, String source) {

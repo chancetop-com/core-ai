@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -266,6 +267,7 @@ public class CliEventListener extends BaseEventListener {
     }
 
     @SuppressWarnings("PMD.AvoidFileStream")
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("IOI_USE_OF_FILE_STREAM_CONSTRUCTORS")
     private boolean pollCancelKey(File ttyFile) {
         try (var ttyIn = new FileInputStream(ttyFile)) {
             byte[] buf = new byte[8];
@@ -307,7 +309,7 @@ public class CliEventListener extends BaseEventListener {
                     .redirectOutput(new File("/dev/tty"))
                     .start()
                     .waitFor();
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             LOGGER.debug("stty failed: {}", e.getMessage());
         }
     }

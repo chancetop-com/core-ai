@@ -235,6 +235,7 @@ public class CliAppHelper {
         );
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("DE_MIGHT_IGNORE")
     static void closeShutdownResources(BootstrapResult result) {
         for (var resource : result.shutdownResources()) {
             try {

@@ -112,7 +112,8 @@ public class MdMemoryProvider {
                 }
             }
         }
-        return new MemoryEntry(file.getFileName().toString(), name, description, type, body,
+        Path fn = file.getFileName();
+        return new MemoryEntry(fn != null ? fn.toString() : file.toString(), name, description, type, body,
                 file.toAbsolutePath().toString());
     }
 
@@ -137,8 +138,7 @@ public class MdMemoryProvider {
         List<Path> episodeFiles;
         try (Stream<Path> stream = Files.list(episodesDir)) {
             episodeFiles = stream
-                    .filter(Files::isRegularFile)
-                    .filter(p -> EPISODE_FILE_PATTERN.matcher(p.getFileName().toString()).matches())
+                    .filter(MdMemoryProvider::isEpisodeFile)
                     .sorted(Comparator.reverseOrder())
                     .limit(MAX_RECENT_EPISODES)
                     .toList();
@@ -160,6 +160,12 @@ public class MdMemoryProvider {
             sb.append("--- episodes/").append(file.getFileName()).append(" ---\n")
               .append(content.strip()).append('\n');
         }
+    }
+
+    private static boolean isEpisodeFile(Path p) {
+        if (!Files.isRegularFile(p)) return false;
+        Path fn = p.getFileName();
+        return fn != null && EPISODE_FILE_PATTERN.matcher(fn.toString()).matches();
     }
 
     private String readFileQuietly(Path path) {

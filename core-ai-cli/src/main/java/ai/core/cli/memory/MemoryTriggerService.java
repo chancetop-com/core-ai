@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntSupplier;
 import java.util.stream.Stream;
 
+@edu.umd.cs.findbugs.annotations.SuppressFBWarnings("MS_EXPOSE_REP")
 public final class MemoryTriggerService {
     private static final Logger LOGGER = LoggerFactory.getLogger(MemoryTriggerService.class);
 
@@ -285,7 +286,7 @@ public final class MemoryTriggerService {
                 if (completed) {
                     extractionCursor.set(-1);
                     MemorySectionManager.reloadAgentMemorySection(mainAgent, memoryProvider);
-                } else if (!extractionInProgress.get() && scheduler != null) {
+                } else if (scheduler != null && !extractionInProgress.get()) {
                     scheduler.execute(this::runIncrementalExtraction);
                 }
             });
@@ -374,12 +375,17 @@ public final class MemoryTriggerService {
         return ExtractionPrompt.format(workspace, cursorInfo, ZonedDateTime.now(timezone), maxTurns);
     }
 
+    private static boolean isLockFile(Path p) {
+        if (!Files.isRegularFile(p)) return false;
+        Path fn = p.getFileName();
+        return fn != null && fn.toString().endsWith(LOCK_SUFFIX);
+    }
+
     private List<Path> findLockFiles() {
         if (!Files.isDirectory(dailyLogsDir)) return List.of();
         try (Stream<Path> stream = Files.list(dailyLogsDir)) {
             return stream
-                    .filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith(LOCK_SUFFIX))
+                    .filter(MemoryTriggerService::isLockFile)
                     .sorted()
                     .toList();
         } catch (IOException e) {

@@ -2,6 +2,7 @@ package ai.core.cli.trace;
 
 import ai.core.cli.DebugLog;
 import ai.core.utils.JsonUtil;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -91,6 +92,7 @@ public class HttpTraceUploader implements TraceUploader {
         EXECUTOR.submit(() -> send(request));
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private void send(CliTraceRequest request) {
         try {
             // Serialize via plain Map/List, not the typed DTO: in the GraalVM native image Jackson has no

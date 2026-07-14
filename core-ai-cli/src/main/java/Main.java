@@ -121,7 +121,7 @@ public class Main implements Callable<Integer> {
     private void checkUpgrade() {
         var checker = new UpgradeChecker();
         var info = checker.check();
-        if (info == null || info.latestVersion() == null) {
+        if (info.latestVersion() == null) {
             System.out.println("Failed to check for updates. Please try again later.");
             System.exit(1);
             return;

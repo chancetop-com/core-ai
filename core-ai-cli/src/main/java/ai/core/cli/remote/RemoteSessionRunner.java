@@ -195,6 +195,7 @@ public class RemoteSessionRunner {
         }
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     private boolean handleCommand(String cmd) {
         var lower = cmd.toLowerCase(Locale.ROOT);
         switch (lower) {

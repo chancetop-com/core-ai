@@ -27,7 +27,7 @@ class SessionUpgradeHandler {
         Thread.ofVirtual().start(() -> {
             try {
                 var info = upgradeChecker.check();
-                if (info != null && info.isNewer()) {
+                if (info.isNewer()) {
                     Path currentBinary = UpgradeDownloader.findCurrentBinary();
                     if (currentBinary != null && UpgradeDownloader.isUpgradeScheduled(currentBinary)) return;
                     ui.getWriter().println("  " + AnsiTheme.WARNING + "New version v" + info.latestVersion()
@@ -42,7 +42,7 @@ class SessionUpgradeHandler {
 
     boolean handleUpgrade() {
         var info = upgradeChecker.check();
-        if (info == null || !info.isNewer()) {
+        if (!info.isNewer()) {
             ui.getWriter().println("  " + AnsiTheme.MUTED + "You are up to date (v" + VersionUtil.getCurrentVersion() + ")" + AnsiTheme.RESET);
             ui.getWriter().flush();
             return false;
@@ -54,7 +54,7 @@ class SessionUpgradeHandler {
         ui.getWriter().println("  " + AnsiTheme.WARNING + "This will exit the CLI and replace the current binary." + AnsiTheme.RESET);
         ui.getWriter().flush();
         String answer = ui.readInput("  Proceed with upgrade? (y/N): ");
-        if (answer == null || !answer.trim().equalsIgnoreCase("y")) {
+        if (answer == null || !"y".equalsIgnoreCase(answer.trim())) {
             ui.getWriter().println("  " + AnsiTheme.MUTED + "Cancelled." + AnsiTheme.RESET);
             ui.getWriter().flush();
             return false;

@@ -136,7 +136,7 @@ public class McpServerCommandHandler {
         if (description != null && !description.isBlank()) body.put("description", description.trim());
         if (category != null && !category.isBlank()) body.put("category", category.trim());
         body.put("config", config);
-        body.put("enabled", true);
+        body.put("enabled", Boolean.TRUE);
 
         try {
             var json = api.post("/api/tools/mcp-servers", body);

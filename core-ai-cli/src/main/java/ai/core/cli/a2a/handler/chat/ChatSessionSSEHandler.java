@@ -55,7 +55,7 @@ public class ChatSessionSSEHandler implements HttpHandler {
     }
 
     static Map<String, Object> toMap(Object... keyValuePairs) {
-        Map<String, Object> map = new HashMap<>();
+        Map<String, Object> map = new HashMap<>(keyValuePairs.length / 2);
         for (int i = 0; i < keyValuePairs.length; i += 2) {
             map.put((String) keyValuePairs[i], keyValuePairs[i + 1]);
         }
@@ -221,7 +221,7 @@ public class ChatSessionSSEHandler implements HttpHandler {
         public void onTextChunk(TextChunkEvent event) {
             enqueueSseEvent("text_chunk", toMap(
                 "content", event.chunk,
-                "is_final_chunk", false
+                "is_final_chunk", Boolean.FALSE
             ));
         }
 
@@ -229,7 +229,7 @@ public class ChatSessionSSEHandler implements HttpHandler {
         public void onReasoningChunk(ReasoningChunkEvent event) {
             enqueueSseEvent("reasoning_chunk", toMap(
                 "content", event.chunk,
-                "is_final_chunk", false
+                "is_final_chunk", Boolean.FALSE
             ));
         }
 
@@ -287,10 +287,10 @@ public class ChatSessionSSEHandler implements HttpHandler {
                 data.put("output", event.output);
             }
             if (Boolean.TRUE.equals(event.cancelled)) {
-                data.put("cancelled", true);
+                data.put("cancelled", Boolean.TRUE);
             }
             if (event.maxTurnsReached != null && event.maxTurnsReached) {
-                data.put("max_turns_reached", true);
+                data.put("max_turns_reached", Boolean.TRUE);
             }
             if (event.inputTokens != null || event.outputTokens != null) {
                 data.put("input_tokens", event.inputTokens);

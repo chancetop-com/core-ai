@@ -41,7 +41,8 @@ public class FileReferenceCompleter implements Completer {
 
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(base)) {
             for (Path entry : stream) {
-                String name = entry.getFileName().toString();
+                Path fileNamePath = entry.getFileName();
+                String name = fileNamePath != null ? fileNamePath.toString() : entry.toString();
                 if (name.startsWith(".")) continue;
                 if (!name.startsWith(prefix)) continue;
 

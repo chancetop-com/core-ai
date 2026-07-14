@@ -7,6 +7,8 @@ import org.jline.reader.Completer;
 import org.jline.reader.LineReader;
 import org.jline.reader.ParsedLine;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.util.List;
 import java.util.Locale;
 
@@ -60,6 +62,7 @@ public class SlashCommandCompleter implements Completer {
         }
     }
 
+    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
     private void completeSubCommand(String buffer, String word, List<Candidate> candidates) {
         String parent = buffer.stripTrailing().split("\\s+", 2)[0];
         

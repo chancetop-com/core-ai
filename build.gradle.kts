@@ -189,6 +189,7 @@ project(":core-ai-cli") {
         implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
         // GraalVM SDK for native-image Feature (compile-time only)
         compileOnly("org.graalvm.sdk:nativeimage:${Versions.GRAALVM_SDK_VERSION}")
+        compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<JavaExec> {

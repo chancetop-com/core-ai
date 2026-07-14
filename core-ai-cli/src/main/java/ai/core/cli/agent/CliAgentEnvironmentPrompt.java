@@ -22,15 +22,13 @@ record CliAgentEnvironmentPrompt(Path workspace) implements PromptInject {
         var gitRepo = Files.isDirectory(workspace.resolve(".git")) ? "yes" : "no";
         var platform = platformName();
         var date = LocalDate.now().format(DateTimeFormatter.ofPattern("EEE MMM dd yyyy"));
-        return """
-                    <env>
-                        Working directory: %s
-                        Workspace root folder: %s
-                        Is directory a git repo: %s
-                        Platform: %s
-                        Today's date: %s
-                    </env>
-                    """.formatted(workspace.toAbsolutePath(), workspace.toAbsolutePath(), gitRepo, platform, date);
+        return "                    <env>%n"
+                + "                        Working directory: %s%n"
+                + "                        Workspace root folder: %s%n"
+                + "                        Is directory a git repo: %s%n"
+                + "                        Platform: %s%n"
+                + "                        Today's date: %s%n"
+                + "                    </env>%n".formatted(workspace.toAbsolutePath(), workspace.toAbsolutePath(), gitRepo, platform, date);
     }
 
     private static String platformName() {

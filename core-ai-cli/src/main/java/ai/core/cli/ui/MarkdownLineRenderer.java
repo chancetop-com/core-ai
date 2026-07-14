@@ -19,7 +19,7 @@ public final class MarkdownLineRenderer {
         // ATX headers: # through ###### (leading spaces allowed — injected by OutputPanel.indentAfterNewline)
         if (stripped.startsWith("#")) {
             int level = 0;
-            while (level < stripped.length() && level < 6 && stripped.charAt(level) == '#') {
+            while (level < 6 && level < stripped.length() && stripped.charAt(level) == '#') {
                 level++;
             }
             if (level < stripped.length() && stripped.charAt(level) == ' ') {

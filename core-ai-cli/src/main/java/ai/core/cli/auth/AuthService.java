@@ -6,6 +6,7 @@ import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -54,7 +55,7 @@ public final class AuthService {
 
             AuthConfig.login(serverUrl, apiKey).save();
             return apiKey;
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             LOGGER.warn("Login failed: {}", e.getMessage());
             return null;
         }
@@ -249,7 +250,7 @@ public final class AuthService {
             if (response.statusCode() == 200) {
                 return JsonUtil.fromJson(Map.class, response.body());
             }
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             LOGGER.debug("API key validation failed: {}", e.getMessage());
         }
         return null;

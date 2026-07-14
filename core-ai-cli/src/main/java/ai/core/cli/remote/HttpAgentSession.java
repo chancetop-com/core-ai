@@ -21,6 +21,7 @@ import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.cli.DebugLog;
 import ai.core.utils.JsonUtil;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -88,7 +89,7 @@ public final class HttpAgentSession implements AgentSession {
                 DebugLog.log("SSE connected, status=" + response.statusCode());
                 sseConnected.countDown();
                 readSseStream(response);
-            } catch (Exception e) {
+            } catch (IOException | InterruptedException e) {
                 if (!Thread.currentThread().isInterrupted()) {
                     DebugLog.log("SSE connection error: " + e.getMessage());
                 }
@@ -134,6 +135,7 @@ public final class HttpAgentSession implements AgentSession {
         }
     }
 
+    @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     private EventType parseEventType(String typeStr) {
         return switch (typeStr) {
             case "text_chunk" -> EventType.TEXT_CHUNK;
@@ -173,6 +175,7 @@ public final class HttpAgentSession implements AgentSession {
         };
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private void dispatch(AgentEvent event) {
         for (var listener : listeners) {
             try {

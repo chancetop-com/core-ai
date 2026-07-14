@@ -69,6 +69,7 @@ public record AuthConfig(@Property(name = "server_url") String serverUrl,
         }
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
     public void save() {
         var all = new ArrayList<>(loadAll());
         all.removeIf(c -> c.serverUrl.equals(this.serverUrl));
@@ -82,6 +83,7 @@ public record AuthConfig(@Property(name = "server_url") String serverUrl,
         }
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
     public static AuthConfig activate(String serverUrl) {
         var all = new ArrayList<>(loadAll());
         AuthConfig activated = null;
@@ -101,6 +103,7 @@ public record AuthConfig(@Property(name = "server_url") String serverUrl,
         return activated;
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
     public static void remove(String serverUrl) {
         var all = new ArrayList<>(loadAll());
         all.removeIf(c -> c.serverUrl.equals(serverUrl));

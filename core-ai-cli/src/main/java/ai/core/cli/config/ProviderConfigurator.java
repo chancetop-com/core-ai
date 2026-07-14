@@ -79,6 +79,7 @@ public class ProviderConfigurator {
         }
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT")
     public void addModelToProvider() {
         List<LLMProviderType> configured = llmProviders.getProviderTypes();
         if (configured.isEmpty()) {

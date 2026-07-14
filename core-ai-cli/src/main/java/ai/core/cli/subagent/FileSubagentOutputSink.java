@@ -24,7 +24,7 @@ public class FileSubagentOutputSink implements SubagentOutputSink {
     public FileSubagentOutputSink(Path baseDir, String taskId) throws IOException {
         Files.createDirectories(baseDir);
         String dateTime = LocalDateTime.now().format(DATE_TIME_FORMATTER);
-        String uniqueSuffix = UUID.randomUUID().toString().substring(0, 8);
+        String uniqueSuffix = String.valueOf(UUID.randomUUID()).substring(0, 8);
         String fileName = taskId + "-" + dateTime + "-" + uniqueSuffix + ".output";
         this.filePath = baseDir.resolve(fileName);
         this.writer = Files.newBufferedWriter(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);

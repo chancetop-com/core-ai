@@ -104,8 +104,8 @@ final class AgentEditHandler {
 
     private Object convertValue(String key, String value) {
         return switch (key) {
-            case "temperature" -> Double.parseDouble(value);
-            case "max_turns", "timeout_seconds" -> Integer.parseInt(value);
+            case "temperature" -> Double.valueOf(value);
+            case "max_turns", "timeout_seconds" -> Integer.valueOf(value);
             default -> value;
         };
     }

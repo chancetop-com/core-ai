@@ -3,6 +3,7 @@ package ai.core.cli.command.plugins;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.utils.JsonUtil;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -85,6 +86,7 @@ public class PluginValidator {
         }
     }
 
+    @SuppressFBWarnings("UP_UNUSED_PARAMETER")
     @SuppressWarnings("unused")
     private void checkComponentDir(Path pluginDir, String dirName, List<String> errors, List<String> warnings) {
         var dir = pluginDir.resolve(dirName);
@@ -100,6 +102,7 @@ public class PluginValidator {
         }
     }
 
+    @SuppressFBWarnings("UP_UNUSED_PARAMETER")
     @SuppressWarnings("unused")
     private void checkFile(Path file, boolean required, List<String> warnings) {
         if (Files.exists(file)) {

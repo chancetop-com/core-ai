@@ -113,16 +113,20 @@ public class FilesystemAgentProfileProvider implements AgentProfileProvider {
                     .source("filesystem")
                     .priority(priority);
 
-            if (data.containsKey("model")) {
-                profile.model((String) data.get("model"));
+            var model = (String) data.get("model");
+            if (model != null) {
+                profile.model(model);
             }
-            if (data.containsKey("temperature")) {
-                profile.temperature(((Number) data.get("temperature")).doubleValue());
+            var temperature = (Number) data.get("temperature");
+            if (temperature != null) {
+                profile.temperature(temperature.doubleValue());
             }
-            if (data.containsKey("maxTurnNumber")) {
-                profile.maxTurnNumber((Integer) data.get("maxTurnNumber"));
+            var maxTurnNumber = (Integer) data.get("maxTurnNumber");
+            if (maxTurnNumber != null) {
+                profile.maxTurnNumber(maxTurnNumber);
             }
-            if (data.containsKey("tools") && data.get("tools") instanceof List<?> tools) {
+            Object toolsValue = data.get("tools");
+            if (toolsValue instanceof List<?> tools) {
                 List<String> toolList = new ArrayList<>();
                 for (Object t : tools) {
                     if (t instanceof String s) toolList.add(s);
@@ -152,7 +156,9 @@ public class FilesystemAgentProfileProvider implements AgentProfileProvider {
     }
 
     String deriveName(Path file) {
-        String fileName = file.getFileName().toString();
+        Path fileNamePath = file.getFileName();
+        if (fileNamePath == null) return file.toString();
+        String fileName = fileNamePath.toString();
         int dotIndex = fileName.lastIndexOf('.');
         return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
     }

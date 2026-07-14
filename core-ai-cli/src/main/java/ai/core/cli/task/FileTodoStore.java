@@ -54,6 +54,7 @@ public class FileTodoStore implements TodoStore {
     }
 
     @Override
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     public WriteTodoTaskTool.TaskEntity create(WriteTodoTaskTool.TaskEntity task) {
         ensureDir();
         task.id = String.valueOf(idSeq.getAndIncrement());

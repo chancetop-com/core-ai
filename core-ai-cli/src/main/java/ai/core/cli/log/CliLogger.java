@@ -18,6 +18,7 @@ import java.time.format.DateTimeFormatter;
 /**
  * @author stephen
  */
+@edu.umd.cs.findbugs.annotations.SuppressFBWarnings("EI_EXPOSE_STATIC_REP2")
 public final class CliLogger extends AbstractLogger {
     @Serial
     private static final long serialVersionUID = 7591457691679122691L;

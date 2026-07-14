@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.utils.JsonUtil;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
@@ -64,6 +65,7 @@ public class LocalAgentHandler implements HttpHandler {
         sendJson(exchange, JsonUtil.toJson(response));
     }
 
+    @SuppressFBWarnings("UP_UNUSED_PARAMETER")
     private void handleGetById(HttpServerExchange exchange, @SuppressWarnings("unused") String agentId) {
         Agent agent = null;
         try {
@@ -89,7 +91,7 @@ public class LocalAgentHandler implements HttpHandler {
         view.tools = List.of();
         view.inputTemplate = "";
         view.variables = null;
-        view.systemDefault = true;
+        view.systemDefault = Boolean.TRUE;
         view.type = "local";
         view.responseSchema = null;
         view.createdBy = "local";

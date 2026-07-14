@@ -41,7 +41,7 @@ public class OutputPanel {
             if (summary == null) return convertToolName(toolName);
             if (summary.length() > 100) summary = summary.substring(0, 100) + "...";
             return convertToolName(toolName) + "(" + summary + ")";
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return convertToolName(toolName);
         }
     }

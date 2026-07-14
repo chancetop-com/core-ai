@@ -107,7 +107,9 @@ public class RemoteApiClient {
             for (var entry : files.entrySet()) {
                 var fieldName = entry.getKey();
                 var file = entry.getValue();
-                var fileName = file.getFileName().toString();
+                Path fileNamePath = file.getFileName();
+                if (fileNamePath == null) continue;
+                var fileName = fileNamePath.toString();
                 var header = "--" + boundary + "\r\n"
                     + "Content-Disposition: form-data; name=\"" + fieldName + "\"; filename=\"" + fileName + "\"\r\n"
                     + "Content-Type: application/octet-stream\r\n\r\n";
@@ -196,7 +198,7 @@ public class RemoteApiClient {
                 Map<String, Object> error = JsonUtil.fromJson(Map.class, body);
                 var message = error.get("message");
                 if (message != null) return String.valueOf(message);
-            } catch (Exception ignored) {
+            } catch (RuntimeException ignored) {
                 // failed to parse error body as JSON, fall through to generic message
             }
         }

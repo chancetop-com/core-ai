@@ -28,6 +28,7 @@ public class LocalCallbackServer implements AutoCloseable {
         exchange.getResponseSender().send(html);
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
     private static String successPage() {
         return """
                 <!DOCTYPE html>
@@ -82,8 +83,8 @@ public class LocalCallbackServer implements AutoCloseable {
                 .setHandler(exchange -> {
                     try {
                         var params = exchange.getQueryParameters();
-                        var apiKey = params.containsKey("api_key") ? params.get("api_key").getFirst() : null;
-                        var error = params.containsKey("error") ? params.get("error").getFirst() : null;
+                        var apiKey = params.get("api_key") != null ? params.get("api_key").getFirst() : null;
+                        var error = params.get("error") != null ? params.get("error").getFirst() : null;
 
                         if (error != null) {
                             apiKeyFuture.completeExceptionally(new RuntimeException("authorization denied: " + error));
@@ -140,7 +141,9 @@ public class LocalCallbackServer implements AutoCloseable {
 
     private void writePortFile() {
         try {
-            Files.createDirectories(PORT_FILE.getParent());
+            Path parent = PORT_FILE.getParent();
+            if (parent == null) return;
+            Files.createDirectories(parent);
             Files.writeString(PORT_FILE, String.valueOf(port));
         } catch (IOException e) {
             LOGGER.warn("Failed to write port file: {}", e.getMessage());

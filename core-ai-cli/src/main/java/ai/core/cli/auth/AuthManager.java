@@ -6,6 +6,7 @@ import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -191,7 +192,7 @@ public final class AuthManager {
             }
             LOGGER.warn("API {} returned status {}: {}", path, response.statusCode(), response.body());
             return null;
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             LOGGER.warn("API {} request failed: {} ({})", path, e.getClass().getSimpleName(), e.getMessage(), e);
             return null;
         }

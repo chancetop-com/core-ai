@@ -45,7 +45,7 @@ public class KnowledgeLogTool extends ToolCall {
             int totalSections = 0;
 
             for (String line : lines) {
-                if (line.strip().startsWith("## [") && hasCurrent) {
+                if (hasCurrent && line.strip().startsWith("## [")) {
                     if (!currentIsOld) sections.add(currentSection.toString());
                     totalSections++;
                     currentSection = new StringBuilder();

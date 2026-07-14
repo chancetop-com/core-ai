@@ -1,5 +1,6 @@
 package ai.core.cli.memory;
 
+@edu.umd.cs.findbugs.annotations.SuppressFBWarnings("HSC_HUGE_SHARED_STRING_CONSTANT")
 final class MemoryDirectExtractionSpecs {
 
     static final String DIRECT_EXTRACTION_SPEC = """

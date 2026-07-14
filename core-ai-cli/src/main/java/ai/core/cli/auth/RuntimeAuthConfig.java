@@ -18,6 +18,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * @author cyril
  */
+@edu.umd.cs.findbugs.annotations.SuppressFBWarnings("MS_EXPOSE_REP")
 public final class RuntimeAuthConfig {
     private static final RuntimeAuthConfig INSTANCE = new RuntimeAuthConfig();
 

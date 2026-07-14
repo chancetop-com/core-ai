@@ -56,6 +56,7 @@ public record RemoteConfig(@Property(name = "server_url") String serverUrl,
         }
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
     public void save() {
         try {
             Files.createDirectories(CONFIG_PATH.getParent());

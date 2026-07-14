@@ -4,6 +4,7 @@ import ai.core.cli.DebugLog;
 import ai.core.cli.agent.AgentSessionRunnerHelper;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemoryTriggerService;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
@@ -36,6 +37,7 @@ class AcpSlashCommandHandler {
      * Returns a response string if the input is a known slash command, or null
      * to fall through to the agent.
      */
+    @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     String handle(String input, AcpSession session, LLMProviders providers) {
         var trimmed = input.trim();
         if (!trimmed.startsWith("/")) return null;
@@ -230,6 +232,7 @@ class AcpSlashCommandHandler {
         }
     }
 
+    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
     private String handleSkills() {
         var sb = new StringBuilder("Installed skills:\n");
         boolean found = false;
@@ -239,7 +242,8 @@ class AcpSlashCommandHandler {
             try (var s = Files.newDirectoryStream(dir)) {
                 for (var entry : s) {
                     if (Files.isDirectory(entry) || entry.toString().endsWith(".md")) {
-                        String n = entry.getFileName().toString();
+                        Path fn = entry.getFileName();
+                        String n = fn != null ? fn.toString() : entry.toString();
                         if (n.endsWith(".md")) n = n.substring(0, n.length() - 3);
                         sb.append("  ").append(n).append('\n');
                         found = true;

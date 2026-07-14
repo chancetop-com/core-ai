@@ -144,7 +144,7 @@ public class AgentCommandHandler {
             for (var line : formatted.split("\n")) {
                 ui.printStreamingChunk("  " + line + "\n");
             }
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             ui.printStreamingChunk("  " + AnsiTheme.WARNING + "(failed to format schema)" + AnsiTheme.RESET + "\n");
         }
     }

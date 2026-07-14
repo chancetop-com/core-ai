@@ -112,9 +112,9 @@ public class BaseEventListener implements AgentEventListener {
         boolean restartSpinner = !AskUserTool.TOOL_NAME.equals(event.toolName);
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
             runTasks.put(event.taskId, new RuntimeTask(event.taskId, System.currentTimeMillis(), event.runInBackground, 0));
-            panel.toolStart(event.toolName, event.arguments, event.diff, false, restartSpinner, event.model);
+            panel.toolStart(event.toolName, event.arguments, event.diff, Boolean.FALSE, restartSpinner, event.model);
         } else if (Objects.isNull(event.taskId)) {
-            panel.toolStart(event.toolName, event.arguments, event.diff, false, restartSpinner, event.model);
+            panel.toolStart(event.toolName, event.arguments, event.diff, Boolean.FALSE, restartSpinner, event.model);
         } else {
             increaseToolCallCount(event.taskId);
             if (!isInBackgroundTask(event.taskId)) {
@@ -124,11 +124,11 @@ public class BaseEventListener implements AgentEventListener {
     }
 
     private boolean isInBackgroundTask(String taskId) {
-        return Optional.of(runTasks).map(m -> m.get(taskId)).map(RuntimeTask::runInBackground).orElse(false);
+        return Optional.of(runTasks).map(m -> m.get(taskId)).map(RuntimeTask::runInBackground).orElse(Boolean.FALSE);
     }
 
     private boolean isInFrontTask(String taskId) {
-        return Optional.of(runTasks).map(m -> m.get(taskId)).map(RuntimeTask::runInBackground).map(b -> !b).orElse(false);
+        return Optional.of(runTasks).map(m -> m.get(taskId)).map(RuntimeTask::runInBackground).map(b -> !b).orElse(Boolean.FALSE);
     }
 
     private boolean isInTask(String taskId) {
@@ -158,7 +158,7 @@ public class BaseEventListener implements AgentEventListener {
                 removeTask(event.taskId);
             }
         } else if (Objects.isNull(event.taskId) || !isInTask(event.taskId)) {
-            if (batchCallIds.contains(event.callId) && !batchResultSeen) {
+            if (!batchResultSeen && batchCallIds.contains(event.callId)) {
                 panel.toolResult(event.status, event.result);
                 batchResultSeen = true;
             } else if (batchCallIds.contains(event.callId)) {

@@ -73,7 +73,7 @@ public class PluginDiscovery {
                 (String) map.get("author"),
                 (String) map.get("license")
             );
-        } catch (Exception e) {
+        } catch (IOException | RuntimeException e) {
             return null;
         }
     }

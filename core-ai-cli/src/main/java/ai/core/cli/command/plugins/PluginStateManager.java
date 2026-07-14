@@ -57,7 +57,7 @@ public class PluginStateManager {
                 return;
             }
 
-            ui.printStreamingChunk(String.format("\n  %sSelect plugin to enable:%s%n", AnsiTheme.PROMPT, AnsiTheme.RESET));
+            ui.printStreamingChunk(String.format("%n  %sSelect plugin to enable:%s%n", AnsiTheme.PROMPT, AnsiTheme.RESET));
             int selected = ui.pickIndex(labels);
             if (selected < 0) return;
 
@@ -97,7 +97,7 @@ public class PluginStateManager {
                 return;
             }
 
-            ui.printStreamingChunk(String.format("\n  %sSelect plugin to disable:%s%n", AnsiTheme.PROMPT, AnsiTheme.RESET));
+            ui.printStreamingChunk(String.format("%n  %sSelect plugin to disable:%s%n", AnsiTheme.PROMPT, AnsiTheme.RESET));
             int selected = ui.pickIndex(labels);
             if (selected < 0) return;
 

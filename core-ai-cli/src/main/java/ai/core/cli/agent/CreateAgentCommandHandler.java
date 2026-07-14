@@ -188,29 +188,26 @@ class CreateAgentCommandHandler {
         String desc = description != null && !description.isBlank() ? description : "Custom agent: " + name;
         String prompt = systemPrompt != null ? systemPrompt : "You are " + name + ".";
         String escapedDesc = desc.replace("\"", "\\\"");
-        return """
-                ---
-                name: %s
-                description: "%s"
-                # Optional fields (uncomment to enable):
-                # model: sonnet
-                # temperature: 0.8
-                # maxTurnNumber: 200
-                # reasoningEffort: low | medium | high | max
-                # tools:
-                #   - Read
-                #   - Bash
-                #   - Glob
-                #   - Grep
-                #   - Write
-                #   - Edit
-                #   - task
-                #   - WebSearch
-                #   - WebFetch
-                ---
-
-                %s
-                """.formatted(name, escapedDesc, prompt);
+        return "---%n"
+                + "name: %s%n"
+                + "description: \"%s\"%n"
+                + "# Optional fields (uncomment to enable):%n"
+                + "# model: sonnet%n"
+                + "# temperature: 0.8%n"
+                + "# maxTurnNumber: 200%n"
+                + "# reasoningEffort: low | medium | high | max%n"
+                + "# tools:%n"
+                + "#   - Read%n"
+                + "#   - Bash%n"
+                + "#   - Glob%n"
+                + "#   - Grep%n"
+                + "#   - Write%n"
+                + "#   - Edit%n"
+                + "#   - task%n"
+                + "#   - WebSearch%n"
+                + "#   - WebFetch%n"
+                + "---%n%n"
+                + "%s%n".formatted(name, escapedDesc, prompt);
     }
 
     private void refreshAgentRegistry() {

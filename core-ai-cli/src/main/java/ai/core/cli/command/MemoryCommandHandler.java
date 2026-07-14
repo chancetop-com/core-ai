@@ -78,7 +78,7 @@ public class MemoryCommandHandler {
             return;
         }
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Select memory to edit:" + AnsiTheme.RESET + "\n");
-        List<String> labels = new ArrayList<>();
+        List<String> labels = new ArrayList<>(entries.size());
         for (MemoryEntry entry : entries) {
             labels.add(entry.toSummary());
         }
@@ -170,7 +170,7 @@ public class MemoryCommandHandler {
             List<String> lines = Files.readAllLines(configFile, StandardCharsets.UTF_8);
             for (String line : lines) {
                 if (line.trim().startsWith("agent.memory.enabled=")) {
-                    return line.replaceFirst("(?i)agent\\.memory\\.enabled\\s*=\\s*", "").trim().equalsIgnoreCase("true");
+                    return "true".equalsIgnoreCase(line.replaceFirst("(?i)agent\\.memory\\.enabled\\s*=\\s*", "").trim());
                 }
             }
         } catch (IOException e) {

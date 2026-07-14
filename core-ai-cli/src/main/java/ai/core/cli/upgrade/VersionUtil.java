@@ -1,5 +1,6 @@
 package ai.core.cli.upgrade;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
@@ -19,7 +20,7 @@ public final class VersionUtil {
             if (is != null) {
                 return new String(is.readAllBytes(), StandardCharsets.UTF_8).trim();
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             LOGGER.debug("Failed to read version resource", e);
         }
         return "unknown";

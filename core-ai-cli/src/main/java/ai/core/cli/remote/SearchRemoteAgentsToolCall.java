@@ -138,7 +138,7 @@ public class SearchRemoteAgentsToolCall extends ToolCall {
                     .description("Capability or task keywords to search for. Leave empty to list all available remote agents.")
                     .type(ToolCallParameterType.STRING)
                     .classType(String.class)
-                    .required(false)
+                    .required(Boolean.FALSE)
                     .build());
             parameters(parameters);
             var tool = new SearchRemoteAgentsToolCall();

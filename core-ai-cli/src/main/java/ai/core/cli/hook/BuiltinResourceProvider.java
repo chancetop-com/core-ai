@@ -93,7 +93,9 @@ public class BuiltinResourceProvider {
                 return;
             }
 
-            Files.createDirectories(targetPath.getParent());
+            Path targetParent = targetPath.getParent();
+            if (targetParent == null) return;
+            Files.createDirectories(targetParent);
             Files.copy(is, targetPath);
 
             // Make shell scripts executable

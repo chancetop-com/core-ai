@@ -119,12 +119,10 @@ public final class UpgradeDownloader {
 
     private static void spawnWindowsUpgradeScript(Path newFile, Path targetFile) throws IOException {
         Path script = targetFile.resolveSibling("core-ai-upgrade.ps1");
-        String scriptContent = String.format("""
-                $ErrorActionPreference = 'Stop'
-                Start-Sleep -Seconds 1
-                Move-Item -Force -LiteralPath '%s' -Destination '%s'
-                Remove-Item -Force -LiteralPath '%s'
-                """, newFile, targetFile, script);
+        String scriptContent = String.format("$ErrorActionPreference = 'Stop'%n"
+                + "Start-Sleep -Seconds 1%n"
+                + "Move-Item -Force -LiteralPath '%s' -Destination '%s'%n"
+                + "Remove-Item -Force -LiteralPath '%s'%n", newFile, targetFile, script);
         Files.writeString(script, scriptContent);
         new ProcessBuilder("cmd", "/c", "start", "/min", "", "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", script.toAbsolutePath().toString())
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
@@ -134,14 +132,12 @@ public final class UpgradeDownloader {
 
     private static void spawnUnixUpgradeScript(Path newFile, Path targetFile) throws IOException {
         Path script = targetFile.resolveSibling("core-ai-upgrade.sh");
-        String scriptContent = String.format("""
-                #!/bin/sh
-                while kill -0 %d 2>/dev/null; do sleep 0.5; done
-                sleep 0.5
-                mv '%s' '%s'
-                chmod +x '%s'
-                rm -f '%s'
-                """, ProcessHandle.current().pid(), newFile, targetFile, targetFile, script);
+        String scriptContent = String.format("#!/bin/sh%n"
+                + "while kill -0 %d 2>/dev/null; do sleep 0.5; done%n"
+                + "sleep 0.5%n"
+                + "mv '%s' '%s'%n"
+                + "chmod +x '%s'%n"
+                + "rm -f '%s'%n", ProcessHandle.current().pid(), newFile, targetFile, targetFile, script);
         Files.writeString(script, scriptContent);
         script.toFile().setExecutable(true, false);
         new ProcessBuilder("sh", "-c", script.toAbsolutePath().toString())

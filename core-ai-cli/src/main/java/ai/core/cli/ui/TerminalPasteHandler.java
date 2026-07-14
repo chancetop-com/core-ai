@@ -94,7 +94,7 @@ class TerminalPasteHandler {
                 sb.append((char) c);
                 int len = sb.length();
                 if (len >= PASTE_END_MARKER.length()
-                        && sb.substring(len - PASTE_END_MARKER.length()).equals(PASTE_END_MARKER)) {
+                        && PASTE_END_MARKER.equals(sb.substring(len - PASTE_END_MARKER.length()))) {
                     sb.delete(len - PASTE_END_MARKER.length(), len);
                     break;
                 }
@@ -111,7 +111,7 @@ class TerminalPasteHandler {
         impl.getWidgets().put("bracketed-paste", () -> {
             LOGGER.debug("bracketed-paste widget triggered");
             String pasted = readBracketedPaste();
-            String normalized = pasted.replace("\r\n", "\n").replace("\r", "\n");
+            String normalized = pasted.replace("\r\n", "\n").replace('\r', '\n');
             if (pasteBuffer.isLarge(normalized)) {
                 impl.getBuffer().write(pasteBuffer.store(normalized));
             } else {

@@ -134,7 +134,7 @@ public class CommandDispatcher {
             boolean isConfigCmd = "/memory enable".equals(lower) || "/memory disable".equals(lower);
             if (handlers.memoryCommand() == null) {
                 ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory not available.\n" + AnsiTheme.RESET);
-            } else if (!handlers.memoryEnabled() && !isConfigCmd) {
+            } else if (!isConfigCmd && !handlers.memoryEnabled()) {
                 ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory is disabled. Set agent.memory.enabled=true in agent.properties to enable.\n" + AnsiTheme.RESET);
             } else {
                 handlers.memoryCommand().handle(trimmed);
@@ -189,29 +189,26 @@ public class CommandDispatcher {
         }
         try {
             Files.createDirectories(agentsDir);
-            String template = """
-                    ---
-                    name: %s
-                    description: "TODO: describe when to use this agent"
-                    # Optional fields (uncomment to enable):
-                    # model: sonnet
-                    # temperature: 0.8
-                    # maxTurnNumber: 200
-                    # reasoningEffort: low | medium | high | max
-                    # tools:
-                    #   - Read
-                    #   - Bash
-                    #   - Glob
-                    #   - Grep
-                    #   - Write
-                    #   - Edit
-                    #   - task
-                    #   - WebSearch
-                    #   - WebFetch
-                    ---
-
-                    You are %s. Describe what you do and how you should work.
-                    """.formatted(name, name);
+            String template = "---%n"
+                    + "name: %s%n"
+                    + "description: \"TODO: describe when to use this agent\"%n"
+                    + "# Optional fields (uncomment to enable):%n"
+                    + "# model: sonnet%n"
+                    + "# temperature: 0.8%n"
+                    + "# maxTurnNumber: 200%n"
+                    + "# reasoningEffort: low | medium | high | max%n"
+                    + "# tools:%n"
+                    + "#   - Read%n"
+                    + "#   - Bash%n"
+                    + "#   - Glob%n"
+                    + "#   - Grep%n"
+                    + "#   - Write%n"
+                    + "#   - Edit%n"
+                    + "#   - task%n"
+                    + "#   - WebSearch%n"
+                    + "#   - WebFetch%n"
+                    + "---%n%n"
+                    + "You are %s. Describe what you do and how you should work.%n".formatted(name, name);
             Files.writeString(file, template);
             agentProfileRegistry.invalidateCache();
             ui.printStreamingChunk(AnsiTheme.CMD_NAME + "  Created " + file + AnsiTheme.RESET + "\n");
@@ -248,14 +245,14 @@ public class CommandDispatcher {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  No agents registered.\n" + AnsiTheme.RESET);
             return;
         }
-        var sb = new StringBuilder("Available agents:\n");
+        var sb = new StringBuilder("Available agents:%n");
         for (AgentProfile profile : profiles) {
-            sb.append(String.format("  %s%-24s %s%s %s[%s]%s\n",
+            sb.append(String.format("  %s%-24s %s%s %s[%s]%s%n",
                     AnsiTheme.CMD_NAME, profile.name(),
                     AnsiTheme.CMD_DESC, profile.description(),
                     AnsiTheme.MUTED, profile.source(), AnsiTheme.RESET));
             if (profile.path() != null) {
-                sb.append(String.format("    %spath: %s%s\n", AnsiTheme.MUTED, profile.path(), AnsiTheme.RESET));
+                sb.append(String.format("    %spath: %s%s%n", AnsiTheme.MUTED, profile.path(), AnsiTheme.RESET));
             }
         }
         ui.printStreamingChunk(sb.toString());

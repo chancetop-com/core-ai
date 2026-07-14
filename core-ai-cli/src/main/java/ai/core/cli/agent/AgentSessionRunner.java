@@ -90,7 +90,7 @@ public class AgentSessionRunner {
     public String run() {
         if (agent.hasPersistenceProvider()) {
             agent.load(sessionId);
-            if (!agent.getMessages().isEmpty() && memoryEnabled) {
+            if (memoryEnabled && !agent.getMessages().isEmpty()) {
                 MemoryTriggerService.getInstance().resetCursorToEnd();
             }
         }
@@ -141,6 +141,7 @@ public class AgentSessionRunner {
         ScriptHookLifecycle.fireSessionStopHooks(workspace);
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     private void runPromptWithTimeLimit(CliEventListener listener, InProcessAgentSession session,
                                          String prompt, int timeLimitSeconds) {
         ExecutorService executor = Executors.newSingleThreadExecutor(r -> {

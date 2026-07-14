@@ -26,7 +26,7 @@ public class RemoteAgentToolProvider implements ToolProvider {
                                                    List<A2ARemoteServerConfig> remoteServers,
                                                    boolean a2aAutoDiscover) {
         var servers = new ArrayList<>(remoteServers);
-        if (servers.isEmpty() && a2aAutoDiscover && AuthManager.isLoggedIn()) {
+        if (a2aAutoDiscover && servers.isEmpty() && AuthManager.isLoggedIn()) {
             var active = AuthConfig.load();
             if (active != null) {
                 var auto = new A2ARemoteServerConfig();

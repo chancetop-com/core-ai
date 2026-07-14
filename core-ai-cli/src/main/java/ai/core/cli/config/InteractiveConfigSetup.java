@@ -3,6 +3,7 @@ package ai.core.cli.config;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.AuthManager;
 import ai.core.cli.ui.TerminalUI;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
  * @author stephen
@@ -17,6 +18,7 @@ public class InteractiveConfigSetup {
         AuthManager.loginInteractive(ui, null);
     }
 
+    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
     static boolean isConfigValid() {
         if (!java.nio.file.Files.exists(java.nio.file.Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties"))) {
             return false;

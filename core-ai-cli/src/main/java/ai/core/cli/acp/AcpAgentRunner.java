@@ -130,9 +130,9 @@ public class AcpAgentRunner {
         registerAuthListener(result);
 
         var ctx = new AgentContext(result,
-                props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true),
-                props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(false),
-                props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false),
+                props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(Boolean.TRUE),
+                props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(Boolean.FALSE),
+                props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(Boolean.FALSE),
                 props.property("agent.max.turn").map(Integer::parseInt).orElse(100),
                 A2ARemoteAgentConfigLoader.load(props),
                 A2ARemoteAgentConfigLoader.loadServers(props));
@@ -160,7 +160,7 @@ public class AcpAgentRunner {
                 .initializeHandler(req -> {
                     LOGGER.info("ACP client initialized: protocolVersion={}", req.protocolVersion());
                     var caps = new AcpSchema.AgentCapabilities(
-                            true,
+                            Boolean.TRUE,
                             new AcpSchema.McpCapabilities(),
                             new AcpSchema.PromptCapabilities());
                     return AcpSchema.InitializeResponse.ok(caps);

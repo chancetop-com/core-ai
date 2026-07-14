@@ -38,7 +38,9 @@ public class AgentSessionRunnerHelper {
             } else {
                 extraMap.put("reasoning_effort", level.name().toLowerCase(java.util.Locale.ROOT));
             }
-            Files.createDirectories(CONFIG_FILE.getParent());
+            Path parent = CONFIG_FILE.getParent();
+            if (parent == null) return "Invalid config file path";
+            Files.createDirectories(parent);
             writePropertyToFile(key, extraMap.isEmpty() ? null : JsonUtil.toJson(extraMap));
             return null;
         } catch (IOException e) {

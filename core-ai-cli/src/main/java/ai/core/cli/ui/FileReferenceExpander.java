@@ -57,7 +57,9 @@ public final class FileReferenceExpander {
                 return "@" + token + " (file too large: " + (size / 1024) + "KB)";
             }
             String content = Files.readString(path, StandardCharsets.UTF_8);
-            String fileName = path.getFileName().toString();
+            Path fileNamePath = path.getFileName();
+            if (fileNamePath == null) return "@" + token;
+            String fileName = fileNamePath.toString();
             String lang = detectLanguage(fileName);
             return "\n```" + lang + "\n" + content + "\n```\n";
         } catch (IOException e) {

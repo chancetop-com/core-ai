@@ -114,10 +114,10 @@ public class CliApp {
             }
         });
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
-        boolean memory = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true);
-        boolean dailyLogs = props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(false);
-        boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
-        boolean todoV2 = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(false);
+        boolean memory = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(Boolean.TRUE);
+        boolean dailyLogs = props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
+        boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
+        boolean todoV2 = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
         props.property("agent.memory.timezone").map(ZoneId::of).ifPresent(MemoryTriggerService::setTimezone);
         var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
         var remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
@@ -125,7 +125,7 @@ public class CliApp {
         var sessionManager = new SessionManager(sessionPersistence);
         var permissionStore = CliAppHelper.whiteToolsPermissionStore(workspace);
         var subAgentConfigs = CliAppHelper.parseSubAgentConfig(props, result.llmProviders);
-        boolean a2aAutoDiscover = props.property("a2a.autoDiscover").map(Boolean::parseBoolean).orElse(false);
+        boolean a2aAutoDiscover = props.property("a2a.autoDiscover").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
         return new BootstrapCore(props, result, maxTurn, memory, dailyLogs, coding, todoV2,
                 remoteAgents, remoteServers, sessionPersistence, sessionManager, permissionStore, subAgentConfigs, a2aAutoDiscover);
     }
@@ -180,6 +180,7 @@ public class CliApp {
         runner.run();
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("DE_MIGHT_IGNORE")
     public void start() {
         System.setProperty("core.appName", "core-ai-cli");
         Path jarPath = PathUtils.getJarPath();
@@ -191,13 +192,7 @@ public class CliApp {
         var shutdownResources = sessionContext.result().shutdownResources();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             ScriptHookLifecycle.fireSessionStopHooks(workspace);
-            for (var resource : shutdownResources) {
-                try {
-                    resource.close();
-                } catch (Exception ignored) {
-                    // shutdown cleanup failure is non-critical
-                }
-            }
+            closeShutdownResources(shutdownResources);
             CliAppHelper.closeQuietly(ui);
         }, "cli-shutdown-hook"));
         if (prompt != null) {
@@ -209,6 +204,17 @@ public class CliApp {
         CliAppHelper.closeShutdownResources(sessionContext.result());
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("DE_MIGHT_IGNORE")
+    private static void closeShutdownResources(java.util.List<AutoCloseable> resources) {
+        for (var resource : resources) {
+            try {
+                resource.close();
+            } catch (Exception ignored) {
+                // shutdown cleanup failure is non-critical
+            }
+        }
+    }
+
     private SessionContext initializeSession(TerminalUI ui) {
         var bc = bootstrapCore();
         var modelName = modelOverride != null ? modelOverride : bc.result().llmProviders.getDefaultProvider().config.getModel();
@@ -217,7 +223,7 @@ public class CliApp {
         CliLogger.initialize(workspace, currentSessionId);
         var noteMemory = bc.memoryEnabled() ? new MdMemoryProvider(workspace) : null;
         var modelRegistry = new ModelRegistry(bc.result().llmProviders, bc.props());
-        boolean promptExtraction = bc.props().property("agent.memory.prompt.extraction").map(Boolean::parseBoolean).orElse(false);
+        boolean promptExtraction = bc.props().property("agent.memory.prompt.extraction").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
         return new SessionContext(bc.result(), bc.props(), bc.maxTurn(), bc.sessionPersistence(), bc.sessionManager(), modelName,
                 currentSessionId, bc.permissionStore(), noteMemory, modelRegistry, bc.memoryEnabled(), bc.dailyLogsEnabled(),
                 bc.coding(), bc.todoV2Enabled(), bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), promptExtraction, timeLimitSeconds, bc.a2aAutoDiscover());

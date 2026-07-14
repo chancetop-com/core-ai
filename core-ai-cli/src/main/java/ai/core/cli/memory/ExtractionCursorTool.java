@@ -35,7 +35,7 @@ public class ExtractionCursorTool extends ToolCall {
                         .description("The position to advance the cursor to. "
                                 + "Set to the index of the last processed message + 1. "
                                 + "If omitted, defaults to total message count - 1.")
-                        .required(false)
+                        .required(Boolean.FALSE)
                         .build()));
     }
 
@@ -87,7 +87,7 @@ public class ExtractionCursorTool extends ToolCall {
             } else {
                 newCursor = Math.max(0, maxCursor - 1);
             }
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             newCursor = Math.max(0, maxCursor - 1);
         }
         cursorWriter.accept(newCursor);

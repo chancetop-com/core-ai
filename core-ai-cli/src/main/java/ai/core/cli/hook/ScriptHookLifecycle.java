@@ -110,7 +110,7 @@ public class ScriptHookLifecycle extends AbstractLifecycle {
         for (var hook : hooks) {
             if (!hook.matches(toolName)) continue;
             String output = runner.run(hook.command(), env);
-            if (!output.isEmpty() && toolResult != null) {
+            if (toolResult != null && !output.isEmpty()) {
                 String current = toolResult.getResult();
                 toolResult.withResult((current != null ? current : "") + "\n" + output);
             }

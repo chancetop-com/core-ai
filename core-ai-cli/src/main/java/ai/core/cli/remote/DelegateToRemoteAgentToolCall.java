@@ -144,14 +144,14 @@ public class DelegateToRemoteAgentToolCall extends ToolCall {
                             .description("Remote agent catalog id returned by search_remote_agents.")
                             .type(ToolCallParameterType.STRING)
                             .classType(String.class)
-                            .required(true)
+                            .required(Boolean.TRUE)
                             .build(),
                     ToolCallParameter.builder()
                             .name("task")
                             .description("Task or instruction to delegate to the remote agent.")
                             .type(ToolCallParameterType.STRING)
                             .classType(String.class)
-                            .required(true)
+                            .required(Boolean.TRUE)
                             .build()
             ));
             var tool = new DelegateToRemoteAgentToolCall();

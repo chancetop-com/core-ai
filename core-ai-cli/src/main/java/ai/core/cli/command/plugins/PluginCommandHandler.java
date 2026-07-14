@@ -42,6 +42,7 @@ public class PluginCommandHandler {
         interactivePluginBrowser();
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     public void handle(String args) {
         if (args == null || args.isBlank()) {
             handle();
@@ -69,6 +70,7 @@ public class PluginCommandHandler {
         }
     }
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("PCAIL_POSSIBLE_CONSTANT_ALLOCATION_IN_LOOP")
     private void interactivePluginBrowser() {
         while (true) {
             var plugins = discovery.scanPlugins();
@@ -209,7 +211,7 @@ public class PluginCommandHandler {
 
         var disabledPlugins = stateManager.loadDisabledPlugins();
 
-        ui.printStreamingChunk(String.format("\n  %sInstalled Plugins (%d)%s%n", AnsiTheme.PROMPT, plugins.size(), AnsiTheme.RESET));
+        ui.printStreamingChunk(String.format("%n  %sInstalled Plugins (%d)%s%n", AnsiTheme.PROMPT, plugins.size(), AnsiTheme.RESET));
         for (var plugin : plugins) {
             boolean enabled = !disabledPlugins.contains(plugin.name());
             var status = enabled ? AnsiTheme.SUCCESS + "✓" : AnsiTheme.WARNING + "○";
@@ -248,13 +250,10 @@ public class PluginCommandHandler {
         var disabledPlugins = stateManager.loadDisabledPlugins();
         boolean enabled = !disabledPlugins.contains(name);
 
-        ui.printStreamingChunk("""
-            
-              %s%s%s v%s%n
-              %s%s%n%n
-              %sLocation:%s %s%n
-              %sStatus:%s %s%n
-            """.formatted(
+        ui.printStreamingChunk(String.format("%n  %s%s%s v%s%n"
+                + "  %s%s%n%n"
+                + "  %sLocation:%s %s%n"
+                + "  %sStatus:%s %s%n",
                 AnsiTheme.PROMPT, manifest.name(), AnsiTheme.RESET,
                 manifest.version() != null ? manifest.version() : "unknown",
                 AnsiTheme.MUTED, manifest.description() != null ? manifest.description() : "No description",
@@ -286,31 +285,29 @@ public class PluginCommandHandler {
     }
 
     private void showHelp() {
-        ui.printStreamingChunk("""
-
-              %s/plugins %s- Claude-style plugin management%n%n
-              %sUsage:%s
-                /plugins list              %s- List installed plugins%s
-                /plugins install <source> [--local|--global]  %s- Install plugin%s
-                /plugins uninstall <name>  %s- Remove plugin%s
-                /plugins enable <name>    %s- Enable plugin%s
-                /plugins disable <name>    %s- Disable plugin%s
-                /plugins validate [path]   %s- Validate plugin structure%s
-                /plugins info <name>       %s- Show plugin details%s
-                /plugins reload           %s- Reload all plugins%s%n
-              %sScope:%s
-                --local   %s- Install to .core-ai/plugins/ (project)%s
-                --global  %s- Install to ~/.core-ai/plugins/ (user, default)%s%n
-              %sSources:%s
-                git:<url>                  %s- Git repository%s
-                npm:<package>              %s- NPM package (with optional registry)%
-                ./path                     %s- Local directory%s
-                github:<owner/repo>        %s- GitHub shorthand%s%n
-              %sExamples:%s
-                /plugins install git:https://github.com/org/my-plugin --global
-                /plugins install npm:@my-org/my-skill --local
-                /plugins install ./my-local-plugin%n%n
-            """.formatted(
+        ui.printStreamingChunk(String.format("%n"
+                + "  %s/plugins %s- Claude-style plugin management%n%n"
+                + "  %sUsage:%s%n"
+                + "    /plugins list              %s- List installed plugins%s%n"
+                + "    /plugins install <source> [--local|--global]  %s- Install plugin%s%n"
+                + "    /plugins uninstall <name>  %s- Remove plugin%s%n"
+                + "    /plugins enable <name>    %s- Enable plugin%s%n"
+                + "    /plugins disable <name>    %s- Disable plugin%s%n"
+                + "    /plugins validate [path]   %s- Validate plugin structure%s%n"
+                + "    /plugins info <name>       %s- Show plugin details%s%n"
+                + "    /plugins reload           %s- Reload all plugins%s%n"
+                + "  %sScope:%s%n"
+                + "    --local   %s- Install to .core-ai/plugins/ (project)%s%n"
+                + "    --global  %s- Install to ~/.core-ai/plugins/ (user, default)%s%n"
+                + "  %sSources:%s%n"
+                + "    git:<url>                  %s- Git repository%s%n"
+                + "    npm:<package>              %s- NPM package (with optional registry)%n"
+                + "    ./path                     %s- Local directory%s%n"
+                + "    github:<owner/repo>        %s- GitHub shorthand%s%n"
+                + "  %sExamples:%s%n"
+                + "    /plugins install git:https://github.com/org/my-plugin --global%n"
+                + "    /plugins install npm:@my-org/my-skill --local%n"
+                + "    /plugins install ./my-local-plugin%n%n",
                 AnsiTheme.PROMPT, AnsiTheme.RESET,
                 AnsiTheme.MUTED, AnsiTheme.RESET,
                 AnsiTheme.MUTED, AnsiTheme.RESET,
