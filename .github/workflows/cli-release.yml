@@ -54,6 +54,9 @@ jobs:
         with:
           cache-read-only: false
 
+      - name: Run gradle check
+        run: ${{ matrix.gradlew }} check
+
       - name: Native compile CLI
         run: ${{ matrix.gradlew }} :core-ai-cli:nativeCompile
 

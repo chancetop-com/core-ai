@@ -35,6 +35,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Run gradle check
+        run: ./gradlew check
+
       - name: Build with Gradle
         run: ./gradlew :core-ai-server:docker
 
