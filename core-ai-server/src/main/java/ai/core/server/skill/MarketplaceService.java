@@ -75,8 +75,17 @@ public class MarketplaceService {
         String name = deriveName(repoUrl);
 
         // install skills first — this populates the skill collection and we get the skill count
+        // Pass empty string so SkillService auto-detects plugin format if present
         LOGGER.info("registering marketplace repo, url={}, branch={}", repoUrl, effectiveBranch);
         var skills = skillService.registerFromRepo("marketplace", repoUrl, effectiveBranch, "");
+
+        // Extract the auto-detected skill path from the first registered skill's repoConfig
+        String detectedSkillPath = "";
+        if (!skills.isEmpty() && skills.getFirst().repoConfig != null
+            && skills.getFirst().repoConfig.skillPath != null
+            && !skills.getFirst().repoConfig.skillPath.isBlank()) {
+            detectedSkillPath = skills.getFirst().repoConfig.skillPath;
+        }
 
         // create marketplace entry
         var repo = new MarketplaceRepo();
@@ -84,14 +93,15 @@ public class MarketplaceService {
         repo.name = name;
         repo.repoUrl = repoUrl;
         repo.branch = effectiveBranch;
-        repo.skillPath = "";
+        repo.skillPath = detectedSkillPath;
         repo.skillCount = skills.size();
         repo.featured = false;
         repo.createdAt = ZonedDateTime.now();
         repo.updatedAt = ZonedDateTime.now();
         repoCollection.insert(repo);
 
-        LOGGER.info("registered marketplace repo, id={}, name={}, skills={}", repo.id, name, skills.size());
+        LOGGER.info("registered marketplace repo, id={}, name={}, skills={}, skillPath={}",
+            repo.id, name, skills.size(), detectedSkillPath);
         return repo;
     }
 
