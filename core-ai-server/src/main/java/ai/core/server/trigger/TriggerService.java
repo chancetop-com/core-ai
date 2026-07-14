@@ -36,7 +36,7 @@ public class TriggerService {
         entity.name = request.name;
         entity.description = request.description;
         entity.type = request.type != null ? TriggerType.valueOf(request.type.toUpperCase(Locale.ROOT)) : TriggerType.WEBHOOK;
-        entity.enabled = true;
+        entity.enabled = Boolean.TRUE;
         entity.actionType = request.actionType;
         entity.actionConfig = request.actionConfig;
         entity.createdAt = ZonedDateTime.now();
@@ -134,7 +134,7 @@ public class TriggerService {
 
     public TriggerView enable(String id) {
         var entity = getEntity(id);
-        entity.enabled = true;
+        entity.enabled = Boolean.TRUE;
         entity.updatedAt = ZonedDateTime.now();
         triggerCollection.replace(entity);
         return toView(entity);
@@ -142,7 +142,7 @@ public class TriggerService {
 
     public TriggerView disable(String id) {
         var entity = getEntity(id);
-        entity.enabled = false;
+        entity.enabled = Boolean.FALSE;
         entity.updatedAt = ZonedDateTime.now();
         triggerCollection.replace(entity);
         return toView(entity);

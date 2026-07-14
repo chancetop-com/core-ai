@@ -20,8 +20,9 @@ import java.util.Map;
 public final class WorkflowGraphParser {
     public static WorkflowGraph parse(String json) {
         Map<String, Object> root = asMap(JSON.fromJSON(Map.class, json));
-        List<WorkflowNode> nodes = new ArrayList<>();
-        for (Object raw : list(root.get("nodes"))) {
+        List<Object> rawNodes = list(root.get("nodes"));
+        List<WorkflowNode> nodes = new ArrayList<>(rawNodes.size());
+        for (Object raw : rawNodes) {
             Map<String, Object> node = asMap(raw);
             String type = string(node.get("type"));
             if (NodeType.NOTE.name().equals(type)) {
@@ -33,8 +34,9 @@ public final class WorkflowGraphParser {
             String id = string(node.get("id"));
             nodes.add(new WorkflowNode(id, type, string(node.get("name")), refs, config));
         }
-        List<WorkflowEdge> edges = new ArrayList<>();
-        for (Object raw : list(root.get("edges"))) {
+        List<Object> rawEdges = list(root.get("edges"));
+        List<WorkflowEdge> edges = new ArrayList<>(rawEdges.size());
+        for (Object raw : rawEdges) {
             Map<String, Object> edge = asMap(raw);
             edges.add(new WorkflowEdge(string(edge.get("id")), string(edge.get("source")), string(edge.get("target"))));
         }

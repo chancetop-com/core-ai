@@ -43,7 +43,7 @@ public class ArtifactService {
 
         var result = new MyArtifactResult();
         result.total = count;
-        result.artifacts = new ArrayList<>();
+        result.artifacts = new ArrayList<>(files.size());
         for (var file : files) {
             var item = new MyArtifactItem();
             item.id = file.id;
@@ -115,7 +115,7 @@ public class ArtifactService {
 
         var result = new SharedArtifactResult();
         result.total = count;
-        result.artifacts = new ArrayList<>();
+        result.artifacts = new ArrayList<>(files.size());
         for (var file : files) {
             var item = new SharedArtifactItem();
             item.id = file.id;

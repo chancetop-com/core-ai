@@ -8,6 +8,7 @@ import redis.clients.jedis.params.SetParams;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,6 +23,7 @@ public class SessionOwnershipRegistry {
     private final JedisPool jedisPool;
     private final String hostname;
 
+    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     public SessionOwnershipRegistry(JedisPool jedisPool) {
         this.jedisPool = jedisPool;
         this.hostname = resolveHostname();
@@ -89,6 +91,7 @@ public class SessionOwnershipRegistry {
         return hostname;
     }
 
+    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     private String resolveHostname() {
         var env = System.getenv("HOSTNAME");
         if (env != null && !env.isBlank()) return env;

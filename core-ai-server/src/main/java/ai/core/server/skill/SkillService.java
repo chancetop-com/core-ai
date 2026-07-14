@@ -155,8 +155,7 @@ public class SkillService {
         var candidates = skillCollection.find(sortedQuery(indexedFilter));
         var searchScope = normalizedSearchIn(searchIn);
         var filtered = candidates.stream()
-            .filter(skill -> matchesUserId(skill, userId))
-            .filter(skill -> matchesQuery(skill, query, searchScope))
+            .filter(skill -> matchesUserId(skill, userId) && matchesQuery(skill, query, searchScope))
             .toList();
         return page(filtered, offset, limit);
     }
@@ -169,8 +168,7 @@ public class SkillService {
 
         var searchScope = normalizedSearchIn(searchIn);
         return skillCollection.find(sortedQuery(indexedFilter)).stream()
-            .filter(skill -> matchesUserId(skill, userId))
-            .filter(skill -> matchesQuery(skill, query, searchScope))
+            .filter(skill -> matchesUserId(skill, userId) && matchesQuery(skill, query, searchScope))
             .count();
     }
 
@@ -251,6 +249,9 @@ public class SkillService {
         var skillDir = skill.getSkillDir() != null
             ? Path.of(skill.getSkillDir())
             : Path.of(skill.getPath()).getParent();
+        if (skillDir == null) {
+            throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
+        }
         entity.content = repoManager.readSkillMdFromDir(skillDir);
         entity.resources = repoManager.readResourcesFromDir(skillDir, skill.getResources());
         entity.description = skill.getDescription();

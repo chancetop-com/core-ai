@@ -65,7 +65,7 @@ public class ForYouService {
         data.todoCount = todoCollection.count(Filters.eq("user_id", userId));
         data.activeTodoCount = todoCollection.count(Filters.and(
             Filters.eq("user_id", userId),
-            Filters.eq("completed", false)
+            Filters.eq("completed", Boolean.FALSE)
         ));
         data.fileCount = fileCollection.count(Filters.eq("user_id", userId));
 
@@ -86,7 +86,7 @@ public class ForYouService {
         var todoQuery = new Query();
         todoQuery.filter = Filters.and(
             Filters.eq("user_id", userId),
-            Filters.eq("completed", false)
+            Filters.eq("completed", Boolean.FALSE)
         );
         todoQuery.sort = Sorts.ascending("created_at");
         data.activeTodos = todoCollection.find(todoQuery);
@@ -151,7 +151,7 @@ public class ForYouService {
         todo.userId = userId;
         todo.title = title;
         todo.description = description;
-        todo.completed = false;
+        todo.completed = Boolean.FALSE;
         todo.priority = priority;
         todo.dueDate = dueDate;
         todo.createdAt = ZonedDateTime.now();
@@ -250,7 +250,7 @@ public class ForYouService {
         ZonedDateTime start;
         ZonedDateTime end;
 
-        if (fromDate != null && !fromDate.isBlank() && toDate != null && !toDate.isBlank()) {
+        if (fromDate != null && toDate != null && !fromDate.isBlank() && !toDate.isBlank()) {
             start = LocalDate.parse(fromDate).atStartOfDay(UTC);
             end = LocalDate.parse(toDate).plusDays(1).atStartOfDay(UTC);
         } else {
@@ -310,7 +310,7 @@ public class ForYouService {
         double totalCost = 0;
 
         var data = new TokenUsageData();
-        data.daily = new ArrayList<>();
+        data.daily = new ArrayList<>(dailyMap.size());
         for (var entry : dailyMap.entrySet()) {
             var d = entry.getValue();
             var item = new DailyUsageItem();

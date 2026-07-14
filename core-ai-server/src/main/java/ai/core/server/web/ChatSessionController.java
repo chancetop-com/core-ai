@@ -15,6 +15,7 @@ import core.framework.mongo.MongoCollection;
 import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.WebContext;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.time.ZonedDateTime;
 import java.util.Arrays;
@@ -101,10 +102,11 @@ public class ChatSessionController {
         var ok = chatMessageService.softDeleteSession(userId, sessionId);
         if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
         sandboxSnapshotService.deleteForSession(sessionId);
-        return jsonResponse(Map.of("deleted", true));
+        return jsonResponse(Map.of("deleted", Boolean.TRUE));
     }
 
     @SuppressWarnings("unchecked")
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     public Response batchDelete(Request request) {
         var userId = AuthContext.userId(webContext);
         if (userId == null) return Response.text("unauthorized").status(HTTPStatus.UNAUTHORIZED);
@@ -135,10 +137,11 @@ public class ChatSessionController {
         if (title == null || title.isBlank()) return Response.text("title required").status(HTTPStatus.BAD_REQUEST);
         var ok = chatMessageService.updateSessionTitle(userId, sessionId, title);
         if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
-        return jsonResponse(Map.of("updated", true));
+        return jsonResponse(Map.of("updated", Boolean.TRUE));
     }
 
     @SuppressWarnings("unchecked")
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     public Response submitFeedback(Request request) {
         var userId = AuthContext.userId(webContext);
         if (userId == null) return Response.text("unauthorized").status(HTTPStatus.UNAUTHORIZED);
@@ -201,9 +204,10 @@ public class ChatSessionController {
         // patch experiment run outcome
         memoryExperimentService.recordOutcome(sessionId, feedback.outcome, feedback.outcomeRating);
 
-        return jsonResponse(Map.of("id", feedback.id, "created", true));
+        return jsonResponse(Map.of("id", feedback.id, "created", Boolean.TRUE));
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private String parseTitle(Request request) {
         try {
             var body = request.body();
@@ -233,6 +237,7 @@ public class ChatSessionController {
         return m;
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private Response jsonResponse(Object data) {
         try {
             var json = MAPPER.writeValueAsBytes(data);

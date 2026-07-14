@@ -3,6 +3,7 @@ package ai.core.server.workflow;
 import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.List;
 
@@ -14,6 +15,7 @@ import java.util.List;
  *
  * @author Xander
  */
+@SuppressFBWarnings("MOM_MISLEADING_OVERLOAD_MODEL")
 public record AgentRunResult(boolean completed, String output, String error, List<ArtifactRef> artifacts,
                              String traceId, RunStatus status, TokenUsage tokenUsage) {
     public AgentRunResult {

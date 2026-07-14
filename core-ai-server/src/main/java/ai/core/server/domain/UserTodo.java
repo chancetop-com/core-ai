@@ -25,7 +25,7 @@ public class UserTodo {
 
     @NotNull
     @Field(name = "completed")
-    public Boolean completed = false;
+    public Boolean completed = Boolean.FALSE;
 
     @Field(name = "priority")
     public String priority;

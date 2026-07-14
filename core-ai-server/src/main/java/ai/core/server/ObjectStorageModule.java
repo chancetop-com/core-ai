@@ -63,7 +63,8 @@ public class ObjectStorageModule extends Module {
         if (objectStorage == null && (provider.isEmpty() || "minio".equals(provider))) {
             var minioEndpoint = property("storage.minio.endpoint").orElse(null);
             var minioAccessKey = property("storage.minio.access.key").orElse(null);
-            if (minioEndpoint != null && !minioEndpoint.isBlank() && minioAccessKey != null && !minioAccessKey.isBlank()) {
+            if (minioEndpoint != null && minioAccessKey != null
+                    && !minioEndpoint.isBlank() && !minioAccessKey.isBlank()) {
                 var minioSecretKey = property("storage.minio.secret.key").orElse(null);
                 var minioRegion = property("storage.minio.region").orElse("us-east-1");
                 var minioMultimodalBucket = property("storage.minio.multimodal.bucket").orElse("uploads");

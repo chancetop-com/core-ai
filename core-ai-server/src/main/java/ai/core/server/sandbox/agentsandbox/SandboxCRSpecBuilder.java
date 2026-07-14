@@ -2,6 +2,7 @@ package ai.core.server.sandbox.agentsandbox;
 
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxConstants;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -24,6 +25,7 @@ public class SandboxCRSpecBuilder {
     private final String userId;
     private final String sandboxName;
 
+    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     public SandboxCRSpecBuilder(SandboxConfig config, String sessionId, String userId) {
         this.config = config;
         this.sessionId = sessionId;

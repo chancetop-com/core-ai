@@ -23,10 +23,10 @@ public final class DeleteDatasetRecordTool extends ToolCall {
         tool.setName(TOOL_NAME);
         tool.setDescription(buildDescription(datasetService, registry));
         tool.setParameters(parameters());
-        tool.setNeedAuth(false);
-        tool.setDirectReturn(false);
-        tool.setLlmVisible(true);
-        tool.setDiscoverable(false);
+        tool.setNeedAuth(Boolean.FALSE);
+        tool.setDirectReturn(Boolean.FALSE);
+        tool.setLlmVisible(Boolean.TRUE);
+        tool.setDiscoverable(Boolean.FALSE);
         return tool;
     }
 

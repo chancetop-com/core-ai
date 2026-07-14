@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
  * @author stephen
@@ -155,6 +156,7 @@ public class OcgCallbackPool {
         }
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private String hmacSha256(byte[] bodyBytes, String secret) {
         try {
             var mac = Mac.getInstance("HmacSHA256");

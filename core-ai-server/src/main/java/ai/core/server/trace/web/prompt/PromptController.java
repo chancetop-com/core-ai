@@ -3,6 +3,7 @@ package ai.core.server.trace.web.prompt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import core.framework.inject.Inject;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import core.framework.web.Request;
 import core.framework.web.Response;
 
@@ -60,6 +61,7 @@ public class PromptController {
         return jsonResponse(published);
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private PromptTemplate readBody(Request request) {
         try {
             byte[] body = request.body().orElseThrow(() -> new IllegalArgumentException("empty body"));

@@ -5,6 +5,7 @@ import ai.core.sandbox.SandboxProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.sandbox.SandboxConstants;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +39,7 @@ public class DockerSandboxProvider implements SandboxProvider {
     }
 
     @Override
+    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     public Sandbox acquire(SandboxConfig config, String sessionId, String userId) {
         var effectiveConfig = config != null ? config : defaultConfig;
         effectiveConfig.validate();
@@ -188,13 +190,13 @@ public class DockerSandboxProvider implements SandboxProvider {
 
     private Map<String, Object> buildHostConfig(SandboxConfig config) {
         var hostConfig = new HashMap<String, Object>();
-        var memoryLimit = (config.memoryLimitMb != null ? config.memoryLimitMb : SandboxConstants.DEFAULT_MEMORY_LIMIT_MB) * 1024 * 1024L;
+        var memoryLimit = (long) (config.memoryLimitMb != null ? config.memoryLimitMb : SandboxConstants.DEFAULT_MEMORY_LIMIT_MB) * 1024 * 1024;
         var cpuLimit = config.cpuLimitMillicores != null ? config.cpuLimitMillicores : SandboxConstants.DEFAULT_CPU_LIMIT_MILLICORES;
 
         hostConfig.put("Memory", memoryLimit);
         hostConfig.put("CpuPeriod", 100000L);
         hostConfig.put("CpuQuota", cpuLimit * 1000L);
-        hostConfig.put("AutoRemove", false);
+        hostConfig.put("AutoRemove", Boolean.FALSE);
         hostConfig.put("NetworkMode", networkName);
 
         var portBindings = new HashMap<String, Object>();

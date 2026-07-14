@@ -30,7 +30,7 @@ public class ArtifactWebServiceImpl implements ArtifactWebService {
         var result = artifactService.listMy(userId, request.offset, request.limit);
         var response = new ListMyArtifactsResponse();
         response.total = result.total;
-        response.artifacts = new ArrayList<>();
+        response.artifacts = new ArrayList<>(result.artifacts.size());
         for (var item : result.artifacts) {
             var view = new MyArtifactView();
             view.id = item.id;
@@ -50,7 +50,7 @@ public class ArtifactWebServiceImpl implements ArtifactWebService {
         var result = artifactService.listShared(request.offset, request.limit, request.name, request.userId);
         var response = new ListSharedArtifactsResponse();
         response.total = result.total;
-        response.artifacts = new ArrayList<>();
+        response.artifacts = new ArrayList<>(result.artifacts.size());
         for (var item : result.artifacts) {
             var view = new SharedArtifactView();
             view.id = item.id;

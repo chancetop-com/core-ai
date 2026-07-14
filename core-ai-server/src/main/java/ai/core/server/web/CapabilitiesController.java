@@ -15,7 +15,7 @@ public class CapabilitiesController {
     public Response get(Request request) {
         var caps = A2ACapabilities.serverMode();
         if (authDisabled) {
-            caps.authRequired = false;
+            caps.authRequired = Boolean.FALSE;
         }
         var json = JsonUtil.toJson(caps).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         return Response.bytes(json).contentType(ContentType.APPLICATION_JSON);

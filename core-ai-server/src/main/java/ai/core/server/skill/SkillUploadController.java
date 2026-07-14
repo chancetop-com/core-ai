@@ -11,6 +11,8 @@ import core.framework.web.Response;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.LinkedHashMap;
@@ -29,6 +31,7 @@ public class SkillUploadController implements Controller {
     WebContext webContext;
 
     @Override
+    @SuppressFBWarnings("EXS_EXCEPTION_SOFTENING_HAS_CHECKED")
     public Response execute(Request request) {
         var userId = AuthContext.userId(webContext);
         var user = userCollection.get(userId)

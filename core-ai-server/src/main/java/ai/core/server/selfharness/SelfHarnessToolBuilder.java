@@ -31,7 +31,7 @@ public class SelfHarnessToolBuilder {
 
     private static Method findCallApiMethod() {
         return Arrays.stream(SelfHarnessApiCaller.class.getMethods())
-                .filter(m -> m.getName().equals("callApi"))
+                .filter(m -> "callApi".equals(m.getName()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("callApi method not found"));
     }
@@ -57,7 +57,7 @@ public class SelfHarnessToolBuilder {
                 .description(description)
                 .object(caller)
                 .method(callApiMethod)
-                .dynamicArguments(true)
+                .dynamicArguments(Boolean.TRUE)
                 .parameters(params)
                 .build();
     }
@@ -70,7 +70,7 @@ public class SelfHarnessToolBuilder {
                 .name(pathParamName)
                 .description(pathParamDesc)
                 .type(ToolCallParameterType.STRING)
-                .required(true)
+                .required(Boolean.TRUE)
                 .build());
         return Function.builder()
                 .namespace("self-harness")
@@ -79,7 +79,7 @@ public class SelfHarnessToolBuilder {
                 .description(description)
                 .object(caller)
                 .method(callApiMethod)
-                .dynamicArguments(true)
+                .dynamicArguments(Boolean.TRUE)
                 .parameters(params)
                 .build();
     }
@@ -96,7 +96,7 @@ public class SelfHarnessToolBuilder {
                 .description(description)
                 .object(caller)
                 .method(callApiMethod)
-                .dynamicArguments(true)
+                .dynamicArguments(Boolean.TRUE)
                 .parameters(params)
                 .build();
     }
@@ -110,7 +110,7 @@ public class SelfHarnessToolBuilder {
                     .name("id")
                     .description("Agent ID")
                     .type(ToolCallParameterType.STRING)
-                    .required(true)
+                    .required(Boolean.TRUE)
                     .build());
         }
         for (var field : requestType.getDeclaredFields()) {
@@ -164,10 +164,8 @@ public class SelfHarnessToolBuilder {
             } else {
                 builder.type(ToolCallParameterType.LIST).itemType(String.class);
             }
-        } else if (Map.class.isAssignableFrom(type)) {
-            builder.type(ToolCallParameterType.MAP);
         } else {
-            // nested object or unknown → treat as Map
+            // Map type, nested object, or unknown → treat as Map
             builder.type(ToolCallParameterType.MAP);
         }
     }

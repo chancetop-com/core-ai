@@ -22,17 +22,17 @@ final class AgentQueryHelper {
             if (Boolean.FALSE.equals(request.includeSystemDefault)) {
                 return Filters.and(
                     Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
-                    Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+                    Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
                 );
             }
             return Filters.or(
                 Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
-                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
             );
         } else if (myAgents != null) {
             return Filters.and(
                 Filters.ne(AIRAGENT_USER_ID_FIELD, userId),
-                Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+                Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
             );
         }
         return Filters.empty();

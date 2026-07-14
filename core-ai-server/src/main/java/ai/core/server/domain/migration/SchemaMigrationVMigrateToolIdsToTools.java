@@ -25,8 +25,8 @@ public class SchemaMigrationVMigrateToolIdsToTools implements SchemaMigration {
     public void migrate(Mongo mongo) {
         // Find all agents that have tool_ids but no tools field, and migrate them
         var filter = new Document("$and", List.of(
-                new Document("tool_ids", new Document("$exists", true)),
-                new Document("tools", new Document("$exists", false))
+                new Document("tool_ids", new Document("$exists", Boolean.TRUE)),
+                new Document("tools", new Document("$exists", Boolean.FALSE))
         ));
 
         var findCmd = new Document("find", "agents")

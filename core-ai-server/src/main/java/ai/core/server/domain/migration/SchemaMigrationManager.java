@@ -32,7 +32,7 @@ public class SchemaMigrationManager {
             .stream()
             .map(v -> v.id)
             .collect(Collectors.toSet());
-        Set<String> runInThisSession = new HashSet<>();
+        Set<String> runInThisSession = new HashSet<>(migrations.size());
 
         for (var migration : migrations) {
             if (applied.contains(migration.version()) || runInThisSession.contains(migration.version())) {
@@ -63,7 +63,7 @@ public class SchemaMigrationManager {
 
     // duplicate versions make later migrations silently skip forever (seen twice on dev) — fail fast at startup
     private void validateUniqueVersions(List<SchemaMigration> migrations) {
-        Set<String> versions = new HashSet<>();
+        Set<String> versions = new HashSet<>(migrations.size());
         for (var migration : migrations) {
             if (!versions.add(migration.version())) {
                 throw new Error("duplicate schema migration version, assign a new unique version: version=" + migration.version() + ", migration=" + migration.getClass().getSimpleName());

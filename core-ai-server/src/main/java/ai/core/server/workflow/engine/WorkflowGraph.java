@@ -26,9 +26,9 @@ public final class WorkflowGraph {
     public WorkflowGraph(List<WorkflowNode> nodes, List<WorkflowEdge> edges) {
         this.nodes = List.copyOf(nodes);
         this.edges = List.copyOf(edges);
-        this.nodeById = new LinkedHashMap<>();
-        this.inEdges = new LinkedHashMap<>();
-        this.outEdges = new LinkedHashMap<>();
+        this.nodeById = new LinkedHashMap<>(this.nodes.size());
+        this.inEdges = new LinkedHashMap<>(this.nodes.size());
+        this.outEdges = new LinkedHashMap<>(this.nodes.size());
         for (WorkflowNode node : this.nodes) {
             nodeById.put(node.id(), node);
             inEdges.put(node.id(), new ArrayList<>());

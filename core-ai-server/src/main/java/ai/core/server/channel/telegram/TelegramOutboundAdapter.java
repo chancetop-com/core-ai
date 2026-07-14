@@ -85,9 +85,9 @@ public class TelegramOutboundAdapter implements ChannelOutboundAdapter {
         body.put("chat_id", chatId);
         body.put("text", truncate(text, MAX_TEXT_LENGTH));
         body.put("parse_mode", "Markdown");
-        body.put("disable_web_page_preview", true);
+        body.put("disable_web_page_preview", Boolean.TRUE);
         if (replyToMessageId != null && !replyToMessageId.isBlank()) {
-            body.put("reply_to_message_id", Integer.parseInt(replyToMessageId));
+            body.put("reply_to_message_id", Integer.valueOf(replyToMessageId));
         }
         return body;
     }

@@ -2,6 +2,7 @@ package ai.core.server.workflow;
 
 import ai.core.server.workflow.engine.WorkflowEdge;
 import core.framework.json.JSON;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,6 +16,7 @@ import java.util.Map;
  * @author Xander
  */
 final class NodeInputSnapshot {
+    @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     static String capture(NodeContext ctx) {
         String type = ctx.node().type();
         return switch (type) {

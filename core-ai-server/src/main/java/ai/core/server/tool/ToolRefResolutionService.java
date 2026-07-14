@@ -209,9 +209,9 @@ class ToolRefResolutionService {
                 return;
             }
         }
-        var dynamicSet = dynamicToolSets.get(ref.id);
-        if (dynamicSet != null) {
-            registry.registerProvider(new ListToolProvider("dynamic:" + ref.id, dynamicSet));
+        var dynamicTools = dynamicToolSets.get(ref.id);
+        if (dynamicTools != null) {
+            registry.registerProvider(new ListToolProvider("dynamic:" + ref.id, dynamicTools));
         }
     }
 
@@ -269,7 +269,7 @@ class ToolRefResolutionService {
         if (internalApiToolLoader != null && InternalApiToolLoader.isApiToolId(ref.id)) {
             tools = internalApiToolLoader.loadByToolId(ref.id);
         }
-        if (tools.isEmpty() && internalApiToolLoader != null && ref.source != null) {
+        if (internalApiToolLoader != null && ref.source != null && tools.isEmpty()) {
             tools = internalApiToolLoader.loadApiAppTools(ref.source);
         }
         if (!tools.isEmpty()) {

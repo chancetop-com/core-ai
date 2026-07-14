@@ -25,11 +25,11 @@ public class RpcClient {
      * Build an RPC response JSON for the handler to publish.
      */
     public static String okResponse(String payloadJson) {
-        return JsonUtil.toJson(Map.of("ok", true, "payload", payloadJson));
+        return JsonUtil.toJson(Map.of("ok", Boolean.TRUE, "payload", payloadJson));
     }
 
     public static String errorResponse(String message) {
-        return JsonUtil.toJson(Map.of("ok", false, "message", message));
+        return JsonUtil.toJson(Map.of("ok", Boolean.FALSE, "message", message));
     }
 
     private final JedisPool jedisPool;

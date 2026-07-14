@@ -17,6 +17,8 @@ import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,6 +62,7 @@ public class ChannelSyncController implements Controller {
 
     @Override
     @SuppressWarnings("unchecked")
+    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     public Response execute(Request request) {
         var payload = parseBody(request);
         var userText = extractUserText(payload);

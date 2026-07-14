@@ -252,7 +252,7 @@ public class AuthService {
 
         var users = userCollection.find(Filters.exists("email"));
         var response = new ListUsersResponse();
-        response.users = new ArrayList<>();
+        response.users = new ArrayList<>(users.size());
         for (var user : users) {
             var view = new ListUsersResponse.UserStatusView();
             view.email = user.email;

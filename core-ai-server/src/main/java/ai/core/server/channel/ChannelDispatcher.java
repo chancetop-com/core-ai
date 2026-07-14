@@ -80,7 +80,7 @@ public class ChannelDispatcher {
     }
 
     private ToolDecision parseDecision(InboundEvent event) {
-        if ("tool_decision".equals(event.commandType) && event.toolCallId != null && event.toolDecision != null) {
+        if (event.toolCallId != null && event.toolDecision != null && "tool_decision".equals(event.commandType)) {
             var decision = "approve".equalsIgnoreCase(event.toolDecision) ? ApprovalDecision.APPROVE : ApprovalDecision.DENY;
             return new ToolDecision(event.toolCallId, decision);
         }

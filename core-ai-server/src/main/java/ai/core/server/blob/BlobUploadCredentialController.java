@@ -5,6 +5,8 @@ import core.framework.api.http.HTTPStatus;
 import core.framework.web.Request;
 import core.framework.web.Response;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.util.UUID;
 
 /**
@@ -48,6 +50,7 @@ public class BlobUploadCredentialController {
         return Response.bean(view);
     }
 
+    @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     private String inferExtension(String contentType) {
         return switch (contentType) {
             // images

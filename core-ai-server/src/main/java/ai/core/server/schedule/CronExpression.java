@@ -65,7 +65,7 @@ public class CronExpression {
                 int to = Integer.parseInt(rangeParts[1]);
                 for (int i = from; i <= to; i++) result.add(i);
             } else {
-                result.add(Integer.parseInt(part));
+                result.add(Integer.valueOf(part));
             }
         }
         return result;

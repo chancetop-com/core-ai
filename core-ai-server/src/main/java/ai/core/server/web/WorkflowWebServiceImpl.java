@@ -123,7 +123,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         var response = new ExploreWorkflowsResponse();
         response.workflows = definitions.stream().map(d -> {
             var view = WorkflowViewMapper.toView(d, userNames.get(d.userId));
-            view.editable = false;       // explore only ever returns other users' published workflows
+            view.editable = Boolean.FALSE;       // explore only ever returns other users' published workflows
             view.draftGraph = null;      // list payload never carries the graph
             return view;
         }).toList();
@@ -143,7 +143,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     private boolean isAdmin(String userId) {
-        return userCollection.get(userId).map(user -> "admin".equals(user.role)).orElse(false);
+        return userCollection.get(userId).map(user -> "admin".equals(user.role)).orElse(Boolean.FALSE);
     }
 
     @Override

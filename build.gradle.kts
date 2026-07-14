@@ -150,6 +150,8 @@ project(":core-ai-server") {
         // OpenTelemetry SDK for local SpanProcessor
         implementation("io.opentelemetry:opentelemetry-sdk:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-api:${Versions.OPENTELEMETRY_VERSION}")
+        // SpotBugs annotations for SuppressFBWarnings
+        compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
         // Redis client for distributed messaging
         implementation("redis.clients:jedis:${Versions.JEDIS_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")

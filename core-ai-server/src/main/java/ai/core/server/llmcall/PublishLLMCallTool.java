@@ -7,6 +7,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.Map;
 
@@ -35,6 +36,7 @@ public final class PublishLLMCallTool extends ToolCall {
 
     @Override
     @SuppressWarnings("unchecked")
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     public ToolCallResult execute(String text, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         try {

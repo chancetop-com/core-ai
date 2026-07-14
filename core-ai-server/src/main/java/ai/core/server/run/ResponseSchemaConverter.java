@@ -28,7 +28,7 @@ public class ResponseSchemaConverter {
         var format = new ResponseFormat();
         var schemaDef = new ResponseFormat.JsonSchemaDefinition();
         schemaDef.name = schema.title != null ? schema.title : "response";
-        schemaDef.strict = false;
+        schemaDef.strict = Boolean.FALSE;
         schemaDef.schema = schema;
         format.jsonSchema = schemaDef;
         return format;

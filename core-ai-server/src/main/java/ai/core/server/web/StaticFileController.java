@@ -88,7 +88,8 @@ public class StaticFileController {
     }
 
     private Response withCacheHeaders(Response response, String requestPath, Path file) {
-        if (file.getFileName().toString().endsWith(".html")) {
+        var fileName = file.getFileName();
+        if (fileName != null && fileName.toString().endsWith(".html")) {
             return response.header(CACHE_CONTROL, NO_CACHE);
         }
         if (requestPath.startsWith("/assets/")) {

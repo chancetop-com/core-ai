@@ -102,8 +102,9 @@ public class WeClawOutboundAdapter implements ChannelOutboundAdapter {
             if (responseBody == null) return;
 
             var result = (Map<String, Object>) JSON.fromJSON(Map.class, responseBody);
-            if (result.containsKey("error")) {
-                LOGGER.warn("weclaw API error: {}", result.get("error"));
+            var error = result.get("error");
+            if (error != null) {
+                LOGGER.warn("weclaw API error: {}", error);
             }
         } catch (Exception e) {
             LOGGER.warn("failed to send weclaw message, to={}, apiBase={}", body.get("to"), apiBase, e);

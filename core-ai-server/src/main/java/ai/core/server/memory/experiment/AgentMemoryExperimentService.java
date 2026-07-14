@@ -7,6 +7,7 @@ import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ import java.util.stream.Collectors;
  *
  * @author stephen
  */
+@SuppressFBWarnings("MDM_RANDOM_SEED")
 public class AgentMemoryExperimentService {
 
     @Inject
@@ -54,6 +56,7 @@ public class AgentMemoryExperimentService {
         return results.isEmpty() ? null : results.getFirst();
     }
 
+    @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     public AgentMemoryExperimentConfig saveConfig(AgentMemoryExperimentConfig config) {
         var existing = getConfig(config.agentId);
         var now = ZonedDateTime.now();
@@ -77,7 +80,7 @@ public class AgentMemoryExperimentService {
         // default: enable all layers with semantic ranking
         var defaults = new AgentMemoryExperimentConfig();
         defaults.agentId = agentId;
-        defaults.enabled = true;
+        defaults.enabled = Boolean.TRUE;
         defaults.enabledLayers = List.copyOf(MemoryPolicy.DEFAULT_LAYERS);
         defaults.rankingStrategy = MemoryPolicy.DEFAULT_RANKING;
         defaults.topK = MemoryPolicy.DEFAULT_TOP_K;

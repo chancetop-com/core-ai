@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
  * @author stephen
@@ -56,6 +57,7 @@ public class GitHubInstallationTokenService implements GitHubTokenProvider {
         }
     }
 
+    @SuppressFBWarnings("SR_NOT_CHECKED")
     private static PrivateKey parsePkcs1PrivateKey(String pem) {
         try {
             var key = stripPem(pem);

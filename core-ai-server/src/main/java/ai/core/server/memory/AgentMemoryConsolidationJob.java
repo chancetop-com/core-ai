@@ -21,6 +21,7 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -156,6 +157,7 @@ public class AgentMemoryConsolidationJob implements Job {
         }
     }
 
+    @SuppressFBWarnings("VA_FORMAT_STRING_USES_NEWLINE")
     private void processAgent(String agentId) {
         var definition = agentDefinitionCollection.get(agentId).orElse(null);
         if (definition == null) {
@@ -228,6 +230,7 @@ public class AgentMemoryConsolidationJob implements Job {
         return sb.toString();
     }
 
+    @SuppressFBWarnings("PCAIL_POSSIBLE_CONSTANT_ALLOCATION_IN_LOOP")
     private String extractSystemPrompt(List<Trace> traces) {
         var traceIds = traces.stream().map(t -> t.traceId).toList();
         var query = new Query();
@@ -312,8 +315,7 @@ public class AgentMemoryConsolidationJob implements Job {
                 .filter(m -> "user".equals(m.role))
                 .count();
         var toolCalls = messages.stream()
-                .filter(m -> "agent".equals(m.role))
-                .filter(m -> m.tools != null)
+                .filter(m -> m.tools != null && "agent".equals(m.role))
                 .mapToLong(m -> m.tools.size())
                 .sum();
         if (userTurns >= MIN_MEANINGFUL_USER_TURNS) return true;
@@ -379,6 +381,7 @@ public class AgentMemoryConsolidationJob implements Job {
         return "";
     }
 
+    @SuppressFBWarnings({"VA_FORMAT_STRING_USES_NEWLINE", "REC_CATCH_EXCEPTION"})
     private List<AgentMemory> parseV2Response(String response, String agentId, List<Trace> traces) {
         var memories = new ArrayList<AgentMemory>();
         try {

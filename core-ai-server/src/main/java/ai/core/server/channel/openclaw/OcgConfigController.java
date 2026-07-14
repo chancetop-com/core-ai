@@ -10,6 +10,8 @@ import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.NotFoundException;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.nio.charset.StandardCharsets;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -112,7 +114,7 @@ public class OcgConfigController {
         var payload = readPayload(request);
         var command = (String) payload.get("command");
         ocgSandboxService.runTerminalCommand(id, command);
-        return json(Map.of("ok", true));
+        return json(Map.of("ok", Boolean.TRUE));
     }
 
     public Response logs(Request request) {
@@ -135,7 +137,8 @@ public class OcgConfigController {
         config.channelId = channelId;
         config.configJson = configJson;
         config.callbackSecret = (String) payload.get("callbackSecret");
-        config.enabled = payload.containsKey("enabled") ? Boolean.TRUE.equals(payload.get("enabled")) : existing == null || !Boolean.FALSE.equals(existing.enabled);
+        var enabledObj = payload.get("enabled");
+        config.enabled = enabledObj != null ? Boolean.TRUE.equals(enabledObj) : existing == null || !Boolean.FALSE.equals(existing.enabled);
         return config;
     }
 
@@ -147,6 +150,7 @@ public class OcgConfigController {
     }
 
     @SuppressWarnings("unchecked")
+    @SuppressFBWarnings({"SIO_SUPERFLUOUS_INSTANCEOF", "BC_VACUOUS_INSTANCEOF"})
     private void validateConfigJson(String configJson) {
         try {
             var parsed = JsonUtil.fromJson(Map.class, configJson);

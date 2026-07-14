@@ -45,12 +45,7 @@ public class CodeExecutor implements NodeExecutor {
     static final String RESULT_SENTINEL = "__WORKFLOW_CODE_NODE_RESULT__";
     // The \\n inside the text block reaches Python as the two-char escape, so print emits a real leading
     // newline — the sentinel stays on its own line even after unterminated sys.stdout.write output.
-    private static final String RESULT_EPILOGUE = """
-
-        if 'result' in globals():
-            print('\\n%s')
-            print(json.dumps(result, ensure_ascii=False, default=str))
-        """.formatted(RESULT_SENTINEL);
+    private static final String RESULT_EPILOGUE = "%nif 'result' in globals():%n    print('\\n%s')%n    print(json.dumps(result, ensure_ascii=False, default=str))%n".formatted(RESULT_SENTINEL);
 
     // Union of the staging sets of every input selector (a selector referencing artifacts whole / by index /
     // by .path stages the file; metadata-only references don't — same rule as AGENT templates).

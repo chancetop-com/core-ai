@@ -192,11 +192,11 @@ public class TraceService {
     }
 
     private void addTraceTextMatches(Map<String, Trace> matches, List<Bson> indexedFilters, TraceListFilter filter, Pattern namePattern, int limit) {
-        if (!hasPlainTextQuery(filter) && namePattern == null) return;
+        if (namePattern == null && !hasPlainTextQuery(filter)) return;
         var query = hasPlainTextQuery(filter) ? filter.q.trim() : null;
         traceCollection.find(TraceServiceHelper.sortedTraceQuery(indexedFilters, limit)).stream()
-            .filter(trace -> query == null || matchesTraceTextQuery(trace, query))
-            .filter(trace -> TraceServiceHelper.matchesNamePattern(trace, namePattern))
+            .filter(trace -> (query == null || matchesTraceTextQuery(trace, query))
+                && TraceServiceHelper.matchesNamePattern(trace, namePattern))
             .forEach(trace -> TraceServiceHelper.putTrace(matches, trace));
     }
 

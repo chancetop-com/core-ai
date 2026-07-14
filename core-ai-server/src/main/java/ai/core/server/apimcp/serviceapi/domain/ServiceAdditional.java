@@ -18,7 +18,7 @@ public class ServiceAdditional {
     public String description;
     @NotNull
     @Field(name = "enabled")
-    public Boolean enabled = true;
+    public Boolean enabled = Boolean.TRUE;
     @Field(name = "operation_additional")
     public List<OperationAdditional> operationAdditional;
 }

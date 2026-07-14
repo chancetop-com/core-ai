@@ -213,7 +213,7 @@ public class WorkflowRunner {
     // A transient read failure must not fail the run — a one-tick miss is harmless, we re-read next iteration.
     private boolean isCancelled(String runId) {
         try {
-            return runCollection.get(runId).map(run -> run.status == RunStatus.CANCELLED).orElse(false);
+            return runCollection.get(runId).map(run -> run.status == RunStatus.CANCELLED).orElse(Boolean.FALSE);
         } catch (RuntimeException e) {
             LOGGER.warn("cancel poll read failed, treating as not-cancelled, runId={}", runId, e);
             return false;

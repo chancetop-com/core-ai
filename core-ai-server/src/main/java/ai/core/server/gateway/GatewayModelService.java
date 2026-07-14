@@ -213,7 +213,7 @@ public class GatewayModelService {
     }
 
     private void applyMetadata(GatewayModelConfig entity, GatewayModelMetadata metadata) {
-        if (metadata.displayName() != null && entity.displayName == null) entity.displayName = metadata.displayName();
+        if (entity.displayName == null && metadata.displayName() != null) entity.displayName = metadata.displayName();
         if (metadata.endpointTypes() != null && !metadata.endpointTypes().isEmpty()) entity.endpointTypes = normalizeEndpointTypes(metadata.endpointTypes());
         if (metadata.contextWindow() != null) entity.contextWindow = metadata.contextWindow();
         if (metadata.supportsStream() != null) entity.supportsStream = metadata.supportsStream();

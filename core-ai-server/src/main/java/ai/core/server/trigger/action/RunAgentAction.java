@@ -35,21 +35,21 @@ public class RunAgentAction implements TriggerAction {
         var agentId = trigger.actionConfig != null ? trigger.actionConfig.get("agent_id") : null;
         if (agentId == null || agentId.isBlank()) {
             LOGGER.warn("trigger {} has no agent_id configured, skipping", trigger.id);
-            return TriggerActionResult.skipped("no agent_id configured");
+            return TriggerActionResult.skipped();
         }
 
         var definition = agentDefinitionCollection.get(agentId)
                 .orElse(null);
         if (definition == null) {
             LOGGER.warn("agent not found for trigger {}, agentId={}", trigger.id, agentId);
-            return TriggerActionResult.skipped("agent not found: " + agentId);
+            return TriggerActionResult.skipped();
         }
 
         // Apply event filter before running agent to avoid wasting tokens
         var filter = new EventFilter(trigger.actionConfig);
         if (!filter.matches(payload)) {
             LOGGER.info("trigger {} skipped by event filter for agentId={}", trigger.id, agentId);
-            return TriggerActionResult.skipped("filtered by event filter");
+            return TriggerActionResult.skipped();
         }
 
         var inputTemplate = trigger.actionConfig != null ? trigger.actionConfig.get("input_template") : null;

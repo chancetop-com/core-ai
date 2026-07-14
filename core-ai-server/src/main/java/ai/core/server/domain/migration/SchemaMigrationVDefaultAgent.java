@@ -167,7 +167,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             .append("tools", List.of(new Document("id", "builtin-all").append("type", "BUILTIN")))
             .append("max_turns", 200)
             .append("timeout_seconds", 600)
-            .append("system_default", true)
+            .append("system_default", Boolean.TRUE)
             .append("type", "AGENT")
             .append("status", "PUBLISHED")
             .append("published_config", publishedConfig)
@@ -194,7 +194,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             .append("tools", List.of(new Document("id", "builtin-llm-call-builder").append("type", "BUILTIN")))
             .append("max_turns", 50)
             .append("timeout_seconds", 600)
-            .append("system_default", true)
+            .append("system_default", Boolean.TRUE)
             .append("type", "AGENT")
             .append("status", "PUBLISHED")
             .append("published_config", publishedConfig)
@@ -234,18 +234,18 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         ).append("$setOnInsert", new Document()
             .append("_id", AGENT_BUILDER_ID)
             .append("user_id", "system")
-            .append("system_default", true)
+            .append("system_default", Boolean.TRUE)
             .append("created_at", now)
         );
 
         mongo.runCommand(new Document("update", "agents")
-            .append("updates", List.of(new Document("q", filter).append("u", update).append("upsert", true))));
+            .append("updates", List.of(new Document("q", filter).append("u", update).append("upsert", Boolean.TRUE))));
     }
 
     private void upsert(Mongo mongo, String id, Document doc) {
         var filter = new Document("_id", id);
         var update = new Document("$setOnInsert", doc);
         mongo.runCommand(new Document("update", "agents")
-            .append("updates", List.of(new Document("q", filter).append("u", update).append("upsert", true))));
+            .append("updates", List.of(new Document("q", filter).append("u", update).append("upsert", Boolean.TRUE))));
     }
 }

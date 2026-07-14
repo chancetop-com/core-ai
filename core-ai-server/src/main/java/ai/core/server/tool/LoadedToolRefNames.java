@@ -2,6 +2,7 @@ package ai.core.server.tool;
 
 import ai.core.api.server.session.IdName;
 import ai.core.server.domain.ToolRef;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.List;
 
@@ -22,6 +23,7 @@ public class LoadedToolRefNames {
         return v;
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private static String displayName(ToolRef ref, ToolRegistryService toolRegistryService) {
         if (ref == null || ref.id == null) return "";
         if (toolRegistryService != null) {

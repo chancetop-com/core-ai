@@ -24,7 +24,7 @@ public class ChannelConfigView {
     public String userId;
     @NotNull
     @Field(name = "require_auth")
-    public Boolean requireAuth = true;
+    public Boolean requireAuth = Boolean.TRUE;
     @Field(name = "config")
     public Map<String, String> config;
     @Field(name = "filter_config")

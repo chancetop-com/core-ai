@@ -69,9 +69,9 @@ public class LLMCallExecutor {
         }
         messages.add(buildUserMessage(input, attachments));
 
-        var effectiveModel = hasAttachments(attachments) && multiModalModel != null ? multiModalModel : model;
+        var effectiveModel = multiModalModel != null && hasAttachments(attachments) ? multiModalModel : model;
         var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
-            messages, null, temperature, effectiveModel, null, false, responseFormat, null
+            messages, null, temperature, effectiveModel, null, Boolean.FALSE, responseFormat, null
         ));
         request.setTimeoutSeconds(timeoutSeconds);
 
@@ -163,11 +163,8 @@ public class LLMCallExecutor {
 
             var result = new LinkedHashMap<String, Object>();
             for (var field : dataset.schema) {
-                if (parsed.containsKey(field.name)) {
-                    result.put(field.name, parsed.get(field.name));
-                } else {
-                    result.put(field.name, null);
-                }
+                var value = parsed.get(field.name);
+                result.put(field.name, value);
             }
             return result;
         } catch (Exception e) {
@@ -189,7 +186,7 @@ public class LLMCallExecutor {
         var responseFormat = new ResponseFormat();
         var schemaDef = new ResponseFormat.JsonSchemaDefinition();
         schemaDef.name = "dataset_extraction";
-        schemaDef.strict = false;
+        schemaDef.strict = Boolean.FALSE;
         schemaDef.schema = schema;
         responseFormat.jsonSchema = schemaDef;
 
@@ -203,7 +200,7 @@ public class LLMCallExecutor {
 
         var provider = llmProviders.getProvider();
         var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
-            messages, null, 0.0, model, null, false, responseFormat, null
+            messages, null, 0.0, model, null, Boolean.FALSE, responseFormat, null
         ));
         request.setTimeoutSeconds(EXTRACTION_TIMEOUT_SECONDS);
 
@@ -224,7 +221,7 @@ public class LLMCallExecutor {
         sb.append("Extract the following structured data from the agent's output below.\n\n");
         sb.append("Schema fields:\n");
         for (var field : schema) {
-            sb.append("- ").append(field.name).append(" (").append(field.type.name().toLowerCase(Locale.ROOT)).append(")");
+            sb.append("- ").append(field.name).append(" (").append(field.type.name().toLowerCase(Locale.ROOT)).append(')');
             if (field.label != null) sb.append(": ").append(field.label);
             sb.append('\n');
         }
@@ -243,7 +240,7 @@ public class LLMCallExecutor {
     private JsonSchema buildDatasetJsonSchema(List<SchemaField> fields) {
         var schema = new JsonSchema();
         schema.type = JsonSchema.PropertyType.OBJECT;
-        schema.additionalProperties = false;
+        schema.additionalProperties = Boolean.FALSE;
 
         var properties = new LinkedHashMap<String, JsonSchema>();
         var required = new ArrayList<String>();

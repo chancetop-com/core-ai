@@ -30,7 +30,7 @@ public class AgentScheduleService {
         entity.remark = request.remark;
         entity.cronExpression = request.cronExpression;
         entity.timezone = request.timezone != null ? request.timezone : "UTC";
-        entity.enabled = true;
+        entity.enabled = Boolean.TRUE;
         entity.input = request.input;
         entity.variables = request.variables;
         entity.channelId = request.channelId;

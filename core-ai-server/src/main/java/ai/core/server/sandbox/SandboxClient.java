@@ -12,6 +12,7 @@ import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.http.HTTPResponse;
 import core.framework.json.JSON;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -168,7 +169,8 @@ public class SandboxClient {
             Files.write(tempFile, response.body);
             var fileName = header(response, "X-File-Name");
             if (fileName == null || fileName.isBlank()) {
-                fileName = java.nio.file.Path.of(path).getFileName().toString();
+                var f = java.nio.file.Path.of(path).getFileName();
+                fileName = f != null ? f.toString() : "unknown";
             }
             var contentType = response.contentType != null ? response.contentType.toString() : header(response, "Content-Type");
             if (contentType == null || contentType.isBlank()) {
@@ -196,6 +198,7 @@ public class SandboxClient {
         return response.headers.get(name);
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private ToolCallResult parseResponse(String responseBody, long durationMs) {
         try {
             var response = JSON.fromJSON(ExecuteResponse.class, responseBody);

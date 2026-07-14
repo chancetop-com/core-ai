@@ -53,7 +53,7 @@ public final class TestLLMCallTool extends ToolCall {
             messages.add(Message.of(RoleType.USER, testInput));
 
             var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
-                messages, null, null, model, null, false, responseFormat, null
+                messages, null, null, model, null, Boolean.FALSE, responseFormat, null
             ));
 
             var provider = llmProviders.getProvider();

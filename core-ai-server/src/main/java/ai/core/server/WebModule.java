@@ -4,6 +4,8 @@ import ai.core.server.web.StaticFileController;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.nio.file.Path;
 
 /**
@@ -16,6 +18,7 @@ public class WebModule extends Module {
         registerStaticFiles();
     }
 
+    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
     private void registerStaticFiles() {
         var webPath = System.getProperty("core.webPath");
         if (webPath == null) return;

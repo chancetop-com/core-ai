@@ -198,7 +198,7 @@ class McpServerOperationService {
         if (entity == null) throw new RuntimeException("mcp server not found, id=" + id);
         if (entity.type != ToolType.MCP) throw new RuntimeException("tool is not an mcp server, id=" + id);
 
-        entity.enabled = true;
+        entity.enabled = Boolean.TRUE;
         toolRegistryCollection.replace(entity);
         if (isSandboxHosted(entity)) {
             mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
@@ -219,7 +219,7 @@ class McpServerOperationService {
         if (entity == null) throw new RuntimeException("mcp server not found, id=" + id);
         if (entity.type != ToolType.MCP) throw new RuntimeException("tool is not an mcp server, id=" + id);
 
-        entity.enabled = false;
+        entity.enabled = Boolean.FALSE;
         toolRegistryCollection.replace(entity);
         mcpConnectionManager.unregisterMcpServer(id);
         LOGGER.info("disabled mcp server, id={}, name={}", id, entity.name);

@@ -18,7 +18,7 @@ import java.util.Set;
 public final class DominatorValidator {
     /** Iterative dominator sets: Dom(entry) = {entry}; Dom(n) = {n} union intersect(Dom(preds)). */
     public static Map<String, Set<String>> computeDominators(WorkflowGraph graph) {
-        Set<String> all = new LinkedHashSet<>();
+        Set<String> all = new LinkedHashSet<>(graph.nodes().size());
         for (WorkflowNode node : graph.nodes()) {
             all.add(node.id());
         }

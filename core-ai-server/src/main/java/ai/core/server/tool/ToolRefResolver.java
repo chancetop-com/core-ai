@@ -103,8 +103,8 @@ public class ToolRefResolver {
             return;
         }
         // fallback for dynamically registered builtin tool sets
-        var dynamicSet = dynamicToolSets.get(toolRef.id);
-        if (dynamicSet != null) result.addAll(dynamicSet);
+        var dynamicTools = dynamicToolSets.get(toolRef.id);
+        if (dynamicTools != null) result.addAll(dynamicTools);
     }
 
     private ToolRegistryEntry lookupBuiltinEntry(String id) {
@@ -268,7 +268,7 @@ public class ToolRefResolver {
             if (cached != null) return cached;
         }
 
-        if (entry.id.startsWith("api-app:") && apiToolLoader != null) {
+        if (apiToolLoader != null && entry.id.startsWith("api-app:")) {
             var appName = entry.id.substring("api-app:".length());
             return apiToolLoader.loadApiAppTools(appName);
         }

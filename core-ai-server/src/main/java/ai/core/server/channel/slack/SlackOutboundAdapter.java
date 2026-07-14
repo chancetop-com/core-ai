@@ -84,8 +84,8 @@ public class SlackOutboundAdapter implements ChannelOutboundAdapter {
         var body = new LinkedHashMap<String, Object>();
         body.put("channel", channel);
         body.put("text", truncate(text, MAX_TEXT_LENGTH));
-        body.put("unfurl_links", false);
-        body.put("unfurl_media", false);
+        body.put("unfurl_links", Boolean.FALSE);
+        body.put("unfurl_media", Boolean.FALSE);
         if (threadTs != null && !threadTs.isBlank()) {
             body.put("thread_ts", threadTs);
         }

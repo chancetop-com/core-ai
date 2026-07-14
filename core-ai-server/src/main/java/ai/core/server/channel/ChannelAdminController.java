@@ -114,12 +114,14 @@ public class ChannelAdminController {
         var view = new ChannelConfigView();
         view.channelId = channelId;
         view.channelType = (String) payload.getOrDefault("channelType", "slack");
-        view.enabled = !payload.containsKey("enabled") || Boolean.TRUE.equals(payload.get("enabled"));
+        var enabled = payload.get("enabled");
+        view.enabled = enabled == null || Boolean.TRUE.equals(enabled);
         view.agentId = (String) payload.get("agentId");
         view.userId = (String) payload.get("userId");
         view.sessionTtlMinutes = payload.get("sessionTtlMinutes") instanceof Number n ? n.intValue() : 60;
-        if (payload.containsKey("requireAuth")) {
-            view.requireAuth = Boolean.TRUE.equals(payload.get("requireAuth"));
+        var requireAuth = payload.get("requireAuth");
+        if (requireAuth != null) {
+            view.requireAuth = Boolean.TRUE.equals(requireAuth);
         }
         if (payload.get("config") instanceof Map<?, ?> cfg) {
             view.config = (Map<String, String>) cfg;

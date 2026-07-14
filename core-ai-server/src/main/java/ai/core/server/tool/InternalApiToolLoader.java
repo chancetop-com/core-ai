@@ -11,6 +11,7 @@ import ai.core.utils.JsonSchemaUtil;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.util.Strings;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 /**
  * @author stephen
  */
+@SuppressFBWarnings("WOC_WRITE_ONLY_COLLECTION_FIELD")
 public class InternalApiToolLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(InternalApiToolLoader.class);
 
@@ -254,7 +256,7 @@ public class InternalApiToolLoader {
                 .object(caller)
                 .method(method)
                 .needAuth(operation.needAuth)
-                .dynamicArguments(true)
+                .dynamicArguments(Boolean.TRUE)
                 .parameters(params)
                 .build();
     }
@@ -279,7 +281,7 @@ public class InternalApiToolLoader {
 
     private Method findCallApiMethod() {
         return Arrays.stream(DynamicApiCaller.class.getMethods())
-                .filter(m -> m.getName().equals("callApi"))
+                .filter(m -> "callApi".equals(m.getName()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("callApi method not found in DynamicApiCaller"));
     }
@@ -298,7 +300,7 @@ public class InternalApiToolLoader {
     }
 
     private String schemaJsonForType(String type, ApiDefinition api) {
-        if (type == null || type.isBlank() || api.types == null || api.types.isEmpty()) {
+        if (type == null || api.types == null || type.isBlank() || api.types.isEmpty()) {
             return null;
         }
         var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));
@@ -324,7 +326,7 @@ public class InternalApiToolLoader {
         var param = new ToolCallParameter();
         param.setName(pathParam.name);
         param.setDescription(pathParam.description != null ? pathParam.description : pathParam.name);
-        param.setRequired(true);
+        param.setRequired(Boolean.TRUE);
 
         var type = ToolCallParameterType.STRING;
         if (isEnum(pathParam.type)) {

@@ -115,7 +115,7 @@ public class OTLPIngestService {
         trace.agentName = attrs.get("gen_ai.agent.name");
         trace.agentId = attrs.get("gen_ai.agent.id");
         trace.model = attrs.get("gen_ai.request.model");
-        trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
+        trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = TraceStatus.RUNNING;
         trace.input = resolveInput(attrs);
@@ -223,7 +223,7 @@ public class OTLPIngestService {
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");
         trace.agentId = attrs.get("gen_ai.agent.id");
-        trace.source = resolveSource(attrs, Map.of(), trace.sessionId);
+        trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, Map.of());
         if (trace.input == null || trace.input.isEmpty()) trace.input = resolveInput(attrs);
     }
@@ -240,7 +240,7 @@ public class OTLPIngestService {
         trace.agentName = attrs.get("gen_ai.agent.name");
         trace.agentId = attrs.get("gen_ai.agent.id");
         trace.model = attrs.get("gen_ai.request.model");
-        trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
+        trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
         trace.errorMessage = trace.status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
@@ -350,7 +350,7 @@ public class OTLPIngestService {
     }
 
     @SuppressWarnings("unused")
-    private String resolveSource(Map<String, String> attrs, Map<String, String> resourceAttrs, String sessionId) {
+    private String resolveSource(Map<String, String> attrs, String sessionId) {
         // Highest priority: explicit client.type span attribute (set by server-side wrapper span, e.g. LLM call entry)
         var clientType = attrs.get("client.type");
         if (clientType != null) return clientType;

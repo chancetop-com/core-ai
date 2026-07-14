@@ -41,6 +41,10 @@ class SkillRepoManager {
             ? Path.of(skill.getSkillDir())
             : Path.of(skill.getPath()).getParent();
 
+        if (skillDir == null) {
+            throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
+        }
+
         var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
         var entity = existing.orElseGet(SkillDefinition::new);
         if (entity.id == null) {

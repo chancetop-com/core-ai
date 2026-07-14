@@ -169,7 +169,7 @@ public class TraceController {
         var userId = AuthContext.userId(webContext);
         var admin = userId != null && userCollection.get(userId)
             .map(user -> "admin".equals(user.role))
-            .orElse(false);
+            .orElse(Boolean.FALSE);
         return new TraceScope(userId, admin);
     }
 
@@ -189,7 +189,7 @@ public class TraceController {
         if (workflowRunId == null || workflowRunId.isBlank()) return false;
         return workflowRunCollection.get(workflowRunId)
             .map(run -> WorkflowRunService.canRead(run, scope.userId()))
-            .orElse(false);
+            .orElse(Boolean.FALSE);
     }
 
     private Response unauthorized() {

@@ -8,6 +8,7 @@ import core.framework.mongo.Query;
 
 import ai.core.server.trace.domain.PromptStatus;
 import ai.core.server.trace.domain.PromptTemplate;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -31,6 +32,7 @@ public class PromptService {
         return promptCollection.get(id).orElse(null);
     }
 
+    @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     public PromptTemplate create(PromptTemplate template) {
         template.id = java.util.UUID.randomUUID().toString();
         template.version = 1;

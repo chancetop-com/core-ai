@@ -26,9 +26,9 @@ public class NotificationTools {
     public void initialize() {
         var params = List.of(
             ToolCallParameter.builder()
-                .name("title").description("Notification title").type(ToolCallParameterType.STRING).required(true).build(),
+                .name("title").description("Notification title").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
             ToolCallParameter.builder()
-                .name("message").description("Notification body text").type(ToolCallParameterType.STRING).required(true).build()
+                .name("message").description("Notification body text").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build()
         );
 
         var method = findSendMethod();
@@ -42,7 +42,7 @@ public class NotificationTools {
             .object(sendNotificationHandler)
             .method(method)
             .parameters(params)
-            .llmVisible(true)
+            .llmVisible(Boolean.TRUE)
             .build();
 
         toolRegistryService.registerBuiltinToolGroup(TOOL_ENTRY_ID, "System",

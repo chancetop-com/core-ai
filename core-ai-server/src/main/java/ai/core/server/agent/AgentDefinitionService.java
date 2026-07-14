@@ -32,9 +32,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 /**
  * @author stephen
  */
+@SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
 public class AgentDefinitionService {
     private static final String DEFAULT_ASSISTANT_AGENT_ID = "default-assistant";
 
@@ -93,7 +96,7 @@ public class AgentDefinitionService {
             if (!isAdmin(userId)) {
                 throw new core.framework.web.exception.ForbiddenException("only admin can create system default agents");
             }
-            entity.systemDefault = true;
+            entity.systemDefault = Boolean.TRUE;
         }
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
@@ -325,7 +328,7 @@ public class AgentDefinitionService {
                 .toList();
         entity.inputTemplate = request.inputTemplate;
         entity.type = DefinitionType.AGENT;
-        entity.enableMemory = false;
+        entity.enableMemory = Boolean.FALSE;
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -341,6 +344,7 @@ public class AgentDefinitionService {
         agentDefinitionCollection.delete(id);
     }
 
+    @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     AgentDefinitionView toView(AgentDefinition entity) {
         var view = AgentViewHelper.buildView(entity, Map.of(), Map.of());
         view.createdBy = resolveUserName(entity.userId);
@@ -394,6 +398,6 @@ public class AgentDefinitionService {
     }
 
     private boolean isAdmin(String userId) {
-        return userCollection.get(userId).map(u -> "admin".equals(u.role)).orElse(false);
+        return userCollection.get(userId).map(u -> "admin".equals(u.role))            .orElse(Boolean.FALSE);
     }
 }

@@ -25,10 +25,10 @@ public final class UpdateDatasetRecordTool extends ToolCall {
         tool.setName(TOOL_NAME);
         tool.setDescription(buildDescription(datasetService, registry));
         tool.setParameters(parameters());
-        tool.setNeedAuth(false);
-        tool.setDirectReturn(false);
-        tool.setLlmVisible(true);
-        tool.setDiscoverable(false);
+        tool.setNeedAuth(Boolean.FALSE);
+        tool.setDirectReturn(Boolean.FALSE);
+        tool.setLlmVisible(Boolean.TRUE);
+        tool.setDiscoverable(Boolean.FALSE);
         return tool;
     }
 
@@ -113,8 +113,9 @@ public final class UpdateDatasetRecordTool extends ToolCall {
         var schemaFieldNames = dataset.schema.stream().map(f -> f.name).toList();
         var result = new LinkedHashMap<String, Object>();
         for (var fieldName : schemaFieldNames) {
-            if (data.containsKey(fieldName)) {
-                result.put(fieldName, data.get(fieldName));
+            var value = data.get(fieldName);
+            if (value != null) {
+                result.put(fieldName, value);
             }
         }
         return result;

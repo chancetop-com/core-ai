@@ -11,7 +11,7 @@ public class TriggerActionResult {
         return result;
     }
 
-    public static TriggerActionResult skipped(String reason) {
+    public static TriggerActionResult skipped() {
         var result = new TriggerActionResult();
         result.runId = null;
         result.status = "SKIPPED";

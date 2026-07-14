@@ -40,7 +40,7 @@ public class AgentScheduler {
         var now = ZonedDateTime.now();
         var dueSchedules = agentScheduleCollection.find(
             Filters.and(
-                Filters.eq("enabled", true),
+                Filters.eq("enabled", Boolean.TRUE),
                 Filters.lte("next_run_at", now)
             )
         );

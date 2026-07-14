@@ -60,10 +60,10 @@ public final class SearchMemoryTool extends ToolCall {
         setName(TOOL_NAME);
         setDescription(TOOL_DESC);
         setParameters(parameters());
-        setNeedAuth(false);
-        setDirectReturn(false);
-        setLlmVisible(true);
-        setDiscoverable(false);
+        setNeedAuth(Boolean.FALSE);
+        setDirectReturn(Boolean.FALSE);
+        setLlmVisible(Boolean.TRUE);
+        setDiscoverable(Boolean.FALSE);
     }
 
     @Override

@@ -20,7 +20,7 @@ public class OperationAdditional {
     public String example;
     @NotNull
     @Field(name = "enabled")
-    public Boolean enabled = true;
+    public Boolean enabled = Boolean.TRUE;
     @Field(name = "need_auth")
     public Boolean needAuth;
     @Field(name = "path_param_additional")

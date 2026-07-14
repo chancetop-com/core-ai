@@ -85,7 +85,7 @@ public class ToolRef {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof ToolRef that)) return false;
-        return Objects.equals(id, that.id) && type == that.type && Objects.equals(source, that.source);
+        return type == that.type && Objects.equals(id, that.id) && Objects.equals(source, that.source);
     }
 
     @Override

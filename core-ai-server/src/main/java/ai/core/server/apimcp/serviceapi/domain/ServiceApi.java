@@ -22,7 +22,7 @@ public class ServiceApi {
     public String name;
     @NotNull
     @Field(name = "enabled")
-    public Boolean enabled = true;
+    public Boolean enabled = Boolean.TRUE;
     @Field(name = "base_url")
     public String baseUrl;
     @NotNull

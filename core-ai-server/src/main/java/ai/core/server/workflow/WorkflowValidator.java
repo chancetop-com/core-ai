@@ -49,10 +49,10 @@ public final class WorkflowValidator {
                 errors.add("node " + node.id() + " has unknown type: " + node.type());
                 continue;
             }
-            if (graph.inEdges(node.id()).isEmpty() && type != NodeType.START) {
+            if (type != NodeType.START && graph.inEdges(node.id()).isEmpty()) {
                 errors.add("entry node " + node.id() + " must be START, was " + type);
             }
-            if (graph.outEdges(node.id()).isEmpty() && type != NodeType.END) {
+            if (type != NodeType.END && graph.outEdges(node.id()).isEmpty()) {
                 errors.add("sink node " + node.id() + " must be END, was " + type);
             }
             configErrors(node, type, errors);

@@ -120,7 +120,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     public MarketplaceRepoView createMarketplaceRepo(CreateMarketplaceRepoRequest request) {
         var repo = marketplaceService.register(request.repoUrl, request.branch);
         var view = toRepoView(repo);
-        view.installed = true;
+        view.installed = Boolean.TRUE;
         return view;
     }
 

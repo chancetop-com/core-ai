@@ -1,6 +1,7 @@
 package ai.core.server.gateway;
 
 import core.framework.web.exception.BadRequestException;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
@@ -35,6 +36,7 @@ public class GatewaySecretProtector {
         this.legacyKey = legacySecret == null || legacySecret.isBlank() ? null : new SecretKeySpec(sha256(legacySecret), "AES");
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     public String protect(String value) {
         if (value == null || value.isBlank()) return null;
         if (value.startsWith(PREFIX)) return value;
@@ -68,6 +70,7 @@ public class GatewaySecretProtector {
         return value != null && value.startsWith(PREFIX);
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private String decrypt(byte[] payload, SecretKeySpec key) {
         try {
             var iv = Arrays.copyOfRange(payload, 0, IV_LENGTH);

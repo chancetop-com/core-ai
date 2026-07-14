@@ -10,6 +10,7 @@ import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,20 +33,20 @@ public class SandboxService {
     // renewed sandbox is reclaimed by session close, not by its own expiry firing first.
     public static SandboxConfig createDefaultConfig() {
         var config = new SandboxConfig();
-        config.enabled = true;
+        config.enabled = Boolean.TRUE;
         config.memoryLimitMb = 512;
         config.cpuLimitMillicores = 500;
-        config.networkEnabled = false;
+        config.networkEnabled = Boolean.FALSE;
         config.timeoutSeconds = 3900;
         return config;
     }
 
     private static SandboxConfig createDiscoveryConfig() {
         var config = new SandboxConfig();
-        config.enabled = true;
+        config.enabled = Boolean.TRUE;
         config.memoryLimitMb = 512;
         config.cpuLimitMillicores = 500;
-        config.networkEnabled = false;
+        config.networkEnabled = Boolean.FALSE;
         config.timeoutSeconds = 86_400; // 24 hours
         return config;
     }
@@ -66,6 +67,7 @@ public class SandboxService {
 
     private volatile LazySandbox discoverySandbox;
 
+    @SuppressFBWarnings("PME_POOR_MANS_ENUM")
     private final boolean enabled;
     ObjectStorageService storageService;
     FileService fileService;
@@ -74,7 +76,7 @@ public class SandboxService {
     public SandboxService() {
         this.sandboxManager = null;
         this.defaultConfig = new SandboxConfig();
-        this.defaultConfig.enabled = false;
+        this.defaultConfig.enabled = Boolean.FALSE;
         this.cleanupScheduler = null;
         this.serverUrlFromSandbox = null;
         this.enabled = false;
@@ -231,7 +233,7 @@ public class SandboxService {
         // sandbox close that follows will reap them anyway, but explicit stop keeps the
         // runtime's process map tidy when sandboxes are pooled/reused).
         var startedIds = sessionMcpServerIds.remove(sessionId);
-        if (startedIds != null && !startedIds.isEmpty() && sandbox != null) {
+        if (sandbox != null && startedIds != null && !startedIds.isEmpty()) {
             stopSessionMcpProcesses(sessionId, sandbox, startedIds);
         }
         // Close the per-session McpClientManager — releases Java-side HTTP transports
@@ -342,7 +344,7 @@ public class SandboxService {
     }
 
     public Map<String, Object> getStats() {
-        if (!enabled) return Map.of("enabled", false);
+        if (!enabled) return Map.of("enabled", Boolean.FALSE);
         var stats = sandboxManager.getStats();
         return Map.of(
                 "activeSandboxes", stats.get("activeCount"),

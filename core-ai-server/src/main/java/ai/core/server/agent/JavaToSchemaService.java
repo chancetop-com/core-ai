@@ -43,7 +43,7 @@ public class JavaToSchemaService {
                 Message.of(RoleType.USER, javaCode)
             );
             var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
-                messages, null, 0.0, null, null, false,
+                messages, null, 0.0, null, null, Boolean.FALSE,
                 ResponseFormat.jsonObject(), null
             ));
             var result = provider.completion(request);

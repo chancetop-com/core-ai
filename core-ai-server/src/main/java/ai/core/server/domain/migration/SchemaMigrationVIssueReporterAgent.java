@@ -90,7 +90,7 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
             .append("multi_modal_model", "azure/responses/gpt-5-mini")
             .append("max_turns", 100)
             .append("timeout_seconds", 600)
-            .append("system_default", true)
+            .append("system_default", Boolean.TRUE)
             .append("type", "AGENT")
             .append("status", "PUBLISHED")
             .append("published_config", publishedConfig)
@@ -105,6 +105,6 @@ public class SchemaMigrationVIssueReporterAgent implements SchemaMigration {
         var filter = new Document("_id", id);
         var update = new Document("$setOnInsert", doc);
         mongo.runCommand(new Document("update", "agents")
-            .append("updates", List.of(new Document("q", filter).append("u", update).append("upsert", true))));
+            .append("updates", List.of(new Document("q", filter).append("u", update).append("upsert", Boolean.TRUE))));
     }
 }

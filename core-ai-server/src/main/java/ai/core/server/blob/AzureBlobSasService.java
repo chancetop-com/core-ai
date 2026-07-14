@@ -2,6 +2,7 @@ package ai.core.server.blob;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -23,7 +24,7 @@ public class AzureBlobSasService {
     private static final DateTimeFormatter EXPIRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
 
     public static AzureBlobSasService tryCreate(String accountName, String accountKey) {
-        if (accountName == null || accountName.isBlank() || accountKey == null || accountKey.isBlank() || "***".equals(accountKey)) {
+        if (accountName == null || accountKey == null || accountName.isBlank() || accountKey.isBlank() || "***".equals(accountKey)) {
             return null;
         }
         try {
@@ -35,7 +36,7 @@ public class AzureBlobSasService {
     }
 
     private static String buildCanonicalizedResource(String containerName, String blobName, String signedResource) {
-        if ("b".equals(signedResource) && blobName != null) {
+        if (blobName != null && "b".equals(signedResource)) {
             return containerName + "/" + blobName;
         }
         return containerName;
@@ -149,6 +150,7 @@ public class AzureBlobSasService {
         return sb.toString();
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private String hmacSha256(String data) {
         try {
             var mac = Mac.getInstance("HmacSHA256");

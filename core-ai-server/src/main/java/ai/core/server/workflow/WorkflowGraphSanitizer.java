@@ -62,7 +62,7 @@ public final class WorkflowGraphSanitizer {
             }
             return sanitized;
         }
-        return shouldRedactKey(key) && value != null ? REDACTED : value;
+        return value != null && shouldRedactKey(key) ? REDACTED : value;
     }
 
     static boolean shouldRedactKey(String key) {

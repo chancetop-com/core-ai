@@ -7,6 +7,7 @@ import ai.core.sandbox.SandboxProvider;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import core.framework.json.JSON;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,12 +45,12 @@ public class AgentSandboxProvider implements SandboxProvider {
     }
 
     private boolean useWarmPool() {
-        return templateName != null && !templateName.isBlank() && extensionsClient != null;
+        return extensionsClient != null && templateName != null && !templateName.isBlank();
     }
 
     private boolean hasCustomConfig(SandboxConfig config) {
         if (config == null) return false;
-        if (config.image != null && !config.image.equals(SandboxConstants.DEFAULT_IMAGE)) return true;
+        if (config.image != null && !SandboxConstants.DEFAULT_IMAGE.equals(config.image)) return true;
         if (config.env != null && !config.env.isEmpty()) return true;
         return false;
     }
@@ -64,6 +65,7 @@ public class AgentSandboxProvider implements SandboxProvider {
 
     // --- Warm pool mode: create SandboxClaim ---
 
+    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     private Sandbox acquireFromWarmPool(SandboxConfig config, String sessionId, String userId) {
         var effectiveConfig = config != null ? config : defaultConfig;
         effectiveConfig.validate();
@@ -288,8 +290,8 @@ public class AgentSandboxProvider implements SandboxProvider {
     private Integer findNodePort(String serviceName) {
         var services = kubernetesClient.listServices("component=sandbox");
         return services.stream()
-                .filter(service -> serviceName.equals(service.metadata.name))
-                .filter(service -> service.spec != null && service.spec.ports != null && service.spec.ports.length > 0)
+                .filter(service -> service.spec != null && service.spec.ports != null && service.spec.ports.length > 0
+                        && serviceName.equals(service.metadata.name))
                 .map(service -> service.spec.ports[0].nodePort)
                 .filter(port -> port != null)
                 .findFirst()
@@ -303,7 +305,7 @@ public class AgentSandboxProvider implements SandboxProvider {
         var id = sandbox.getId();
         LOGGER.info("releasing agent sandbox: name={}", id);
         try {
-            if (agentSandbox.serviceName() != null && kubernetesClient != null) {
+            if (kubernetesClient != null && agentSandbox.serviceName() != null) {
                 kubernetesClient.deleteService(agentSandbox.serviceName());
             }
             if (useWarmPool()) {

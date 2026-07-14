@@ -18,6 +18,7 @@ import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
@@ -240,6 +241,7 @@ public class ServerA2AService {
         return streamResumeRemotely(snapshot, message, userId, streamSender, closeStream);
     }
 
+    @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     private A2ATaskState resumeLocalTask(A2ATaskState state, Message message,
                                          Consumer<StreamResponse> streamSender, Runnable closeStream) {
         if (state == null) {

@@ -49,7 +49,7 @@ public class SseEventBridge implements AgentEventListener {
     public void onTextChunk(TextChunkEvent event) {
         var sse = new SseTextChunkEvent();
         sse.content = event.chunk;
-        sse.isFinalChunk = false;
+        sse.isFinalChunk = Boolean.FALSE;
         eventPublisher.publish(sessionId, sse);
     }
 
@@ -57,7 +57,7 @@ public class SseEventBridge implements AgentEventListener {
     public void onReasoningChunk(ReasoningChunkEvent event) {
         var sse = new SseReasoningChunkEvent();
         sse.content = event.chunk;
-        sse.isFinalChunk = false;
+        sse.isFinalChunk = Boolean.FALSE;
         eventPublisher.publish(sessionId, sse);
     }
 
@@ -65,7 +65,7 @@ public class SseEventBridge implements AgentEventListener {
     public void onReasoningComplete(ReasoningCompleteEvent event) {
         var sse = new SseReasoningChunkEvent();
         sse.content = "";
-        sse.isFinalChunk = true;
+        sse.isFinalChunk = Boolean.TRUE;
         eventPublisher.publish(sessionId, sse);
     }
 

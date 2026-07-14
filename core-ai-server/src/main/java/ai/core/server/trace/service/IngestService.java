@@ -85,7 +85,7 @@ public class IngestService {
         }
 
         // Ensure trace doc exists BEFORE saving any spans so $inc has a target.
-        Set<String> ensuredTraces = new HashSet<>();
+        Set<String> ensuredTraces = new HashSet<>(request.spans.size());
         for (var spanReq : request.spans) {
             if (ensuredTraces.add(spanReq.traceId)) {
                 var representative = rootByTrace.getOrDefault(spanReq.traceId, spanReq);
@@ -324,7 +324,7 @@ public class IngestService {
             var value = attributes.get(key);
             if (value == null || value.isBlank()) continue;
             try {
-                return Long.parseLong(value);
+                return Long.valueOf(value);
             } catch (NumberFormatException ignored) {
                 LOGGER.debug("invalid long trace attribute {}={}", key, value);
             }
@@ -338,7 +338,7 @@ public class IngestService {
             var value = attributes.get(key);
             if (value == null || value.isBlank()) continue;
             try {
-                return Double.parseDouble(value);
+                return Double.valueOf(value);
             } catch (NumberFormatException ignored) {
                 LOGGER.debug("invalid double trace attribute {}={}", key, value);
             }

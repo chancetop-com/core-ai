@@ -50,7 +50,7 @@ class OTLPParseHelper {
             var value = attrs.get(key);
             if (value == null || value.isBlank()) continue;
             try {
-                return Long.parseLong(value);
+                return Long.valueOf(value);
             } catch (NumberFormatException ignored) {
                 LOGGER.debug("invalid long trace attribute {}={}", key, value);
             }
@@ -63,7 +63,7 @@ class OTLPParseHelper {
             var value = attrs.get(key);
             if (value == null || value.isBlank()) continue;
             try {
-                return Double.parseDouble(value);
+                return Double.valueOf(value);
             } catch (NumberFormatException ignored) {
                 LOGGER.debug("invalid double trace attribute {}={}", key, value);
             }

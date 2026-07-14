@@ -4,6 +4,7 @@ import com.mongodb.MongoCommandException;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import core.framework.mongo.Mongo;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
  * Rebuilds trace_daily_stats indexes to include agent_id dimension.
@@ -24,6 +25,7 @@ public class SchemaMigrationVTraceDailyStatsAgent implements SchemaMigration {
     }
 
     @Override
+    @SuppressFBWarnings("DE_MIGHT_IGNORE")
     public void migrate(Mongo mongo) {
         // Drop old unique index (user_id, date) — we replace it with (user_id, agent_id, date)
         try {
@@ -31,7 +33,7 @@ public class SchemaMigrationVTraceDailyStatsAgent implements SchemaMigration {
                 Indexes.compoundIndex(
                     Indexes.ascending("user_id"),
                     Indexes.ascending("date")));
-        } catch (Exception ignored) {
+        } catch (RuntimeException ignored) {
             // Index may not exist
         }
 
@@ -42,7 +44,7 @@ public class SchemaMigrationVTraceDailyStatsAgent implements SchemaMigration {
                     Indexes.ascending("user_id"),
                     Indexes.ascending("agent_name"),
                     Indexes.ascending("date")));
-        } catch (Exception ignored) {
+        } catch (RuntimeException ignored) {
             // Index may not exist
         }
 

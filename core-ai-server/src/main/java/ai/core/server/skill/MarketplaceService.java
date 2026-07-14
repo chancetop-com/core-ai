@@ -95,7 +95,7 @@ public class MarketplaceService {
         repo.branch = effectiveBranch;
         repo.skillPath = detectedSkillPath;
         repo.skillCount = skills.size();
-        repo.featured = false;
+        repo.featured = Boolean.FALSE;
         repo.createdAt = ZonedDateTime.now();
         repo.updatedAt = ZonedDateTime.now();
         repoCollection.insert(repo);

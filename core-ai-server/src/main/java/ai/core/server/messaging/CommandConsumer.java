@@ -7,6 +7,8 @@ import redis.clients.jedis.StreamEntryID;
 import redis.clients.jedis.params.XReadGroupParams;
 import redis.clients.jedis.params.XReadParams;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.util.List;
 import java.util.Map;
 
@@ -165,6 +167,7 @@ public class CommandConsumer {
         }
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private void initUnownedConsumerGroup() {
         try (var jedis = jedisPool.getResource()) {
             jedis.xgroupCreate(SessionCommand.UNOWNED_STREAM, SessionCommand.UNOWNED_CONSUMER_GROUP,

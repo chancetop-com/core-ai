@@ -16,6 +16,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.GeneralSecurityException;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.Map;
@@ -156,7 +157,7 @@ public class TriggerController implements Controller {
             var mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(signingSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             expectedSignature = "v0=" + bytesToHex(mac.doFinal(basestring.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception e) {
+        } catch (GeneralSecurityException e) {
             throw new RuntimeException("failed to compute slack signature", e);
         }
 

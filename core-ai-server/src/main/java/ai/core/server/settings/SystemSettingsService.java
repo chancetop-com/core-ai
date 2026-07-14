@@ -98,7 +98,7 @@ public class SystemSettingsService {
         var query = new Query();
         query.filter = Filters.and(
                 Filters.eq("model_id", model),
-                Filters.eq("enabled", true),
+                Filters.eq("enabled", Boolean.TRUE),
                 Filters.eq("endpoint_types", "chat.completions")
         );
         query.limit = 1;
@@ -112,7 +112,7 @@ public class SystemSettingsService {
         var query = new Query();
         query.filter = Filters.and(
                 Filters.eq("model_id", model),
-                Filters.eq("enabled", true),
+                Filters.eq("enabled", Boolean.TRUE),
                 Filters.eq("endpoint_types", "chat.completions")
         );
         query.limit = 1;

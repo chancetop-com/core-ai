@@ -28,7 +28,7 @@ public class OcgConfigView {
 
     @NotNull
     @Field(name = "enabled")
-    public Boolean enabled = true;
+    public Boolean enabled = Boolean.TRUE;
 
     @Field(name = "sandbox_id")
     public String sandboxId;

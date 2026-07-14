@@ -129,8 +129,7 @@ final class TraceServiceHelper {
 
     static void enrichMetricsInBatch(List<Trace> traces, MongoCollection<Span> spanCollection) {
         var pending = traces.stream()
-            .filter(trace -> trace.traceId != null && !trace.traceId.isEmpty())
-            .filter(TraceServiceHelper::needsEnrichment)
+            .filter(trace -> trace.traceId != null && !trace.traceId.isEmpty() && TraceServiceHelper.needsEnrichment(trace))
             .toList();
         if (pending.isEmpty()) return;
 
@@ -188,7 +187,7 @@ final class TraceServiceHelper {
             var value = attributes.get(key);
             if (value == null || value.isBlank()) continue;
             try {
-                return Long.parseLong(value);
+                return Long.valueOf(value);
             } catch (NumberFormatException ignored) {
                 continue;
             }

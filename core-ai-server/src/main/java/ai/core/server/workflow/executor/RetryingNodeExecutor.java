@@ -34,7 +34,7 @@ public class RetryingNodeExecutor implements NodeExecutor {
         long interval = readInterval(ctx);
         NodeOutcome outcome = inner.execute(ctx);
         int attempt = 0;
-        while (outcome instanceof NodeOutcome.Fail fail && fail.retryable() && attempt < maxRetries) {
+        while (attempt < maxRetries && outcome instanceof NodeOutcome.Fail fail && fail.retryable()) {
             attempt++;
             LOGGER.warn("node {} failed (retryable), retry {}/{} after {}ms: {}",
                 ctx.node().id(), attempt, maxRetries, interval, fail.error());

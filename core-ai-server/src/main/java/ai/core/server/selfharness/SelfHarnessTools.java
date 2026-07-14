@@ -82,7 +82,7 @@ public class SelfHarnessTools {
         tools.add(builder.buildCustom("list_dataset_records",
                 "Query records within a dataset. Required: id (dataset ID). Optional: limit, offset, agent_id.",
                 List.of(
-                        ToolCallParameter.builder().name("id").description("Dataset ID").type(ToolCallParameterType.STRING).required(true).build(),
+                        ToolCallParameter.builder().name("id").description("Dataset ID").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
                         ToolCallParameter.builder().name("agent_id").description("Filter by agent ID").type(ToolCallParameterType.STRING).build(),
                         ToolCallParameter.builder().name("limit").description("Max records to return (default 100)").type(ToolCallParameterType.INTEGER).build(),
                         ToolCallParameter.builder().name("offset").description("Pagination offset").type(ToolCallParameterType.INTEGER).build()
@@ -98,12 +98,12 @@ public class SelfHarnessTools {
         tools.add(builder.buildCustom("get_session_history",
                 "Get the full message history for a session, including content, thinking, tool calls, and trace IDs.",
                 List.of(
-                        ToolCallParameter.builder().name("session_id").description("Session ID").type(ToolCallParameterType.STRING).required(true).build()
+                        ToolCallParameter.builder().name("session_id").description("Session ID").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build()
                 )));
         tools.add(builder.buildCustom("list_traces",
                 "List execution traces, filtered by session, agent name, status, or source. Useful for inspecting agent performance.",
                 List.of(
-                        ToolCallParameter.builder().name("session_id").description("Filter by session ID").type(ToolCallParameterType.STRING).required(true).build(),
+                        ToolCallParameter.builder().name("session_id").description("Filter by session ID").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
                         ToolCallParameter.builder().name("agent_name").description("Filter by agent name").type(ToolCallParameterType.STRING).build(),
                         ToolCallParameter.builder().name("status").description("Filter by status (e.g. SUCCESS, FAILED)").type(ToolCallParameterType.STRING).build(),
                         ToolCallParameter.builder().name("source").description("Filter by source (e.g. chat, api, scheduled)").type(ToolCallParameterType.STRING).build(),
@@ -113,17 +113,17 @@ public class SelfHarnessTools {
         tools.add(builder.buildCustom("get_trace",
                 "Get a single trace with full input/output details.",
                 List.of(
-                        ToolCallParameter.builder().name("trace_id").description("Trace ID").type(ToolCallParameterType.STRING).required(true).build()
+                        ToolCallParameter.builder().name("trace_id").description("Trace ID").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build()
                 )));
         tools.add(builder.buildCustom("get_trace_spans",
                 "Get all spans (sub-operations) for a trace, showing detailed timing and token usage.",
                 List.of(
-                        ToolCallParameter.builder().name("trace_id").description("Trace ID").type(ToolCallParameterType.STRING).required(true).build()
+                        ToolCallParameter.builder().name("trace_id").description("Trace ID").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build()
                 )));
         tools.add(builder.buildCustom("get_session_trace_summary",
                 "Get an aggregated summary of all traces within a session: total tokens, cost, duration, error count.",
                 List.of(
-                        ToolCallParameter.builder().name("session_id").description("Session ID").type(ToolCallParameterType.STRING).required(true).build()
+                        ToolCallParameter.builder().name("session_id").description("Session ID").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build()
                 )));
     }
 }

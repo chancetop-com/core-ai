@@ -104,8 +104,8 @@ public class DatasetWebServiceImpl implements DatasetWebService {
             throw new RuntimeException("invalid date format, use ISO 8601", e);
         }
 
-        Integer limit = limitStr != null ? Integer.parseInt(limitStr) : null;
-        Integer offset = offsetStr != null ? Integer.parseInt(offsetStr) : null;
+        Integer limit = limitStr != null ? Integer.valueOf(limitStr) : null;
+        Integer offset = offsetStr != null ? Integer.valueOf(offsetStr) : null;
 
         List<String> fields = fieldsStr != null ? Arrays.asList(fieldsStr.split(",")) : null;
 

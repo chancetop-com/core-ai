@@ -41,13 +41,13 @@ class SandboxModule extends Module {
 
         SandboxProvider provider;
         String serverUrlFromSandbox;
-        if (providerName.equalsIgnoreCase("kubernetes")) {
+        if ("kubernetes".equalsIgnoreCase(providerName)) {
             provider = createKubernetesSandboxProvider();
             serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
-        } else if (providerName.equalsIgnoreCase("agent-sandbox")) {
+        } else if ("agent-sandbox".equalsIgnoreCase(providerName)) {
             provider = createAgentSandboxProvider();
             serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
-        } else if (providerName.equalsIgnoreCase("docker")) {
+        } else if ("docker".equalsIgnoreCase(providerName)) {
             var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
             var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
             provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
@@ -92,7 +92,7 @@ class SandboxModule extends Module {
         property("sys.sandbox.timeout")
                 .map(String::trim)
                 .filter(v -> !v.isEmpty())
-                .ifPresent(v -> config.timeoutSeconds = Integer.parseInt(v));
+                .ifPresent(v -> config.timeoutSeconds = Integer.valueOf(v));
         return config;
     }
 
@@ -127,7 +127,7 @@ class SandboxModule extends Module {
         } else {
             kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
         }
-        var useHostPort = property("sys.sandbox.kubernetes.hostPort").orElse("false").equalsIgnoreCase("true");
+        var useHostPort = "true".equalsIgnoreCase(property("sys.sandbox.kubernetes.hostPort").orElse("false"));
         return new KubernetesSandboxProvider(kubernetesClient, null, useHostPort);
     }
 
@@ -139,7 +139,7 @@ class SandboxModule extends Module {
                 ? TokenResolver.fixed(token)
                 : TokenResolver.inCluster();
         var client = new AgentSandboxClient(apiServer, namespace, tokenResolver, 120);
-        var useHostPort = property("sys.sandbox.kubernetes.hostPort").orElse("false").equalsIgnoreCase("true");
+        var useHostPort = "true".equalsIgnoreCase(property("sys.sandbox.kubernetes.hostPort").orElse("false"));
         KubernetesClient kubernetesClient = null;
         if (useHostPort) {
             if (token != null && !token.isBlank()) {

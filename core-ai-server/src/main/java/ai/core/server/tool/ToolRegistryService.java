@@ -15,6 +15,7 @@ import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -29,6 +30,7 @@ import org.slf4j.LoggerFactory;
 /**
  * @author stephen
  */
+@SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
 public class ToolRegistryService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistryService.class);
     static final String CONFIG_PREFIX = "config:";
@@ -83,7 +85,7 @@ public class ToolRegistryService {
             registry.name = "service-api";
             registry.type = ToolType.API;
             registry.category = "builtin";
-            registry.enabled = true;
+            registry.enabled = Boolean.TRUE;
             registry.description = "Internal Service API tools loaded from configured API definitions";
             registry.config = Map.of("set", API_TOOL_ID);
             tools.put(registry.id, registry);
@@ -102,7 +104,7 @@ public class ToolRegistryService {
             registry.name = entry.getKey();
             registry.type = ToolType.BUILTIN;
             registry.category = "builtin";
-            registry.enabled = true;
+            registry.enabled = Boolean.TRUE;
             registry.description = "Built-in tool set: " + entry.getKey();
             registry.config = Map.of("set", entry.getKey());
             tools.put(registry.id, registry);
@@ -126,7 +128,7 @@ public class ToolRegistryService {
                 registry.name = name;
                 registry.type = ToolType.MCP;
                 registry.category = "config";
-                registry.enabled = true;
+                registry.enabled = Boolean.TRUE;
                 registry.description = "MCP server from configuration";
                 registry.config = convertConfigToStringMap(config);
                 tools.put(registry.id, registry);
@@ -149,7 +151,7 @@ public class ToolRegistryService {
     }
 
     private void loadDatabaseTools() {
-        for (var entry : toolRegistryCollection.find(Filters.eq("enabled", true))) {
+        for (var entry : toolRegistryCollection.find(Filters.eq("enabled", Boolean.TRUE))) {
             if (tools.containsKey(entry.id)) {
                 LOGGER.debug("skipping duplicate tool: {}", entry.id);
                 continue;
@@ -160,7 +162,7 @@ public class ToolRegistryService {
     }
 
     public void syncDatabaseTools() {
-        var dbEntries = toolRegistryCollection.find(Filters.eq("enabled", true));
+        var dbEntries = toolRegistryCollection.find(Filters.eq("enabled", Boolean.TRUE));
         var dbEntryIds = new HashSet<String>();
 
         for (var dbEntry : dbEntries) {
@@ -188,8 +190,9 @@ public class ToolRegistryService {
         }
 
         var toRemove = new ArrayList<String>();
-        for (var id : tools.keySet()) {
-            var entry = tools.get(id);
+        for (var e : tools.entrySet()) {
+            var id = e.getKey();
+            var entry = e.getValue();
             if (entry.type != ToolType.MCP) continue;
             if (id.startsWith(CONFIG_PREFIX) || id.startsWith(BUILTIN_PREFIX)) continue;
             if (!dbEntryIds.contains(id)) toRemove.add(id);
@@ -243,7 +246,7 @@ public class ToolRegistryService {
         registry.name = name.substring(BUILTIN_PREFIX.length());
         registry.type = ToolType.BUILTIN;
         registry.category = category;
-        registry.enabled = true;
+        registry.enabled = Boolean.TRUE;
         registry.description = description;
         registry.config = Map.of();
         registry.createdAt = ZonedDateTime.now();

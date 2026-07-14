@@ -188,7 +188,7 @@ public class SystemPromptService {
 
         var model = request.model != null && !request.model.isBlank() ? request.model : null;
         var completionRequest = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
-            messages, null, null, model, null, false, null, null
+            messages, null, null, model, null, Boolean.FALSE, null, null
         ));
 
         var provider = llmProviders.getProvider();

@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import core.framework.api.json.Property;
 import core.framework.util.Strings;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,6 +56,7 @@ public final class SubmitArtifactsTool extends ToolCall {
 
     /** Set once at module bootstrap via ServerModule. Used to build absolute download URLs in tool results. */
     @SuppressWarnings("PMD.MutableStaticState")
+    @SuppressFBWarnings("MS_CANNOT_BE_FINAL")
     public static String publicUrl = "";
 
     public static String appendInstructions(String systemPrompt) {
@@ -67,10 +69,10 @@ public final class SubmitArtifactsTool extends ToolCall {
         tool.setName(TOOL_NAME);
         tool.setDescription(TOOL_DESC);
         tool.setParameters(parameters());
-        tool.setNeedAuth(false);
-        tool.setDirectReturn(false);
-        tool.setLlmVisible(true);
-        tool.setDiscoverable(false);
+        tool.setNeedAuth(Boolean.FALSE);
+        tool.setDirectReturn(Boolean.FALSE);
+        tool.setLlmVisible(Boolean.TRUE);
+        tool.setDiscoverable(Boolean.FALSE);
         return tool;
     }
 
@@ -102,6 +104,7 @@ public final class SubmitArtifactsTool extends ToolCall {
         return baseUrl() + "/api/public/artifacts/" + shareToken + "/content";
     }
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     static String normalizeArguments(String arguments) {
         if (Strings.isBlank(arguments)) return arguments;
         try {

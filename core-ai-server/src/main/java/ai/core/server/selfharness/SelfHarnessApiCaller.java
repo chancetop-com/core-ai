@@ -19,6 +19,7 @@ import ai.core.server.trace.service.TraceService;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.log.ActionLogContext;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,6 +64,7 @@ public class SelfHarnessApiCaller {
     }
 
     @SuppressWarnings("unchecked")
+    @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     private Object dispatch(String name, String args) {
         return switch (name) {
             case "list_agents", "create_agent", "get_agent", "update_agent", "publish_agent" ->
@@ -128,7 +130,7 @@ public class SelfHarnessApiCaller {
             case "delete_skill" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
                 skillService.delete((String) params.get("id"));
-                yield Map.of("deleted", true);
+                yield Map.of("deleted", Boolean.TRUE);
             }
             case "download_skill" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);

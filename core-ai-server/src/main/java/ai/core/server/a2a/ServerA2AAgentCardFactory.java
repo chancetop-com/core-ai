@@ -26,9 +26,9 @@ final class ServerA2AAgentCardFactory {
         interfaceConfig.tenant = definition.id;
         card.supportedInterfaces = List.of(interfaceConfig);
         var capabilities = new AgentCard.AgentCapabilities();
-        capabilities.streaming = true;
-        capabilities.pushNotifications = false;
-        capabilities.stateTransitionHistory = false;
+        capabilities.streaming = Boolean.TRUE;
+        capabilities.pushNotifications = Boolean.FALSE;
+        capabilities.stateTransitionHistory = Boolean.FALSE;
         card.capabilities = capabilities;
         card.skills = skills(definition);
         card.defaultInputModes = List.of("text/plain", "application/json");

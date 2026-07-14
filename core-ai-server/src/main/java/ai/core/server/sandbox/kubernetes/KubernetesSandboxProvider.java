@@ -6,6 +6,7 @@ import ai.core.sandbox.SandboxProvider;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.sandbox.SandboxConstants;
 import core.framework.json.JSON;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,6 +66,7 @@ public class KubernetesSandboxProvider implements SandboxProvider {
         }
     }
 
+    @SuppressFBWarnings("DE_MIGHT_IGNORE")
     private void deleteSandboxResources(String podName) {
         var serviceName = "svc-" + podName;
         try {
@@ -151,8 +153,8 @@ public class KubernetesSandboxProvider implements SandboxProvider {
             var serviceName = "svc-" + sandboxId;
             var services = kubernetesClient.listServices("component=sandbox");
             var nodePort = services.stream()
-                    .filter(service -> serviceName.equals(service.metadata.name))
-                    .filter(service -> service.spec != null && service.spec.ports != null && service.spec.ports.length > 0)
+                    .filter(service -> service.spec != null && service.spec.ports != null && service.spec.ports.length > 0
+                            && serviceName.equals(service.metadata.name))
                     .map(service -> service.spec.ports[0].nodePort)
                     .filter(port -> port != null)
                     .findFirst()

@@ -49,7 +49,7 @@ public class WorkflowDefinitionService {
     }
 
     private static Bson exploreFilter(String userId, String keyword) {
-        var conditions = baseListFilters(userId, false);
+        var conditions = baseListFilters(userId, Boolean.FALSE);
         if (keyword != null && !keyword.isBlank()) {
             conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
         }
@@ -273,7 +273,7 @@ public class WorkflowDefinitionService {
         }
         if (!versionCollection.find(Filters.and(
             Filters.eq("workflow_id", definition.id),
-            Filters.ne("preview", true))).isEmpty()) {
+            Filters.ne("preview", Boolean.TRUE))).isEmpty()) {
             return false;
         }
         return runCollection.find(Filters.eq("workflow_id", definition.id)).isEmpty();

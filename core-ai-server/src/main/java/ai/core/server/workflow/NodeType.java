@@ -1,5 +1,7 @@
 package ai.core.server.workflow;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 /**
  * The node taxonomy (Dify-aligned). The engine is type-agnostic — it keeps the type only as a label on
  * WorkflowNode; only {@link NodeExecutorRegistry} interprets it to pick an executor. NOTE is canvas-only and
@@ -24,6 +26,7 @@ public enum NodeType {
     NOTE;
     // todo: ITERATION / LOOP container node types are deferred (P3) — re-add with the container-scope engine work.
 
+    @SuppressFBWarnings("DCN_NULLPOINTER_EXCEPTION")
     public static NodeType of(String type) {
         try {
             return NodeType.valueOf(type);

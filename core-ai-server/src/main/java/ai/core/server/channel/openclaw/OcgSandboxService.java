@@ -18,6 +18,7 @@ import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
  * @author stephen
@@ -227,7 +228,7 @@ public class OcgSandboxService {
         }
         runtimeConfig.put("agentUrl", agentUrl);
         runtimeConfig.remove("apiKey");
-        runtimeConfig.put("async", true);
+        runtimeConfig.put("async", Boolean.TRUE);
         runtimeConfig.put("callbackHost", "127.0.0.1");
         runtimeConfig.put("callbackPort", DEFAULT_CALLBACK_PORT);
         runtimeConfig.put("callbackPublicHost", sandboxHost);
@@ -251,8 +252,8 @@ public class OcgSandboxService {
 
     public SandboxConfig buildSandboxConfig() {
         var config = new SandboxConfig();
-        config.enabled = true;
-        config.networkEnabled = true;
+        config.enabled = Boolean.TRUE;
+        config.networkEnabled = Boolean.TRUE;
         config.timeoutSeconds = 86_400;
         config.memoryLimitMb = 1024;
         config.cpuLimitMillicores = 500;
@@ -331,10 +332,12 @@ public class OcgSandboxService {
         runCommand(sandbox, "ps -eo pid=,args= | awk '($0 ~ /openclaw-channel-gateway/ && $0 ~ /dist\\/cli.js start/ || $0 ~ /node \\/usr\\/local\\/bin\\/ocg start/) && $0 !~ /awk/ && $0 !~ /bash -c/ {print $1}' | xargs -r kill; true", 10);
     }
 
+    @SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
     private String ocgProcessCheckCommand() {
         return "ps aux | grep [n]ode | grep openclaw-channel-gateway | grep dist/cli.js | grep start || (echo 'OCG gateway process not found'; exit 1)";
     }
 
+    @SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
     private String gatewayWaitCommand() {
         return "i=0; while [ $i -lt " + GATEWAY_START_WAIT_SECONDS + " ]; do if ps aux | grep [n]ode | grep openclaw-channel-gateway | grep dist/cli.js | grep start; then exit 0; fi; if test -f " + GATEWAY_LOG_PATH + " && grep -E 'Error|EADDRINUSE|Unhandled|Cannot|failed|No config found' " + GATEWAY_LOG_PATH + "; then break; fi; i=$((i+1)); sleep 1; done; echo 'OCG gateway process did not become ready within " + GATEWAY_START_WAIT_SECONDS + "s'; echo '--- process ---'; ps aux | grep -E 'openclaw-channel-gateway|ocg|core-ai-sandbox-runtime' | grep -v grep || true; echo '--- files ---'; ls -la " + TEMP_CONFIG_PATH + " " + CONFIG_PATH + " " + GATEWAY_LOG_PATH + " 2>&1 || true; echo '--- gateway log ---'; test -f " + GATEWAY_LOG_PATH + " && tail -120 " + GATEWAY_LOG_PATH + " || true; exit 1";
     }

@@ -42,14 +42,14 @@ public final class GraphValidator {
         }
 
         // reachability only makes sense with a single entry and no dangling edges
-        if (entries.size() == 1 && !dangling) {
+        if (!dangling && entries.size() == 1) {
             checkReachability(graph, entries.get(0), sinks, errors);
         }
         return errors;
     }
 
     private static void validateNodeIds(WorkflowGraph graph, List<String> errors) {
-        Set<String> ids = new HashSet<>();
+        Set<String> ids = new HashSet<>(graph.nodes().size());
         for (WorkflowNode node : graph.nodes()) {
             if (node.id() == null || !NODE_ID.matcher(node.id()).matches()) {
                 errors.add("invalid node id: " + node.id());
@@ -101,29 +101,29 @@ public final class GraphValidator {
 
     private static boolean hasCycle(WorkflowGraph graph) {
         Set<String> visited = new HashSet<>();
-        Set<String> stack = new HashSet<>();
+        Set<String> onPath = new HashSet<>();
         for (WorkflowNode node : graph.nodes()) {
-            if (dfsCycle(graph, node.id(), visited, stack)) {
+            if (dfsCycle(graph, node.id(), visited, onPath)) {
                 return true;
             }
         }
         return false;
     }
 
-    private static boolean dfsCycle(WorkflowGraph graph, String nodeId, Set<String> visited, Set<String> stack) {
-        if (stack.contains(nodeId)) {
+    private static boolean dfsCycle(WorkflowGraph graph, String nodeId, Set<String> visited, Set<String> onPath) {
+        if (onPath.contains(nodeId)) {
             return true;
         }
         if (!visited.add(nodeId)) {
             return false;
         }
-        stack.add(nodeId);
+        onPath.add(nodeId);
         for (WorkflowEdge edge : graph.outEdges(nodeId)) {
-            if (graph.node(edge.target()) != null && dfsCycle(graph, edge.target(), visited, stack)) {
+            if (graph.node(edge.target()) != null && dfsCycle(graph, edge.target(), visited, onPath)) {
                 return true;
             }
         }
-        stack.remove(nodeId);
+        onPath.remove(nodeId);
         return false;
     }
 

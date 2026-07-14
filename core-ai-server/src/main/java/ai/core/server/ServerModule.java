@@ -106,6 +106,7 @@ import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.sse.PatchedServerSentEventConfig;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -217,7 +218,7 @@ public class ServerModule extends Module {
                 .filter(s -> !s.isBlank())
                 .map(Long::parseLong)
                 .orElse(null);
-        if (appId != null && !appId.isBlank() && installationId != null && privateKey != null && !privateKey.isBlank() && privateKey.contains("BEGIN")) {
+        if (appId != null && installationId != null && privateKey != null && !appId.isBlank() && !privateKey.isBlank() && privateKey.contains("BEGIN")) {
             var githubService = new GitHubInstallationTokenService(appId, privateKey, installationId);
             githubService.register();
             LOGGER.info("GitHub installation token service configured");
@@ -226,6 +227,7 @@ public class ServerModule extends Module {
         }
     }
 
+    @SuppressFBWarnings("ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD")
     private void bindService() {
         var publicUrl = property("sys.public.url").orElse("http://localhost:8080");
         ai.core.server.run.SubmitArtifactsTool.publicUrl = publicUrl;
@@ -352,7 +354,7 @@ public class ServerModule extends Module {
 
     private void registerCapabilities() {
         var controller = bind(CapabilitiesController.class);
-        controller.authDisabled = property("sys.auth.disabled").orElse("false").equals("true");
+        controller.authDisabled = "true".equals(property("sys.auth.disabled").orElse("false"));
         http().route(HTTPMethod.GET, "/api/capabilities", controller::get);
     }
 

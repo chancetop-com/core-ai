@@ -104,7 +104,7 @@ public class ForYouController {
         var id = request.pathParam("id");
         var ok = forYouService.deleteReport(id, userId);
         if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
-        return jsonResponse(Map.of("deleted", true));
+        return jsonResponse(Map.of("deleted", Boolean.TRUE));
     }
 
     // --- TODOs ---
@@ -164,7 +164,7 @@ public class ForYouController {
         var id = request.pathParam("id");
         var ok = forYouService.deleteTodo(id, userId);
         if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
-        return jsonResponse(Map.of("deleted", true));
+        return jsonResponse(Map.of("deleted", Boolean.TRUE));
     }
 
     // --- Files ---

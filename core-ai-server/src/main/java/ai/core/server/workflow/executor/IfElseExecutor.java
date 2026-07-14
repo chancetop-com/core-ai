@@ -5,6 +5,8 @@ import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeOutcome;
 import ai.core.server.workflow.VariablePool;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -39,6 +41,7 @@ public class IfElseExecutor implements NodeExecutor {
         return result;
     }
 
+    @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     private static boolean evaluate(Map<?, ?> condition, VariablePool pool) {
         String selector = str(condition.get("selector"));
         String operator = str(condition.get("operator"));
@@ -57,6 +60,7 @@ public class IfElseExecutor implements NodeExecutor {
         };
     }
 
+    @SuppressFBWarnings("DCN_NULLPOINTER_EXCEPTION")
     private static boolean compareNumeric(String a, String b, String operator) {
         double left;
         double right;

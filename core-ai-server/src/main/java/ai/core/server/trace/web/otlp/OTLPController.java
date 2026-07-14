@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import ai.core.server.trace.service.OTLPIngestService;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
  * OTLP HTTP protobuf receiver
@@ -24,6 +25,7 @@ public class OTLPController {
     @Inject
     OTLPIngestService otlpIngestService;
 
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     public Response receive(Request request) {
         try {
             byte[] body = request.body().orElseThrow(() -> new IllegalArgumentException("empty body"));

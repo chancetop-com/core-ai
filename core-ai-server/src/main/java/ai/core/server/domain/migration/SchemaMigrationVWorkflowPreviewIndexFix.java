@@ -42,6 +42,6 @@ public class SchemaMigrationVWorkflowPreviewIndexFix implements SchemaMigration 
         }
         // expire preview snapshots a day after creation; the partial filter leaves real published versions untouched
         mongo.createIndex("workflow_published_versions", Indexes.ascending("published_at"),
-            new IndexOptions().expireAfter(86400L, TimeUnit.SECONDS).partialFilterExpression(Filters.eq("preview", true)));
+            new IndexOptions().expireAfter(86400L, TimeUnit.SECONDS).partialFilterExpression(Filters.eq("preview", Boolean.TRUE)));
     }
 }

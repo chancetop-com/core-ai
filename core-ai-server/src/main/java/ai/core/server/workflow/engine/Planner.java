@@ -19,7 +19,7 @@ import java.util.Set;
  */
 public final class Planner {
     public static Frontier plan(WorkflowGraph graph, RunState state) {
-        Map<String, EdgeVerdict> verdicts = new LinkedHashMap<>();
+        Map<String, EdgeVerdict> verdicts = new LinkedHashMap<>(graph.edges().size());
         for (WorkflowEdge edge : graph.edges()) {
             verdicts.put(edge.id(), deriveVerdict(state.factOf(edge.source()), edge));
         }

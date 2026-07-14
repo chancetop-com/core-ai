@@ -32,9 +32,9 @@ public class SchemaMigrationVWorkflowPreviewRunTTL implements SchemaMigration {
     @Override
     public void migrate(Mongo mongo) {
         var options = new IndexOptions().expireAfter(ONE_DAY_SECONDS, TimeUnit.SECONDS)
-            .partialFilterExpression(Filters.eq("preview", true));
+            .partialFilterExpression(Filters.eq("preview", Boolean.TRUE));
         mongo.createIndex("workflow_runs", Indexes.ascending("created_at"), options);
         mongo.createIndex("workflow_node_runs", Indexes.ascending("created_at"),
-            new IndexOptions().expireAfter(ONE_DAY_SECONDS, TimeUnit.SECONDS).partialFilterExpression(Filters.eq("preview", true)));
+            new IndexOptions().expireAfter(ONE_DAY_SECONDS, TimeUnit.SECONDS).partialFilterExpression(Filters.eq("preview", Boolean.TRUE)));
     }
 }

@@ -83,7 +83,7 @@ public class ChannelEventBridge implements AgentEventListener {
     @Override
     public void onToolResult(ToolResultEvent event) {
         // Only send tool results that the user should see (e.g., completed artifacts)
-        if ("completed".equals(event.status) && event.result != null && !event.result.isBlank()) {
+        if (event.result != null && "completed".equals(event.status) && !event.result.isBlank()) {
             try {
                 outbound.sendText(channelUserId, conversationId,
                         "Tool `" + event.toolName + "` result:\n" + truncate(event.result, 1000),

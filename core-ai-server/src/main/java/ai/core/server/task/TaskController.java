@@ -70,7 +70,7 @@ public class TaskController {
                     .status(HTTPStatus.BAD_REQUEST);
         }
 
-        return jsonResponse(Map.of("retry_accepted", true, "task_id", taskId));
+        return jsonResponse(Map.of("retry_accepted", Boolean.TRUE, "task_id", taskId));
     }
 
     /**
@@ -106,7 +106,7 @@ public class TaskController {
         String taskId = type + ":" + date;
         taskRunner.run(task, taskId);
 
-        return jsonResponse(Map.of("task_accepted", true, "task_id", taskId));
+        return jsonResponse(Map.of("task_accepted", Boolean.TRUE, "task_id", taskId));
     }
 
     private Map<String, Object> toMap(BackgroundTask task) {

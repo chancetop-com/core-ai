@@ -15,6 +15,8 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 /**
  * A read-only projection of the data a node can read when it executes: the outputs and artifact references of
  * upstream COMPLETED nodes (by id) plus the run input. Executors resolve dotted selectors like
@@ -176,14 +178,14 @@ public final class VariablePool {
         String[] parts = selector.trim().split("\\.");
         String baseJson;
         int pathStart;
-        if ("nodes".equals(parts[0]) && parts.length >= 3 && "output".equals(parts[2])) {
+        if (parts.length >= 3 && "nodes".equals(parts[0]) && "output".equals(parts[2])) {
             baseJson = nodeOutputs.get(parts[1]);
             pathStart = 3;
-        } else if ("nodes".equals(parts[0]) && parts.length >= 3 && "artifacts".equals(parts[2])) {
+        } else if (parts.length >= 3 && "nodes".equals(parts[0]) && "artifacts".equals(parts[2])) {
             List<ArtifactRef> refs = nodeArtifacts.get(parts[1]);
             baseJson = refs == null ? null : artifactsToJson(parts[1], refs);
             pathStart = 3;
-        } else if ("sys".equals(parts[0]) && parts.length >= 2 && "input".equals(parts[1])) {
+        } else if (parts.length >= 2 && "sys".equals(parts[0]) && "input".equals(parts[1])) {
             baseJson = runInput;
             pathStart = 2;
         } else if ("input".equals(parts[0])) {
@@ -261,6 +263,7 @@ public final class VariablePool {
     }
 
     @SuppressWarnings("unchecked")
+    @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     private Object renderJsonValue(Object value) {
         if (value instanceof String string) {
             Matcher matcher = TEMPLATE.matcher(string);

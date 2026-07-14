@@ -45,8 +45,9 @@ class McpServerConnectionManager {
     }
 
     private static void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
-        if (source.containsKey(key)) {
-            target.put(key, source.get(key));
+        Object value = source.get(key);
+        if (value != null) {
+            target.put(key, value);
         }
     }
 

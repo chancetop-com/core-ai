@@ -166,7 +166,7 @@ public class WorkflowPublishService {
         }
         var query = new Query();
         query.filter = owner
-            ? Filters.and(Filters.eq("workflow_id", definitionId), Filters.ne("preview", true))
+            ? Filters.and(Filters.eq("workflow_id", definitionId), Filters.ne("preview", Boolean.TRUE))
             : Filters.eq("_id", definition.publishedVersionId);
         query.sort = Sorts.descending("version");
         return versionCollection.find(query);
@@ -195,12 +195,12 @@ public class WorkflowPublishService {
         if (preview) {
             published.id = definition.id + ":preview:" + UUID.randomUUID();
             published.version = 0;
-            published.preview = true;
+            published.preview = Boolean.TRUE;
         } else {
             int version = nextVersion(definition.id);
             published.id = definition.id + ":v" + version;
             published.version = version;
-            published.preview = false;
+            published.preview = Boolean.FALSE;
         }
         published.status = WorkflowVersionStatus.ACTIVE;
         published.workflowId = definition.id;
@@ -278,7 +278,7 @@ public class WorkflowPublishService {
                 errors.add("node " + node.id() + " (WORKFLOW) references a disabled workflow version: " + versionId);
                 continue;
             }
-            if (childVersion != null && childRequiresHumanInput(childVersion)) {
+            if (childRequiresHumanInput(childVersion)) {
                 errors.add("node " + node.id() + " (WORKFLOW) references a workflow that requires human input, which is not callable");
             }
         }

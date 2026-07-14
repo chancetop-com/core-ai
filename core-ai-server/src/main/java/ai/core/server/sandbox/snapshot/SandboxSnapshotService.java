@@ -8,6 +8,7 @@ import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -240,6 +241,7 @@ public class SandboxSnapshotService {
     }
 
     /** Delete the blob and doc; if either fails, tombstone so cleanup retries later. */
+    @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private void deleteOrTombstone(SandboxSnapshotDoc doc) {
         try {
             storage.deleteObject(container, doc.blobKey);

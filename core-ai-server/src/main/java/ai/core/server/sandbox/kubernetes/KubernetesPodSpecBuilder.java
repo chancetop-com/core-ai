@@ -2,6 +2,7 @@ package ai.core.server.sandbox.kubernetes;
 
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxConstants;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,6 +24,7 @@ public class KubernetesPodSpecBuilder {
     private final String sessionId;
     private final String userId;
 
+    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     public KubernetesPodSpecBuilder(SandboxConfig config, String sessionId, String userId) {
         this.config = config;
         this.sessionId = sessionId;
@@ -93,10 +95,10 @@ public class KubernetesPodSpecBuilder {
 
     private Map<String, Object> buildPodSecurityContext() {
         var securityContext = new LinkedHashMap<String, Object>();
-        securityContext.put("runAsNonRoot", true);
-        securityContext.put("runAsUser", Integer.parseInt(SANDBOX_USER));
-        securityContext.put("runAsGroup", Integer.parseInt(SANDBOX_GROUP));
-        securityContext.put("fsGroup", Integer.parseInt(SANDBOX_GROUP));
+        securityContext.put("runAsNonRoot", Boolean.TRUE);
+        securityContext.put("runAsUser", Integer.valueOf(SANDBOX_USER));
+        securityContext.put("runAsGroup", Integer.valueOf(SANDBOX_GROUP));
+        securityContext.put("fsGroup", Integer.valueOf(SANDBOX_GROUP));
         securityContext.put("seccompProfile", Map.of("type", "RuntimeDefault"));
         return securityContext;
     }
@@ -118,8 +120,8 @@ public class KubernetesPodSpecBuilder {
 
     private Map<String, Object> buildContainerSecurityContext() {
         var securityContext = new LinkedHashMap<String, Object>();
-        securityContext.put("allowPrivilegeEscalation", false);
-        securityContext.put("readOnlyRootFilesystem", true);
+        securityContext.put("allowPrivilegeEscalation", Boolean.FALSE);
+        securityContext.put("readOnlyRootFilesystem", Boolean.TRUE);
         securityContext.put("capabilities", Map.of("drop", List.of("ALL")));
         return securityContext;
     }
