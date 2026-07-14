@@ -33,7 +33,7 @@ public class McpServerService implements AutoCloseable {
         this.transportProvider = new McpStreamableServerTransportProvider();
         this.server = McpServer.sync(transportProvider)
                 .serverInfo(serverName, serverVersion)
-                .capabilities(McpSchema.ServerCapabilities.builder().tools(true).build())
+                .capabilities(McpSchema.ServerCapabilities.builder().tools(Boolean.TRUE).build())
                 .build();
         LOGGER.debug("MCP Server initialized: name={}, version={}", serverName, serverVersion);
     }
@@ -70,14 +70,14 @@ public class McpServerService implements AutoCloseable {
     @SuppressWarnings("unchecked")
     private void registerTool(ToolCall toolCall) {
         var inputSchema = toolCall.toJsonSchema();
-        var schemaMap = inputSchema != null ? (Map<String, Object>) JsonUtil.toMap(inputSchema) : Map.of();
+        var schemaMap = (Map<String, Object>) JsonUtil.toMap(inputSchema);
 
         // Convert to SDK JsonSchema format using record constructor
         // JsonSchema(String type, Map<String,Object> properties, List<String> required, Boolean additionalProperties, Map<String,Object> defs, Map<String,Object> meta)
         var sdkInputSchema = new McpSchema.JsonSchema(
                 "object",
                 (Map<String, Object>) schemaMap.get("properties"),
-                schemaMap.containsKey("required") ? (List<String>) schemaMap.get("required") : null,
+                schemaMap.get("required") instanceof List<?> requiredList ? (List<String>) requiredList : null,
                 null,  // additionalProperties
                 null,  // defs
                 null   // meta
@@ -96,11 +96,11 @@ public class McpServerService implements AutoCloseable {
                         var jsonArgs = req != null ? JsonUtil.toJsonNotOnlyPublic(req.arguments()) : "{}";
                         var result = toolCall.execute(jsonArgs, ExecutionContext.empty());
                         var textContent = new McpSchema.TextContent(result.toResultForLLM());
-                        return McpSchema.CallToolResult.builder().content(List.of(textContent)).isError(false).build();
+                        return McpSchema.CallToolResult.builder().content(List.of(textContent)).isError(Boolean.FALSE).build();
                     } catch (Exception e) {
                         LOGGER.error("Error executing tool: {}", toolCall.getName(), e);
                         var errorContent = new McpSchema.TextContent("Error: " + e.getMessage());
-                        return McpSchema.CallToolResult.builder().content(List.of(errorContent)).isError(true).build();
+                        return McpSchema.CallToolResult.builder().content(List.of(errorContent)).isError(Boolean.TRUE).build();
                     }
                 })
                 .build();

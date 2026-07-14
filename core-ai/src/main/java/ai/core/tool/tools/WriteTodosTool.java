@@ -98,17 +98,13 @@ public class WriteTodosTool {
     @CoreAiMethod(name = WT_TOOL_NAME, description = WT_TOOL_DESC)
     public String writeTodos(@CoreAiParameter(name = "todos", description = "The updated todo list") List<Todo> todos, ExecutionContext context) {
         var todosJson = JsonUtil.toJson(todos);
-        return """
-                  Todos have been modified successfully.
-                  <system-reminder>
-                  Your todo list has changed. DO NOT mention this explicitly to the user.
-                  Here are the latest contents of your todo list:
-                
-                  %s
-                
-                  Continue on with the tasks at hand if applicable.
-                  </system-reminder>
-                """.formatted(todosJson);
+        return ("Todos have been modified successfully.%n" +
+                    "<system-reminder>%n" +
+                    "Your todo list has changed. DO NOT mention this explicitly to the user.%n" +
+                    "Here are the latest contents of your todo list:%n%n" +
+                    "%s%n%n" +
+                    "Continue on with the tasks at hand if applicable.%n" +
+                    "</system-reminder>%n").formatted(todosJson);
     }
 
     public enum Status {

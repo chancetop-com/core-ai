@@ -25,7 +25,7 @@ final class LiteLLMResponsesRequestMapper {
         var body = new LinkedHashMap<String, Object>();
         body.put("model", normalizeResponsesModel(request.model));
         body.put("input", mapInput(request.messages));
-        body.put("stream", true);
+        body.put("stream", Boolean.TRUE);
         LiteLLMResponsesUtil.putIfNotNull(body, "instructions", instructions(request.messages));
         LiteLLMResponsesUtil.putIfNotNull(body, "temperature", request.temperature);
         LiteLLMResponsesUtil.putIfNotNull(body, "top_p", request.topP);

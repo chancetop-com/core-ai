@@ -169,7 +169,7 @@ public class HttpA2AClient implements A2AClient {
     }
 
     private void applyTenant(SendMessageRequest request) {
-        if (tenant == null || tenant.isBlank() || request == null || request.tenant != null) return;
+        if (tenant == null || request == null || request.tenant != null || tenant.isBlank()) return;
         request.tenant = tenant;
     }
 

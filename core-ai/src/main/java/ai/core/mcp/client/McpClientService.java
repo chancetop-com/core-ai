@@ -11,6 +11,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.List;
@@ -178,7 +179,7 @@ public class McpClientService implements AutoCloseable {
             var pingResult = reactor.core.publisher.Mono
                 .fromCallable(this::doPing)
                 .timeout(timeout)
-                .onErrorReturn(TimeoutException.class, false)
+                .onErrorReturn(TimeoutException.class, Boolean.FALSE)
                 .block();
             return Boolean.TRUE.equals(pingResult);
         } catch (Exception e) {
@@ -268,7 +269,7 @@ public class McpClientService implements AutoCloseable {
             processBuilder.redirectErrorStream(true);
             var killProcess = processBuilder.start();
             killProcess.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             LOGGER.warn("Failed to execute taskkill: {}", e.getMessage());
         }
     }
@@ -283,7 +284,7 @@ public class McpClientService implements AutoCloseable {
             pb.redirectErrorStream(true);
             var psProcess = pb.start();
             psProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             LOGGER.warn("Failed to kill orphaned children for parent pid={}: {}", parentPid, e.getMessage());
         }
     }

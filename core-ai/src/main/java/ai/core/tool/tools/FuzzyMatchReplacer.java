@@ -1,5 +1,6 @@
 package ai.core.tool.tools;
 
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -161,7 +162,8 @@ public final class FuzzyMatchReplacer {
             String[] findLines = find.split("\n", -1);
             for (int i = 0; i <= lines.length - findLines.length; i++) {
                 String block = extractBlock(lines, i, i + findLines.length - 1);
-                if (block.trim().equals(trimmedFind)) {
+                String trimmedBlock = block.trim();
+                if (trimmedBlock.equals(trimmedFind)) {
                     results.add(new MatchResult(block, "trimmed_boundary"));
                 }
             }
@@ -180,7 +182,8 @@ public final class FuzzyMatchReplacer {
 
         List<MatchResult> results = new ArrayList<>();
         for (int i = 0; i < contentLines.length; i++) {
-            if (!contentLines[i].trim().equals(firstLine)) continue;
+            String trimmed = contentLines[i].trim();
+            if (!trimmed.equals(firstLine)) continue;
             MatchResult match = tryContextAwareBlock(contentLines, findLines, i, findLen, lastLine);
             if (match != null) {
                 results.add(match);
@@ -223,7 +226,9 @@ public final class FuzzyMatchReplacer {
 
     private static boolean matchesTrimmedLines(String[] originalLines, String[] searchLines, int startIndex, int searchLen) {
         for (int j = 0; j < searchLen; j++) {
-            if (!originalLines[startIndex + j].trim().equals(searchLines[j].trim())) {
+            String trimmedOrig = originalLines[startIndex + j].trim();
+            String trimmedSearch = searchLines[j].trim();
+            if (!trimmedOrig.equals(trimmedSearch)) {
                 return false;
             }
         }
@@ -233,7 +238,8 @@ public final class FuzzyMatchReplacer {
     private static List<int[]> collectAnchorCandidates(String[] originalLines, String firstLineSearch, String lastLineSearch) {
         List<int[]> candidates = new ArrayList<>();
         for (int i = 0; i < originalLines.length; i++) {
-            if (!originalLines[i].trim().equals(firstLineSearch)) continue;
+            String trimmed = originalLines[i].trim();
+            if (!trimmed.equals(firstLineSearch)) continue;
             int endLine = findLastLineAnchor(originalLines, i + 2, lastLineSearch);
             if (endLine >= 0) {
                 candidates.add(new int[]{i, endLine});
@@ -244,7 +250,8 @@ public final class FuzzyMatchReplacer {
 
     private static int findLastLineAnchor(String[] lines, int startFrom, String lastLineSearch) {
         for (int j = startFrom; j < lines.length; j++) {
-            if (lines[j].trim().equals(lastLineSearch)) {
+            String trimmed = lines[j].trim();
+            if (trimmed.equals(lastLineSearch)) {
                 return j;
             }
         }
@@ -286,7 +293,8 @@ public final class FuzzyMatchReplacer {
 
     private static int findFirstAnchor(String[] lines, int startFrom, String anchor) {
         for (int j = startFrom; j < lines.length; j++) {
-            if (lines[j].trim().equals(anchor)) {
+            String trimmed = lines[j].trim();
+            if (trimmed.equals(anchor)) {
                 return j;
             }
         }

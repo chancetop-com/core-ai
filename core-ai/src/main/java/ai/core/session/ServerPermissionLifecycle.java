@@ -222,7 +222,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
                 var path = Path.of(filePath);
                 if (!Files.isRegularFile(path)) return null;
                 var content = Files.readString(path, StandardCharsets.UTF_8);
-                var result = DiffGenerator.forEdit(filePath, content, oldString, newString);
+                var result = DiffGenerator.forEdit(content, oldString, newString);
                 return result != null ? result.serialize() : null;
             }
             if (WriteFileTool.TOOL_NAME.equals(toolName)) {
@@ -231,7 +231,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
                 if (filePath == null || newContent == null) return null;
                 var path = Path.of(filePath);
                 var oldContent = Files.isRegularFile(path) ? Files.readString(path, StandardCharsets.UTF_8) : null;
-                var result = DiffGenerator.forWrite(filePath, oldContent, newContent);
+                var result = DiffGenerator.forWrite(oldContent, newContent);
                 return result != null ? result.serialize() : null;
             }
         } catch (Exception e) {

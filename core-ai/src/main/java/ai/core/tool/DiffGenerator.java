@@ -11,7 +11,7 @@ public final class DiffGenerator {
     private static final int MAX_LINES = 500;
     private static final int MAX_DISPLAY_LINES = 80;
 
-    public static DiffResult forEdit(String filePath, String content, String oldString, String newString) {
+    public static DiffResult forEdit(String content, String oldString, String newString) {
         int pos = content.indexOf(oldString);
         if (pos < 0) return null;
 
@@ -45,7 +45,7 @@ public final class DiffGenerator {
         return new DiffResult(newLines.length, oldLines.length, lines);
     }
 
-    public static DiffResult forWrite(String filePath, String oldContent, String newContent) {
+    public static DiffResult forWrite(String oldContent, String newContent) {
         if (oldContent == null || oldContent.isEmpty()) {
             return forNewFile(newContent);
         }
@@ -184,7 +184,9 @@ public final class DiffGenerator {
         while (idx < diff.size()) {
             if (diff.get(idx).tag != Tag.EQUAL) {
                 int start = idx;
-                while (idx < diff.size() && diff.get(idx).tag != Tag.EQUAL) idx++;
+                while (idx < diff.size() && diff.get(idx).tag != Tag.EQUAL) {
+                    idx++;
+                }
                 changeRanges.add(new int[]{start, idx});
             } else {
                 idx++;

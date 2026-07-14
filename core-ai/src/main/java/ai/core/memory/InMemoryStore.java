@@ -51,8 +51,8 @@ public class InMemoryStore implements MemoryStore {
 
     @Override
     public List<MemoryRecord> searchByVector(String userId, List<Double> queryEmbedding, int topK) {
-        List<ScoredRecord> scored = new ArrayList<>();
         Map<String, MemoryRecord> records = getRecordsForUser(userId);
+        List<ScoredRecord> scored = new ArrayList<>(records.size());
         Map<String, List<Double>> embeddings = getEmbeddingsForUser(userId);
 
         for (MemoryRecord record : records.values()) {

@@ -78,12 +78,13 @@ public class McpServerConfig {
     private static McpServerConfig parseHttpConfig(String serverName, Map<String, Object> config) {
         var builder = http((String) config.get("url")).name(serverName);
 
-        if (config.containsKey("endpoint")) {
-            builder.endpoint((String) config.get("endpoint"));
+        String endpoint = (String) config.get("endpoint");
+        if (endpoint != null) {
+            builder.endpoint(endpoint);
         }
 
-        if (config.containsKey("transport")) {
-            String transport = (String) config.get("transport");
+        String transport = (String) config.get("transport");
+        if (transport != null) {
             if ("sse".equalsIgnoreCase(transport)) {
                 builder.transportType(TransportType.SSE);
             }
@@ -100,14 +101,12 @@ public class McpServerConfig {
         return builder.build();
     }
     private static void parseCommonConfig(CommonConfigBuilder<?> builder, Map<String, Object> config) {
-        if (config.containsKey("heartbeat")) {
-            Object heartbeatValue = config.get("heartbeat");
-            if (heartbeatValue instanceof Number num) {
-                builder.enableHeartbeat(true);
-                builder.heartbeatInterval(Duration.ofSeconds(num.longValue()));
-            } else if (heartbeatValue instanceof Boolean bool) {
-                builder.enableHeartbeat(bool);
-            }
+        Object heartbeatValue = config.get("heartbeat");
+        if (heartbeatValue instanceof Number num) {
+            builder.enableHeartbeat(true);
+            builder.heartbeatInterval(Duration.ofSeconds(num.longValue()));
+        } else if (heartbeatValue instanceof Boolean bool) {
+            builder.enableHeartbeat(bool);
         }
         parseDuration(config, "heartbeatTimeout", builder::heartbeatTimeout);
         parseDuration(config, "connectTimeout", builder::connectTimeout);

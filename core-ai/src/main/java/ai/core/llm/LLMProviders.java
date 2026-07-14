@@ -33,8 +33,9 @@ public class LLMProviders {
         if (providers.isEmpty()) {
             throw new IllegalStateException("No LLM providers configured");
         }
-        if (defaultProviderType != null && providers.containsKey(defaultProviderType)) {
-            return providers.get(defaultProviderType);
+        if (defaultProviderType != null) {
+            var provider = providers.get(defaultProviderType);
+            if (provider != null) return provider;
         }
         return providers.get(getProviderDefaultModel());
     }

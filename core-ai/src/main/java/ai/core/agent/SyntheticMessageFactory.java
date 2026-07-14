@@ -28,7 +28,7 @@ final class SyntheticMessageFactory {
         };
     }
 
-    static Choice constructionFakeAtMentionAssistantMsg(Agent agent, List<Message> messages, List<Tool> tools) {
+    static Choice constructionFakeAtMentionAssistantMsg(Agent agent, List<Message> messages) {
         String query = messages.getLast().getTextContent();
         var registry = agent.getExecutionContext().getAgentProfileRegistry();
         var result = AtMentionParser.parse(query, registry);

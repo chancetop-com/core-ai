@@ -12,6 +12,7 @@ import core.framework.util.Strings;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -141,7 +142,10 @@ public class GrepFileTool extends ToolCall {
         if (Files.isDirectory(path)) {
             return new SearchContext(path.toFile(), null);
         }
-        return new SearchContext(path.getParent().toFile(), path.getFileName().toString());
+        var parent = path.getParent();
+        var fileName = path.getFileName();
+        return new SearchContext(parent != null ? parent.toFile() : new File("."),
+                fileName != null ? fileName.toString() : "");
     }
 
     private List<String> buildRipGrepCommand(String rgPath, String pattern, String include, String file) {
@@ -205,7 +209,7 @@ public class GrepFileTool extends ToolCall {
             var lineNumber = data.path("line_number").asInt();
             var text = data.path("lines").path("text").asText();
             return new GrepMatch(filePath, lineNumber, text);
-        } catch (Exception e) {
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             return null;
         }
     }
@@ -218,7 +222,7 @@ public class GrepFileTool extends ToolCall {
 
         var mTime = new ConcurrentHashMap<String, Long>(uniqueFiles.size());
         uniqueFiles.parallelStream().forEach(file -> {
-            mTime.put(file, RipGrepUtil.getModifyTime(new File(cwd, file).toPath()));
+            mTime.put(file, RipGrepUtil.getModifyTime(Path.of(cwd.toString(), file)));
         });
         return mTime;
     }

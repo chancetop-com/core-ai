@@ -55,8 +55,8 @@ public class TaskReminderStrategy implements DoomLoopStrategy {
 
     boolean hasTaskToolsInContext(CompletionRequest request) {
         return request.messages.stream()
-                .anyMatch(m -> RoleType.TOOL.equals(m.role)
-                        && m.name != null
+                .anyMatch(m -> m.name != null
+                        && RoleType.TOOL.equals(m.role)
                         && TASK_TOOL_NAMES.contains(m.name));
     }
 

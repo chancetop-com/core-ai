@@ -48,8 +48,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     String multiModalModel;
     ReflectionConfig reflectionConfig;
     ReflectionListener reflectionListener;
-    Boolean useGroupContext = false;
-    Boolean enableReflection = false;
+    Boolean useGroupContext = Boolean.FALSE;
+    Boolean enableReflection = Boolean.FALSE;
     Integer maxTurnNumber;
     Compression compression;
     private boolean compressionEnabled = true;
@@ -213,7 +213,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
                     + "Please configure mcp.servers in your properties file.");
         }
         var tools = McpToolCalls.from(manager, serverNames, includes, excludes);
-        tools.forEach(t -> t.setDiscoverable(true));
+        tools.forEach(t -> t.setDiscoverable(Boolean.TRUE));
         this.toolCalls.addAll(tools);
         return this;
     }

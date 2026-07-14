@@ -163,7 +163,7 @@ public class McpConnectionMonitor implements AutoCloseable {
     private void triggerReconnect(String serverName) {
         disconnectionHandler.accept(serverName);
         var config = configsSupplier.get().get(serverName);
-        if (config != null && config.isAutoReconnect() && !closed) {
+        if (config != null && !closed && config.isAutoReconnect()) {
             scheduleReconnect(serverName);
         }
     }
@@ -323,7 +323,8 @@ public class McpConnectionMonitor implements AutoCloseable {
      * Check if reconnection is in progress.
      */
     public boolean isReconnecting(String serverName) {
-        return reconnectTasks.containsKey(serverName) && !reconnectTasks.get(serverName).isDone();
+        ScheduledFuture<?> task = reconnectTasks.get(serverName);
+        return task != null && !task.isDone();
     }
 
     @Override

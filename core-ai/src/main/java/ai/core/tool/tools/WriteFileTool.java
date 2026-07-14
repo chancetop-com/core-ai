@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * @author stephen
@@ -100,7 +101,7 @@ public class WriteFileTool extends ToolCall {
             LOGGER.debug("Creating new file: {}", filePath);
         }
 
-        try (BufferedWriter writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
+        try (BufferedWriter writer = Files.newBufferedWriter(Path.of(filePath), StandardCharsets.UTF_8)) {
             writer.write(content);
             writer.flush();
 

@@ -40,7 +40,7 @@ public class ReadSkillResourceTool extends ToolCall {
             var args = parseArguments(arguments);
             String name = getStringValue(args, "name");
             String path = getStringValue(args, "path");
-            if (name == null || name.isBlank() || path == null || path.isBlank()) {
+            if (name == null || path == null || name.isBlank() || path.isBlank()) {
                 return ToolCallResult.failed("'name' and 'path' are required")
                     .withDuration(System.currentTimeMillis() - startTime);
             }

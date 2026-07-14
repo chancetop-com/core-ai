@@ -60,7 +60,7 @@ public class Agent extends Node<Agent> {
     ReflectionListener reflectionListener;
     Boolean useGroupContext;
     Integer maxTurnNumber;
-    Boolean authenticated = false;
+    Boolean authenticated = Boolean.FALSE;
     ToolExecutor toolExecutor;
     Compression compression;
     ReasoningEffort reasoningEffort;
@@ -112,7 +112,7 @@ public class Agent extends Node<Agent> {
 
         chatTurns(prompt, variables, (m, t) -> ModelGateway.handLLM(this, m, t));
 
-        if (reflectionConfig != null && reflectionConfig.enabled() && !skipReflection) {
+        if (reflectionConfig != null && !skipReflection && reflectionConfig.enabled()) {
             ReflectionOrchestrator.reflectionLoop(this, variables);
         }
     }
@@ -122,7 +122,7 @@ public class Agent extends Node<Agent> {
         if (isFirstExecution) {
             setInput(query);
             if (getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT && Prompts.CONFIRMATION_PROMPT.equalsIgnoreCase(query)) {
-                authenticated = true;
+                authenticated = Boolean.TRUE;
             }
             updateNodeStatus(NodeStatus.RUNNING);
         }
@@ -144,12 +144,11 @@ public class Agent extends Node<Agent> {
     }
 
     private boolean isAtMention(String query) {
-        return AtMentionParser.isAtMention(query) && getExecutionContext() != null
-                && getExecutionContext().getAgentProfileRegistry() != null;
+        return AtMentionParser.isAtMention(query) && getExecutionContext().getAgentProfileRegistry() != null;
     }
 
     private void chatAtMention(String query, Map<String, Object> variables) {
-        chatTurns(query, variables, SyntheticMessageFactory.wrapFirstTurn(this, (m, t) -> SyntheticMessageFactory.constructionFakeAtMentionAssistantMsg(this, m, t)));
+        chatTurns(query, variables, SyntheticMessageFactory.wrapFirstTurn(this, (m, t) -> SyntheticMessageFactory.constructionFakeAtMentionAssistantMsg(this, m)));
     }
 
     protected void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
@@ -235,7 +234,7 @@ public class Agent extends Node<Agent> {
     private void removeLastAssistantToolCallMessageIfNotToolResult(Message reqMsg) {
         var lastMsg = getMessages().getLast();
         if (lastMsg.role == RoleType.ASSISTANT && lastMsg.toolCalls != null
-                && !lastMsg.toolCalls.isEmpty() && reqMsg.role != RoleType.TOOL) {
+                && reqMsg.role != RoleType.TOOL && !lastMsg.toolCalls.isEmpty()) {
             removeMessage(lastMsg);
         }
     }

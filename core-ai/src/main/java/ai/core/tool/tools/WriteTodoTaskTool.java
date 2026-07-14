@@ -208,11 +208,7 @@ public class WriteTodoTaskTool {
 
         if ("deleted".equals(params.status)) {
             store.delete(params.taskId);
-            return """
-                    <system-reminder>
-                    Task #%s has been deleted.
-                    </system-reminder>
-                    """.formatted(params.taskId);
+            return "<system-reminder>%nTask #%s has been deleted.%n</system-reminder>%n".formatted(params.taskId);
         }
 
         boolean changed = applyFieldUpdates(params, task);
@@ -223,14 +219,10 @@ public class WriteTodoTaskTool {
 
         var reminder = new StringBuilder();
         if ("completed".equals(task.status)) {
-            reminder.append("Task #%s completed. Call task_list to find your next available task.\n".formatted(params.taskId));
+            reminder.append("Task #%s completed. Call task_list to find your next available task.%n".formatted(params.taskId));
             checkVerificationNudge(store, reminder);
         }
-        return """
-                <system-reminder>
-                Task #%s updated. Status: %s.
-                %s</system-reminder>
-                """.formatted(params.taskId, task.status, reminder.toString());
+        return "<system-reminder>%nTask #%s updated. Status: %s.%n%s</system-reminder>%n".formatted(params.taskId, task.status, reminder.toString());
     }
 
     @CoreAiMethod(name = TOOL_NAME_LIST, description = TASK_LIST_DESC)
@@ -255,9 +247,7 @@ public class WriteTodoTaskTool {
             summaries.add(summaryJson(task, activeBlockers));
         }
 
-        return """
-                {"tasks": [%s]}
-                """.formatted(String.join(", ", summaries));
+        return "{\"tasks\": [%s]}%n".formatted(String.join(", ", summaries));
     }
 
     @CoreAiMethod(name = TOOL_NAME_GET, description = TASK_GET_DESC)

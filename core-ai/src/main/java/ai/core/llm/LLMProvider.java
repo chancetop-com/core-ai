@@ -65,7 +65,7 @@ public abstract class LLMProvider {
                 null,
                 model,
                 null,
-                false,
+                Boolean.FALSE,
                 ResponseFormat.of(clazz),
                 null
         ));
@@ -89,7 +89,7 @@ public abstract class LLMProvider {
                 null,
                 model,
                 null,
-                false,
+                Boolean.FALSE,
                 responseFormat,
                 null
         ));
@@ -118,7 +118,7 @@ public abstract class LLMProvider {
     public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
         request.model = getModel(request);
         preprocess(request);
-        request.stream = true;
+        request.stream = Boolean.TRUE;
         request.streamOptions = new StreamOptions();
         if (request.getExtraBody() != null && config.resolveExtraBody(request.model) != null) {
             LOGGER.warn("both request and provider config set extra body, provider config extra body will be ignored, request extra body={}, config extra body={}", request.getExtraBody(), config.resolveExtraBody(request.model));
@@ -182,7 +182,8 @@ public abstract class LLMProvider {
     public abstract CaptionImageResponse captionImage(CaptionImageRequest request);
 
     public int maxTokens() {
-        return LLMModelContextRegistry.getInstance().getMaxInputTokens(config.getModel());
+        var info = LLMModelContextRegistry.getInstance().getModelInfo(config.getModel());
+        return info != null ? info.contextWindow() : 0;
     }
 
     public abstract String name();

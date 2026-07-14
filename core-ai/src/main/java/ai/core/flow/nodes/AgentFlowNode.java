@@ -182,10 +182,10 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
             promptTemplate = "query:\n";
         }
         if (useGroupContext == null) {
-            useGroupContext = false;
+            useGroupContext = Boolean.FALSE;
         }
         if (reflectionEnabled == null) {
-            reflectionEnabled = false;
+            reflectionEnabled = Boolean.FALSE;
         }
         if (reflectionMaxRound == null) {
             reflectionMaxRound = 3;

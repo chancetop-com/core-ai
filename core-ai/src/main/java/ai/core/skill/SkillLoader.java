@@ -68,7 +68,9 @@ public class SkillLoader {
                         LOGGER.warn("Skill file path escapes source directory: {}", skillFile);
                         continue;
                     }
-                    var skill = loadSkillFile(skillFile, entry.getFileName().toString(), null);
+                    var entryName = entry.getFileName();
+                    if (entryName == null) continue;
+                    var skill = loadSkillFile(skillFile, entryName.toString(), null);
                     if (skill != null) {
                         skills.add(skill);
                     }
@@ -83,7 +85,9 @@ public class SkillLoader {
     }
 
     private List<SkillMetadata> loadNamespaceDirectory(Path namespaceDir, Path rootDir) {
-        String namespace = namespaceDir.getFileName().toString();
+        var fileName = namespaceDir.getFileName();
+        if (fileName == null) return Collections.emptyList();
+        String namespace = fileName.toString();
         List<SkillMetadata> skills = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(namespaceDir)) {
             for (var entry : stream) {
@@ -94,7 +98,9 @@ public class SkillLoader {
                     LOGGER.warn("Skill file path escapes source directory: {}", skillFile);
                     continue;
                 }
-                var skill = loadSkillFile(skillFile, entry.getFileName().toString(), namespace);
+                var entryName = entry.getFileName();
+                if (entryName == null) continue;
+                var skill = loadSkillFile(skillFile, entryName.toString(), namespace);
                 if (skill != null) {
                     skills.add(skill);
                 }

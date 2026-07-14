@@ -252,8 +252,8 @@ public abstract class ToolCall {
         var required = parameters.stream().filter(p -> Boolean.TRUE.equals(p.isRequired())).toList();
         if (required.isEmpty()) return List.of();
         return required.stream()
-                .filter(p -> !args.containsKey(p.getName()) || args.get(p.getName()) == null)
                 .map(ToolCallParameter::getName)
+                .filter(pName -> args.get(pName) == null)
                 .toList();
     }
 
@@ -316,7 +316,6 @@ public abstract class ToolCall {
         String description;
         List<ToolCallParameter> parameters;
         Boolean needAuth;
-        Boolean continueAfterSlash;
         Boolean directReturn;
         Boolean llmVisible;
         Boolean discoverable;
@@ -349,11 +348,6 @@ public abstract class ToolCall {
 
         public B needAuth(Boolean needAuth) {
             this.needAuth = needAuth;
-            return self();
-        }
-
-        public B continueAfterSlash(Boolean continueAfterSlash) {
-            this.continueAfterSlash = continueAfterSlash;
             return self();
         }
 

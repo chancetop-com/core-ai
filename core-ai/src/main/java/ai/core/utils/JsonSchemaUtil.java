@@ -130,7 +130,7 @@ public class JsonSchemaUtil {
             if (coreAiAnnotation != null) {
                 parameter.required(coreAiAnnotation.required());
             } else {
-                parameter.required(true);
+                parameter.required(Boolean.TRUE);
             }
 
             parameters.add(parameter.build());

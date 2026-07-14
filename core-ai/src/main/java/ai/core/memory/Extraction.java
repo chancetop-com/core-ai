@@ -231,7 +231,7 @@ public class Extraction {
                 return List.of();
             }
 
-            List<MemoryRecord> memoryRecords = new ArrayList<>();
+            List<MemoryRecord> memoryRecords = new ArrayList<>(extracted.memories.size());
             for (ExtractedMemory mem : extracted.memories) {
                 if (mem.content == null || mem.content.isBlank()) {
                     continue;

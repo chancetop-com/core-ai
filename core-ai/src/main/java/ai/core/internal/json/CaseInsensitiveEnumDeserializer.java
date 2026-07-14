@@ -38,7 +38,7 @@ public class CaseInsensitiveEnumDeserializer extends JsonDeserializer<Enum> {
                     return e;
                 }
             }
-        } catch (Exception e) {
+        } catch (ReflectiveOperationException e) {
             throw new IOException("Failed to deserialize enum " + enumClass.getName(), e);
         }
 

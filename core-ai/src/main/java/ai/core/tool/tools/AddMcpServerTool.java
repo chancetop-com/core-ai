@@ -66,8 +66,9 @@ public class AddMcpServerTool extends ToolCall {
 
     @SuppressWarnings("unchecked")
     private McpServerConfig buildConfig(String name, Map<?, ?> args) {
-        if (args.containsKey("command")) {
-            var builder = McpServerConfig.stdio((String) args.get("command")).name(name);
+        String command = (String) args.get("command");
+        if (command != null) {
+            var builder = McpServerConfig.stdio(command).name(name);
             if (args.get("args") instanceof String argsStr) {
                 builder.args(argsStr.split("\\s+"));
             } else if (args.get("args") instanceof List<?> argsList) {
@@ -75,8 +76,9 @@ public class AddMcpServerTool extends ToolCall {
             }
             return builder.build();
         }
-        if (args.containsKey("url")) {
-            return McpServerConfig.http((String) args.get("url")).name(name).build();
+        String url = (String) args.get("url");
+        if (url != null) {
+            return McpServerConfig.http(url).name(name).build();
         }
         throw new IllegalArgumentException("Either 'command' (STDIO) or 'url' (HTTP) is required");
     }

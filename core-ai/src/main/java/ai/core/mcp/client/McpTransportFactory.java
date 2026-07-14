@@ -73,8 +73,8 @@ public final class McpTransportFactory {
 
     private static boolean isWindowsScriptCommand(String command) {
         var cmd = command.toLowerCase(Locale.ROOT);
-        return cmd.equals("npx") || cmd.equals("npm") || cmd.equals("node")
-                || cmd.equals("pnpm") || cmd.equals("yarn") || cmd.equals("bun")
+        return "npx".equals(cmd) || "npm".equals(cmd) || "node".equals(cmd)
+                || "pnpm".equals(cmd) || "yarn".equals(cmd) || "bun".equals(cmd)
                 || cmd.endsWith(".cmd") || cmd.endsWith(".bat");
     }
 

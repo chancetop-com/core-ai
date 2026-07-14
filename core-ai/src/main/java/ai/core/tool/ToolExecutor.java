@@ -7,6 +7,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import io.opentelemetry.api.trace.SpanContext;
@@ -43,7 +44,7 @@ public class ToolExecutor {
         try {
             var parsed = JsonUtil.OBJECT_MAPPER.readValue(content, Object.class);
             return JsonUtil.OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(parsed);
-        } catch (Exception ignored) {
+        } catch (JsonProcessingException ignored) {
             return content;
         }
     }
@@ -175,7 +176,7 @@ public class ToolExecutor {
     }
 
     private ToolCallResult validate(ToolCall tool, Map<String, Object> args, boolean useSandbox) {
-        if (!useSandbox && Boolean.TRUE.equals(tool.isNeedAuth()) && !authenticated) {
+        if (!useSandbox && !authenticated && Boolean.TRUE.equals(tool.isNeedAuth())) {
             statusUpdater.accept(NodeStatus.WAITING_FOR_USER_INPUT);
             return ToolCallResult.failed("This tool call requires user authentication, please ask user to confirm it.");
         }

@@ -115,13 +115,7 @@ public class BackgroundTaskManager {
                 ? "<result>" + result + "</result>"
                 : "<error>" + error + "</error>";
         var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
-        return """
-                <task-notification>
-                <task-id>%s</task-id>
-                <status>%s</status>
-                %s%s
-                </task-notification>
-                """.formatted(taskId, status, outputRefXml, resultXml);
+        return "<task-notification>%n<task-id>%s</task-id>%n<status>%s</status>%n%s%s%n</task-notification>%n".formatted(taskId, status, outputRefXml, resultXml);
     }
 
     public record TaskHandle(String outputRef, Future<?> future) {

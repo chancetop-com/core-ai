@@ -82,7 +82,8 @@ public class SummarizePdfTool extends ToolCall {
         try {
             byte[] bytes = Files.readAllBytes(path);
             String base64 = Base64.getEncoder().encodeToString(bytes);
-            String filename = path.getFileName().toString();
+            var fileNamePath = path.getFileName();
+            String filename = fileNamePath != null ? fileNamePath.toString() : "document.pdf";
             LOGGER.info("summarize_pdf resolved local file [{}], size=[{}] bytes", url, bytes.length);
             return Content.ofFileBase64(base64, "application/pdf", filename);
         } catch (IOException e) {

@@ -131,7 +131,9 @@ public class CaptionImageTool extends ToolCall {
     }
 
     private String detectMimeType(Path path) {
-        String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        var fileNamePath = path.getFileName();
+        if (fileNamePath == null) return "application/octet-stream";
+        String fileName = fileNamePath.toString().toLowerCase(Locale.ROOT);
         int dotIndex = fileName.lastIndexOf('.');
         if (dotIndex > 0 && dotIndex < fileName.length() - 1) {
             String extension = fileName.substring(dotIndex + 1);

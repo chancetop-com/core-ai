@@ -11,6 +11,7 @@ import core.framework.util.Strings;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -152,7 +153,7 @@ public class GlobFileTool extends ToolCall {
 
         for (String line : lines) {
             if (line.isEmpty()) continue;
-            var absolutePath = new File(searchDir, cleanPath(line)).toPath();
+            var absolutePath = Path.of(searchDir.toString(), cleanPath(line));
             matches.add(new FileMatch(absolutePath.toString(), RipGrepUtil.getModifyTime(absolutePath)));
         }
         return matches;

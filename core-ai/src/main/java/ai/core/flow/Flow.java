@@ -167,10 +167,10 @@ public class Flow {
         if (edges.isEmpty()) throw new IllegalArgumentException("Edges cannot be empty");
         if (id == null || id.isBlank()) throw new IllegalArgumentException("Flow ID cannot be null or empty");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Flow name cannot be null or empty");
-        if (nodes.stream().anyMatch(v -> v.type == FlowNodeType.LLM) && llmProviders == null) {
+        if (llmProviders == null && nodes.stream().anyMatch(v -> v.type == FlowNodeType.LLM)) {
             throw new IllegalArgumentException("LLMProviders cannot be null if LLM node is present");
         }
-        if (nodes.stream().anyMatch(v -> v.type == FlowNodeType.RAG) && vectorStores == null) {
+        if (vectorStores == null && nodes.stream().anyMatch(v -> v.type == FlowNodeType.RAG)) {
             throw new IllegalArgumentException("VectorStores cannot be null if RAG node is present");
         }
         nodes.forEach(flowNode -> flowNode.check(getNodeSettings(flowNode)));
@@ -260,15 +260,13 @@ public class Flow {
 
     public Map<FlowEdge<?>, FlowNode<?>> getNextNodes(FlowNode<?> node) {
         return edges.stream()
-                .filter(edge -> edge.type == FlowEdgeType.CONNECTION)
-                .filter(edge -> edge.getSourceNodeId().equals(node.id))
+                .filter(edge -> edge.type == FlowEdgeType.CONNECTION && edge.getSourceNodeId().equals(node.id))
                 .collect(Collectors.toMap(edge -> edge, edge -> getNodeById(edge.getTargetNodeId())));
     }
 
     public List<FlowNode<?>> getNodeSettings(FlowNode<?> node) {
         return edges.stream()
-                .filter(edge -> edge.type == FlowEdgeType.SETTING)
-                .filter(edge -> edge.getSourceNodeId().equals(node.id))
+                .filter(edge -> edge.type == FlowEdgeType.SETTING && edge.getSourceNodeId().equals(node.id))
                 .<FlowNode<?>>map(edge -> getNodeById(edge.getTargetNodeId()))
                 .toList();
     }

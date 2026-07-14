@@ -108,7 +108,7 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Credentials"), "true");
 
         // Handle OPTIONS preflight request (Safari CORS)
-        if (exchange.getRequestMethod().toString().equals("OPTIONS")) {
+        if ("OPTIONS".equals(exchange.getRequestMethod().toString())) {
             exchange.setStatusCode(200);
             exchange.endExchange();
             return;

@@ -106,15 +106,17 @@ public class LLMProviderConfig {
         if (modelName == null) {
             return requestExtraBody;
         }
-        if (modelExtraBodies.containsKey(modelName)) {
-            return modelExtraBodies.get(modelName);
+        var body = modelExtraBodies.get(modelName);
+        if (body != null) {
+            return body;
         }
-        int slash = modelName.lastIndexOf('/');
+        var slash = modelName.lastIndexOf('/');
         if (slash < 0) {
             return requestExtraBody;
         }
         var nameOnly = modelName.substring(slash + 1);
-        return modelExtraBodies.containsKey(nameOnly) ? modelExtraBodies.get(nameOnly) : requestExtraBody;
+        var nameBody = modelExtraBodies.get(nameOnly);
+        return nameBody != null ? nameBody : requestExtraBody;
     }
 
     public int getStreamBufferSize() {

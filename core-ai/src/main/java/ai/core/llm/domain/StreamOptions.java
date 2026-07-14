@@ -9,5 +9,5 @@ import core.framework.api.validate.NotNull;
 public class StreamOptions {
     @NotNull
     @Property(name = "include_usage")
-    public Boolean includeUsage = true;
+    public Boolean includeUsage = Boolean.TRUE;
 }

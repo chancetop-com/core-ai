@@ -6,13 +6,14 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
  * @author stephen
  */
 public class ShellUtil {
-    private static final List<String> UNIX_SHELLS = List.of("zsh", "bash", "sh");
+    private static final Set<String> UNIX_SHELLS = Set.of("zsh", "bash", "sh");
     private static final List<String> WINDOWS_NATIVE_SHELLS = List.of("pwsh.exe", "powershell.exe", "cmd.exe");
 
     public static boolean isCommandExists(Platform os, String command) {
@@ -81,7 +82,7 @@ public class ShellUtil {
         return getFirstExistsShell(Platform.WINDOWS_X64, WINDOWS_NATIVE_SHELLS);
     }
 
-    private static String getFirstExistsShell(Platform os, List<String> shells) {
+    private static String getFirstExistsShell(Platform os, java.util.Collection<String> shells) {
         return shells.stream().filter(v -> isCommandExists(os, v)).findFirst().orElseThrow();
     }
 
@@ -104,13 +105,11 @@ public class ShellUtil {
         return shell + " /c ";
     }
 
-    public static String getPowerShellEncodingSetup() {
-        return "$OutputEncoding=[System.Text.UTF8Encoding]::new();[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();";
-    }
+    private static final String POWERSHELL_ENCODING_SETUP = "$OutputEncoding=[System.Text.UTF8Encoding]::new();[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();";
 
     public static String wrapCommand(String shell, String command) {
-        if (isPowerShell(shell) && command != null) {
-            return getPowerShellEncodingSetup() + command;
+        if (command != null && isPowerShell(shell)) {
+            return POWERSHELL_ENCODING_SETUP + command;
         }
         return command;
     }

@@ -74,12 +74,13 @@ public final class ReflectionEvaluation {
     }
 
     public boolean isValid() {
-        return score >= 1
-                && score <= 10
+        return score != null
                 && weaknesses != null
                 && !weaknesses.isEmpty()
                 && suggestions != null
-                && !suggestions.isEmpty();
+                && !suggestions.isEmpty()
+                && score >= 1
+                && score <= 10;
     }
 
     @Override
@@ -101,10 +102,10 @@ public final class ReflectionEvaluation {
             return false;
         }
         ReflectionEvaluation that = (ReflectionEvaluation) o;
-        return score == that.score
-                && pass == that.pass
-                && Double.compare(that.confidence, confidence) == 0
-                && shouldContinue == that.shouldContinue;
+        return Objects.equals(score, that.score)
+                && Objects.equals(pass, that.pass)
+                && Objects.equals(confidence, that.confidence)
+                && Objects.equals(shouldContinue, that.shouldContinue);
     }
 
     @Override

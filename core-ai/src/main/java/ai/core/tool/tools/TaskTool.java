@@ -156,26 +156,8 @@ public class TaskTool extends ToolCall {
 
     private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description, String subagentType, String model) {
         var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
-        var reminder = """
-                  Async agent launched successfully.
-                  agentId: %s (internal ID - do not mention to user. Use SendMessage with to: %s to continue this agent.)
-                  The agent is working in the background. You will be notified automatically when it completes.
-                  Do not duplicate this agent's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end
-                  your response.
-                  output_file: %s
-                  If asked, you can check progress before completion by using %s or %s tail on the output file.
-                """.formatted(taskId, taskId, outputRef, ReadFileTool.TOOL_NAME, ShellCommandTool.TOOL_NAME);
-        return """
-                <task-notification>
-                <task-id>%s</task-id>
-                <task-type>%s</task-type>
-                <task-description>%s</task-description>
-                <task-model>%s</task-model>
-                <status>%s</status>
-                %s
-                <system-reminder>%s</system-reminder>
-                </task-notification>
-                """.formatted(taskId, subagentType, description, model != null ? model : "default", "async_launched", outputRefXml, reminder);
+        var reminder = "  Async agent launched successfully.%n  agentId: %s (internal ID - do not mention to user. Use SendMessage with to: %s to continue this agent.)%n  The agent is working in the background. You will be notified automatically when it completes.%n  Do not duplicate this agent's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end%n  your response.%n  output_file: %s%n  If asked, you can check progress before completion by using %s or %s tail on the output file.%n".formatted(taskId, taskId, outputRef, ReadFileTool.TOOL_NAME, ShellCommandTool.TOOL_NAME);
+        return "<task-notification>%n<task-id>%s</task-id>%n<task-type>%s</task-type>%n<task-description>%s</task-description>%n<task-model>%s</task-model>%n<status>%s</status>%n%s%n<system-reminder>%s</system-reminder>%n</task-notification>%n".formatted(taskId, subagentType, description, model != null ? model : "default", "async_launched", outputRefXml, reminder);
     }
 
     private ExecutionContext buildSubContext(String subagentType, ExecutionContext context, String taskId, String taskName) {

@@ -49,7 +49,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
     }
 
     private ToolCall toToolCall(ApiDefinition.Operation operation, ApiDefinition.Service service, ApiDefinition api) {
-        var method = Arrays.stream(DynamicApiCaller.class.getMethods()).filter(v -> v.getName().equals("callApi")).findFirst().orElseThrow();
+        var method = Arrays.stream(DynamicApiCaller.class.getMethods()).filter(v -> "callApi".equals(v.getName())).findFirst().orElseThrow();
         var params = operation.pathParams.stream().map(v -> toParamFromPathParam(v, api)).collect(Collectors.toList());
         if (operation.requestType != null) {
             params.addAll(toParamFromRequestType(operation.requestType, api));
@@ -61,7 +61,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
                 .object(dynamicApiCaller)
                 .method(method)
                 .needAuth(operation.needAuth)
-                .dynamicArguments(true)
+                .dynamicArguments(Boolean.TRUE)
                 .parameters(params).build();
     }
 
@@ -87,7 +87,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         var param = new ToolCallParameter();
         param.setName(pathParam.name);
         param.setDescription(pathParam.description == null ? pathParam.name : pathParam.description);
-        param.setRequired(true);
+        param.setRequired(Boolean.TRUE);
         if ("list".equalsIgnoreCase(pathParam.type)) {
             param.setItemType(ToolCallParameterType.valueOf(pathParam.type.toUpperCase(java.util.Locale.ROOT)).getType());
         }

@@ -14,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -105,10 +106,10 @@ public class HashEditFileTool extends ToolCall {
             } else if (locRaw instanceof Map<?, ?> locMap) {
                 if (locMap.containsKey("range")) {
                     ops.add(buildRangeOp(locMap, content, lines));
-                } else if (locMap.containsKey("append")) {
+                } else if (locMap.get("append") != null) {
                     var ref = validateRef(HashLine.parseRef((String) locMap.get("append")), lines);
                     ops.add(new Op(OpKind.APPEND_AT, ref.lineNumber(), ref.hash(), 0, null, content, ref.lineNumber(), 1));
-                } else if (locMap.containsKey("prepend")) {
+                } else if (locMap.get("prepend") != null) {
                     var ref = validateRef(HashLine.parseRef((String) locMap.get("prepend")), lines);
                     ops.add(new Op(OpKind.PREPEND_AT, ref.lineNumber(), ref.hash(), 0, null, content, ref.lineNumber(), 2));
                 } else {
@@ -199,7 +200,7 @@ public class HashEditFileTool extends ToolCall {
      */
     public static String simulateEdits(String rawContent, List<Map<String, Object>> edits,
                                        boolean hasCRLF, boolean hasTrailingNewline) {
-        String[] lineArray = rawContent.replace("\r\n", "\n").replace("\r", "\n").split("\n", -1);
+        String[] lineArray = rawContent.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
         List<String> lines;
         if (hasTrailingNewline && lineArray.length > 0 && lineArray[lineArray.length - 1].isEmpty()) {
             lines = new ArrayList<>(Arrays.asList(Arrays.copyOf(lineArray, lineArray.length - 1)));
@@ -295,7 +296,7 @@ public class HashEditFileTool extends ToolCall {
 
         String rawContent;
         try {
-            rawContent = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            rawContent = Files.readString(Path.of(path), StandardCharsets.UTF_8);
         } catch (IOException e) {
             return "Error reading file: " + e.getMessage();
         }
@@ -313,7 +314,7 @@ public class HashEditFileTool extends ToolCall {
         }
 
         try {
-            Files.writeString(file.toPath(), result, StandardCharsets.UTF_8);
+            Files.writeString(Path.of(path), result, StandardCharsets.UTF_8);
         } catch (IOException e) {
             return "Error writing file: " + e.getMessage();
         }
@@ -357,30 +358,30 @@ public class HashEditFileTool extends ToolCall {
             var editItems = List.of(
                     ToolCallParameter.builder()
                             .name("path").description("File path")
-                            .classType(String.class).required(true).build(),
+                            .classType(String.class).required(Boolean.TRUE).build(),
                     ToolCallParameter.builder()
                             .name("loc")
                             .description("Insert location. One of: \"append\", \"prepend\", "
                                     + "{\"append\":\"N#ID\"}, {\"prepend\":\"N#ID\"}, "
                                     + "or {\"range\":{\"pos\":\"N#ID\",\"end\":\"N#ID\"}}")
-                            .classType(String.class).required(false).build(),
+                            .classType(String.class).required(Boolean.FALSE).build(),
                     ToolCallParameter.builder()
                             .name("content")
                             .description("Replacement/inserted lines. Array of strings preferred; null to delete.")
-                            .classType(String.class).required(false).build(),
+                            .classType(String.class).required(Boolean.FALSE).build(),
                     ToolCallParameter.builder()
                             .name("delete").description("Delete the file")
-                            .classType(Boolean.class).required(false).build(),
+                            .classType(Boolean.class).required(Boolean.FALSE).build(),
                     ToolCallParameter.builder()
                             .name("move").description("Move/rename the file to this path")
-                            .classType(String.class).required(false).build()
+                            .classType(String.class).required(Boolean.FALSE).build()
             );
 
             this.parameters(List.of(
                     ToolCallParameter.builder()
                             .name("edits")
                             .description("Array of edit entries applied atomically per file.")
-                            .type(ToolCallParameterType.LIST).required(true)
+                            .type(ToolCallParameterType.LIST).required(Boolean.TRUE)
                             .items(editItems).build()
             ));
 

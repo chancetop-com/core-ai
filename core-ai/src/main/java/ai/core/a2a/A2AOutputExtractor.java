@@ -57,7 +57,7 @@ public class A2AOutputExtractor {
         if (event.task != null) {
             applyTask(output, event.task);
             var taskEventText = textOf(event.task.artifacts);
-            if (isBlank(taskEventText) && event.task.status != null) {
+            if (event.task.status != null && isBlank(taskEventText)) {
                 taskEventText = textOf(event.task.status.message);
             }
             appendText(taskText, taskEventText);
@@ -90,7 +90,7 @@ public class A2AOutputExtractor {
             output.statusText = valueOr(textOf(task.status.message), output.statusText);
         }
         var text = textOf(task.artifacts);
-        if (isBlank(text) && task.status != null) text = output.statusText;
+        if (task.status != null && isBlank(text)) text = output.statusText;
         if (!isBlank(text)) output.text = text;
     }
 

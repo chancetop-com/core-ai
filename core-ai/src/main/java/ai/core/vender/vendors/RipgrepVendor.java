@@ -70,7 +70,7 @@ public class RipgrepVendor extends Vendor {
             if (path != null && Files.exists(path) && Files.isExecutable(path)) {
                 return path;
             }
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             logger.debug("Failed to resolve system rg path: {}", e.getMessage());
         }
         return null;

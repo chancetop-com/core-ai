@@ -292,7 +292,7 @@ public class LiteLLMProvider extends LLMProvider {
     }
 
     private void mergeChunkIntoFinalResponse(CompletionResponse finalResponse, CompletionResponse chunk, StreamingCallback streamingCallback) {
-        if (chunk.choices != null && !chunk.choices.isEmpty() && finalResponse.choices != null && !finalResponse.choices.isEmpty()) {
+        if (chunk.choices != null && finalResponse.choices != null && !chunk.choices.isEmpty() && !finalResponse.choices.isEmpty()) {
             var finalChoice = finalResponse.choices.getFirst();
             var chunkChoice = chunk.choices.getFirst();
 

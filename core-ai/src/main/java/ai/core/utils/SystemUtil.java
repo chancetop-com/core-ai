@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.Comparator;
 import java.util.Locale;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -37,7 +38,7 @@ public class SystemUtil {
         if (!Files.exists(directory)) return;
 
         try (var stream = Files.walk(directory)) {
-            stream.sorted((a, b) -> -a.compareTo(b)).forEach(SystemUtil::deletePathQuietly);
+            stream.sorted(Comparator.reverseOrder()).forEach(SystemUtil::deletePathQuietly);
         }
     }
 
@@ -71,7 +72,10 @@ public class SystemUtil {
                 if (entry.isDirectory()) {
                     Files.createDirectories(targetPath);
                 } else {
-                    Files.createDirectories(targetPath.getParent());
+                    var parent = targetPath.getParent();
+                    if (parent != null) {
+                        Files.createDirectories(parent);
+                    }
                     Files.copy(zis, targetPath);
                 }
                 zis.closeEntry();
@@ -106,12 +110,12 @@ public class SystemUtil {
             if (!sourceFile.exists()) {
                 throw new FileNotFoundException("Local file not found: " + url);
             }
-            Files.copy(sourceFile.toPath(), tmp.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(Path.of(url), Path.of(path), StandardCopyOption.REPLACE_EXISTING);
             return tmp;
         }
         var uri = new URI(url).toURL();
         if ("file".equals(uri.getProtocol())) {
-            Files.copy(new File(uri.getFile()).toPath(), tmp.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(Path.of(uri.getFile()), Path.of(path), StandardCopyOption.REPLACE_EXISTING);
             return tmp;
         }
         return downloadHttpWithResume(url, tmp, uri);

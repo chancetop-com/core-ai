@@ -170,11 +170,9 @@ public class SubAgentToolCall extends ToolCall {
 
     private void cancelChildBackgroundTasks(Agent agent) {
         var ctx = agent.getExecutionContext();
-        if (ctx != null) {
-            var taskManager = ctx.getTaskManager();
-            if (taskManager != null) {
-                taskManager.cancelAll();
-            }
+        var taskManager = ctx.getTaskManager();
+        if (taskManager != null) {
+            taskManager.cancelAll();
         }
         for (var subAgent : agent.getSubAgents()) {
             subAgent.getSubAgent().cancel();
@@ -219,7 +217,7 @@ public class SubAgentToolCall extends ToolCall {
             return subAgent(subAgent, List.of(ToolCallParameter.builder()
                     .name("query")
                     .description("The query or instruction to send to the sub-agent.")
-                    .required(true)
+                    .required(Boolean.TRUE)
                     .build()
             ));
         }
@@ -241,7 +239,7 @@ public class SubAgentToolCall extends ToolCall {
             parameters(List.of(ToolCallParameter.builder()
                     .name("query")
                     .description("The query or instruction to send to the sub-agent.")
-                    .required(true)
+                    .required(Boolean.TRUE)
                     .build()
             ));
             return this;

@@ -205,7 +205,7 @@ public class LangfusePrompt {
     public String getPromptContent() {
         if (isTextPrompt()) {
             return prompt;
-        } else if (isChatPrompt() && chatPrompt != null) {
+        } else if (chatPrompt != null && isChatPrompt()) {
             var sb = new StringBuilder();
             for (int i = 0; i < chatPrompt.size(); i++) {
                 ChatMessage msg = chatPrompt.get(i);

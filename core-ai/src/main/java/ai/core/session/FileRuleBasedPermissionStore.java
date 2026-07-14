@@ -13,13 +13,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class FileRuleBasedPermissionStore implements ToolPermissionStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileRuleBasedPermissionStore.class);
 
-    private final List<String> allowPatterns = new CopyOnWriteArrayList<>();
-    private final List<String> denyPatterns = new CopyOnWriteArrayList<>();
+    private final Set<String> allowPatterns = ConcurrentHashMap.newKeySet();
+    private final Set<String> denyPatterns = ConcurrentHashMap.newKeySet();
     private final Path persistFile;
 
     public FileRuleBasedPermissionStore() {
@@ -34,19 +35,15 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
     @Override
     public void allow(String pattern) {
         denyPatterns.remove(pattern);
-        if (!allowPatterns.contains(pattern)) {
-            allowPatterns.add(pattern);
-            save();
-        }
+        allowPatterns.add(pattern);
+        save();
     }
 
     @Override
     public void deny(String pattern) {
         allowPatterns.remove(pattern);
-        if (!denyPatterns.contains(pattern)) {
-            denyPatterns.add(pattern);
-            save();
-        }
+        denyPatterns.add(pattern);
+        save();
     }
 
     @Override
@@ -54,14 +51,14 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
         // Auto-allow read-only operations
         if (PermissionRule.isReadOnly(toolName, arguments)) {
             LOGGER.debug("auto-allowing read-only operation: tool={}", toolName);
-            return Optional.of(true);
+            return Optional.of(Boolean.TRUE);
         }
 
         boolean denied = denyPatterns.stream().anyMatch(p -> PermissionRule.matches(p, toolName, arguments));
-        if (denied) return Optional.of(false);
+        if (denied) return Optional.of(Boolean.FALSE);
 
         boolean allowed = allowPatterns.stream().anyMatch(p -> PermissionRule.matches(p, toolName, arguments));
-        if (allowed) return Optional.of(true);
+        if (allowed) return Optional.of(Boolean.TRUE);
 
         return Optional.empty();
     }
@@ -90,7 +87,9 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
     private void save() {
         if (persistFile == null) return;
         try {
-            Files.createDirectories(persistFile.getParent());
+            var parent = persistFile.getParent();
+            if (parent == null) return;
+            Files.createDirectories(parent);
             var domain = new PermissionsDomain();
             domain.allow = new ArrayList<>(allowPatterns);
             domain.deny = new ArrayList<>(denyPatterns);

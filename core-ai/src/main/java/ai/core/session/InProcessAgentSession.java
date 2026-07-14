@@ -43,7 +43,6 @@ public class InProcessAgentSession implements AgentSession {
     private final SessionCommandQueue commandQueue;
     private final TurnDriver turnDriver;
     private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
-    private final ServerPermissionLifecycle permissionLifecycle;
 
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
@@ -56,7 +55,7 @@ public class InProcessAgentSession implements AgentSession {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context));
-        permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
+        var permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
         agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
@@ -77,7 +76,7 @@ public class InProcessAgentSession implements AgentSession {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context));
-        permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
+        var permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
         agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
@@ -162,7 +161,7 @@ public class InProcessAgentSession implements AgentSession {
             }
             var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
             populateTokenUsage(turnComplete, inputBefore, outputBefore);
-            turnComplete.maxTurnsReached = true;
+            turnComplete.maxTurnsReached = Boolean.TRUE;
             dispatch(turnComplete);
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             return;
@@ -198,7 +197,7 @@ public class InProcessAgentSession implements AgentSession {
             }
             var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
             populateTokenUsage(turnComplete, inputBefore, outputBefore);
-            turnComplete.maxTurnsReached = true;
+            turnComplete.maxTurnsReached = Boolean.TRUE;
             dispatch(turnComplete);
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             return;
@@ -214,7 +213,7 @@ public class InProcessAgentSession implements AgentSession {
             agent.save(sessionId);
         }
         debug("task notifications processed");
-        var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
+        var turnComplete = TurnCompleteEvent.of(sessionId, result);
         populateTokenUsage(turnComplete, inputBefore, outputBefore);
         dispatch(turnComplete);
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
@@ -310,7 +309,7 @@ public class InProcessAgentSession implements AgentSession {
                     default -> {
                     }
                 }
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
                 logger.error("failed to dispatch event to listener, event={}, sessionId={}", event.getClass().getSimpleName(), sessionId, e);
             }
         }

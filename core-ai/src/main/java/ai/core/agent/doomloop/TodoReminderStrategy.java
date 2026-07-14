@@ -8,17 +8,7 @@ import ai.core.tool.tools.WriteTodosTool;
 public class TodoReminderStrategy implements DoomLoopStrategy {
     static final String WRITE_TODOS_TOOL_NAME = WriteTodosTool.WT_TOOL_NAME;
     static final int DEFAULT_REMINDER_THRESHOLD = 3;
-    static final String REMINDER_MESSAGE = """
-            <system-reminder>
-            The task tools haven't been used recently.
-            If you're working on tasks that would benefit from tracking progress
-            consider using `%s` to update task status
-            (set to in_progress when starting, completed when done).
-            Also consider cleaning up the task list if it has become stale.
-            Only use these if relevant to the current work.
-            This is just a gentle reminder - ignore if not applicable.
-            </system-reminder>
-            """.formatted(WRITE_TODOS_TOOL_NAME);
+    static final String REMINDER_MESSAGE = "<system-reminder>%nThe task tools haven't been used recently.%nIf you're working on tasks that would benefit from tracking progress%nconsider using `%s` to update task status%n(set to in_progress when starting, completed when done).%nAlso consider cleaning up the task list if it has become stale.%nOnly use these if relevant to the current work.%nThis is just a gentle reminder - ignore if not applicable.%n</system-reminder>%n".formatted(WRITE_TODOS_TOOL_NAME);
 
     private final int reminderThreshold;
 

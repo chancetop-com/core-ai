@@ -7,6 +7,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.ToolCallResult;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -72,7 +73,7 @@ public final class MemoryRecallTool extends ToolCall {
                 .withStats("query", query)
                 .withStats("memories_found", memories.size());
 
-        } catch (Exception e) {
+        } catch (JsonProcessingException | RuntimeException e) {
             return ToolCallResult.failed("Error retrieving memories: " + e.getMessage(), e)
                 .withDuration(System.currentTimeMillis() - startTime);
         }
@@ -108,7 +109,7 @@ public final class MemoryRecallTool extends ToolCall {
                     + "Use keywords related to what you want to know about the user.")
                 .type(ToolCallParameterType.STRING)
                 .classType(String.class)
-                .required(true)
+                .required(Boolean.TRUE)
                 .build()
         );
     }

@@ -96,13 +96,7 @@ public final class ReflectionEvaluator {
     }
 
     private static String buildEvaluationUserMessage(String solution) {
-        return String.format("""
-                **Solution to Evaluate:**
-
-                %s
-
-                Please provide your evaluation in the JSON format specified in the system prompt.
-                """, solution);
+        return String.format("**Solution to Evaluate:**%n%n%s%n%nPlease provide your evaluation in the JSON format specified in the system prompt.", solution);
     }
 
     private ReflectionEvaluator() {

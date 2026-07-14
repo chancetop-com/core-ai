@@ -12,6 +12,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.Set;
@@ -134,7 +135,7 @@ public class ReadFileTool extends ToolCall {
         }
 
         try {
-            var bytes = Files.readAllBytes(file.toPath());
+            var bytes = Files.readAllBytes(Path.of(filePath));
             var originalSize = bytes.length;
             var mimeType = getImageMimeType(filePath);
 
@@ -181,7 +182,7 @@ public class ReadFileTool extends ToolCall {
         var startLine = (offset != null && offset > 0) ? offset : 1;
         var maxLines = (limit != null && limit > 0) ? limit : DEFAULT_LINE_LIMIT;
 
-        try (BufferedReader reader = Files.newBufferedReader(file.toPath())) {
+        try (BufferedReader reader = Files.newBufferedReader(Path.of(filePath))) {
             var result = new StringBuilder();
             var currentLine = 1;
             var linesRead = 0;

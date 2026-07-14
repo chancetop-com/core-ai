@@ -323,25 +323,8 @@ public class ShellCommandTool extends ToolCall {
 
     private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description) {
         var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
-        var reminder = """
-                  Async bash launched successfully.
-                  The bash packaged as a task is working in the background. You will be notified automatically when it completes.
-                  task id: %s (internal ID - do not mention to user)
-                  Do not duplicate this task's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end
-                  your response.
-                  output_file: %s
-                  If asked, you can check progress before completion by using %s or %s tail on the output file.
-                """.formatted(taskId, outputRef, ReadFileTool.TOOL_NAME, TOOL_NAME);
-        return """
-                <task-notification>
-                <task-id>%s</task-id>
-                <task-type>%s</task-type>
-                <task-description>%s</task-description>
-                <status>%s</status>
-                %s
-                <system-reminder>%s</system-reminder>
-                </task-notification>
-                """.formatted(taskId, "bash", description, "async_launched", outputRefXml, reminder);
+        var reminder = "  Async bash launched successfully.%n  The bash packaged as a task is working in the background. You will be notified automatically when it completes.%n  task id: %s (internal ID - do not mention to user)%n  Do not duplicate this task's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end%n  your response.%n  output_file: %s%n  If asked, you can check progress before completion by using %s or %s tail on the output file.%n".formatted(taskId, outputRef, ReadFileTool.TOOL_NAME, TOOL_NAME);
+        return "<task-notification>%n<task-id>%s</task-id>%n<task-type>%s</task-type>%n<task-description>%s</task-description>%n<status>%s</status>%n%s%n<system-reminder>%s</system-reminder>%n</task-notification>%n".formatted(taskId, "bash", description, "async_launched", outputRefXml, reminder);
     }
 
     @Override

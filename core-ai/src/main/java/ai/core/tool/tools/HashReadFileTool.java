@@ -12,6 +12,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 
 /**
@@ -75,13 +76,14 @@ public class HashReadFileTool extends ToolCall {
         int startLine = (offset != null && offset > 0) ? offset : 1;
         int maxLines = (limit != null && limit > 0) ? limit : DEFAULT_LINE_LIMIT;
 
-        try (BufferedReader reader = Files.newBufferedReader(file.toPath())) {
+        try (BufferedReader reader = Files.newBufferedReader(Path.of(filePath))) {
             var result = new StringBuilder();
             int currentLine = 1;
             int linesRead = 0;
 
             while (currentLine < startLine) {
-                if (reader.readLine() == null) break;
+                String skipped = reader.readLine();
+                if (skipped == null) break;
                 currentLine++;
             }
 

@@ -3,12 +3,17 @@ package ai.core.vectorstore;
 import java.util.EnumMap;
 import java.util.Map;
 
+
 /**
  * @author stephen
  */
 public class VectorStores {
     Map<VectorStoreType, VectorStore> vectorStores = new EnumMap<>(VectorStoreType.class);
     VectorStoreType defaultVectorStoreType;
+
+    public void setDefaultVectorStoreType(VectorStoreType type) {
+        this.defaultVectorStoreType = type;
+    }
 
     public VectorStore getDefaultVectorStore() {
         return vectorStores.get(defaultVectorStoreType);

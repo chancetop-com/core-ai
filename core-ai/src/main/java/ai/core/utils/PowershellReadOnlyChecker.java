@@ -101,7 +101,9 @@ public final class PowershellReadOnlyChecker {
 
     static boolean isSingleReadOnly(List<String> words) {
         int i = 0;
-        while (i < words.size() && WRAPPERS.contains(words.get(i).toLowerCase(Locale.ENGLISH))) i++;
+        while (i < words.size() && WRAPPERS.contains(words.get(i).toLowerCase(Locale.ENGLISH))) {
+            i++;
+        }
         if (i >= words.size()) return false;
 
         String raw = words.get(i);
@@ -127,13 +129,13 @@ public final class PowershellReadOnlyChecker {
                 return false;
         }
         return args.stream().filter(a -> !a.startsWith("-")).findFirst()
-                .map(GIT_SAFE::contains).orElse(false);
+                .map(GIT_SAFE::contains).orElse(Boolean.FALSE);
     }
 
     static boolean isDockerReadOnly(List<String> args) {
         Set<String> safe = Set.of("logs", "inspect", "ps", "images", "version", "info");
         return args.stream().filter(a -> !a.startsWith("-")).findFirst()
-                .map(safe::contains).orElse(false);
+                .map(safe::contains).orElse(Boolean.FALSE);
     }
 
     static String basename(String path) {

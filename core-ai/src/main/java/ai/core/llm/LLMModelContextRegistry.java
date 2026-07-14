@@ -100,38 +100,21 @@ public final class LLMModelContextRegistry {
         return null;
     }
 
-    public ModelInfo getModelInfo(String modelName) {
-        return modelInfoMap.get(modelName);
-    }
+    private static final String[] MODEL_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/"};
 
     public int getMaxInputTokens(String modelName) {
-        var info = findModelInfo(modelName);
+        var info = getModelInfo(modelName);
         return info != null ? info.maxInputTokens() : DEFAULT_MAX_INPUT_TOKENS;
     }
 
-    public int getMaxOutputTokens(String modelName) {
-        var info = findModelInfo(modelName);
-        return info != null ? info.maxOutputTokens() : DEFAULT_MAX_OUTPUT_TOKENS;
-    }
-
-    public int getContextWindow(String modelName) {
-        return getMaxInputTokens(modelName);
-    }
-
-    public ModelInfo findModelInfo(String modelName) {
-        if (modelName == null) {
-            return null;
-        }
-
-        // Try exact match first
+    public ModelInfo getModelInfo(String modelName) {
         var info = modelInfoMap.get(modelName);
         if (info != null) {
             return info;
         }
 
         // Try with common prefixes for Azure/other providers
-        String[] prefixes = {"azure/", "openai/", "anthropic/", "bedrock/"};
-        for (var prefix : prefixes) {
+        for (var prefix : MODEL_PREFIXES) {
             info = modelInfoMap.get(prefix + modelName);
             if (info != null) {
                 return info;
@@ -160,11 +143,11 @@ public final class LLMModelContextRegistry {
     }
 
     public boolean hasModel(String modelName) {
-        return findModelInfo(modelName) != null;
+        return getModelInfo(modelName) != null;
     }
 
     public Double estimateCostUsd(String modelName, long inputTokens, long outputTokens, long cachedInputTokens) {
-        var info = findModelInfo(modelName);
+        var info = getModelInfo(modelName);
         if (info == null) return null;
 
         var safeInputTokens = Math.max(inputTokens, 0);

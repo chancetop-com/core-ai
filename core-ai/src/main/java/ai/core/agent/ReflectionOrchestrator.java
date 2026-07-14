@@ -57,7 +57,7 @@ final class ReflectionOrchestrator {
                 agent.reflectionListener.onAfterRound(agent, currentRound, agent.getOutput(), evaluation);
             currentRound++;
         }
-        if (currentRound > agent.reflectionConfig.maxRound() && agent.reflectionListener != null) {
+        if (agent.reflectionListener != null && currentRound > agent.reflectionConfig.maxRound()) {
             int finalScore = history.getRounds().isEmpty() ? 0 : history.getRounds().getLast().getEvaluation().getScore();
             agent.reflectionListener.onMaxRoundsReached(agent, finalScore);
         }

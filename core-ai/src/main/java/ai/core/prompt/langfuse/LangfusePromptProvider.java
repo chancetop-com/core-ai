@@ -63,9 +63,12 @@ public class LangfusePromptProvider {
 
         // Check cache first
         String cacheKey = buildCacheKey(name, version, label);
-        if (cacheEnabled && cache.containsKey(cacheKey)) {
-            LOGGER.debug("Returning cached prompt: {}", cacheKey);
-            return cache.get(cacheKey);
+        if (cacheEnabled) {
+            LangfusePrompt cached = cache.get(cacheKey);
+            if (cached != null) {
+                LOGGER.debug("Returning cached prompt: {}", cacheKey);
+                return cached;
+            }
         }
 
         // Build query parameters

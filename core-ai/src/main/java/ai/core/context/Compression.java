@@ -59,7 +59,8 @@ public class Compression {
         this.toolResultRatio = DEFAULT_TOOL_RESULT_RATIO;
         this.llmProvider = llmProvider;
         this.summaryModel = summaryModel;
-        this.maxContextTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(agentModel);
+        var modelInfo = LLMModelContextRegistry.getInstance().getModelInfo(agentModel);
+        this.maxContextTokens = modelInfo != null ? modelInfo.contextWindow() : 0;
         this.maxToolResultTokens = calculateMaxToolResultTokens();
     }
     private int calculateMaxToolResultTokens() {
@@ -383,23 +384,18 @@ public class Compression {
         String headContent = truncateToTokens(content);
         String tailContent = extractTailTokens(content);
 
-        return String.format("""
-            [Tool result truncated - full content saved to file]
-            Tool: %s
-            File: %s
-            Total: %d tokens (exceeds %d token limit)
-
-            === HEAD (first %d tokens) ===
-            %s
-
-            === ... truncated ... ===
-
-            === TAIL (last %d tokens) ===
-            %s
-
-            [WARNING: This is a large file. Do NOT read the full file directly as it will be truncated again.Use file related tools to read specific parts of the file as needed.],
-            File path: %s
-            """,
+        return String.format("[Tool result truncated - full content saved to file]%n"
+            + "Tool: %s%n"
+            + "File: %s%n"
+            + "Total: %d tokens (exceeds %d token limit)%n%n"
+            + "=== HEAD (first %d tokens) ===%n"
+            + "%s%n%n"
+            + "=== ... truncated ... ===%n%n"
+            + "=== TAIL (last %d tokens) ===%n"
+            + "%s%n%n"
+            + "[WARNING: This is a large file. Do NOT read the full file directly as it will be truncated again."
+            + " Use file related tools to read specific parts of the file as needed.],%n"
+            + "File path: %s",
             toolName, filePath, tokenCount, maxToolResultTokens,
             HEAD_TOKENS, headContent,
             TAIL_TOKENS, tailContent,

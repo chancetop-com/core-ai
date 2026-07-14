@@ -65,6 +65,9 @@ public class CompletionRequest {
     public Object getExtraBody() {
         return extraBody;
     }
+    public void setExtraBody(Object extraBody) {
+        this.extraBody = extraBody;
+    }
     public Integer getTimeoutSeconds() {
         return timeoutSeconds;
     }

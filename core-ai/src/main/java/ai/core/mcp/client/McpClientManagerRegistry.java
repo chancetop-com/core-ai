@@ -1,5 +1,6 @@
 package ai.core.mcp.client;
 
+
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -34,6 +35,7 @@ public final class McpClientManagerRegistry {
 
     public static void clear() {
         manager = null;
+        CREATION_LISTENERS.clear();
     }
 
     private McpClientManagerRegistry() {

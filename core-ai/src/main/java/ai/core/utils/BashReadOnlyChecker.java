@@ -71,7 +71,10 @@ public final class BashReadOnlyChecker {
 
     static boolean isSingleReadOnly(List<String> words) {
         int i = 0;
-        while (i < words.size() && WRAPPERS.contains(words.get(i))) i++;
+        for (String word : words) {
+            if (!WRAPPERS.contains(word)) break;
+            i++;
+        }
         if (i >= words.size()) return false;
 
         String cmd = basename(words.get(i));
@@ -96,13 +99,13 @@ public final class BashReadOnlyChecker {
                 return false;
         }
         return args.stream().filter(a -> !a.startsWith("-")).findFirst()
-                .map(GIT_SAFE::contains).orElse(false);
+                .map(GIT_SAFE::contains).orElse(Boolean.FALSE);
     }
 
     static boolean isDockerReadOnly(List<String> args) {
         Set<String> safe = Set.of("logs", "inspect", "ps", "images", "version", "info");
         return args.stream().filter(a -> !a.startsWith("-")).findFirst()
-                .map(safe::contains).orElse(false);
+                .map(safe::contains).orElse(Boolean.FALSE);
     }
 
     static String basename(String path) {
@@ -245,8 +248,8 @@ public final class BashReadOnlyChecker {
         }
 
         static boolean isVarStart(char c) {
-            return Character.isLetterOrDigit(c) || c == '_' || c == '@' || c == '*'
-                    || c == '#' || c == '?' || c == '!' || c == '-' || c == '$';
+            return c == '_' || c == '@' || c == '*' || c == '#' || c == '?' || c == '!' || c == '-' || c == '$'
+                    || Character.isLetterOrDigit(c);
         }
 
         sealed interface Tok permits Word, Op { }

@@ -15,11 +15,11 @@ public class SandboxConfig {
 
     public static SandboxConfig enabled() {
         var config = new SandboxConfig();
-        config.enabled = true;
+        config.enabled = Boolean.TRUE;
         return config;
     }
 
-    public Boolean enabled = false;
+    public Boolean enabled = Boolean.FALSE;
 
     public String image = SandboxConstants.DEFAULT_IMAGE;
 
@@ -29,7 +29,7 @@ public class SandboxConfig {
 
     public Integer timeoutSeconds = SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
 
-    public Boolean networkEnabled = false;
+    public Boolean networkEnabled = Boolean.FALSE;
 
     public String gitRepoUrl;
 

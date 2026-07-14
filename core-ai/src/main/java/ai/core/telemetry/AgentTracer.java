@@ -159,7 +159,7 @@ public class AgentTracer extends Tracer {
             .setAttribute(TOOL_NAME, toolName);
 
         if (isSubAgent) {
-            spanBuilder.setAttribute(TOOL_IS_SUB_AGENT, true);
+            spanBuilder.setAttribute(TOOL_IS_SUB_AGENT, Boolean.TRUE);
         }
 
         if (parentSpanContext != null && parentSpanContext.isValid()) {

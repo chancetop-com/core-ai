@@ -32,7 +32,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
     LongQueryHandler longQueryHandler;
     Node<?> parent;
     Integer maxRound;
-    Boolean streaming = false;
+    Boolean streaming = Boolean.FALSE;
     StreamingCallback streamingCallback;
     String id;
     Tracer tracer;
@@ -169,7 +169,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         if (this.nodeType == null) {
             throw new IllegalArgumentException("nodeType is required");
         }
-        if (streaming && this.streamingCallback == null) {
+        if (this.streamingCallback == null && Boolean.TRUE.equals(streaming)) {
             throw new IllegalArgumentException("streamingCallback is required when streaming is enabled");
         }
     }

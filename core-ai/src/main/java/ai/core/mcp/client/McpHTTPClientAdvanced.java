@@ -55,6 +55,7 @@ public final class McpHTTPClientAdvanced implements HTTPClient {
         try {
             // Access the private 'client' field from HTTPClientImpl
             Class<?> implClass = client.getClass();
+            @SuppressWarnings({"java:S3011", "PMD.AvoidAccessibilityAlteration"})
             Field clientField = implClass.getDeclaredField("client");
             clientField.setAccessible(true);
             return (OkHttpClient) clientField.get(client);

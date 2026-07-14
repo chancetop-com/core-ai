@@ -32,7 +32,7 @@ final class AgentAssembler {
     static void assemble(AgentBuilder builder, Agent agent) {
         agent.systemPrompt = builder.systemPrompt;
         agent.promptTemplate = builder.promptTemplate == null ? "" : builder.promptTemplate;
-        agent.maxTurnNumber = builder.maxTurnNumber == null ? 100 : builder.maxTurnNumber;
+        agent.maxTurnNumber = builder.maxTurnNumber != null ? builder.maxTurnNumber : 100;
         agent.temperature = builder.temperature;
         agent.model = builder.model;
         agent.multiModalModel = builder.multiModalModel;
@@ -50,7 +50,7 @@ final class AgentAssembler {
         agent.agentLifecycles = new ArrayList<>(builder.agentLifecycles);
         agent.compression = builder.compression;
         agent.reasoningEffort = builder.reasoningEffort;
-        if (builder.enableReflection && builder.reflectionConfig == null) {
+        if (builder.reflectionConfig == null && Boolean.TRUE.equals(builder.enableReflection)) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
         }
         if (agent.reflectionConfig != null) {
@@ -135,7 +135,7 @@ final class AgentAssembler {
         var discoverableTools = builder.toolCalls.stream().filter(ToolCall::isDiscoverable).toList();
         if (!discoverableTools.isEmpty()) {
             for (var tool : discoverableTools) {
-                tool.setLlmVisible(false);
+                tool.setLlmVisible(Boolean.FALSE);
                 tool.setExposure(ToolExposure.DEFERRED);
             }
             builder.toolCalls.add(ToolActivationTool.builder().allToolCalls(builder.toolCalls).build());

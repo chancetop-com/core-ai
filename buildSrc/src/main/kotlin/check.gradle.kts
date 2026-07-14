@@ -61,6 +61,7 @@ spotbugs {
     reportLevel = Confidence.LOW
     extraArgs = listOf("-longBugCodes")
     includeFilter = rootProject.file("buildSrc/src/main/check/spotbugs.xml")
+    excludeFilter = rootProject.file("buildSrc/src/main/check/spotbugs-exclude.xml")
 }
 
 jacoco {

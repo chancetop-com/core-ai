@@ -31,7 +31,7 @@ public class MilvusFlowNode extends RagFlowNode<MilvusFlowNode> {
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
         setVectorStore(getVectorStores().getVectorStore(VectorStoreType.MILVUS));
-        setRagConfig(RagConfig.builder().useRag(true).topK(getTopK()).threshold(getThreshold()).vectorStore(getVectorStore()).build());
+        setRagConfig(RagConfig.builder().useRag(Boolean.TRUE).topK(getTopK()).threshold(getThreshold()).vectorStore(getVectorStore()).build());
     }
 
     @Override

@@ -3,12 +3,17 @@ package ai.core.persistence;
 import java.util.EnumMap;
 import java.util.Map;
 
+
 /**
  * @author stephen
  */
 public class PersistenceProviders {
     Map<PersistenceProviderType, PersistenceProvider> persistenceProviders = new EnumMap<>(PersistenceProviderType.class);
     PersistenceProviderType defaultPersistenceProviderType;
+
+    public void setDefaultPersistenceProviderType(PersistenceProviderType type) {
+        this.defaultPersistenceProviderType = type;
+    }
 
     public PersistenceProvider getDefaultPersistenceProvider() {
         return persistenceProviders.get(defaultPersistenceProviderType);

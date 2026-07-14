@@ -99,8 +99,9 @@ public class PythonScriptTool extends ToolCall {
     }
 
     private static String runPythonProcess(Path executeScript, long timeout) throws IOException {
-        var dir = executeScript.getParent() != null
-                ? executeScript.getParent().toAbsolutePath().toString()
+        var parent = executeScript.getParent();
+        var dir = parent != null
+                ? parent.toAbsolutePath().toString()
                 : core.framework.util.Files.tempDir().toAbsolutePath().toString();
 
         var command = new ArrayList<>(Arrays.asList("python", executeScript.toAbsolutePath().toString()));
@@ -227,7 +228,7 @@ public class PythonScriptTool extends ToolCall {
 
         return ToolCallResult.pending(taskId, message)
                 .withDuration(System.currentTimeMillis() - startTime)
-                .withStats("async", true);
+                .withStats("async", Boolean.TRUE);
     }
 
     @Override

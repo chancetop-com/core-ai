@@ -173,7 +173,7 @@ public class A2ARemoteAgentToolCall extends ToolCall {
     private SendMessageConfiguration configuration() {
         var configuration = new SendMessageConfiguration();
         configuration.acceptedOutputModes = List.of("text/plain", "application/json");
-        configuration.returnImmediately = false;
+        configuration.returnImmediately = Boolean.FALSE;
         return configuration;
     }
 
@@ -302,7 +302,7 @@ public class A2ARemoteAgentToolCall extends ToolCall {
             parameters(List.of(ToolCallParameter.builder()
                     .name(QUERY_PARAM)
                     .description("The query or instruction to send to the remote agent.")
-                    .required(true)
+                    .required(Boolean.TRUE)
                     .build()));
             var toolCall = new A2ARemoteAgentToolCall();
             super.build(toolCall);

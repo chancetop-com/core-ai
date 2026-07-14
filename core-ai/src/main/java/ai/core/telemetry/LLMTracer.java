@@ -83,7 +83,7 @@ public class LLMTracer extends Tracer {
         try (var scope = span.makeCurrent()) {
             response = operation.get();
             if (response == null) {
-                span.setAttribute(CORE_AI_RESPONSE_NULL, true);
+                span.setAttribute(CORE_AI_RESPONSE_NULL, Boolean.TRUE);
                 if (isCancelled(cancellationSupplier)) {
                     markCancelled(span);
                     return null;
@@ -158,7 +158,7 @@ public class LLMTracer extends Tracer {
      */
     private void recordResponseAttributes(Span span, CompletionRequest request, CompletionResponse response) {
         if (response == null) {
-            span.setAttribute(CORE_AI_RESPONSE_NULL, true);
+            span.setAttribute(CORE_AI_RESPONSE_NULL, Boolean.TRUE);
             return;
         }
         if (response.usage != null) {
@@ -248,7 +248,7 @@ public class LLMTracer extends Tracer {
             }
 
             return JsonUtil.toJson(input);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             // Fallback to messages only
             return serializeMessagesToJson(request.messages);
         }
@@ -270,7 +270,7 @@ public class LLMTracer extends Tracer {
             }
 
             return JsonUtil.toJson(params);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return "{}";
         }
     }

@@ -25,7 +25,7 @@ public abstract class FlowNode<T extends FlowNode<T>> implements Persistence<T> 
         this.typeName = typeName;
         this.typeDescription = typeDescription;
         this.type = type;
-        this.initialized = false;
+        this.initialized = Boolean.FALSE;
         ClassUtil.checkNoArgConstructor(cls);
     }
 
@@ -36,7 +36,7 @@ public abstract class FlowNode<T extends FlowNode<T>> implements Persistence<T> 
         this.name = name;
         this.type = type;
         this.position = new FlowNodePosition(0, 0);
-        this.initialized = false;
+        this.initialized = Boolean.FALSE;
         ClassUtil.checkNoArgConstructor(cls);
     }
 
@@ -49,7 +49,7 @@ public abstract class FlowNode<T extends FlowNode<T>> implements Persistence<T> 
     public void initialize(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
         if (isInitialized()) return;
         init(settings, edges);
-        setInitialized(true);
+        setInitialized(Boolean.TRUE);
     }
 
     public FlowNode<?> selectNextNodeByEdgeValue(FlowNodeResult rst, Map<FlowEdge<?>, FlowNode<?>> candidates) {

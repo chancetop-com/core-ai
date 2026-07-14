@@ -137,8 +137,8 @@ public class ToolOrchestration {
                 .toList();
 
         var results = new ArrayList<ToolCallResult>();
-        for (int i = 0; i < batch.size(); i++) {
-            results.add(awaitResult(futures.get(i), errored));
+        for (var future : futures) {
+            results.add(awaitResult(future, errored));
         }
         return results;
     }

@@ -77,7 +77,7 @@ public final class HashLine {
         } else {
             String s = raw.toString();
             if (s.endsWith("\n")) s = s.substring(0, s.length() - 1);
-            lines = s.replace("\r\n", "\n").replace("\r", "\n").split("\n", -1);
+            lines = s.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
         }
 
         // Strip if every non-empty line has a hashline prefix

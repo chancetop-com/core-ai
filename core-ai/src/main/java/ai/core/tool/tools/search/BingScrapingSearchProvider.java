@@ -5,6 +5,7 @@ import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -53,7 +54,7 @@ public class BingScrapingSearchProvider implements SearchProvider {
             }
 
             return parseResults(response.body(), maxResults);
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             LOGGER.error("Bing scraping search failed: {}", e.getMessage(), e);
             throw new RuntimeException("Bing scraping search failed: " + e.getMessage(), e);
         }

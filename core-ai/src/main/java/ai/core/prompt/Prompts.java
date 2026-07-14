@@ -59,73 +59,12 @@ public class Prompts {
             Use this tool to look up existing records when context is needed before acting or when the user asks about previously stored data.
             """;
 
-    public static final String TOOL_DIRECT_RETURN_REMINDER_PROMPT = """
-              %s successfully executed.
-              <system-reminder>
-              This tool is triggered manually by the user or executed automatically by the system.
-              please return the tool results directly to the user.
-              The tool result is :
-
-              %s
-
-              </system-reminder>
-            """;
+    public static final String TOOL_DIRECT_RETURN_REMINDER_PROMPT = "  %s successfully executed.%n<system-reminder>%n  This tool is triggered manually by the user or executed automatically by the system.%n  please return the tool results directly to the user.%n  The tool result is :%n%n  %s%n%n  </system-reminder>%n";
     public static final String EMPTY_RESPONSE_REMINDER = "Your previous response was empty. Please provide a complete response.";
     public static final String COMPRESSION_SUMMARY_PREFIX = "[Previous Conversation Summary]\n";
     public static final String COMPRESSION_SUMMARY_SUFFIX = "\n[End Summary]";
-    public static final String COMPRESSION_PROMPT = """
-            Summarize the following conversation into a concise summary.
-            Requirements:
-            1. Preserve key facts, decisions, and context
-            2. Keep important user preferences and goals mentioned
-            3. Remove redundant back-and-forth and filler content
-            4. Use bullet points for clarity
-            5. Keep within %d words
-
-            Conversation to summarize:
-            %s
-
-            Output summary directly:
-            """;
-    public static final String MEMORY_EXTRACTION_PROMPT = """
-            You are analyzing a conversation between a user and an AI coding assistant.
-            Extract knowledge that will make the assistant more effective in future sessions on this project.
-
-            EXTRACT these types (use the exact type string):
-            - "feedback": The user corrected the assistant, said "no"/"don't"/"stop doing X", or explicitly validated a non-obvious approach. \
-            Format content as: "<The rule>. **Why:** <reason given>. **How to apply:** <when this kicks in>."
-            - "user": The user's technical expertise, role, workflow preferences, or tool choices that affect how to collaborate.
-            - "project": Non-obvious project facts, architectural decisions, constraints, or ongoing work context not derivable from code.
-            - "reference": Locations of key files, external systems, docs, dashboards, or named resources the user pointed to.
-
-            DO NOT extract:
-            - Step-by-step execution history ("user ran X then Y")
-            - Information already obvious from reading the code
-            - One-off task details with no future relevance
-            - Small talk or greetings
-
-            For each memory:
-            - "content": concise standalone statement (feedback type: follow the rule/Why/How-to-apply structure)
-            - "type": one of "user", "feedback", "project", "reference"
-            - "topic": broad 2–4 word kebab-case label (e.g. "memory-management", "self-improvement", "coding-conventions"). \
-            Semantically related knowledge MUST share the same topic — it will be merged into one file. \
-            Avoid fine-grained per-fact topics; prefer broader themes that group related rules together.
-            - "importance": 0.0–1.0 (skip anything below 0.6)
-
-            TOPIC GROUPING RULES (critical):
-            - All feedback about memory indexing, aggregation, or description writing → topic: "memory-management"
-            - All feedback about code style, naming, or comments → topic: "coding-conventions"
-            - All project facts about the self-improvement system, learnings workflow, or session extraction → topic: "self-improvement"
-            - When in doubt: fewer, broader topics are better than many narrow ones.
-
-            Return [] if nothing is worth preserving.
-
-            Conversation:
-            %s
-
-            Response format:
-            [{"content": "...", "type": "feedback", "topic": "memory-management", "importance": 0.8}, ...]
-            """;
+    public static final String COMPRESSION_PROMPT = "Summarize the following conversation into a concise summary.%nRequirements:%n1. Preserve key facts, decisions, and context%n2. Keep important user preferences and goals mentioned%n3. Remove redundant back-and-forth and filler content%n4. Use bullet points for clarity%n5. Keep within %d words%n%nConversation to summarize:%n%s%n%nOutput summary directly:%n";
+    public static final String MEMORY_EXTRACTION_PROMPT = "You are analyzing a conversation between a user and an AI coding assistant.%nExtract knowledge that will make the assistant more effective in future sessions on this project.%n%nEXTRACT these types (use the exact type string):%n- \"feedback\": The user corrected the assistant, said \"no\"/\"don't\"/\"stop doing X\", or explicitly validated a non-obvious approach. Format content as: \"<The rule>. **Why:** <reason given>. **How to apply:** <when this kicks in>.\"%n- \"user\": The user's technical expertise, role, workflow preferences, or tool choices that affect how to collaborate.%n- \"project\": Non-obvious project facts, architectural decisions, constraints, or ongoing work context not derivable from code.%n- \"reference\": Locations of key files, external systems, docs, dashboards, or named resources the user pointed to.%n%nDO NOT extract:%n- Step-by-step execution history (\"user ran X then Y\")%n- Information already obvious from reading the code%n- One-off task details with no future relevance%n- Small talk or greetings%n%nFor each memory:%n- \"content\": concise standalone statement (feedback type: follow the rule/Why/How-to-apply structure)%n- \"type\": one of \"user\", \"feedback\", \"project\", \"reference\"%n- \"topic\": broad 2-4 word kebab-case label (e.g. \"memory-management\", \"self-improvement\", \"coding-conventions\"). Semantically related knowledge MUST share the same topic — it will be merged into one file. Avoid fine-grained per-fact topics; prefer broader themes that group related rules together.%n- \"importance\": 0.0-1.0 (skip anything below 0.6)%n%nTOPIC GROUPING RULES (critical):%n- All feedback about memory indexing, aggregation, or description writing → topic: \"memory-management\"%n- All feedback about code style, naming, or comments → topic: \"coding-conventions\"%n- All project facts about the self-improvement system, learnings workflow, or session extraction → topic: \"self-improvement\"%n- When in doubt: fewer, broader topics are better than many narrow ones.%n%nReturn [] if nothing is worth preserving.%n%nConversation:%n%s%n%nResponse format:%n[{\"content\": \"...\", \"type\": \"feedback\", \"topic\": \"memory-management\", \"importance\": 0.8}, ...]%n";
 
     public static final String MEMORY_WRITER_PROMPT = """
             Write the following extracted memories into the project memory files.

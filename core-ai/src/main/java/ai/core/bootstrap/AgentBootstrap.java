@@ -298,8 +298,8 @@ public class AgentBootstrap {
         props.property(prefix + ".temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
         props.property(prefix + ".embeddings.model").ifPresent(config::setEmbeddingModel);
         props.property(prefix + ".request.extra_body").ifPresent(config::setRequestExtraBody);
-        props.property(prefix + ".timeout.seconds").ifPresent(v -> config.setTimeout(Long.parseLong(v)));
-        props.property(prefix + ".connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Long.parseLong(v)));
+        props.property(prefix + ".timeout.seconds").ifPresent(v -> config.setTimeout(Long.valueOf(v)));
+        props.property(prefix + ".connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Long.valueOf(v)));
         props.property(prefix + ".stream.buffer.size").ifPresent(v -> config.setStreamBufferSize(Integer.parseInt(v)));
         applyModelExtraBodies(config, prefix);
     }

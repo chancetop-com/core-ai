@@ -54,8 +54,8 @@ public class ApiDefinitionTypeSchemaBuilder {
                 params.add(toParamMap(field));
                 continue;
             }
-            if (typeMap.containsKey(field.type)) {
-                var subType = typeMap.get(field.type);
+            var subType = typeMap.get(field.type);
+            if (subType != null) {
                 if ("enum".equalsIgnoreCase(subType.type)) {
                     params.add(toParamEnum(field, subType));
                 } else {
@@ -83,8 +83,8 @@ public class ApiDefinitionTypeSchemaBuilder {
         param.setRequired(field.constraints.notNull);
         param.setClassType(List.class);
         var itemType = field.typeParams != null && !field.typeParams.isEmpty() ? field.typeParams.getFirst() : "String";
-        if (typeMap.containsKey(itemType)) {
-            var subType = typeMap.get(itemType);
+        var subType = typeMap.get(itemType);
+        if (subType != null) {
             if ("enum".equalsIgnoreCase(subType.type)) {
                 param.setItemType(String.class);
                 param.setItemEnums(toEnumConstants(subType));

@@ -90,8 +90,7 @@ public class ToolActivationTool extends ToolCall {
     private ToolCallResult executeSearch(String query) {
         var keywords = query.toLowerCase(Locale.ROOT).split("\\s+");
         var matches = allToolCalls.stream()
-                .filter(t -> t.isDiscoverable() && !t.isLlmVisible())
-                .filter(t -> matchesAny(t, keywords))
+                .filter(t -> t.isDiscoverable() && !t.isLlmVisible() && matchesAny(t, keywords))
                 .limit(MAX_SEARCH_RESULTS)
                 .toList();
 
@@ -127,7 +126,7 @@ public class ToolActivationTool extends ToolCall {
             boolean found = false;
             for (var tool : allToolCalls) {
                 if (tool.isDiscoverable() && tool.getName().equalsIgnoreCase(requestedName)) {
-                    tool.setLlmVisible(true);
+                    tool.setLlmVisible(Boolean.TRUE);
                     tool.setExposure(ToolExposure.DIRECT);
                     activated.add(tool.getName());
                     found = true;

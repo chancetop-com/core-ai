@@ -15,6 +15,7 @@ import ai.core.vectorstore.VectorStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -87,7 +88,7 @@ public class RagTool extends ToolCall {
                 .withStats("query", query)
                 .withStats("topK", topK);
 
-        } catch (Exception e) {
+        } catch (IOException | RuntimeException e) {
             return ToolCallResult.failed("Error executing RAG query: " + e.getMessage(), e)
                 .withDuration(System.currentTimeMillis() - startTime);
         }
@@ -135,7 +136,7 @@ public class RagTool extends ToolCall {
         String topContext = rerankingResponse.rerankedDocuments.getFirst();
 
         // Format the response
-        return String.format("Retrieved Context:\n%s", topContext);
+        return String.format("Retrieved Context:%n%s", topContext);
     }
 
     @Override
@@ -146,21 +147,21 @@ public class RagTool extends ToolCall {
                 .description("The search query to find relevant documents")
                 .type(ToolCallParameterType.STRING)
                 .classType(String.class)
-                .required(true)
+                .required(Boolean.TRUE)
                 .build(),
             ToolCallParameter.builder()
                 .name("topK")
                 .description("Number of top similar documents to retrieve (default: 5)")
                 .type(ToolCallParameterType.INTEGER)
                 .classType(Integer.class)
-                .required(false)
+                .required(Boolean.FALSE)
                 .build(),
             ToolCallParameter.builder()
                 .name("threshold")
                 .description("Minimum similarity threshold for document retrieval (default: 0.0)")
                 .type(ToolCallParameterType.DOUBLE)
                 .classType(Double.class)
-                .required(false)
+                .required(Boolean.FALSE)
                 .build()
         );
     }
@@ -171,7 +172,7 @@ public class RagTool extends ToolCall {
         private RagConfig ragConfig;
         private Integer defaultTopK = 5;
         private Double defaultThreshold = 0d;
-        private Boolean enableQueryRewriting = true;  // Default enabled
+        private Boolean enableQueryRewriting = Boolean.TRUE;  // Default enabled
 
         @Override
         protected Builder self() {

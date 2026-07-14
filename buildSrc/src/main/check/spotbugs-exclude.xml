@@ -1,0 +1,135 @@
+<FindBugsFilter>
+    <!-- Unavoidable: registry pattern with static mutable state -->
+    <Match>
+        <Class name="ai.core.prompt.langfuse.LangfusePromptProviderRegistry" />
+        <Bug pattern="MS_EXPOSE_REP,EI_EXPOSE_STATIC_REP2" />
+    </Match>
+
+    <!-- Unavoidable: registry pattern with static mutable state -->
+    <Match>
+        <Class name="ai.core.mcp.client.McpClientManagerRegistry" />
+        <Bug pattern="MS_EXPOSE_REP,EI_EXPOSE_STATIC_REP2" />
+    </Match>
+
+    <!-- Intentional: reflection needed to access internal OkHttpClient/Process fields -->
+    <Match>
+        <Class name="ai.core.mcp.client.McpHTTPClientAdvanced" />
+        <Bug pattern="RFI_SET_ACCESSIBLE" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.mcp.client.McpClientService" />
+        <Bug pattern="RFI_SET_ACCESSIBLE" />
+    </Match>
+
+    <!-- NP_LOAD_OF_KNOWN_NULL_VALUE: transport/client are assigned in catch blocks, SpotBugs sees first branch -->
+    <Match>
+        <Class name="~ai\.core\.mcp\.client\.McpClientService" />
+        <Bug pattern="NP_LOAD_OF_KNOWN_NULL_VALUE" />
+    </Match>
+
+    <!-- BC_VACUOUS_INSTANCEOF: catch(RuntimeException) after catch blocks for subclasses that are also caught elsewhere -->
+    <Match>
+        <Class name="ai.core.llm.providers.LiteLLMResponsesBridge" />
+        <Bug pattern="BC_VACUOUS_INSTANCEOF" />
+    </Match>
+
+    <!-- ITU: toString() used for display/logging, not for algorithmic decisions -->
+    <Match>
+        <Class name="ai.core.tool.async.AsyncToolTaskExecutor" />
+        <Bug pattern="ITU_INAPPROPRIATE_TOSTRING_USE" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.tool.tools.TaskTool$Builder" />
+        <Bug pattern="ITU_INAPPROPRIATE_TOSTRING_USE" />
+    </Match>
+
+    <!-- BX_UNBOXING: handled at gateway level, unboxing-reboxing is intentional -->
+    <Match>
+        <Class name="ai.core.agent.ModelGateway" />
+        <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" />
+    </Match>
+
+    <!-- PSC_PRESIZE_COLLECTIONS: cannot presize without knowing final count -->
+    <Match>
+        <Class name="ai.core.tool.tools.FuzzyMatchReplacer" />
+        <Bug pattern="PSC_PRESIZE_COLLECTIONS" />
+    </Match>
+
+    <!-- LII_LIST_INDEXED_ITERATING: need index for neighbor comparison -->
+    <Match>
+        <Class name="ai.core.tool.DiffGenerator" />
+        <Bug pattern="LII_LIST_INDEXED_ITERATING" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.context.ToolCallPruning" />
+        <Bug pattern="LII_LIST_INDEXED_ITERATING" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.utils.PowershellReadOnlyChecker" />
+        <Bug pattern="LII_LIST_INDEXED_ITERATING" />
+    </Match>
+
+    <!-- MRC_METHOD_RETURNS_CONSTANT: wrapper methods by design (prompt composition) -->
+    <Match>
+        <Class name="ai.core.defaultagents.DeepResearchAgent" />
+        <Bug pattern="MRC_METHOD_RETURNS_CONSTANT" />
+    </Match>
+
+    <!-- CC_CYCLOMATIC_COMPLEXITY: major refactoring needed for WebFetchTool -->
+    <Match>
+        <Class name="ai.core.tool.tools.WebFetchTool" />
+        <Bug pattern="CC_CYCLOMATIC_COMPLEXITY" />
+    </Match>
+
+    <!-- HSC_HUGE_SHARED_STRING_CONSTANT: tool descriptions intentionally large -->
+    <Match>
+        <Class name="ai.core.tool.tools.TaskTool" />
+        <Bug pattern="HSC_HUGE_SHARED_STRING_CONSTANT" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.tool.tools.ReadFileTool" />
+        <Bug pattern="HSC_HUGE_SHARED_STRING_CONSTANT" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.prompt.Prompts" />
+        <Bug pattern="HSC_HUGE_SHARED_STRING_CONSTANT" />
+    </Match>
+
+    <!-- NM_CONFUSING: API naming conflict between Agent and ExecutionContext -->
+    <Match>
+        <Class name="ai.core.agent.Agent" />
+        <Bug pattern="NM_CONFUSING" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.agent.ExecutionContext" />
+        <Bug pattern="NM_CONFUSING" />
+    </Match>
+
+    <!-- SEO_SUBOPTIMAL_EXPRESSION_ORDER: semantic order is correct, reordering hurts readability -->
+    <Match>
+        <Class name="ai.core.reflection.ReflectionEvaluation" />
+        <Bug pattern="SEO_SUBOPTIMAL_EXPRESSION_ORDER" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.document.textsplitters.RecursiveCharacterTextSplitter" />
+        <Bug pattern="SEO_SUBOPTIMAL_EXPRESSION_ORDER" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.tool.DiffGenerator" />
+        <Bug pattern="SEO_SUBOPTIMAL_EXPRESSION_ORDER" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.tool.tools.EditFileTool" />
+        <Bug pattern="SEO_SUBOPTIMAL_EXPRESSION_ORDER" />
+    </Match>
+</FindBugsFilter>

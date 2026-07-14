@@ -227,8 +227,11 @@ final class LiteLLMResponsesStreamState {
     }
 
     private ToolState findToolState(Integer outputIndex, String itemId) {
-        if (itemId != null && toolsByItemId.containsKey(itemId)) return toolsByItemId.get(itemId);
-        if (outputIndex != null && toolsByOutputIndex.containsKey(outputIndex)) return toolsByOutputIndex.get(outputIndex);
+        if (itemId != null) {
+            ToolState result = toolsByItemId.get(itemId);
+            if (result != null) return result;
+        }
+        if (outputIndex != null) return toolsByOutputIndex.get(outputIndex);
         return null;
     }
 

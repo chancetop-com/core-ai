@@ -5,6 +5,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.ToolCallResult;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -32,7 +33,7 @@ public final class MemoryTool extends ToolCall {
                         .description("The action to perform: 'save' to remember a fact, 'forget' to remove entries matching a keyword")
                         .type(ToolCallParameterType.STRING)
                         .classType(String.class)
-                        .required(true)
+                        .required(Boolean.TRUE)
                         .enums(List.of("save", "forget"))
                         .build(),
                 ToolCallParameter.builder()
@@ -40,7 +41,7 @@ public final class MemoryTool extends ToolCall {
                         .description("For save: the fact or preference to remember. For forget: keyword to match and remove entries.")
                         .type(ToolCallParameterType.STRING)
                         .classType(String.class)
-                        .required(true)
+                        .required(Boolean.TRUE)
                         .build()
         );
     }
@@ -50,7 +51,7 @@ public final class MemoryTool extends ToolCall {
     private MemoryTool(MemoryProvider provider) {
         this.provider = provider;
         setName(TOOL_NAME);
-        setNeedAuth(true);
+        setNeedAuth(Boolean.TRUE);
         setDescription("""
                 Save or forget a fact in persistent memory that survives across sessions.
                 Use action=save when the user:
@@ -85,7 +86,7 @@ public final class MemoryTool extends ToolCall {
                 default -> ToolCallResult.failed("Error: 'action' must be 'save' or 'forget'")
                         .withDuration(System.currentTimeMillis() - startTime);
             };
-        } catch (Exception e) {
+        } catch (RuntimeException | JsonProcessingException e) {
             LOGGER.warn("Memory tool failed: {}", e.getMessage());
             return ToolCallResult.failed("Failed: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);

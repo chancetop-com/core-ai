@@ -245,7 +245,7 @@ public abstract class Node<T extends Node<T>> {
         var content = getRawOutput() == null ? getOutput() : getRawOutput();
         if (!getMessages().isEmpty()) {
             var lastToolCalls = getMessages().getLast().toolCalls;
-            if (Strings.isBlank(content) && lastToolCalls != null && !lastToolCalls.isEmpty()) content = lastToolCalls.getLast().function.name;
+            if (lastToolCalls != null && !lastToolCalls.isEmpty() && Strings.isBlank(content)) content = lastToolCalls.getLast().function.name;
         }
         return content;
     }

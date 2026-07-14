@@ -117,8 +117,8 @@ public class A2ARunManager implements A2AAgentProvider {
         interfaceConfig.protocolVersion = "1.0";
         card.supportedInterfaces = List.of(interfaceConfig);
         var caps = new AgentCard.AgentCapabilities();
-        caps.streaming = true;
-        caps.pushNotifications = false;
+        caps.streaming = Boolean.TRUE;
+        caps.pushNotifications = Boolean.FALSE;
         card.capabilities = caps;
         card.skills = List.of(
                 AgentCard.Skill.of("code-generation", "Generate and modify code"),

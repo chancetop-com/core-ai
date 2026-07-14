@@ -158,7 +158,7 @@ public class RemoteAgentSession implements AgentSession {
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
         }
         if (failure.get() != null) {
-            LOGGER.debug("remote A2A stream failed, sessionId={}", sessionId, failure.get());
+            LOGGER.debug("remote A2A stream failed, sessionId={}, error={}", sessionId, failure.get());
         }
     }
 

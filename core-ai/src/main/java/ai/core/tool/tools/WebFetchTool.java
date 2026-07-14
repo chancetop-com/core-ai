@@ -15,6 +15,7 @@ import org.jsoup.select.NodeVisitor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -179,7 +180,7 @@ public class WebFetchTool extends ToolCall {
             }
 
             return handleResponse(response, format, url);
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             throw new RuntimeException("HTTP request failed: " + e.getClass().getSimpleName() + " - " + e.getMessage(), e);
         }
     }
