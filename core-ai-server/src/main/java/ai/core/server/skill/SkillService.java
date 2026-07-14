@@ -102,16 +102,37 @@ public class SkillService {
             tempDir = Files.createTempDirectory("skill-repo-");
             repoManager.cloneRepo(repoUrl, branch, tempDir);
 
-            Path scanDir = skillPath != null && !skillPath.isBlank()
-                ? tempDir.resolve(skillPath)
-                : tempDir;
+            String effectiveSkillPath = skillPath;
+            if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
+                // Auto-detect plugin format when no explicit skill path is provided
+                var detector = new PluginFormatDetector();
+                List<String> detectedPaths = detector.detectSkillPaths(tempDir);
+                if (!detectedPaths.isEmpty()) {
+                    // Use the first detected path (concatenate if multiple)
+                    effectiveSkillPath = String.join(",", detectedPaths);
+                    LOGGER.info("auto-detected skill path(s): {} for repo {}", effectiveSkillPath, repoUrl);
+                }
+            }
 
+            List<SkillMetadata> skills;
             var loader = new SkillLoader(MAX_SKILL_FILE_SIZE);
-            var skills = loader.loadFromSource(scanDir.toString());
+            if (effectiveSkillPath != null && !effectiveSkillPath.isBlank() && !effectiveSkillPath.equals(skillPath)) {
+                // Auto-detected: scan each detected path separately
+                skills = new ArrayList<>();
+                for (String path : effectiveSkillPath.split(",")) {
+                    Path scanDir = tempDir.resolve(path.trim());
+                    skills.addAll(loader.loadFromSource(scanDir.toString()));
+                }
+            } else {
+                Path scanDir = effectiveSkillPath != null && !effectiveSkillPath.isBlank()
+                    ? tempDir.resolve(effectiveSkillPath)
+                    : tempDir;
+                skills = loader.loadFromSource(scanDir.toString());
+            }
 
             var results = new ArrayList<SkillDefinition>();
             for (var skill : skills) {
-                var entity = repoManager.registerOrUpdate(userId, namespace, skill, repoUrl, branch, skillPath);
+                var entity = repoManager.registerOrUpdate(userId, namespace, skill, repoUrl, branch, effectiveSkillPath);
                 results.add(entity);
             }
             LOGGER.info("registered {} skills from repo {}", results.size(), repoUrl);
@@ -191,12 +212,26 @@ public class SkillService {
             tempDir = Files.createTempDirectory("skill-repo-sync-");
             repoManager.cloneRepo(config.repoUrl, config.branch, tempDir);
 
-            Path scanDir = config.skillPath != null && !config.skillPath.isBlank()
-                ? tempDir.resolve(config.skillPath)
-                : tempDir;
+            String effectiveSkillPath = config.skillPath;
+            if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
+                var detector = new PluginFormatDetector();
+                List<String> detectedPaths = detector.detectSkillPaths(tempDir);
+                if (!detectedPaths.isEmpty()) {
+                    effectiveSkillPath = String.join(",", detectedPaths);
+                }
+            }
 
+            List<SkillMetadata> skills;
             var loader = new SkillLoader(MAX_SKILL_FILE_SIZE);
-            var skills = loader.loadFromSource(scanDir.toString());
+            if (effectiveSkillPath != null && !effectiveSkillPath.isBlank()) {
+                skills = new ArrayList<>();
+                for (String path : effectiveSkillPath.split(",")) {
+                    Path scanDir = tempDir.resolve(path.trim());
+                    skills.addAll(loader.loadFromSource(scanDir.toString()));
+                }
+            } else {
+                skills = loader.loadFromSource(tempDir.toString());
+            }
 
             for (var skill : skills) {
                 if (skill.getName().equals(entity.name)) {
