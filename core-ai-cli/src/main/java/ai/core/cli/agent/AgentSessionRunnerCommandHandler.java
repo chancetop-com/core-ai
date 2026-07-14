@@ -128,7 +128,6 @@ class AgentSessionRunnerCommandHandler {
         }
     }
 
-    @SuppressWarnings("checkstyle:NestedTryDepth")
     void handleCopy() {
         var messages = agent.getMessages();
         String lastAssistant = null;
@@ -153,9 +152,7 @@ class AgentSessionRunnerCommandHandler {
                 pb = new ProcessBuilder("sh", "-c", "if command -v wl-copy >/dev/null 2>&1; then wl-copy; elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard; else echo 'No clipboard tool found' >&2; exit 1; fi");
             }
             var process = pb.start();
-            try (var out = process.getOutputStream()) {
-                out.write(lastAssistant.getBytes(StandardCharsets.UTF_8));
-            }
+            writeToProcess(process, lastAssistant);
             int exitCode = process.waitFor();
             if (exitCode != 0) {
                 ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to copy: clipboard command exited with " + exitCode + AnsiTheme.RESET + "\n");
@@ -164,6 +161,12 @@ class AgentSessionRunnerCommandHandler {
             ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "\u2713" + AnsiTheme.RESET + " Copied to clipboard (" + lastAssistant.length() + " chars)\n\n");
         } catch (Exception e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to copy: " + e.getMessage() + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    private void writeToProcess(Process process, String content) throws IOException {
+        try (var out = process.getOutputStream()) {
+            out.write(content.getBytes(StandardCharsets.UTF_8));
         }
     }
 

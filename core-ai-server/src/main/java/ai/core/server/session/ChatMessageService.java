@@ -177,7 +177,6 @@ public class ChatMessageService {
         metaBySession.remove(sessionId);
     }
 
-    @SuppressWarnings("checkstyle:NestedTryDepth")
     public void addLoadedTools(String sessionId, List<ToolRef> toolRefs) {
         if (toolRefs == null || toolRefs.isEmpty()) return;
         try {
@@ -185,12 +184,7 @@ public class ChatMessageService {
             if (existing == null) {
                 var stub = newStub(sessionId);
                 stub.loadedTools = new java.util.ArrayList<>(toolRefs);
-                try {
-                    chatSessionCollection.insert(stub);
-                    return;
-                } catch (Exception insertErr) {
-                    LOGGER.warn("stub insert conflict for loaded tools, falling back to update, sessionId={}", sessionId);
-                }
+                if (tryInsertStub(stub, "loaded tools")) return;
             }
             chatSessionCollection.update(Filters.eq("_id", sessionId),
                 Updates.addEachToSet("loaded_tools", toolRefs));
@@ -199,7 +193,6 @@ public class ChatMessageService {
         }
     }
 
-    @SuppressWarnings("checkstyle:NestedTryDepth")
     public void addLoadedSkillIds(String sessionId, List<String> skillIds) {
         var cleanSkillIds = IdLists.clean(skillIds);
         if (cleanSkillIds.isEmpty()) return;
@@ -208,12 +201,7 @@ public class ChatMessageService {
             if (existing == null) {
                 var stub = newStub(sessionId);
                 stub.loadedSkillIds = new java.util.ArrayList<>(cleanSkillIds);
-                try {
-                    chatSessionCollection.insert(stub);
-                    return;
-                } catch (Exception insertErr) {
-                    LOGGER.warn("stub insert conflict for loaded skills, falling back to update, sessionId={}", sessionId);
-                }
+                if (tryInsertStub(stub, "loaded skills")) return;
             }
             chatSessionCollection.update(Filters.eq("_id", sessionId),
                 Updates.addEachToSet("loaded_skill_ids", cleanSkillIds));
@@ -222,7 +210,6 @@ public class ChatMessageService {
         }
     }
 
-    @SuppressWarnings("checkstyle:NestedTryDepth")
     public void addLoadedSubAgentIds(String sessionId, List<String> agentIds) {
         var cleanAgentIds = IdLists.clean(agentIds);
         if (cleanAgentIds.isEmpty()) return;
@@ -231,17 +218,22 @@ public class ChatMessageService {
             if (existing == null) {
                 var stub = newStub(sessionId);
                 stub.loadedSubAgentIds = new java.util.ArrayList<>(cleanAgentIds);
-                try {
-                    chatSessionCollection.insert(stub);
-                    return;
-                } catch (Exception insertErr) {
-                    LOGGER.warn("stub insert conflict for loaded sub-agents, falling back to update, sessionId={}", sessionId);
-                }
+                if (tryInsertStub(stub, "loaded sub-agents")) return;
             }
             chatSessionCollection.update(Filters.eq("_id", sessionId),
                 Updates.addEachToSet("loaded_sub_agent_ids", cleanAgentIds));
         } catch (Exception e) {
             LOGGER.warn("failed to persist loaded sub-agents, sessionId={}", sessionId, e);
+        }
+    }
+
+    private boolean tryInsertStub(ChatSession stub, String description) {
+        try {
+            chatSessionCollection.insert(stub);
+            return true;
+        } catch (Exception e) {
+            LOGGER.warn("stub insert conflict for {}, falling back to update, sessionId={}", description, stub.id);
+            return false;
         }
     }
 

@@ -60,7 +60,6 @@ spotbugs {
     toolVersion = "4.9.8"
     reportLevel = Confidence.LOW
     extraArgs = listOf("-longBugCodes")
-    excludeFilter = rootProject.file("buildSrc/src/main/check/spotbugs-suppressions.xml")
     includeFilter = rootProject.file("buildSrc/src/main/check/spotbugs.xml")
 }
 

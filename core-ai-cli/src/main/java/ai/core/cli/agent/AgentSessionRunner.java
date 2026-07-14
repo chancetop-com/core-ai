@@ -208,17 +208,7 @@ public class AgentSessionRunner {
                 while (true) {
                     String msg = queue.take();
                     if (POISON_PILL.equals(msg)) break;
-                    LOGGER.debug("sending message: {}", msg);
-                    listener.prepareTurn();
-                    try {
-                        session.sendMessage(msg);
-                    } finally {
-                        listener.getPanel().stopSpinnerIfActive();
-                    }
-                    LOGGER.debug("waiting for turn...");
-                    listener.waitForTurn();
-                    LOGGER.debug("turn finished");
-                    readyForInput.release();
+                    sendMessage(listener, session, readyForInput, msg);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -226,6 +216,20 @@ public class AgentSessionRunner {
         }, "sender-thread");
         senderThread.setDaemon(true);
         senderThread.start();
+    }
+
+    private void sendMessage(CliEventListener listener, InProcessAgentSession session, Semaphore readyForInput, String msg) {
+        LOGGER.debug("sending message: {}", msg);
+        listener.prepareTurn();
+        try {
+            session.sendMessage(msg);
+        } finally {
+            listener.getPanel().stopSpinnerIfActive();
+        }
+        LOGGER.debug("waiting for turn...");
+        listener.waitForTurn();
+        LOGGER.debug("turn finished");
+        readyForInput.release();
     }
 
     private void sendPrompt(CliEventListener listener, InProcessAgentSession session, String prompt) {
@@ -248,7 +252,7 @@ public class AgentSessionRunner {
         var dispatcher = new CommandDispatcher(
                 ui, modelPicker, switchSessionId,
                 new HandlerContext(commands, memoryCommand, memoryEnabled), sessionHandler,
-                defaultServerUrl, agent.getExecutionContext().getAgentProfileRegistry(), workspace);
+                new CommandDispatcher.Config(defaultServerUrl, agent.getExecutionContext().getAgentProfileRegistry(), workspace));
         boolean showFrame = true;
         while (true) {
             try {

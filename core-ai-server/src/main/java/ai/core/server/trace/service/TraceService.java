@@ -106,41 +106,14 @@ public class TraceService {
         return Math.clamp(requested, 1, SEARCH_TRACE_SCAN_LIMIT);
     }
 
-    @SuppressWarnings("checkstyle:MethodLength")
     private List<Bson> buildFilters(TraceListFilter filter) {
         List<Bson> bsonFilters = new ArrayList<>();
-        // q is the user-friendly search. Strategy:
-        //   - Full UUID / 32-char trace ID → exact match on id fields only, so the OR stays on indexes
-        //   - 6+ hex chars (e.g. an 8-char session prefix shown in the UI) → anchored prefix match on id fields
-        //   - Plain text → user_id index matches plus bounded in-memory name/agent matching
-        // Ids are stored as lowercase hex, so prefix regexes are lowercased without the "i" flag to stay on the index.
-        if (filter.q != null && !filter.q.isEmpty()) {
-            var q = filter.q.trim();
-            if (UUID_PATTERN.matcher(q).matches() || LONG_HEX_PATTERN.matcher(q).matches()) {
-                bsonFilters.add(Filters.or(TraceServiceHelper.fullIdClauses(q)));
-            } else if (HEX_PREFIX_PATTERN.matcher(q).matches()) {
-                var prefix = "^" + Pattern.quote(q.toLowerCase(Locale.ROOT));
-                bsonFilters.add(Filters.or(
-                    Filters.regex("session_id", prefix),
-                    Filters.regex("trace_id", prefix)));
-            }
-        }
+        addQueryFilter(bsonFilters, filter.q);
         // name is an advanced raw regex, evaluated in Java to avoid unindexed Mongo regex scans
         if (filter.type != null && !filter.type.isEmpty()) {
             bsonFilters.add(Filters.eq("type", filter.type));
         }
-        if (filter.source != null && !filter.source.isEmpty()) {
-            // Legacy traces predate the source field; treat missing source as "chat"
-            if ("chat".equals(filter.source)) {
-                bsonFilters.add(Filters.or(
-                    Filters.eq("source", "chat"),
-                    Filters.exists("source", false),
-                    Filters.eq("source", null),
-                    Filters.eq("source", "")));
-            } else {
-                bsonFilters.add(Filters.eq("source", filter.source));
-            }
-        }
+        addSourceFilter(bsonFilters, filter.source);
         if (filter.agentName != null && !filter.agentName.isEmpty()) {
             bsonFilters.add(Filters.eq("agent_name", filter.agentName));
         }
@@ -163,6 +136,38 @@ public class TraceService {
             bsonFilters.add(Filters.lte("started_at", filter.startTo));
         }
         return bsonFilters;
+    }
+
+    // q is the user-friendly search. Strategy:
+    //   - Full UUID / 32-char trace ID → exact match on id fields only, so the OR stays on indexes
+    //   - 6+ hex chars (e.g. an 8-char session prefix shown in the UI) → anchored prefix match on id fields
+    //   - Plain text → user_id index matches plus bounded in-memory name/agent matching
+    // Ids are stored as lowercase hex, so prefix regexes are lowercased without the "i" flag to stay on the index.
+    private void addQueryFilter(List<Bson> bsonFilters, String q) {
+        if (q == null || q.isEmpty()) return;
+        var trimmed = q.trim();
+        if (UUID_PATTERN.matcher(trimmed).matches() || LONG_HEX_PATTERN.matcher(trimmed).matches()) {
+            bsonFilters.add(Filters.or(TraceServiceHelper.fullIdClauses(trimmed)));
+        } else if (HEX_PREFIX_PATTERN.matcher(trimmed).matches()) {
+            var prefix = "^" + Pattern.quote(trimmed.toLowerCase(Locale.ROOT));
+            bsonFilters.add(Filters.or(
+                Filters.regex("session_id", prefix),
+                Filters.regex("trace_id", prefix)));
+        }
+    }
+
+    private void addSourceFilter(List<Bson> bsonFilters, String source) {
+        if (source == null || source.isEmpty()) return;
+        // Legacy traces predate the source field; treat missing source as "chat"
+        if ("chat".equals(source)) {
+            bsonFilters.add(Filters.or(
+                Filters.eq("source", "chat"),
+                Filters.exists("source", false),
+                Filters.eq("source", null),
+                Filters.eq("source", "")));
+        } else {
+            bsonFilters.add(Filters.eq("source", source));
+        }
     }
 
     private boolean requiresSearch(TraceListFilter filter) {

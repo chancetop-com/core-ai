@@ -75,7 +75,7 @@ release: cli
 	gh release upload v$(VERSION) $(CLI_BUILD_DIR)/$(CLI_BINARY) --repo $(REPO) --clobber
 	@echo "Uploaded $(CLI_BINARY) to release v$(VERSION)"
 
-.PHONY: benchmark cli-dist install-harbor jre25-linux
+.PHONY: benchmark tbench2 cli-dist install-harbor jre25-linux
 
 JRE25_DIR ?= /tmp/jre25-linux
 
@@ -101,3 +101,10 @@ jre25-linux:
 	tar -xzf $(JRE25_DIR)/jre.tar.gz -C $(JRE25_DIR) --strip-components=1
 	rm -f $(JRE25_DIR)/jre.tar.gz
 	@echo "✅ JRE 25 installed to $(JRE25_DIR)"
+
+# Run Terminal-Bench 2 benchmarks via native binary (no JRE needed)
+# Usage: make tbench2 TASK=fix-git
+#        make tbench2 MODEL=litellm/claude-sonnet-4-20250514
+tbench2:
+	@command -v harbor >/dev/null 2>&1 || { echo "❌ harbor not installed. Run: make install-harbor"; exit 1; }
+	bash core-ai-benchmark/terminal-bench-2/run.sh $(DATASET) $(TASK)

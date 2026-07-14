@@ -191,27 +191,11 @@ public class ForYouService {
 
     // --- Token Usage ---
 
-    @SuppressWarnings({"checkstyle:MethodLength", "checkstyle:ExecutableStatementCount"})
     public TokenUsageData tokenUsage(String userId, String range, String fromDate, String toDate) {
         LocalDate today = LocalDate.now(UTC);
-
-        ZonedDateTime start;
-        ZonedDateTime end;
-
-        if (fromDate != null && !fromDate.isBlank() && toDate != null && !toDate.isBlank()) {
-            start = LocalDate.parse(fromDate).atStartOfDay(UTC);
-            end = LocalDate.parse(toDate).plusDays(1).atStartOfDay(UTC);
-        } else {
-            var now = ZonedDateTime.now(UTC);
-            int days = switch (range) {
-                case "yesterday" -> 1;
-                case "7d" -> 7;
-                case "30d" -> 30;
-                default -> 7;
-            };
-            start = now.minusDays(days).withHour(0).withMinute(0).withSecond(0).withNano(0);
-            end = now;
-        }
+        DateRange dateRange = resolveDateRange(range, fromDate, toDate);
+        ZonedDateTime start = dateRange.start;
+        ZonedDateTime end = dateRange.end;
 
         Map<LocalDate, DailyUsage> dailyMap = new TreeMap<>();
 
@@ -262,8 +246,29 @@ public class ForYouService {
         }
     }
 
+    private DateRange resolveDateRange(String range, String fromDate, String toDate) {
+        ZonedDateTime start;
+        ZonedDateTime end;
+
+        if (fromDate != null && !fromDate.isBlank() && toDate != null && !toDate.isBlank()) {
+            start = LocalDate.parse(fromDate).atStartOfDay(UTC);
+            end = LocalDate.parse(toDate).plusDays(1).atStartOfDay(UTC);
+        } else {
+            var now = ZonedDateTime.now(UTC);
+            int days = switch (range) {
+                case "yesterday" -> 1;
+                case "7d" -> 7;
+                case "30d" -> 30;
+                default -> 7;
+            };
+            start = now.minusDays(days).withHour(0).withMinute(0).withSecond(0).withNano(0);
+            end = now;
+        }
+        return new DateRange(start, end);
+    }
+
     private void accumulateFromStats(Map<LocalDate, DailyUsage> dailyMap, String userId,
-                                      LocalDate from, LocalDate to) {
+                                       LocalDate from, LocalDate to) {
         var aggregate = new Aggregate<Document>();
         aggregate.resultClass = Document.class;
         aggregate.pipeline = List.of(
@@ -329,6 +334,10 @@ public class ForYouService {
         data.totalCachedTokens = totalCached;
         data.totalCostUsd = Math.round(totalCost * 10000.0) / 10000.0;
         return data;
+    }
+
+    private record DateRange(ZonedDateTime start, ZonedDateTime end) {
+
     }
 
     private static final class DailyUsage {

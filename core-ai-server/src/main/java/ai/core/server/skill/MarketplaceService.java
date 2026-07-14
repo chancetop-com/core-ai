@@ -60,7 +60,7 @@ public class MarketplaceService {
         var repo = getRepo(repoId);
         String namespace = skillService.extractRepoOwner(repo.repoUrl);
         if (namespace == null) return List.of();
-        return skillService.list(namespace, null, null, null, null, null, null);
+        return skillService.list(new SkillFilter(namespace, null), null, null, null, null, null);
     }
 
     public List<SkillDefinition> installRepo(String userId, String repoId) {

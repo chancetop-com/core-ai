@@ -1,5 +1,6 @@
 package ai.core.server.tool;
 
+import ai.core.api.server.tool.UpdateMcpServerRequest;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.mcp.client.McpServerConfig;
@@ -136,9 +137,7 @@ class McpServerOperationService {
         return results;
     }
 
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    ToolRegistryEntry updateMcpServer(String id, String name, String description, String category,
-                                      Map<String, String> config, Boolean enabled, String rawConfig) {
+    ToolRegistryEntry updateMcpServer(String id, UpdateMcpServerRequest request) {
         var entity = tools.get(id);
         if (entity == null) throw new RuntimeException("mcp server not found, id=" + id);
         if (entity.type != ToolType.MCP) throw new RuntimeException("tool is not an mcp server, id=" + id);
@@ -146,25 +145,25 @@ class McpServerOperationService {
         boolean configChanged = false;
         boolean enabledChanged = false;
 
-        if (name != null && !name.equals(entity.name)) {
-            if (findMcpServerByName(name).isPresent()) {
-                throw new ConflictException("mcp server name already exists: " + name);
+        if (request.name != null && !request.name.equals(entity.name)) {
+            if (findMcpServerByName(request.name).isPresent()) {
+                throw new ConflictException("mcp server name already exists: " + request.name);
             }
-            entity.name = name;
+            entity.name = request.name;
         }
-        if (description != null) entity.description = description;
-        if (category != null) entity.category = category;
-        if (config != null) {
-            var configMap = new HashMap<String, Object>(config);
+        if (request.description != null) entity.description = request.description;
+        if (request.category != null) entity.category = request.category;
+        if (request.config != null) {
+            var configMap = new HashMap<String, Object>(request.config);
             McpServerConfig.fromMap(entity.name, configMap);
-            entity.config = config;
+            entity.config = request.config;
             configChanged = true;
         }
-        if (rawConfig != null) {
-            entity.rawConfig = rawConfig;
+        if (request.rawConfig != null) {
+            entity.rawConfig = request.rawConfig;
         }
-        if (enabled != null && !enabled.equals(entity.enabled)) {
-            entity.enabled = enabled;
+        if (request.enabled != null && !request.enabled.equals(entity.enabled)) {
+            entity.enabled = request.enabled;
             enabledChanged = true;
         }
 

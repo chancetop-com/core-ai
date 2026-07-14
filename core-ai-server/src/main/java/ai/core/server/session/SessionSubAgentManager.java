@@ -93,7 +93,9 @@ public class SessionSubAgentManager {
     }
 
     public Agent buildAgent(BuildAgentParams params) {
-        return subAgentAssembler.buildAgent(params.config, params.toolRegistry, params.context, params.agentName, params.extraSystemVars, params.agentId, params.extraLifecycles, params.memoryInject);
+        var bc = new SubAgentAssembler.BuildAgentConfig(params.config, params.toolRegistry, params.context,
+                params.agentName, params.extraSystemVars, params.agentId, params.extraLifecycles, params.memoryInject);
+        return subAgentAssembler.buildAgent(bc);
     }
 
     public record BuildAgentParams(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,

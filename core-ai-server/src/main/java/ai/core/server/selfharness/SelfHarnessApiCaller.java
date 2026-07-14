@@ -12,6 +12,7 @@ import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.SkillService;
+import ai.core.server.skill.SkillFilter;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.trace.service.TraceListFilter;
 import ai.core.server.trace.service.TraceService;
@@ -112,7 +113,7 @@ public class SelfHarnessApiCaller {
         return switch (name) {
             case "list_skills" -> {
                 var req = JSON.fromJSON(ListSkillsRequest.class, args);
-                yield skillService.list(req.namespace, req.sourceType, null, req.query, req.searchIn, req.offset, req.limit);
+                yield skillService.list(new SkillFilter(req.namespace, req.sourceType), null, req.query, req.searchIn, req.offset, req.limit);
             }
             case "get_skill" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);

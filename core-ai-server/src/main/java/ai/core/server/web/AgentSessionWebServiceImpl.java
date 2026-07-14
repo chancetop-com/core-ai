@@ -284,29 +284,13 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     }
 
     @Override
-    @SuppressWarnings("checkstyle:NestedIfDepth")
     public LoadToolsResponse loadTools(String sessionId, LoadToolsRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
 
         if (isLocalOwner(sessionId)) {
-            List<IdName> loadedTools;
-            if (request.tools != null && !request.tools.isEmpty()) {
-                var toolRefs = request.tools.stream()
-                        .map(v -> {
-                            var ref = new ToolRef();
-                            ref.id = v.id;
-                            ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
-                            ref.source = v.source;
-                            if (ref.type == null) ref.inferTypeFromId();
-                            return ref;
-                        }).toList();
-                var loadedRefs = sessionManager.loadToolRefs(sessionId, toolRefs);
-                loadedTools = LoadedToolRefNames.toIdNames(loadedRefs, toolRegistryService);
-            } else {
-                loadedTools = List.of();
-            }
+            List<IdName> loadedTools = loadToolsForLocalOwner(sessionId, request);
             var response = new LoadToolsResponse();
             response.loadedTools = loadedTools;
             return response;
@@ -324,6 +308,21 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
             var command = SessionCommand.loadTools(sessionId, userId, payload, rpcClient.newRequestId());
             return rpcClient.call(command, LoadToolsResponse.class, PodLocalExecutor.LONG_TIMEOUT);
         }
+    }
+
+    private List<IdName> loadToolsForLocalOwner(String sessionId, LoadToolsRequest request) {
+        if (request.tools == null || request.tools.isEmpty()) return List.of();
+        var toolRefs = request.tools.stream()
+                .map(v -> {
+                    var ref = new ToolRef();
+                    ref.id = v.id;
+                    ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
+                    ref.source = v.source;
+                    if (ref.type == null) ref.inferTypeFromId();
+                    return ref;
+                }).toList();
+        var loadedRefs = sessionManager.loadToolRefs(sessionId, toolRefs);
+        return LoadedToolRefNames.toIdNames(loadedRefs, toolRegistryService);
     }
 
     @Override

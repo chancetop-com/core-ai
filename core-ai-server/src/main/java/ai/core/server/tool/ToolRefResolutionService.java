@@ -215,17 +215,11 @@ class ToolRefResolutionService {
         }
     }
 
-    @SuppressWarnings("checkstyle:NestedIfDepth")
     private void registerMcpProvider(ToolRegistry registry, ToolRef ref,
                                      McpClientManager sessionMgr) {
         var parsed = ToolRef.parseMcpToolId(ref.id, ref.source);
         if (parsed != null) {
-            var refServerName = parsed.serverId();
-            if (refServerName != null) {
-                var name = resolveMcpServerName(refServerName);
-                var includes = parsed.toolName() != null ? List.of(parsed.toolName()) : null;
-                registerMcpByName(registry, name, includes, sessionMgr);
-            }
+            registerMcpFromParsed(registry, parsed, sessionMgr);
             return;
         }
 
@@ -235,6 +229,16 @@ class ToolRefResolutionService {
             name = ref.source != null ? ref.source : ref.id;
         }
         registerMcpByName(registry, name, null, sessionMgr);
+    }
+
+    private void registerMcpFromParsed(ToolRegistry registry, ToolRef.McpToolId parsed,
+                                       McpClientManager sessionMgr) {
+        var refServerName = parsed.serverId();
+        if (refServerName != null) {
+            var name = resolveMcpServerName(refServerName);
+            var includes = parsed.toolName() != null ? List.of(parsed.toolName()) : null;
+            registerMcpByName(registry, name, includes, sessionMgr);
+        }
     }
 
     private void registerMcpByName(ToolRegistry registry, String lookupKey, List<String> includes,

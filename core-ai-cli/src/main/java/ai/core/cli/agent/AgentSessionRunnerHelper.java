@@ -46,21 +46,14 @@ public class AgentSessionRunnerHelper {
         }
     }
 
-    // write a single property key=value line to agent.properties, removing the line if value is null.
-    // avoids Properties.store() which escapes = and : inside JSON values.
-    @SuppressWarnings("checkstyle:NestedIfDepth")
     private static void writePropertyToFile(String key, String value) throws IOException {
         var lines = new java.util.ArrayList<String>();
         boolean found = false;
         if (Files.exists(CONFIG_FILE)) {
             for (String line : Files.readAllLines(CONFIG_FILE)) {
                 String stripped = line.stripLeading();
-                if (!found && isPropertyLine(stripped, key)) {
+                if (tryReplaceIfProperty(lines, stripped, key, value, found)) {
                     found = true;
-                    if (value != null) {
-                        lines.add(key + "=" + value);
-                    }
-                    // if value is null, skip this line (remove)
                 } else {
                     lines.add(line);
                 }
@@ -72,7 +65,17 @@ public class AgentSessionRunnerHelper {
         Files.write(CONFIG_FILE, lines);
     }
 
-    @SuppressWarnings("checkstyle:NestedIfDepth")
+    private static boolean tryReplaceIfProperty(java.util.ArrayList<String> lines, String stripped,
+                                                 String key, String value, boolean alreadyFound) {
+        if (alreadyFound || !isPropertyLine(stripped, key)) return false;
+        writePropertyLineIfNotNull(lines, key, value);
+        return true;
+    }
+
+    private static void writePropertyLineIfNotNull(java.util.ArrayList<String> lines, String key, String value) {
+        if (value != null) lines.add(key + "=" + value);
+    }
+
     private static boolean isPropertyLine(String line, String key) {
         int sep = -1;
         int i = 0;

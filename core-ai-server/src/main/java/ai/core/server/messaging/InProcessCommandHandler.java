@@ -59,12 +59,9 @@ public class InProcessCommandHandler {
     /**
      * Process a single command. Called by {@link CommandConsumer} from any thread.
      */
-    @SuppressWarnings("checkstyle:NestedTryDepth")
     public void handle(SessionCommand command) {
         LOGGER.info("processing command: type={}, sessionId={}", command.type(), command.sessionId());
         try {
-            // any command for a session counts as activity — keeps idle-session sweeper from
-            // closing a session while turns are still being driven through it.
             if (command.sessionId() != null && command.type() != CommandType.CLOSE_SESSION) {
                 sessionManager.touchActivity(command.sessionId());
             }
@@ -84,15 +81,21 @@ public class InProcessCommandHandler {
                 default -> LOGGER.warn("unknown command type: {}", command.type());
             }
         } catch (Throwable t) {
-            // catch Throwable (not just Exception) so OOM/StackOverflow do not
-            // escape the consumer loop and leave the stream entry undeleted.
-            LOGGER.error("failed to process command, sessionId={}, type={}", command.sessionId(), command.type(), t);
-            publishCommandError(command, t);
-            try {
-                respondError(command, t.getMessage());
-            } catch (Throwable ignored) {
-                // best-effort: under OOM responding may also fail; do not rethrow
-            }
+            handleCommandError(command, t);
+        }
+    }
+
+    private void handleCommandError(SessionCommand command, Throwable t) {
+        LOGGER.error("failed to process command, sessionId={}, type={}", command.sessionId(), command.type(), t);
+        publishCommandError(command, t);
+        tryRespondError(command, t.getMessage());
+    }
+
+    private void tryRespondError(SessionCommand command, String message) {
+        try {
+            respondError(command, message);
+        } catch (Throwable ignored) {
+            // best-effort: under OOM responding may also fail; do not rethrow
         }
     }
 

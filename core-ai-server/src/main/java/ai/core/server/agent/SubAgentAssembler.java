@@ -1,9 +1,11 @@
 package ai.core.server.agent;
 
 import ai.core.agent.Agent;
+import ai.core.agent.AgentBuilder;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.SessionConfig;
+import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.server.domain.AgentDefinition;
@@ -74,7 +76,8 @@ public class SubAgentAssembler {
         var config = toSessionConfig(definition);
         var toolRegistry = resolveToolsToRegistry(definition, sessionId);
         skillToolAssembler.attach(resolveSkillIds(definition), toolRegistry);
-        return buildAgent(config, toolRegistry, null, definition.name, null, definition.id, null, null);
+        var bc = new BuildAgentConfig(config, toolRegistry, null, definition.name, null, definition.id, null, null);
+        return buildAgent(bc);
     }
 
     private List<String> resolveSkillIds(AgentDefinition definition) {
@@ -114,51 +117,57 @@ public class SubAgentAssembler {
         return config;
     }
 
-    @SuppressWarnings({"checkstyle:NestedIfDepth", "checkstyle:ParameterNumber"})
-    public Agent buildAgent(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context, String agentName,
-                            Map<String, Object> extraSystemVars, String agentId,
-                            List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject) {
+    public Agent buildAgent(BuildAgentConfig c) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
-                .name(agentName != null && !agentName.isBlank() ? agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
+                .name(c.agentName != null && !c.agentName.isBlank() ? c.agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
                 .llmProvider(llmProvider)
-                .toolRegistry(toolRegistry)
-                .temperature(config != null && config.temperature != null ? config.temperature : 0.8);
-        if (agentId != null && !agentId.isBlank()) {
-            builder.id(agentId);
+                .toolRegistry(c.toolRegistry)
+                .temperature(c.config != null && c.config.temperature != null ? c.config.temperature : 0.8);
+        if (c.agentId != null && !c.agentId.isBlank()) {
+            builder.id(c.agentId);
         }
-        if (config != null) {
-            if (config.systemPrompt != null) {
-                builder.systemPrompt(config.systemPrompt);
+        if (c.config != null) {
+            if (c.config.systemPrompt != null) {
+                builder.systemPrompt(c.config.systemPrompt);
             } else {
                 builder.systemPrompt("You are a helpful AI assistant.");
             }
-            if (config.model != null) builder.model(config.model);
-            if (config.multiModalModel != null) {
-                builder.multiModalModel(config.multiModalModel);
-            } else if (config.model == null) {
-                var mmModel = llmProvider.config.getMultiModalModel();
-                if (mmModel != null) builder.multiModalModel(mmModel);
-            }
-            if (config.maxTurns != null) builder.maxTurn(config.maxTurns);
+            if (c.config.model != null) builder.model(c.config.model);
+            configureMultiModalModel(builder, c.config, llmProvider);
+            if (c.config.maxTurns != null) builder.maxTurn(c.config.maxTurns);
         } else {
             builder.systemPrompt("You are a helpful AI assistant.");
             var mmModel = llmProvider.config.getMultiModalModel();
             if (mmModel != null) builder.multiModalModel(mmModel);
         }
-        if (context != null) builder.executionContext(context);
+        if (c.context != null) builder.executionContext(c.context);
         var provider = persistenceProviders.getDefaultPersistenceProvider();
         if (provider != null) builder.persistenceProvider(provider);
-        if (extraSystemVars != null) {
-            extraSystemVars.forEach(builder::extraSystemVariable);
+        if (c.extraSystemVars != null) {
+            c.extraSystemVars.forEach(builder::extraSystemVariable);
         }
-        if (extraLifecycles != null && !extraLifecycles.isEmpty()) {
-            builder.agentLifecycle(extraLifecycles);
+        if (c.extraLifecycles != null && !c.extraLifecycles.isEmpty()) {
+            builder.agentLifecycle(c.extraLifecycles);
         }
-        if (memoryInject != null) {
-            builder.systemPromptSection(memoryInject);
+        if (c.memoryInject != null) {
+            builder.systemPromptSection(c.memoryInject);
         }
         return builder.build();
     }
 
+    private void configureMultiModalModel(AgentBuilder builder, SessionConfig config, LLMProvider llmProvider) {
+        if (config.multiModalModel != null) {
+            builder.multiModalModel(config.multiModalModel);
+            return;
+        }
+        if (config.model != null) return;
+        var mmModel = llmProvider.config.getMultiModalModel();
+        if (mmModel != null) builder.multiModalModel(mmModel);
+    }
+
+    public record BuildAgentConfig(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,
+                                    String agentName, Map<String, Object> extraSystemVars, String agentId,
+                                    List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject) {
+    }
 }

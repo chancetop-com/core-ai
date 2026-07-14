@@ -127,42 +127,17 @@ public final class BashReadOnlyChecker {
                     continue;
                 }
                 if (c == '\\') {
-                    if (i + 1 < n) {
-                        cur.append(s.charAt(i + 1));
-                        i += 2;
-                    } else {
-                        i++;
-                    }
+                    i = handleBackslash(s, cur, i);
                     continue;
                 }
                 if (c == '\'') {
-                    int j = i + 1;
-                    while (j < n && s.charAt(j) != '\'') cur.append(s.charAt(j++));
-                    if (j >= n) {
-                        res.markUnsafe("unclosed single quote");
-                        return res;
-                    }
-                    i = j + 1;
+                    i = readSingleQuoted(s, cur, res, i);
+                    if (res.unsafe) return res;
                     continue;
                 }
                 if (c == '"') {
-                    int j = i + 1;
-                    while (j < n && s.charAt(j) != '"') {
-                        char d = s.charAt(j);
-                        if (d == '\\' && j + 1 < n) {
-                            cur.append(s.charAt(j + 1));
-                            j += 2;
-                            continue;
-                        }
-                        if (d == '$') res.markUnsafe("variable expansion in double quotes");
-                        cur.append(d);
-                        j++;
-                    }
-                    if (j >= n) {
-                        res.markUnsafe("unclosed double quote");
-                        return res;
-                    }
-                    i = j + 1;
+                    i = readDoubleQuoted(s, cur, res, i);
+                    if (res.unsafe) return res;
                     continue;
                 }
                 if (c == '`') {
@@ -171,52 +146,15 @@ public final class BashReadOnlyChecker {
                     continue;
                 }
                 if (c == '$') {
-                    char next = (i + 1 < n) ? s.charAt(i + 1) : '\0';
-                    if (next == '(') res.markUnsafe("command substitution $()");
-                    else if (next == '{') res.markUnsafe("parameter expansion ${}");
-                    else if (isVarStart(next)) res.markUnsafe("variable expansion $VAR");
-                    cur.append(c);
-                    i++;
+                    i = handleVariable(s, res, cur, i);
                     continue;
                 }
-                if (c == '*' || c == '?' || c == '[' || c == ']') {
-                    res.markUnsafe("unquoted glob");
-                    cur.append(c);
-                    i++;
+                if (c == '*' || c == '?' || c == '[' || c == ']' || c == '>' || c == '<') {
+                    i = handleGlobOrRedirect(res, cur, i, c);
                     continue;
                 }
-                if (c == '>' || c == '<') {
-                    res.markUnsafe("redirection " + c);
-                    i++;
-                    continue;
-                }
-
-                if (c == '&') {
-                    flush(res, cur);
-                    if (i + 1 < n && s.charAt(i + 1) == '&') {
-                        res.tokens.add(new Op("&&"));
-                        i += 2;
-                    } else {
-                        res.tokens.add(new Op("&"));
-                        i++;
-                    }
-                    continue;
-                }
-                if (c == '|') {
-                    flush(res, cur);
-                    if (i + 1 < n && s.charAt(i + 1) == '|') {
-                        res.tokens.add(new Op("||"));
-                        i += 2;
-                    } else {
-                        res.tokens.add(new Op("|"));
-                        i++;
-                    }
-                    continue;
-                }
-                if (c == ';') {
-                    flush(res, cur);
-                    res.tokens.add(new Op(";"));
-                    i++;
+                if (c == '&' || c == '|' || c == ';') {
+                    i = consumeControlOp(s, res, cur, i, c);
                     continue;
                 }
 
@@ -225,6 +163,78 @@ public final class BashReadOnlyChecker {
             }
             flush(res, cur);
             return res;
+        }
+
+        private static int handleBackslash(String s, StringBuilder cur, int i) {
+            if (i + 1 < s.length()) {
+                cur.append(s.charAt(i + 1));
+                return i + 2;
+            }
+            return i + 1;
+        }
+
+        private static int readSingleQuoted(String s, StringBuilder cur, Result res, int i) {
+            int j = i + 1;
+            int n = s.length();
+            while (j < n && s.charAt(j) != '\'') cur.append(s.charAt(j++));
+            if (j >= n) {
+                res.markUnsafe("unclosed single quote");
+                return j;
+            }
+            return j + 1;
+        }
+
+        private static int readDoubleQuoted(String s, StringBuilder cur, Result res, int i) {
+            int j = i + 1;
+            int n = s.length();
+            while (j < n && s.charAt(j) != '"') {
+                char d = s.charAt(j);
+                if (d == '\\' && j + 1 < n) {
+                    cur.append(s.charAt(j + 1));
+                    j += 2;
+                    continue;
+                }
+                if (d == '$') res.markUnsafe("variable expansion in double quotes");
+                cur.append(d);
+                j++;
+            }
+            if (j >= n) {
+                res.markUnsafe("unclosed double quote");
+                return j;
+            }
+            return j + 1;
+        }
+
+        private static int handleVariable(String s, Result res, StringBuilder cur, int i) {
+            char next = (i + 1 < s.length()) ? s.charAt(i + 1) : '\0';
+            if (next == '(') res.markUnsafe("command substitution $()");
+            else if (next == '{') res.markUnsafe("parameter expansion ${}");
+            else if (isVarStart(next)) res.markUnsafe("variable expansion $VAR");
+            cur.append('$');
+            return i + 1;
+        }
+
+        private static int handleGlobOrRedirect(Result res, StringBuilder cur, int i, char c) {
+            if (c == '*' || c == '?' || c == '[' || c == ']')
+                res.markUnsafe("unquoted glob");
+            else
+                res.markUnsafe("redirection " + c);
+            cur.append(c);
+            return i + 1;
+        }
+
+        private static int consumeControlOp(String s, Result res, StringBuilder cur, int i, char c) {
+            flush(res, cur);
+            if (c == ';') {
+                res.tokens.add(new Op(";"));
+                return i + 1;
+            }
+            if (i + 1 < s.length() && s.charAt(i + 1) == c) {
+                res.tokens.add(new Op(new String(new char[]{c, c})));
+                return i + 2;
+            }
+            res.tokens.add(new Op(String.valueOf(c)));
+            return i + 1;
         }
 
         static void flush(Result res, StringBuilder cur) {

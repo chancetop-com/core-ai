@@ -31,22 +31,20 @@ public class CommandDispatcher {
     private final Path workspace;
     private final CreateAgentCommandHandler createAgentHandler;
 
-    @SuppressWarnings("checkstyle:ParameterNumber")
     CommandDispatcher(TerminalUI ui, ModelPicker modelPicker,
                       AtomicReference<String> switchSessionId,
                       HandlerContext handlers, AgentSessionRunnerCommandHandler sessionHandler,
-                      String defaultServerUrl, AgentProfileRegistry agentProfileRegistry,
-                      Path workspace) {
+                      Config config) {
         this.ui = ui;
         this.sessionHandler = sessionHandler;
         this.modelPicker = modelPicker;
         this.switchSessionId = switchSessionId;
         this.handlers = handlers;
-        this.defaultServerUrl = defaultServerUrl;
-        this.agentProfileRegistry = agentProfileRegistry;
-        this.workspace = workspace;
+        this.defaultServerUrl = config.defaultServerUrl;
+        this.agentProfileRegistry = config.agentProfileRegistry;
+        this.workspace = config.workspace;
         this.createAgentHandler = new CreateAgentCommandHandler(ui, sessionHandler.getAgent().getLLMProvider(),
-                modelPicker.getCurrentModelName(), workspace, agentProfileRegistry);
+                modelPicker.getCurrentModelName(), config.workspace, config.agentProfileRegistry);
     }
 
     public void dispatch(String trimmed, BlockingQueue<String> queue) {
@@ -58,7 +56,6 @@ public class CommandDispatcher {
         handlers.commands().handle(trimmed);
     }
 
-    @SuppressWarnings("checkstyle:MethodLength")
     private boolean dispatchSessionCommand(String lower, BlockingQueue<String> queue) {
         if (lower.startsWith("/model ")) {
             return false;
@@ -70,30 +67,42 @@ public class CommandDispatcher {
         if (lower.startsWith("/thinking ")) {
             return false;
         }
-        if ("/thinking".equals(lower)) {
-            sessionHandler.handleThinking(lower);
-            return true;
+        switch (lower) {
+            case "/thinking" -> {
+                sessionHandler.handleThinking(lower);
+                return true;
+            }
+            case "/stats" -> {
+                sessionHandler.handleStats();
+                return true;
+            }
+            case "/tools" -> {
+                sessionHandler.handleTools();
+                return true;
+            }
+            case "/copy" -> {
+                sessionHandler.handleCopy();
+                return true;
+            }
+            case "/undo" -> {
+                sessionHandler.handleUndo();
+                return true;
+            }
+            case "/compact" -> {
+                sessionHandler.handleCompact();
+                return true;
+            }
+            case "/resume", "/clear" -> {
+                return handleSessionSwitch(lower, queue);
+            }
+            default -> {
+
+            }
         }
-        if ("/stats".equals(lower)) {
-            sessionHandler.handleStats();
-            return true;
-        }
-        if ("/tools".equals(lower)) {
-            sessionHandler.handleTools();
-            return true;
-        }
-        if ("/copy".equals(lower)) {
-            sessionHandler.handleCopy();
-            return true;
-        }
-        if ("/undo".equals(lower)) {
-            sessionHandler.handleUndo();
-            return true;
-        }
-        if ("/compact".equals(lower)) {
-            sessionHandler.handleCompact();
-            return true;
-        }
+        return false;
+    }
+
+    private boolean handleSessionSwitch(String lower, BlockingQueue<String> queue) {
         if ("/resume".equals(lower)) {
             String picked = sessionHandler.showSessionPicker();
             if (picked != null) {
@@ -102,13 +111,10 @@ public class CommandDispatcher {
             }
             return true;
         }
-        if ("/clear".equals(lower)) {
-            ui.printStreamingChunk("\u001B[2J\u001B[H");
-            switchSessionId.set("");
-            queue.offer(POISON_PILL);
-            return true;
-        }
-        return false;
+        ui.printStreamingChunk("\u001B[2J\u001B[H");
+        switchSessionId.set("");
+        queue.offer(POISON_PILL);
+        return true;
     }
 
     private boolean dispatchConfigCommand(String trimmed, String lower) {
@@ -278,5 +284,8 @@ public class CommandDispatcher {
             return true;
         }
         return false;
+    }
+
+    record Config(String defaultServerUrl, AgentProfileRegistry agentProfileRegistry, Path workspace) {
     }
 }

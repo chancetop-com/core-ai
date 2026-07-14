@@ -150,16 +150,12 @@ class CreateAgentCommandHandler {
         return line.substring(0, maxWidth - 1) + "…";
     }
 
-    @SuppressWarnings("checkstyle:MethodLength")
     private void saveAgent(String nameParam, String description, String systemPrompt) {
         Path agentsDir = workspace.resolve(".core-ai").resolve("agents");
-        String name = nameParam;
-        if (!name.matches("[a-zA-Z0-9][a-zA-Z0-9-]*")) {
-            name = name.replaceAll("[^a-zA-Z0-9-]", "-").replaceAll("-+", "-").replaceAll("^-|-$", "");
-            if (name.isEmpty()) {
-                ui.printStreamingChunk(AnsiTheme.ERROR + "  Invalid agent name after sanitization.\n" + AnsiTheme.RESET);
-                return;
-            }
+        String name = sanitizeAgentName(nameParam);
+        if (name == null) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Invalid agent name after sanitization.\n" + AnsiTheme.RESET);
+            return;
         }
         Path file = agentsDir.resolve(name + ".md");
         if (Files.exists(file)) {
@@ -168,41 +164,59 @@ class CreateAgentCommandHandler {
         }
         try {
             Files.createDirectories(agentsDir);
-            String desc = description != null && !description.isBlank() ? description : "Custom agent: " + name;
-            String prompt = systemPrompt != null ? systemPrompt : "You are " + name + ".";
-            String escapedDesc = desc.replace("\"", "\\\"");
-            String content = """
-                    ---
-                    name: %s
-                    description: "%s"
-                    # Optional fields (uncomment to enable):
-                    # model: sonnet
-                    # temperature: 0.8
-                    # maxTurnNumber: 200
-                    # reasoningEffort: low | medium | high | max
-                    # tools:
-                    #   - Read
-                    #   - Bash
-                    #   - Glob
-                    #   - Grep
-                    #   - Write
-                    #   - Edit
-                    #   - task
-                    #   - WebSearch
-                    #   - WebFetch
-                    ---
-
-                    %s
-                    """.formatted(name, escapedDesc, prompt);
-            Files.writeString(file, content);
-            if (registry != null) {
-                registry.invalidateCache();
-                ui.setAgentProfiles(registry.listAll().stream().map(AgentProfile::name).toList());
-            }
+            Files.writeString(file, buildAgentContent(name, description, systemPrompt));
+            refreshAgentRegistry();
             ui.printStreamingChunk(AnsiTheme.SUCCESS + "\n  ✓ Created " + file + AnsiTheme.RESET + "\n");
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Use @" + name + " <prompt> to invoke it.\n" + AnsiTheme.RESET);
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to save agent: " + e.getMessage() + "\n" + AnsiTheme.RESET);
+        }
+    }
+
+    private String sanitizeAgentName(String name) {
+        if (!name.matches("[a-zA-Z0-9][a-zA-Z0-9-]*")) {
+            var newName = name.replaceAll("[^a-zA-Z0-9-]", "-").replaceAll("-+", "-").replaceAll("^-|-$", "");
+            if (newName.isEmpty()) {
+                return null;
+            }
+            return newName;
+        }
+        return name;
+    }
+
+    private String buildAgentContent(String name, String description, String systemPrompt) {
+        String desc = description != null && !description.isBlank() ? description : "Custom agent: " + name;
+        String prompt = systemPrompt != null ? systemPrompt : "You are " + name + ".";
+        String escapedDesc = desc.replace("\"", "\\\"");
+        return """
+                ---
+                name: %s
+                description: "%s"
+                # Optional fields (uncomment to enable):
+                # model: sonnet
+                # temperature: 0.8
+                # maxTurnNumber: 200
+                # reasoningEffort: low | medium | high | max
+                # tools:
+                #   - Read
+                #   - Bash
+                #   - Glob
+                #   - Grep
+                #   - Write
+                #   - Edit
+                #   - task
+                #   - WebSearch
+                #   - WebFetch
+                ---
+
+                %s
+                """.formatted(name, escapedDesc, prompt);
+    }
+
+    private void refreshAgentRegistry() {
+        if (registry != null) {
+            registry.invalidateCache();
+            ui.setAgentProfiles(registry.listAll().stream().map(AgentProfile::name).toList());
         }
     }
 

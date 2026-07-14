@@ -101,39 +101,19 @@ public class AgentRunBuilder {
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
 
-    @SuppressWarnings("checkstyle:MethodLength")
     Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         var config = definition.publishedConfig;
-        List<ToolRef> toolRefs;
-        if (config != null && config.tools != null && !config.tools.isEmpty()) {
-            toolRefs = config.tools;
-        } else if (definition.tools != null && !definition.tools.isEmpty()) {
-            toolRefs = definition.tools;
-        } else {
-            toolRefs = List.of();
-        }
-        var registry = toolRegistryService.resolveToToolRegistry(toolRefs, runEntity.id);
-        addDatasetTools(registry, definition, runEntity.id);
+        var registry = resolveToolRegistry(config, definition, runEntity.id);
         var context = buildExecutionContext(runEntity, definition, sandbox, variables);
-        var systemPrompt = resolveSystemPrompt(config, definition);
-        systemPrompt = appendDatasetInstructions(systemPrompt, definition);
         var enableMemory = config != null ? config.enableMemory : definition.enableMemory;
-        if (AgentMemoryService.memoryEnabled(enableMemory)) {
-            systemPrompt = appendSopPriorityDeclaration(systemPrompt);
-        }
+        var systemPrompt = resolveSystemPromptWithPriority(config, definition, enableMemory);
         var model = resolveModel(config, definition);
         var multiModalModel = resolveMultiModalModel(config, definition);
         var temperature = config != null ? config.temperature : definition.temperature;
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
         attachSkillsAndSubAgents(config, definition, registry, runEntity.id);
         attachMemorySearch(registry, enableMemory, definition.id);
-        var builder = Agent.builder()
-                .name(safeNodeName(definition))
-                .id(definition.id)
-                .description(definition.description != null ? definition.description : definition.name)
-                .llmProvider(llmProviders.getProvider())
-                .toolRegistry(registry)
-                .executionContext(context);
+        var builder = createBaseBuilder(definition, registry, context);
         if (systemPrompt != null) builder.systemPrompt(systemPrompt);
         if (model != null) builder.model(model);
         if (multiModalModel != null) {
@@ -327,5 +307,38 @@ public class AgentRunBuilder {
         }
         builder.extraSystemVariable(SystemVariables.AGENT_DATASET_NAME, String.join(", ", names));
         builder.extraSystemVariable(SystemVariables.AGENT_DATASET_DESC, desc.toString());
+    }
+
+    private ToolRegistry resolveToolRegistry(AgentPublishedConfig config, AgentDefinition definition, String runId) {
+        List<ToolRef> toolRefs;
+        if (config != null && config.tools != null && !config.tools.isEmpty()) {
+            toolRefs = config.tools;
+        } else if (definition.tools != null && !definition.tools.isEmpty()) {
+            toolRefs = definition.tools;
+        } else {
+            toolRefs = List.of();
+        }
+        var registry = toolRegistryService.resolveToToolRegistry(toolRefs, runId);
+        addDatasetTools(registry, definition, runId);
+        return registry;
+    }
+
+    private String resolveSystemPromptWithPriority(AgentPublishedConfig config, AgentDefinition definition, Boolean enableMemory) {
+        var systemPrompt = resolveSystemPrompt(config, definition);
+        systemPrompt = appendDatasetInstructions(systemPrompt, definition);
+        if (AgentMemoryService.memoryEnabled(enableMemory)) {
+            systemPrompt = appendSopPriorityDeclaration(systemPrompt);
+        }
+        return systemPrompt;
+    }
+
+    private AgentBuilder createBaseBuilder(AgentDefinition definition, ToolRegistry registry, ExecutionContext context) {
+        return Agent.builder()
+                .name(safeNodeName(definition))
+                .id(definition.id)
+                .description(definition.description != null ? definition.description : definition.name)
+                .llmProvider(llmProviders.getProvider())
+                .toolRegistry(registry)
+                .executionContext(context);
     }
 }

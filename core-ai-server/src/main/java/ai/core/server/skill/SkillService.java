@@ -144,10 +144,9 @@ public class SkillService {
         }
     }
 
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public List<SkillDefinition> list(String namespace, String sourceType, String userId, String query, String searchIn, Integer offset, Integer limit) {
-        var indexedFilter = indexedFilter(namespace, sourceType);
-        if (!hasInMemoryFilters(userId, query)) {
+    public List<SkillDefinition> list(SkillFilter filter, String userId, String query, String searchIn, Integer offset, Integer limit) {
+        var indexedFilter = indexedFilter(filter);
+        if (notInMemoryFilters(userId, query)) {
             var dbQuery = sortedQuery(indexedFilter);
             applyPaging(dbQuery, offset, limit);
             return skillCollection.find(dbQuery);
@@ -162,9 +161,9 @@ public class SkillService {
         return page(filtered, offset, limit);
     }
 
-    public long count(String namespace, String sourceType, String userId, String query, String searchIn) {
-        var indexedFilter = indexedFilter(namespace, sourceType);
-        if (!hasInMemoryFilters(userId, query)) {
+    public long count(SkillFilter filter, String userId, String query, String searchIn) {
+        var indexedFilter = indexedFilter(filter);
+        if (notInMemoryFilters(userId, query)) {
             return skillCollection.count(indexedFilter);
         }
 
@@ -235,17 +234,7 @@ public class SkillService {
 
             for (var skill : skills) {
                 if (skill.getName().equals(entity.name)) {
-                    Path skillDir = skill.getSkillDir() != null
-                        ? Path.of(skill.getSkillDir())
-                        : Path.of(skill.getPath()).getParent();
-                    entity.content = repoManager.readSkillMdFromDir(skillDir);
-                    entity.resources = repoManager.readResourcesFromDir(skillDir, skill.getResources());
-                    entity.description = skill.getDescription();
-                    entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
-                    entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
-                    entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
-                    entity.updatedAt = ZonedDateTime.now();
-                    skillCollection.replace(entity);
+                    syncMatchedSkill(entity, skill);
                     LOGGER.info("synced skill from repo, id={}, qualifiedName={}", entity.id, entity.qualifiedName);
                     return entity;
                 }
@@ -258,17 +247,31 @@ public class SkillService {
         }
     }
 
+    private void syncMatchedSkill(SkillDefinition entity, SkillMetadata skill) {
+        var skillDir = skill.getSkillDir() != null
+            ? Path.of(skill.getSkillDir())
+            : Path.of(skill.getPath()).getParent();
+        entity.content = repoManager.readSkillMdFromDir(skillDir);
+        entity.resources = repoManager.readResourcesFromDir(skillDir, skill.getResources());
+        entity.description = skill.getDescription();
+        entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
+        entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
+        entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
+        entity.updatedAt = ZonedDateTime.now();
+        skillCollection.replace(entity);
+    }
+
     public SkillDefinition download(String id) {
         return get(id);
     }
 
-    private Bson indexedFilter(String namespace, String sourceType) {
+    private Bson indexedFilter(SkillFilter filter) {
         var filters = new ArrayList<Bson>();
-        if (namespace != null && !namespace.isBlank()) {
-            filters.add(Filters.eq("namespace", namespace));
+        if (filter.namespace() != null && !filter.namespace().isBlank()) {
+            filters.add(Filters.eq("namespace", filter.namespace()));
         }
-        if (sourceType != null && !sourceType.isBlank()) {
-            filters.add(Filters.eq("source_type", SkillSourceType.valueOf(sourceType)));
+        if (filter.sourceType() != null && !filter.sourceType().isBlank()) {
+            filters.add(Filters.eq("source_type", SkillSourceType.valueOf(filter.sourceType())));
         }
         return filters.isEmpty() ? Filters.empty() : Filters.and(filters);
     }
@@ -288,7 +291,7 @@ public class SkillService {
     }
 
     private int normalizedLimit(Integer limit) {
-        return Math.min(Math.max(limit != null ? limit : 20, 1), 100);
+        return Math.clamp(limit != null ? limit : 20, 1, 100);
     }
 
     private List<SkillDefinition> page(List<SkillDefinition> skills, Integer offset, Integer limit) {
@@ -305,17 +308,17 @@ public class SkillService {
         return skills.subList(start, end);
     }
 
-    private boolean hasInMemoryFilters(String userId, String query) {
-        return hasText(userId) || hasText(query);
+    private boolean notInMemoryFilters(String userId, String query) {
+        return noText(userId) && noText(query);
     }
 
     private boolean matchesUserId(SkillDefinition skill, String userId) {
-        if (!hasText(userId)) return true;
+        if (noText(userId)) return true;
         return containsIgnoreCase(skill.userId, userId.trim());
     }
 
     private boolean matchesQuery(SkillDefinition skill, String query, String searchIn) {
-        if (!hasText(query)) return true;
+        if (noText(query)) return true;
 
         var needle = query.trim();
         return switch (searchIn) {
@@ -351,7 +354,7 @@ public class SkillService {
     }
 
     private String normalizedSearchIn(String searchIn) {
-        if (!hasText(searchIn)) return SEARCH_IN_NAME_DESCRIPTION;
+        if (noText(searchIn)) return SEARCH_IN_NAME_DESCRIPTION;
         var value = searchIn.trim().toLowerCase(Locale.getDefault());
         return switch (value) {
             case SEARCH_IN_NAME, SEARCH_IN_NAME_DESCRIPTION, SEARCH_IN_METADATA, SEARCH_IN_CONTENT -> value;
@@ -359,8 +362,8 @@ public class SkillService {
         };
     }
 
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
+    private boolean noText(String value) {
+        return value == null || value.isBlank();
     }
 
     private boolean containsIgnoreCase(String value, String needle) {

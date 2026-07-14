@@ -16,6 +16,7 @@ import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.skill.MarketplaceService;
+import ai.core.server.skill.SkillFilter;
 import ai.core.server.skill.SkillService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
@@ -48,9 +49,9 @@ public class SkillWebServiceImpl implements SkillWebService {
     @Override
     public ListSkillsResponse list(ListSkillsRequest request) {
         var effectiveRequest = request != null ? request : new ListSkillsRequest();
+        var filter = new SkillFilter(effectiveRequest.namespace, effectiveRequest.sourceType);
         var skills = skillService.list(
-            effectiveRequest.namespace,
-            effectiveRequest.sourceType,
+            filter,
             effectiveRequest.userId,
             effectiveRequest.query,
             effectiveRequest.searchIn,
@@ -60,8 +61,7 @@ public class SkillWebServiceImpl implements SkillWebService {
         var response = new ListSkillsResponse();
         response.skills = skills.stream().map(this::toView).toList();
         response.total = skillService.count(
-            effectiveRequest.namespace,
-            effectiveRequest.sourceType,
+            filter,
             effectiveRequest.userId,
             effectiveRequest.query,
             effectiveRequest.searchIn

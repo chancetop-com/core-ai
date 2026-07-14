@@ -160,11 +160,9 @@ public class DockerSandboxProvider implements SandboxProvider {
         }
     }
 
-    @SuppressWarnings("checkstyle:MethodLength")
     private Map<String, Object> buildContainerRequest(SandboxConfig config, String containerName, String sessionId, String userId) {
         var request = new HashMap<String, Object>();
 
-        // Basic container config
         request.put("Image", config.image != null ? config.image : SandboxConstants.DEFAULT_IMAGE);
         request.put("name", containerName);
         request.put("Labels", Map.of(
@@ -173,12 +171,22 @@ public class DockerSandboxProvider implements SandboxProvider {
             "user-id", userId != null ? userId : "unknown"
         ));
 
-        // Exposed ports
         var exposedPorts = new HashMap<String, Object>();
         exposedPorts.put(RUNTIME_PORT + "/tcp", new HashMap<>());
         request.put("ExposedPorts", exposedPorts);
 
-        // Host config with resource limits
+        request.put("HostConfig", buildHostConfig(config));
+
+        request.put("WorkingDir", "/workspace");
+
+        request.put("Env", buildEnvList(config));
+
+        request.put("Entrypoint", List.of("/usr/local/bin/core-ai-sandbox-runtime"));
+
+        return request;
+    }
+
+    private Map<String, Object> buildHostConfig(SandboxConfig config) {
         var hostConfig = new HashMap<String, Object>();
         var memoryLimit = (config.memoryLimitMb != null ? config.memoryLimitMb : SandboxConstants.DEFAULT_MEMORY_LIMIT_MB) * 1024 * 1024L;
         var cpuLimit = config.cpuLimitMillicores != null ? config.cpuLimitMillicores : SandboxConstants.DEFAULT_CPU_LIMIT_MILLICORES;
@@ -189,12 +197,10 @@ public class DockerSandboxProvider implements SandboxProvider {
         hostConfig.put("AutoRemove", false);
         hostConfig.put("NetworkMode", networkName);
 
-        // Port binding - map container port to random host port (required on Windows/macOS)
         var portBindings = new HashMap<String, Object>();
         portBindings.put(RUNTIME_PORT + "/tcp", List.of(Map.of("HostIp", "127.0.0.1", "HostPort", "")));
         hostConfig.put("PortBindings", portBindings);
 
-        // Volume mounts - bind workspace and tmp
         var binds = new java.util.ArrayList<String>();
         var workspacePath = dockerClient.workspaceBase() != null
                 ? dockerClient.workspaceBase().toAbsolutePath().toString().replace('\\', '/')
@@ -202,7 +208,6 @@ public class DockerSandboxProvider implements SandboxProvider {
         binds.add(workspacePath + ":/workspace:ro");
         hostConfig.put("Binds", binds);
 
-        // Mount tmpfs for /tmp and /skill (writable, size-limited)
         var tmpSizeBytes = parseSizeToBytes(config.tmpSizeLimit != null ? config.tmpSizeLimit : "100Mi");
         var skillSizeBytes = parseSizeToBytes("50Mi");
         var tmpfs = Map.of(
@@ -211,16 +216,13 @@ public class DockerSandboxProvider implements SandboxProvider {
         );
         hostConfig.put("Tmpfs", tmpfs);
 
-        // Security options
         hostConfig.put("CapDrop", List.of("ALL"));
         hostConfig.put("SecurityOpt", List.of("no-new-privileges"));
 
-        request.put("HostConfig", hostConfig);
+        return hostConfig;
+    }
 
-        // Working directory
-        request.put("WorkingDir", "/workspace");
-
-        // Environment variables
+    private List<String> buildEnvList(SandboxConfig config) {
         var maxAsync = config.maxAsyncTasks != null ? config.maxAsyncTasks : SandboxConstants.DEFAULT_MAX_ASYNC_TASKS;
         var envList = new java.util.ArrayList<String>();
         envList.add("WORKSPACE_DIR=/workspace");
@@ -230,12 +232,7 @@ public class DockerSandboxProvider implements SandboxProvider {
                 envList.add(entry.getKey() + "=" + entry.getValue());
             }
         }
-        request.put("Env", envList);
-
-        // Entrypoint - run the sandbox runtime
-        request.put("Entrypoint", List.of("/usr/local/bin/core-ai-sandbox-runtime"));
-
-        return request;
+        return envList;
     }
 
     private long parseSizeToBytes(String size) {

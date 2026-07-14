@@ -136,7 +136,7 @@ public class SandboxService {
         }
         return sessionSandboxes.computeIfAbsent(sessionId, sid -> {
             LOGGER.info("sandbox created (shared) for session: {}, config={}", sid, effectiveConfig);
-            return new LazySandbox(effectiveConfig, sandboxManager, null, sid, userId, () -> onSandboxReady(sid));
+            return new LazySandbox(effectiveConfig, sandboxManager, null, new LazySandbox.SessionIdentity(sid, userId), () -> onSandboxReady(sid));
         });
     }
 
@@ -152,7 +152,7 @@ public class SandboxService {
             LOGGER.debug("sandbox disabled for session: {}", sessionId);
             return null;
         }
-        var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, sessionId, userId,
+        var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, new LazySandbox.SessionIdentity(sessionId, userId),
                 () -> onSandboxReady(sessionId), snapshot);
         sessionSandboxes.put(sessionId, lazySandbox);
         LOGGER.info("sandbox created for session: {}, config={}", sessionId, effectiveConfig);
@@ -292,7 +292,7 @@ public class SandboxService {
             for (int attempt = 0; attempt < maxAttempts; attempt++) {
                 if (discoverySandbox == null) {
                     var discoveryConfig = createDiscoveryConfig();
-                    discoverySandbox = new LazySandbox(discoveryConfig, sandboxManager, null, "discovery", "system", null);
+                    discoverySandbox = new LazySandbox(discoveryConfig, sandboxManager, null, new LazySandbox.SessionIdentity("discovery", "system"), null);
                     LOGGER.info("discovery sandbox created (attempt {}/{})", attempt + 1, maxAttempts);
                 }
                 discoverySandbox.ensureReady();

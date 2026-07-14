@@ -75,7 +75,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
 
     @Override
     public ToolRegistryView updateMcpServer(String id, UpdateMcpServerRequest request) {
-        return toView(toolRegistryService.updateMcpServer(id, request.name, request.description, request.category, request.config, request.enabled, request.rawConfig));
+        return toView(toolRegistryService.updateMcpServer(id, request));
     }
 
     @Override

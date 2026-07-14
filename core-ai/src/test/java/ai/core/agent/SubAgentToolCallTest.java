@@ -14,6 +14,7 @@ import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.RecordingSpanProcessor;
 import ai.core.tool.tools.SubAgentToolCall;
+import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -178,7 +179,7 @@ class SubAgentToolCallTest {
     }
 
     @Test
-    @SuppressWarnings({"checkstyle:NestedTryDepth", "PMD.UseTryWithResources"})
+    @SuppressWarnings("PMD.UseTryWithResources")
     void subAgentExecutionKeepsParentTraceContext() {
         var spans = new RecordingSpanProcessor();
         var tracerProvider = SdkTracerProvider.builder()
@@ -208,21 +209,25 @@ class SubAgentToolCallTest {
                     .tracer(agentTracer)
                     .build();
 
-            var scope = parentSpan.makeCurrent();
-            try {
-                var toolCall = SubAgentToolCall.builder().subAgent(researcher).build();
-                var result = toolCall.execute("{\"query\": \"Research climate change\"}", ExecutionContext.empty());
-                assertTrue(result.isCompleted());
-            } finally {
-                scope.close();
-                parentSpan.end();
-            }
+            executeSubAgentInSpan(researcher, parentSpan);
 
             var agentTurn = spans.find("agent.turn").orElseThrow();
             assertEquals(parentSpan.getSpanContext().getTraceId(), agentTurn.getTraceId());
             assertEquals(parentSpan.getSpanContext().getSpanId(), agentTurn.getParentSpanId());
         } finally {
             tracerProvider.shutdown();
+        }
+    }
+
+    private void executeSubAgentInSpan(Agent researcher, Span parentSpan) {
+        var scope = parentSpan.makeCurrent();
+        try {
+            var toolCall = SubAgentToolCall.builder().subAgent(researcher).build();
+            var result = toolCall.execute("{\"query\": \"Research climate change\"}", ExecutionContext.empty());
+            assertTrue(result.isCompleted());
+        } finally {
+            scope.close();
+            parentSpan.end();
         }
     }
 

@@ -33,10 +33,6 @@ import java.util.Map;
 import java.util.zip.GZIPOutputStream;
 
 /**
- * Daily trace maintenance: aggregates per-user per-agent token/cost stats from
- * the traces collection into trace_daily_stats for fast Dashboard queries,
- * and archives traces older than the retention window to object storage.
- *
  * @author cyril
  */
 public class TraceDailyMaintenanceService {
@@ -54,10 +50,8 @@ public class TraceDailyMaintenanceService {
 
     @Inject
     MongoCollection<TraceDailyStats> statsCollection;
-
     @Inject
     MongoCollection<Trace> traceCollection;
-
     @Inject
     MongoCollection<Span> spanCollection;
 
@@ -80,9 +74,9 @@ public class TraceDailyMaintenanceService {
     }
 
     public int aggregateDailyStats(LocalDate date) {
-        ZonedDateTime dayStart = date.atStartOfDay(UTC);
-        ZonedDateTime dayEnd = date.plusDays(1).atStartOfDay(UTC);
-        List<org.bson.Document> rows = aggregateTraces(dayStart, dayEnd, date);
+        var dayStart = date.atStartOfDay(UTC);
+        var dayEnd = date.plusDays(1).atStartOfDay(UTC);
+        var rows = aggregateTraces(dayStart, dayEnd, date);
         return upsertStats(rows, date);
     }
 
@@ -90,9 +84,7 @@ public class TraceDailyMaintenanceService {
         var aggregate = new Aggregate<org.bson.Document>();
         aggregate.resultClass = org.bson.Document.class;
         aggregate.pipeline = List.of(
-            Aggregates.match(Filters.and(
-                Filters.gte("started_at", dayStart),
-                Filters.lt("started_at", dayEnd)
+            Aggregates.match(Filters.and(Filters.gte("started_at", dayStart), Filters.lt("started_at", dayEnd)
             )),
             Aggregates.group(
                 new org.bson.Document()
@@ -116,88 +108,87 @@ public class TraceDailyMaintenanceService {
         return traceCollection.aggregate(aggregate);
     }
 
-    @SuppressWarnings({"checkstyle:ExecutableStatementCount", "checkstyle:MethodLength"})
     private int upsertStats(List<org.bson.Document> rows, LocalDate date) {
         int created = 0;
         int replaced = 0;
 
         for (var row : rows) {
-            var id = row.get("_id", org.bson.Document.class);
-            if (id == null) continue;
-            String userId = id.getString("user_id");
-            String agentId = id.getString("agent_id");
-            if (userId == null) continue;
-            if (agentId == null) agentId = NO_AGENT;
+            var stats = buildStatsFromRow(row, date);
+            if (stats == null) continue;
 
-            String docId = userId + "_" + agentId + "_" + date;
-            long inputTokens = TraceMaintenanceHelper.getLong(row, "input_tokens");
-            long outputTokens = TraceMaintenanceHelper.getLong(row, "output_tokens");
-            long totalTokens = TraceMaintenanceHelper.getLong(row, "total_tokens");
-            long cachedTokens = TraceMaintenanceHelper.getLong(row, "cached_tokens");
-            double costUsd = TraceMaintenanceHelper.getDouble(row, "cost_usd");
-            long callCount = TraceMaintenanceHelper.getLong(row, "call_count");
-            double avgTotalTokens = TraceMaintenanceHelper.getDouble(row, "avg_total_tokens");
-            double avgCostUsd = TraceMaintenanceHelper.getDouble(row, "avg_cost_usd");
-            if (totalTokens <= 0) totalTokens = inputTokens + outputTokens;
-
-            @SuppressWarnings("unchecked")
-            var allTotalTokens = (List<Object>) row.get("all_total_tokens");
-            @SuppressWarnings("unchecked")
-            var allCostUsd = (List<Object>) row.get("all_cost_usd");
-            @SuppressWarnings("unchecked")
-            var sessionIds = (List<String>) row.get("session_ids");
-            double p90TotalTokens = TraceMaintenanceHelper.computeP90(allTotalTokens);
-            double p90CostUsd = TraceMaintenanceHelper.computeP90(allCostUsd);
-            long sessionCount = sessionIds != null ? sessionIds.size() : 0;
-
-            var existing = statsCollection.get(docId);
-            if (existing.isPresent()) {
-                var stats = existing.get();
-                stats.agentId = agentId;
-                stats.date = date.atStartOfDay(UTC);
-                stats.inputTokens = inputTokens;
-                stats.outputTokens = outputTokens;
-                stats.totalTokens = totalTokens;
-                stats.cachedTokens = cachedTokens;
-                stats.costUsd = costUsd;
-                stats.callCount = callCount;
-                stats.avgTotalTokens = avgTotalTokens;
-                stats.avgCostUsd = avgCostUsd;
-                stats.p90TotalTokens = p90TotalTokens;
-                stats.p90CostUsd = p90CostUsd;
-                stats.sessionCount = sessionCount;
+            if (statsCollection.get(stats.id).isPresent()) {
                 statsCollection.replace(stats);
                 replaced++;
             } else {
-                var stats = new TraceDailyStats();
-                stats.id = docId;
-                stats.userId = userId;
-                stats.agentId = agentId;
-                stats.date = date.atStartOfDay(UTC);
-                stats.inputTokens = inputTokens;
-                stats.outputTokens = outputTokens;
-                stats.totalTokens = totalTokens;
-                stats.cachedTokens = cachedTokens;
-                stats.costUsd = costUsd;
-                stats.callCount = callCount;
-                stats.avgTotalTokens = avgTotalTokens;
-                stats.avgCostUsd = avgCostUsd;
-                stats.p90TotalTokens = p90TotalTokens;
-                stats.p90CostUsd = p90CostUsd;
-                stats.sessionCount = sessionCount;
                 statsCollection.insert(stats);
                 created++;
             }
         }
 
-        LOGGER.info("daily stats aggregated, date={}, total={}, created={}, replaced={}",
-                date, created + replaced, created, replaced);
+        LOGGER.info("daily stats aggregated, date={}, total={}, created={}, replaced={}", date, created + replaced, created, replaced);
         return created + replaced;
     }
 
+    private TraceDailyStats buildStatsFromRow(org.bson.Document row, LocalDate date) {
+        var id = row.get("_id", org.bson.Document.class);
+        if (id == null) return null;
+        String userId = id.getString("user_id");
+        String agentId = id.getString("agent_id");
+        if (userId == null) return null;
+        if (agentId == null) agentId = NO_AGENT;
+
+        long inputTokens = TraceMaintenanceHelper.getLong(row, "input_tokens");
+        long outputTokens = TraceMaintenanceHelper.getLong(row, "output_tokens");
+        long totalTokens = TraceMaintenanceHelper.getLong(row, "total_tokens");
+        long cachedTokens = TraceMaintenanceHelper.getLong(row, "cached_tokens");
+        double costUsd = TraceMaintenanceHelper.getDouble(row, "cost_usd");
+        long callCount = TraceMaintenanceHelper.getLong(row, "call_count");
+        double avgTotalTokens = TraceMaintenanceHelper.getDouble(row, "avg_total_tokens");
+        double avgCostUsd = TraceMaintenanceHelper.getDouble(row, "avg_cost_usd");
+        if (totalTokens <= 0) totalTokens = inputTokens + outputTokens;
+
+        @SuppressWarnings("unchecked")
+        var allTotalTokens = (List<Object>) row.get("all_total_tokens");
+        @SuppressWarnings("unchecked")
+        var allCostUsd = (List<Object>) row.get("all_cost_usd");
+        @SuppressWarnings("unchecked")
+        var sessionIds = (List<String>) row.get("session_ids");
+        double p90TotalTokens = TraceMaintenanceHelper.computeP90(allTotalTokens);
+        double p90CostUsd = TraceMaintenanceHelper.computeP90(allCostUsd);
+        long sessionCount = sessionIds != null ? sessionIds.size() : 0;
+
+        var stats = new TraceDailyStats();
+        stats.id = userId + "_" + agentId + "_" + date;
+        stats.userId = userId;
+        stats.agentId = agentId;
+        stats.date = date.atStartOfDay(UTC);
+        stats.inputTokens = inputTokens;
+        stats.outputTokens = outputTokens;
+        stats.totalTokens = totalTokens;
+        stats.cachedTokens = cachedTokens;
+        stats.costUsd = costUsd;
+        stats.callCount = callCount;
+        stats.avgTotalTokens = avgTotalTokens;
+        stats.avgCostUsd = avgCostUsd;
+        stats.p90TotalTokens = p90TotalTokens;
+        stats.p90CostUsd = p90CostUsd;
+        stats.sessionCount = sessionCount;
+        return stats;
+    }
+
     // --- Archive ---
-    @SuppressWarnings({"checkstyle:ExecutableStatementCount", "checkstyle:MethodLength"})
     public int uploadArchive(ZonedDateTime cutoff) {
+        int totalCount = checkArchivePrerequisites(cutoff);
+        if (totalCount <= 0) return totalCount;
+
+        LocalDate cutoffDate = cutoff.toLocalDate();
+        String blobPrefix = (archivePrefix != null ? archivePrefix + "/" : "")
+                + String.format("traces-archive/%s/%s", cutoffDate.format(YEAR_MONTH), cutoffDate);
+
+        return archiveAllTraces(cutoff, blobPrefix, totalCount);
+    }
+
+    private int checkArchivePrerequisites(ZonedDateTime cutoff) {
         if (storageService == null || archiveContainer == null) {
             LOGGER.warn("archive skipped: object storage not configured, cutoff={}", cutoff);
             return -1;
@@ -217,19 +208,18 @@ public class TraceDailyMaintenanceService {
             LOGGER.info("no traces to archive, cutoff={}", cutoff);
             return 0;
         }
+        return totalCount;
+    }
 
-        String blobPrefix = (archivePrefix != null ? archivePrefix + "/" : "")
-                + String.format("traces-archive/%s/%s", cutoffDate.format(YEAR_MONTH), cutoffDate);
-        int totalSpanCount = 0;
-        int part = 1;
-        int offset = 0;
+    private int archiveAllTraces(ZonedDateTime cutoff, String blobPrefix, int totalCount) {
+        var state = new ArchiveState();
 
         try {
             while (true) {
                 var batchQuery = new Query();
                 batchQuery.filter = Filters.lt("started_at", cutoff);
                 batchQuery.sort = Sorts.ascending("started_at");
-                batchQuery.skip = offset;
+                batchQuery.skip = state.offset;
                 batchQuery.limit = ARCHIVE_BATCH_SIZE;
                 var batch = traceCollection.find(batchQuery);
                 if (batch.isEmpty()) break;
@@ -237,67 +227,79 @@ public class TraceDailyMaintenanceService {
                 var traceIds = TraceMaintenanceHelper.extractTraceIds(batch);
                 var spanCounts = getSpanCountsByTraceId(traceIds);
 
-                // Process traces in span-bounded sub-batches to keep per-part
-                // memory under control even for span-heavy traces
-                int start = 0;
-                while (start < batch.size()) {
-                    int sc = spanCounts.getOrDefault(batch.get(start).traceId, 0);
-
-                    if (sc > MAX_SPANS_PER_PART) {
-                        // Single trace with excessive spans — split across multiple parts
-                        Trace trace = batch.get(start);
-                        var allSpans = loadSpansForTraces(List.of(trace.traceId))
-                                .getOrDefault(trace.traceId, List.of());
-                        int chunks = (allSpans.size() + MAX_SPANS_PER_PART - 1) / MAX_SPANS_PER_PART;
-                        for (int c = 0; c < allSpans.size(); c += MAX_SPANS_PER_PART) {
-                            int chunkEnd = Math.min(c + MAX_SPANS_PER_PART, allSpans.size());
-                            int chunkSpanCount = uploadSingleTracePart(blobPrefix, part, trace,
-                                    allSpans.subList(c, chunkEnd));
-                            totalSpanCount += chunkSpanCount;
-                            LOGGER.info("archive part {}: 1 trace + {} spans uploaded (oversized {}/{})",
-                                    part, chunkSpanCount, c / MAX_SPANS_PER_PART + 1, chunks);
-                            part++;
-                        }
-                        allSpans.clear();
-                        offset++;
-                        start++;
-                        continue;
-                    }
-
-                    int end = start;
-                    int accumulatedSpans = 0;
-                    while (end < batch.size()) {
-                        int sc2 = spanCounts.getOrDefault(batch.get(end).traceId, 0);
-                        if (sc2 > MAX_SPANS_PER_PART) break; // handled in next outer iteration
-                        if (accumulatedSpans > 0 && accumulatedSpans + sc2 > MAX_SPANS_PER_PART) break;
-                        accumulatedSpans += sc2;
-                        end++;
-                    }
-
-                    var subBatch = new ArrayList<>(batch.subList(start, end));
-                    var subTraceIds = TraceMaintenanceHelper.extractTraceIds(subBatch);
-                    var spansByTraceId = loadSpansForTraces(subTraceIds);
-
-                    int spanCount = writeAndUploadPart(blobPrefix, part, subBatch, spansByTraceId);
-                    totalSpanCount += spanCount;
-
-                    spansByTraceId.clear();
-
-                    LOGGER.info("archive part {}: {} traces + {} spans uploaded",
-                            part, subBatch.size(), spanCount);
-                    offset += subBatch.size();
-                    part++;
-                    start = end;
-                }
+                processBatchWithSpanBounding(batch, spanCounts, blobPrefix, state);
                 batch.clear();
             }
 
             LOGGER.info("archived {} traces + {} spans in {} parts to {}, cutoff={}",
-                    totalCount, totalSpanCount, part - 1, blobPrefix, cutoff);
+                    totalCount, state.totalSpanCount, state.part - 1, blobPrefix, cutoff);
         } catch (Exception e) {
             throw new RuntimeException("archive upload failed: " + e.getMessage(), e);
         }
         return totalCount;
+    }
+
+    // Process traces in a batch split into span-bounded sub-batches so per-part
+    // memory stays under control even for span-heavy traces
+    private void processBatchWithSpanBounding(List<Trace> batch, Map<String, Integer> spanCounts,
+                                               String blobPrefix, ArchiveState state) throws IOException {
+        int start = 0;
+        while (start < batch.size()) {
+            int sc = spanCounts.getOrDefault(batch.get(start).traceId, 0);
+
+            if (sc > MAX_SPANS_PER_PART) {
+                handleOversizedTrace(batch.get(start), blobPrefix, state);
+                start++;
+                continue;
+            }
+
+            start = uploadSubBatch(batch, spanCounts, start, blobPrefix, state);
+        }
+    }
+
+    private void handleOversizedTrace(Trace trace, String blobPrefix, ArchiveState state) throws IOException {
+        var allSpans = loadSpansForTraces(List.of(trace.traceId))
+                .getOrDefault(trace.traceId, List.of());
+        int chunks = (allSpans.size() + MAX_SPANS_PER_PART - 1) / MAX_SPANS_PER_PART;
+        for (int c = 0; c < allSpans.size(); c += MAX_SPANS_PER_PART) {
+            int chunkEnd = Math.min(c + MAX_SPANS_PER_PART, allSpans.size());
+            int chunkSpanCount = uploadSingleTracePart(blobPrefix, state.part, trace,
+                    allSpans.subList(c, chunkEnd));
+            state.totalSpanCount += chunkSpanCount;
+            LOGGER.info("archive part {}: 1 trace + {} spans uploaded (oversized {}/{})",
+                    state.part, chunkSpanCount, c / MAX_SPANS_PER_PART + 1, chunks);
+            state.part++;
+        }
+        allSpans.clear();
+        state.offset++;
+    }
+
+    private int uploadSubBatch(List<Trace> batch, Map<String, Integer> spanCounts,
+                                int start, String blobPrefix, ArchiveState state) throws IOException {
+        int end = start;
+        int accumulatedSpans = 0;
+        while (end < batch.size()) {
+            int sc2 = spanCounts.getOrDefault(batch.get(end).traceId, 0);
+            if (sc2 > MAX_SPANS_PER_PART) break;
+            if (accumulatedSpans > 0 && accumulatedSpans + sc2 > MAX_SPANS_PER_PART) break;
+            accumulatedSpans += sc2;
+            end++;
+        }
+
+        var subBatch = new ArrayList<>(batch.subList(start, end));
+        var subTraceIds = TraceMaintenanceHelper.extractTraceIds(subBatch);
+        var spansByTraceId = loadSpansForTraces(subTraceIds);
+
+        int spanCount = writeAndUploadPart(blobPrefix, state.part, subBatch, spansByTraceId);
+        state.totalSpanCount += spanCount;
+
+        spansByTraceId.clear();
+
+        LOGGER.info("archive part {}: {} traces + {} spans uploaded",
+                state.part, subBatch.size(), spanCount);
+        state.offset += subBatch.size();
+        state.part++;
+        return end;
     }
 
     public void deleteArchivedTraces(ZonedDateTime cutoff) {
@@ -366,8 +368,7 @@ public class TraceDailyMaintenanceService {
         }
     }
 
-    private int writeBatchToFile(Path file, List<Trace> batch,
-                                  Map<String, List<Span>> spansByTraceId) throws IOException {
+    private int writeBatchToFile(Path file, List<Trace> batch, Map<String, List<Span>> spansByTraceId) throws IOException {
         int spanCount = 0;
         try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(file));
              var writer = new BufferedWriter(new OutputStreamWriter(gzipOut, StandardCharsets.UTF_8))) {
@@ -384,7 +385,7 @@ public class TraceDailyMaintenanceService {
     }
 
     private void writeArchiveLine(BufferedWriter writer, String type, Object obj) throws IOException {
-        String json = JsonUtil.toJson(obj);
+        var json = JsonUtil.toJson(obj);
         writer.write("{\"_type\":\"");
         writer.write(type);
         writer.write("\",");
@@ -437,5 +438,11 @@ public class TraceDailyMaintenanceService {
 
     private long countStatsForDate(LocalDate date) {
         return statsCollection.count(Filters.eq("date", date.atStartOfDay(UTC)));
+    }
+
+    private static final class ArchiveState {
+        int part = 1;
+        int offset;
+        int totalSpanCount;
     }
 }

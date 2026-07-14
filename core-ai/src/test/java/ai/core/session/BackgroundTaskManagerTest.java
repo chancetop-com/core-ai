@@ -2,6 +2,8 @@ package ai.core.session;
 
 import ai.core.telemetry.RecordingSpanProcessor;
 import ai.core.tool.subagent.SubagentOutputSink;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import org.junit.jupiter.api.Test;
@@ -13,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class BackgroundTaskManagerTest {
 
     @Test
-    @SuppressWarnings({"checkstyle:NestedTryDepth", "PMD.UseTryWithResources"})
+    @SuppressWarnings("PMD.UseTryWithResources")
     void backgroundTaskKeepsSubmittingTraceContext() throws Exception {
         var spans = new RecordingSpanProcessor();
         var tracerProvider = SdkTracerProvider.builder()
@@ -28,27 +30,32 @@ class BackgroundTaskManagerTest {
             var manager = new BackgroundTaskManager(commandQueue, taskId -> new InMemorySink(taskId));
             var parentSpan = tracer.spanBuilder("task-tool").startSpan();
 
-            var scope = parentSpan.makeCurrent();
-            try {
-                var handle = manager.submit("deep-research-1", () -> {
-                    var agentSpan = tracer.spanBuilder("background-agent").startSpan();
-                    try {
-                        return "done";
-                    } finally {
-                        agentSpan.end();
-                    }
-                }, null);
-                handle.future().get(5, TimeUnit.SECONDS);
-            } finally {
-                scope.close();
-                parentSpan.end();
-            }
+            submitAndWait(tracer, manager, parentSpan);
 
             var backgroundAgent = spans.find("background-agent").orElseThrow();
             assertEquals(parentSpan.getSpanContext().getTraceId(), backgroundAgent.getTraceId());
             assertEquals(parentSpan.getSpanContext().getSpanId(), backgroundAgent.getParentSpanId());
         } finally {
             tracerProvider.shutdown();
+        }
+    }
+
+    @SuppressWarnings("PMD.UseTryWithResources")
+    private static void submitAndWait(Tracer tracer, BackgroundTaskManager manager, Span parentSpan) throws Exception {
+        var scope = parentSpan.makeCurrent();
+        try {
+            var handle = manager.submit("deep-research-1", () -> {
+                var agentSpan = tracer.spanBuilder("background-agent").startSpan();
+                try {
+                    return "done";
+                } finally {
+                    agentSpan.end();
+                }
+            }, null);
+            handle.future().get(5, TimeUnit.SECONDS);
+        } finally {
+            scope.close();
+            parentSpan.end();
         }
     }
 

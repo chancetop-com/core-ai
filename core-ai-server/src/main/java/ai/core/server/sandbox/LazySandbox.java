@@ -26,8 +26,7 @@ public class LazySandbox implements Sandbox {
     private final SandboxConfig config;
     private final SandboxManager manager;
     private final Consumer<SandboxEvent> eventDispatcher;
-    private final String sessionId;
-    private final String userId;
+    private final SessionIdentity identity;
     private final Runnable postAcquireHook;
     private final SandboxSnapshotService snapshotService;
     private volatile long snapshotEpoch;
@@ -35,22 +34,20 @@ public class LazySandbox implements Sandbox {
     private volatile Sandbox delegate;
     private volatile SandboxStatus status = SandboxStatus.PENDING;
 
-    public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, String sessionId, String userId) {
-        this(config, manager, eventDispatcher, sessionId, userId, null, null);
+    public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity) {
+        this(config, manager, eventDispatcher, identity, null, null);
     }
 
-    public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, String sessionId, String userId, Runnable postAcquireHook) {
-        this(config, manager, eventDispatcher, sessionId, userId, postAcquireHook, null);
+    public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity, Runnable postAcquireHook) {
+        this(config, manager, eventDispatcher, identity, postAcquireHook, null);
     }
 
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, String sessionId, String userId,
+    public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity,
                        Runnable postAcquireHook, SandboxSnapshotService snapshotService) {
         this.config = config;
         this.manager = manager;
         this.eventDispatcher = eventDispatcher;
-        this.sessionId = sessionId;
-        this.userId = userId;
+        this.identity = identity;
         this.postAcquireHook = postAcquireHook;
         this.snapshotService = snapshotService;
     }
@@ -205,7 +202,7 @@ public class LazySandbox implements Sandbox {
             dispatchEvent(SandboxEventType.CREATING);
 
             var startTime = System.currentTimeMillis();
-            delegate = manager.acquire(config, sessionId, userId);
+            delegate = manager.acquire(config, identity.sessionId(), identity.userId());
             if (delegate == null) {
                 dispatchEvent(SandboxEventType.ERROR);
                 throw new IllegalStateException("sandbox acquire returned null");
@@ -227,7 +224,7 @@ public class LazySandbox implements Sandbox {
             try {
                 postAcquireHook.run();
             } catch (Exception e) {
-                LOGGER.warn("post-acquire hook failed for session={}", sessionId, e);
+                LOGGER.warn("post-acquire hook failed for session={}", identity.sessionId(), e);
             }
         }
     }
@@ -236,14 +233,14 @@ public class LazySandbox implements Sandbox {
     private String restoreSnapshot() {
         if (snapshotService == null || !snapshotService.enabled()) return null;
         try {
-            snapshotEpoch = snapshotService.beginEpoch(sessionId);
+            snapshotEpoch = snapshotService.beginEpoch(identity.sessionId());
             snapshotDirty = false;
-            var outcome = snapshotService.restoreLatest(sessionId, userId, delegate.ip(), delegate.port());
+            var outcome = snapshotService.restoreLatest(identity.sessionId(), identity.userId(), delegate.ip(), delegate.port());
             if (outcome == SandboxSnapshotService.RestoreOutcome.DEGRADED) {
                 return "Sandbox is ready (previous work files could not be restored; starting from a clean environment)";
             }
         } catch (Exception e) {
-            LOGGER.warn("snapshot restore hook failed, continuing with empty sandbox: session={}", sessionId, e);
+            LOGGER.warn("snapshot restore hook failed, continuing with empty sandbox: session={}", identity.sessionId(), e);
         }
         return null;
     }
@@ -261,15 +258,15 @@ public class LazySandbox implements Sandbox {
             var ip = delegate != null ? delegate.ip() : null;
             var image = delegate != null ? delegate.image() : null;
             var event = switch (type) {
-                case CREATING -> SandboxEvent.creating(sessionId, sandboxId);
+                case CREATING -> SandboxEvent.creating(identity.sessionId(), sandboxId);
                 case READY -> {
-                    var readyEvent = SandboxEvent.ready(sessionId, sandboxId, durationMs != null ? durationMs : 0L, hostname, ip, image);
+                    var readyEvent = SandboxEvent.ready(identity.sessionId(), sandboxId, durationMs != null ? durationMs : 0L, hostname, ip, image);
                     if (readyMessage != null) readyEvent.message = readyMessage;
                     yield readyEvent;
                 }
-                case ERROR -> SandboxEvent.error(sessionId, sandboxId, "Sandbox error");
-                case REPLACING -> SandboxEvent.replacing(sessionId, sandboxId);
-                case TERMINATED -> SandboxEvent.terminated(sessionId, sandboxId);
+                case ERROR -> SandboxEvent.error(identity.sessionId(), sandboxId, "Sandbox error");
+                case REPLACING -> SandboxEvent.replacing(identity.sessionId(), sandboxId);
+                case TERMINATED -> SandboxEvent.terminated(identity.sessionId(), sandboxId);
             };
             eventDispatcher.accept(event);
         } catch (Exception e) {
@@ -278,11 +275,11 @@ public class LazySandbox implements Sandbox {
     }
 
     public String sessionId() {
-        return sessionId;
+        return identity.sessionId();
     }
 
     public String userId() {
-        return userId;
+        return identity.userId();
     }
 
     public long snapshotEpoch() {
@@ -298,5 +295,8 @@ public class LazySandbox implements Sandbox {
     public boolean isDelegateTracked() {
         var current = delegate;
         return current != null && manager.get(current.getId()) != null;
+    }
+
+    public record SessionIdentity(String sessionId, String userId) {
     }
 }

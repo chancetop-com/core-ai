@@ -116,34 +116,10 @@ public class ToolRefResolver {
         return null;
     }
 
-    @SuppressWarnings("checkstyle:NestedIfDepth")
     private void resolveMcpRef(ToolRef toolRef, List<ToolCall> result, McpClientManager sessionMgr) {
-        // Handle individual MCP tool: id=mcp-tool:{toolName} (source=serverId) or id=mcp-tool:{serverId}:{toolName}
         var parsed = ToolRef.parseMcpToolId(toolRef.id, toolRef.source);
         if (parsed != null) {
-            var serverId = parsed.serverId();
-            if (serverId != null) {
-                var toolName = parsed.toolName();
-                var mgr = pickManager(serverId, sessionMgr);
-                if (mgr != null && mgr.hasServer(serverId)) {
-                    result.addAll(loadMcpToolSafe(mgr, serverId, toolName));
-                    return;
-                }
-                // Fallback: try the registry entry's resolved name (for config:<name> entries the
-                // McpClientManager uses the trailing name, not the config: id).
-                var entry = toolRegistry.get(serverId);
-                if (entry != null) {
-                    var resolvedServerName = resolveMcpServerName(entry);
-                    if (resolvedServerName != null) {
-                        var fallbackMgr = pickManager(resolvedServerName, sessionMgr);
-                        if (fallbackMgr != null && fallbackMgr.hasServer(resolvedServerName)) {
-                            result.addAll(loadMcpToolSafe(fallbackMgr, resolvedServerName, toolName));
-                            return;
-                        }
-                    }
-                }
-            }
-            LOGGER.warn("unable to resolve individual mcp tool, id={}, source={}", toolRef.id, toolRef.source);
+            resolveMcpToolRef(parsed, toolRef, result, sessionMgr);
             return;
         }
 
@@ -157,6 +133,42 @@ public class ToolRefResolver {
         var mgr = pickManager(serverName, sessionMgr);
         if (mgr != null && mgr.hasServer(serverName)) {
             result.addAll(loadMcpToolsSafe(mgr, serverName));
+        }
+    }
+
+    private void resolveMcpToolRef(ToolRef.McpToolId parsed, ToolRef toolRef,
+                                    List<ToolCall> result, McpClientManager sessionMgr) {
+        var serverId = parsed.serverId();
+        if (serverId == null) {
+            LOGGER.warn("unable to resolve individual mcp tool, id={}, source={}", toolRef.id, toolRef.source);
+            return;
+        }
+        var toolName = parsed.toolName();
+        var mgr = pickManager(serverId, sessionMgr);
+        if (mgr != null && mgr.hasServer(serverId)) {
+            result.addAll(loadMcpToolSafe(mgr, serverId, toolName));
+            return;
+        }
+        resolveMcpToolFallback(serverId, toolName, toolRef, result, sessionMgr);
+    }
+
+    private void resolveMcpToolFallback(String serverId, String toolName, ToolRef toolRef,
+                                         List<ToolCall> result, McpClientManager sessionMgr) {
+        var entry = toolRegistry.get(serverId);
+        if (entry == null) {
+            LOGGER.warn("unable to resolve individual mcp tool, id={}, source={}", toolRef.id, toolRef.source);
+            return;
+        }
+        var resolvedServerName = resolveMcpServerName(entry);
+        if (resolvedServerName == null) {
+            LOGGER.warn("unable to resolve individual mcp tool, id={}, source={}", toolRef.id, toolRef.source);
+            return;
+        }
+        var fallbackMgr = pickManager(resolvedServerName, sessionMgr);
+        if (fallbackMgr != null && fallbackMgr.hasServer(resolvedServerName)) {
+            result.addAll(loadMcpToolSafe(fallbackMgr, resolvedServerName, toolName));
+        } else {
+            LOGGER.warn("unable to resolve individual mcp tool, id={}, source={}", toolRef.id, toolRef.source);
         }
     }
 

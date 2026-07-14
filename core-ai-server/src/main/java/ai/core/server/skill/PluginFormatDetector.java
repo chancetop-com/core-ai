@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Auto-detects plugin formats (Claude Code, Codex CLI, etc.) in a cloned
@@ -25,6 +26,11 @@ import java.util.List;
 public class PluginFormatDetector {
     private static final Logger LOGGER = LoggerFactory.getLogger(PluginFormatDetector.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static String getTextValue(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value != null ? value.asText(null) : null;
+    }
 
     /**
      * Detect whether the repository root has a known plugin format marker.
@@ -160,44 +166,38 @@ public class PluginFormatDetector {
      * Resolve a plugin source directory to find its skill path.
      * Checks for nested plugin.json, then common conventions.
      */
-    private java.util.Optional<String> resolvePluginSkillPath(Path repoDir, String source) {
+    private Optional<String> resolvePluginSkillPath(Path repoDir, String source) {
         Path pluginDir = repoDir.resolve(source).normalize();
-
-        // Check for nested plugin.json with "skills" field
-        Path nestedPluginJson = pluginDir.resolve("plugin.json");
-        if (Files.exists(nestedPluginJson)) {
-            try {
-                JsonNode nested = MAPPER.readTree(nestedPluginJson.toFile());
-                String skillsPath = getTextValue(nested, "skills");
-                if (skillsPath != null && !skillsPath.isBlank()) {
-                    // Resolve relative to plugin directory
-                    Path resolved = pluginDir.resolve(skillsPath).normalize();
-                    if (Files.isDirectory(resolved)) {
-                        return java.util.Optional.of(repoDir.relativize(resolved).toString());
-                    }
-                }
-            } catch (IOException e) {
-                LOGGER.warn("Failed to parse plugin.json in {}", pluginDir, e);
-            }
-        }
-
-        // Check for .claude/skills/ relative to plugin directory
-        Path claudeSkills = pluginDir.resolve(".claude").resolve("skills");
-        if (Files.isDirectory(claudeSkills)) {
-            return java.util.Optional.of(repoDir.relativize(claudeSkills).toString());
-        }
-
-        // Check for skills/ relative to plugin directory
-        Path skills = pluginDir.resolve("skills");
-        if (Files.isDirectory(skills)) {
-            return java.util.Optional.of(repoDir.relativize(skills).toString());
-        }
-
-        return java.util.Optional.empty();
+        Optional<String> result = tryResolveFromPluginJson(repoDir, pluginDir);
+        if (result.isPresent()) return result;
+        return resolveConventionDirs(repoDir, pluginDir);
     }
 
-    private static String getTextValue(JsonNode node, String field) {
-        JsonNode value = node.get(field);
-        return value != null ? value.asText(null) : null;
+    private Optional<String> tryResolveFromPluginJson(Path repoDir, Path pluginDir) {
+        Path pluginJson = pluginDir.resolve("plugin.json");
+        if (!Files.exists(pluginJson)) return Optional.empty();
+        try {
+            JsonNode node = MAPPER.readTree(pluginJson.toFile());
+            String skillsPath = getTextValue(node, "skills");
+            if (skillsPath == null || skillsPath.isBlank()) return Optional.empty();
+            Path resolved = pluginDir.resolve(skillsPath).normalize();
+            if (!Files.isDirectory(resolved)) return Optional.empty();
+            return Optional.of(repoDir.relativize(resolved).toString());
+        } catch (IOException e) {
+            LOGGER.warn("Failed to parse plugin.json in {}", pluginDir, e);
+            return Optional.empty();
+        }
+    }
+
+    private Optional<String> resolveConventionDirs(Path repoDir, Path pluginDir) {
+        Path claudeSkills = pluginDir.resolve(".claude").resolve("skills");
+        if (Files.isDirectory(claudeSkills)) {
+            return Optional.of(repoDir.relativize(claudeSkills).toString());
+        }
+        Path skills = pluginDir.resolve("skills");
+        if (Files.isDirectory(skills)) {
+            return Optional.of(repoDir.relativize(skills).toString());
+        }
+        return Optional.empty();
     }
 }

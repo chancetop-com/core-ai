@@ -1,5 +1,6 @@
 package ai.core.server.tool;
 
+import ai.core.api.server.tool.UpdateMcpServerRequest;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
 import ai.core.server.domain.ToolRef;
@@ -279,10 +280,8 @@ public class ToolRegistryService {
         return mcpOperationService.importMcpServers(rawJson, category, enabled);
     }
 
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public ToolRegistryEntry updateMcpServer(String id, String name, String description, String category,
-                                             Map<String, String> config, Boolean enabled, String rawConfig) {
-        return mcpOperationService.updateMcpServer(id, name, description, category, config, enabled, rawConfig);
+    public ToolRegistryEntry updateMcpServer(String id, UpdateMcpServerRequest request) {
+        return mcpOperationService.updateMcpServer(id, request);
     }
 
     public void deleteMcpServer(String id) {
