@@ -121,7 +121,7 @@ public class TerminalUI {
         if (slashCompleter != null) slashCompleter.resetCommands();
     }
 
-    public void setAgentProfiles(java.util.List<String> names) {
+    public void setAgentProfiles(List<String> names) {
         if (agentNameCompleter != null) agentNameCompleter.setAgentNames(names);
     }
 

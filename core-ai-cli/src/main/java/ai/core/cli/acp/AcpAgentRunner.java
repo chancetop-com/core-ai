@@ -7,7 +7,7 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
-import ai.core.cli.CliApp;
+import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
@@ -65,6 +65,29 @@ import static com.agentclientprotocol.sdk.spec.AcpSchema.AvailableCommandsUpdate
 public class AcpAgentRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AcpAgentRunner.class);
 
+    private static void injectLiteLLMFallback(PropertiesFileSource props) {
+        if (props.property("litellm.api.base").isPresent()) return;
+        var auth = AuthConfig.load();
+        if (auth != null && auth.apiKey() != null) {
+            props.putProperty("litellm.api.base", auth.serverUrl() + "/api/litellm/v1");
+            props.putProperty("litellm.api.key", auth.apiKey());
+        }
+    }
+
+    private static void registerMcpLoadingListener() {
+        McpClientManagerRegistry.addCreationListener(manager ->
+                manager.addListener((serverName, oldState, newState) -> {
+                    if (newState == McpClientManager.ConnectionState.CONNECTING) {
+                        LOGGER.info("Loading MCP server: {}", serverName);
+                    } else if (newState == McpClientManager.ConnectionState.CONNECTED) {
+                        LOGGER.info("MCP server loaded: {}", serverName);
+                    } else if (newState == McpClientManager.ConnectionState.FAILED) {
+                        LOGGER.warn("MCP server failed: {}", serverName);
+                    }
+                })
+        );
+    }
+
     private final Path configFile;
     private final String modelOverride;
     private final boolean autoApproveAll;
@@ -97,7 +120,7 @@ public class AcpAgentRunner {
         System.setProperty("user.dir", workspace.toString());
 
         var props = PropertiesFileSource.fromFile(configFile);
-        CliApp.mergeWorkspaceConfig(props, workspace);
+        CliAppHelper.mergeWorkspaceConfig(props, workspace);
         injectLiteLLMFallback(props);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
@@ -329,20 +352,6 @@ public class AcpAgentRunner {
         });
     }
 
-    private void registerMcpLoadingListener() {
-        McpClientManagerRegistry.addCreationListener(manager ->
-                manager.addListener((serverName, oldState, newState) -> {
-                    if (newState == McpClientManager.ConnectionState.CONNECTING) {
-                        LOGGER.info("Loading MCP server: {}", serverName);
-                    } else if (newState == McpClientManager.ConnectionState.CONNECTED) {
-                        LOGGER.info("MCP server loaded: {}", serverName);
-                    } else if (newState == McpClientManager.ConnectionState.FAILED) {
-                        LOGGER.warn("MCP server failed: {}", serverName);
-                    }
-                })
-        );
-    }
-
     private Consumer<AgentEvent> acpPermissionDispatcher(
             AtomicReference<SyncPromptContext> currentContext, PermissionGate permissionGate) {
         return event -> {
@@ -373,15 +382,6 @@ public class AcpAgentRunner {
         acpAgent.sendSessionUpdate(sessionId,
                 new AvailableCommandsUpdate("available_commands_update", commands));
         LOGGER.debug("Broadcast {} available commands to session {}", commands.size(), sessionId);
-    }
-
-    private static void injectLiteLLMFallback(PropertiesFileSource props) {
-        if (props.property("litellm.api.base").isPresent()) return;
-        var auth = AuthConfig.load();
-        if (auth != null && auth.apiKey() != null) {
-            props.putProperty("litellm.api.base", auth.serverUrl() + "/api/litellm/v1");
-            props.putProperty("litellm.api.key", auth.apiKey());
-        }
     }
 
     private void registerAuthListener(BootstrapResult result) {

@@ -45,7 +45,7 @@ public class RemoteCommandHandler {
     private RemoteConfig handleActiveLogin() {
         var active = AuthConfig.load();
         var serverUrl = active.serverUrl();
-        var name = active.name() != null ? active.name() : (active.userId() != null ? active.userId() : "authenticated");
+        var name = active.name() != null ? active.name() : active.userId() != null ? active.userId() : "authenticated";
 
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote server: " + AnsiTheme.RESET + serverUrl + "\n");
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Using active login as " + name + AnsiTheme.RESET + "\n");

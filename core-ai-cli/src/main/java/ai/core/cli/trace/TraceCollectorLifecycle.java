@@ -31,13 +31,6 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     private static final String ENVIRONMENT = "cli";
     private static final int MAX_FIELD_LEN = 100_000;
 
-    private final TraceUploader uploader;
-    private volatile TurnState turn;
-
-    public TraceCollectorLifecycle(TraceUploader uploader) {
-        this.uploader = uploader;
-    }
-
     // Telemetry must never break the agent turn: isolate every hook body. Catch Throwable because
     // JsonUtil.toJson throws Error on null and the lifecycle dispatch in Agent has no try/catch.
     private static void safe(Runnable body) {
@@ -46,6 +39,32 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
         } catch (Throwable t) {
             LOGGER.warn("trace collection hook failed, skipping", t);
         }
+    }
+
+    private static String toolKey(FunctionCall call) {
+        if (call == null) return "tool";
+        if (call.id != null) return call.id;
+        return call.function != null ? call.function.name : "tool";
+    }
+
+    private static String truncate(String value) {
+        if (value == null) return null;
+        return value.length() <= MAX_FIELD_LEN ? value : value.substring(0, MAX_FIELD_LEN);
+    }
+
+    private static String hex32() {
+        return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private static String hex16() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
+    private final TraceUploader uploader;
+    private volatile TurnState turn;
+
+    public TraceCollectorLifecycle(TraceUploader uploader) {
+        this.uploader = uploader;
     }
 
     @Override
@@ -175,25 +194,6 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
         span.cachedTokens = details != null ? (long) details.cachedTokens : 0L;
     }
 
-    private static String toolKey(FunctionCall call) {
-        if (call == null) return "tool";
-        if (call.id != null) return call.id;
-        return call.function != null ? call.function.name : "tool";
-    }
-
-    private static String truncate(String value) {
-        if (value == null) return null;
-        return value.length() <= MAX_FIELD_LEN ? value : value.substring(0, MAX_FIELD_LEN);
-    }
-
-    private static String hex32() {
-        return UUID.randomUUID().toString().replace("-", "");
-    }
-
-    private static String hex16() {
-        return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-    }
-
     // Mutable per-turn state. The REPL runs turns sequentially and all lifecycle callbacks fire on the
     // main agent thread, so this is effectively single-threaded; the concurrent collections and volatile
     // field are kept as cheap defensive guards. currentLlmSpanId points at the most recent LLM span so
@@ -205,7 +205,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
         volatile long llmStartMs;
         long startedAtMs;
         String input;
-        final ConcurrentLinkedQueue<CliTraceSpan> spans = new ConcurrentLinkedQueue<>();
+        final java.util.Queue<CliTraceSpan> spans = new ConcurrentLinkedQueue<>();
         final Map<String, Long> toolStartMs = new ConcurrentHashMap<>();
     }
 }

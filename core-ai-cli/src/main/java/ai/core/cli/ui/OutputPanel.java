@@ -199,14 +199,6 @@ public class OutputPanel {
         startSpinner(wasReasoningShown);
     }
 
-    public void toolStart(String toolName, String arguments, String diff, Boolean frontTask) {
-        toolStart(toolName, arguments, diff, frontTask, true, null);
-    }
-
-    public void toolStart(String toolName, String arguments, String diff, Boolean frontTask, boolean restartSpinner) {
-        toolStart(toolName, arguments, diff, frontTask, restartSpinner, null);
-    }
-
     public void toolStart(String toolName, String arguments, String diff, Boolean frontTask, boolean restartSpinner, String model) {
         stopSpinnerIfActive();
         mdRenderer.flush();

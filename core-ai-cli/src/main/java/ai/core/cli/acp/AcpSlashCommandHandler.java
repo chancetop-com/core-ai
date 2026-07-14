@@ -1,7 +1,7 @@
 package ai.core.cli.acp;
 
 import ai.core.cli.DebugLog;
-import ai.core.cli.agent.AgentSessionRunner;
+import ai.core.cli.agent.AgentSessionRunnerHelper;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.llm.LLMProviderType;
@@ -66,7 +66,7 @@ class AcpSlashCommandHandler {
                     """;
             case "/models" -> handleModels(providers);
             case "/model" -> handleModel(parts, providers);
-            case "/thinking" -> handleThinking(parts, agent);
+            case "/thinking" -> handleThinking(parts);
             case "/debug" -> handleDebug();
             case "/init" -> handleInit();
             case "/tools" -> handleTools(agent);
@@ -120,16 +120,16 @@ class AcpSlashCommandHandler {
         return "Debug mode: ON";
     }
 
-    private String handleThinking(String[] parts, ai.core.agent.Agent agent) {
+    private String handleThinking(String[] parts) {
         if (parts.length < 2 || parts[1].isBlank()) {
-            var current = AgentSessionRunner.loadReasoningEffortFromExtraBody();
+            var current = AgentSessionRunnerHelper.loadReasoningEffortFromExtraBody();
             String level = current != null ? current.name().toLowerCase(Locale.ROOT) : "off (provider default)";
             return "Reasoning effort: " + level + "\nUsage: /thinking [low|medium|high|off]";
         }
         var arg = parts[1].trim().toLowerCase(Locale.ROOT);
-        var level = AgentSessionRunner.parseLevel(arg);
+        var level = AgentSessionRunnerHelper.parseLevel(arg);
         if (level != null || "off".equals(arg) || "none".equals(arg) || "default".equals(arg)) {
-            String error = AgentSessionRunner.persistReasoningEffortToExtraBody(level);
+            String error = AgentSessionRunnerHelper.persistReasoningEffortToExtraBody(level);
             if (error != null) return "Error: " + error;
             String label = level != null ? level.name().toLowerCase(Locale.ROOT) : "off (provider default)";
             return "Reasoning effort set to " + label;

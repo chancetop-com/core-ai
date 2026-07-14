@@ -1,6 +1,5 @@
 package ai.core.cli.trace;
 
-import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FunctionCall;

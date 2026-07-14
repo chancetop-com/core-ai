@@ -26,12 +26,10 @@ public class FilesystemAgentProfileProvider implements AgentProfileProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(FilesystemAgentProfileProvider.class);
     private static final Pattern FRONTMATTER_PATTERN = Pattern.compile("^---\\s*\\r?\\n(.*?)\\r?\\n---\\s*\\r?\\n", Pattern.DOTALL);
 
-    private final String id;
     private final Path agentsDir;
     private final int priority;
 
-    public FilesystemAgentProfileProvider(String id, Path agentsDir, int priority) {
-        this.id = id;
+    public FilesystemAgentProfileProvider(Path agentsDir, int priority) {
         this.agentsDir = agentsDir;
         this.priority = priority;
     }
@@ -44,19 +42,23 @@ public class FilesystemAgentProfileProvider implements AgentProfileProvider {
         List<AgentProfile> profiles = new ArrayList<>();
         try (var stream = Files.newDirectoryStream(agentsDir, "*.md")) {
             for (Path file : stream) {
-                try {
-                    AgentProfile profile = parseFile(file);
-                    if (profile != null) {
-                        profiles.add(profile);
-                    }
-                } catch (Exception e) {
-                    LOGGER.warn("failed to load agent profile from {}", file, e);
-                }
+                parseAndAdd(profiles, file);
             }
         } catch (IOException e) {
             LOGGER.warn("failed to scan agents directory: {}", agentsDir, e);
         }
         return profiles;
+    }
+
+    private void parseAndAdd(List<AgentProfile> profiles, Path file) {
+        try {
+            AgentProfile profile = parseFile(file);
+            if (profile != null) {
+                profiles.add(profile);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("failed to load agent profile from {}", file, e);
+        }
     }
 
     @Override

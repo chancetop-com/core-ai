@@ -1,12 +1,10 @@
 package ai.core.cli.ui;
 
-import ai.core.agent.profile.AgentProfile;
 import org.jline.reader.Candidate;
 import org.jline.reader.Completer;
 import org.jline.reader.LineReader;
 import org.jline.reader.ParsedLine;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -28,9 +26,9 @@ public class AgentNameCompleter implements Completer {
         if (!word.startsWith("@")) {
             return;
         }
-        String prefix = word.substring(1).toLowerCase();
+        String prefix = word.substring(1).toLowerCase(java.util.Locale.ROOT);
         for (String name : agentNames) {
-            if (name.toLowerCase().startsWith(prefix)) {
+            if (name.toLowerCase(java.util.Locale.ROOT).startsWith(prefix)) {
                 candidates.add(new Candidate("@" + name, name, null, null, null, null, true));
             }
         }

@@ -7,7 +7,6 @@ import ai.core.cli.command.McpCommandHandler;
 import ai.core.cli.command.HandlerContext;
 import ai.core.cli.command.SkillCommandHandler;
 import ai.core.cli.command.plugins.PluginCommandHandler;
-import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 
@@ -23,44 +22,43 @@ public class CommandDispatcher {
     private static final String POISON_PILL = "\0__EXIT__";
 
     private final TerminalUI ui;
-    private final AgentSessionRunner session;
+    private final AgentSessionRunnerCommandHandler sessionHandler;
     private final ModelPicker modelPicker;
     private final AtomicReference<String> switchSessionId;
-    private final AtomicReference<RemoteConfig> remoteConfig;
     private final HandlerContext handlers;
     private final String defaultServerUrl;
     private final AgentProfileRegistry agentProfileRegistry;
     private final Path workspace;
     private final CreateAgentCommandHandler createAgentHandler;
 
+    @SuppressWarnings("checkstyle:ParameterNumber")
     CommandDispatcher(TerminalUI ui, ModelPicker modelPicker,
                       AtomicReference<String> switchSessionId,
-                      AtomicReference<RemoteConfig> remoteConfig,
-                      HandlerContext handlers, AgentSessionRunner session,
+                      HandlerContext handlers, AgentSessionRunnerCommandHandler sessionHandler,
                       String defaultServerUrl, AgentProfileRegistry agentProfileRegistry,
                       Path workspace) {
         this.ui = ui;
-        this.session = session;
+        this.sessionHandler = sessionHandler;
         this.modelPicker = modelPicker;
         this.switchSessionId = switchSessionId;
-        this.remoteConfig = remoteConfig;
         this.handlers = handlers;
         this.defaultServerUrl = defaultServerUrl;
         this.agentProfileRegistry = agentProfileRegistry;
         this.workspace = workspace;
-        this.createAgentHandler = new CreateAgentCommandHandler(ui, session.getAgent().getLLMProvider(),
+        this.createAgentHandler = new CreateAgentCommandHandler(ui, sessionHandler.getAgent().getLLMProvider(),
                 modelPicker.getCurrentModelName(), workspace, agentProfileRegistry);
     }
 
     public void dispatch(String trimmed, BlockingQueue<String> queue) {
         var lower = trimmed.toLowerCase(Locale.ROOT);
         if (dispatchSessionCommand(lower, queue)) return;
-        if (dispatchConfigCommand(trimmed, lower, queue)) return;
+        if (dispatchConfigCommand(trimmed, lower)) return;
         if (dispatchAgentCommand(lower)) return;
         if (dispatchPluginCommand(trimmed, lower, queue)) return;
         handlers.commands().handle(trimmed);
     }
 
+    @SuppressWarnings("checkstyle:MethodLength")
     private boolean dispatchSessionCommand(String lower, BlockingQueue<String> queue) {
         if (lower.startsWith("/model ")) {
             return false;
@@ -73,31 +71,31 @@ public class CommandDispatcher {
             return false;
         }
         if ("/thinking".equals(lower)) {
-            session.handleThinking(lower);
+            sessionHandler.handleThinking(lower);
             return true;
         }
         if ("/stats".equals(lower)) {
-            session.handleStats();
+            sessionHandler.handleStats();
             return true;
         }
         if ("/tools".equals(lower)) {
-            session.handleTools();
+            sessionHandler.handleTools();
             return true;
         }
         if ("/copy".equals(lower)) {
-            session.handleCopy();
+            sessionHandler.handleCopy();
             return true;
         }
         if ("/undo".equals(lower)) {
-            session.handleUndo();
+            sessionHandler.handleUndo();
             return true;
         }
         if ("/compact".equals(lower)) {
-            session.handleCompact();
+            sessionHandler.handleCompact();
             return true;
         }
         if ("/resume".equals(lower)) {
-            String picked = session.showSessionPicker();
+            String picked = sessionHandler.showSessionPicker();
             if (picked != null) {
                 switchSessionId.set(picked);
                 queue.offer(POISON_PILL);
@@ -113,17 +111,17 @@ public class CommandDispatcher {
         return false;
     }
 
-    private boolean dispatchConfigCommand(String trimmed, String lower, BlockingQueue<String> queue) {
+    private boolean dispatchConfigCommand(String trimmed, String lower) {
         if (lower.startsWith("/model ")) {
             modelPicker.switchModel(modelPicker.getCurrentModelName(), trimmed.split("\\s+", 2)[1].trim(), null);
             return true;
         }
         if (lower.startsWith("/thinking ")) {
-            session.handleThinking(trimmed);
+            sessionHandler.handleThinking(trimmed);
             return true;
         }
         if (lower.startsWith("/export")) {
-            session.handleExport(trimmed);
+            sessionHandler.handleExport(trimmed);
             return true;
         }
         if (lower.startsWith("/memory")) {

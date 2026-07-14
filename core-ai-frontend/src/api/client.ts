@@ -1246,6 +1246,10 @@ export const api = {
       request<ConvertJavaToSchemaResponse>('/api/utils/java-to-schema', { method: 'POST', body: JSON.stringify({ java_code: javaCode }) }),
     memories: (agentId: string) =>
       request<ListAgentMemoriesResponse>(`/api/agents/${agentId}/memories`),
+    deleteMemory: (agentId: string, memoryId: string) =>
+      request<void>(`/api/agents/${agentId}/memories/${memoryId}`, { method: 'DELETE' }),
+    deleteAllMemories: (agentId: string) =>
+      request<void>(`/api/agents/${agentId}/memories`, { method: 'DELETE' }),
   },
   workflows: {
     list: (my?: boolean, keyword?: string, offset?: number, limit?: number) => {

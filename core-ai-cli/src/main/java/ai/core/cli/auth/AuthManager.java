@@ -198,11 +198,11 @@ public final class AuthManager {
     }
 
     private static String formatWhoami(AuthConfig config) {
-        var sb = new StringBuilder();
-        sb.append("  User:     ").append(config.name() != null ? config.name() : config.userId()).append("\n");
-        if (config.userId() != null) sb.append("  Email:    ").append(config.userId()).append("\n");
-        if (config.role() != null) sb.append("  Role:     ").append(config.role()).append("\n");
-        sb.append("  Server:   ").append(config.serverUrl()).append("\n");
+        var sb = new StringBuilder(128);
+        sb.append("  User:     ").append(config.name() != null ? config.name() : config.userId()).append('\n');
+        if (config.userId() != null) sb.append("  Email:    ").append(config.userId()).append('\n');
+        if (config.role() != null) sb.append("  Role:     ").append(config.role()).append('\n');
+        sb.append("  Server:   ").append(config.serverUrl()).append('\n');
         if (config.loginAt() != null) sb.append("  Login at: ").append(config.loginAt());
         return sb.toString();
     }

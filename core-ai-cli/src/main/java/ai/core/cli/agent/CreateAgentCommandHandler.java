@@ -54,9 +54,6 @@ class CreateAgentCommandHandler {
         this.registry = registry;
     }
 
-    record GeneratedConfig(String name, String description, String systemPrompt) {
-    }
-
     void handle() {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Create Agent" + AnsiTheme.RESET
                 + AnsiTheme.MUTED + " (describe what the agent should do)" + AnsiTheme.RESET + "\n\n");
@@ -153,8 +150,10 @@ class CreateAgentCommandHandler {
         return line.substring(0, maxWidth - 1) + "…";
     }
 
-    private void saveAgent(String name, String description, String systemPrompt) {
+    @SuppressWarnings("checkstyle:MethodLength")
+    private void saveAgent(String nameParam, String description, String systemPrompt) {
         Path agentsDir = workspace.resolve(".core-ai").resolve("agents");
+        String name = nameParam;
         if (!name.matches("[a-zA-Z0-9][a-zA-Z0-9-]*")) {
             name = name.replaceAll("[^a-zA-Z0-9-]", "-").replaceAll("-+", "-").replaceAll("^-|-$", "");
             if (name.isEmpty()) {
@@ -205,5 +204,8 @@ class CreateAgentCommandHandler {
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to save agent: " + e.getMessage() + "\n" + AnsiTheme.RESET);
         }
+    }
+
+    record GeneratedConfig(String name, String description, String systemPrompt) {
     }
 }

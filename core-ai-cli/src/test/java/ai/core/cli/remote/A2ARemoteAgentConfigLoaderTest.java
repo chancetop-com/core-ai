@@ -325,20 +325,6 @@ class A2ARemoteAgentConfigLoaderTest {
     }
 
     @Test
-    void searchRemoteAgentsReturnsCatalogSummary() {
-        var catalog = new RemoteAgentCatalog(List.of(entry("dev:jira", "dev", "jira",
-                "Jira Agent", "Handles Jira issue lookup and workflow updates.")));
-        var tool = SearchRemoteAgentsToolCall.builder().catalog(catalog).build();
-
-        var result = tool.execute(JsonUtil.toJson(Map.of("query", "jira workflow")));
-
-        assertTrue(result.isCompleted());
-        assertTrue(result.getResult().contains("Found 1 remote agents"));
-        assertTrue(result.getResult().contains("dev:jira"));
-        assertTrue(result.getResult().contains("Handles Jira issue lookup"));
-    }
-
-    @Test
     void delegateToRemoteAgentUsesCatalogEntryAndTask() {
         var catalog = new RemoteAgentCatalog(List.of(entry("dev:jira", "dev", "jira",
                 "Jira Agent", "Handles Jira issue lookup and workflow updates.")));

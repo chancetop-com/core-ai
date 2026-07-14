@@ -19,14 +19,17 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * @author cyril
  */
 public final class RuntimeAuthConfig {
-    private volatile String serverUrl;
-    private volatile String apiKey;
-    private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
-
     private static final RuntimeAuthConfig INSTANCE = new RuntimeAuthConfig();
 
     public static RuntimeAuthConfig instance() {
         return INSTANCE;
+    }
+
+    private volatile String serverUrl;
+    private volatile String apiKey;
+    private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
+
+    private RuntimeAuthConfig() {
     }
 
     /**
@@ -61,8 +64,5 @@ public final class RuntimeAuthConfig {
 
     public boolean isConfigured() {
         return serverUrl != null && !serverUrl.isBlank();
-    }
-
-    private RuntimeAuthConfig() {
     }
 }

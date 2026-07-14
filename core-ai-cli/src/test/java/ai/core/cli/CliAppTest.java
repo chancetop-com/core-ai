@@ -37,7 +37,7 @@ class CliAppTest {
             """);
         var source = new PropertiesFileSource(props);
 
-        CliApp.mergeWorkspaceConfig(source, workspace);
+        CliAppHelper.mergeWorkspaceConfig(source, workspace);
 
         var servers = servers(source);
         assertEquals(3, servers.size());
@@ -57,7 +57,7 @@ class CliAppTest {
             """);
         var source = new PropertiesFileSource(new Properties());
 
-        CliApp.mergeWorkspaceConfig(source, workspace);
+        CliAppHelper.mergeWorkspaceConfig(source, workspace);
 
         var servers = servers(source);
         assertEquals(1, servers.size());

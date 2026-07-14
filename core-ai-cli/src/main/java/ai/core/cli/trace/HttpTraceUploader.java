@@ -10,7 +10,6 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -33,41 +32,6 @@ public class HttpTraceUploader implements TraceUploader {
         return t;
     });
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
-
-    private final String endpoint;
-    private final String apiKey;
-
-    public HttpTraceUploader(String serverUrl, String apiKey) {
-        this.endpoint = stripTrailingSlash(serverUrl) + PATH;
-        this.apiKey = apiKey;
-    }
-
-    @Override
-    public void upload(CliTraceRequest request) {
-        EXECUTOR.submit(() -> send(request));
-    }
-
-    private void send(CliTraceRequest request) {
-        try {
-            // Serialize via plain Map/List, not the typed DTO: in the GraalVM native image Jackson has no
-            // reflection metadata for CliTraceRequest/CliTraceSpan and throws "No serializer found". Maps,
-            // Lists and primitives use built-in serializers that need no per-class reflection.
-            var body = JsonUtil.toJson(toMap(request));
-            var httpRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(endpoint))
-                    .timeout(Duration.ofSeconds(10))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-            var response = HTTP_CLIENT.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                DebugLog.log("trace upload failed: status=" + response.statusCode() + " body=" + response.body());
-            }
-        } catch (Exception e) {
-            DebugLog.log("trace upload error", e);
-        }
-    }
 
     // Reflection-free conversion to the IngestRequest JSON shape (keys match server IngestSpanRequest fields).
     static Map<String, Object> toMap(CliTraceRequest request) {
@@ -112,5 +76,40 @@ public class HttpTraceUploader implements TraceUploader {
             u = u.substring(0, u.length() - 1);
         }
         return u;
+    }
+
+    private final String endpoint;
+    private final String apiKey;
+
+    public HttpTraceUploader(String serverUrl, String apiKey) {
+        this.endpoint = stripTrailingSlash(serverUrl) + PATH;
+        this.apiKey = apiKey;
+    }
+
+    @Override
+    public void upload(CliTraceRequest request) {
+        EXECUTOR.submit(() -> send(request));
+    }
+
+    private void send(CliTraceRequest request) {
+        try {
+            // Serialize via plain Map/List, not the typed DTO: in the GraalVM native image Jackson has no
+            // reflection metadata for CliTraceRequest/CliTraceSpan and throws "No serializer found". Maps,
+            // Lists and primitives use built-in serializers that need no per-class reflection.
+            var body = JsonUtil.toJson(toMap(request));
+            var httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            var response = HTTP_CLIENT.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                DebugLog.log("trace upload failed: status=" + response.statusCode() + " body=" + response.body());
+            }
+        } catch (Exception e) {
+            DebugLog.log("trace upload error", e);
+        }
     }
 }
