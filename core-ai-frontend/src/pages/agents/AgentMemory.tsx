@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Brain, Calendar, GitBranch, Layers, Tag } from 'lucide-react';
+import { ArrowLeft, Brain, Calendar, GitBranch, Layers, Tag, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentMemoryView } from '../../api/client';
 
@@ -10,6 +10,7 @@ export default function AgentMemory() {
   const [memories, setMemories] = useState<AgentMemoryView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState<string | null>(null); // memory id being deleted, or 'ALL' for delete-all
 
   useEffect(() => {
     if (!id) return;
@@ -18,6 +19,32 @@ export default function AgentMemory() {
       .catch(err => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const handleDelete = async (memoryId: string) => {
+    if (!id || !window.confirm('Delete this memory? This cannot be undone.')) return;
+    setDeleting(memoryId);
+    try {
+      await api.agents.deleteMemory(id, memoryId);
+      setMemories(prev => prev.filter(m => m.id !== memoryId));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!id || !window.confirm('Delete ALL memories for this agent? This cannot be undone.')) return;
+    setDeleting('ALL');
+    try {
+      await api.agents.deleteAllMemories(id);
+      setMemories([]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   const formatTime = (iso: string) => {
     if (!iso) return '-';
@@ -73,6 +100,22 @@ export default function AgentMemory() {
             Three-tier architecture: Knowledge (auto-inject) · Methods (on-demand) · Trajectories (session summaries)
           </p>
         </div>
+        {memories.length > 0 && (
+          <button
+            onClick={handleDeleteAll}
+            disabled={deleting === 'ALL'}
+            className="ml-auto px-3 py-1.5 rounded-lg border text-sm font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+            style={{
+              borderColor: 'var(--color-error)',
+              color: 'var(--color-error)',
+              background: 'transparent',
+              opacity: deleting === 'ALL' ? 0.5 : 1,
+            }}
+          >
+            <Trash2 size={14} />
+            {deleting === 'ALL' ? 'Deleting...' : 'Delete All'}
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -130,6 +173,18 @@ export default function AgentMemory() {
                               {m.content}
                             </p>
                           </div>
+                          <button
+                            onClick={() => handleDelete(m.id)}
+                            disabled={deleting === m.id}
+                            className="p-1.5 rounded-lg cursor-pointer transition-colors shrink-0"
+                            style={{
+                              color: 'var(--color-text-secondary)',
+                              opacity: deleting === m.id ? 0.3 : 1,
+                            }}
+                            title="Delete this memory"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
                         <div className="flex items-center gap-4 mt-3 text-xs flex-wrap"
                           style={{ color: 'var(--color-text-secondary)' }}>

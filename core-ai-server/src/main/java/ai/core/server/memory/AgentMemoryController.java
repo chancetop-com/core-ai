@@ -78,6 +78,18 @@ public class AgentMemoryController {
         return Response.bean(toView(config));
     }
 
+    public Response delete(Request request) {
+        var memoryId = request.pathParam("memoryId");
+        agentMemoryService.deleteMemory(memoryId);
+        return Response.empty();
+    }
+
+    public Response deleteAll(Request request) {
+        var agentId = request.pathParam("id");
+        agentMemoryService.deleteAllByAgentId(agentId);
+        return Response.empty();
+    }
+
     public Response saveExperimentConfig(Request request) {
         var agentId = request.pathParam("id");
         var view = request.bean(AgentMemoryExperimentConfigView.class);

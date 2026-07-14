@@ -193,6 +193,14 @@ public class AgentMemoryService {
         }
     }
 
+    public boolean deleteMemory(String id) {
+        return memoryCollection.delete(id);
+    }
+
+    public long deleteAllByAgentId(String agentId) {
+        return memoryCollection.delete(Filters.eq("agent_id", agentId));
+    }
+
     public AgentMemoryExtractionCursor getCursor(String agentId) {
         var query = new Query();
         query.filter = Filters.eq("agent_id", agentId);

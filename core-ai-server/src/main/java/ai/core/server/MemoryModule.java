@@ -44,6 +44,8 @@ public class MemoryModule extends Module {
     private void registerController() {
         var memoryController = bind(AgentMemoryController.class);
         http().route(HTTPMethod.GET, "/api/agents/:id/memories", memoryController::list);
+        http().route(HTTPMethod.DELETE, "/api/agents/:id/memories/:memoryId", memoryController::delete);
+        http().route(HTTPMethod.DELETE, "/api/agents/:id/memories", memoryController::deleteAll);
         http().route(HTTPMethod.GET, "/api/agents/:id/memory-experiment-config", memoryController::getExperimentConfig);
         http().route(HTTPMethod.PUT, "/api/agents/:id/memory-experiment-config", memoryController::saveExperimentConfig);
 
