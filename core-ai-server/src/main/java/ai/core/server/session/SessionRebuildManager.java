@@ -340,7 +340,7 @@ public class SessionRebuildManager {
 
     private List<ToolCall> addDatasetTools(List<ToolCall> tools, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
         if (datasetConfig == null || datasetConfig.isEmpty()) return tools;
-        var registry = DatasetAccessRegistry.from(datasetConfig);
+        var registry = DatasetAccessRegistry.from(datasetConfig, datasetService);
         var mutable = new ArrayList<ToolCall>(tools != null ? tools : List.of());
         mutable.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
         if (registry.hasAnyWrite()) {
