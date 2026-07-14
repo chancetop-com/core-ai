@@ -106,6 +106,7 @@ public class AgentSessionRunner {
         printSessionHistory();
         startSenderThread(messageQueue, listener, session, readyForInput);
         readInputLoop(messageQueue, readyForInput);
+        listener.getPanel().stopSpinnerIfActive();
         ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Organizing memories..." + AnsiTheme.RESET + "\n");
         SessionCloseExtractor.onSessionClose(agent, workspace, memoryEnabled, dailyLogsEnabled, switchSessionId);
         session.close();
@@ -135,6 +136,7 @@ public class AgentSessionRunner {
         if (memoryEnabled && promptExtractionEnabled) {
             MemoryTriggerService.getInstance().runIncrementalExtractionAndWait();
         }
+        listener.getPanel().stopSpinnerIfActive();
         session.close();
         ScriptHookLifecycle.fireSessionStopHooks(workspace);
     }
@@ -155,13 +157,16 @@ public class AgentSessionRunner {
         } catch (TimeoutException e) {
             LOGGER.info("Time limit ({}s) reached", timeLimitSeconds);
             future.cancel(true);
+            session.cancelTurn();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             future.cancel(true);
+            session.cancelTurn();
         } catch (ExecutionException e) {
             LOGGER.error("Agent execution failed", e.getCause());
         } finally {
             executor.shutdownNow();
+            listener.getPanel().stopSpinnerIfActive();
         }
     }
 
@@ -205,7 +210,11 @@ public class AgentSessionRunner {
                     if (POISON_PILL.equals(msg)) break;
                     LOGGER.debug("sending message: {}", msg);
                     listener.prepareTurn();
-                    session.sendMessage(msg);
+                    try {
+                        session.sendMessage(msg);
+                    } finally {
+                        listener.getPanel().stopSpinnerIfActive();
+                    }
                     LOGGER.debug("waiting for turn...");
                     listener.waitForTurn();
                     LOGGER.debug("turn finished");
@@ -223,7 +232,11 @@ public class AgentSessionRunner {
         LOGGER.debug("sending prompt: {}", prompt);
         listener.prepareTurn();
         String expanded = ui.getPasteBuffer().expand(prompt == null ? "" : prompt);
-        session.sendMessage(FileReferenceExpander.expand(expanded));
+        try {
+            session.sendMessage(FileReferenceExpander.expand(expanded));
+        } finally {
+            listener.getPanel().stopSpinnerIfActive();
+        }
         LOGGER.debug("waiting for turn...");
         listener.waitForTurn();
         LOGGER.debug("turn finished");
