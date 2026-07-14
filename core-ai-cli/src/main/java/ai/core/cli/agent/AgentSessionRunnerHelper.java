@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -65,14 +66,14 @@ public class AgentSessionRunnerHelper {
         Files.write(CONFIG_FILE, lines);
     }
 
-    private static boolean tryReplaceIfProperty(java.util.ArrayList<String> lines, String stripped,
-                                                 String key, String value, boolean alreadyFound) {
+    private static boolean tryReplaceIfProperty(List<String> lines, String stripped,
+                                                String key, String value, boolean alreadyFound) {
         if (alreadyFound || !isPropertyLine(stripped, key)) return false;
         writePropertyLineIfNotNull(lines, key, value);
         return true;
     }
 
-    private static void writePropertyLineIfNotNull(java.util.ArrayList<String> lines, String key, String value) {
+    private static void writePropertyLineIfNotNull(List<String> lines, String key, String value) {
         if (value != null) lines.add(key + "=" + value);
     }
 

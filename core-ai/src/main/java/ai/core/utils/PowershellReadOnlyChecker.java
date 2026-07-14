@@ -247,8 +247,9 @@ public final class PowershellReadOnlyChecker {
             if (c == '$') {
                 if (next == '(') res.markUnsafe("subexpression $()");
                 else if (next == '{') res.markUnsafe("variable expansion ${}");
-            } else if (c == '@') {
-                if (next == '(') res.markUnsafe("subexpression @()");
+            }
+            if (c == '@' && next == '(') {
+                res.markUnsafe("subexpression @()");
             }
             cur.append(c);
             return i + 1;
