@@ -21,6 +21,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 class AgentExecutorTest {
+    private static WorkflowGraph emptyGraph() {
+        return new WorkflowGraph(List.of(), List.of());
+    }
+
+    private static NodeContext ctx(WorkflowGraph graph, WorkflowRun run, WorkflowNode node) {
+        return new NodeContext(graph, run, node, List.of(), new VariablePool(Map.of(), run.input));
+    }
+
+    private static WorkflowRun run() {
+        var run = new WorkflowRun();
+        run.id = "run-1";
+        run.workflowId = "wf-1";
+        run.input = "{\"ticket\": \"login broken\"}";
+        return run;
+    }
+
     @Test
     void completedChildRunBecomesNormalWithChildLink() {
         var gateway = new FakeGateway();
@@ -101,12 +117,12 @@ class AgentExecutorTest {
     @Test
     void registryDrivesStartAgentEndRecordingChildRun() {
         WorkflowGraph graph = WorkflowGraphParser.parse("""
-            {"nodes": [{"id": "start", "type": "START"},
-                       {"id": "classify", "type": "AGENT", "config": {"agent_id": "agent-123"}},
-                       {"id": "end", "type": "END"}],
-             "edges": [{"id": "e0", "source": "start", "target": "classify"},
-                       {"id": "e1", "source": "classify", "target": "end"}]}
-        """);
+                {"nodes": [{"id": "start", "type": "START"},
+                           {"id": "classify", "type": "AGENT", "config": {"agent_id": "agent-123"}},
+                           {"id": "end", "type": "END"}],
+                 "edges": [{"id": "e0", "source": "start", "target": "classify"},
+                           {"id": "e1", "source": "classify", "target": "end"}]}
+            """);
         var gateway = new FakeGateway();
         gateway.scriptComplete("{\"ok\": true}", List.of(), "trace-123", RunStatus.COMPLETED, null);
         NodeExecutor registry = new NodeExecutorRegistry(Map.of(
@@ -121,22 +137,6 @@ class AgentExecutorTest {
         assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "classify"));
         assertEquals("agentrun-1", journal.childRunId("run-1", "classify"));   // two-layer run stays linked
         assertEquals("trace-123", journal.childTraceId("run-1", "classify"));
-    }
-
-    private static WorkflowGraph emptyGraph() {
-        return new WorkflowGraph(List.of(), List.of());
-    }
-
-    private static NodeContext ctx(WorkflowGraph graph, WorkflowRun run, WorkflowNode node) {
-        return new NodeContext(graph, run, node, List.of(), new VariablePool(Map.of(), run.input));
-    }
-
-    private static WorkflowRun run() {
-        var run = new WorkflowRun();
-        run.id = "run-1";
-        run.workflowId = "wf-1";
-        run.input = "{\"ticket\": \"login broken\"}";
-        return run;
     }
 
     static final class FakeGateway implements AgentRunGateway {

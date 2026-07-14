@@ -18,6 +18,14 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CodeExecutorTest {
+    private static NodeContext ctx(WorkflowNode node) {
+        var run = new WorkflowRun();
+        run.id = "run-1";
+        run.userId = "user-1";
+        run.input = "{}";
+        return new NodeContext(new WorkflowGraph(List.of(node), List.of()), run, node, List.of(), new VariablePool(Map.of(), "{}"));
+    }
+
     @Test
     void completedStdoutBecomesTrimmedNormalOutput() {
         var normal = assertInstanceOf(NodeOutcome.Normal.class, CodeExecutor.toOutcome(ToolCallResult.completed("5\n")));
@@ -86,13 +94,5 @@ class CodeExecutorTest {
         var outcome = new CodeExecutor(null, null).execute(ctx(node));
         var fail = assertInstanceOf(NodeOutcome.Fail.class, outcome);
         assertTrue(fail.error().contains("sandbox"));
-    }
-
-    private static NodeContext ctx(WorkflowNode node) {
-        var run = new WorkflowRun();
-        run.id = "run-1";
-        run.userId = "user-1";
-        run.input = "{}";
-        return new NodeContext(new WorkflowGraph(List.of(node), List.of()), run, node, List.of(), new VariablePool(Map.of(), "{}"));
     }
 }

@@ -36,8 +36,6 @@ import java.util.UUID;
  * @author stephen
  */
 public class AgentDefinitionService {
-    private static final String AIRAGENT_USER_ID_FIELD = "user_id";
-    private static final String AIRAGENT_SYSTEM_DEFAULT_FIELD = "system_default";
     private static final String DEFAULT_ASSISTANT_AGENT_ID = "default-assistant";
 
     public static String resolveOutputDatasetId(AgentDefinition definition) {

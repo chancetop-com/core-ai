@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -328,13 +329,11 @@ public class WorkflowRunner {
     // node's file is lifted to the run result only when END's output/artifacts references it — otherwise it
     // stays visible per node-run in the trace only.
     private WorkflowNodeRun endNodeRun(String runId) {
-        for (WorkflowNodeRun nodeRun : nodeRunCollection.find(Filters.and(
+        var nodeRuns = nodeRunCollection.find(Filters.and(
             Filters.eq("run_id", runId),
             Filters.eq("node_type", "END"),
-            Filters.eq("status", NodeRunStatus.COMPLETED)))) {
-            return nodeRun;
-        }
-        return null;
+            Filters.eq("status", NodeRunStatus.COMPLETED)));
+        return nodeRuns.isEmpty() ? null : nodeRuns.get(0);
     }
 
     private boolean handleDriveResult(String runId, WorkflowRun run, RunStatus status, AtomicBoolean lostLease) {
@@ -357,7 +356,7 @@ public class WorkflowRunner {
             endRun != null && endRun.artifacts != null ? endRun.artifacts : List.of());
         if (finalized && (status == RunStatus.FAILED || status == RunStatus.CANCELLED)) {
             var title = status == RunStatus.FAILED ? "Workflow Failed" : "Workflow Cancelled";
-            var msg = "Workflow \"" + run.workflowId + "\" has " + status.name().toLowerCase();
+            var msg = "Workflow \"" + run.workflowId + "\" has " + status.name().toLowerCase(Locale.ROOT);
             notificationService.create(run.userId,
                 NotificationCategory.SYSTEM, NotificationType.TERMINATE, title, msg,
                 new NotificationService.CreateContext(null, run.sessionId));

@@ -9,6 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkflowValidatorTest {
+    private static boolean has(List<String> errors, String fragment) {
+        return errors.stream().anyMatch(error -> error.contains(fragment));
+    }
+
     @Test
     void validStartToEndPasses() {
         WorkflowGraph graph = WorkflowGraphParser.parse("""
@@ -170,9 +174,5 @@ class WorkflowValidatorTest {
 
         assertTrue(has(WorkflowValidator.validate(graph),
             "node wf (WORKFLOW) is missing required config: version_id"));
-    }
-
-    private static boolean has(List<String> errors, String fragment) {
-        return errors.stream().anyMatch(error -> error.contains(fragment));
     }
 }

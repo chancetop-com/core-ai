@@ -17,6 +17,19 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author Xander
  */
 final class InMemoryWorkflowJournal implements WorkflowJournal {
+    private static String key(String runId, String nodeId) {
+        return runId + "|" + nodeId;
+    }
+
+    private static WorkflowNodeRun make(String runId, String nodeId, NodeRunStatus status) {
+        var nodeRun = new WorkflowNodeRun();
+        nodeRun.runId = runId;
+        nodeRun.nodeId = nodeId;
+        nodeRun.scopePathKey = "";
+        nodeRun.status = status;
+        return nodeRun;
+    }
+
     private final Map<String, WorkflowNodeRun> byId = new ConcurrentHashMap<>();
 
     @Override
@@ -97,18 +110,5 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
     String inputJson(String runId, String nodeId) {
         WorkflowNodeRun nodeRun = byId.get(key(runId, nodeId));
         return nodeRun == null ? null : nodeRun.inputJson;
-    }
-
-    private static String key(String runId, String nodeId) {
-        return runId + "|" + nodeId;
-    }
-
-    private static WorkflowNodeRun make(String runId, String nodeId, NodeRunStatus status) {
-        var nodeRun = new WorkflowNodeRun();
-        nodeRun.runId = runId;
-        nodeRun.nodeId = nodeId;
-        nodeRun.scopePathKey = "";
-        nodeRun.status = status;
-        return nodeRun;
     }
 }

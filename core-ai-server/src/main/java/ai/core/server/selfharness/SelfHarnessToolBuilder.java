@@ -7,9 +7,6 @@ import ai.core.tool.function.Function;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 import core.framework.api.web.service.QueryParam;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
@@ -31,7 +28,6 @@ import java.util.Map;
  * @author stephen
  */
 public class SelfHarnessToolBuilder {
-    private static final Logger LOGGER = LoggerFactory.getLogger(SelfHarnessToolBuilder.class);
 
     private static Method findCallApiMethod() {
         return Arrays.stream(SelfHarnessApiCaller.class.getMethods())

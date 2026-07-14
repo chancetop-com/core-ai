@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -144,7 +145,7 @@ class SkillServiceTest {
         skill.qualifiedName = namespace + "/" + name;
         skill.description = description;
         skill.sourceType = SkillSourceType.UPLOAD;
-        skill.userId = namespace.toLowerCase() + "@example.com";
+        skill.userId = namespace.toLowerCase(Locale.ROOT) + "@example.com";
         return skill;
     }
 }

@@ -4,6 +4,7 @@ import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.MinioObjectStorageService;
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.TokenResolver;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
@@ -59,6 +60,8 @@ class SandboxModule extends Module {
         sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox);
         bind(sandboxService);
 
+        var fileService = (FileService) context.beanFactory.bean(FileService.class, null);
+        sandboxService.setFileService(fileService);
         var objectStorage = (ObjectStorageService) context.beanFactory.bean(ObjectStorageService.class, null);
         sandboxService.setStorageService(objectStorage);
 

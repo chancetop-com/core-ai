@@ -16,6 +16,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WorkflowExecutorTest {
     private static final int MAX_DEPTH = 5;
 
+    private static WorkflowRun depthRun(int depth) {
+        var run = new WorkflowRun();
+        run.id = "run-parent";
+        run.userId = "u1";
+        run.workflowId = "wf-a";
+        run.input = "shanghai";
+        run.depth = depth;
+        return run;
+    }
+
+    private static NodeContext ctx(WorkflowNode node, WorkflowRun run) {
+        WorkflowGraph graph = WorkflowGraphParser.parse(
+            "{\"nodes\":[{\"id\":\"start\",\"type\":\"START\"},{\"id\":\"end\",\"type\":\"END\"}],"
+            + "\"edges\":[{\"id\":\"e0\",\"source\":\"start\",\"target\":\"end\"}]}");
+        var pool = VariablePool.fromNodeRuns(List.of(), "", run.input);
+        return new NodeContext(graph, run, node, List.of(), pool);
+    }
+
     @Test
     void submitsChildAndParksAsSuspended() {
         var gateway = new FakeWorkflowGateway("wfrun-child-1");
@@ -40,24 +58,6 @@ class WorkflowExecutorTest {
         var fail = assertInstanceOf(NodeOutcome.Fail.class, outcome);
         assertTrue(fail.error().contains("nesting too deep"));
         assertEquals(0, gateway.submitCount);   // no child started past the cap
-    }
-
-    private static WorkflowRun depthRun(int depth) {
-        var run = new WorkflowRun();
-        run.id = "run-parent";
-        run.userId = "u1";
-        run.workflowId = "wf-a";
-        run.input = "shanghai";
-        run.depth = depth;
-        return run;
-    }
-
-    private static NodeContext ctx(WorkflowNode node, WorkflowRun run) {
-        WorkflowGraph graph = WorkflowGraphParser.parse(
-            "{\"nodes\":[{\"id\":\"start\",\"type\":\"START\"},{\"id\":\"end\",\"type\":\"END\"}],"
-            + "\"edges\":[{\"id\":\"e0\",\"source\":\"start\",\"target\":\"end\"}]}");
-        var pool = VariablePool.fromNodeRuns(List.of(), "", run.input);
-        return new NodeContext(graph, run, node, List.of(), pool);
     }
 
     // minimal in-test fake; records what WorkflowExecutor asked for

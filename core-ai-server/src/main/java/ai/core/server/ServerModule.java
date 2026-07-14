@@ -4,7 +4,6 @@ import ai.core.api.server.AgentDefinitionWebService;
 import ai.core.api.server.ArtifactWebService;
 import ai.core.api.server.auth.AuthWebService;
 import ai.core.api.server.DatasetWebService;
-import ai.core.api.server.FileWebService;
 import ai.core.api.server.AgentRunWebService;
 import ai.core.api.server.AgentScheduleWebService;
 import ai.core.api.server.AgentSessionWebService;
@@ -30,6 +29,7 @@ import ai.core.server.artifact.ArtifactService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.agentbuilder.AgentBuilderTools;
 import ai.core.server.llmcall.LLMCallBuilderTools;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.selfharness.SelfHarnessApiCaller;
 import ai.core.server.selfharness.SelfHarnessTools;
 import ai.core.server.web.sse.LiteLLMProxyChannelListener;
@@ -37,10 +37,6 @@ import ai.core.server.web.sse.SseAuthInterceptor;
 import ai.core.server.web.CorsInterceptor;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.web.auth.RequestAuthenticator;
-import ai.core.server.file.FileDownloadController;
-import ai.core.server.file.FileService;
-import ai.core.server.file.FileUploadController;
-import ai.core.server.file.SharedFileDownloadController;
 import ai.core.server.github.GitHubInstallationTokenService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
@@ -56,7 +52,6 @@ import ai.core.server.schedule.AgentScheduler;
 import ai.core.server.schedule.AgentSchedulerJob;
 import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.schedule.ToolRegistrySyncJob;
-import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotCleanupJob;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.AgentSessionManager;
@@ -93,7 +88,6 @@ import ai.core.server.web.sse.ChannelService;
 import ai.core.server.web.sse.NotificationChannelListener;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.server.web.AgentSessionWebServiceImpl;
-import ai.core.server.web.FileWebServiceImpl;
 import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
 import ai.core.server.web.NotificationWebServiceImpl;
@@ -122,9 +116,6 @@ import java.time.Duration;
  */
 public class ServerModule extends Module {
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerModule.class);
-    private SandboxService sandboxService;
-    private ToolRegistryService toolRegistryService;   // shared with bindWorkflow() for the tool node executors
-    private FileService fileService;                   // shared with bindWorkflow() (CODE staging) and sandbox staging
 
     @Override
     protected void initialize() {
@@ -135,11 +126,8 @@ public class ServerModule extends Module {
         registerWebhookTrigger();
         var builderTools = bind(LLMCallBuilderTools.class);
         var agentBuilderTools = bind(AgentBuilderTools.class);
-        var mcpConfig = property("mcp.servers.json").orElse(null);
-        onStartup(() -> toolRegistryService.initialize(mcpConfig));
         onStartup(builderTools::initialize);
         onStartup(agentBuilderTools::initialize);
-        load(new MessagingModule());
 
         bind(PodLocalExecutor.class);
         bindWebService();
@@ -160,19 +148,15 @@ public class ServerModule extends Module {
         var corsInterceptor = bind(CorsInterceptor.class);
         http().intercept(corsInterceptor);
         http().errorHandler(corsInterceptor);
-        var toolRegistry = bind(ToolRegistryService.class);
-        this.toolRegistryService = toolRegistry;
-        registerFile();
+        var toolRegistryService = bind(ToolRegistryService.class);
+        var mcpConfig = property("mcp.servers.json").orElse(null);
+        onStartup(() -> toolRegistryService.initialize(mcpConfig));
         registerSkill();
         site().session().timeout(Duration.ofHours(24));
         site().session().cookie("CoreAIServerSessionId", null);
-        SandboxModule sandboxModule = new SandboxModule();
-        load(sandboxModule);
-        this.sandboxService = sandboxModule.sandboxService;
-        if (sandboxService != null) {
-            sandboxService.setFileService(fileService);   // workflow artifact staging pulls bytes from FileRecord
-            toolRegistry.setSandboxService(sandboxService);
-        }
+
+        var sandboxService = (SandboxService) context.beanFactory.bean(SandboxService.class, null);
+        toolRegistryService.setSandboxService(sandboxService);
 
         // ChannelRegistry and adapters must be bound before bindService() because
         // AgentSessionManager injects ChannelRegistry for bridge cleanup.
@@ -337,13 +321,6 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.POST, "/api/a2a/tasks/:taskId" + A2AHttpPaths.TASK_CANCEL, taskController::cancel);
     }
 
-    private void registerFile() {
-        this.fileService = bind(FileService.class);
-        api().service(FileWebService.class, bind(FileWebServiceImpl.class));
-        http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
-        http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));
-        http().route(HTTPMethod.GET, "/api/public/artifacts/:token/content", bind(SharedFileDownloadController.class));
-    }
     private void registerSkill() {
         bind(SkillService.class);
         bind(MarketplaceService.class);

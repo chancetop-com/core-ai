@@ -159,7 +159,7 @@ final class NodeInputSnapshot {
             if (trimmed.startsWith("[")) {
                 return JSON.fromJSON(List.class, trimmed);
             }
-        } catch (RuntimeException e) {
+        } catch (RuntimeException ignored) {
             // not JSON; keep the original scalar string
         }
         return value;

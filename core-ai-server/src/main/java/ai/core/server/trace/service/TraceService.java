@@ -10,7 +10,6 @@ import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
-import ai.core.llm.LLMModelContextRegistry;
 import ai.core.server.domain.User;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanType;
@@ -20,7 +19,6 @@ import ai.core.server.trace.domain.TraceStatus;
 
 import org.bson.conversions.Bson;
 
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -29,7 +27,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 
 /**
@@ -46,7 +43,6 @@ public class TraceService {
     private static final int SEARCH_TRACE_SCAN_LIMIT = 10_000;
     private static final int FACET_LIMIT = 50;
     private static final int SESSION_SUMMARY_TRACE_LIMIT = 1000;
-    private static final int MAX_SPANS_PER_TRACE = 5000;
     private static final int USER_SEARCH_LIMIT = 10000;
 
     @Inject
@@ -71,7 +67,7 @@ public class TraceService {
             query.filter = bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters);
         }
         var traces = traceCollection.find(query);
-        enrichMetricsInBatch(traces);
+        TraceServiceHelper.enrichMetricsInBatch(traces, spanCollection);
         return traces;
     }
 
@@ -87,21 +83,21 @@ public class TraceService {
 
     private List<Trace> listWithSearch(TraceListFilter filter) {
         var matches = searchCandidates(filter, searchFetchLimit(filter));
-        var traces = page(matches, filter.offset, filter.limit);
-        enrichMetricsInBatch(traces);
+        var traces = TraceServiceHelper.page(matches, filter.offset, filter.limit);
+        TraceServiceHelper.enrichMetricsInBatch(traces, spanCollection);
         return traces;
     }
 
     private List<Trace> searchCandidates(TraceListFilter filter, int limit) {
         var indexedFilters = buildFilters(filter);
         var matches = new LinkedHashMap<String, Trace>();
-        var namePattern = compileNamePattern(filter.name);
+        var namePattern = TraceServiceHelper.compileNamePattern(filter.name);
         if (hasPlainTextQuery(filter)) {
             addUserMatches(matches, indexedFilters, matchingUserIds(filter.q), namePattern, limit);
         }
         addTraceTextMatches(matches, indexedFilters, filter, namePattern, limit);
         return matches.values().stream()
-            .sorted(this::compareCreatedAtDesc)
+            .sorted(TraceServiceHelper::compareCreatedAtDesc)
             .toList();
     }
 
@@ -121,7 +117,7 @@ public class TraceService {
         if (filter.q != null && !filter.q.isEmpty()) {
             var q = filter.q.trim();
             if (UUID_PATTERN.matcher(q).matches() || LONG_HEX_PATTERN.matcher(q).matches()) {
-                bsonFilters.add(Filters.or(fullIdClauses(q)));
+                bsonFilters.add(Filters.or(TraceServiceHelper.fullIdClauses(q)));
             } else if (HEX_PREFIX_PATTERN.matcher(q).matches()) {
                 var prefix = "^" + Pattern.quote(q.toLowerCase(Locale.ROOT));
                 bsonFilters.add(Filters.or(
@@ -170,7 +166,7 @@ public class TraceService {
     }
 
     private boolean requiresSearch(TraceListFilter filter) {
-        return hasPlainTextQuery(filter) || hasText(filter.name);
+        return hasPlainTextQuery(filter) || TraceServiceHelper.hasText(filter.name);
     }
 
     private boolean hasPlainTextQuery(TraceListFilter filter) {
@@ -181,47 +177,27 @@ public class TraceService {
             && !HEX_PREFIX_PATTERN.matcher(q).matches();
     }
 
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
-    }
-
-    private List<Trace> page(List<Trace> traces, int offset, int limit) {
-        if (offset >= traces.size()) return List.of();
-        var end = Math.min(traces.size(), offset + limit);
-        return traces.subList(offset, end);
-    }
-
     private void addUserMatches(Map<String, Trace> matches, List<Bson> indexedFilters, Set<String> userIds, Pattern namePattern, int limit) {
         if (userIds.isEmpty()) return;
         var filters = new ArrayList<>(indexedFilters);
         filters.add(Filters.in("user_id", userIds));
-        traceCollection.find(sortedTraceQuery(filters, limit)).stream()
-            .filter(trace -> matchesNamePattern(trace, namePattern))
-            .forEach(trace -> putTrace(matches, trace));
+        traceCollection.find(TraceServiceHelper.sortedTraceQuery(filters, limit)).stream()
+            .filter(trace -> TraceServiceHelper.matchesNamePattern(trace, namePattern))
+            .forEach(trace -> TraceServiceHelper.putTrace(matches, trace));
     }
 
     private void addTraceTextMatches(Map<String, Trace> matches, List<Bson> indexedFilters, TraceListFilter filter, Pattern namePattern, int limit) {
         if (!hasPlainTextQuery(filter) && namePattern == null) return;
         var query = hasPlainTextQuery(filter) ? filter.q.trim() : null;
-        traceCollection.find(sortedTraceQuery(indexedFilters, limit)).stream()
+        traceCollection.find(TraceServiceHelper.sortedTraceQuery(indexedFilters, limit)).stream()
             .filter(trace -> query == null || matchesTraceTextQuery(trace, query))
-            .filter(trace -> matchesNamePattern(trace, namePattern))
-            .forEach(trace -> putTrace(matches, trace));
-    }
-
-    private Query sortedTraceQuery(List<Bson> filters, int limit) {
-        var query = new Query();
-        query.limit = limit;
-        query.sort = Sorts.descending("created_at");
-        if (!filters.isEmpty()) {
-            query.filter = filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
-        }
-        return query;
+            .filter(trace -> TraceServiceHelper.matchesNamePattern(trace, namePattern))
+            .forEach(trace -> TraceServiceHelper.putTrace(matches, trace));
     }
 
     private Set<String> matchingUserIds(String query) {
         var userIds = new LinkedHashSet<String>();
-        if (!hasText(query) || userCollection == null) return userIds;
+        if (!TraceServiceHelper.hasText(query) || userCollection == null) return userIds;
         var needle = query.trim();
         if (needle.contains("@")) {
             userIds.add(needle.toLowerCase(Locale.ROOT));
@@ -246,85 +222,27 @@ public class TraceService {
 
     private boolean matchesUser(User user, String needle) {
         return user != null
-            && (containsIgnoreCase(user.id, needle)
-            || containsIgnoreCase(user.name, needle)
-            || containsIgnoreCase(user.email, needle));
+            && (TraceServiceHelper.containsIgnoreCase(user.id, needle)
+            || TraceServiceHelper.containsIgnoreCase(user.name, needle)
+            || TraceServiceHelper.containsIgnoreCase(user.email, needle));
     }
 
     private void addUserId(Set<String> userIds, User user) {
-        if (hasText(user.id)) {
+        if (TraceServiceHelper.hasText(user.id)) {
             userIds.add(user.id);
-        } else if (hasText(user.email)) {
+        } else if (TraceServiceHelper.hasText(user.email)) {
             userIds.add(user.email.toLowerCase(Locale.ROOT));
         }
     }
 
     private boolean matchesTraceTextQuery(Trace trace, String query) {
-        return containsIgnoreCase(trace.name, query)
-            || containsIgnoreCase(trace.agentName, query)
-            || containsIgnoreCase(trace.userId, query);
-    }
-
-    private Pattern compileNamePattern(String name) {
-        if (!hasText(name)) return null;
-        try {
-            return Pattern.compile(name, Pattern.CASE_INSENSITIVE);
-        } catch (PatternSyntaxException ignored) {
-            return Pattern.compile("a^");
-        }
-    }
-
-    private boolean matchesNamePattern(Trace trace, Pattern namePattern) {
-        return namePattern == null || trace.name != null && namePattern.matcher(trace.name).find();
-    }
-
-    private void putTrace(Map<String, Trace> matches, Trace trace) {
-        var key = hasText(trace.id) ? trace.id : trace.traceId;
-        if (!hasText(key)) key = Integer.toHexString(System.identityHashCode(trace));
-        matches.putIfAbsent(key, trace);
-    }
-
-    private int compareCreatedAtDesc(Trace left, Trace right) {
-        if (left.createdAt == null && right.createdAt == null) return safeString(left.id).compareTo(safeString(right.id));
-        if (left.createdAt == null) return 1;
-        if (right.createdAt == null) return -1;
-        var compared = right.createdAt.compareTo(left.createdAt);
-        if (compared != 0) return compared;
-        return safeString(left.id).compareTo(safeString(right.id));
-    }
-
-    private String safeString(String value) {
-        return value != null ? value : "";
-    }
-
-    private boolean containsIgnoreCase(String value, String needle) {
-        if (value == null || needle.isEmpty() || needle.length() > value.length()) return false;
-        for (int i = 0; i <= value.length() - needle.length(); i++) {
-            if (value.regionMatches(true, i, needle, 0, needle.length())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // Exact-match clauses for a pasted full ID. Server-generated ids are lowercase, but ingested ids
-    // (OTLP session.id attributes) are stored verbatim, so the pasted form is matched as well.
-    private List<Bson> fullIdClauses(String q) {
-        var id = q.toLowerCase(Locale.ROOT);
-        List<Bson> idClauses = new ArrayList<>();
-        idClauses.add(Filters.eq("session_id", id));
-        idClauses.add(Filters.eq("user_id", id));
-        idClauses.add(Filters.eq("trace_id", id));
-        if (!id.equals(q)) {
-            idClauses.add(Filters.eq("session_id", q));
-            idClauses.add(Filters.eq("user_id", q));
-            idClauses.add(Filters.eq("trace_id", q));
-        }
-        return idClauses;
+        return TraceServiceHelper.containsIgnoreCase(trace.name, query)
+            || TraceServiceHelper.containsIgnoreCase(trace.agentName, query)
+            || TraceServiceHelper.containsIgnoreCase(trace.userId, query);
     }
 
     public List<Map<String, Object>> facets(String field, TraceListFilter filter) {
-        var mongoField = mongoFieldName(field);
+        var mongoField = TraceServiceHelper.mongoFieldName(field);
         if (mongoField == null) return List.of();
         if (requiresSearch(filter)) {
             return facetsInMemory(field, filter);
@@ -354,7 +272,7 @@ public class TraceService {
     private List<Map<String, Object>> facetsInMemory(String field, TraceListFilter filter) {
         var counts = new LinkedHashMap<String, Integer>();
         for (var trace : searchCandidates(filter, SEARCH_TRACE_SCAN_LIMIT)) {
-            var value = facetValue(trace, field);
+            var value = TraceServiceHelper.facetValue(trace, field);
             if (value == null || value.isBlank()) continue;
             counts.put(value, counts.getOrDefault(value, 0) + 1);
         }
@@ -370,25 +288,6 @@ public class TraceService {
             .collect(Collectors.toList());
     }
 
-    private String facetValue(Trace trace, String field) {
-        return switch (field) {
-            case "model" -> trace.model;
-            case "agentName", "agent_name" -> trace.agentName;
-            case "source" -> trace.source;
-            default -> null;
-        };
-    }
-
-    private String mongoFieldName(String field) {
-        if (field == null) return null;
-        return switch (field) {
-            case "model" -> "model";
-            case "agentName", "agent_name" -> "agent_name";
-            case "source" -> "source";
-            default -> null;
-        };
-    }
-
     public Trace get(String traceId) {
         Trace trace = traceCollection.get(traceId).orElse(null);
         if (trace == null) {
@@ -398,101 +297,17 @@ public class TraceService {
             var results = traceCollection.find(query);
             trace = results.isEmpty() ? null : results.getFirst();
         }
-        if (trace != null) {
-            enrichMetricsFromSpans(trace);
+        if (trace != null && TraceServiceHelper.needsEnrichment(trace)) {
+            TraceServiceHelper.enrichMetrics(trace, spans(trace.traceId));
         }
         return trace;
-    }
-
-    // Resolve spans for all traces missing metrics in one query instead of one span query per trace
-    private void enrichMetricsInBatch(List<Trace> traces) {
-        var pending = traces.stream()
-            .filter(trace -> trace.traceId != null && !trace.traceId.isEmpty())
-            .filter(this::needsEnrichment)
-            .toList();
-        if (pending.isEmpty()) return;
-
-        var query = new Query();
-        query.filter = Filters.in("trace_id", pending.stream().map(trace -> trace.traceId).toList());
-        query.limit = MAX_SPANS_PER_TRACE * pending.size();
-        var spansByTrace = spanCollection.find(query).stream()
-            .filter(span -> span.traceId != null)
-            .collect(Collectors.groupingBy(span -> span.traceId));
-        pending.forEach(trace -> enrichMetrics(trace, spansByTrace.getOrDefault(trace.traceId, List.of())));
-    }
-
-    private boolean needsEnrichment(Trace trace) {
-        var needsTokens = trace.totalTokens == null || trace.totalTokens == 0;
-        return needsTokens || trace.cachedTokens == null || trace.costUsd == null;
-    }
-
-    private void enrichMetricsFromSpans(Trace trace) {
-        if (!needsEnrichment(trace)) return;
-        enrichMetrics(trace, spans(trace.traceId));
-    }
-
-    private void enrichMetrics(Trace trace, List<Span> spans) {
-        var needsTokens = trace.totalTokens == null || trace.totalTokens == 0;
-        var needsCachedTokens = trace.cachedTokens == null || needsTokens;
-        var needsCost = trace.costUsd == null || needsTokens;
-        if (!needsTokens && !needsCachedTokens && !needsCost) return;
-
-        long inputTokens = 0;
-        long outputTokens = 0;
-        long cachedTokens = 0;
-        double costUsd = 0.0;
-        boolean hasCost = false;
-        for (var span : spans) {
-            if (span.inputTokens != null) inputTokens += span.inputTokens;
-            if (span.outputTokens != null) outputTokens += span.outputTokens;
-            var spanCachedTokens = span.cachedTokens != null ? span.cachedTokens : parseCachedTokens(span.attributes);
-            if (spanCachedTokens != null) cachedTokens += spanCachedTokens;
-            var spanCostUsd = span.costUsd != null
-                ? span.costUsd
-                : LLMModelContextRegistry.getInstance().estimateCostUsd(span.model,
-                    safeLong(span.inputTokens), safeLong(span.outputTokens), safeLong(spanCachedTokens));
-            if (spanCostUsd != null) {
-                costUsd += spanCostUsd;
-                hasCost = true;
-            }
-        }
-        if (needsTokens) {
-            trace.inputTokens = inputTokens;
-            trace.outputTokens = outputTokens;
-            trace.totalTokens = inputTokens + outputTokens;
-        }
-        if (needsCachedTokens) trace.cachedTokens = cachedTokens;
-        if (needsCost && hasCost) trace.costUsd = costUsd;
-    }
-
-    private Long parseCachedTokens(Map<String, String> attributes) {
-        if (attributes == null) return null;
-        for (var key : List.of(
-            "gen_ai.usage.cached_tokens",
-            "gen_ai.usage.prompt_tokens_details.cached_tokens",
-            "gen_ai.usage.input_tokens_details.cached_tokens",
-            "usage.prompt_tokens_details.cached_tokens",
-            "prompt_tokens_details.cached_tokens")) {
-            var value = attributes.get(key);
-            if (value == null || value.isBlank()) continue;
-            try {
-                return Long.parseLong(value);
-            } catch (NumberFormatException ignored) {
-                continue;
-            }
-        }
-        return null;
-    }
-
-    private long safeLong(Long value) {
-        return value != null ? value : 0L;
     }
 
     public List<Span> spans(String traceId) {
         var query = new Query();
         query.filter = Filters.eq("trace_id", traceId);
         query.sort = Sorts.ascending("started_at");
-        query.limit = MAX_SPANS_PER_TRACE;
+        query.limit = TraceServiceHelper.MAX_SPANS_PER_TRACE;
         return spanCollection.find(query);
     }
 
@@ -547,7 +362,7 @@ public class TraceService {
         query.limit = SESSION_SUMMARY_TRACE_LIMIT;
         var traces = traceCollection.find(query);
         if (traces.isEmpty()) return null;
-        enrichMetricsInBatch(traces);
+        TraceServiceHelper.enrichMetricsInBatch(traces, spanCollection);
 
         // trace_count and first trace stay exact even when the aggregate window above is capped
         var traceCount = traceCollection.count(sessionFilter);
@@ -582,21 +397,5 @@ public class TraceService {
 
     public void saveSpan(Span span) {
         spanCollection.insert(span);
-    }
-
-    public static class TraceListFilter {
-        public int offset;
-        public int limit = 20;
-        public String q;           // user-friendly search: ID fields, user account, trace name, or agent name
-        public String name;        // advanced raw regex on name, evaluated after indexed filters
-        public String type;        // agent | llm_call | external
-        public String source;      // chat | a2a | api | scheduled | workflow
-        public String agentName;
-        public String model;
-        public String status;
-        public String sessionId;
-        public String userId;
-        public ZonedDateTime startFrom;
-        public ZonedDateTime startTo;
     }
 }

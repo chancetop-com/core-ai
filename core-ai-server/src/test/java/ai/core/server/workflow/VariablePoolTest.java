@@ -8,9 +8,17 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VariablePoolTest {
+    private static ArtifactRef ref(String fileId, String fileName, String url) {
+        var artifact = new ai.core.server.domain.AgentRunArtifact();
+        artifact.fileId = fileId;
+        artifact.fileName = fileName;
+        return ArtifactRef.of(artifact, url);
+    }
+
     @Test
     void resolvesWholeNodeOutputAsRawString() {
         var pool = new VariablePool(Map.of("a", "{\"x\": 1}"), "{}");
@@ -52,7 +60,7 @@ class VariablePoolTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> parsed = JSON.fromJSON(Map.class, rendered);   // must still be valid JSON, no injected key
         assertEquals("he said \"hi\"\n\",\"admin\":true", parsed.get("q"));
-        assertTrue(!parsed.containsKey("admin"));
+        assertFalse(parsed.containsKey("admin"));
     }
 
     @Test
@@ -128,12 +136,5 @@ class VariablePoolTest {
         var pool = new VariablePool(Map.of(), Map.of("agent1", refs), "{}");
         assertEquals(1, pool.artifactsOf("agent1").size());
         assertTrue(pool.artifactsOf("missing").isEmpty());
-    }
-
-    private static ArtifactRef ref(String fileId, String fileName, String url) {
-        var artifact = new ai.core.server.domain.AgentRunArtifact();
-        artifact.fileId = fileId;
-        artifact.fileName = fileName;
-        return ArtifactRef.of(artifact, url);
     }
 }

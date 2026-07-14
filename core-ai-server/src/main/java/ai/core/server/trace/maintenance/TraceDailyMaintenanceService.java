@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -50,37 +51,6 @@ public class TraceDailyMaintenanceService {
     private static final long MAX_PART_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB safety threshold
     private static final int MAX_TRACE_IDS_PER_SPAN_QUERY = 50; // batch span queries to avoid Mongo socket read timeout
     private static final int SPAN_DELETE_BATCH_SIZE = 30; // delete spans in small batches to avoid Mongo response timeout
-
-    private static long getLong(org.bson.Document doc, String key) {
-        Number value = doc.get(key, Number.class);
-        return value != null ? value.longValue() : 0L;
-    }
-
-    private static double getDouble(org.bson.Document doc, String key) {
-        Number value = doc.get(key, Number.class);
-        return value != null ? value.doubleValue() : 0.0;
-    }
-
-    @SuppressWarnings("unchecked")
-    static double computeP90(List<Object> values) {
-        if (values == null || values.isEmpty()) return 0.0;
-        var nums = values.stream()
-            .filter(v -> v instanceof Number)
-            .mapToDouble(v -> ((Number) v).doubleValue())
-            .sorted()
-            .toArray();
-        if (nums.length == 0) return 0.0;
-        // P90 = value at ceil(0.90 * n) position (1-indexed), i.e. index ceil(0.90*n) - 1
-        int idx = (int) Math.ceil(0.90 * nums.length) - 1;
-        return nums[Math.max(idx, 0)];
-    }
-
-    private static List<String> extractTraceIds(List<Trace> traces) {
-        return traces.stream()
-                .map(t -> t.traceId)
-                .filter(id -> id != null && !id.isEmpty())
-                .toList();
-    }
 
     @Inject
     MongoCollection<TraceDailyStats> statsCollection;
@@ -127,7 +97,7 @@ public class TraceDailyMaintenanceService {
             Aggregates.group(
                 new org.bson.Document()
                     .append("user_id", "$user_id")
-                    .append("agent_id", new org.bson.Document("$ifNull", java.util.List.of("$agent_id", NO_AGENT)))
+                    .append("agent_id", new org.bson.Document("$ifNull", List.of("$agent_id", NO_AGENT)))
                     .append("date", date.toString()),
                 Accumulators.sum("input_tokens", "$input_tokens"),
                 Accumulators.sum("output_tokens", "$output_tokens"),
@@ -160,14 +130,14 @@ public class TraceDailyMaintenanceService {
             if (agentId == null) agentId = NO_AGENT;
 
             String docId = userId + "_" + agentId + "_" + date;
-            long inputTokens = getLong(row, "input_tokens");
-            long outputTokens = getLong(row, "output_tokens");
-            long totalTokens = getLong(row, "total_tokens");
-            long cachedTokens = getLong(row, "cached_tokens");
-            double costUsd = getDouble(row, "cost_usd");
-            long callCount = getLong(row, "call_count");
-            double avgTotalTokens = getDouble(row, "avg_total_tokens");
-            double avgCostUsd = getDouble(row, "avg_cost_usd");
+            long inputTokens = TraceMaintenanceHelper.getLong(row, "input_tokens");
+            long outputTokens = TraceMaintenanceHelper.getLong(row, "output_tokens");
+            long totalTokens = TraceMaintenanceHelper.getLong(row, "total_tokens");
+            long cachedTokens = TraceMaintenanceHelper.getLong(row, "cached_tokens");
+            double costUsd = TraceMaintenanceHelper.getDouble(row, "cost_usd");
+            long callCount = TraceMaintenanceHelper.getLong(row, "call_count");
+            double avgTotalTokens = TraceMaintenanceHelper.getDouble(row, "avg_total_tokens");
+            double avgCostUsd = TraceMaintenanceHelper.getDouble(row, "avg_cost_usd");
             if (totalTokens <= 0) totalTokens = inputTokens + outputTokens;
 
             @SuppressWarnings("unchecked")
@@ -176,8 +146,8 @@ public class TraceDailyMaintenanceService {
             var allCostUsd = (List<Object>) row.get("all_cost_usd");
             @SuppressWarnings("unchecked")
             var sessionIds = (List<String>) row.get("session_ids");
-            double p90TotalTokens = computeP90(allTotalTokens);
-            double p90CostUsd = computeP90(allCostUsd);
+            double p90TotalTokens = TraceMaintenanceHelper.computeP90(allTotalTokens);
+            double p90CostUsd = TraceMaintenanceHelper.computeP90(allCostUsd);
             long sessionCount = sessionIds != null ? sessionIds.size() : 0;
 
             var existing = statsCollection.get(docId);
@@ -264,7 +234,7 @@ public class TraceDailyMaintenanceService {
                 var batch = traceCollection.find(batchQuery);
                 if (batch.isEmpty()) break;
 
-                var traceIds = extractTraceIds(batch);
+                var traceIds = TraceMaintenanceHelper.extractTraceIds(batch);
                 var spanCounts = getSpanCountsByTraceId(traceIds);
 
                 // Process traces in span-bounded sub-batches to keep per-part
@@ -305,7 +275,7 @@ public class TraceDailyMaintenanceService {
                     }
 
                     var subBatch = new ArrayList<>(batch.subList(start, end));
-                    var subTraceIds = extractTraceIds(subBatch);
+                    var subTraceIds = TraceMaintenanceHelper.extractTraceIds(subBatch);
                     var spansByTraceId = loadSpansForTraces(subTraceIds);
 
                     int spanCount = writeAndUploadPart(blobPrefix, part, subBatch, spansByTraceId);
@@ -342,7 +312,7 @@ public class TraceDailyMaintenanceService {
             var batch = traceCollection.find(batchQuery);
             if (batch.isEmpty()) break;
 
-            var traceIds = extractTraceIds(batch);
+            var traceIds = TraceMaintenanceHelper.extractTraceIds(batch);
             long deleted = spanCollection.delete(Filters.in("trace_id", traceIds));
             totalSpansDeleted += deleted;
             offset += batch.size();
@@ -388,7 +358,7 @@ public class TraceDailyMaintenanceService {
 
     private void writePartToTempFile(Path tempFile, Trace trace, List<Span> spanChunk) throws IOException {
         try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(tempFile));
-             var writer = new BufferedWriter(new OutputStreamWriter(gzipOut))) {
+             var writer = new BufferedWriter(new OutputStreamWriter(gzipOut, StandardCharsets.UTF_8))) {
             writeArchiveLine(writer, "trace", trace);
             for (var span : spanChunk) {
                 writeArchiveLine(writer, "span", span);
@@ -400,7 +370,7 @@ public class TraceDailyMaintenanceService {
                                   Map<String, List<Span>> spansByTraceId) throws IOException {
         int spanCount = 0;
         try (var gzipOut = new GZIPOutputStream(Files.newOutputStream(file));
-             var writer = new BufferedWriter(new OutputStreamWriter(gzipOut))) {
+             var writer = new BufferedWriter(new OutputStreamWriter(gzipOut, StandardCharsets.UTF_8))) {
             for (var trace : batch) {
                 writeArchiveLine(writer, "trace", trace);
                 var spans = spansByTraceId.getOrDefault(trace.traceId, List.of());

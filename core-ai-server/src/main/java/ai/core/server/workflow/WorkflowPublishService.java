@@ -225,7 +225,7 @@ public class WorkflowPublishService {
         WorkflowGraph graph = WorkflowGraphParser.parse(definition.draftGraph);
         List<String> errors = new ArrayList<>(WorkflowValidator.validate(graph));
         captureAgentSnapshots(graph, definition.userId, errors, snapshots);
-        captureWorkflowNodeErrors(graph, definition.id, definition.userId, errors);
+        captureWorkflowNodeErrors(graph, definition.id, errors);
         return errors;
     }
 
@@ -233,7 +233,7 @@ public class WorkflowPublishService {
     // self-reference (infinite recursion) and a child whose published graph contains a HUMAN_INPUT node — a parked
     // human input in the child would suspend and strand the parent's WORKFLOW node forever. A missing version_id is
     // left to the required-config error path elsewhere, so we only run the human-input check when it is present.
-    private void captureWorkflowNodeErrors(WorkflowGraph graph, String workflowId, String ownerUserId, List<String> errors) {
+    private void captureWorkflowNodeErrors(WorkflowGraph graph, String workflowId, List<String> errors) {
         //todo: indirect/transitive cycle detection (A->B->A across published versions) is deferred to a
         // best-effort UI hint per design §5.2; the runtime child-depth cap is the backstop for now.
         for (WorkflowNode node : graph.nodes()) {
@@ -339,7 +339,7 @@ public class WorkflowPublishService {
         List<String> errors = new ArrayList<>(WorkflowValidator.validate(graph));
         // Agent configs are already frozen in the saved version; workflow refs depend on the child workflow's current
         // public/active state, so re-check them at publish time.
-        captureWorkflowNodeErrors(graph, definition.id, definition.userId, errors);
+        captureWorkflowNodeErrors(graph, definition.id, errors);
         if (!errors.isEmpty()) {
             throw new WorkflowValidationException(errors);
         }

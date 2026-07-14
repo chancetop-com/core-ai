@@ -26,6 +26,20 @@ class EndExecutorTest {
         List.of(new WorkflowEdge("e0", "scratch", "report"),
             new WorkflowEdge("e1", "draft", "end"), new WorkflowEdge("e2", "report", "end")));
 
+    private static NodeContext ctx(VariablePool pool, Map<String, Object> config) {
+        var run = new WorkflowRun();
+        run.id = "run-1";
+        run.input = "{}";
+        return new NodeContext(GRAPH, run, new WorkflowNode("end", "END", List.of(), config), List.of(), pool);
+    }
+
+    private static ArtifactRef ref(String fileId, String fileName) {
+        var artifact = new AgentRunArtifact();
+        artifact.fileId = fileId;
+        artifact.fileName = fileName;
+        return ArtifactRef.of(artifact, "https://h/api/files/" + fileId + "/content");
+    }
+
     @Test
     void deliverablesDefaultToPredecessorUnionNotWholeGraph() {
         var pool = new VariablePool(Map.of("draft", "d", "report", "r"), Map.of(
@@ -118,19 +132,5 @@ class EndExecutorTest {
 
         var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
         assertEquals(List.of("f2"), normal.artifacts().stream().map(r -> r.fileId).toList());
-    }
-
-    private static NodeContext ctx(VariablePool pool, Map<String, Object> config) {
-        var run = new WorkflowRun();
-        run.id = "run-1";
-        run.input = "{}";
-        return new NodeContext(GRAPH, run, new WorkflowNode("end", "END", List.of(), config), List.of(), pool);
-    }
-
-    private static ArtifactRef ref(String fileId, String fileName) {
-        var artifact = new AgentRunArtifact();
-        artifact.fileId = fileId;
-        artifact.fileName = fileName;
-        return ArtifactRef.of(artifact, "https://h/api/files/" + fileId + "/content");
     }
 }

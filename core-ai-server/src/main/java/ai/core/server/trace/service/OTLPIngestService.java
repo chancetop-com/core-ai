@@ -9,8 +9,6 @@ import core.framework.mongo.MongoCollection;
 import org.bson.conversions.Bson;
 
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
-import io.opentelemetry.proto.common.v1.AnyValue;
-import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.trace.v1.ResourceSpans;
 import io.opentelemetry.proto.trace.v1.ScopeSpans;
 import io.opentelemetry.proto.trace.v1.Status;
@@ -27,12 +25,9 @@ import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
 
-import java.time.Instant;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -63,7 +58,7 @@ public class OTLPIngestService {
     public void ingest(ExportTraceServiceRequest request) {
         int spanCount = 0;
         for (ResourceSpans resourceSpans : request.getResourceSpansList()) {
-            var resourceAttrs = extractAttributes(resourceSpans.getResource().getAttributesList());
+            var resourceAttrs = OTLPParseHelper.extractAttributes(resourceSpans.getResource().getAttributesList());
             spanCount += processResourceSpans(resourceSpans, resourceAttrs);
         }
         LOGGER.debug("ingested {} spans via OTLP", spanCount);
@@ -81,10 +76,10 @@ public class OTLPIngestService {
     }
 
     private void processSpan(io.opentelemetry.proto.trace.v1.Span protoSpan, Map<String, String> resourceAttrs) {
-        var traceId = bytesToHex(protoSpan.getTraceId().toByteArray());
-        var spanId = bytesToHex(protoSpan.getSpanId().toByteArray());
-        var parentSpanId = protoSpan.getParentSpanId().isEmpty() ? null : bytesToHex(protoSpan.getParentSpanId().toByteArray());
-        var attrs = extractAttributes(protoSpan.getAttributesList());
+        var traceId = OTLPParseHelper.bytesToHex(protoSpan.getTraceId().toByteArray());
+        var spanId = OTLPParseHelper.bytesToHex(protoSpan.getSpanId().toByteArray());
+        var parentSpanId = protoSpan.getParentSpanId().isEmpty() ? null : OTLPParseHelper.bytesToHex(protoSpan.getParentSpanId().toByteArray());
+        var attrs = OTLPParseHelper.extractAttributes(protoSpan.getAttributesList());
         linkAgentRun(traceId, attrs);
         ensureTraceExists(traceId, protoSpan, attrs, resourceAttrs);
         saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs);
@@ -126,7 +121,7 @@ public class OTLPIngestService {
         trace.input = resolveInput(attrs);
         trace.metadata = traceMetadata(attrs, resourceAttrs);
         trace.durationMs = 0L;
-        trace.startedAt = toZonedDateTime(startMs);
+        trace.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
         trace.createdAt = ZonedDateTime.now();
         trace.updatedAt = ZonedDateTime.now();
         trace.inputTokens = 0L;
@@ -158,14 +153,14 @@ public class OTLPIngestService {
         span.output = resolveOutput(attrs);
         span.durationMs = endMs - startMs;
         span.status = mapSpanStatus(protoSpan.getStatus().getCode(), attrs);
-        span.errorMessage = span.status == SpanStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
+        span.errorMessage = span.status == SpanStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
         span.attributes = attrs;
-        span.startedAt = toZonedDateTime(startMs);
-        span.completedAt = toZonedDateTime(endMs);
+        span.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
+        span.completedAt = OTLPParseHelper.toZonedDateTime(endMs);
         span.createdAt = ZonedDateTime.now();
-        span.inputTokens = parseLongAttr(attrs, "gen_ai.usage.input_tokens");
-        span.outputTokens = parseLongAttr(attrs, "gen_ai.usage.output_tokens");
-        span.cachedTokens = parseLongAttr(attrs,
+        span.inputTokens = OTLPParseHelper.parseLongAttr(attrs, "gen_ai.usage.input_tokens");
+        span.outputTokens = OTLPParseHelper.parseLongAttr(attrs, "gen_ai.usage.output_tokens");
+        span.cachedTokens = OTLPParseHelper.parseLongAttr(attrs,
             "gen_ai.usage.cached_tokens",
             "gen_ai.usage.prompt_tokens_details.cached_tokens",
             "gen_ai.usage.input_tokens_details.cached_tokens",
@@ -200,10 +195,10 @@ public class OTLPIngestService {
     private void updateExistingTrace(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
                                     Map<String, String> attrs, long endMs) {
         trace.status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
-        trace.errorMessage = trace.status == TraceStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
+        trace.errorMessage = trace.status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
         trace.output = resolveOutput(attrs);
         trace.durationMs = endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
-        trace.completedAt = toZonedDateTime(endMs);
+        trace.completedAt = OTLPParseHelper.toZonedDateTime(endMs);
         trace.updatedAt = ZonedDateTime.now();
         // Backfill model if this span carries it and trace.model is still empty
         var spanModel = attrs.get("gen_ai.request.model");
@@ -248,13 +243,13 @@ public class OTLPIngestService {
         trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
-        trace.errorMessage = trace.status == TraceStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
+        trace.errorMessage = trace.status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
         trace.input = resolveInput(attrs);
         trace.output = resolveOutput(attrs);
         trace.metadata = traceMetadata(attrs, resourceAttrs);
         trace.durationMs = endMs - startMs;
-        trace.startedAt = toZonedDateTime(startMs);
-        trace.completedAt = toZonedDateTime(endMs);
+        trace.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
+        trace.completedAt = OTLPParseHelper.toZonedDateTime(endMs);
         trace.createdAt = ZonedDateTime.now();
         trace.updatedAt = ZonedDateTime.now();
         trace.inputTokens = 0L;
@@ -354,10 +349,6 @@ public class OTLPIngestService {
         return attrs.get("langfuse.observation.output");
     }
 
-    private String nonEmpty(String value) {
-        return value == null || value.isEmpty() ? null : value;
-    }
-
     @SuppressWarnings("unused")
     private String resolveSource(Map<String, String> attrs, Map<String, String> resourceAttrs, String sessionId) {
         // Highest priority: explicit client.type span attribute (set by server-side wrapper span, e.g. LLM call entry)
@@ -412,72 +403,14 @@ public class OTLPIngestService {
         return "true".equalsIgnoreCase(attrs.get(CORE_AI_CANCELLED));
     }
 
-    private Map<String, String> extractAttributes(List<KeyValue> kvList) {
-        var map = new LinkedHashMap<String, String>();
-        for (KeyValue kv : kvList) {
-            map.put(kv.getKey(), anyValueToString(kv.getValue()));
-        }
-        return map;
-    }
-
-    private String anyValueToString(AnyValue value) {
-        if (value.hasStringValue()) return value.getStringValue();
-        if (value.hasIntValue()) return String.valueOf(value.getIntValue());
-        if (value.hasDoubleValue()) return String.valueOf(value.getDoubleValue());
-        if (value.hasBoolValue()) return String.valueOf(value.getBoolValue());
-        return value.toString();
-    }
-
-    private ZonedDateTime toZonedDateTime(long epochMs) {
-        if (epochMs <= 0) return null;
-        return ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMs), ZoneId.systemDefault());
-    }
-
     private Double resolveCostUsd(String model, Long inputTokens, Long outputTokens, Long cachedTokens, Map<String, String> attrs) {
-        var attrCost = parseDoubleAttr(attrs,
+        var attrCost = OTLPParseHelper.parseDoubleAttr(attrs,
             "gen_ai.usage.cost_usd",
             "gen_ai.usage.cost",
             "langfuse.observation.total_cost");
         if (attrCost != null) return attrCost;
         return LLMModelContextRegistry.getInstance().estimateCostUsd(model,
-            safeLong(inputTokens), safeLong(outputTokens), safeLong(cachedTokens));
+            OTLPParseHelper.safeLong(inputTokens), OTLPParseHelper.safeLong(outputTokens), OTLPParseHelper.safeLong(cachedTokens));
     }
 
-    private Long parseLongAttr(Map<String, String> attrs, String... keys) {
-        for (var key : keys) {
-            var value = attrs.get(key);
-            if (value == null || value.isBlank()) continue;
-            try {
-                return Long.parseLong(value);
-            } catch (NumberFormatException ignored) {
-                LOGGER.debug("invalid long trace attribute {}={}", key, value);
-            }
-        }
-        return null;
-    }
-
-    private Double parseDoubleAttr(Map<String, String> attrs, String... keys) {
-        for (var key : keys) {
-            var value = attrs.get(key);
-            if (value == null || value.isBlank()) continue;
-            try {
-                return Double.parseDouble(value);
-            } catch (NumberFormatException ignored) {
-                LOGGER.debug("invalid double trace attribute {}={}", key, value);
-            }
-        }
-        return null;
-    }
-
-    private long safeLong(Long value) {
-        return value != null ? value : 0L;
-    }
-
-    private String bytesToHex(byte[] bytes) {
-        var sb = new StringBuilder(bytes.length * 2);
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
 }

@@ -18,6 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SandboxSnapshotClientTest {
+    private static String sha256Hex(byte[] data) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
+    }
+
     private HttpServer server;
     private int port;
 
@@ -31,10 +35,6 @@ class SandboxSnapshotClientTest {
     @AfterEach
     void tearDown() {
         server.stop(0);
-    }
-
-    private static String sha256Hex(byte[] data) throws Exception {
-        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
     }
 
     @Test

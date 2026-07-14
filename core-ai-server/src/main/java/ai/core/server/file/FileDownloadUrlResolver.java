@@ -6,6 +6,7 @@ import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 /**
@@ -52,7 +53,7 @@ public class FileDownloadUrlResolver implements InternalUrlResolver {
             return new InternalUrlResult(200, record.contentType, data);
         } catch (NotFoundException e) {
             LOGGER.debug("internal file resolve not found, path={}", path);
-            return new InternalUrlResult(404, "text/plain", e.getMessage().getBytes());
+            return new InternalUrlResult(404, "text/plain", e.getMessage().getBytes(StandardCharsets.UTF_8));
         }
     }
 

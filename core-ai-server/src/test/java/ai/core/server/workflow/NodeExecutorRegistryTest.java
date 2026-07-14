@@ -16,6 +16,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class NodeExecutorRegistryTest {
+    private static WorkflowRun run() {
+        var run = new WorkflowRun();
+        run.id = "run-1";
+        run.workflowId = "wf-1";
+        run.input = "{\"q\": \"hi\"}";
+        return run;
+    }
+
+    private static NodeContext ctx(WorkflowGraph graph, WorkflowRun run, WorkflowNode node) {
+        return new NodeContext(graph, run, node, List.of(), new VariablePool(Map.of(), run.input));
+    }
+
     @Test
     void unregisteredNodeTypeThrows() {
         var registry = new NodeExecutorRegistry(Map.of(NodeType.START, new StartExecutor()));
@@ -50,17 +62,5 @@ class NodeExecutorRegistryTest {
         assertEquals(RunStatus.COMPLETED, status);
         assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "start"));
         assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "end"));
-    }
-
-    private static WorkflowRun run() {
-        var run = new WorkflowRun();
-        run.id = "run-1";
-        run.workflowId = "wf-1";
-        run.input = "{\"q\": \"hi\"}";
-        return run;
-    }
-
-    private static NodeContext ctx(WorkflowGraph graph, WorkflowRun run, WorkflowNode node) {
-        return new NodeContext(graph, run, node, List.of(), new VariablePool(Map.of(), run.input));
     }
 }

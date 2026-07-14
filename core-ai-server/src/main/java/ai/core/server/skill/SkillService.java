@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -316,7 +317,7 @@ public class SkillService {
 
     private String normalizedSearchIn(String searchIn) {
         if (!hasText(searchIn)) return SEARCH_IN_NAME_DESCRIPTION;
-        var value = searchIn.trim().toLowerCase();
+        var value = searchIn.trim().toLowerCase(Locale.getDefault());
         return switch (value) {
             case SEARCH_IN_NAME, SEARCH_IN_NAME_DESCRIPTION, SEARCH_IN_METADATA, SEARCH_IN_CONTENT -> value;
             default -> SEARCH_IN_NAME_DESCRIPTION;

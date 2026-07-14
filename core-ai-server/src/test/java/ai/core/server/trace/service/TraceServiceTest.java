@@ -11,7 +11,6 @@ import java.time.ZonedDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -67,7 +66,7 @@ class TraceServiceTest {
         // First trace query is the indexed user_id match; second is the bounded name/agent scan.
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(aliceTrace)).thenReturn(List.of());
 
-        var filter = new TraceService.TraceListFilter();
+        var filter = new TraceListFilter();
         filter.q = "alice";
         filter.offset = 0;
         filter.limit = 20;
@@ -85,7 +84,7 @@ class TraceServiceTest {
         when(service.userCollection.find(any(Query.class))).thenReturn(List.of(user("Alice Chen", "alice@example.com")));
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(first, second)).thenReturn(List.of(ignored));
 
-        var filter = new TraceService.TraceListFilter();
+        var filter = new TraceListFilter();
         filter.q = "alice";
 
         var facets = service.facets("model", filter);
@@ -102,7 +101,7 @@ class TraceServiceTest {
         var ignored = trace("t2", "alice@example.com", "chat completion", "support-agent", "gpt-4o", 0);
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(match, ignored));
 
-        var filter = new TraceService.TraceListFilter();
+        var filter = new TraceListFilter();
         filter.name = "checkout";
         filter.offset = 0;
         filter.limit = 20;

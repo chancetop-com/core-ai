@@ -69,8 +69,11 @@ public class ServerApp extends App {
         load(new McpServerModule());
         load(new McpModule());
         load(new ObjectStorageModule());
+        load(new MessagingModule());
         load(new GatewayModule());
         load(new TraceModule());
+        load(new MemoryModule());
+        load(new SandboxModule());
         load(new ServerModule());
         load(new WorkflowModule());
         load(new ChannelModule());

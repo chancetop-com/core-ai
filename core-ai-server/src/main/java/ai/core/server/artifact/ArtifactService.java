@@ -9,8 +9,9 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 public class ArtifactService {
@@ -60,10 +61,10 @@ public class ArtifactService {
         return result;
     }
 
-    private HashMap<String, SessionInfo> buildSessionMap(String userId, List<String> fileIds) {
-        if (fileIds.isEmpty()) return new HashMap<>();
+    private Map<String, SessionInfo> buildSessionMap(String userId, List<String> fileIds) {
+        if (fileIds.isEmpty()) return Map.of();
 
-        var filters = new java.util.ArrayList<org.bson.conversions.Bson>();
+        var filters = new ArrayList<org.bson.conversions.Bson>();
         filters.add(Filters.eq("user_id", userId));
         if (fileIds.size() == 1) {
             filters.add(Filters.eq("artifacts.file_id", fileIds.get(0)));
@@ -76,7 +77,7 @@ public class ArtifactService {
         query.sort = Sorts.descending("last_message_at");
         var sessions = chatSessionCollection.find(query);
 
-        var map = new HashMap<String, SessionInfo>();
+        Map<String, SessionInfo> map = new LinkedHashMap<>();
         for (var session : sessions) {
             if (session.artifacts == null) continue;
             for (var artifact : session.artifacts) {
@@ -92,7 +93,7 @@ public class ArtifactService {
         int skip = offset != null && offset >= 0 ? offset : 0;
         int take = limit != null && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT;
 
-        var filterList = new java.util.ArrayList<org.bson.conversions.Bson>();
+        var filterList = new ArrayList<org.bson.conversions.Bson>();
         filterList.add(Filters.type("share_token", "string"));
 
         if (name != null && !name.isBlank()) {

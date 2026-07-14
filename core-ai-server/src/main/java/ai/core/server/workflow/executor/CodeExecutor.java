@@ -130,7 +130,7 @@ public class CodeExecutor implements NodeExecutor {
             if (trimmed.startsWith("[")) {
                 return JSON.fromJSON(List.class, trimmed);
             }
-        } catch (RuntimeException e) {
+        } catch (RuntimeException ignored) {
             // not valid JSON after all — fall through to the raw string
         }
         return value;

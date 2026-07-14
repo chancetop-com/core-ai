@@ -2,6 +2,7 @@ package ai.core.server.workflow;
 
 import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.domain.ArtifactRef;
+import ai.core.server.sandbox.StagedFile;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -12,6 +13,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ArtifactStagingTest {
+    private static ArtifactRef ref(String fileId, String fileName) {
+        var artifact = new AgentRunArtifact();
+        artifact.fileId = fileId;
+        artifact.fileName = fileName;
+        return ArtifactRef.of(artifact, "https://h/api/files/" + fileId + "/content");
+    }
+
     private final VariablePool pool = new VariablePool(Map.of(), Map.of(
         "a", List.of(ref("f1", "report.pdf"), ref("f2", "data.csv")),
         "b", List.of(ref("f3", "img.png"))), "{}");
@@ -20,15 +28,15 @@ class ArtifactStagingTest {
     void wholeArrayReferenceStagesEveryArtifactOfTheNode() {
         var staged = ArtifactStaging.scanTemplate("process: {{ nodes.a.artifacts }}", pool);
         assertEquals(List.of("/tmp/inputs/a/report.pdf", "/tmp/inputs/a/data.csv"),
-            staged.stream().map(f -> f.targetPath()).toList());
+            staged.stream().map(StagedFile::targetPath).toList());
     }
 
     @Test
     void indexAndPathReferencesStageTheSingleArtifact() {
         assertEquals(List.of("f2"),
-            ArtifactStaging.scanTemplate("{{ nodes.a.artifacts.1 }}", pool).stream().map(f -> f.fileId()).toList());
+            ArtifactStaging.scanTemplate("{{ nodes.a.artifacts.1 }}", pool).stream().map(StagedFile::fileId).toList());
         assertEquals(List.of("f1"),
-            ArtifactStaging.scanTemplate("read {{ nodes.a.artifacts.0.path }}", pool).stream().map(f -> f.fileId()).toList());
+            ArtifactStaging.scanTemplate("read {{ nodes.a.artifacts.0.path }}", pool).stream().map(StagedFile::fileId).toList());
     }
 
     @Test
@@ -42,13 +50,13 @@ class ArtifactStagingTest {
         var staged = ArtifactStaging.scanTemplate(
             "{{ nodes.a.artifacts.0.path }} and {{ nodes.a.artifacts }} and {{ nodes.b.artifacts }}", pool);
         assertEquals(List.of("/tmp/inputs/a/report.pdf", "/tmp/inputs/a/data.csv", "/tmp/inputs/b/img.png"),
-            staged.stream().map(f -> f.targetPath()).toList());
+            staged.stream().map(StagedFile::targetPath).toList());
     }
 
     @Test
     void bareSelectorFormFollowsTheSameRule() {
         assertEquals(List.of("f3"),
-            ArtifactStaging.scanSelector("nodes.b.artifacts", pool).stream().map(f -> f.fileId()).toList());
+            ArtifactStaging.scanSelector("nodes.b.artifacts", pool).stream().map(StagedFile::fileId).toList());
         assertTrue(ArtifactStaging.scanSelector("nodes.a.artifacts.0.url", pool).isEmpty());
         assertTrue(ArtifactStaging.scanSelector("nodes.a.output", pool).isEmpty());
     }
@@ -73,12 +81,5 @@ class ArtifactStagingTest {
         assertTrue(staged.render("{{ nodes.a.artifacts }}").contains("\"path\""));
         assertFalse(pool.resolve("nodes.a.artifacts.0.path").isPresent());
         assertFalse(pool.render("{{ nodes.a.artifacts }}").contains("\"path\""));
-    }
-
-    private static ArtifactRef ref(String fileId, String fileName) {
-        var artifact = new AgentRunArtifact();
-        artifact.fileId = fileId;
-        artifact.fileName = fileName;
-        return ArtifactRef.of(artifact, "https://h/api/files/" + fileId + "/content");
     }
 }

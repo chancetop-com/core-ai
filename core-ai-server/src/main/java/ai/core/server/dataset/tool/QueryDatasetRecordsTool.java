@@ -23,7 +23,7 @@ public final class QueryDatasetRecordsTool extends ToolCall {
     public static final String TOOL_NAME = "query_dataset_records";
 
     public static QueryDatasetRecordsTool create(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
-        var tool = new QueryDatasetRecordsTool(datasetService, recordService, registry);
+        var tool = new QueryDatasetRecordsTool(recordService, registry);
         tool.setName(TOOL_NAME);
         tool.setDescription(buildDescription(datasetService, registry));
         tool.setParameters(parameters());
@@ -35,10 +35,8 @@ public final class QueryDatasetRecordsTool extends ToolCall {
     }
 
     private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
-        var sb = new StringBuilder(512);
-        sb.append("Query records from a dataset by dataset_id.\nUse this tool to search, filter, and retrieve records by time range and field projection.\n");
-        sb.append(buildAvailableDatasetsSection(datasetService, registry));
-        return sb.toString();
+        return "Query records from a dataset by dataset_id.\nUse this tool to search, filter, and retrieve records by time range and field projection.\n"
+                + buildAvailableDatasetsSection(datasetService, registry);
     }
 
     static String buildAvailableDatasetsSection(DatasetService datasetService, DatasetAccessRegistry registry) {
@@ -75,7 +73,7 @@ public final class QueryDatasetRecordsTool extends ToolCall {
     private final DatasetRecordService recordService;
     private final DatasetAccessRegistry registry;
 
-    private QueryDatasetRecordsTool(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
+    private QueryDatasetRecordsTool(DatasetRecordService recordService, DatasetAccessRegistry registry) {
         this.recordService = recordService;
         this.registry = registry;
     }

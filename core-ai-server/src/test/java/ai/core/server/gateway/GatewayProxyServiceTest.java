@@ -12,8 +12,8 @@ import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,7 +24,16 @@ import static org.mockito.Mockito.when;
 
 class GatewayProxyServiceTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {
+
+    private static byte[] json(Object value) {
+        try {
+            return MAPPER.writeValueAsBytes(value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
     @Test
@@ -160,7 +169,7 @@ class GatewayProxyServiceTest {
 
     private GatewayProviderConfig provider(String name, String type, String baseUrl, String prefix, String defaultModel) {
         var provider = new GatewayProviderConfig();
-        provider.id = name.toLowerCase();
+        provider.id = name.toLowerCase(Locale.ROOT);
         provider.name = name;
         provider.type = type;
         provider.baseUrl = baseUrl;
@@ -187,14 +196,6 @@ class GatewayProxyServiceTest {
         model.enabled = true;
         model.priority = priority;
         return model;
-    }
-
-    private static byte[] json(Object value) {
-        try {
-            return MAPPER.writeValueAsBytes(value);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private static final class CapturingGatewayProxyService extends GatewayProxyService {

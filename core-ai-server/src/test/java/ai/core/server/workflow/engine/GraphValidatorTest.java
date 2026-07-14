@@ -7,6 +7,18 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GraphValidatorTest {
+    private static boolean has(List<String> errors, String fragment) {
+        return errors.stream().anyMatch(error -> error.contains(fragment));
+    }
+
+    private static WorkflowNode node(String id) {
+        return new WorkflowNode(id, id);
+    }
+
+    private static WorkflowEdge edge(String id, String source, String target) {
+        return new WorkflowEdge(id, source, target);
+    }
+
     @Test
     void validLinearGraphHasNoErrors() {
         WorkflowGraph graph = new WorkflowGraph(
@@ -57,17 +69,5 @@ class GraphValidatorTest {
             List.of(edge("e0", "start", "bad-id")));
 
         assertTrue(has(GraphValidator.validate(graph), "invalid node id"));
-    }
-
-    private static boolean has(List<String> errors, String fragment) {
-        return errors.stream().anyMatch(error -> error.contains(fragment));
-    }
-
-    private static WorkflowNode node(String id) {
-        return new WorkflowNode(id, id);
-    }
-
-    private static WorkflowEdge edge(String id, String source, String target) {
-        return new WorkflowEdge(id, source, target);
     }
 }

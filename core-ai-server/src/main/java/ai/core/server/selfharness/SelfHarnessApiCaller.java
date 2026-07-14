@@ -13,6 +13,7 @@ import ai.core.server.dataset.DatasetService;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.trace.service.TraceListFilter;
 import ai.core.server.trace.service.TraceService;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
@@ -70,7 +71,7 @@ public class SelfHarnessApiCaller {
             case "list_datasets", "get_dataset", "list_dataset_records" ->
                 dispatchDataset(name, args);
             case "list_tools" ->
-                dispatchTool(name, args);
+                dispatchTool(args);
             case "get_session_history", "list_traces", "get_trace", "get_trace_spans", "get_session_trace_summary" ->
                 dispatchSessionTrace(name, args);
             default -> throw new IllegalArgumentException("Unknown self-harness operation: " + name);
@@ -165,8 +166,7 @@ public class SelfHarnessApiCaller {
         };
     }
 
-    @SuppressWarnings("unchecked")
-    private Object dispatchTool(String name, String args) {
+    private Object dispatchTool(String args) {
         var req = JSON.fromJSON(ListToolsRequest.class, args);
         return toolRegistryService.listTools(req.category);
     }
@@ -180,7 +180,7 @@ public class SelfHarnessApiCaller {
             }
             case "list_traces" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                var filter = new TraceService.TraceListFilter();
+                var filter = new TraceListFilter();
                 filter.sessionId = (String) params.get("session_id");
                 filter.agentName = (String) params.get("agent_name");
                 filter.status = (String) params.get("status");

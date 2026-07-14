@@ -236,7 +236,7 @@ public final class WorkflowAdvancer {
         }
         try {
             CompletableFuture.anyOf(futures).get(timeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
+        } catch (TimeoutException ignored) {
             // poll tick: fall through to re-plan
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

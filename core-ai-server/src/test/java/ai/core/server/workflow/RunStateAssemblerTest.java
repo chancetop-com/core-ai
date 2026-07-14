@@ -19,6 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RunStateAssemblerTest {
+    private static WorkflowNodeRun nodeRun(String nodeId, NodeRunStatus status, List<String> chosenEdgeIds) {
+        var nodeRun = new WorkflowNodeRun();
+        nodeRun.nodeId = nodeId;
+        nodeRun.status = status;
+        nodeRun.chosenEdgeIds = chosenEdgeIds;
+        nodeRun.scopePathKey = "";
+        return nodeRun;
+    }
+
     @Test
     void completedNormalNodeRunBecomesNormalFact() {
         RunState state = RunStateAssembler.toRunState(List.of(nodeRun("a", NodeRunStatus.COMPLETED, null)), "");
@@ -70,14 +79,5 @@ class RunStateAssemblerTest {
         assertEquals(EdgeVerdict.SKIPPED, f.edgeVerdicts().get("e2"));
         assertEquals(Set.of("a"), f.readyNodeIds());
         assertEquals(Set.of("b"), f.skipNodeIds());
-    }
-
-    private static WorkflowNodeRun nodeRun(String nodeId, NodeRunStatus status, List<String> chosenEdgeIds) {
-        var nodeRun = new WorkflowNodeRun();
-        nodeRun.nodeId = nodeId;
-        nodeRun.status = status;
-        nodeRun.chosenEdgeIds = chosenEdgeIds;
-        nodeRun.scopePathKey = "";
-        return nodeRun;
     }
 }

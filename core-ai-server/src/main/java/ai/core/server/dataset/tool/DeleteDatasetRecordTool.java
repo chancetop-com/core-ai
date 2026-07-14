@@ -19,7 +19,7 @@ public final class DeleteDatasetRecordTool extends ToolCall {
     public static final String TOOL_NAME = "delete_dataset_record";
 
     public static DeleteDatasetRecordTool create(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
-        var tool = new DeleteDatasetRecordTool(datasetService, recordService, registry);
+        var tool = new DeleteDatasetRecordTool(recordService, registry);
         tool.setName(TOOL_NAME);
         tool.setDescription(buildDescription(datasetService, registry));
         tool.setParameters(parameters());
@@ -31,10 +31,8 @@ public final class DeleteDatasetRecordTool extends ToolCall {
     }
 
     private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
-        var sb = new StringBuilder(512);
-        sb.append("Delete a record from a dataset.\nProvide the dataset_id and record_id to delete.\n");
-        sb.append(QueryDatasetRecordsTool.buildAvailableDatasetsSection(datasetService, registry));
-        return sb.toString();
+        return "Delete a record from a dataset.\nProvide the dataset_id and record_id to delete.\n"
+                + QueryDatasetRecordsTool.buildAvailableDatasetsSection(datasetService, registry);
     }
 
     private static List<ToolCallParameter> parameters() {
@@ -47,7 +45,7 @@ public final class DeleteDatasetRecordTool extends ToolCall {
     private final DatasetRecordService recordService;
     private final DatasetAccessRegistry registry;
 
-    private DeleteDatasetRecordTool(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
+    private DeleteDatasetRecordTool(DatasetRecordService recordService, DatasetAccessRegistry registry) {
         this.recordService = recordService;
         this.registry = registry;
     }

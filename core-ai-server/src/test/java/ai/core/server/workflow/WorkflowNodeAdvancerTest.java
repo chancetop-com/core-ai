@@ -15,6 +15,15 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class WorkflowNodeAdvancerTest {
+    private static WorkflowRun run() {
+        var run = new WorkflowRun();
+        run.id = "run-1";
+        run.userId = "u1";
+        run.workflowId = "wf-a";
+        run.input = "{}";
+        return run;
+    }
+
     @Test
     void workflowNodeSubmitsChildAndParksRunPaused() {
         WorkflowGraph graph = WorkflowGraphParser.parse("""
@@ -37,15 +46,6 @@ class WorkflowNodeAdvancerTest {
         assertEquals(RunStatus.PAUSED, status);   // parked on the sub-workflow, lease released by the runner
         assertEquals(NodeRunStatus.WAITING, journal.status("run-1", "call_sub"));
         assertEquals("wfrun-child-1", journal.childRunId("run-1", "call_sub"));
-    }
-
-    private static WorkflowRun run() {
-        var run = new WorkflowRun();
-        run.id = "run-1";
-        run.userId = "u1";
-        run.workflowId = "wf-a";
-        run.input = "{}";
-        return run;
     }
 
     private static final class RecordingGateway implements WorkflowRunGateway {

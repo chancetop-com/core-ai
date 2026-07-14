@@ -13,6 +13,7 @@ import ai.core.server.domain.User;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.service.TracePreviewExtractor;
+import ai.core.server.trace.service.TraceListFilter;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.workflow.WorkflowRunService;
@@ -57,7 +58,7 @@ public class TraceController {
 
     // total is best-effort: an unindexable filter combination (e.g. pure text search on dev with notablescan)
     // must not break the list, so the frontend falls back to prev/next paging on -1
-    private long countTotal(TraceService.TraceListFilter filter) {
+    private long countTotal(TraceListFilter filter) {
         try {
             return traceService.count(filter);
         } catch (Exception e) {
@@ -80,8 +81,8 @@ public class TraceController {
         return jsonResponse(rows);
     }
 
-    private TraceService.TraceListFilter parseFilter(java.util.Map<String, String> params) {
-        var filter = new TraceService.TraceListFilter();
+    private TraceListFilter parseFilter(Map<String, String> params) {
+        var filter = new TraceListFilter();
         filter.q = params.get("q");
         filter.name = params.get("name");
         filter.type = params.get("type");
@@ -172,7 +173,7 @@ public class TraceController {
         return new TraceScope(userId, admin);
     }
 
-    private void applyScope(TraceService.TraceListFilter filter, TraceScope scope) {
+    private void applyScope(TraceListFilter filter, TraceScope scope) {
         if (!scope.admin()) {
             filter.userId = scope.userId();
         }

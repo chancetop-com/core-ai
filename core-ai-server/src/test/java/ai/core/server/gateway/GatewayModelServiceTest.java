@@ -100,22 +100,7 @@ class GatewayModelServiceTest {
     @Test
     void importUsesOfficialModelIdAsDefaultAlias() {
         var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
-        service.gatewayModelDiscoveryService = new GatewayModelDiscoveryService() {
-            @Override
-            List<GatewayModelMetadata> discover(GatewayProviderConfig provider) {
-                return List.of(new GatewayModelMetadata(
-                        "deepseek/deepseek-chat",
-                        "DeepSeek Chat",
-                        List.of("chat.completions"),
-                        64_000L,
-                        true,
-                        true,
-                        false,
-                        1D,
-                        2D
-                ));
-            }
-        };
+        service.gatewayModelDiscoveryService = new StubModelDiscoveryService();
         when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
         var request = new ImportGatewayModelsRequest();
         var model = new ImportGatewayModelsRequest.Model();
@@ -187,5 +172,22 @@ class GatewayModelServiceTest {
         user.id = id;
         user.role = "user";
         return user;
+    }
+
+    private static final class StubModelDiscoveryService extends GatewayModelDiscoveryService {
+        @Override
+        List<GatewayModelMetadata> discover(GatewayProviderConfig provider) {
+            return List.of(new GatewayModelMetadata(
+                    "deepseek/deepseek-chat",
+                    "DeepSeek Chat",
+                    List.of("chat.completions"),
+                    64_000L,
+                    true,
+                    true,
+                    false,
+                    1D,
+                    2D
+            ));
+        }
     }
 }

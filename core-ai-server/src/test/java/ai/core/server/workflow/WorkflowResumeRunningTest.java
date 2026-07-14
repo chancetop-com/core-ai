@@ -54,6 +54,22 @@ class WorkflowResumeRunningTest {
         }
     }
 
+    private static boolean awaitUntil(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return condition.getAsBoolean();
+    }
+
     @Inject
     WorkflowDefinitionService definitionService;
 
@@ -124,21 +140,5 @@ class WorkflowResumeRunningTest {
     private NodeRunStatus nodeStatus(String runId, String nodeId) {
         return nodeRunCollection.find(Filters.and(Filters.eq("run_id", runId), Filters.eq("node_id", nodeId)))
             .stream().findFirst().orElseThrow().status;
-    }
-
-    private static boolean awaitUntil(BooleanSupplier condition) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (System.nanoTime() < deadline) {
-            if (condition.getAsBoolean()) {
-                return true;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-        }
-        return condition.getAsBoolean();
     }
 }

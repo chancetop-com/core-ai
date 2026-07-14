@@ -13,6 +13,56 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlannerTest {
+    // ---- helpers ----
+
+    /** Drives plan() to a fixpoint like the runner would, returning the order nodes were dispatched. */
+    private static List<String> simulate(WorkflowGraph graph, Map<String, Set<String>> branchChoices) {
+        Map<String, NodeFact> state = new LinkedHashMap<>();
+        List<String> order = new ArrayList<>();
+        while (true) {
+            Frontier f = Planner.plan(graph, new RunState(state));
+            if (!f.hasProgress()) {
+                break;   // frontier exhausted; the run is done (outputReached() would classify success vs stuck)
+            }
+            for (String skipped : f.skipNodeIds()) {
+                state.put(skipped, NodeFact.skipped(skipped));
+            }
+            for (String ready : f.readyNodeIds()) {
+                order.add(ready);
+                Set<String> chosen = branchChoices.get(ready);
+                state.put(ready, chosen != null ? NodeFact.completedBranch(ready, chosen) : NodeFact.completedNormal(ready));
+            }
+        }
+        return order;
+    }
+
+    private static WorkflowGraph diamond() {
+        // a -> merge (ea), b -> merge (eb)
+        return graph(
+            List.of(node("a"), node("b"), node("merge")),
+            List.of(edge("ea", "a", "merge"), edge("eb", "b", "merge")));
+    }
+
+    private static WorkflowGraph graph(List<WorkflowNode> nodes, List<WorkflowEdge> edges) {
+        return new WorkflowGraph(nodes, edges);
+    }
+
+    private static WorkflowNode node(String id) {
+        return new WorkflowNode(id, id);
+    }
+
+    private static WorkflowEdge edge(String id, String source, String target) {
+        return new WorkflowEdge(id, source, target);
+    }
+
+    private static RunState facts(NodeFact... factList) {
+        Map<String, NodeFact> map = new LinkedHashMap<>();
+        for (NodeFact fact : factList) {
+            map.put(fact.nodeId(), fact);
+        }
+        return new RunState(map);
+    }
+
     @Test
     void startSeededReadyWhenNoFacts() {
         WorkflowGraph graph = graph(
@@ -169,55 +219,5 @@ class PlannerTest {
         assertFalse(order.contains("right"));           // dead branch skipped, never dispatched
         assertTrue(order.indexOf("left") < order.indexOf("merge"));
         assertTrue(order.indexOf("merge") < order.indexOf("end"));   // join fired despite one skipped arm
-    }
-
-    // ---- helpers ----
-
-    /** Drives plan() to a fixpoint like the runner would, returning the order nodes were dispatched. */
-    private static List<String> simulate(WorkflowGraph graph, Map<String, Set<String>> branchChoices) {
-        Map<String, NodeFact> state = new LinkedHashMap<>();
-        List<String> order = new ArrayList<>();
-        while (true) {
-            Frontier f = Planner.plan(graph, new RunState(state));
-            if (!f.hasProgress()) {
-                break;   // frontier exhausted; the run is done (outputReached() would classify success vs stuck)
-            }
-            for (String skipped : f.skipNodeIds()) {
-                state.put(skipped, NodeFact.skipped(skipped));
-            }
-            for (String ready : f.readyNodeIds()) {
-                order.add(ready);
-                Set<String> chosen = branchChoices.get(ready);
-                state.put(ready, chosen != null ? NodeFact.completedBranch(ready, chosen) : NodeFact.completedNormal(ready));
-            }
-        }
-        return order;
-    }
-
-    private static WorkflowGraph diamond() {
-        // a -> merge (ea), b -> merge (eb)
-        return graph(
-            List.of(node("a"), node("b"), node("merge")),
-            List.of(edge("ea", "a", "merge"), edge("eb", "b", "merge")));
-    }
-
-    private static WorkflowGraph graph(List<WorkflowNode> nodes, List<WorkflowEdge> edges) {
-        return new WorkflowGraph(nodes, edges);
-    }
-
-    private static WorkflowNode node(String id) {
-        return new WorkflowNode(id, id);
-    }
-
-    private static WorkflowEdge edge(String id, String source, String target) {
-        return new WorkflowEdge(id, source, target);
-    }
-
-    private static RunState facts(NodeFact... factList) {
-        Map<String, NodeFact> map = new LinkedHashMap<>();
-        for (NodeFact fact : factList) {
-            map.put(fact.nodeId(), fact);
-        }
-        return new RunState(map);
     }
 }

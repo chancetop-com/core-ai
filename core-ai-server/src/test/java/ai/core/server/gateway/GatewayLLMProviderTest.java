@@ -27,6 +27,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class GatewayLLMProviderTest {
+    private static CompletionResponse response(String content) {
+        return CompletionResponse.of(
+                List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, content))),
+                new Usage(1, 1, 2)
+        );
+    }
+
     @Test
     void routesGatewayModelIdToUpstreamModelAndRestoresRequestedModel() {
         var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
@@ -151,13 +158,6 @@ class GatewayLLMProviderTest {
         model.enabled = true;
         model.priority = 100L;
         return model;
-    }
-
-    private static CompletionResponse response(String content) {
-        return CompletionResponse.of(
-                List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, content))),
-                new Usage(1, 1, 2)
-        );
     }
 
     private static final class TestGatewayLLMProvider extends GatewayLLMProvider {

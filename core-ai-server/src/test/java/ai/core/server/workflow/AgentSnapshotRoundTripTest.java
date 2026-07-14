@@ -23,6 +23,30 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * @author Xander
  */
 class AgentSnapshotRoundTripTest {
+    private static ToolRef toolRef(String id, ToolSourceType type, String source) {
+        var ref = new ToolRef();
+        ref.id = id;
+        ref.type = type;
+        ref.source = source;
+        return ref;
+    }
+
+    private static AgentSandboxConfig sandbox() {
+        var config = new AgentSandboxConfig();
+        config.enabled = true;
+        config.memoryLimitMb = 512;
+        config.networkEnabled = false;
+        config.environmentVariables = Map.of("API_KEY", "secret-value");
+        return config;
+    }
+
+    private static AgentDatasetConfig dataset(String datasetId, boolean isOutput) {
+        var config = new AgentDatasetConfig();
+        config.datasetId = datasetId;
+        config.isOutput = isOutput;
+        return config;
+    }
+
     @Test
     void agentPublishedConfigRoundTripsIncludingNestedFields() {
         var config = new AgentPublishedConfig();
@@ -62,29 +86,5 @@ class AgentSnapshotRoundTripTest {
         assertEquals(1, back.datasetConfig.size());
         assertEquals("ds-1", back.datasetConfig.get(0).datasetId);
         assertEquals(Boolean.TRUE, back.datasetConfig.get(0).isOutput);
-    }
-
-    private static ToolRef toolRef(String id, ToolSourceType type, String source) {
-        var ref = new ToolRef();
-        ref.id = id;
-        ref.type = type;
-        ref.source = source;
-        return ref;
-    }
-
-    private static AgentSandboxConfig sandbox() {
-        var config = new AgentSandboxConfig();
-        config.enabled = true;
-        config.memoryLimitMb = 512;
-        config.networkEnabled = false;
-        config.environmentVariables = Map.of("API_KEY", "secret-value");
-        return config;
-    }
-
-    private static AgentDatasetConfig dataset(String datasetId, boolean isOutput) {
-        var config = new AgentDatasetConfig();
-        config.datasetId = datasetId;
-        config.isOutput = isOutput;
-        return config;
     }
 }

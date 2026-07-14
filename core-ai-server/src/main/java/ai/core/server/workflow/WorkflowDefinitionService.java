@@ -64,7 +64,7 @@ public class WorkflowDefinitionService {
         return Filters.and(conditions);
     }
 
-    private static ArrayList<Bson> baseListFilters(String userId, Boolean myWorkflows) {
+    private static List<Bson> baseListFilters(String userId, Boolean myWorkflows) {
         var conditions = new ArrayList<Bson>();
         if (myWorkflows != null && !myWorkflows) {
             conditions.add(Filters.ne("user_id", userId));

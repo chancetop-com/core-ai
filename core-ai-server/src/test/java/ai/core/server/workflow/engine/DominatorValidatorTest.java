@@ -9,6 +9,26 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DominatorValidatorTest {
+    private static WorkflowNode node(String id) {
+        return new WorkflowNode(id, id);
+    }
+
+    private static WorkflowNode node(String id, List<String> referencedNodeIds) {
+        return new WorkflowNode(id, id, referencedNodeIds);
+    }
+
+    private static WorkflowNode namedNode(String id, String name) {
+        return new WorkflowNode(id, id, name, List.of(), Map.of());
+    }
+
+    private static WorkflowNode namedNode(String id, String name, List<String> referencedNodeIds) {
+        return new WorkflowNode(id, id, name, referencedNodeIds, Map.of());
+    }
+
+    private static WorkflowEdge edge(String id, String source, String target) {
+        return new WorkflowEdge(id, source, target);
+    }
+
     @Test
     void startDominatesAllNodes() {
         WorkflowGraph graph = new WorkflowGraph(
@@ -90,25 +110,5 @@ class DominatorValidatorTest {
 
         assertEquals(1, errors.size());
         assertEquals("Node \"a\" references a missing node (ghost). Remove that reference or choose an existing node.", errors.get(0));
-    }
-
-    private static WorkflowNode node(String id) {
-        return new WorkflowNode(id, id);
-    }
-
-    private static WorkflowNode node(String id, List<String> referencedNodeIds) {
-        return new WorkflowNode(id, id, referencedNodeIds);
-    }
-
-    private static WorkflowNode namedNode(String id, String name) {
-        return new WorkflowNode(id, id, name, List.of(), Map.of());
-    }
-
-    private static WorkflowNode namedNode(String id, String name, List<String> referencedNodeIds) {
-        return new WorkflowNode(id, id, name, referencedNodeIds, Map.of());
-    }
-
-    private static WorkflowEdge edge(String id, String source, String target) {
-        return new WorkflowEdge(id, source, target);
     }
 }

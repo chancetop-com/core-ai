@@ -24,6 +24,28 @@ class AggregatorExecutorTest {
         List.of(new WorkflowNode("a", "AGENT"), new WorkflowNode("b", "AGENT"), new WorkflowNode("agg", "AGGREGATOR")),
         List.of(new WorkflowEdge("e1", "a", "agg"), new WorkflowEdge("e2", "b", "agg")));
 
+    private static NodeContext ctx(VariablePool pool) {
+        return ctx(pool, Map.of());
+    }
+
+    private static NodeContext ctx(VariablePool pool, Map<String, Object> config) {
+        return ctx(GRAPH, pool, config);
+    }
+
+    private static NodeContext ctx(WorkflowGraph graph, VariablePool pool, Map<String, Object> config) {
+        var run = new WorkflowRun();
+        run.id = "run-1";
+        run.input = "{}";
+        return new NodeContext(graph, run, new WorkflowNode("agg", "AGGREGATOR", List.of(), config), List.of(), pool);
+    }
+
+    private static ArtifactRef ref(String fileId, String fileName) {
+        var artifact = new AgentRunArtifact();
+        artifact.fileId = fileId;
+        artifact.fileName = fileName;
+        return ArtifactRef.of(artifact, "https://h/api/files/" + fileId + "/content");
+    }
+
     @Test
     void unionsPredecessorArtifactsDedupedByFileIdInOrder() {
         var pool = new VariablePool(Map.of(), Map.of(
@@ -66,27 +88,5 @@ class AggregatorExecutorTest {
 
         var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
         assertEquals(List.of("f1", "tmp"), normal.artifacts().stream().map(r -> r.fileId).toList());
-    }
-
-    private static NodeContext ctx(VariablePool pool) {
-        return ctx(pool, Map.of());
-    }
-
-    private static NodeContext ctx(VariablePool pool, Map<String, Object> config) {
-        return ctx(GRAPH, pool, config);
-    }
-
-    private static NodeContext ctx(WorkflowGraph graph, VariablePool pool, Map<String, Object> config) {
-        var run = new WorkflowRun();
-        run.id = "run-1";
-        run.input = "{}";
-        return new NodeContext(graph, run, new WorkflowNode("agg", "AGGREGATOR", List.of(), config), List.of(), pool);
-    }
-
-    private static ArtifactRef ref(String fileId, String fileName) {
-        var artifact = new AgentRunArtifact();
-        artifact.fileId = fileId;
-        artifact.fileName = fileName;
-        return ArtifactRef.of(artifact, "https://h/api/files/" + fileId + "/content");
     }
 }

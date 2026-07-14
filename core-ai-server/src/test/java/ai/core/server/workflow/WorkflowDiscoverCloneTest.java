@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -217,7 +218,7 @@ class WorkflowDiscoverCloneTest {
         assertTrue(hits.stream().allMatch(d -> d.publishedVersionId != null), "only published");
         assertEquals(3, definitionService.exploreCount("explore-viewer", tag));
 
-        assertEquals(3, definitionService.explore("explore-viewer", tag.toUpperCase(), 0, 50).size(), "case-insensitive");
+        assertEquals(3, definitionService.explore("explore-viewer", tag.toUpperCase(Locale.ROOT), 0, 50).size(), "case-insensitive");
 
         // paging: limit 2 -> page 1 = 2, page 2 = 1
         assertEquals(2, definitionService.explore("explore-viewer", tag, 0, 2).size());

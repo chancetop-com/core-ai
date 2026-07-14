@@ -12,6 +12,8 @@ import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
 
+import java.util.Locale;
+
 /**
  * @author stephen
  */
@@ -25,8 +27,8 @@ public class NotificationWebServiceImpl implements NotificationWebService {
     @Override
     public ListNotificationsResponse list(ListNotificationsRequest request) {
         var userId = AuthContext.userId(webContext);
-        var categoryEnum = request.category != null ? NotificationCategory.valueOf(request.category.toUpperCase()) : null;
-        var statusEnum = request.status != null ? NotificationStatus.valueOf(request.status.toUpperCase()) : null;
+        var categoryEnum = request.category != null ? NotificationCategory.valueOf(request.category.toUpperCase(Locale.getDefault())) : null;
+        var statusEnum = request.status != null ? NotificationStatus.valueOf(request.status.toUpperCase(Locale.getDefault())) : null;
         int off = request.offset != null ? request.offset : 0;
         int lim = request.limit != null ? request.limit : 50;
 
@@ -34,7 +36,7 @@ public class NotificationWebServiceImpl implements NotificationWebService {
         long total = notificationService.count(userId, categoryEnum, statusEnum);
 
         var response = new ListNotificationsResponse();
-        response.notifications = notifications.stream().map(n -> toView(n)).toList();
+        response.notifications = notifications.stream().map(this::toView).toList();
         response.total = total;
         return response;
     }

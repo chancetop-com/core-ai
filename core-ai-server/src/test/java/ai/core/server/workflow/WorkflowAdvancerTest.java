@@ -29,6 +29,64 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WorkflowAdvancerTest {
     private static final Executor SAME_THREAD = Runnable::run;
 
+    // ---- helpers ----
+
+    private static boolean awaitUntil(java.util.function.BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return condition.getAsBoolean();
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void awaitLong(CountDownLatch latch) {
+        try {
+            latch.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static WorkflowRun run() {
+        return run(null);
+    }
+
+    private static WorkflowRun run(String input) {
+        var run = new WorkflowRun();
+        run.id = "run-1";
+        run.workflowId = "wf-1";
+        run.input = input;
+        return run;
+    }
+
+    private static WorkflowGraph graph(List<WorkflowNode> nodes, List<WorkflowEdge> edges) {
+        return new WorkflowGraph(nodes, edges);
+    }
+
+    private static WorkflowNode node(String id) {
+        return new WorkflowNode(id, id);
+    }
+
+    private static WorkflowEdge edge(String id, String source, String target) {
+        return new WorkflowEdge(id, source, target);
+    }
+
     @Test
     void linearGraphDrivesToCompleted() {
         WorkflowGraph graph = graph(
@@ -384,64 +442,6 @@ class WorkflowAdvancerTest {
             slowRelease.countDown();
             pool.shutdownNow();
         }
-    }
-
-    // ---- helpers ----
-
-    private static boolean awaitUntil(java.util.function.BooleanSupplier condition) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
-        while (System.nanoTime() < deadline) {
-            if (condition.getAsBoolean()) {
-                return true;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-        }
-        return condition.getAsBoolean();
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            latch.await(2, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private static void awaitLong(CountDownLatch latch) {
-        try {
-            latch.await(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private static WorkflowRun run() {
-        return run(null);
-    }
-
-    private static WorkflowRun run(String input) {
-        var run = new WorkflowRun();
-        run.id = "run-1";
-        run.workflowId = "wf-1";
-        run.input = input;
-        return run;
-    }
-
-    private static WorkflowGraph graph(List<WorkflowNode> nodes, List<WorkflowEdge> edges) {
-        return new WorkflowGraph(nodes, edges);
-    }
-
-    private static WorkflowNode node(String id) {
-        return new WorkflowNode(id, id);
-    }
-
-    private static WorkflowEdge edge(String id, String source, String target) {
-        return new WorkflowEdge(id, source, target);
     }
 
     static final class ScriptedExecutor implements NodeExecutor {

@@ -47,9 +47,6 @@ import core.framework.web.WebContext;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -58,9 +55,7 @@ import java.util.Map;
 /**
  * @author stephen
  */
-
 public class AgentSessionWebServiceImpl implements AgentSessionWebService {
-    private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionWebServiceImpl.class);
     private static final String SESSION_STATE_KEY = "agent-session-state";
 
     private static ToolRefView toToolRefView(ToolRef ref) {
@@ -146,100 +141,12 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var pendingFiles = collectPendingFiles(sessionId, request);
-        var message = buildMessageWithAttachments(request);
+        var pendingFiles = AttachmentMessageHelper.collectPendingFiles(sessionId, request);
+        var message = AttachmentMessageHelper.buildMessageWithAttachments(request);
         var command = SessionCommand.sendMessage(sessionId, userId, message,
                 request.variables != null ? new HashMap<>(request.variables) : null,
                 pendingFiles);
         commandPublisher.publish(command);
-    }
-
-    /** Collect pending file metadata for sandbox upload, returned as serializable maps
-     *  to be embedded in the command payload so the processing pod has the data. */
-    private List<Map<String, String>> collectPendingFiles(String sessionId, SendMessageRequest request) {
-        LOGGER.info("[ENQUEUE] collectPendingFiles called, sessionId={}, hasAttachments={}, count={}",
-                sessionId, request.attachments != null, request.attachments != null ? request.attachments.size() : 0);
-        if (request.attachments == null || request.attachments.isEmpty()) return null;
-        var result = new ArrayList<Map<String, String>>();
-        for (var att : request.attachments) {
-            LOGGER.info("[ENQUEUE] attachment: category={}, fileName={}, container={}, blobName={}, url={}",
-                    att.category, att.fileName, att.container, att.blobName, att.url);
-            if ("sandbox".equals(att.category)) {
-                if (att.container == null || att.blobName == null) {
-                    LOGGER.warn("[ENQUEUE] sandbox attachment missing container/blobName, sessionId={}, fileName={}",
-                            sessionId, att.fileName);
-                    continue;
-                }
-                result.add(Map.of(
-                        "fileName", att.fileName != null ? att.fileName : att.blobName,
-                        "container", att.container,
-                        "blobName", att.blobName));
-                continue;
-            }
-            if ("multimodal".equals(att.category)) {
-                LOGGER.info("[ENQUEUE] multimodal attachment, skipping sandbox upload, fileName={}", att.fileName);
-                continue;
-            }
-            // Handle attachments with blob storage URL (front-end sends url instead of container/blobName)
-            if (att.url != null) {
-                var blobInfo = parseBlobUrl(att.url);
-                if (blobInfo != null) {
-                    LOGGER.info("[ENQUEUE] parsed blob URL: container={}, blobName={}", blobInfo.container, blobInfo.blobName);
-                    result.add(Map.of(
-                            "fileName", att.fileName != null ? att.fileName : blobInfo.fileName(),
-                            "container", blobInfo.container(),
-                            "blobName", blobInfo.blobName()));
-                    continue;
-                }
-                LOGGER.info("[ENQUEUE] url is not a blob storage URL, skipping sandbox upload, url={}", att.url);
-            }
-        }
-        return result.isEmpty() ? null : result;
-    }
-
-    private BlobInfo parseBlobUrl(String url) {
-        // Match: https://{account}.blob.core.windows.net/{container}/{blobPath}
-        var prefix = "blob.core.windows.net/";
-        var idx = url.indexOf(prefix);
-        if (idx < 0) return null;
-        var path = url.substring(idx + prefix.length());
-        var firstSlash = path.indexOf('/');
-        if (firstSlash < 0) return null;
-        var container = path.substring(0, firstSlash);
-        var blobName = path.substring(firstSlash + 1);
-        if (container.isEmpty() || blobName.isEmpty()) return null;
-        return new BlobInfo(container, blobName);
-    }
-
-    private String buildMessageWithAttachments(SendMessageRequest request) {
-        if (request.attachments == null || request.attachments.isEmpty()) {
-            return request.message;
-        }
-        var sandboxPaths = new ArrayList<String>();
-        var urlParts = new ArrayList<String>();
-        for (var att : request.attachments) {
-            if ("multimodal".equals(att.category) && att.url != null) {
-                // multimodal images/PDFs: pass blob URL directly so AI can use caption_image/summarize_pdf
-                urlParts.add(att.url);
-            } else if ("sandbox".equals(att.category)) {
-                var name = att.fileName != null ? att.fileName : att.blobName;
-                sandboxPaths.add("/tmp/" + name);
-            } else if (att.url != null && parseBlobUrl(att.url) != null) {
-                var blobInfo = parseBlobUrl(att.url);
-                sandboxPaths.add("/tmp/" + (att.fileName != null ? att.fileName : blobInfo.fileName()));
-            } else if (att.url != null) {
-                urlParts.add(att.url);
-            }
-        }
-        var parts = new ArrayList<String>();
-        urlParts.forEach(parts::add);
-        for (var path : sandboxPaths) {
-            parts.add("[File uploaded to sandbox: " + path + "]");
-        }
-        if (parts.isEmpty()) return request.message;
-        var attachmentText = String.join("\n", parts);
-        if (request.message == null || request.message.isBlank()) return attachmentText;
-        return request.message + "\n\n" + attachmentText;
     }
 
     @Override
@@ -518,12 +425,4 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         return ownershipRegistry.isOwner(sessionId);
     }
 
-    private record BlobInfo(String container, String blobName) {
-        String fileName() {
-            var name = blobName;
-            var lastSlash = name.lastIndexOf('/');
-            if (lastSlash >= 0) name = name.substring(lastSlash + 1);
-            return name;
-        }
-    }
 }

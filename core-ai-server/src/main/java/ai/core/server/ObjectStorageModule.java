@@ -1,11 +1,17 @@
 package ai.core.server;
 
+import ai.core.api.server.FileWebService;
 import ai.core.api.server.blob.BlobUploadCredentialView;
 import ai.core.server.blob.AzureBlobSasService;
 import ai.core.server.blob.AzureObjectStorageService;
 import ai.core.server.blob.BlobUploadCredentialController;
 import ai.core.server.blob.MinioObjectStorageService;
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.file.FileDownloadController;
+import ai.core.server.file.FileService;
+import ai.core.server.file.FileUploadController;
+import ai.core.server.file.SharedFileDownloadController;
+import ai.core.server.web.FileWebServiceImpl;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -19,9 +25,18 @@ public class ObjectStorageModule extends Module {
 
     @Override
     protected void initialize() {
+        registerFile();
         var blobController = configureObjectStorage();
         http().bean(BlobUploadCredentialView.class);
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
+    }
+
+    private void registerFile() {
+        bind(FileService.class);
+        api().service(FileWebService.class, bind(FileWebServiceImpl.class));
+        http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
+        http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));
+        http().route(HTTPMethod.GET, "/api/public/artifacts/:token/content", bind(SharedFileDownloadController.class));
     }
 
     private BlobUploadCredentialController configureObjectStorage() {

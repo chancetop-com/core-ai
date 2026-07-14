@@ -22,6 +22,41 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IfElseExecutorTest {
+    // --- helpers ---
+
+    private static List<String> branchOf(WorkflowNode node, VariablePool pool) {
+        var branch = assertInstanceOf(NodeOutcome.Branch.class, new IfElseExecutor().execute(ctx(node, pool)));
+        return branch.chosenEdgeIds();
+    }
+
+    private static NodeContext ctx(WorkflowNode node, VariablePool pool) {
+        return new NodeContext(new WorkflowGraph(List.of(node), List.of()), runWithKind("x"), node, List.of(), pool);
+    }
+
+    private static WorkflowNode ifElse(List<Map<String, Object>> cases, String elseEdge) {
+        return new WorkflowNode("route", "IF_ELSE", List.of(), Map.of("cases", cases, "else_edge_id", elseEdge));
+    }
+
+    private static Map<String, Object> caseOf(String edgeId, Map<String, Object> condition) {
+        return Map.of("edge_id", edgeId, "conditions", List.of(condition));
+    }
+
+    private static Map<String, Object> caseOf(String edgeId, String logic, List<Map<String, Object>> conditions) {
+        return Map.of("edge_id", edgeId, "logic", logic, "conditions", conditions);
+    }
+
+    private static Map<String, Object> cond(String selector, String operator, String value) {
+        return Map.of("selector", selector, "operator", operator, "value", value);
+    }
+
+    private static WorkflowRun runWithKind(String kind) {
+        var run = new WorkflowRun();
+        run.id = "run-1";
+        run.workflowId = "wf-1";
+        run.input = "{\"kind\": \"" + kind + "\"}";
+        return run;
+    }
+
     @Test
     void matchingCasePicksItsEdge() {
         var node = ifElse(
@@ -92,41 +127,6 @@ class IfElseExecutorTest {
         assertFalse(gateway.started.contains("b"));   // the false branch was skipped, not executed
         assertEquals(NodeRunStatus.SKIPPED, journal.status("run-1", "b"));
         assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "end"));
-    }
-
-    // --- helpers ---
-
-    private static List<String> branchOf(WorkflowNode node, VariablePool pool) {
-        var branch = assertInstanceOf(NodeOutcome.Branch.class, new IfElseExecutor().execute(ctx(node, pool)));
-        return branch.chosenEdgeIds();
-    }
-
-    private static NodeContext ctx(WorkflowNode node, VariablePool pool) {
-        return new NodeContext(new WorkflowGraph(List.of(node), List.of()), runWithKind("x"), node, List.of(), pool);
-    }
-
-    private static WorkflowNode ifElse(List<Map<String, Object>> cases, String elseEdge) {
-        return new WorkflowNode("route", "IF_ELSE", List.of(), Map.of("cases", cases, "else_edge_id", elseEdge));
-    }
-
-    private static Map<String, Object> caseOf(String edgeId, Map<String, Object> condition) {
-        return Map.of("edge_id", edgeId, "conditions", List.of(condition));
-    }
-
-    private static Map<String, Object> caseOf(String edgeId, String logic, List<Map<String, Object>> conditions) {
-        return Map.of("edge_id", edgeId, "logic", logic, "conditions", conditions);
-    }
-
-    private static Map<String, Object> cond(String selector, String operator, String value) {
-        return Map.of("selector", selector, "operator", operator, "value", value);
-    }
-
-    private static WorkflowRun runWithKind(String kind) {
-        var run = new WorkflowRun();
-        run.id = "run-1";
-        run.workflowId = "wf-1";
-        run.input = "{\"kind\": \"" + kind + "\"}";
-        return run;
     }
 
     static final class RecordingGateway implements AgentRunGateway {

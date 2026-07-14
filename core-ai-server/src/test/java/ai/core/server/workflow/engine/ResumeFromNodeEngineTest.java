@@ -17,6 +17,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * @author Xander
  */
 class ResumeFromNodeEngineTest {
+    // ---- helpers (mirrors PlannerTest) ----
+
+    private static WorkflowGraph graph(List<WorkflowNode> nodes, List<WorkflowEdge> edges) {
+        return new WorkflowGraph(nodes, edges);
+    }
+
+    private static WorkflowNode node(String id) {
+        return new WorkflowNode(id, id);
+    }
+
+    private static WorkflowEdge edge(String id, String source, String target) {
+        return new WorkflowEdge(id, source, target);
+    }
+
+    private static RunState facts(NodeFact... factList) {
+        Map<String, NodeFact> map = new LinkedHashMap<>();
+        for (NodeFact fact : factList) {
+            map.put(fact.nodeId(), fact);
+        }
+        return new RunState(map);
+    }
+
     @Test
     void descendantsInclusiveIsForwardCone() {
         WorkflowGraph graph = graph(
@@ -62,27 +84,5 @@ class ResumeFromNodeEngineTest {
         Frontier f = Planner.plan(graph, seeded);
 
         assertEquals(Set.of("a"), f.readyNodeIds());
-    }
-
-    // ---- helpers (mirrors PlannerTest) ----
-
-    private static WorkflowGraph graph(List<WorkflowNode> nodes, List<WorkflowEdge> edges) {
-        return new WorkflowGraph(nodes, edges);
-    }
-
-    private static WorkflowNode node(String id) {
-        return new WorkflowNode(id, id);
-    }
-
-    private static WorkflowEdge edge(String id, String source, String target) {
-        return new WorkflowEdge(id, source, target);
-    }
-
-    private static RunState facts(NodeFact... factList) {
-        Map<String, NodeFact> map = new LinkedHashMap<>();
-        for (NodeFact fact : factList) {
-            map.put(fact.nodeId(), fact);
-        }
-        return new RunState(map);
     }
 }

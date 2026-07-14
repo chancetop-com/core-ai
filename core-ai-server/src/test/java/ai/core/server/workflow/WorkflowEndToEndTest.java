@@ -48,6 +48,22 @@ class WorkflowEndToEndTest {
         }
     }
 
+    private static boolean awaitUntil(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return condition.getAsBoolean();
+    }
+
     @Inject
     WorkflowDefinitionService definitionService;
 
@@ -200,21 +216,5 @@ class WorkflowEndToEndTest {
             Filters.eq("node_id", "call_child"))).stream().findFirst().orElseThrow();
         assertEquals(NodeRunStatus.COMPLETED, callChild.status);
         assertEquals("{\"q\":\"hello\"}", callChild.output);
-    }
-
-    private static boolean awaitUntil(BooleanSupplier condition) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (System.nanoTime() < deadline) {
-            if (condition.getAsBoolean()) {
-                return true;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-        }
-        return condition.getAsBoolean();
     }
 }
