@@ -80,22 +80,22 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String summaryModel) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, llmProvider, this.model, summaryModel);
+        this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, llmProvider, resolveCompressionModel(), summaryModel);
         return this;
     }
 
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens, LLMProvider llmProvider, String summaryModel) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, llmProvider, this.model, summaryModel);
+        this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, llmProvider, resolveCompressionModel(), summaryModel);
         return this;
     }
 
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, this.llmProvider, this.model, this.model);
+        this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, this.llmProvider, resolveCompressionModel(), resolveCompressionModel());
         return this;
     }
 
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, this.llmProvider, this.model, this.model);
+        this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, this.llmProvider, resolveCompressionModel(), resolveCompressionModel());
         return this;
     }
 
@@ -394,10 +394,15 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private void configureCompression() {
         if (compressionEnabled) {
             if (compression == null) {
-                compression = new Compression(this.llmProvider, this.model);
+                compression = new Compression(this.llmProvider, resolveCompressionModel());
             }
             agentLifecycles.add(new CompressionLifecycle(compression));
         }
+    }
+
+    private String resolveCompressionModel() {
+        if (this.model != null) return this.model;
+        return this.llmProvider != null ? this.llmProvider.config.getModel() : null;
     }
 
     private void configureSkills() {

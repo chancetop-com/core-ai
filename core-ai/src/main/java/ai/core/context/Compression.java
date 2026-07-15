@@ -29,6 +29,7 @@ public class Compression {
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
     private static final double DEFAULT_TOOL_RESULT_RATIO = 0.5;
     private static final int FALLBACK_MAX_TOOL_RESULT_TOKENS = 64000;
+    private static final int FALLBACK_MAX_CONTEXT_TOKENS = 128000;
     private static final int HEAD_TOKENS = 500;
     private static final int TAIL_TOKENS = 500;
     private static final String TEMP_DIR_NAME = "core-ai";
@@ -60,7 +61,7 @@ public class Compression {
         this.llmProvider = llmProvider;
         this.summaryModel = summaryModel;
         var modelInfo = agentModel != null ? LLMModelContextRegistry.getInstance().getModelInfo(agentModel) : null;
-        this.maxContextTokens = modelInfo != null ? modelInfo.contextWindow() : 0;
+        this.maxContextTokens = modelInfo != null ? modelInfo.contextWindow() : FALLBACK_MAX_CONTEXT_TOKENS;
         this.maxToolResultTokens = calculateMaxToolResultTokens();
     }
     private int calculateMaxToolResultTokens() {
