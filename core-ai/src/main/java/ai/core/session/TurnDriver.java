@@ -3,6 +3,8 @@ package ai.core.session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -13,6 +15,7 @@ import java.util.function.Consumer;
  */
 public class TurnDriver {
     private static final long IDLE_RENEW_INTERVAL_SECONDS = 25;
+    private static final long PROCESSING_HEARTBEAT_INTERVAL_MS = 10_000;
 
     private final Logger logger = LoggerFactory.getLogger(TurnDriver.class);
 
@@ -21,6 +24,7 @@ public class TurnDriver {
     private volatile boolean running = true;
     private final Thread driverThread;
     private volatile Runnable onIdle;
+    private volatile ScheduledExecutorService heartbeatScheduler;
 
     public TurnDriver(SessionCommandQueue commandQueue, Consumer<SessionCommandQueue.CommandBatch> commandHandler) {
         this.commandQueue = commandQueue;
@@ -41,7 +45,12 @@ public class TurnDriver {
                 var batch = commandQueue.drainSameMode();
                 if (batch.isEmpty()) continue;
                 renewOwnership();
-                commandHandler.accept(batch);
+                startHeartbeat();
+                try {
+                    commandHandler.accept(batch);
+                } finally {
+                    stopHeartbeat();
+                }
                 // Clear interrupt flag left by cancelTurn() so the next iteration works
                 //noinspection ResultOfMethodCallIgnored
                 Thread.interrupted();
@@ -67,6 +76,20 @@ public class TurnDriver {
         }
     }
 
+    private void startHeartbeat() {
+        heartbeatScheduler = Executors.newSingleThreadScheduledExecutor(r -> Thread.ofVirtual().name("turn-heartbeat").unstarted(r));
+        heartbeatScheduler.scheduleAtFixedRate(this::renewOwnership,
+                PROCESSING_HEARTBEAT_INTERVAL_MS, PROCESSING_HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void stopHeartbeat() {
+        var scheduler = heartbeatScheduler;
+        heartbeatScheduler = null;
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+        }
+    }
+
     public void setOnIdle(Runnable onIdle) {
         this.onIdle = onIdle;
     }
@@ -75,6 +98,10 @@ public class TurnDriver {
         logger.info("TurnDriver.shutdown called, running={}, thread={}", running, driverThread.getName());
         running = false;
         driverThread.interrupt();
+        var scheduler = heartbeatScheduler;
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+        }
         logger.info("TurnDriver.shutdown completed");
     }
 }

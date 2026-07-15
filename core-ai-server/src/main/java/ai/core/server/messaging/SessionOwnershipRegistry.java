@@ -18,7 +18,7 @@ import java.util.UUID;
 public class SessionOwnershipRegistry {
     private static final Logger LOGGER = LoggerFactory.getLogger(SessionOwnershipRegistry.class);
     private static final String OWNER_KEY_PREFIX = "session:owner:";
-    private static final Duration OWNERSHIP_TTL = Duration.ofSeconds(30);
+    private static final Duration OWNERSHIP_TTL = Duration.ofSeconds(60);
 
     private final JedisPool jedisPool;
     private final String hostname;
