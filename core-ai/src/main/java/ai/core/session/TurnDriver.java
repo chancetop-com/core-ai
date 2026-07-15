@@ -46,11 +46,7 @@ public class TurnDriver {
                 if (batch.isEmpty()) continue;
                 renewOwnership();
                 startHeartbeat();
-                try {
-                    commandHandler.accept(batch);
-                } finally {
-                    stopHeartbeat();
-                }
+                executeCommandBatch(batch);
                 // Clear interrupt flag left by cancelTurn() so the next iteration works
                 //noinspection ResultOfMethodCallIgnored
                 Thread.interrupted();
@@ -80,6 +76,14 @@ public class TurnDriver {
         heartbeatScheduler = Executors.newSingleThreadScheduledExecutor(r -> Thread.ofVirtual().name("turn-heartbeat").unstarted(r));
         heartbeatScheduler.scheduleAtFixedRate(this::renewOwnership,
                 PROCESSING_HEARTBEAT_INTERVAL_MS, PROCESSING_HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void executeCommandBatch(SessionCommandQueue.CommandBatch batch) {
+        try {
+            commandHandler.accept(batch);
+        } finally {
+            stopHeartbeat();
+        }
     }
 
     private void stopHeartbeat() {

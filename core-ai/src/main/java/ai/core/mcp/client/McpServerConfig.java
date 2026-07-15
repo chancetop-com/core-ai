@@ -83,11 +83,8 @@ public class McpServerConfig {
             builder.endpoint(endpoint);
         }
 
-        String transport = (String) config.get("transport");
-        if (transport != null) {
-            if ("sse".equalsIgnoreCase(transport)) {
-                builder.transportType(TransportType.SSE);
-            }
+        if ("sse".equalsIgnoreCase((String) config.get("transport"))) {
+            builder.transportType(TransportType.SSE);
         }
 
         Object headersObj = config.get("headers");

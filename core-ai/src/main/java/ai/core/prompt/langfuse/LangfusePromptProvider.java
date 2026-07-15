@@ -81,36 +81,40 @@ public class LangfusePromptProvider {
             queryParams.put("label", label);
         }
 
-        String url = buildUrl(config.getPromptEndpoint() + "/" + name, queryParams);
+        var prompt = fetchFromLangfuse(name, cacheKey, buildUrl(config.getPromptEndpoint() + "/" + name, queryParams));
+
+        // Cache the result
+        if (cacheEnabled && prompt != null) {
+            cache.put(cacheKey, prompt);
+        }
+
+        return prompt;
+    }
+
+    private LangfusePrompt fetchFromLangfuse(String name, String cacheKey, String url) throws LangfusePromptException {
+        LOGGER.debug("Fetching prompt from Langfuse: {}", url);
+
+        // Build request
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
+            .GET();
+        if (!url.startsWith("https"))
+            requestBuilder.version(HttpClient.Version.HTTP_1_1);
+
+        // Add headers
+        config.getHeaders().forEach(requestBuilder::header);
+        requestBuilder.header("Content-Type", "application/json");
+
+        HttpRequest request = requestBuilder.build();
 
         try {
-            LOGGER.debug("Fetching prompt from Langfuse: {}", url);
-
-            // Build request
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
-                .GET();
-            if (!url.startsWith("https"))
-                requestBuilder.version(HttpClient.Version.HTTP_1_1);
-
-            // Add headers
-            config.getHeaders().forEach(requestBuilder::header);
-            requestBuilder.header("Content-Type", "application/json");
-
-            HttpRequest request = requestBuilder.build();
-
             // Send request
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             // Check response status
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 LangfusePrompt prompt = objectMapper.readValue(response.body(), LangfusePrompt.class);
-
-                // Cache the result
-                if (cacheEnabled) {
-                    cache.put(cacheKey, prompt);
-                }
 
                 LOGGER.debug("Successfully fetched prompt '{}' (version: {}, type: {})",
                     prompt.getName(), prompt.getVersion(), prompt.getType());

@@ -34,84 +34,6 @@ public class DeepResearchAgent {
             WriteTodosTool.WT_TOOL_NAME, ToolProvider.BUILTIN_FILES, ToolProvider.BUILTIN_WEB
     );
 
-    public static AgentProfile profile() {
-        return new AgentProfile()
-                .name(AGENT_NAME)
-                .description(AGENT_DESCRIPTION)
-                .systemPrompt(buildSystemPrompt())
-                .tools(TOOL_NAMES)
-                .reasoningEffort("high")
-                .source("builtin")
-                .priority(0);
-    }
-
-    public static Agent of(ToolRegistry toolRegistry, LLMProvider llmProvider, String model, ExecutionContext context, Integer maxTurnNumber) {
-        Objects.requireNonNull(toolRegistry, "toolRegistry is required");
-        return Agent.builder()
-                .name(AGENT_NAME)
-                .streamingCallback(context.getStreamingCallback())
-                .model(model)
-                .agentLifecycle(context.getLifecycle())
-                .description(AGENT_DESCRIPTION)
-                .systemPrompt(buildSystemPrompt())
-                .systemPromptSections(resolvePromptInjects(context.getPromptSections()))
-                .toolRegistry(toolRegistry)
-                .toolNames(TOOL_NAMES)
-                .maxTurn(maxTurnNumber)
-                .llmProvider(llmProvider)
-                .reasoningEffort(ReasoningEffort.HIGH)
-                .build();
-    }
-
-    private static List<PromptInject> resolvePromptInjects(List<PromptInject> promptInjects) {
-        if (promptInjects == null) return List.of();
-        return promptInjects.stream()
-                .filter(p -> List.of(
-                        PromptInject.SectionType.ENVIRONMENT,
-                        PromptInject.SectionType.INSTRUCTIONS,
-                        PromptInject.SectionType.MEMORY
-                ).contains(p.type()))
-                .toList();
-    }
-
-    private static String buildSystemPrompt() {
-        return (buildPromptIntroAndMethodology()
-                + buildPromptSearchStrategy()
-                + buildPromptQualityBar()
-                + buildPromptCommonMistakes()
-                + buildPromptEfficiency()
-                + buildPromptReportSynthesis())
-                .formatted(
-                        // Phase 1 example queries
-                        extractYear(),
-                        // Phase 1 — plan
-                        "write_todo_task",
-                        // Phase 2 — read
-                        "web_fetch",
-                        // Phase 2 example queries
-                        "AI radiology FDA approved systems " + extractYear(),
-                        "chest X-ray AI detection accuracy clinical results",
-                        "radiology AI clinical trials peer-reviewed",
-                        // Phase 3 matrix example queries
-                        "statistics", "market size", "data",
-                        "case study", "implementation example",
-                        "expert analysis", "research paper",
-                        "trends " + extractYear(), "forecast future of",
-                        "vs comparison", "alternatives to",
-                        "challenges", "limitations criticism",
-                        // Phase 4 — fetch
-                        "web_fetch",
-                        // Search strategy
-                        extractYear(),
-                        // web_fetch usage
-                        "web_fetch",
-                        // Efficiency
-                        "web_search", "task",
-                        // Stage B — write report
-                        "write_file"
-                );
-    }
-
     private static final String PROMPT_INTRO_CORE = """
             You are a Deep Research Agent. Your role is to conduct systematic multi-source web research
             and produce comprehensive, citation-rich reports. You operate in two DISTINCT stages:
@@ -342,6 +264,84 @@ public class DeepResearchAgent {
             You are not a chatbot — you are a research analyst. Your output should be worthy of
             being shared as a professional research memo. Take the time needed to be thorough.
             """;
+
+    public static AgentProfile profile() {
+        return new AgentProfile()
+                .name(AGENT_NAME)
+                .description(AGENT_DESCRIPTION)
+                .systemPrompt(buildSystemPrompt())
+                .tools(TOOL_NAMES)
+                .reasoningEffort("high")
+                .source("builtin")
+                .priority(0);
+    }
+
+    public static Agent of(ToolRegistry toolRegistry, LLMProvider llmProvider, String model, ExecutionContext context, Integer maxTurnNumber) {
+        Objects.requireNonNull(toolRegistry, "toolRegistry is required");
+        return Agent.builder()
+                .name(AGENT_NAME)
+                .streamingCallback(context.getStreamingCallback())
+                .model(model)
+                .agentLifecycle(context.getLifecycle())
+                .description(AGENT_DESCRIPTION)
+                .systemPrompt(buildSystemPrompt())
+                .systemPromptSections(resolvePromptInjects(context.getPromptSections()))
+                .toolRegistry(toolRegistry)
+                .toolNames(TOOL_NAMES)
+                .maxTurn(maxTurnNumber)
+                .llmProvider(llmProvider)
+                .reasoningEffort(ReasoningEffort.HIGH)
+                .build();
+    }
+
+    private static List<PromptInject> resolvePromptInjects(List<PromptInject> promptInjects) {
+        if (promptInjects == null) return List.of();
+        return promptInjects.stream()
+                .filter(p -> List.of(
+                        PromptInject.SectionType.ENVIRONMENT,
+                        PromptInject.SectionType.INSTRUCTIONS,
+                        PromptInject.SectionType.MEMORY
+                ).contains(p.type()))
+                .toList();
+    }
+
+    private static String buildSystemPrompt() {
+        return (buildPromptIntroAndMethodology()
+                + buildPromptSearchStrategy()
+                + buildPromptQualityBar()
+                + buildPromptCommonMistakes()
+                + buildPromptEfficiency()
+                + buildPromptReportSynthesis())
+                .formatted(
+                        // Phase 1 example queries
+                        extractYear(),
+                        // Phase 1 — plan
+                        "write_todo_task",
+                        // Phase 2 — read
+                        "web_fetch",
+                        // Phase 2 example queries
+                        "AI radiology FDA approved systems " + extractYear(),
+                        "chest X-ray AI detection accuracy clinical results",
+                        "radiology AI clinical trials peer-reviewed",
+                        // Phase 3 matrix example queries
+                        "statistics", "market size", "data",
+                        "case study", "implementation example",
+                        "expert analysis", "research paper",
+                        "trends " + extractYear(), "forecast future of",
+                        "vs comparison", "alternatives to",
+                        "challenges", "limitations criticism",
+                        // Phase 4 — fetch
+                        "web_fetch",
+                        // Search strategy
+                        extractYear(),
+                        // web_fetch usage
+                        "web_fetch",
+                        // Efficiency
+                        "web_search", "task",
+                        // Stage B — write report
+                        "write_file"
+                );
+    }
 
     private static String buildPromptIntroAndMethodology() {
         return PROMPT_INTRO_CORE + PROMPT_PHASE1 + PROMPT_PHASE2 + PROMPT_PHASE3 + PROMPT_PHASE4;
