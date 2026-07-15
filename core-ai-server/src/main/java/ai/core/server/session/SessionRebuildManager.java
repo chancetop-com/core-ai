@@ -24,6 +24,7 @@ import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.sandbox.Sandbox;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
@@ -196,13 +197,30 @@ public class SessionRebuildManager {
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
         var sessionRef = new InProcessAgentSession[1];
         if (context != null) {
-            var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId,
-                    event -> {
-                        if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
-                    });
+            // Try to reattach to an existing sandbox first (cross-pod rebuild)
+            var sandbox = reattachExistingSandbox(sessionId, userId, sessionRef);
+            if (sandbox == null) {
+                sandbox = sandboxService.createSessionSandbox(null, sessionId, userId,
+                        event -> {
+                            if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
+                        });
+            }
             if (sandbox != null) context.sandbox(sandbox);
         }
         return new SandboxSetup(context, sessionRef, sandboxOn);
+    }
+
+    private Sandbox reattachExistingSandbox(String sessionId, String userId, InProcessAgentSession[] sessionRef) {
+        var existingSandboxId = sandboxService.getSandboxId(sessionId);
+        if (existingSandboxId == null) return null;
+        var sandbox = sandboxService.reattachOrCreateSandbox(existingSandboxId, null, sessionId, userId,
+                event -> {
+                    if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
+                });
+        if (sandbox != null) {
+            logger.info("reattached to existing sandbox during rebuild, sessionId={}, sandboxId={}", sessionId, existingSandboxId);
+        }
+        return sandbox;
     }
 
     private Map<String, Object> injectConfigVars(Map<String, Object> extraVars, Map<String, String> configVars) {

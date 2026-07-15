@@ -49,6 +49,7 @@ class MessagingModule extends Module {
 
         var ownershipRegistry = bind(new SessionOwnershipRegistry(jedisPool));
         var sandboxService = bean(SandboxService.class);
+        sandboxService.setJedisPool(jedisPool);
         var commandPublisher = bind(new CommandPublisher(jedisPool, ownershipRegistry, sandboxService));
         var eventPublisher = new EventPublisher(jedisPool);
         eventPublisher.setSessionChannelService(bean(SessionChannelService.class));

@@ -52,6 +52,20 @@ public class LazySandbox implements Sandbox {
         this.snapshotService = snapshotService;
     }
 
+    /** Construct with a pre-existing delegate that is already acquired and tracked by the manager. */
+    public LazySandbox(Sandbox delegate, SandboxConfig config, SandboxManager manager,
+                       Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity,
+                       Runnable postAcquireHook, SandboxSnapshotService snapshotService) {
+        this.config = config;
+        this.manager = manager;
+        this.eventDispatcher = eventDispatcher;
+        this.identity = identity;
+        this.postAcquireHook = postAcquireHook;
+        this.snapshotService = snapshotService;
+        this.delegate = delegate;
+        this.status = delegate.getStatus();
+    }
+
     @Override
     public boolean shouldIntercept(String toolName) {
         // If sandbox is not ready, return false - will be created on execute

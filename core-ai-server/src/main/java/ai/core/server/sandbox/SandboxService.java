@@ -14,6 +14,8 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import redis.clients.jedis.JedisPool;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,6 +30,7 @@ import java.util.function.Consumer;
  */
 public class SandboxService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxService.class);
+    private static final String SANDBOX_KEY_PREFIX = "sandbox:";
 
     // Default deadline slightly longer than the session idle threshold (60min) so that an active session's
     // renewed sandbox is reclaimed by session close, not by its own expiry firing first.
@@ -72,6 +75,7 @@ public class SandboxService {
     ObjectStorageService storageService;
     FileService fileService;
     private SandboxSnapshotService snapshotService;
+    private JedisPool jedisPool;
 
     public SandboxService() {
         this.sandboxManager = null;
@@ -110,6 +114,10 @@ public class SandboxService {
 
     public void setSnapshotService(SandboxSnapshotService snapshotService) {
         this.snapshotService = snapshotService;
+    }
+
+    public void setJedisPool(JedisPool jedisPool) {
+        this.jedisPool = jedisPool;
     }
 
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
@@ -202,6 +210,7 @@ public class SandboxService {
         if (attached.isEmpty()) return null;
         sessionSandboxes.put(sessionId, attached.get());
         if (persistent) persistentSessionIds.add(sessionId);
+        storeSandboxBinding(sessionId);
         return attached.get();
     }
 
@@ -246,6 +255,7 @@ public class SandboxService {
                 LOGGER.warn("failed to close session mcp manager for session {}", sessionId, e);
             }
         }
+        deleteSandboxBinding(sessionId);
         if (sandbox != null) {
             if (sandbox instanceof LazySandbox) {
                 sandbox.close();
@@ -283,6 +293,7 @@ public class SandboxService {
     // lazily at resolveToolRefs time (per-session, on demand), not here.
     private void onSandboxReady(String sessionId) {
         sandboxFileService.ensurePendingFilesUploaded(sessionId);
+        storeSandboxBinding(sessionId);
     }
 
     // ---- Discovery sandbox (global, long-running) ----
@@ -333,6 +344,73 @@ public class SandboxService {
         var effectiveConfig = config != null ? config : defaultConfig;
         return !Boolean.FALSE.equals(effectiveConfig.enabled);
     }
+
+    // ---- Redis sandbox binding (cross-pod reattach) ----
+
+    /** Returns the sandbox ID bound to the session in Redis, or null if not found or Redis unavailable. */
+    public String getSandboxId(String sessionId) {
+        if (jedisPool == null) return null;
+        try (var jedis = jedisPool.getResource()) {
+            return jedis.get(sandboxKey(sessionId));
+        } catch (Exception e) {
+            LOGGER.warn("failed to get sandbox binding from Redis, sessionId={}", sessionId, e);
+            return null;
+        }
+    }
+
+    private void storeSandboxBinding(String sessionId) {
+        if (jedisPool == null) return;
+        var sandbox = sessionSandboxes.get(sessionId);
+        if (sandbox == null) return;
+        var id = sandbox.getId();
+        if ("pending".equals(id)) return; // not yet materialized, skip
+        try (var jedis = jedisPool.getResource()) {
+            jedis.set(sandboxKey(sessionId), id);
+            LOGGER.debug("sandbox binding stored in Redis, sessionId={}, sandboxId={}", sessionId, id);
+        } catch (Exception e) {
+            LOGGER.warn("failed to store sandbox binding in Redis, sessionId={}", sessionId, e);
+        }
+    }
+
+    private void deleteSandboxBinding(String sessionId) {
+        if (jedisPool == null) return;
+        try (var jedis = jedisPool.getResource()) {
+            jedis.del(sandboxKey(sessionId));
+            LOGGER.debug("sandbox binding deleted from Redis, sessionId={}", sessionId);
+        } catch (Exception e) {
+            LOGGER.warn("failed to delete sandbox binding from Redis, sessionId={}", sessionId, e);
+        }
+    }
+
+    /**
+     * Reattach to an existing sandbox for the session during rebuild.
+     * Returns a LazySandbox wrapping the reattached delegate, or null if the sandbox no longer exists.
+     */
+    public Sandbox reattachOrCreateSandbox(String sandboxId, SandboxConfig config, String sessionId, String userId,
+                                           Consumer<SandboxEvent> eventDispatcher) {
+        if (!enabled) return null;
+        var effectiveConfig = config != null ? config : defaultConfig;
+        if (Boolean.FALSE.equals(effectiveConfig.enabled)) return null;
+        var attached = sandboxManager.attach(sandboxId, effectiveConfig, sessionId, userId);
+        if (attached.isEmpty()) {
+            LOGGER.info("sandbox no longer available for reattach, sessionId={}, sandboxId={}", sessionId, sandboxId);
+            return null;
+        }
+        var sandbox = attached.get();
+        var lazy = new LazySandbox(sandbox, effectiveConfig, sandboxManager, eventDispatcher,
+                new LazySandbox.SessionIdentity(sessionId, userId),
+                () -> onSandboxReady(sessionId), snapshotService);
+        sessionSandboxes.put(sessionId, lazy);
+        storeSandboxBinding(sessionId);
+        LOGGER.info("reattached to existing sandbox, sessionId={}, sandboxId={}", sessionId, sandbox.getId());
+        return lazy;
+    }
+
+    private String sandboxKey(String sessionId) {
+        return SANDBOX_KEY_PREFIX + sessionId;
+    }
+
+    // ---- Stats / lifecycle ----
 
     public SandboxConfig getEffectiveConfig(AgentDefinition definition) {
         if (!enabled || definition == null || definition.sandboxConfig == null) return defaultConfig;
