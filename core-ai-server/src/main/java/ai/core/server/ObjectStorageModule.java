@@ -80,6 +80,7 @@ public class ObjectStorageModule extends Module {
 
         if (objectStorage != null) {
             blobController.storageService = objectStorage;
+            bind(ObjectStorageService.class, objectStorage);
         }
 
         return blobController;
