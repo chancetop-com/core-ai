@@ -57,7 +57,7 @@ class GatewayProviderServiceTest {
         existing.type = "deepseek";
         existing.baseUrl = "https://api.deepseek.com/v1";
         existing.apiKey = "old-secret";
-        existing.enabled = true;
+        existing.enabled = Boolean.TRUE;
         when(service.gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(existing));
 
         var request = new GatewayProviderRequest();

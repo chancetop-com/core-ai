@@ -79,9 +79,14 @@ public class GatewayLLMProvider extends LLMProvider {
             throw new BadRequestException("azure gateway provider is not supported for agent runtime yet: " + provider.name);
         }
         var upstream = upstreamProvider(provider);
+        var originalModel = request.model;
         request.model = upstreamModel(resolved);
         applyPreprocess(request);
-        return upstream.delegateCompletionStream(request, callback);
+        try {
+            return upstream.delegateCompletionStream(request, callback);
+        } finally {
+            request.model = originalModel;
+        }
     }
 
     @Override

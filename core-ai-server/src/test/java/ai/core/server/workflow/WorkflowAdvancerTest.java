@@ -7,6 +7,7 @@ import ai.core.server.workflow.engine.WorkflowEdge;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import ai.core.server.workflow.executor.StartExecutor;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -221,6 +222,7 @@ class WorkflowAdvancerTest {
     // ---- concurrency: a real thread pool exercises the awaitAny/awaitAll blocking paths ----
 
     @Test
+    @SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     void parallelFanOutOnRealPoolCompletes() {
         ExecutorService pool = Executors.newFixedThreadPool(4);
         try {
@@ -241,6 +243,7 @@ class WorkflowAdvancerTest {
     }
 
     @Test
+    @SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     void failingBranchYieldsFailedOnRealPool() {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -262,6 +265,7 @@ class WorkflowAdvancerTest {
     }
 
     @Test
+    @SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     void midDriveCancelReturnsCancelledAfterDraining() throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         var started = new CountDownLatch(1);
@@ -273,7 +277,7 @@ class WorkflowAdvancerTest {
                 List.of(edge("e0", "start", "slow"), edge("e1", "slow", "end")));
             var journal = new InMemoryWorkflowJournal();
             NodeExecutor executor = ctx -> {
-                if (ctx.node().id().equals("slow")) {
+                if ("slow".equals(ctx.node().id())) {
                     started.countDown();
                     await(release);   // park the node so the drive thread parks in awaitAny
                 }
@@ -301,7 +305,7 @@ class WorkflowAdvancerTest {
             List.of(edge("e0", "start", "a"), edge("e1", "a", "b"), edge("e2", "b", "end")));
         var journal = new InMemoryWorkflowJournal();
         NodeExecutor executor = ctx -> {
-            if (ctx.node().id().equals("a")) {
+            if ("a".equals(ctx.node().id())) {
                 throw new StackOverflowError("boom");   // an Error, not a RuntimeException (e.g. runaway user code)
             }
             return new NodeOutcome.Normal("{}");
@@ -315,6 +319,7 @@ class WorkflowAdvancerTest {
     }
 
     @Test
+    @SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     void lostLeaseStopsDriveAndSuppressesCommit() throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         var started = new CountDownLatch(1);
@@ -326,7 +331,7 @@ class WorkflowAdvancerTest {
                 List.of(edge("e0", "start", "slow"), edge("e1", "slow", "end")));
             var journal = new InMemoryWorkflowJournal();
             NodeExecutor executor = ctx -> {
-                if (ctx.node().id().equals("slow")) {
+                if ("slow".equals(ctx.node().id())) {
                     started.countDown();
                     await(release);
                 }
@@ -353,7 +358,7 @@ class WorkflowAdvancerTest {
             List.of(node("start"), node("ask"), node("end")),
             List.of(edge("e0", "start", "ask"), edge("e1", "ask", "end")));
         var journal = new InMemoryWorkflowJournal();
-        NodeExecutor executor = ctx -> ctx.node().id().equals("ask")
+        NodeExecutor executor = ctx -> "ask".equals(ctx.node().id())
             ? new NodeOutcome.Waiting("{\"mode\":\"input\"}")
             : new NodeOutcome.Normal("{}");
 
@@ -393,6 +398,7 @@ class WorkflowAdvancerTest {
     }
 
     @Test
+    @SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     void humanResumeWhileSiblingRunningDrivesApprovedBranchConcurrently() throws Exception {
         // start fans out to a slow agent (blocked) and a human-input node. While the slow agent is still RUNNING,
         // the approval is settled out-of-band (as the resume endpoint does). The driver must re-fold and drive the

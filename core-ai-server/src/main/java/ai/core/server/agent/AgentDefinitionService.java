@@ -392,6 +392,6 @@ public class AgentDefinitionService {
     }
 
     private boolean isAdmin(String userId) {
-        return userCollection.get(userId).map(u -> "admin".equals(u.role))            .orElse(Boolean.FALSE);
+        return userCollection.get(userId).map(u -> "admin".equals(u.role)).orElse(Boolean.FALSE);
     }
 }

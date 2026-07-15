@@ -56,7 +56,7 @@ class PlannerTest {
     }
 
     private static RunState facts(NodeFact... factList) {
-        Map<String, NodeFact> map = new LinkedHashMap<>();
+        Map<String, NodeFact> map = new LinkedHashMap<>(factList.length);
         for (NodeFact fact : factList) {
             map.put(fact.nodeId(), fact);
         }

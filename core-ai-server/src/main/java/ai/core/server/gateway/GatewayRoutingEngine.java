@@ -139,7 +139,7 @@ public class GatewayRoutingEngine {
     private List<RegisteredGatewayModel> registeredModels(Snapshot snapshot, GatewayEndpointType endpoint) {
         var providersById = providersById(snapshot.providers);
         return snapshot.models.stream()
-                .filter(model -> (!Boolean.FALSE.equals(model.enabled) && hasText(model.modelId) && hasText(model.upstreamModel))
+                .filter(model -> !Boolean.FALSE.equals(model.enabled) && hasText(model.modelId) && hasText(model.upstreamModel)
                         && (endpoint == null || supportsEndpoint(model, endpoint)))
                 .map(model -> new RegisteredGatewayModel(model, providersById.get(model.providerId)))
                 .filter(route -> route.provider != null)

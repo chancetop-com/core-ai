@@ -331,9 +331,9 @@ public class GatewayModelService {
     private void clearDefaults(String providerId) {
         var filter = Filters.and(
                 Filters.eq("provider_id", providerId),
-                Filters.eq("is_default", true)
+                Filters.eq("is_default", Boolean.TRUE)
         );
-        gatewayModelCollection.update(filter, com.mongodb.client.model.Updates.set("is_default", false));
+        gatewayModelCollection.update(filter, com.mongodb.client.model.Updates.set("is_default", Boolean.FALSE));
     }
 
     private record StagedImport(GatewayModelConfig entity, boolean create) {

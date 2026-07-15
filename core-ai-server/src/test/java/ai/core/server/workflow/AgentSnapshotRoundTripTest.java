@@ -33,9 +33,9 @@ class AgentSnapshotRoundTripTest {
 
     private static AgentSandboxConfig sandbox() {
         var config = new AgentSandboxConfig();
-        config.enabled = true;
+        config.enabled = Boolean.TRUE;
         config.memoryLimitMb = 512;
-        config.networkEnabled = false;
+        config.networkEnabled = Boolean.FALSE;
         config.environmentVariables = Map.of("API_KEY", "secret-value");
         return config;
     }

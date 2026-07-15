@@ -1,6 +1,7 @@
 package ai.core.server.sandbox.snapshot;
 
 import com.sun.net.httpserver.HttpServer;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,7 @@ class SandboxSnapshotClientTest {
     }
 
     @Test
+    @SuppressFBWarnings("AFBR_ABNORMAL_FINALLY_BLOCK_RETURN")
     void captureStreamsBodyToFileAndComputesSha() throws Exception {
         var body = "fake-tar-gz-bytes".getBytes(StandardCharsets.UTF_8);
         server.createContext("/snapshot", exchange -> {
@@ -62,6 +64,7 @@ class SandboxSnapshotClientTest {
     }
 
     @Test
+    @SuppressFBWarnings("AFBR_ABNORMAL_FINALLY_BLOCK_RETURN")
     void captureFailsOnNon200() throws Exception {
         server.createContext("/snapshot", exchange -> {
             var msg = "{\"status\":\"error\",\"error\":\"too big\"}".getBytes(StandardCharsets.UTF_8);
@@ -78,6 +81,7 @@ class SandboxSnapshotClientTest {
     }
 
     @Test
+    @SuppressFBWarnings("AFBR_ABNORMAL_FINALLY_BLOCK_RETURN")
     void restoreSendsShaHeaderAndBody() throws Exception {
         var receivedSha = new AtomicReference<String>();
         var receivedBody = new AtomicReference<byte[]>();

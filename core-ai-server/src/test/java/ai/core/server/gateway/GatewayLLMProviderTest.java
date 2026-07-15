@@ -87,7 +87,7 @@ class GatewayLLMProviderTest {
     void disabledModelStaysBlockedInsteadOfFallingBack() {
         var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
         var disabled = model("fast-chat", provider.id, "deepseek/deepseek-v4-flash");
-        disabled.enabled = false;
+        disabled.enabled = Boolean.FALSE;
         var fallback = new CapturingLiteLLMProvider(new LLMProviderConfig(null, null, null), "https://static.example.com", "answered by fallback");
         var gateway = gateway(List.of(provider), List.of(disabled), fallback);
 
@@ -141,8 +141,8 @@ class GatewayLLMProviderTest {
         provider.name = id;
         provider.type = type;
         provider.baseUrl = baseUrl;
-        provider.enabled = true;
-        provider.allowPrivateNetwork = true;
+        provider.enabled = Boolean.TRUE;
+        provider.allowPrivateNetwork = Boolean.TRUE;
         provider.updatedAt = ZonedDateTime.now();
         provider.apiKeyEncrypted = new GatewaySecretProtector("test-secret").protect("sk-test");
         return provider;
@@ -155,7 +155,7 @@ class GatewayLLMProviderTest {
         model.providerId = providerId;
         model.upstreamModel = upstreamModel;
         model.endpointTypes = List.of("chat.completions");
-        model.enabled = true;
+        model.enabled = Boolean.TRUE;
         model.priority = 100L;
         return model;
     }

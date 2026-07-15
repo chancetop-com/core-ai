@@ -127,13 +127,13 @@ class WorkflowEndToEndTest {
             {"nodes": [
                {"id": "start", "type": "START"},
                {"id": "call_child", "type": "WORKFLOW",
-                "config": {"source_workflow_id": "%s", "version_id": "%s",
+                "config": {"source_workflow_id": "CHILD_ID", "version_id": "CHILD_VERSION",
                            "input_mappings": {"q": "{{ sys.input.q }}"}}},
                {"id": "end", "type": "END"}],
              "edges": [
                {"id": "e0", "source": "start", "target": "call_child"},
                {"id": "e1", "source": "call_child", "target": "end"}]}
-            """.formatted(child.id, childVersion.id);
+            """.replace("CHILD_ID", child.id).replace("CHILD_VERSION", childVersion.id);
         WorkflowDefinition parent = definitionService.create("parent-workflow", "WORKFLOW", parentGraph, "user-1");
         publishService.publish(parent.id, "user-1");
 
@@ -168,13 +168,13 @@ class WorkflowEndToEndTest {
             {"nodes": [
                {"id": "start", "type": "START"},
                {"id": "call_child", "type": "WORKFLOW",
-                "config": {"source_workflow_id": "%s", "version_id": "%s",
+                "config": {"source_workflow_id": "CHILD_ID", "version_id": "CHILD_VERSION",
                            "input_mappings": {"q": "{{ sys.input.q }}"}}},
                {"id": "end", "type": "END"}],
              "edges": [
                {"id": "e0", "source": "start", "target": "call_child"},
                {"id": "e1", "source": "call_child", "target": "end"}]}
-            """.formatted(child.id, childVersion.id);
+            """.replace("CHILD_ID", child.id).replace("CHILD_VERSION", childVersion.id);
         WorkflowDefinition parent = definitionService.create("parent-workflow-recovery", "WORKFLOW", parentGraph, "user-1");
         publishService.publish(parent.id, "user-1");
 
@@ -209,7 +209,7 @@ class WorkflowEndToEndTest {
 
         runnerJob.execute(null);
 
-        assertTrue(awaitUntil(() -> runCollection.get(parentRun.id).map(r -> r.status == RunStatus.COMPLETED).orElse(false)),
+        assertTrue(awaitUntil(() -> runCollection.get(parentRun.id).map(r -> r.status == RunStatus.COMPLETED).orElse(Boolean.FALSE)),
             "terminal child wait should be recovered and parent should continue");
         WorkflowNodeRun callChild = nodeRunCollection.find(Filters.and(
             Filters.eq("run_id", parentRun.id),

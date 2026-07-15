@@ -123,7 +123,7 @@ class WorkflowResumeRunningTest {
 
         runnerJob.execute(null);   // claim sweep + stranded-PAUSED recovery
 
-        assertTrue(awaitUntil(() -> runCollection.get(runId).map(r -> r.status == RunStatus.COMPLETED).orElse(false)),
+        assertTrue(awaitUntil(() -> runCollection.get(runId).map(r -> r.status == RunStatus.COMPLETED).orElse(Boolean.FALSE)),
             "stranded PAUSED run should be recovered and driven to COMPLETED");
     }
 

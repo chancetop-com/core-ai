@@ -31,7 +31,7 @@ class SkillServiceTest {
         var matchingName = skill("1", "Admin", "seo-audit", null);
         when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName));
 
-        var result = service.list(null, null, null, null, null, 20, 10);
+        var result = service.list(null, null, null, null, 20, 10);
 
         assertEquals(List.of(matchingName), result);
         var query = ArgumentCaptor.forClass(Query.class);
@@ -50,7 +50,7 @@ class SkillServiceTest {
         var matchingDescription = skill("3", "Admin", "content-helper", "Run SEO audit checks");
         when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName, notMatching, matchingDescription));
 
-        var result = service.list(null, null, null, "audit", null, 1, 1);
+        var result = service.list(null, null, "audit", null, 1, 1);
 
         assertEquals(List.of(matchingDescription), result);
         verify(service.skillCollection).find(any(Query.class));
@@ -67,7 +67,7 @@ class SkillServiceTest {
         notMatching.userId = "bob@example.com";
         when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingCreator, notMatching));
 
-        var result = service.list(null, null, "ali", null, null, 0, 10);
+        var result = service.list(null, "ali", null, null, 0, 10);
 
         assertEquals(List.of(matchingCreator), result);
         verify(service.skillCollection).find(any(Query.class));
@@ -86,7 +86,7 @@ class SkillServiceTest {
         matchingMetadata.metadata = Map.of("category", "audit");
         when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName, notMatching, matchingTool, matchingMetadata));
 
-        var result = service.count(null, null, null, "audit", "metadata");
+        var result = service.count(null, null, "audit", "metadata");
 
         assertEquals(3, result);
         verify(service.skillCollection).find(any(Query.class));
@@ -103,7 +103,7 @@ class SkillServiceTest {
         metadataOnly.allowedTools = List.of("audit-tool");
         when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingDescription, metadataOnly));
 
-        var result = service.list(null, null, null, "audit", null, 0, 10);
+        var result = service.list(null, null, "audit", null, 0, 10);
 
         assertEquals(List.of(matchingDescription), result);
     }
@@ -118,7 +118,7 @@ class SkillServiceTest {
         var descriptionMatch = skill("2", "Admin", "db-helper", "Audit database migrations");
         when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(contentMatch, descriptionMatch));
 
-        var result = service.list(null, null, null, "auditing", "content", 0, 10);
+        var result = service.list(null, null, "auditing", "content", 0, 10);
 
         assertEquals(List.of(contentMatch), result);
     }

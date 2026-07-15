@@ -197,17 +197,21 @@ public class SessionRebuildManager {
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
         var sessionRef = new InProcessAgentSession[1];
         if (context != null) {
-            // Try to reattach to an existing sandbox first (cross-pod rebuild)
-            var sandbox = reattachExistingSandbox(sessionId, userId, sessionRef);
-            if (sandbox == null) {
-                sandbox = sandboxService.createSessionSandbox(null, sessionId, userId,
-                        event -> {
-                            if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
-                        });
-            }
+            var sandbox = createOrReattachSandbox(sessionId, userId, sessionRef);
             if (sandbox != null) context.sandbox(sandbox);
         }
         return new SandboxSetup(context, sessionRef, sandboxOn);
+    }
+
+    private Sandbox createOrReattachSandbox(String sessionId, String userId, InProcessAgentSession[] sessionRef) {
+        var sandbox = reattachExistingSandbox(sessionId, userId, sessionRef);
+        if (sandbox == null) {
+            sandbox = sandboxService.createSessionSandbox(null, sessionId, userId,
+                    event -> {
+                        if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
+                    });
+        }
+        return sandbox;
     }
 
     private Sandbox reattachExistingSandbox(String sessionId, String userId, InProcessAgentSession[] sessionRef) {

@@ -19,7 +19,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -42,6 +41,8 @@ class WorkflowDiscoverCloneTest {
         {"nodes": [{"id": "start", "type": "START"}, {"id": "end", "type": "END"}],
          "edges": [{"id": "e0", "source": "start", "target": "end"}]}
         """;
+
+    private static final String[] EXPLORE_TAG_OWNERS = {"explore-owner", "explore-viewer"};
 
     static boolean mongoReachable() {
         try (var socket = new Socket()) {
@@ -67,16 +68,16 @@ class WorkflowDiscoverCloneTest {
         publishService.publish(published.id, "owner-1");
         WorkflowDefinition draft = definitionService.create("owner-draft", "WORKFLOW", GRAPH, "owner-1");
 
-        var discover = definitionService.list("viewer-2", false);
+        var discover = definitionService.list("viewer-2", Boolean.FALSE);
         assertTrue(discover.stream().anyMatch(d -> d.id.equals(published.id)), "published workflow must be discoverable");
         assertFalse(discover.stream().anyMatch(d -> d.id.equals(draft.id)), "unpublished draft must not be discoverable");
 
         // the owner's own discover list must not surface their own workflows
-        var ownerDiscover = definitionService.list("owner-1", false);
+        var ownerDiscover = definitionService.list("owner-1", Boolean.FALSE);
         assertFalse(ownerDiscover.stream().anyMatch(d -> d.id.equals(published.id)), "discover excludes the caller's own");
 
         // the viewer's own list (myWorkflows=true) must not surface the owner's published workflow
-        var viewerOwn = definitionService.list("viewer-2", true);
+        var viewerOwn = definitionService.list("viewer-2", Boolean.TRUE);
         assertFalse(viewerOwn.stream().anyMatch(d -> d.id.equals(published.id)), "own list excludes other users' workflows");
     }
 
@@ -90,7 +91,7 @@ class WorkflowDiscoverCloneTest {
         assertNull(copy.publishedVersionId, "clone starts as a fresh draft");
         assertTrue(copy.draftGraph.contains("START"), "clone carries the published graph");
         assertFalse(copy.id.equals(source.id), "clone is a distinct definition");
-        assertTrue(definitionService.list("viewer-2", true).stream().anyMatch(d -> d.id.equals(copy.id)),
+        assertTrue(definitionService.list("viewer-2", Boolean.TRUE).stream().anyMatch(d -> d.id.equals(copy.id)),
             "clone shows up in the caller's own list");
     }
 
@@ -173,13 +174,13 @@ class WorkflowDiscoverCloneTest {
         String parentGraph = """
             {"nodes": [
               {"id": "start", "type": "START"},
-              {"id": "call_child", "type": "WORKFLOW",
-               "config": {"source_workflow_id": "%s", "version_id": "%s"}},
+               {"id": "call_child", "type": "WORKFLOW",
+                "config": {"source_workflow_id": "CHILD_ID", "version_id": "CHILD_VERSION"}},
               {"id": "end", "type": "END"}],
              "edges": [
               {"id": "e1", "source": "start", "target": "call_child"},
               {"id": "e2", "source": "call_child", "target": "end"}]}
-            """.formatted(child.id, childVersion.id);
+            """.replace("CHILD_ID", child.id).replace("CHILD_VERSION", childVersion.id);
         WorkflowDefinition parent = definitionService.create("parent-after-child-unpublish", "WORKFLOW", parentGraph, "owner-1");
         WorkflowPublishedVersion parentVersion = publishService.saveVersion(parent.id, "owner-1");
 
@@ -206,6 +207,12 @@ class WorkflowDiscoverCloneTest {
     void exploreReturnsOtherUsersPublishedFilteredAndPaged() {
         // Unique tag isolates this test's rows from other tests sharing the wftest DB.
         String tag = "explorekw";
+        // Clean up orphaned test data from previous runs so the test is idempotent.
+        for (var owner : EXPLORE_TAG_OWNERS) {
+            for (var wf : definitionService.list(owner, Boolean.TRUE, tag, null, null)) {
+                definitionService.delete(wf.id, owner);
+            }
+        }
         publishOwned("explore-owner", tag + " alpha");
         publishOwned("explore-owner", tag + " beta");
         publishOwned("explore-owner", tag + " gamma");
@@ -214,11 +221,11 @@ class WorkflowDiscoverCloneTest {
 
         var hits = definitionService.explore("explore-viewer", tag, 0, 50);
         assertEquals(3, hits.size());
-        assertTrue(hits.stream().noneMatch(d -> d.userId.equals("explore-viewer")), "excludes the caller's own");
+        assertTrue(hits.stream().noneMatch(d -> "explore-viewer".equals(d.userId)), "excludes the caller's own");
         assertTrue(hits.stream().allMatch(d -> d.publishedVersionId != null), "only published");
         assertEquals(3, definitionService.exploreCount("explore-viewer", tag));
 
-        assertEquals(3, definitionService.explore("explore-viewer", tag.toUpperCase(Locale.ROOT), 0, 50).size(), "case-insensitive");
+        assertEquals(3, definitionService.explore("explore-viewer", "EXPLOREKW", 0, 50).size(), "case-insensitive");
 
         // paging: limit 2 -> page 1 = 2, page 2 = 1
         assertEquals(2, definitionService.explore("explore-viewer", tag, 0, 2).size());

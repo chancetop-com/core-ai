@@ -77,7 +77,7 @@ class GatewayModelServiceTest {
         existing.providerId = "provider-1";
         existing.upstreamModel = "gpt-4o";
         existing.endpointTypes = List.of("chat.completions");
-        existing.enabled = true;
+        existing.enabled = Boolean.TRUE;
         existing.priority = 10L;
         existing.contextWindow = 128_000L;
         existing.inputPricePer1MTokens = 1.25D;
@@ -156,7 +156,7 @@ class GatewayModelServiceTest {
         var provider = new GatewayProviderConfig();
         provider.id = id;
         provider.name = name;
-        provider.enabled = true;
+        provider.enabled = Boolean.TRUE;
         return provider;
     }
 

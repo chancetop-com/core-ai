@@ -18,16 +18,16 @@ class HumanInputProtocolTest {
     @Test
     void approvalModeRequiresApproveAndRejectsInput() {
         var node = approvalNode();
-        assertDoesNotThrow(() -> HumanInputProtocol.validate(node, true, null));
-        assertDoesNotThrow(() -> HumanInputProtocol.validate(node, false, null));
+        assertDoesNotThrow(() -> HumanInputProtocol.validate(node, Boolean.TRUE, null));
+        assertDoesNotThrow(() -> HumanInputProtocol.validate(node, Boolean.FALSE, null));
         assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, null, null));
-        assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, true, "{}"));
+        assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, Boolean.TRUE, "{}"));
     }
 
     @Test
     void inputModeRejectsApproveAndValidatesSchema() {
         var node = inputNode();
-        assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, true, "{\"reason\":\"ok\"}"));
+        assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, Boolean.TRUE, "{\"reason\":\"ok\"}"));
         assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, null, null));                       // required missing
         assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, null, "{\"reason\":\"  \"}"));      // required blank
         assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, null, "{\"reason\":\"ok\",\"count\":\"3\"}"));   // wrong type
@@ -76,7 +76,7 @@ class HumanInputProtocolTest {
         return new WorkflowNode("n1", "HUMAN_INPUT", List.of(), Map.of(
             "mode", "input", "prompt", "please review",
             "fields", List.of(
-                Map.of("name", "reason", "type", "text", "label", "Reason", "required", true),
-                Map.of("name", "count", "type", "number", "required", false))));
+                Map.of("name", "reason", "type", "text", "label", "Reason", "required", Boolean.TRUE),
+                Map.of("name", "count", "type", "number", "required", Boolean.FALSE))));
     }
 }

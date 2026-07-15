@@ -59,7 +59,7 @@ class AgentDefinitionServiceTest {
         entity.name = "Agent One";
         entity.type = DefinitionType.AGENT;
         entity.status = AgentStatus.DRAFT;
-        entity.enableMemory = false;
+        entity.enableMemory = Boolean.FALSE;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
 

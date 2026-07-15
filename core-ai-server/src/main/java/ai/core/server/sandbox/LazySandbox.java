@@ -53,15 +53,13 @@ public class LazySandbox implements Sandbox {
     }
 
     /** Construct with a pre-existing delegate that is already acquired and tracked by the manager. */
-    public LazySandbox(Sandbox delegate, SandboxConfig config, SandboxManager manager,
-                       Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity,
-                       Runnable postAcquireHook, SandboxSnapshotService snapshotService) {
+    public LazySandbox(Sandbox delegate, SandboxConfig config, SandboxManager manager, SandboxContext context) {
         this.config = config;
         this.manager = manager;
-        this.eventDispatcher = eventDispatcher;
-        this.identity = identity;
-        this.postAcquireHook = postAcquireHook;
-        this.snapshotService = snapshotService;
+        this.eventDispatcher = context.eventDispatcher;
+        this.identity = context.identity;
+        this.postAcquireHook = context.postAcquireHook;
+        this.snapshotService = context.snapshotService;
         this.delegate = delegate;
         this.status = delegate.getStatus();
     }
@@ -312,5 +310,8 @@ public class LazySandbox implements Sandbox {
     }
 
     public record SessionIdentity(String sessionId, String userId) {
+    }
+
+    public record SandboxContext(Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity, Runnable postAcquireHook, SandboxSnapshotService snapshotService) {
     }
 }

@@ -129,7 +129,7 @@ final class TraceServiceHelper {
 
     static void enrichMetricsInBatch(List<Trace> traces, MongoCollection<Span> spanCollection) {
         var pending = traces.stream()
-            .filter(trace -> trace.traceId != null && !trace.traceId.isEmpty() && TraceServiceHelper.needsEnrichment(trace))
+            .filter(trace -> trace.traceId != null && !trace.traceId.isEmpty() && needsEnrichment(trace))
             .toList();
         if (pending.isEmpty()) return;
 

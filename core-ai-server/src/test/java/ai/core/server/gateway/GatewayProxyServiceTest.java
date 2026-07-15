@@ -173,8 +173,8 @@ class GatewayProxyServiceTest {
         provider.name = name;
         provider.type = type;
         provider.baseUrl = baseUrl;
-        provider.enabled = true;
-        provider.allowPrivateNetwork = true;
+        provider.enabled = Boolean.TRUE;
+        provider.allowPrivateNetwork = Boolean.TRUE;
         provider.modelPrefix = prefix;
         provider.defaultChatModel = defaultModel;
         provider.apiKeyEncrypted = new GatewaySecretProtector("test-secret").protect("sk-test");
@@ -193,7 +193,7 @@ class GatewayProxyServiceTest {
         model.providerId = providerId;
         model.upstreamModel = upstreamModel;
         model.endpointTypes = endpointTypes;
-        model.enabled = true;
+        model.enabled = Boolean.TRUE;
         model.priority = priority;
         return model;
     }

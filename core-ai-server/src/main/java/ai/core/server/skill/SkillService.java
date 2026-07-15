@@ -267,6 +267,7 @@ public class SkillService {
     }
 
     private Bson indexedFilter(SkillFilter filter) {
+        if (filter == null) return Filters.empty();
         var filters = new ArrayList<Bson>();
         if (filter.namespace() != null && !filter.namespace().isBlank()) {
             filters.add(Filters.eq("namespace", filter.namespace()));

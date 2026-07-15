@@ -402,7 +402,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     private String resolveCompressionModel() {
         if (this.model != null) return this.model;
-        return this.llmProvider != null ? this.llmProvider.config.getModel() : null;
+        return this.llmProvider != null && this.llmProvider.config != null ? this.llmProvider.config.getModel() : null;
     }
 
     private void configureSkills() {

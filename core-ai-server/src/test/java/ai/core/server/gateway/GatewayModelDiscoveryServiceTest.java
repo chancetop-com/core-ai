@@ -85,15 +85,14 @@ class GatewayModelDiscoveryServiceTest {
         provider.name = "Provider";
         provider.type = type;
         provider.baseUrl = baseUrl;
-        provider.enabled = true;
-        provider.allowPrivateNetwork = true;
+        provider.enabled = Boolean.TRUE;
+        provider.allowPrivateNetwork = Boolean.TRUE;
         provider.apiKeyEncrypted = new GatewaySecretProtector("test-secret").protect("sk-test");
         return provider;
     }
 
     private static final class CapturingGatewayModelDiscoveryService extends GatewayModelDiscoveryService {
         final String responseBody;
-        HTTPRequest captured;
 
         CapturingGatewayModelDiscoveryService(String responseBody) {
             this.responseBody = responseBody;
@@ -101,7 +100,6 @@ class GatewayModelDiscoveryServiceTest {
 
         @Override
         HTTPResponse execute(HTTPRequest request, GatewayProviderConfig provider) {
-            captured = request;
             return new HTTPResponse(200, Map.of("Content-Type", "application/json"), responseBody.getBytes(StandardCharsets.UTF_8));
         }
     }

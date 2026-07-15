@@ -215,7 +215,7 @@ public class LLMCallExecutor {
         }
     }
 
-    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar", "PMD.ConsecutiveAppendsShouldReuse"})
+    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.ConsecutiveAppendsShouldReuse"})
     private String buildExtractionPrompt(List<SchemaField> schema, String output) {
         var sb = new StringBuilder(1024);
         sb.append("Extract the following structured data from the agent's output below.\n\n");

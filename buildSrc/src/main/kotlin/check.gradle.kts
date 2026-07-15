@@ -54,7 +54,7 @@ pmd {
 
 spotbugs {
     dependencies {
-        spotbugsPlugins("com.mebigfatguy.sb-contrib:sb-contrib:7.6.15")
+        spotbugsPlugins("com.mebigfatguy.sb-contrib:sb-contrib:7.7.4")
     }
 
     toolVersion = "4.9.8"

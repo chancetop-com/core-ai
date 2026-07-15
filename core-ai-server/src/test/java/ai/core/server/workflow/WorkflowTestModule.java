@@ -1,11 +1,14 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.Notification;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.notification.NotificationEventPublisher;
+import ai.core.server.notification.NotificationService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.HumanInputExecutor;
@@ -33,6 +36,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(WorkflowNodeRun.class);
         mongo.collection(AgentDefinition.class);   // injected by WorkflowPublishService; unused for START -> END
         mongo.collection(ToolRegistryEntry.class);      // injected by WorkflowPortService for MCP reference resolution
+        mongo.collection(Notification.class);            // injected by NotificationService (bound below)
 
         bind(WorkflowDefinitionService.class);
         bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
@@ -52,6 +56,8 @@ public class WorkflowTestModule extends AbstractTestModule {
             NodeType.WORKFLOW, new WorkflowExecutor(workflowRunGateway, 5)));
         bind(NodeExecutor.class, registry);
         bind(new SandboxService());   // disabled (enabled=false) — releaseSandbox no-ops; START -> END runs no CODE node
+        bind(new NotificationEventPublisher());
+        bind(NotificationService.class);
         bind(WorkflowRunner.class);
         bind(WorkflowRunnerJob.class);   // claim sweep + stranded-PAUSED recovery, exercised by the resume tests
     }

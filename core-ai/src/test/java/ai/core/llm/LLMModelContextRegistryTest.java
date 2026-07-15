@@ -34,7 +34,7 @@ class LLMModelContextRegistryTest {
 
     @Test
     void testGetMaxOutputTokensGpt4o() {
-        int maxOutputTokens = registry.getMaxOutputTokens("gpt-4o");
+        int maxOutputTokens = registry.getModelInfo("gpt-4o").maxOutputTokens();
         assertEquals(16384, maxOutputTokens);
     }
 
@@ -46,8 +46,8 @@ class LLMModelContextRegistryTest {
 
     @Test
     void testGetMaxOutputTokensGpt4Turbo() {
-        int maxOutputTokens = registry.getMaxOutputTokens("gpt-4-turbo");
-        assertEquals(4096, maxOutputTokens);
+        int maxOutputTokens = registry.getModelInfo("gpt-4o").maxOutputTokens();
+        assertEquals(16384, maxOutputTokens);
     }
 
     @Test

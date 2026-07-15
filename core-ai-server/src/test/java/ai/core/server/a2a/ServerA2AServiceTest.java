@@ -196,7 +196,7 @@ class ServerA2AServiceTest {
         var request = request("hello");
         request.message.contextId = "context-1";
         var config = new SendMessageConfiguration();
-        config.returnImmediately = true;
+        config.returnImmediately = Boolean.TRUE;
         request.configuration = config;
 
         var result = service.send("agent-1", request, "user-1");
