@@ -179,7 +179,6 @@ class SubAgentToolCallTest {
     }
 
     @Test
-    @SuppressWarnings("PMD.UseTryWithResources")
     void subAgentExecutionKeepsParentTraceContext() {
         var spans = new RecordingSpanProcessor();
         var tracerProvider = SdkTracerProvider.builder()
@@ -220,15 +219,12 @@ class SubAgentToolCallTest {
     }
 
     private void executeSubAgentInSpan(Agent researcher, Span parentSpan) {
-        var scope = parentSpan.makeCurrent();
-        try {
+        try (var scope = parentSpan.makeCurrent()) {
             var toolCall = SubAgentToolCall.builder().subAgent(researcher).build();
             var result = toolCall.execute("{\"query\": \"Research climate change\"}", ExecutionContext.empty());
             assertTrue(result.isCompleted());
-        } finally {
-            scope.close();
-            parentSpan.end();
         }
+        parentSpan.end();
     }
 
     @Test

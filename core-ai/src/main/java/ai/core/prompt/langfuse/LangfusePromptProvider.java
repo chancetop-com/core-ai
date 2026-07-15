@@ -63,68 +63,65 @@ public class LangfusePromptProvider {
 
         // Check cache first
         String cacheKey = buildCacheKey(name, version, label);
-        if (cacheEnabled) {
-            LangfusePrompt cached = cache.get(cacheKey);
-            if (cached != null) {
-                LOGGER.debug("Returning cached prompt: {}", cacheKey);
-                return cached;
-            }
-        }
+        var cached = checkCache(cacheKey);
+        if (cached != null) return cached;
 
-        // Build query parameters
-        Map<String, String> queryParams = new HashMap<>();
-//        queryParams.put("name", name);
-        if (version != null) {
-            queryParams.put("version", String.valueOf(version));
-        }
-        if (label != null && !label.isEmpty()) {
-            queryParams.put("label", label);
-        }
-
-        String url = buildUrl(config.getPromptEndpoint() + "/" + name, queryParams);
+        String url = buildUrl(config.getPromptEndpoint() + "/" + name, buildQueryParams(version, label));
 
         try {
             LOGGER.debug("Fetching prompt from Langfuse: {}", url);
-
-            // Build request
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
-                .GET();
-            if (!url.startsWith("https"))
-                requestBuilder.version(HttpClient.Version.HTTP_1_1);
-
-            // Add headers
-            config.getHeaders().forEach(requestBuilder::header);
-            requestBuilder.header("Content-Type", "application/json");
-
-            HttpRequest request = requestBuilder.build();
-
-            // Send request
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            // Check response status
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                LangfusePrompt prompt = objectMapper.readValue(response.body(), LangfusePrompt.class);
-
-                // Cache the result
-                if (cacheEnabled) {
-                    cache.put(cacheKey, prompt);
-                }
-
-                LOGGER.debug("Successfully fetched prompt '{}' (version: {}, type: {})",
-                    prompt.getName(), prompt.getVersion(), prompt.getType());
-                return prompt;
-            } else {
-                String errorMessage = String.format("Failed to fetch prompt '%s': HTTP %d - %s",
-                    name, response.statusCode(), response.body());
-                LOGGER.error(errorMessage);
-                throw new LangfusePromptException(errorMessage);
-            }
+            var request = buildRequest(url);
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            return handleResponse(name, cacheKey, response);
         } catch (IOException | InterruptedException e) {
             String errorMessage = String.format("Error fetching prompt '%s': %s", name, e.getMessage());
             LOGGER.error(errorMessage, e);
             throw new LangfusePromptException(errorMessage, e);
+        }
+    }
+
+    private LangfusePrompt checkCache(String cacheKey) {
+        if (!cacheEnabled) return null;
+        LangfusePrompt cached = cache.get(cacheKey);
+        if (cached != null) LOGGER.debug("Returning cached prompt: {}", cacheKey);
+        return cached;
+    }
+
+    private Map<String, String> buildQueryParams(Integer version, String label) {
+        Map<String, String> queryParams = new HashMap<>();
+        if (version != null) queryParams.put("version", String.valueOf(version));
+        if (label != null && !label.isEmpty()) queryParams.put("label", label);
+        return queryParams;
+    }
+
+    private HttpRequest buildRequest(String url) {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
+            .GET();
+        if (!url.startsWith("https"))
+            requestBuilder.version(HttpClient.Version.HTTP_1_1);
+        config.getHeaders().forEach(requestBuilder::header);
+        requestBuilder.header("Content-Type", "application/json");
+        return requestBuilder.build();
+    }
+
+    private LangfusePrompt handleResponse(String name, String cacheKey, HttpResponse<String> response) throws LangfusePromptException {
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            try {
+                LangfusePrompt prompt = objectMapper.readValue(response.body(), LangfusePrompt.class);
+                if (cacheEnabled) cache.put(cacheKey, prompt);
+                LOGGER.debug("Successfully fetched prompt '{}' (version: {}, type: {})",
+                    prompt.getName(), prompt.getVersion(), prompt.getType());
+                return prompt;
+            } catch (IOException e) {
+                throw new LangfusePromptException("Failed to parse prompt response", e);
+            }
+        } else {
+            String errorMessage = String.format("Failed to fetch prompt '%s': HTTP %d - %s",
+                name, response.statusCode(), response.body());
+            LOGGER.error(errorMessage);
+            throw new LangfusePromptException(errorMessage);
         }
     }
 
