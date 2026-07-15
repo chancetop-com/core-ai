@@ -8,6 +8,7 @@ import java.lang.reflect.InvocationTargetException;
  * @author stephen
  */
 public class ClassUtil {
+    @SuppressWarnings("PMD.UselessPureMethodCall")
     public static void checkNoArgConstructor(Class<?> type) {
         try {
             type.getDeclaredConstructor();

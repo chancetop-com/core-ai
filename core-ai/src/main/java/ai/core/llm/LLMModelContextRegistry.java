@@ -17,6 +17,7 @@ public final class LLMModelContextRegistry {
     private static final String RESOURCE_PATH = "/model_prices_and_context_window.json";
     private static final int DEFAULT_MAX_INPUT_TOKENS = 128000;
     private static final int DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+    private static final String[] MODEL_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/"};
 
     private static volatile LLMModelContextRegistry instance;
 
@@ -99,8 +100,6 @@ public final class LLMModelContextRegistry {
         }
         return null;
     }
-
-    private static final String[] MODEL_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/"};
 
     public int getMaxInputTokens(String modelName) {
         var info = getModelInfo(modelName);
