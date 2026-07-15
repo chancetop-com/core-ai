@@ -3,7 +3,6 @@ package ai.core.api.server;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
-import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
@@ -48,10 +47,10 @@ public interface AgentDefinitionWebService {
     @Path("/api/agents/:id/publish")
     AgentDefinitionView publish(@PathParam("id") String id);
 
-    @POST
-    @Path("/api/agents/from-session")
-    @ResponseStatus(HTTPStatus.CREATED)
-    AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request);
+//    @POST
+//    @Path("/api/agents/from-session")
+//    @ResponseStatus(HTTPStatus.CREATED)
+//    AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request);
 
     @DELETE
     @Path("/api/agents/:id")

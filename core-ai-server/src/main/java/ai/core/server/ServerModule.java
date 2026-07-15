@@ -4,9 +4,6 @@ import ai.core.api.server.AgentDefinitionWebService;
 import ai.core.api.server.ArtifactWebService;
 import ai.core.api.server.auth.AuthWebService;
 import ai.core.api.server.DatasetWebService;
-import ai.core.api.server.AgentRunWebService;
-import ai.core.api.server.AgentScheduleWebService;
-import ai.core.api.server.AgentSessionWebService;
 import ai.core.api.server.SkillWebService;
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.NotificationWebService;
@@ -25,7 +22,9 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.GenerateService;
 import ai.core.server.agent.JavaToSchemaService;
+import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.artifact.ArtifactService;
+import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.auth.AuthService;
 import ai.core.server.agentbuilder.AgentBuilderTools;
 import ai.core.server.llmcall.LLMCallBuilderTools;
@@ -41,15 +40,7 @@ import ai.core.server.github.GitHubInstallationTokenService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.migration.SchemaMigrationManager;
-import ai.core.server.settings.SystemSettingsService;
-import ai.core.server.run.AgentRunService;
 import ai.core.server.run.LLMCallExecutor;
-import ai.core.server.run.AgentRunner;
-import ai.core.server.run.AgentRunTracer;
-import ai.core.server.run.AgentRunBuilder;
-import ai.core.server.schedule.AgentScheduleService;
-import ai.core.server.schedule.AgentScheduler;
-import ai.core.server.schedule.AgentSchedulerJob;
 import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.schedule.ToolRegistrySyncJob;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotCleanupJob;
@@ -67,10 +58,9 @@ import ai.core.server.notification.NotificationService;
 import ai.core.server.notification.NotificationTools;
 import ai.core.server.notification.SendNotificationHandler;
 import ai.core.server.user.UserService;
-import ai.core.server.trigger.TriggerController;
 import ai.core.server.trigger.TriggerService;
-import ai.core.server.trigger.action.RunAgentAction;
 import ai.core.server.channel.ChannelConfigStore;
+import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.channel.openclaw.OcgCallbackPool;
 import ai.core.server.channel.openclaw.OcgConfigStore;
 import ai.core.server.channel.openclaw.OcgHealthCheckJob;
@@ -81,14 +71,8 @@ import ai.core.server.web.ChatSessionController;
 import ai.core.server.web.SessionCreateHelper;
 import ai.core.server.web.DatasetWebServiceImpl;
 import ai.core.server.web.SkillWebServiceImpl;
-import ai.core.server.web.AgentRunWebServiceImpl;
-import ai.core.server.web.AgentScheduleWebServiceImpl;
 import ai.core.server.web.sse.AgentSessionChannelListener;
-import ai.core.server.web.sse.ChannelService;
 import ai.core.server.web.sse.NotificationChannelListener;
-import ai.core.server.web.sse.SessionChannelService;
-import ai.core.server.web.AgentSessionWebServiceImpl;
-import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
 import ai.core.server.web.NotificationWebServiceImpl;
 import ai.core.server.web.AuthWebServiceImpl;
@@ -124,13 +108,11 @@ public class ServerModule extends Module {
         bindService();
         bindAuthService();
         bindGitHubService();
-        registerWebhookTrigger();
         var builderTools = bind(LLMCallBuilderTools.class);
         var agentBuilderTools = bind(AgentBuilderTools.class);
         onStartup(builderTools::initialize);
         onStartup(agentBuilderTools::initialize);
 
-        bind(PodLocalExecutor.class);
         bindWebService();
         bindScheduledJobs();
         bindDevTools();
@@ -140,11 +122,11 @@ public class ServerModule extends Module {
     private void setupPreBindServices() {
         var migrationManager = bind(SchemaMigrationManager.class);
         onStartup(migrationManager::migrate);
-        // Must be bound before bindService(): AgentSessionManager @Injects SandboxSnapshotService.
         bind(SandboxSnapshotService.class);
         bind(RequestAuthenticator.class);
         bind(ChannelConfigStore.class);         // must be before AuthInterceptor — AuthInterceptor checks per-channel auth
         bind(OcgConfigStore.class);
+        bind(ChannelRegistry.class);
         http().intercept(bind(AuthInterceptor.class));
         var corsInterceptor = bind(CorsInterceptor.class);
         http().intercept(corsInterceptor);
@@ -159,12 +141,6 @@ public class ServerModule extends Module {
         var sandboxService = (SandboxService) context.beanFactory.bean(SandboxService.class, null);
         toolRegistryService.setSandboxService(sandboxService);
 
-        // ChannelRegistry and adapters must be bound before bindService() because
-        // AgentSessionManager injects ChannelRegistry for bridge cleanup.
-
-        // SystemSettingsService must be bound before bindService() because LLMCallExecutor and AgentRunner inject it
-        bind(SystemSettingsService.class);
-
         // NotificationService must be bound before bindService() — WorkflowRunner injects it.
         // NotificationEventPublisher must be bound first — NotificationService injects it.
         bind(NotificationEventPublisher.class);
@@ -172,7 +148,6 @@ public class ServerModule extends Module {
     }
 
     private void bindScheduledJobs() {
-        schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
         schedule().fixedRate("tool-registry-sync", bind(ToolRegistrySyncJob.class), Duration.ofSeconds(30));
         schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
         schedule().fixedRate("sandbox-snapshot-cleanup", bind(SandboxSnapshotCleanupJob.class), Duration.ofHours(1));
@@ -235,24 +210,15 @@ public class ServerModule extends Module {
         bind(LLMCallExecutor.class);
         bind(DatasetService.class);
         bind(DatasetRecordService.class);
-        bind(ai.core.server.agent.SubAgentAssembler.class);
-        bind(AgentRunTracer.class);
-        bind(AgentRunBuilder.class);
-        bind(AgentRunner.class);
-        onShutdown(bean(AgentRunner.class)::shutdown);
-        bind(AgentScheduler.class);
-        bind(ChannelService.class);
-        bind(SessionChannelService.class);
+        bind(SubAgentAssembler.class);
+        bind(ChatArtifactSetup.class);
         bind(ChatMessageService.class);
-        bind(ai.core.server.artifact.ChatArtifactSetup.class);
         bind(AgentSessionManager.class);
         bind(AgentDefinitionService.class);
         bind(ServerA2AService.class);
         bind(JavaToSchemaService.class);
         bind(AgentDraftGenerator.class);
         bind(GenerateService.class);
-        bind(AgentRunService.class);
-        bind(AgentScheduleService.class);
         bind(UserService.class);
         var triggerService = bind(TriggerService.class);
         triggerService.publicUrl = publicUrl;
@@ -262,7 +228,6 @@ public class ServerModule extends Module {
         onStartup(ocgSandboxService::recoverOnStartup);
         var ocgCallbackPool = bind(OcgCallbackPool.class);
         onShutdown(ocgCallbackPool::shutdown);
-        bind(RunAgentAction.class);
 
         registerServiceRoutes();
 
@@ -291,12 +256,9 @@ public class ServerModule extends Module {
         api().service(SystemSettingsWebService.class, bind(SystemSettingsWebServiceImpl.class));
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
         api().service(UserWebService.class, bind(UserWebServiceImpl.class));
-        api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
         api().service(ToolRegistryWebService.class, bind(ToolRegistryWebServiceImpl.class));
         api().service(NotificationWebService.class, bind(NotificationWebServiceImpl.class));
         api().service(AgentDefinitionWebService.class, bind(AgentDefinitionWebServiceImpl.class));
-        api().service(AgentRunWebService.class, bind(AgentRunWebServiceImpl.class));
-        api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
         api().service(TriggerWebService.class, bind(TriggerWebServiceImpl.class));
         api().service(DatasetWebService.class, bind(DatasetWebServiceImpl.class));
         api().service(ArtifactWebService.class, bind(ArtifactWebServiceImpl.class));
@@ -343,13 +305,6 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/api/system-prompts/:promptId/versions", controller::versions);
         http().route(HTTPMethod.GET, "/api/system-prompts/:promptId/versions/:version", controller::getVersion);
         http().route(HTTPMethod.POST, "/api/system-prompts/:promptId/test", controller::test);
-    }
-
-    private void registerWebhookTrigger() {
-        var controller = bind(TriggerController.class);
-        http().route(HTTPMethod.POST, "/api/webhook-triggers/:id", controller);
-        // GET for Slack URL verification challenge
-        http().route(HTTPMethod.GET, "/api/webhook-triggers/:id", controller);
     }
 
     private void registerCapabilities() {

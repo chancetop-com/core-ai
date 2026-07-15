@@ -112,6 +112,7 @@ public class GatewayModelService {
         var entity = new GatewayModelConfig();
         entity.id = UUID.randomUUID().toString();
         apply(entity, request, true);
+        if (Boolean.TRUE.equals(entity.isDefault)) clearDefaults(entity.providerId);
         rejectDuplicateModelId(entity);
         entity.createdBy = userId;
         entity.updatedBy = userId;
@@ -130,12 +131,25 @@ public class GatewayModelService {
         var providerId = request.providerId != null ? request.providerId : entity.providerId;
         var provider = provider(providerId);
         apply(entity, request, false);
+        if (Boolean.TRUE.equals(entity.isDefault)) clearDefaults(entity.providerId);
         rejectDuplicateModelId(entity);
         entity.updatedBy = userId;
         entity.updatedAt = ZonedDateTime.now();
         gatewayModelCollection.replace(entity);
         invalidateRouting();
         return toView(entity, provider);
+    }
+
+    public GatewayModelView markDefault(String id, String userId) {
+        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        var entity = getEntity(id);
+        clearDefaults(entity.providerId);
+        entity.isDefault = Boolean.TRUE;
+        entity.updatedBy = userId;
+        entity.updatedAt = ZonedDateTime.now();
+        gatewayModelCollection.replace(entity);
+        invalidateRouting();
+        return toView(entity, provider(entity.providerId));
     }
 
     public void delete(String id, String userId) {
@@ -202,6 +216,8 @@ public class GatewayModelService {
         if (entity.endpointTypes == null || entity.endpointTypes.isEmpty()) entity.endpointTypes = List.of(ENDPOINT_CHAT_COMPLETIONS);
         if (specified(request, "enabled", create)) entity.enabled = request.enabled;
         if (entity.enabled == null) entity.enabled = Boolean.TRUE;
+        if (specified(request, "isDefault", create)) entity.isDefault = request.isDefault;
+        if (entity.isDefault == null) entity.isDefault = Boolean.FALSE;
         if (specified(request, "priority", create)) entity.priority = request.priority;
         if (entity.priority == null) entity.priority = 100L;
         if (specified(request, "contextWindow", create)) entity.contextWindow = request.contextWindow;
@@ -293,6 +309,7 @@ public class GatewayModelService {
         view.upstreamModel = entity.upstreamModel;
         view.endpointTypes = entity.endpointTypes;
         view.enabled = entity.enabled;
+        view.isDefault = entity.isDefault;
         view.priority = entity.priority;
         view.contextWindow = entity.contextWindow;
         view.supportsStream = entity.supportsStream;
@@ -309,6 +326,14 @@ public class GatewayModelService {
 
     private boolean specified(GatewayModelRequest request, String field, boolean create) {
         return create || request.hasField(field);
+    }
+
+    private void clearDefaults(String providerId) {
+        var filter = Filters.and(
+                Filters.eq("provider_id", providerId),
+                Filters.eq("is_default", true)
+        );
+        gatewayModelCollection.update(filter, com.mongodb.client.model.Updates.set("is_default", false));
     }
 
     private record StagedImport(GatewayModelConfig entity, boolean create) {

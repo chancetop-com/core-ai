@@ -58,10 +58,6 @@ public class AgentSessionManager {
     private final ConcurrentMap<String, Long> sessionLastActivity = new ConcurrentHashMap<>();
 
     @Inject
-    LLMProviders llmProviders;
-    @Inject
-    PersistenceProviders persistenceProviders;
-    @Inject
     ToolRegistryService toolRegistryService;
     @Inject
     MongoSkillProvider mongoSkillProvider;

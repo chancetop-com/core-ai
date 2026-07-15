@@ -1,6 +1,6 @@
 package ai.core.server;
 
-import ai.core.server.blob.AzureObjectStorageService;
+import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.task.TaskRunner;
 import ai.core.server.trace.maintenance.TraceArchivingJob;
 import ai.core.server.trace.maintenance.TraceArchivingTask;
@@ -34,10 +34,13 @@ public class TraceModule extends Module {
 
     @Override
     protected void initialize() {
-        var objectStorage = (AzureObjectStorageService) context.beanFactory.bean(AzureObjectStorageService.class, null);
-        bind(TraceDailyMaintenanceService.class);
-        var maintenanceService = bean(TraceDailyMaintenanceService.class);
-        maintenanceService.setStorageService(objectStorage);
+        var maintenanceService = bind(TraceDailyMaintenanceService.class);
+        try {
+            var objectStorage = (ObjectStorageService) context.beanFactory.bean(ObjectStorageService.class, null);
+            maintenanceService.setStorageService(objectStorage);
+        } catch (Error e) {
+            maintenanceService.setStorageService(null);
+        }
         var container = property("trace.archive.container").orElse(property("azure.blob.multimodal.container").orElse("traces-archive"));
         maintenanceService.setArchiveContainer(container);
         maintenanceService.setArchivePrefix(resolveArchivePrefix());

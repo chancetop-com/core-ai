@@ -15,6 +15,7 @@ public class GatewayModelRequest {
     public String upstreamModel;
     public List<String> endpointTypes;
     public Boolean enabled;
+    public Boolean isDefault;
     public Long priority;
     public Long contextWindow;
     public Boolean supportsStream;

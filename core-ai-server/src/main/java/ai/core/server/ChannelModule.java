@@ -28,7 +28,7 @@ public class ChannelModule extends Module {
 
 
     private void bindChannelRegistry() {
-        var registry = bind(ChannelRegistry.class);
+        var registry = bean(ChannelRegistry.class);
 
         // Register channel adapters — each pair handles inbound verification/parsing
         // and outbound message delivery for a specific platform.

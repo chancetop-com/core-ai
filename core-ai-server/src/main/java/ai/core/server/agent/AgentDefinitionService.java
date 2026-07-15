@@ -1,7 +1,6 @@
 package ai.core.server.agent;
 
 import ai.core.api.server.agent.AgentDefinitionView;
-import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
@@ -11,9 +10,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
-import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.User;
-import ai.core.server.session.AgentSessionManager;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
 import com.mongodb.client.model.Filters;
@@ -56,9 +53,6 @@ public class AgentDefinitionService {
     MongoCollection<User> userCollection;
     @Inject
     SkillService skillService;
-
-    @Inject
-    AgentSessionManager sessionManager;
 
     public AgentDefinitionView create(CreateAgentRequest request, String userId) {
         var existing = agentDefinitionCollection.findOne(Filters.and(
@@ -308,34 +302,34 @@ public class AgentDefinitionService {
         return toView(entity);
     }
 
-    public AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request, String userId) {
-        var session = sessionManager.getSession(request.sessionId);
-        var agent = session.agent();
-
-        var entity = new AgentDefinition();
-        entity.id = UUID.randomUUID().toString();
-        entity.userId = userId;
-        entity.name = request.name;
-        entity.description = request.description;
-        entity.systemPrompt = agent.getSystemPrompt();
-        entity.model = agent.getModel();
-        entity.multiModalModel = agent.getMultiModalModel();
-        entity.temperature = agent.getTemperature();
-        entity.maxTurns = 200;
-        entity.timeoutSeconds = 600;
-        entity.tools = agent.getToolCalls().stream()
-                .map(tc -> ToolRef.fromLegacyToolId(tc.getName()))
-                .toList();
-        entity.inputTemplate = request.inputTemplate;
-        entity.type = DefinitionType.AGENT;
-        entity.enableMemory = Boolean.FALSE;
-        entity.status = AgentStatus.DRAFT;
-        entity.createdAt = ZonedDateTime.now();
-        entity.updatedAt = entity.createdAt;
-
-        agentDefinitionCollection.insert(entity);
-        return toView(entity);
-    }
+//    public AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request, String userId) {
+//        var session = sessionManager.getSession(request.sessionId);
+//        var agent = session.agent();
+//
+//        var entity = new AgentDefinition();
+//        entity.id = UUID.randomUUID().toString();
+//        entity.userId = userId;
+//        entity.name = request.name;
+//        entity.description = request.description;
+//        entity.systemPrompt = agent.getSystemPrompt();
+//        entity.model = agent.getModel();
+//        entity.multiModalModel = agent.getMultiModalModel();
+//        entity.temperature = agent.getTemperature();
+//        entity.maxTurns = 200;
+//        entity.timeoutSeconds = 600;
+//        entity.tools = agent.getToolCalls().stream()
+//                .map(tc -> ToolRef.fromLegacyToolId(tc.getName()))
+//                .toList();
+//        entity.inputTemplate = request.inputTemplate;
+//        entity.type = DefinitionType.AGENT;
+//        entity.enableMemory = Boolean.FALSE;
+//        entity.status = AgentStatus.DRAFT;
+//        entity.createdAt = ZonedDateTime.now();
+//        entity.updatedAt = entity.createdAt;
+//
+//        agentDefinitionCollection.insert(entity);
+//        return toView(entity);
+//    }
 
     public void delete(String id, String userId) {
         var entity = agentDefinitionCollection.get(id)

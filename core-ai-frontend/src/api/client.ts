@@ -1027,6 +1027,7 @@ export interface GatewayModel {
   upstreamModel: string;
   endpointTypes?: string[];
   enabled?: boolean;
+  isDefault?: boolean;
   priority?: number | null;
   contextWindow?: number | null;
   supportsStream?: boolean;
@@ -1034,10 +1035,6 @@ export interface GatewayModel {
   supportsVision?: boolean;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
-  createdBy?: string;
-  updatedBy?: string;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 export interface GatewayModelRequest {
@@ -1207,6 +1204,8 @@ export const api = {
       request<GatewayModel>(`/api/gateway/models/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteModel: (id: string) =>
       request<void>(`/api/gateway/models/${id}`, { method: 'DELETE' }),
+    setDefaultModel: (id: string) =>
+      request<GatewayModel>(`/api/gateway/models/${id}/set-default`, { method: 'POST' }),
     discoverModels: (providerId: string) =>
       request<ListGatewayDiscoveredModelsResponse>(`/api/gateway/providers/${providerId}/models/discover`, { method: 'POST' }),
     importModels: (providerId: string, data: ImportGatewayModelsRequest) =>

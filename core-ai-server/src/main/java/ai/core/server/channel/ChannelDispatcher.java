@@ -6,7 +6,6 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.session.AgentSessionManager;
-import ai.core.server.session.ChatMessageService;
 import core.framework.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,9 +29,6 @@ public class ChannelDispatcher {
 
     @Inject
     CommandPublisher commandPublisher;
-
-    @Inject
-    ChatMessageService chatMessageService;
 
     @Inject
     AgentDefinitionService agentDefinitionService;

@@ -40,12 +40,15 @@ import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.migration.SchemaVersion;
 import ai.core.server.sandbox.snapshot.SandboxEpochDoc;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotDoc;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trigger.domain.Trigger;
+import ai.core.server.web.sse.ChannelService;
+import ai.core.server.web.sse.SessionChannelService;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
 import core.framework.mongo.module.MongoConfig;
@@ -68,16 +71,27 @@ public class ServerApp extends App {
         load(new ServiceApiModule());
         load(new McpServerModule());
         load(new McpModule());
+
+        bindServices();
+
         load(new ObjectStorageModule());
-        load(new MessagingModule());
         load(new GatewayModule());
         load(new TraceModule());
         load(new MemoryModule());
         load(new SandboxModule());
         load(new ServerModule());
-        load(new WorkflowModule());
+        load(new SessionModule());
+        load(new AgentRunnerModule());
+        load(new MessagingModule());
         load(new ChannelModule());
+        load(new WorkflowModule());
         load(new WebModule());
+    }
+
+    private void bindServices() {
+        bind(ChannelService.class);
+        bind(SessionChannelService.class);
+        bind(SystemSettingsService.class);
     }
 
     private void registerMongo() {

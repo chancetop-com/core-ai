@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CheckCircle2, CircleAlert, KeyRound, Pencil, PlugZap, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { CheckCircle2, CircleAlert, KeyRound, Pencil, PlugZap, Plus, RefreshCw, Save, Star, Trash2, X } from 'lucide-react';
 import { api, type GatewayDiscoveredModel, type GatewayModel, type GatewayModelRequest, type GatewayProvider, type GatewayProviderRequest } from '../../api/client';
 
 const PROVIDER_TYPES = [
@@ -350,6 +350,16 @@ export default function GatewayProviders() {
     }
   };
 
+  const setDefaultModel = async (model: GatewayModel) => {
+    setError('');
+    try {
+      await api.gateway.setDefaultModel(model.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to set default model');
+    }
+  };
+
   const toggleEndpoint = (endpoint: string, checked: boolean) => {
     setModelForm(current => {
       const next = checked
@@ -404,6 +414,7 @@ export default function GatewayProviders() {
           providerById,
           openEditModel,
           removeModel,
+          setDefaultModel,
         })}
       </div>
 
@@ -532,14 +543,16 @@ function renderModelsTable(props: {
   providerById: Map<string, GatewayProvider>;
   openEditModel: (model: GatewayModel) => void;
   removeModel: (model: GatewayModel) => void;
+  setDefaultModel: (model: GatewayModel) => void;
 }) {
-  const { models, loading, providerById, openEditModel, removeModel } = props;
+  const { models, loading, providerById, openEditModel, removeModel, setDefaultModel } = props;
   return (
     <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
       <table className="w-full text-sm">
         <thead style={{ background: 'var(--color-bg-secondary)' }}>
           <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
             <th className="px-4 py-3 font-medium">Alias</th>
+            <th className="px-4 py-3 font-medium">Display Name</th>
             <th className="px-4 py-3 font-medium">Provider</th>
             <th className="px-4 py-3 font-medium">Official Model</th>
             <th className="px-4 py-3 font-medium">Endpoints</th>
@@ -550,19 +563,21 @@ function renderModelsTable(props: {
         </thead>
         <tbody>
           {loading ? (
-            <EmptyRow colSpan={7}>Loading...</EmptyRow>
+            <EmptyRow colSpan={8}>Loading...</EmptyRow>
           ) : models.length === 0 ? (
-            <EmptyRow colSpan={7}>No models configured</EmptyRow>
+            <EmptyRow colSpan={8}>No models configured</EmptyRow>
           ) : models.map(model => {
             const provider = providerById.get(model.providerId);
             return (
               <tr key={model.id} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
                 <td className="px-4 py-3">
-                  <div className="font-medium font-mono">{model.modelId}</div>
-                  <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-                    {model.displayName || '-'}
-                    {model.enabled === false && ' · disabled'}
-                  </div>
+                  <span className="font-medium font-mono">
+                    {model.modelId}
+                  </span>
+                  {model.enabled === false && <span className="text-xs ml-1" style={{ color: 'var(--color-text-secondary)' }}>· disabled</span>}
+                </td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                  {model.displayName || '-'}
                 </td>
                 <td className="px-4 py-3">
                   <div>{model.providerName || provider?.name || model.providerId}</div>
@@ -581,6 +596,9 @@ function renderModelsTable(props: {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
+                    <IconButton title={model.isDefault ? 'Default model' : 'Set as default'} onClick={() => { if (!model.isDefault) setDefaultModel(model); }}>
+                      <Star size={15} style={model.isDefault ? { color: 'var(--color-warning)', fill: 'var(--color-warning)' } : undefined} />
+                    </IconButton>
                     <IconButton title="Edit" onClick={() => openEditModel(model)}>
                       <Pencil size={15} />
                     </IconButton>

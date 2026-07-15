@@ -79,15 +79,9 @@ public class GatewayLLMProvider extends LLMProvider {
             throw new BadRequestException("azure gateway provider is not supported for agent runtime yet: " + provider.name);
         }
         var upstream = upstreamProvider(provider);
-        var requestedModel = request.model;
-        try {
-            request.model = upstreamModel(resolved);
-            applyPreprocess(request);
-            return upstream.delegateCompletionStream(request, callback);
-        } finally {
-            // callers keep their model invariant: trace/persistence/retries must see the requested alias
-            request.model = requestedModel;
-        }
+        request.model = upstreamModel(resolved);
+        applyPreprocess(request);
+        return upstream.delegateCompletionStream(request, callback);
     }
 
     @Override
@@ -111,6 +105,11 @@ public class GatewayLLMProvider extends LLMProvider {
     @Override
     public String name() {
         return "gateway";
+    }
+
+    @Override
+    public String getModel(CompletionRequest request) {
+        return request.model;
     }
 
     private void applyPreprocess(CompletionRequest request) {

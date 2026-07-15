@@ -108,6 +108,7 @@ public final class LLMModelContextRegistry {
     }
 
     public ModelInfo getModelInfo(String modelName) {
+        if (modelName == null) return null;
         var info = modelInfoMap.get(modelName);
         if (info != null) {
             return info;

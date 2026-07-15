@@ -59,7 +59,7 @@ public class Compression {
         this.toolResultRatio = DEFAULT_TOOL_RESULT_RATIO;
         this.llmProvider = llmProvider;
         this.summaryModel = summaryModel;
-        var modelInfo = LLMModelContextRegistry.getInstance().getModelInfo(agentModel);
+        var modelInfo = agentModel != null ? LLMModelContextRegistry.getInstance().getModelInfo(agentModel) : null;
         this.maxContextTokens = modelInfo != null ? modelInfo.contextWindow() : 0;
         this.maxToolResultTokens = calculateMaxToolResultTokens();
     }

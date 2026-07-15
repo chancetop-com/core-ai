@@ -1,5 +1,6 @@
 package ai.core.server;
 
+import ai.core.api.server.AgentSessionWebService;
 import ai.core.server.a2a.A2AEventRelay;
 import ai.core.server.a2a.A2ATaskRegistry;
 import ai.core.server.a2a.ServerA2AService;
@@ -20,6 +21,8 @@ import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.web.AgentSessionWebServiceImpl;
+import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.sse.SessionChannelService;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -55,6 +58,8 @@ class MessagingModule extends Module {
         bean(AgentSessionManager.class).setEventPublisher(bean(EventPublisher.class));
         bean(AgentSessionManager.class).setOwnershipRegistry(ownershipRegistry);
         var rpcClient = bind(new RpcClient(jedisPool, ownershipRegistry));
+        bind(PodLocalExecutor.class);
+        api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
         bean(ServerA2AService.class).setTaskRouting(a2aTaskRegistry, ownershipRegistry, rpcClient, a2aEventRelay);
         var rpcResponseSubscriber = new RpcResponseSubscriber(jedisPool, rpcClient);
         onStartup(rpcResponseSubscriber::start);

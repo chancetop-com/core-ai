@@ -4,7 +4,6 @@ import ai.core.api.server.AgentDefinitionWebService;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
-import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
@@ -70,12 +69,12 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
         return agentDefinitionService.publish(id, userId);
     }
 
-    @Override
-    public AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request) {
-        var userId = AuthContext.userId(webContext);
-        ActionLogContext.put("user_id", userId);
-        return agentDefinitionService.createFromSession(request, userId);
-    }
+//    @Override
+//    public AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request) {
+//        var userId = AuthContext.userId(webContext);
+//        ActionLogContext.put("user_id", userId);
+//        return agentDefinitionService.createFromSession(request, userId);
+//    }
 
     @Override
     public void delete(String id) {

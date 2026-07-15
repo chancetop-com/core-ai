@@ -178,6 +178,17 @@ public class GatewayRoutingEngine {
             var defaultModel = defaultModel(provider, endpoint);
             if (hasText(defaultModel)) return new GatewayRoute(provider, stripPrefix(defaultModel, provider.modelPrefix));
         }
+        // no provider default model configured — pick the model marked default or the first available model
+        var models = registeredModels(snapshot(), endpoint);
+        for (var model : models) {
+            if (Boolean.TRUE.equals(model.model.isDefault)) {
+                return new GatewayRoute(model.provider, model.model.upstreamModel);
+            }
+        }
+        if (!models.isEmpty()) {
+            var first = models.get(0);
+            return new GatewayRoute(first.provider, first.model.upstreamModel);
+        }
         throw new BadRequestException("model is required");
     }
 

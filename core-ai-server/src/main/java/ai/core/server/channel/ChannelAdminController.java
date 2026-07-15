@@ -27,9 +27,6 @@ public class ChannelAdminController {
     ChannelConfigStore configStore;
 
     @Inject
-    ChannelRegistry channelRegistry;
-
-    @Inject
     WebContext webContext;
 
     public Response list(Request request) {

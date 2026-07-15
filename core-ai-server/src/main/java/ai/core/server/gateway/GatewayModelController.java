@@ -46,6 +46,10 @@ public class GatewayModelController {
         return Response.empty().status(HTTPStatus.NO_CONTENT);
     }
 
+    public Response markDefault(Request request) {
+        return jsonResponse(gatewayModelService.markDefault(request.pathParam("id"), userId()));
+    }
+
     public Response discover(Request request) {
         return jsonResponse(gatewayModelDiscoveryService.discover(request.pathParam("id"), userId()));
     }

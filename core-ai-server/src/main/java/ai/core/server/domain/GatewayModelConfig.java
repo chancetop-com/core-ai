@@ -30,6 +30,9 @@ public class GatewayModelConfig {
     @Field(name = "enabled")
     public Boolean enabled;
 
+    @Field(name = "is_default")
+    public Boolean isDefault;
+
     @Field(name = "priority")
     public Long priority;
 

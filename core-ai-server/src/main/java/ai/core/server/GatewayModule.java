@@ -81,6 +81,7 @@ public class GatewayModule extends Module {
         http().route(HTTPMethod.POST, "/api/gateway/models", gatewayModelController::create);
         http().route(HTTPMethod.PUT, "/api/gateway/models/:id", gatewayModelController::update);
         http().route(HTTPMethod.DELETE, "/api/gateway/models/:id", gatewayModelController::delete);
+        http().route(HTTPMethod.POST, "/api/gateway/models/:id/set-default", gatewayModelController::markDefault);
         http().route(HTTPMethod.POST, "/api/gateway/providers/:id/models/discover", gatewayModelController::discover);
         http().route(HTTPMethod.POST, "/api/gateway/providers/:id/models/import", gatewayModelController::importModels);
     }
