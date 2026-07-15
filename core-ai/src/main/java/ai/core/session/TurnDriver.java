@@ -45,12 +45,7 @@ public class TurnDriver {
                 var batch = commandQueue.drainSameMode();
                 if (batch.isEmpty()) continue;
                 renewOwnership();
-                startHeartbeat();
-                try {
-                    commandHandler.accept(batch);
-                } finally {
-                    stopHeartbeat();
-                }
+                executeBatch(batch);
                 // Clear interrupt flag left by cancelTurn() so the next iteration works
                 //noinspection ResultOfMethodCallIgnored
                 Thread.interrupted();
@@ -63,6 +58,15 @@ public class TurnDriver {
             }
         }
         logger.info("TurnDriver exited driveLoop, thread={}", Thread.currentThread().getName());
+    }
+
+    private void executeBatch(SessionCommandQueue.CommandBatch batch) {
+        startHeartbeat();
+        try {
+            commandHandler.accept(batch);
+        } finally {
+            stopHeartbeat();
+        }
     }
 
     private void renewOwnership() {

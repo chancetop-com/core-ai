@@ -179,13 +179,11 @@ class SubAgentToolCallTest {
     }
 
     @Test
-    @SuppressWarnings("PMD.UseTryWithResources")
     void subAgentExecutionKeepsParentTraceContext() {
         var spans = new RecordingSpanProcessor();
-        var tracerProvider = SdkTracerProvider.builder()
+        try (var tracerProvider = SdkTracerProvider.builder()
                 .addSpanProcessor(spans)
-                .build();
-        try {
+                .build()) {
             var openTelemetry = OpenTelemetrySdk.builder()
                     .setTracerProvider(tracerProvider)
                     .build();
@@ -214,8 +212,6 @@ class SubAgentToolCallTest {
             var agentTurn = spans.find("agent.turn").orElseThrow();
             assertEquals(parentSpan.getSpanContext().getTraceId(), agentTurn.getTraceId());
             assertEquals(parentSpan.getSpanContext().getSpanId(), agentTurn.getParentSpanId());
-        } finally {
-            tracerProvider.shutdown();
         }
     }
 

@@ -14,14 +14,30 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class BackgroundTaskManagerTest {
 
+    private static String executeTask(Tracer tracer) {
+        var agentSpan = tracer.spanBuilder("background-agent").startSpan();
+        try {
+            return "done";
+        } finally {
+            agentSpan.end();
+        }
+    }
+
+    private static void submitAndWait(Tracer tracer, BackgroundTaskManager manager, Span parentSpan) throws Exception {
+        try (var scope = parentSpan.makeCurrent()) {
+            var handle = manager.submit("deep-research-1", () -> executeTask(tracer), null);
+            handle.future().get(5, TimeUnit.SECONDS);
+        } finally {
+            parentSpan.end();
+        }
+    }
+
     @Test
-    @SuppressWarnings("PMD.UseTryWithResources")
     void backgroundTaskKeepsSubmittingTraceContext() throws Exception {
         var spans = new RecordingSpanProcessor();
-        var tracerProvider = SdkTracerProvider.builder()
+        try (var tracerProvider = SdkTracerProvider.builder()
                 .addSpanProcessor(spans)
-                .build();
-        try {
+                .build()) {
             var openTelemetry = OpenTelemetrySdk.builder()
                     .setTracerProvider(tracerProvider)
                     .build();
@@ -35,27 +51,6 @@ class BackgroundTaskManagerTest {
             var backgroundAgent = spans.find("background-agent").orElseThrow();
             assertEquals(parentSpan.getSpanContext().getTraceId(), backgroundAgent.getTraceId());
             assertEquals(parentSpan.getSpanContext().getSpanId(), backgroundAgent.getParentSpanId());
-        } finally {
-            tracerProvider.shutdown();
-        }
-    }
-
-    @SuppressWarnings("PMD.UseTryWithResources")
-    private static void submitAndWait(Tracer tracer, BackgroundTaskManager manager, Span parentSpan) throws Exception {
-        var scope = parentSpan.makeCurrent();
-        try {
-            var handle = manager.submit("deep-research-1", () -> {
-                var agentSpan = tracer.spanBuilder("background-agent").startSpan();
-                try {
-                    return "done";
-                } finally {
-                    agentSpan.end();
-                }
-            }, null);
-            handle.future().get(5, TimeUnit.SECONDS);
-        } finally {
-            scope.close();
-            parentSpan.end();
         }
     }
 

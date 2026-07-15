@@ -82,7 +82,10 @@ public class LangfusePromptProvider {
         }
 
         String url = buildUrl(config.getPromptEndpoint() + "/" + name, queryParams);
+        return fetchAndCachePrompt(name, url, cacheKey);
+    }
 
+    private LangfusePrompt fetchAndCachePrompt(String name, String url, String cacheKey) throws LangfusePromptException {
         try {
             LOGGER.debug("Fetching prompt from Langfuse: {}", url);
 
