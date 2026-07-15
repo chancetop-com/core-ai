@@ -44,7 +44,6 @@ import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.schedule.ToolRegistrySyncJob;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotCleanupJob;
-import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.MarketplaceService;
@@ -122,7 +121,6 @@ public class ServerModule extends Module {
     private void setupPreBindServices() {
         var migrationManager = bind(SchemaMigrationManager.class);
         onStartup(migrationManager::migrate);
-        bind(SandboxSnapshotService.class);
         bind(RequestAuthenticator.class);
         bind(ChannelConfigStore.class);         // must be before AuthInterceptor — AuthInterceptor checks per-channel auth
         bind(OcgConfigStore.class);

@@ -40,6 +40,7 @@ import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.migration.SchemaVersion;
 import ai.core.server.sandbox.snapshot.SandboxEpochDoc;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotDoc;
+import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.domain.Span;
@@ -92,6 +93,7 @@ public class ServerApp extends App {
         bind(ChannelService.class);
         bind(SessionChannelService.class);
         bind(SystemSettingsService.class);
+        bind(SandboxSnapshotService.class);
     }
 
     private void registerMongo() {
