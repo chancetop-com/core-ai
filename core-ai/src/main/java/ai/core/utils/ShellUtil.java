@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 public class ShellUtil {
     private static final Set<String> UNIX_SHELLS = Set.of("zsh", "bash", "sh");
     private static final List<String> WINDOWS_NATIVE_SHELLS = List.of("pwsh.exe", "powershell.exe", "cmd.exe");
+    private static final String POWERSHELL_ENCODING_SETUP = "$OutputEncoding=[System.Text.UTF8Encoding]::new();[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();";
 
     public static boolean isCommandExists(Platform os, String command) {
         try {
@@ -104,8 +105,6 @@ public class ShellUtil {
         }
         return shell + " /c ";
     }
-
-    private static final String POWERSHELL_ENCODING_SETUP = "$OutputEncoding=[System.Text.UTF8Encoding]::new();[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();";
 
     public static String wrapCommand(String shell, String command) {
         if (command != null && isPowerShell(shell)) {

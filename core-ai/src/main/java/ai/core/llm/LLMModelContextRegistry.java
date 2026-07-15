@@ -92,6 +92,8 @@ public final class LLMModelContextRegistry {
         return defaultValue;
     }
 
+    private static final String[] MODEL_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/"};
+
     private String getTextOrNull(JsonNode node, String field) {
         var fieldNode = node.get(field);
         if (fieldNode != null && fieldNode.isTextual()) {
@@ -99,8 +101,6 @@ public final class LLMModelContextRegistry {
         }
         return null;
     }
-
-    private static final String[] MODEL_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/"};
 
     public int getMaxInputTokens(String modelName) {
         var info = getModelInfo(modelName);
