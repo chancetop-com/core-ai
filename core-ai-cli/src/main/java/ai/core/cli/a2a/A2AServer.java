@@ -35,7 +35,7 @@ import java.nio.file.Path;
 /**
  * @author stephen
  */
-@edu.umd.cs.findbugs.annotations.SuppressFBWarnings("LG_LOST_LOGGER_DUE_TO_WEAK_REFERENCE")
+@SuppressFBWarnings("LG_LOST_LOGGER_DUE_TO_WEAK_REFERENCE")
 public class A2AServer {
     private static final Logger LOGGER = LoggerFactory.getLogger(A2AServer.class);
 

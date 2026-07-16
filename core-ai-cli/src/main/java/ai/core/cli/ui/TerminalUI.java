@@ -29,7 +29,7 @@ import java.util.logging.Level;
 /**
  * @author stephen
  */
-@edu.umd.cs.findbugs.annotations.SuppressFBWarnings("LG_LOST_LOGGER_DUE_TO_WEAK_REFERENCE")
+@SuppressFBWarnings("LG_LOST_LOGGER_DUE_TO_WEAK_REFERENCE")
 public class TerminalUI {
     private static final Logger LOGGER = LoggerFactory.getLogger(TerminalUI.class);
 

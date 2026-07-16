@@ -105,38 +105,46 @@ public class FilesystemAgentProfileProvider implements AgentProfileProvider {
                 return null;
             }
 
-            AgentProfile profile = new AgentProfile()
-                    .name(name)
-                    .description(description)
-                    .systemPrompt(body.isEmpty() ? "" : body)
-                    .path(file.toString())
-                    .source("filesystem")
-                    .priority(priority);
+            AgentProfile profile = buildBaseProfile(name, description, body, file);
 
-            var model = (String) data.get("model");
-            if (model != null) {
-                profile.model(model);
-            }
-            var temperature = (Number) data.get("temperature");
-            if (temperature != null) {
-                profile.temperature(temperature.doubleValue());
-            }
-            var maxTurnNumber = (Integer) data.get("maxTurnNumber");
-            if (maxTurnNumber != null) {
-                profile.maxTurnNumber(maxTurnNumber);
-            }
-            Object toolsValue = data.get("tools");
-            if (toolsValue instanceof List<?> tools) {
-                List<String> toolList = new ArrayList<>();
-                for (Object t : tools) {
-                    if (t instanceof String s) toolList.add(s);
-                }
-                profile.tools(toolList);
-            }
+            applyOptionalFields(data, profile);
             return profile;
         } catch (Exception e) {
             LOGGER.warn("failed to parse YAML frontmatter in {}", file, e);
             return null;
+        }
+    }
+
+    private AgentProfile buildBaseProfile(String name, String description, String body, Path file) {
+        return new AgentProfile()
+                .name(name)
+                .description(description)
+                .systemPrompt(body.isEmpty() ? "" : body)
+                .path(file.toString())
+                .source("filesystem")
+                .priority(priority);
+    }
+
+    private void applyOptionalFields(Map<String, Object> data, AgentProfile profile) {
+        var model = (String) data.get("model");
+        if (model != null) {
+            profile.model(model);
+        }
+        var temperature = (Number) data.get("temperature");
+        if (temperature != null) {
+            profile.temperature(temperature.doubleValue());
+        }
+        var maxTurnNumber = (Integer) data.get("maxTurnNumber");
+        if (maxTurnNumber != null) {
+            profile.maxTurnNumber(maxTurnNumber);
+        }
+        Object toolsValue = data.get("tools");
+        if (toolsValue instanceof List<?> tools) {
+            List<String> toolList = new ArrayList<>();
+            for (Object t : tools) {
+                if (t instanceof String s) toolList.add(s);
+            }
+            profile.tools(toolList);
         }
     }
 

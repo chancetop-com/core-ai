@@ -39,6 +39,11 @@ public class SkillCommandHandler {
         return clean.length() <= max ? clean : clean.substring(0, max) + "...";
     }
 
+    private static String toStringOrName(Path path) {
+        Path fn = path.getFileName();
+        return fn != null ? fn.toString() : path.toString();
+    }
+
     private final TerminalUI ui;
 
     public SkillCommandHandler(TerminalUI ui) {
@@ -366,11 +371,6 @@ public class SkillCommandHandler {
         }
         result.sort(String::compareTo);
         return result;
-    }
-
-    private static String toStringOrName(Path path) {
-        Path fn = path.getFileName();
-        return fn != null ? fn.toString() : path.toString();
     }
 
     private record SkillEntry(String name, Path dirPath, String source) {

@@ -26,6 +26,12 @@ public class MdMemoryProvider {
     private static final Pattern EPISODE_FILE_PATTERN = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}\\.md$");
     private static final int MAX_RECENT_EPISODES = 2;
 
+    private static boolean isEpisodeFile(Path p) {
+        if (!Files.isRegularFile(p)) return false;
+        Path fn = p.getFileName();
+        return fn != null && EPISODE_FILE_PATTERN.matcher(fn.toString()).matches();
+    }
+
     private final Path memoryDir;
     private final Path indexPath;
     private final Path episodesDir;
@@ -160,12 +166,6 @@ public class MdMemoryProvider {
             sb.append("--- episodes/").append(file.getFileName()).append(" ---\n")
               .append(content.strip()).append('\n');
         }
-    }
-
-    private static boolean isEpisodeFile(Path p) {
-        if (!Files.isRegularFile(p)) return false;
-        Path fn = p.getFileName();
-        return fn != null && EPISODE_FILE_PATTERN.matcher(fn.toString()).matches();
     }
 
     private String readFileQuietly(Path path) {

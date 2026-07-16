@@ -80,6 +80,12 @@ public final class MemoryTriggerService {
         }
     }
 
+    private static boolean isLockFile(Path p) {
+        if (!Files.isRegularFile(p)) return false;
+        Path fn = p.getFileName();
+        return fn != null && fn.toString().endsWith(LOCK_SUFFIX);
+    }
+
     // ---- instance fields ----
 
     private final Path workspace;
@@ -373,12 +379,6 @@ public final class MemoryTriggerService {
                 ? "Messages 0–" + (cursor - 1) + " have been extracted (cursor=" + cursor + ", total=" + totalMessages + ")."
                 : "No messages have been extracted yet (total=" + totalMessages + ").";
         return ExtractionPrompt.format(workspace, cursorInfo, ZonedDateTime.now(timezone), maxTurns);
-    }
-
-    private static boolean isLockFile(Path p) {
-        if (!Files.isRegularFile(p)) return false;
-        Path fn = p.getFileName();
-        return fn != null && fn.toString().endsWith(LOCK_SUFFIX);
     }
 
     private List<Path> findLockFiles() {

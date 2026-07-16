@@ -44,6 +44,17 @@ import java.util.Properties;
 public class CliApp {
     private static final Logger LOGGER = LoggerFactory.getLogger(CliApp.class);
 
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("DE_MIGHT_IGNORE")
+    private static void closeShutdownResources(java.util.List<AutoCloseable> resources) {
+        for (var resource : resources) {
+            try {
+                resource.close();
+            } catch (Exception ignored) {
+                // shutdown cleanup failure is non-critical
+            }
+        }
+    }
+
     private final Path configFile;
     private final String modelOverride;
     private final String prompt;
@@ -202,17 +213,6 @@ public class CliApp {
         }
         CliAppHelper.closeQuietly(ui);
         CliAppHelper.closeShutdownResources(sessionContext.result());
-    }
-
-    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("DE_MIGHT_IGNORE")
-    private static void closeShutdownResources(java.util.List<AutoCloseable> resources) {
-        for (var resource : resources) {
-            try {
-                resource.close();
-            } catch (Exception ignored) {
-                // shutdown cleanup failure is non-critical
-            }
-        }
     }
 
     private SessionContext initializeSession(TerminalUI ui) {
