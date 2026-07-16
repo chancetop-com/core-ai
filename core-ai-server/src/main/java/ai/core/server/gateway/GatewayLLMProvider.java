@@ -14,6 +14,7 @@ import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.llm.streaming.DefaultStreamingCallback;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.server.domain.GatewayProviderConfig;
+import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,11 +111,6 @@ public class GatewayLLMProvider extends LLMProvider {
     @Override
     public String name() {
         return "gateway";
-    }
-
-    @Override
-    public String getModel(CompletionRequest request) {
-        return request.model;
     }
 
     private void applyPreprocess(CompletionRequest request) {
