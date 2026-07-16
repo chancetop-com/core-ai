@@ -38,6 +38,58 @@ public final class LLMModelContextRegistry {
         loadModelInfo();
     }
 
+    public int getMaxInputTokens(String modelName) {
+        var info = getModelInfo(modelName);
+        return info != null ? info.maxInputTokens() : DEFAULT_MAX_INPUT_TOKENS;
+    }
+
+    public ModelInfo getModelInfo(String modelName) {
+        if (modelName == null) return null;
+        var info = modelInfoMap.get(modelName);
+        if (info != null) {
+            return info;
+        }
+
+        // Try with common prefixes for Azure/other providers
+        for (var prefix : MODEL_PREFIXES) {
+            info = modelInfoMap.get(prefix + modelName);
+            if (info != null) {
+                return info;
+            }
+        }
+
+        // Try to find a matching base model (e.g., gpt-4o-2024-05-13 -> gpt-4o)
+        var baseName = extractBaseModelName(modelName);
+        if (!baseName.equals(modelName)) {
+            info = modelInfoMap.get(baseName);
+            return info;
+        }
+
+        return null;
+    }
+
+    public boolean hasModel(String modelName) {
+        return getModelInfo(modelName) != null;
+    }
+
+    public Double estimateCostUsd(String modelName, long inputTokens, long outputTokens, long cachedInputTokens) {
+        var info = getModelInfo(modelName);
+        if (info == null) return null;
+
+        var safeInputTokens = Math.max(inputTokens, 0);
+        var safeOutputTokens = Math.max(outputTokens, 0);
+        var safeCachedTokens = Math.min(Math.max(cachedInputTokens, 0), safeInputTokens);
+        var uncachedInputTokens = safeInputTokens - safeCachedTokens;
+
+        return uncachedInputTokens * info.inputCostPerToken()
+            + safeCachedTokens * info.cacheReadInputTokenCost()
+            + safeOutputTokens * info.outputCostPerToken();
+    }
+
+    public int size() {
+        return modelInfoMap.size();
+    }
+
     private void loadModelInfo() {
         try (var is = getClass().getResourceAsStream(RESOURCE_PATH)) {
             if (is == null) {
@@ -101,36 +153,6 @@ public final class LLMModelContextRegistry {
         return null;
     }
 
-    public int getMaxInputTokens(String modelName) {
-        var info = getModelInfo(modelName);
-        return info != null ? info.maxInputTokens() : DEFAULT_MAX_INPUT_TOKENS;
-    }
-
-    public ModelInfo getModelInfo(String modelName) {
-        if (modelName == null) return null;
-        var info = modelInfoMap.get(modelName);
-        if (info != null) {
-            return info;
-        }
-
-        // Try with common prefixes for Azure/other providers
-        for (var prefix : MODEL_PREFIXES) {
-            info = modelInfoMap.get(prefix + modelName);
-            if (info != null) {
-                return info;
-            }
-        }
-
-        // Try to find a matching base model (e.g., gpt-4o-2024-05-13 -> gpt-4o)
-        var baseName = extractBaseModelName(modelName);
-        if (!baseName.equals(modelName)) {
-            info = modelInfoMap.get(baseName);
-            return info;
-        }
-
-        return null;
-    }
-
     private String extractBaseModelName(String modelName) {
         // Remove date-based version suffixes (e.g., -2024-05-13)
         var result = modelName.replaceAll("-\\d{4}-\\d{2}-\\d{2}$", "");
@@ -140,28 +162,6 @@ public final class LLMModelContextRegistry {
         result = result.replaceAll("-beta$", "");
 
         return result;
-    }
-
-    public boolean hasModel(String modelName) {
-        return getModelInfo(modelName) != null;
-    }
-
-    public Double estimateCostUsd(String modelName, long inputTokens, long outputTokens, long cachedInputTokens) {
-        var info = getModelInfo(modelName);
-        if (info == null) return null;
-
-        var safeInputTokens = Math.max(inputTokens, 0);
-        var safeOutputTokens = Math.max(outputTokens, 0);
-        var safeCachedTokens = Math.min(Math.max(cachedInputTokens, 0), safeInputTokens);
-        var uncachedInputTokens = safeInputTokens - safeCachedTokens;
-
-        return uncachedInputTokens * info.inputCostPerToken()
-            + safeCachedTokens * info.cacheReadInputTokenCost()
-            + safeOutputTokens * info.outputCostPerToken();
-    }
-
-    public int size() {
-        return modelInfoMap.size();
     }
 
     public record ModelInfo(

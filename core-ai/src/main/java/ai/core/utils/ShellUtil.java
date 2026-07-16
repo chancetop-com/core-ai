@@ -50,45 +50,12 @@ public class ShellUtil {
         }
     }
 
-    private static String readProcessOutput(Process process) throws Exception {
-        try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            var sb = new StringBuilder();
-            String line = reader.readLine();
-            while (line != null) {
-                if (!sb.isEmpty()) sb.append('\n');
-                sb.append(line);
-                line = reader.readLine();
-            }
-            process.waitFor(5, TimeUnit.SECONDS);
-            return sb.toString().trim();
-        }
-    }
-
     public static String getPreferredShell(Platform os) {
         return switch (os) {
             case WINDOWS_X64 -> getWindowsPreferredShell();
             case LINUX_X64, MACOS_X64 -> getFirstExistsShell(os, UNIX_SHELLS);
             default -> throw new RuntimeException("Unsupported OS: " + os);
         };
-    }
-
-    private static String getWindowsPreferredShell() {
-//        // Prefer Unix-like shells (Git Bash, MSYS2, Cygwin, WSL) on Windows
-//        // when available, then fall back to Windows native shells.
-//        for (var shell : UNIX_SHELLS) {
-//            if (isCommandExists(Platform.WINDOWS_X64, shell)) {
-//                return shell;
-//            }
-//        }
-        return getFirstExistsShell(Platform.WINDOWS_X64, WINDOWS_NATIVE_SHELLS);
-    }
-
-    private static String getFirstExistsShell(Platform os, java.util.Collection<String> shells) {
-        return shells.stream().filter(v -> isCommandExists(os, v)).findFirst().orElseThrow();
-    }
-
-    private static boolean isUnixShell(String shell) {
-        return UNIX_SHELLS.contains(shell);
     }
 
     public static boolean isPowerShell(String shell) {
@@ -111,5 +78,38 @@ public class ShellUtil {
             return POWERSHELL_ENCODING_SETUP + command;
         }
         return command;
+    }
+
+    private static String readProcessOutput(Process process) throws Exception {
+        try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            var sb = new StringBuilder();
+            String line = reader.readLine();
+            while (line != null) {
+                if (!sb.isEmpty()) sb.append('\n');
+                sb.append(line);
+                line = reader.readLine();
+            }
+            process.waitFor(5, TimeUnit.SECONDS);
+            return sb.toString().trim();
+        }
+    }
+
+    private static String getWindowsPreferredShell() {
+//        // Prefer Unix-like shells (Git Bash, MSYS2, Cygwin, WSL) on Windows
+//        // when available, then fall back to Windows native shells.
+//        for (var shell : UNIX_SHELLS) {
+//            if (isCommandExists(Platform.WINDOWS_X64, shell)) {
+//                return shell;
+//            }
+//        }
+        return getFirstExistsShell(Platform.WINDOWS_X64, WINDOWS_NATIVE_SHELLS);
+    }
+
+    private static String getFirstExistsShell(Platform os, java.util.Collection<String> shells) {
+        return shells.stream().filter(v -> isCommandExists(os, v)).findFirst().orElseThrow();
+    }
+
+    private static boolean isUnixShell(String shell) {
+        return UNIX_SHELLS.contains(shell);
     }
 }

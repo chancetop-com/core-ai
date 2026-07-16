@@ -8,10 +8,9 @@ import java.lang.reflect.InvocationTargetException;
  * @author stephen
  */
 public class ClassUtil {
-    @SuppressWarnings("PMD.UselessPureMethodCall")
     public static void checkNoArgConstructor(Class<?> type) {
         try {
-            type.getDeclaredConstructor();
+            var constructor = type.getDeclaredConstructor();
         } catch (NoSuchMethodException e) {
             throw new IllegalStateException(Strings.format("Class {}'s must has no arg constructor", type.getName()), e);
         }

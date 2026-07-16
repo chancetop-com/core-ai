@@ -60,6 +60,7 @@ public class TurnDriver {
         logger.info("TurnDriver exited driveLoop, thread={}", Thread.currentThread().getName());
     }
 
+    @SuppressWarnings("checkstyle:NestedTryDepth")
     private void processBatch(SessionCommandQueue.CommandBatch batch) {
         startHeartbeat();
         try {
@@ -69,14 +70,11 @@ public class TurnDriver {
         }
     }
 
+    @SuppressWarnings("OverlyBroadCatchBlock")
     private void renewOwnership() {
         var callback = onIdle;
         if (callback != null) {
-            try {
-                callback.run();
-            } catch (Exception e) {
-                logger.warn("onIdle callback threw", e);
-            }
+            callback.run();
         }
     }
 

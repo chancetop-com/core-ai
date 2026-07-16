@@ -14,22 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class BackgroundTaskManagerTest {
 
-    @SuppressWarnings("PMD.UseTryWithResources")
-    private static void submitAndWait(Tracer tracer, BackgroundTaskManager manager, Span parentSpan) throws Exception {
-        var scope = parentSpan.makeCurrent();
-        try {
-            var handle = manager.submit("deep-research-1", () -> {
-                var agentSpan = tracer.spanBuilder("background-agent").startSpan();
-                agentSpan.end();
-                return "done";
-            }, null);
-            handle.future().get(5, TimeUnit.SECONDS);
-        } finally {
-            scope.close();
-            parentSpan.end();
-        }
-    }
-
     @Test
     void backgroundTaskKeepsSubmittingTraceContext() throws Exception {
         var spans = new RecordingSpanProcessor();
@@ -53,6 +37,19 @@ class BackgroundTaskManagerTest {
         } finally {
             tracerProvider.shutdown();
         }
+    }
+
+    @SuppressWarnings("PMD.UseTryWithResources")
+    private static void submitAndWait(Tracer tracer, BackgroundTaskManager manager, Span parentSpan) throws Exception {
+        var scope = parentSpan.makeCurrent();
+        var handle = manager.submit("deep-research-1", () -> {
+            var agentSpan = tracer.spanBuilder("background-agent").startSpan();
+            agentSpan.end();
+            return "done";
+        }, null);
+        handle.future().get(5, TimeUnit.SECONDS);
+        scope.close();
+        parentSpan.end();
     }
 
     private static final class InMemorySink implements SubagentOutputSink {

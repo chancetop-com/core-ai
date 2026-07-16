@@ -83,8 +83,7 @@ public class McpServerConfig {
             builder.endpoint(endpoint);
         }
 
-        String transport = (String) config.get("transport");
-        if ("sse".equalsIgnoreCase(transport)) {
+        if ("sse".equalsIgnoreCase((String) config.get("transport"))) {
             builder.transportType(TransportType.SSE);
         }
 
