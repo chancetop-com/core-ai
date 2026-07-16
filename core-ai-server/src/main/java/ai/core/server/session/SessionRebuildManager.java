@@ -257,7 +257,7 @@ public class SessionRebuildManager {
                 effectiveConfig, SessionSubAgentManager.toolsToRegistry(tools),
                 sandbox.context, params.agentName, extraVars, agentId,
                 sandbox.sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(params.sessionId))) : null,
-                null));
+                null, null));
         var session = new InProcessAgentSession(params.sessionId, agent, true, new InMemoryToolPermissionStore());
         sandbox.sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(params.sessionId));

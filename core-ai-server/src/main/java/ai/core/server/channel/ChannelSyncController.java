@@ -116,6 +116,7 @@ public class ChannelSyncController implements Controller {
             sessionCache.remove(userField);
         }
         var config = new SessionConfig();
+        config.channelType = resolveEffectiveChannelType(channel, userField);
         var result = sessionManager.createSessionFromAgent(agent, config, userId, "channel");
         var sessionId = result.sessionId();
         if (userField != null) {
@@ -196,6 +197,13 @@ public class ChannelSyncController implements Controller {
     private void authenticateOcg(String channelId) {
         var config = ocgConfigStore.loadByChannelId(channelId);
         if (config == null || !Boolean.TRUE.equals(config.enabled)) throw new NotFoundException("OCG config not found for channel: " + channelId);
+    }
+
+    private String resolveEffectiveChannelType(ChannelConfigView channel, String userField) {
+        if (!"openclaw".equals(channel.channelType)) return channel.channelType;
+        if (userField == null || userField.isBlank()) return "openclaw";
+        int colonIndex = userField.indexOf(':');
+        return colonIndex > 0 ? userField.substring(0, colonIndex) : userField;
     }
 
     @SuppressWarnings("unchecked")

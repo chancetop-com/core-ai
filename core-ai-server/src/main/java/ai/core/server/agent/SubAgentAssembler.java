@@ -76,7 +76,7 @@ public class SubAgentAssembler {
         var config = toSessionConfig(definition);
         var toolRegistry = resolveToolsToRegistry(definition, sessionId);
         skillToolAssembler.attach(resolveSkillIds(definition), toolRegistry);
-        var bc = new BuildAgentConfig(config, toolRegistry, null, definition.name, null, definition.id, null, null);
+        var bc = new BuildAgentConfig(config, toolRegistry, null, definition.name, null, definition.id, null, null, null);
         return buildAgent(bc);
     }
 
@@ -153,6 +153,9 @@ public class SubAgentAssembler {
         if (c.memoryInject != null) {
             builder.systemPromptSection(c.memoryInject);
         }
+        if (c.channelInject != null) {
+            builder.systemPromptSection(c.channelInject);
+        }
         return builder.build();
     }
 
@@ -168,6 +171,7 @@ public class SubAgentAssembler {
 
     public record BuildAgentConfig(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,
                                     String agentName, Map<String, Object> extraSystemVars, String agentId,
-                                    List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject) {
+                                    List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject,
+                                    PromptInject channelInject) {
     }
 }

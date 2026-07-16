@@ -94,12 +94,14 @@ public class SessionSubAgentManager {
 
     public Agent buildAgent(BuildAgentParams params) {
         var bc = new SubAgentAssembler.BuildAgentConfig(params.config, params.toolRegistry, params.context,
-                params.agentName, params.extraSystemVars, params.agentId, params.extraLifecycles, params.memoryInject);
+                params.agentName, params.extraSystemVars, params.agentId, params.extraLifecycles, params.memoryInject,
+                params.channelInject);
         return subAgentAssembler.buildAgent(bc);
     }
 
     public record BuildAgentParams(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,
                                     String agentName, Map<String, Object> extraSystemVars, String agentId,
-                                    List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject) {
+                                    List<AbstractLifecycle> extraLifecycles, PromptInject memoryInject,
+                                    PromptInject channelInject) {
     }
 }

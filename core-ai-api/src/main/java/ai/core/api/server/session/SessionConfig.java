@@ -37,4 +37,6 @@ public class SessionConfig {
 
     @Property(name = "datasetConfigs")
     public List<DatasetConfigEntry> datasetConfigs;
+
+    public String channelType;
 }

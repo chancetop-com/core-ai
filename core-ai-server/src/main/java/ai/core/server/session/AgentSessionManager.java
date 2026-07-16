@@ -32,6 +32,7 @@ import ai.core.server.web.sse.SessionChannelService;
 import ai.core.tool.tools.InternalUrlResolver;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.web.sse.SseEventBridge;
+import ai.core.prompt.PromptInject;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import core.framework.inject.Inject;
@@ -41,6 +42,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -167,10 +169,14 @@ public class AgentSessionManager {
             effectiveConfig.systemPrompt = datasetHelper().appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
             extraVars = datasetHelper().buildDatasetSystemVars(datasetConfig);
         }
+        if (effectiveConfig.channelType != null && !effectiveConfig.channelType.isBlank()) {
+            if (extraVars == null) extraVars = new HashMap<>();
+            extraVars.put("system.channel.type", effectiveConfig.channelType);
+        }
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry, context, null, extraVars, null,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
-                null));
+                null, channelInject(effectiveConfig)));
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
@@ -260,6 +266,10 @@ public class AgentSessionManager {
             config.systemPrompt = datasetHelper().appendDatasetInstructions(config.systemPrompt, datasetConfig);
             extraVars = datasetHelper().buildDatasetSystemVars(datasetConfig);
         }
+        if (config.channelType != null && !config.channelType.isBlank()) {
+            if (extraVars == null) extraVars = new HashMap<>();
+            extraVars.put("system.channel.type", config.channelType);
+        }
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
                 .build();
@@ -271,7 +281,7 @@ public class AgentSessionManager {
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 config, toolRegistry, context, definition.name, extraVars, definition.id,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
-                memoryInject));
+                memoryInject, channelInject(config)));
 
         var experimentConfig = memoryExperimentService.getConfig(definition.id);
         if (experimentConfig != null) {
@@ -421,6 +431,11 @@ public class AgentSessionManager {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private PromptInject channelInject(SessionConfig config) {
+        if (config == null || config.channelType == null || config.channelType.isBlank()) return null;
+        return () -> "You are communicating with the user through the " + config.channelType + " channel.";
     }
 
     public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds) {

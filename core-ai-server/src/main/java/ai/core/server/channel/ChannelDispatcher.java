@@ -110,6 +110,7 @@ public class ChannelDispatcher {
     private String createChannelSession(ChannelConfigView channel, InboundEvent event, String conversationKey) {
         var userId = resolveUserId(channel, event);
         var config = new SessionConfig();
+        config.channelType = channel.channelType;
 
         if (channel.agentId != null && !channel.agentId.isBlank()) {
             var definition = agentDefinitionService.getEntity(channel.agentId);
