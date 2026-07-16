@@ -151,7 +151,7 @@ class SubAgentToolCallTest {
                 new Usage(10, 10, 20)
         );
         when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
-                .thenAnswer(invocation -> {
+                .thenAnswer(_ -> {
                     try {
                         Thread.sleep(500);
                     } catch (InterruptedException e) {
@@ -219,7 +219,7 @@ class SubAgentToolCallTest {
     }
 
     private void executeSubAgentInSpan(Agent researcher, Span parentSpan) {
-        try (var scope = parentSpan.makeCurrent()) {
+        try (var _ = parentSpan.makeCurrent()) {
             var toolCall = SubAgentToolCall.builder().subAgent(researcher).build();
             var result = toolCall.execute("{\"query\": \"Research climate change\"}", ExecutionContext.empty());
             assertTrue(result.isCompleted());
