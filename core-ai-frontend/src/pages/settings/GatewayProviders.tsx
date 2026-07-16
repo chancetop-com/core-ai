@@ -260,6 +260,14 @@ export default function GatewayProviders() {
     setModelPanelOpen(true);
   };
 
+  const openCreateModel = () => {
+    setModelForm({
+      ...emptyModelForm,
+      providerId: providers[0]?.id || '',
+    });
+    setModelPanelOpen(true);
+  };
+
   const saveModel = async () => {
     setSaving(true);
     setError('');
@@ -322,6 +330,16 @@ export default function GatewayProviders() {
     });
   };
 
+  const toggleSelectAllDiscoveredModels = () => {
+    const nonImported = discoveredModels.filter(model => !model.imported);
+    if (nonImported.length === 0) return;
+    if (selectedDiscoveredModels.size === nonImported.length) {
+      setSelectedDiscoveredModels(new Set());
+    } else {
+      setSelectedDiscoveredModels(new Set(nonImported.map(model => model.id)));
+    }
+  };
+
   const importDiscoveredModels = async () => {
     if (!discoveryProviderId || selectedDiscoveredModels.size === 0) return;
     setSaving(true);
@@ -382,14 +400,33 @@ export default function GatewayProviders() {
           <div className="flex items-center gap-2">
             <SegmentedButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')}>Providers</SegmentedButton>
             <SegmentedButton active={activeTab === 'models'} onClick={() => setActiveTab('models')}>Models</SegmentedButton>
-            <button
-              onClick={activeTab === 'providers' ? openCreateProvider : openDiscoverModels}
-              disabled={activeTab === 'models' && providers.length === 0}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
-              style={{ background: 'var(--color-primary)' }}>
-              {activeTab === 'providers' ? <Plus size={16} /> : <RefreshCw size={16} />}
-              {activeTab === 'providers' ? 'Provider' : 'Sync Models'}
-            </button>
+            {activeTab === 'providers' ? (
+              <button
+                onClick={openCreateProvider}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                style={{ background: 'var(--color-primary)' }}>
+                <Plus size={16} />
+                Provider
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={openCreateModel}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                  style={{ background: 'var(--color-primary)' }}>
+                  <Plus size={16} />
+                  Model
+                </button>
+                <button
+                  onClick={openDiscoverModels}
+                  disabled={providers.length === 0}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                  <RefreshCw size={16} />
+                  Sync
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -431,6 +468,7 @@ export default function GatewayProviders() {
       {modelPanelOpen && renderModelPanel({
         form: modelForm,
         provider: providerById.get(modelForm.providerId),
+        providers,
         saving,
         setForm: setModelForm,
         toggleEndpoint,
@@ -448,6 +486,7 @@ export default function GatewayProviders() {
         changeProvider: changeDiscoveryProvider,
         discover: discoverModels,
         toggleModel: toggleDiscoveredModel,
+        toggleSelectAll: toggleSelectAllDiscoveredModels,
         close: () => setDiscoveryPanelOpen(false),
         importModels: importDiscoveredModels,
       })}
@@ -713,16 +752,31 @@ function renderProviderPanel(props: {
 function renderModelPanel(props: {
   form: ModelFormState;
   provider?: GatewayProvider;
+  providers: GatewayProvider[];
   saving: boolean;
   setForm: (form: ModelFormState) => void;
   toggleEndpoint: (endpoint: string, checked: boolean) => void;
   close: () => void;
   save: () => void;
 }) {
-  const { form, provider, saving, setForm, toggleEndpoint, close, save } = props;
+  const { form, provider, providers, saving, setForm, toggleEndpoint, close, save } = props;
+  const isCreate = !form.id;
   return (
-    <Panel title={form.id ? 'Edit Model' : 'New Model'} close={close}>
+    <Panel title={isCreate ? 'New Model' : 'Edit Model'} close={close}>
       <div className="p-5 space-y-4">
+        {isCreate && (
+          <Field label="Provider">
+            <select
+              className={inputClass}
+              style={inputStyle}
+              value={form.providerId}
+              onChange={e => setForm({ ...form, providerId: e.target.value })}>
+              <option value="">Select provider</option>
+              {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <Field label="Alias">
             <input className={inputClass} style={inputStyle} value={form.modelId} onChange={e => setForm({ ...form, modelId: e.target.value })} />
@@ -732,8 +786,22 @@ function renderModelPanel(props: {
           </Field>
         </div>
 
-        <ReadOnlyField label="Provider">{provider?.name || form.providerId}</ReadOnlyField>
-        <ReadOnlyField label="Official Model">{form.upstreamModel}</ReadOnlyField>
+        {isCreate ? (
+          <Field label="Official Model">
+            <input
+              className={inputClass}
+              style={inputStyle}
+              value={form.upstreamModel}
+              onChange={e => setForm({ ...form, upstreamModel: e.target.value })}
+              placeholder="e.g. gpt-4o"
+            />
+          </Field>
+        ) : (
+          <>
+            <ReadOnlyField label="Provider">{provider?.name || form.providerId}</ReadOnlyField>
+            <ReadOnlyField label="Official Model">{form.upstreamModel}</ReadOnlyField>
+          </>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Enabled">
@@ -787,10 +855,13 @@ function renderDiscoverModelsPanel(props: {
   changeProvider: (providerId: string) => void;
   discover: (providerId?: string) => void;
   toggleModel: (modelId: string, checked: boolean) => void;
+  toggleSelectAll: () => void;
   close: () => void;
   importModels: () => void;
 }) {
-  const { providers, providerId, models, selectedModels, discovering, saving, changeProvider, discover, toggleModel, close, importModels } = props;
+  const { providers, providerId, models, selectedModels, discovering, saving, changeProvider, discover, toggleModel, toggleSelectAll, close, importModels } = props;
+  const nonImportedCount = models.filter(model => !model.imported).length;
+  const allSelected = nonImportedCount > 0 && selectedModels.size === nonImportedCount;
   return (
     <Panel title="Sync Models" close={close}>
       <div className="p-5 space-y-4">
@@ -813,6 +884,20 @@ function renderDiscoverModelsPanel(props: {
           </div>
         </div>
 
+        {models.length > 0 && (
+          <div className="flex items-center justify-between">
+            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              {models.length} model{models.length === 1 ? '' : 's'} found · {selectedModels.size} selected
+            </span>
+            <button
+              onClick={toggleSelectAll}
+              disabled={nonImportedCount === 0}
+              className="text-xs font-medium cursor-pointer disabled:opacity-50"
+              style={{ color: 'var(--color-primary)' }}>
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+          </div>
+        )}
         <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
           <table className="w-full text-sm">
             <thead style={{ background: 'var(--color-bg-secondary)' }}>
