@@ -20,22 +20,24 @@ import ai.core.server.session.AgentSessionManager;
  */
 final class ServerA2AEventAdapter extends A2AEventAdapter {
     private final A2ATaskState taskState;
-    private final ServerA2ARouting routing;
+    private final A2ATaskRegistry taskRegistry;
+    private final A2AEventRelay eventRelay;
     private final AgentSessionManager sessionManager;
 
-    ServerA2AEventAdapter(A2ATaskState taskState, ServerA2ATaskOptions options,
-                          ServerA2ARouting routing, AgentSessionManager sessionManager) {
+    ServerA2AEventAdapter(A2ATaskState taskState, ServerA2ATaskOptions options, A2ATaskRegistry taskRegistry,
+                           A2AEventRelay eventRelay, AgentSessionManager sessionManager) {
         super(taskState.taskId, taskState, options.streamSender, options.syncFuture);
         this.taskState = taskState;
-        this.routing = routing;
+        this.taskRegistry = taskRegistry;
+        this.eventRelay = eventRelay;
         this.sessionManager = sessionManager;
     }
 
     @Override
     protected void sendSseEvent(StreamResponse data) {
         super.sendSseEvent(data);
-        if (routing.eventRelay != null) {
-            routing.eventRelay.publish(taskState.taskId, data);
+        if (eventRelay != null) {
+            eventRelay.publish(taskState.taskId, data);
         }
     }
 
@@ -91,8 +93,8 @@ final class ServerA2AEventAdapter extends A2AEventAdapter {
         if (sessionManager != null) {
             sessionManager.touchSession(taskState.contextId);
         }
-        if (routing.taskRegistry != null) {
-            routing.taskRegistry.save(taskState);
+        if (taskRegistry != null) {
+            taskRegistry.save(taskState);
         }
     }
 }

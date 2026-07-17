@@ -138,7 +138,7 @@ class ServerA2AServiceTest {
         var service = new ServerA2AService();
         var registry = new FakeTaskRegistry();
         registry.snapshots.put("task-1", snapshot("task-1", "context-1", "pod-a", TaskState.COMPLETED, "done"));
-        service.setTaskRouting(registry, null, null, null);
+        service.taskRegistry = registry;
         var request = new GetTaskRequest();
         request.id = "task-1";
 
@@ -162,7 +162,8 @@ class ServerA2AServiceTest {
         canceled.status = ai.core.api.a2a.TaskStatus.of(TaskState.CANCELED);
         when(rpcClient.callToPod(eq("owner-pod"), any(SessionCommand.class), same(Task.class), any(Duration.class)))
                 .thenReturn(canceled);
-        service.setTaskRouting(registry, null, rpcClient, null);
+        service.taskRegistry = registry;
+        service.rpcClient = rpcClient;
         var request = new CancelTaskRequest();
         request.id = "task-1";
 
@@ -192,7 +193,9 @@ class ServerA2AServiceTest {
         remoteTask.status = ai.core.api.a2a.TaskStatus.of(TaskState.WORKING);
         when(rpcClient.callToPod(eq("owner-pod"), any(SessionCommand.class), same(Task.class), any(Duration.class)))
                 .thenReturn(remoteTask);
-        service.setTaskRouting(registry, ownership, rpcClient, null);
+        service.taskRegistry = registry;
+        service.ownershipRegistry = ownership;
+        service.rpcClient = rpcClient;
         var request = request("hello");
         request.message.contextId = "context-1";
         var config = new SendMessageConfiguration();

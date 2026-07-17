@@ -86,8 +86,8 @@ public class ServerApp extends App {
         load(new TaskModule());
         load(new TraceModule());
         load(new MemoryModule());
-        load(new SandboxModule());
         load(new MessagingInfrastructureModule());
+        load(new SandboxModule());
         load(new AuthModule());
         load(new UserModule());
         load(new ArtifactModule());
@@ -111,7 +111,7 @@ public class ServerApp extends App {
         load(new ForYouModule());
         load(new AgentRunnerModule());
         load(new TriggerModule());
-        load(new MessagingModule());
+        load(new MessagingRuntimeModule());
         load(new ChannelModule());
         load(new WorkflowModule());
     }

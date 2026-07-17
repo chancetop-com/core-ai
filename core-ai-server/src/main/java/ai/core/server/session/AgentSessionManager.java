@@ -87,7 +87,9 @@ public class AgentSessionManager {
     @Inject
     SandboxSnapshotService sandboxSnapshotService;
 
+    @Inject
     EventPublisher eventPublisher;
+    @Inject
     SessionOwnershipRegistry ownershipRegistry;
     @Inject
     ChannelRegistry channelRegistry;
@@ -102,14 +104,6 @@ public class AgentSessionManager {
     private SessionSubAgentManager subAgentManager;
     private SessionRebuildManager rebuildManager;
     private SessionDatasetHelper datasetHelper;
-
-    public void setEventPublisher(EventPublisher eventPublisher) {
-        this.eventPublisher = eventPublisher;
-    }
-
-    public void setOwnershipRegistry(SessionOwnershipRegistry ownershipRegistry) {
-        this.ownershipRegistry = ownershipRegistry;
-    }
 
     private SessionSkillManager skillManager() {
         if (skillManager == null) {

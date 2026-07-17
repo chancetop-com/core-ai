@@ -45,10 +45,7 @@ public class WorkflowModule extends Module {
 
     @Override
     protected void initialize() {
-        var toolRegistryService = context.beanFactory.bean(ToolRegistryService.class, null);
-        var sandboxService = context.beanFactory.bean(SandboxService.class, null);
-        var fileService = context.beanFactory.bean(FileService.class, null);
-        bindWorkflow((ToolRegistryService) toolRegistryService, (SandboxService) sandboxService, (FileService) fileService);
+        bindWorkflow(bean(ToolRegistryService.class), bean(SandboxService.class), bean(FileService.class));
         api().service(WorkflowWebService.class, bind(WorkflowWebServiceImpl.class));
     }
 

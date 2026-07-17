@@ -6,6 +6,7 @@ import ai.core.server.blob.AzureBlobSasService;
 import ai.core.server.blob.AzureObjectStorageService;
 import ai.core.server.blob.BlobUploadCredentialController;
 import ai.core.server.blob.MinioObjectStorageService;
+import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
@@ -26,6 +27,7 @@ public class ObjectStorageModule extends Module {
     @Override
     protected void initialize() {
         registerFile();
+        bind(ObjectStorageConfiguration.class);
         var blobController = configureObjectStorage();
         http().bean(BlobUploadCredentialView.class);
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
@@ -82,6 +84,7 @@ public class ObjectStorageModule extends Module {
             blobController.storageService = objectStorage;
             bind(ObjectStorageService.class, objectStorage);
         }
+        bean(ObjectStorageConfiguration.class).service = objectStorage;
 
         return blobController;
     }

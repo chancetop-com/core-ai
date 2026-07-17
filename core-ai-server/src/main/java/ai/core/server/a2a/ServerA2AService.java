@@ -92,16 +92,15 @@ public class ServerA2AService {
     @Inject
     AgentSessionManager sessionManager;
 
-    private final ServerA2ARouting routing = new ServerA2ARouting();
+    @Inject
+    A2ATaskRegistry taskRegistry;
+    @Inject
+    SessionOwnershipRegistry ownershipRegistry;
+    @Inject
+    RpcClient rpcClient;
+    @Inject
+    A2AEventRelay eventRelay;
     private final ConcurrentMap<String, A2ATaskState> tasks = new ConcurrentHashMap<>();
-
-    public void setTaskRouting(A2ATaskRegistry taskRegistry, SessionOwnershipRegistry ownershipRegistry,
-                               RpcClient rpcClient, A2AEventRelay eventRelay) {
-        routing.taskRegistry = taskRegistry;
-        routing.ownershipRegistry = ownershipRegistry;
-        routing.rpcClient = rpcClient;
-        routing.eventRelay = eventRelay;
-    }
 
     public AgentCard agentCard(String agentId) {
         return ServerA2AAgentCardFactory.from(agentDefinitionService.getEntity(agentId));
@@ -144,7 +143,7 @@ public class ServerA2AService {
         if (task != null) {
             return task.toTask();
         }
-        var snapshot = routing.taskRegistry != null ? routing.taskRegistry.get(id) : null;
+        var snapshot = taskRegistry != null ? taskRegistry.get(id) : null;
         if (snapshot == null) {
             throw new NotFoundException("task not found");
         }
@@ -159,10 +158,10 @@ public class ServerA2AService {
             if (task.isTerminal()) return task.toTask();
             return cancelLocalTask(task);
         }
-        var snapshot = routing.taskRegistry != null ? routing.taskRegistry.get(id) : null;
+        var snapshot = taskRegistry != null ? taskRegistry.get(id) : null;
         if (snapshot == null) throw new NotFoundException("task not found");
         if (snapshot.isTerminal()) return snapshot.toTask();
-        return callTaskOwner(snapshot, SessionCommand.a2aCancelTask(snapshot.contextId, null, id, routing.rpcClient.newRequestId()));
+        return callTaskOwner(snapshot, SessionCommand.a2aCancelTask(snapshot.contextId, null, id, rpcClient.newRequestId()));
     }
 
     private Task createSyncTask(String agentId, SendMessageRequest request, String userId) {
@@ -196,7 +195,7 @@ public class ServerA2AService {
         tasks.put(resolvedTaskId, state);
         saveTask(state);
 
-        var adapter = new ServerA2AEventAdapter(state, options, routing, sessionManager);
+        var adapter = new ServerA2AEventAdapter(state, options, taskRegistry, eventRelay, sessionManager);
         state.attachEventListener(adapter);
         state.setStreamCloser(() -> {
             adapter.stopStreaming();
@@ -228,7 +227,7 @@ public class ServerA2AService {
         }
         var snapshot = snapshot(message.taskId);
         return callTaskOwner(snapshot, SessionCommand.a2aResumeTask(snapshot.contextId, userId,
-                JsonUtil.toJson(message), routing.rpcClient.newRequestId()));
+                JsonUtil.toJson(message), rpcClient.newRequestId()));
     }
 
     private A2ATaskState resumeTask(Message message, String userId,
@@ -307,7 +306,7 @@ public class ServerA2AService {
         var snapshot = remoteSnapshot(taskId, request.message.contextId);
         var payload = startTaskPayload(taskId, agentId, request, synchronous);
         var command = SessionCommand.a2aStartTask(snapshot.contextId, userId, JsonUtil.toJson(payload),
-                routing.rpcClient.newRequestId());
+                rpcClient.newRequestId());
         var timeout = synchronous ? Duration.ofMinutes(5) : Duration.ofSeconds(15);
         return callTaskOwner(snapshot, command, timeout);
     }
@@ -318,7 +317,7 @@ public class ServerA2AService {
         var snapshot = remoteSnapshot(taskId, request.message.contextId);
         var payload = startTaskPayload(taskId, agentId, request, false);
         var command = SessionCommand.a2aStartTask(snapshot.contextId, userId, JsonUtil.toJson(payload),
-                routing.rpcClient.newRequestId());
+                rpcClient.newRequestId());
         proxyStream(snapshot, command, streamSender, closeStream);
         return null;
     }
@@ -326,7 +325,7 @@ public class ServerA2AService {
     private A2ATaskState streamResumeRemotely(A2ATaskSnapshot snapshot, Message message, String userId,
                                               Consumer<StreamResponse> streamSender, Runnable closeStream) {
         var command = SessionCommand.a2aResumeTask(snapshot.contextId, userId, JsonUtil.toJson(message),
-                routing.rpcClient.newRequestId());
+                rpcClient.newRequestId());
         proxyStream(snapshot, command, streamSender, closeStream);
         return null;
     }
@@ -334,13 +333,13 @@ public class ServerA2AService {
     private void proxyStream(A2ATaskSnapshot snapshot, SessionCommand command,
                              Consumer<StreamResponse> streamSender, Runnable closeStream) {
         A2AEventRelay.Subscription subscription = null;
-        if (routing.eventRelay != null) {
-            subscription = routing.eventRelay.subscribe(snapshot.taskId, streamSender, closeStream);
+        if (eventRelay != null) {
+            subscription = eventRelay.subscribe(snapshot.taskId, streamSender, closeStream);
         }
         try {
             var task = callTaskOwner(snapshot, command, Duration.ofSeconds(15));
             streamSender.accept(StreamResponse.ofTask(task));
-            if (routing.eventRelay == null && closeStream != null) closeStream.run();
+            if (eventRelay == null && closeStream != null) closeStream.run();
         } catch (RuntimeException e) {
             if (subscription != null) subscription.close();
             throw e;
@@ -351,10 +350,10 @@ public class ServerA2AService {
         var snapshot = new A2ATaskSnapshot();
         snapshot.taskId = taskId;
         snapshot.contextId = contextId;
-        snapshot.ownerPod = routing.ownershipRegistry != null ? routing.ownershipRegistry.getOwner(contextId) : null;
+        snapshot.ownerPod = ownershipRegistry != null ? ownershipRegistry.getOwner(contextId) : null;
         snapshot.state = TaskState.WORKING;
         snapshot.updatedAtMillis = System.currentTimeMillis();
-        if (routing.taskRegistry != null) routing.taskRegistry.save(snapshot);
+        if (taskRegistry != null) taskRegistry.save(snapshot);
         return snapshot;
     }
 
@@ -372,28 +371,28 @@ public class ServerA2AService {
     }
 
     private Task callTaskOwner(A2ATaskSnapshot snapshot, SessionCommand command, Duration timeout) {
-        if (routing.rpcClient == null) throw new NotFoundException("task not found");
-        return routing.rpcClient.callToPod(snapshot.ownerPod, command, Task.class, timeout);
+        if (rpcClient == null) throw new NotFoundException("task not found");
+        return rpcClient.callToPod(snapshot.ownerPod, command, Task.class, timeout);
     }
 
     private A2ATaskSnapshot snapshot(String taskId) {
-        var snapshot = routing.taskRegistry != null ? routing.taskRegistry.get(taskId) : null;
+        var snapshot = taskRegistry != null ? taskRegistry.get(taskId) : null;
         if (snapshot == null) throw new NotFoundException("task not found");
         return snapshot;
     }
 
     private boolean contextOwnedByAnotherPod(String contextId) {
-        if (contextId == null || contextId.isBlank() || routing.ownershipRegistry == null) return false;
-        var owner = routing.ownershipRegistry.getOwner(contextId);
-        return owner != null && !owner.equals(routing.ownershipRegistry.getHostname());
+        if (contextId == null || contextId.isBlank() || ownershipRegistry == null) return false;
+        var owner = ownershipRegistry.getOwner(contextId);
+        return owner != null && !owner.equals(ownershipRegistry.getHostname());
     }
 
     private void saveTask(A2ATaskState state) {
         if (sessionManager != null) {
             sessionManager.touchSession(state.contextId);
         }
-        if (routing.taskRegistry != null) {
-            routing.taskRegistry.save(state);
+        if (taskRegistry != null) {
+            taskRegistry.save(state);
         }
     }
 

@@ -15,15 +15,13 @@ public class CommandPublisher {
     private final JedisPool jedisPool;
     private final SessionOwnershipRegistry ownershipRegistry;
     private final SandboxService sandboxService;
-    private InProcessCommandHandler commandHandler;
+    private final InProcessCommandHandler commandHandler;
 
-    public CommandPublisher(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService) {
+    public CommandPublisher(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService,
+                            InProcessCommandHandler commandHandler) {
         this.jedisPool = jedisPool;
         this.ownershipRegistry = ownershipRegistry;
         this.sandboxService = sandboxService;
-    }
-
-    public void setCommandHandler(InProcessCommandHandler commandHandler) {
         this.commandHandler = commandHandler;
     }
 

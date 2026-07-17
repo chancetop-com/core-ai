@@ -3,6 +3,7 @@ package ai.core.server;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.MinioObjectStorageService;
+import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
@@ -16,6 +17,7 @@ import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import core.framework.module.Module;
+import redis.clients.jedis.JedisPool;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,7 +36,7 @@ class SandboxModule extends Module {
     protected void initialize() {
         var providerName = property("sys.sandbox.provider").orElse(null);
         if (providerName == null || providerName.isBlank()) {
-            sandboxService = new SandboxService();
+            sandboxService = new SandboxService(bean(JedisPool.class));
             bind(sandboxService);
             return;
         }
@@ -53,16 +55,15 @@ class SandboxModule extends Module {
             provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
             serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
         } else {
-            sandboxService = new SandboxService();
+            sandboxService = new SandboxService(bean(JedisPool.class));
             bind(sandboxService);
             return;
         }
-        sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox);
+        sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox, bean(JedisPool.class));
         bind(sandboxService);
 
-        var fileService = (FileService) context.beanFactory.bean(FileService.class, null);
-        sandboxService.setFileService(fileService);
-        var objectStorage = (ObjectStorageService) context.beanFactory.bean(ObjectStorageService.class, null);
+        sandboxService.setFileService(bean(FileService.class));
+        var objectStorage = bean(ObjectStorageConfiguration.class).service;
         sandboxService.setStorageService(objectStorage);
 
         configureSandboxSnapshot(objectStorage);

@@ -16,8 +16,7 @@ public class ToolRegistryModule extends Module {
     @Override
     protected void initialize() {
         var toolRegistryService = bind(ToolRegistryService.class);
-        var sandboxService = (SandboxService) context.beanFactory.bean(SandboxService.class, null);
-        toolRegistryService.setSandboxService(sandboxService);
+        toolRegistryService.setSandboxService(bean(SandboxService.class));
 
         var mcpConfig = property("mcp.servers.json").orElse(null);
         onStartup(() -> toolRegistryService.initialize(mcpConfig));

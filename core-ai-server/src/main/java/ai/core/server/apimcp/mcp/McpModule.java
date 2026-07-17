@@ -15,13 +15,9 @@ public class McpModule extends Module {
     @Override
     protected void initialize() {
         bind(McpService.class);
-        bind(ApiLoaderService.class);
+        var apiLoaderService = bind(ApiLoaderService.class);
         api().service(McpWebService.class, bind(McpWebServiceImpl.class));
-        onStartup(() -> {
-            var service = (McpServerService) context.beanFactory.bean(McpServerService.class, null);
-            var apiService = (ApiLoaderService) context.beanFactory.bean(ApiLoaderService.class, null);
-            var loader = new ApiMcpToolLoader(apiService);
-            service.setToolLoader(loader);
-        });
+        var mcpServerService = bean(McpServerService.class);
+        onStartup(() -> mcpServerService.setToolLoader(new ApiMcpToolLoader(apiLoaderService)));
     }
 }

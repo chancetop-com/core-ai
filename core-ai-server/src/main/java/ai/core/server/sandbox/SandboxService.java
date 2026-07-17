@@ -77,23 +77,33 @@ public class SandboxService {
     private SandboxRedisStore redisStore;
 
     public SandboxService() {
+        this(null);
+    }
+
+    public SandboxService(JedisPool jedisPool) {
         this.sandboxManager = null;
         this.defaultConfig = new SandboxConfig();
         this.defaultConfig.enabled = Boolean.FALSE;
         this.cleanupScheduler = null;
         this.serverUrlFromSandbox = null;
         this.enabled = false;
+        this.redisStore = new SandboxRedisStore(jedisPool);
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig) {
-        this(provider, defaultConfig, null);
+        this(provider, defaultConfig, null, null);
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox) {
+        this(provider, defaultConfig, serverUrlFromSandbox, null);
+    }
+
+    public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox, JedisPool jedisPool) {
         this.sandboxManager = new SandboxManager(provider);
         this.defaultConfig = defaultConfig != null ? defaultConfig : createDefaultConfig();
         this.serverUrlFromSandbox = serverUrlFromSandbox;
         this.enabled = true;
+        this.redisStore = new SandboxRedisStore(jedisPool);
 
         this.cleanupScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             var t = new Thread(r, "sandbox-cleanup");
@@ -111,9 +121,6 @@ public class SandboxService {
     }
     public void setSnapshotService(SandboxSnapshotService snapshotService) {
         this.snapshotService = snapshotService;
-    }
-    public void setJedisPool(JedisPool jedisPool) {
-        this.redisStore = new SandboxRedisStore(jedisPool);
     }
 
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
