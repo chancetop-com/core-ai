@@ -11,12 +11,12 @@ import java.util.Map;
 /**
  * @author stephen
  */
-class AttachmentMessageHelper {
+public class AttachmentMessageHelper {
     private static final Logger LOGGER = LoggerFactory.getLogger(AttachmentMessageHelper.class);
 
     /** Collect pending file metadata for sandbox upload, returned as serializable maps
      *  to be embedded in the command payload so the processing pod has the data. */
-    static List<Map<String, String>> collectPendingFiles(String sessionId, SendMessageRequest request) {
+    public static List<Map<String, String>> collectPendingFiles(String sessionId, SendMessageRequest request) {
         LOGGER.info("[ENQUEUE] collectPendingFiles called, sessionId={}, hasAttachments={}, count={}",
                 sessionId, request.attachments != null, request.attachments != null ? request.attachments.size() : 0);
         if (request.attachments == null || request.attachments.isEmpty()) return null;
@@ -57,7 +57,7 @@ class AttachmentMessageHelper {
         return result.isEmpty() ? null : result;
     }
 
-    static String buildMessageWithAttachments(SendMessageRequest request) {
+    public static String buildMessageWithAttachments(SendMessageRequest request) {
         if (request.attachments == null || request.attachments.isEmpty()) {
             return request.message;
         }
