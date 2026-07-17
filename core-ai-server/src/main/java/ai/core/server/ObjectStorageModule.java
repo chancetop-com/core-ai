@@ -51,7 +51,7 @@ public class ObjectStorageModule extends Module {
             var sasService = AzureBlobSasService.tryCreate(azureAccountName, azureAccountKey);
             if (sasService != null) {
                 var azureMultimodalContainer = property("azure.blob.multimodal.container").orElse("uploads");
-                var azureSandboxContainer = property("azure.blob.sandbox.container").orElse("sandbox-uploads");
+                var azureSandboxContainer = property("azure.blob.sandbox.container").orElse("sandbox");
                 var azurePublicBaseUrl = property("azure.blob.public.base.url").orElse(null);
                 blobController.multimodalContainer = azureMultimodalContainer;
                 blobController.sandboxContainer = azureSandboxContainer;
