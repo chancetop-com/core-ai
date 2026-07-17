@@ -23,6 +23,28 @@ public class AdminAnalyticsController {
         .findAndRegisterModules()
         .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
+    // === Static helpers ===
+
+    private static String mode(Request request) {
+        return request.queryParams().getOrDefault("mode", "history");
+    }
+
+    private static String range(Request request) {
+        return request.queryParams().getOrDefault("range", "7d");
+    }
+
+    private static String from(Request request) {
+        return request.queryParams().get("from");
+    }
+
+    private static String to(Request request) {
+        return request.queryParams().get("to");
+    }
+
+    private static String sort(Request request) {
+        return request.queryParams().getOrDefault("sort", "tokens");
+    }
+
     @Inject
     AdminAnalyticsService analyticsService;
     @Inject
@@ -92,26 +114,6 @@ public class AdminAnalyticsController {
         if (userId == null) throw new ForbiddenException("admin required");
         var user = userCollection.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
         if (!"admin".equals(user.role)) throw new ForbiddenException("admin required");
-    }
-
-    private static String mode(Request request) {
-        return request.queryParams().getOrDefault("mode", "history");
-    }
-
-    private static String range(Request request) {
-        return request.queryParams().getOrDefault("range", "7d");
-    }
-
-    private static String from(Request request) {
-        return request.queryParams().get("from");
-    }
-
-    private static String to(Request request) {
-        return request.queryParams().get("to");
-    }
-
-    private static String sort(Request request) {
-        return request.queryParams().getOrDefault("sort", "tokens");
     }
 
     private Response jsonResponse(Object data) {

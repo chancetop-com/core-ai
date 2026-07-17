@@ -21,7 +21,7 @@ public class TraceArchivingTask extends AbstractTask {
     private static final ZoneId UTC = ZoneId.of("UTC");
 
     @Inject
-    TraceDailyMaintenanceService maintenanceService;
+    TraceArchiveService archiveService;
 
     @Override
     public String type() {
@@ -31,7 +31,7 @@ public class TraceArchivingTask extends AbstractTask {
     @Override
     public void execute(TaskContext ctx) {
         LocalDate today = LocalDate.now(UTC);
-        LocalDate cutoff = today.minusDays(maintenanceService.retentionDays);
+        LocalDate cutoff = today.minusDays(archiveService.retentionDays);
         var cutoffInstant = cutoff.atStartOfDay(UTC);
 
         String state = ctx.state();
@@ -39,7 +39,7 @@ public class TraceArchivingTask extends AbstractTask {
         // Phase 1: upload traces to object storage
         if (!"UPLOADED".equals(state)) {
             ctx.log("uploading traces with started_at < " + cutoff);
-            int count = maintenanceService.uploadArchive(cutoffInstant);
+            int count = archiveService.uploadArchive(cutoffInstant);
             if (count < 0) {
                 ctx.setStatusText("archive skipped (storage not configured or stats missing), cutoff=" + cutoff);
                 ctx.setState("SKIPPED");
@@ -53,7 +53,7 @@ public class TraceArchivingTask extends AbstractTask {
         // Runs on first execution (just after Phase 1 above) or on retry (when state was already UPLOADED)
         if ("UPLOADED".equals(ctx.state())) {
             ctx.log("deleting archived traces from MongoDB, cutoff=" + cutoff);
-            maintenanceService.deleteArchivedTraces(cutoffInstant);
+            archiveService.deleteArchivedTraces(cutoffInstant);
             ctx.log("deletion completed");
             ctx.setState("DELETED");
             ctx.setStatusText("archived and deleted traces before " + cutoff);

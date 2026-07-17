@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.task.TaskRunner;
+import ai.core.server.trace.maintenance.TraceArchiveService;
 import ai.core.server.trace.maintenance.TraceArchivingJob;
 import ai.core.server.trace.maintenance.TraceArchivingTask;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceJob;
@@ -34,16 +35,17 @@ public class TraceModule extends Module {
 
     @Override
     protected void initialize() {
-        var maintenanceService = bind(TraceDailyMaintenanceService.class);
+        bind(TraceDailyMaintenanceService.class);
+        var archiveService = bind(TraceArchiveService.class);
         try {
             var objectStorage = (ObjectStorageService) context.beanFactory.bean(ObjectStorageService.class, null);
-            maintenanceService.setStorageService(objectStorage);
+            archiveService.setStorageService(objectStorage);
         } catch (Error e) {
-            maintenanceService.setStorageService(null);
+            archiveService.setStorageService(null);
         }
         var container = property("trace.archive.container").orElse(property("azure.blob.multimodal.container").orElse("traces-archive"));
-        maintenanceService.setArchiveContainer(container);
-        maintenanceService.setArchivePrefix(resolveArchivePrefix());
+        archiveService.setArchiveContainer(container);
+        archiveService.setArchivePrefix(resolveArchivePrefix());
         var traceDailyMaintenanceTask = bind(TraceDailyMaintenanceTask.class);
         var taskRunner = bind(TaskRunner.class);   // must be before bindService() — TaskController injects it
         onStartup(() -> taskRunner.register(traceDailyMaintenanceTask));
