@@ -57,6 +57,7 @@ public final class ExecutionContext {
     private String model;
     private String multiModalModel;
     private StreamingCallback streamingCallback;
+    private final ThreadLocal<String> currentToolCallId = new ThreadLocal<>();
     private List<AbstractLifecycle> lifecycles;
     private Consumer<Usage> tokenCostCallback;
     private Map<String, SubAgentConfig> subAgentConfigs;
@@ -208,6 +209,22 @@ public final class ExecutionContext {
 
     public void setStreamingCallback(StreamingCallback streamingCallback) {
         this.streamingCallback = streamingCallback;
+    }
+
+    public void setCurrentToolCallId(String toolCallId) {
+        if (toolCallId == null) {
+            currentToolCallId.remove();
+        } else {
+            currentToolCallId.set(toolCallId);
+        }
+    }
+
+    public void clearCurrentToolCallId() {
+        currentToolCallId.remove();
+    }
+
+    public String getCurrentToolCallId() {
+        return currentToolCallId.get();
     }
 
     public List<AbstractLifecycle> getLifecycle() {

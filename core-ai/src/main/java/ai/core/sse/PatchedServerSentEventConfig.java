@@ -17,12 +17,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 public class PatchedServerSentEventConfig extends Config {
     private final Logger logger = LoggerFactory.getLogger(PatchedServerSentEventConfig.class);
 
     ModuleContext context;
     private PatchedServerSentEventMetrics metrics;
+    private final Map<Class<?>, PatchedServerSentEventContextImpl<?>> contexts = new HashMap<>();
     //todo: use patched ServerSentEventHandler
     private PatchedServerSentEventHandler patchedServerSentEventHandler;
 
@@ -47,11 +50,16 @@ public class PatchedServerSentEventConfig extends Config {
         // context.beanClassValidator.validate(eventClass);
         context.apiController.beanClasses.add(eventClass);
 
-        var sseContext = new PatchedServerSentEventContextImpl<T>();
+        @SuppressWarnings("unchecked")
+        var sseContext = (PatchedServerSentEventContextImpl<T>) contexts.get(eventClass);
+        if (sseContext == null) {
+            sseContext = new PatchedServerSentEventContextImpl<>();
+            contexts.put(eventClass, sseContext);
+            context.beanFactory.bind(Types.generic(ServerSentEventContext.class, eventClass), null, sseContext);
+            metrics.contexts.add(sseContext);
+            context.backgroundTask().scheduleWithFixedDelay(sseContext::keepAlive, Duration.ofSeconds(15));
+        }
         patchedServerSentEventHandler.add(method, path, eventClass, listener, sseContext);
-        context.beanFactory.bind(Types.generic(ServerSentEventContext.class, eventClass), null, sseContext);
-        metrics.contexts.add(sseContext);
-        context.backgroundTask().scheduleWithFixedDelay(sseContext::keepAlive, Duration.ofSeconds(15));
     }
 
     /**

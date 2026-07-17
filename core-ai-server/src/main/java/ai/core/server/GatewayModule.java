@@ -3,6 +3,7 @@ package ai.core.server;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
+import ai.core.media.MediaProvider;
 import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
 import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
 import ai.core.server.gateway.GatewayLLMProvider;
@@ -70,7 +71,7 @@ public class GatewayModule extends Module {
 
     private void bindGatewayMediaProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector) {
         var mediaProvider = new GatewayMediaProvider(routingEngine, secretProtector);
-        bind(mediaProvider);
+        bind(MediaProvider.class, mediaProvider);
         VideoPollingHelper.setProvider(mediaProvider);
     }
 

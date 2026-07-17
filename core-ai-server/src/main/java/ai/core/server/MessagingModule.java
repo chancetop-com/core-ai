@@ -12,7 +12,6 @@ import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.EventSubscriber;
 import ai.core.server.messaging.InProcessCommandHandler;
 import ai.core.server.messaging.InProcessCommandHandlerDependencies;
-import ai.core.server.messaging.JedisConfig;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.RpcResponseSubscriber;
 import ai.core.server.messaging.SessionCommand;
@@ -23,10 +22,17 @@ import ai.core.server.session.ChatMessageService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.AgentSessionWebServiceImpl;
 import ai.core.server.web.PodLocalExecutor;
+import ai.core.server.web.sse.AgentMessageStreamChannelListener;
 import ai.core.server.web.sse.SessionChannelService;
+import ai.core.api.server.session.sse.SseBaseEvent;
+import ai.core.sse.PatchedServerSentEventConfig;
+import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.StreamEntryID;
 
 import java.util.ArrayList;
 
@@ -38,29 +44,17 @@ class MessagingModule extends Module {
 
     @Override
     protected void initialize() {
-        var redisHost = property("sys.jedis.host").orElse("localhost");
-        var redisPort = Integer.parseInt(property("sys.jedis.port").orElse("6379"));
-
-        var redisConfig = new JedisConfig(redisHost, redisPort);
-        var jedisPool = redisConfig.createJedisPool();
-        // jedisPool::close is registered LAST (see end of this method): Module.onShutdown puts every hook in
-        // ShutdownHook.STAGE_5 and they run in registration (FIFO) order, so the pool must outlive every hook
-        // below that still borrows connections from it (the command-drain hook, the subscriber stops).
-
-        var ownershipRegistry = bind(new SessionOwnershipRegistry(jedisPool));
-        var sandboxService = bean(SandboxService.class);
-        sandboxService.setJedisPool(jedisPool);
-        var commandPublisher = bind(new CommandPublisher(jedisPool, ownershipRegistry, sandboxService));
-        var eventPublisher = new EventPublisher(jedisPool);
-        eventPublisher.setSessionChannelService(bean(SessionChannelService.class));
-        bind(eventPublisher);
-        var a2aTaskRegistry = bind(new A2ATaskRegistry(jedisPool, ownershipRegistry));
-        var a2aEventRelay = bind(new A2AEventRelay(jedisPool));
+        var jedisPool = bean(JedisPool.class);
+        var ownershipRegistry = bean(SessionOwnershipRegistry.class);
+        var commandPublisher = bean(CommandPublisher.class);
+        var a2aTaskRegistry = bean(A2ATaskRegistry.class);
+        var a2aEventRelay = bean(A2AEventRelay.class);
+        var rpcClient = bean(RpcClient.class);
         bean(AgentSessionManager.class).setEventPublisher(bean(EventPublisher.class));
         bean(AgentSessionManager.class).setOwnershipRegistry(ownershipRegistry);
-        var rpcClient = bind(new RpcClient(jedisPool, ownershipRegistry));
         bind(PodLocalExecutor.class);
         api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
+        registerSseEndpoints();
         bean(ServerA2AService.class).setTaskRouting(a2aTaskRegistry, ownershipRegistry, rpcClient, a2aEventRelay);
         var rpcResponseSubscriber = new RpcResponseSubscriber(jedisPool, rpcClient);
         onStartup(rpcResponseSubscriber::start);
@@ -83,12 +77,14 @@ class MessagingModule extends Module {
         commandPublisher.setCommandHandler(commandHandler);
         setupCommandConsumer(jedisPool, ownershipRegistry, commandHandler);
 
-        // Must be the final onShutdown: STAGE_5 hooks run in registration order, so closing the pool here lets
-        // every hook above finish using it first — otherwise drainPodStream hits "Pool not open" (closed too early).
-        onShutdown(jedisPool::close);
     }
 
-    private void setupCommandConsumer(redis.clients.jedis.JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, InProcessCommandHandler commandHandler) {
+    private void registerSseEndpoints() {
+        var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
+        sseConfig.listen(HTTPMethod.POST, "/api/sessions/messages/stream", SseBaseEvent.class, bind(AgentMessageStreamChannelListener.class));
+    }
+
+    private void setupCommandConsumer(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, InProcessCommandHandler commandHandler) {
         var commandConsumer = new CommandConsumer(jedisPool, commandHandler, ownershipRegistry);
         onStartup(commandConsumer::start);
         onShutdown(() -> {
@@ -99,7 +95,7 @@ class MessagingModule extends Module {
                 LOGGER.info("republishing {} pending commands to unowned stream", pending.size());
                 try (var jedis = jedisPool.getResource()) {
                     for (var cmd : pending) {
-                        jedis.xadd(SessionCommand.UNOWNED_STREAM, redis.clients.jedis.StreamEntryID.NEW_ENTRY, cmd.toStreamMap());
+                        jedis.xadd(SessionCommand.UNOWNED_STREAM, StreamEntryID.NEW_ENTRY, cmd.toStreamMap());
                     }
                 }
             }

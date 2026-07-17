@@ -538,7 +538,6 @@ export default function Chat() {
           const sid = res.sessionId;
           setSessionId(sid);
           promoteOptimisticSession(sid, autoMessage);
-          doConnectSSE(sid);
           const lt = res.loaded_tools;
           if (lt && lt.length > 0) {
             setLoadedToolIds(new Set(lt.map(t => t.id)));
@@ -557,8 +556,7 @@ export default function Chat() {
           setPreToolIds(new Set());
           setPreSkillIds(new Set());
           setPreSubAgentIds(new Set());
-          await new Promise(resolve => setTimeout(resolve, 500));
-          await sessionApi.sendMessage(sid, autoMessage, {});
+          doStreamMessage(sid, autoMessage, {}, undefined);
           setSidebarRefreshKey(k => k + 1);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -977,7 +975,46 @@ export default function Chat() {
     }
   }, []);
 
-  // Connect SSE - single source of truth
+  const doStreamMessage = useCallback((
+    sid: string,
+    message: string,
+    variables: Record<string, string> | undefined,
+    attachments: { url: string; type: string; file_name?: string; category?: string; container?: string; blob_name?: string }[] | undefined,
+  ) => {
+    abortSSE();
+    const connectionSeq = ++sseConnectionSeqRef.current;
+    activeSseSessionIdRef.current = sid;
+    const controller = sessionApi.sendMessageStream(
+      sid,
+      message,
+      variables,
+      attachments,
+      event => {
+        if (sseConnectionSeqRef.current !== connectionSeq || activeSseSessionIdRef.current !== sid) return;
+        if (event.sessionId && event.sessionId !== sid) return;
+        handleSSEEvent(event);
+      },
+      err => {
+        if (sseConnectionSeqRef.current !== connectionSeq || activeSseSessionIdRef.current !== sid) return;
+        console.error('SSE error:', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        showToast(`Connection lost: ${msg}. Please retry.`);
+        setStatus('idle');
+      },
+      () => {
+        if (sseConnectionSeqRef.current === connectionSeq && sseControllerRef.current === controller) {
+          sseControllerRef.current = null;
+          activeSseSessionIdRef.current = null;
+          setStatus('idle');
+          setIsThinking(false);
+          setAwaitInfo(null);
+        }
+      },
+    );
+    sseControllerRef.current = controller;
+  }, [abortSSE, handleSSEEvent, showToast]);
+
+  // Connect SSE only to resume an already-running turn.
   const doConnectSSE = useCallback((sid: string) => {
     abortSSE();
     const connectionSeq = ++sseConnectionSeqRef.current;
@@ -1035,12 +1072,6 @@ export default function Chat() {
   const ensureSession = useCallback(async (firstMessage?: string): Promise<string> => {
     if (sessionId) {
       cancelledSessionIdsRef.current.delete(sessionId);
-      // Always reconnect SSE before sending a new message to ensure a fresh stream.
-      // The old SSE connection may appear alive (sseControllerRef still set) even
-      // after TURN_COMPLETE if the server keeps the connection open. Aborting and
-      // reconnecting guarantees each message gets a dedicated SSE stream.
-      doConnectSSE(sessionId);
-      await new Promise(resolve => setTimeout(resolve, 300));
       return sessionId;
     }
 
@@ -1060,7 +1091,6 @@ export default function Chat() {
     setSessionId(id);
     promoteOptimisticSession(id, firstMessage);
     cancelledSessionIdsRef.current.delete(id);
-    doConnectSSE(id);
 
     // Update loaded state from server response
     const loadedTools = res.loaded_tools;
@@ -1086,10 +1116,8 @@ export default function Chat() {
     setPreSkillIds(new Set());
     setPreSubAgentIds(new Set());
 
-    // Wait for SSE to connect
-    await new Promise(resolve => setTimeout(resolve, 500));
     return id;
-  }, [availableTools, doConnectSSE, draftDatasetConfigs, preSkillIds, preSubAgentIds, preToolIds, promoteOptimisticSession, selectedAgentId, sessionId, showToast]);
+  }, [availableTools, draftDatasetConfigs, preSkillIds, preSubAgentIds, preToolIds, promoteOptimisticSession, selectedAgentId, sessionId, showToast]);
 
   const handleSend = useCallback(async (text: string, attachments: ComposerAttachment[]) => {
     if ((!text && attachments.length === 0) || status !== 'idle' || !selectedAgentId) return;
@@ -1110,7 +1138,10 @@ export default function Chat() {
 
     try {
       const sid = await ensureSession(text);
-      await sessionApi.sendMessage(sid, text, variableValues,
+      doStreamMessage(
+        sid,
+        text,
+        variableValues,
         attachments.length > 0
           ? attachments.map(a => ({
             url: a.url,
@@ -1120,7 +1151,8 @@ export default function Chat() {
             container: a.container,
             blob_name: a.blob_name,
           }))
-          : undefined);
+          : undefined,
+      );
       setSidebarRefreshKey(k => k + 1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1136,7 +1168,7 @@ export default function Chat() {
       setIsThinking(false);
       showToast(`Send failed: ${msg}. Please retry.`);
     }
-  }, [ensureSession, selectedAgentId, sessionId, showToast, status, variableValues]);
+  }, [doStreamMessage, ensureSession, selectedAgentId, sessionId, showToast, status, variableValues]);
 
   const handleApproval = useCallback(async (decision: 'APPROVE' | 'DENY') => {
     if (!sessionId || !awaitInfo) return;

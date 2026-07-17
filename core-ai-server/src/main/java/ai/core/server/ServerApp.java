@@ -81,6 +81,7 @@ public class ServerApp extends App {
         load(new TraceModule());
         load(new MemoryModule());
         load(new SandboxModule());
+        load(new MessagingInfrastructureModule());
         load(new ServerModule());
         load(new SessionModule());
         load(new AgentRunnerModule());

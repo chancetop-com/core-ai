@@ -201,7 +201,12 @@ public class ToolExecutor {
         var future = CompletableFuture.supplyAsync(() -> {
             threadRef.set(Thread.currentThread());
             try (var scope = otelContext.makeCurrent()) {
-                return traceToolSpan(functionCall, tool.isSubAgent(), () -> tool.execute(functionCall.function.arguments, context));
+                context.setCurrentToolCallId(functionCall.id);
+                try {
+                    return traceToolSpan(functionCall, tool.isSubAgent(), () -> tool.execute(functionCall.function.arguments, context));
+                } finally {
+                    context.clearCurrentToolCallId();
+                }
             }
         }, AsyncToolTaskExecutor.getInstance().getExecutor());
 

@@ -56,7 +56,9 @@ public class SessionStreamingCallback implements StreamingCallback {
 
     @Override
     public void onOutput(String source, String callId, String chunk) {
-        dispatcher.accept(EnvironmentOutputChunkEvent.of(sessionId, source, callId, chunk));
+        var resolvedCallId = callId != null ? callId : context.getCurrentToolCallId();
+        if (resolvedCallId == null) return;
+        dispatcher.accept(EnvironmentOutputChunkEvent.of(sessionId, source, resolvedCallId, chunk));
     }
 
     @Override

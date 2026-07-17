@@ -269,6 +269,59 @@ export const sessionApi = {
       body: JSON.stringify({ message, variables, attachments }),
     }),
 
+  sendMessageStream: (
+    sessionId: string,
+    message: string,
+    variables: Record<string, string> | undefined,
+    attachments: { url: string; type: string; file_name?: string; category?: string; container?: string; blob_name?: string }[] | undefined,
+    onEvent: (event: SseEvent) => void,
+    onError?: (err: unknown) => void,
+    onClose?: () => void,
+  ): AbortController => {
+    const controller = new AbortController();
+    const url = `${BASE}/api/sessions/messages/stream?agent-session-id=${encodeURIComponent(sessionId)}`;
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    const authHeaders = getAuthHeaders();
+    for (const [key, value] of Object.entries(authHeaders)) {
+      xhr.setRequestHeader(key, value);
+    }
+    xhr.setRequestHeader('Accept', 'text/event-stream');
+
+    let lastIndex = 0;
+    let buffer = '';
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState === xhr.HEADERS_RECEIVED || xhr.readyState === xhr.LOADING) {
+        const newText = xhr.responseText.substring(lastIndex);
+        lastIndex = xhr.responseText.length;
+        if (!newText) return;
+        buffer += newText;
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice(5).trim();
+          if (!data) continue;
+          try {
+            onEvent(JSON.parse(data) as SseEvent);
+          } catch {
+            // ignore
+          }
+        }
+      }
+      if (xhr.readyState === xhr.DONE) {
+        if (xhr.status >= 400) {
+          onError?.(new Error(`SSE connection failed: ${xhr.status}`));
+        }
+        onClose?.();
+      }
+    };
+    xhr.onerror = () => onError?.(new Error('SSE connection error'));
+    controller.signal.addEventListener('abort', () => xhr.abort());
+    xhr.send(JSON.stringify({ message, variables, attachments }));
+    return controller;
+  },
+
   approve: (sessionId: string, callId: string, decision: 'APPROVE' | 'DENY') =>
     request<void>(`/api/sessions/${sessionId}/approve`, { method: 'POST', body: JSON.stringify({ call_id: callId, decision }) }),
 

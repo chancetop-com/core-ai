@@ -1,8 +1,10 @@
 package ai.core.tool;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.sandbox.Sandbox;
+import ai.core.session.SessionStreamingCallback;
 import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.telemetry.AgentTracer;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -27,6 +30,29 @@ class ToolExecutorTest {
 
     private static Sandbox fakeSandbox(String interceptedToolName) {
         return new FakeSandbox(interceptedToolName);
+    }
+
+    @Test
+    void associatesStreamingOutputWithExecutingToolCall() {
+        var callId = new AtomicReference<String>();
+        var tool = new FakeToolCall("run_bash_command", false) {
+            @Override
+            public ToolCallResult execute(String arguments, ExecutionContext context) {
+                context.getStreamingCallback().onOutput("bash", null, "done");
+                return ToolCallResult.completed("ok");
+            }
+        };
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var context = ExecutionContext.empty();
+        context.setStreamingCallback(new SessionStreamingCallback("session_1", event -> {
+            if (event instanceof EnvironmentOutputChunkEvent output) {
+                callId.set(output.callId);
+            }
+        }, context));
+
+        executor.execute(tool, FunctionCall.of("call_1", "function", "run_bash_command", "{}"), context);
+
+        assertEquals("call_1", callId.get());
     }
 
     @Test
