@@ -32,9 +32,6 @@ public class MultiAgentModule extends Module {
         if (r.liteLLMProvider != null) {
             bind(r.liteLLMProvider);
         }
-        if (r.liteLLMImageProvider != null) {
-            bind(r.liteLLMImageProvider);
-        }
         if (r.openAIProvider != null) {
             bind(LiteLLMProvider.class, "openai", r.openAIProvider);
         }

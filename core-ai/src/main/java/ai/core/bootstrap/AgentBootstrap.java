@@ -1,7 +1,6 @@
 package ai.core.bootstrap;
 
 import ai.core.document.Tokenizer;
-import ai.core.image.providers.LiteLLMImageProvider;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
@@ -208,7 +207,6 @@ public class AgentBootstrap {
             var provider = new LiteLLMProvider(providerConfig, props.requiredProperty("litellm.api.base"), props.property("litellm.api.key").orElse(""));
             injectTracerIfAvailable(provider);
             result.liteLLMProvider = provider;
-            result.liteLLMImageProvider = new LiteLLMImageProvider();
             providers.addProvider(LLMProviderType.LITELLM, provider);
         });
 

@@ -1,6 +1,5 @@
 package ai.core.bootstrap;
 
-import ai.core.image.providers.LiteLLMImageProvider;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.mcp.client.McpClientManager;
@@ -31,7 +30,6 @@ public class BootstrapResult {
     public VectorStores vectorStores;
 
     public LiteLLMProvider liteLLMProvider;
-    public LiteLLMImageProvider liteLLMImageProvider;
     public LiteLLMProvider openAIProvider;
     public LiteLLMProvider azureProvider;
     public LiteLLMProvider deepSeekProvider;
