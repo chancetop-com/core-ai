@@ -36,6 +36,9 @@ public class AnalyticsDailyStats {
     @Field(name = "provider_id")
     public String providerId;
 
+    @Field(name = "provider_name")
+    public String providerName;
+
     @Field(name = "date")
     public ZonedDateTime date;
 

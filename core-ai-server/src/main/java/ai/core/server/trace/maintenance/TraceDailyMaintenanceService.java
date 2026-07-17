@@ -1,6 +1,7 @@
 package ai.core.server.trace.maintenance;
 
 import ai.core.server.domain.GatewayModelConfig;
+import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
@@ -37,6 +38,8 @@ public class TraceDailyMaintenanceService {
     MongoCollection<AnalyticsDailyStats> analyticsStatsCollection;
     @Inject
     MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    @Inject
+    MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
     @Inject
     MongoCollection<Trace> traceCollection;
 
@@ -86,9 +89,21 @@ public class TraceDailyMaintenanceService {
             LOGGER.info("no gateway_model entries found, skipping analytics aggregation for {}", date);
             return 0;
         }
+        var providerIdToName = loadProviderIdToNameMapping();
 
-        var rows = aggregateAnalyticsTraces(dayStart, dayEnd, date, modelToProvider);
+        var rows = aggregateAnalyticsTraces(dayStart, dayEnd, date, modelToProvider, providerIdToName);
         return upsertAnalyticsStats(rows, date);
+    }
+
+    private Map<String, String> loadProviderIdToNameMapping() {
+        var providers = gatewayProviderCollection.find(new Query());
+        Map<String, String> mapping = new LinkedHashMap<>();
+        for (var provider : providers) {
+            if (provider.id != null && provider.name != null) {
+                mapping.put(provider.id, provider.name);
+            }
+        }
+        return mapping;
     }
 
     private Map<String, String> loadModelToProviderMapping() {
@@ -103,13 +118,16 @@ public class TraceDailyMaintenanceService {
     }
 
     private List<Document> aggregateAnalyticsTraces(ZonedDateTime dayStart, ZonedDateTime dayEnd,
-                                                      LocalDate date, Map<String, String> modelToProvider) {
-        var addFieldsStage = buildProviderAddFields(modelToProvider);
+                                                      LocalDate date, Map<String, String> modelToProvider,
+                                                      Map<String, String> providerIdToName) {
+        var addProviderId = buildProviderAddFields(modelToProvider);
+        var addProviderName = buildProviderNameAddFields(providerIdToName);
         var aggregate = new Aggregate<Document>();
         aggregate.resultClass = Document.class;
         aggregate.pipeline = List.of(
             Aggregates.match(Filters.and(Filters.gte("started_at", dayStart), Filters.lt("started_at", dayEnd))),
-            addFieldsStage,
+            addProviderId,
+            addProviderName,
             Aggregates.group(
                 new Document()
                     .append("user_id", "$user_id")
@@ -118,6 +136,7 @@ public class TraceDailyMaintenanceService {
                     .append("source", new Document("$ifNull", List.of("$source", "unknown")))
                     .append("model", new Document("$ifNull", List.of("$model", "unknown")))
                     .append("provider_id", "$provider_id")
+                    .append("provider_name", "$provider_name")
                     .append("date", date.toString()),
                 Accumulators.sum("input_tokens", "$input_tokens"),
                 Accumulators.sum("output_tokens", "$output_tokens"),
@@ -148,6 +167,20 @@ public class TraceDailyMaintenanceService {
         }
         return new Document("$addFields",
             new Document("provider_id",
+                new Document("$switch",
+                    new Document("branches", branches)
+                        .append("default", "unknown"))));
+    }
+
+    private Document buildProviderNameAddFields(Map<String, String> providerIdToName) {
+        var branches = new ArrayList<Document>();
+        for (var entry : providerIdToName.entrySet()) {
+            branches.add(new Document("case",
+                new Document("$eq", List.of("$provider_id", entry.getKey())))
+                .append("then", entry.getValue()));
+        }
+        return new Document("$addFields",
+            new Document("provider_name",
                 new Document("$switch",
                     new Document("branches", branches)
                         .append("default", "unknown"))));
@@ -192,6 +225,8 @@ public class TraceDailyMaintenanceService {
         if (model == null) model = "unknown";
         String providerId = id.getString("provider_id");
         if (providerId == null) providerId = "unknown";
+        String providerName = id.getString("provider_name");
+        if (providerName == null) providerName = "unknown";
 
         var stats = new AnalyticsDailyStats();
         stats.id = userId + "::" + agentId + "::" + source + "::" + model + "::" + providerId + "::" + date;
@@ -201,6 +236,7 @@ public class TraceDailyMaintenanceService {
         stats.source = source;
         stats.model = model;
         stats.providerId = providerId;
+        stats.providerName = providerName;
         stats.date = date.atStartOfDay(UTC);
 
         fillTokenMetrics(stats, row);

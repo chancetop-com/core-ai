@@ -86,6 +86,7 @@ import ai.core.server.web.foryou.ForYouController;
 import ai.core.server.web.foryou.ForYouService;
 import ai.core.server.analytics.AdminAnalyticsController;
 import ai.core.server.analytics.AdminAnalyticsService;
+import ai.core.server.analytics.AnalyticsMappingService;
 import ai.core.server.task.TaskController;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.sse.PatchedServerSentEventConfig;
@@ -246,6 +247,7 @@ public class ServerModule extends Module {
     }
 
     private void registerAnalyticsRoutes() {
+        bind(AnalyticsMappingService.class);
         bind(AdminAnalyticsService.class);
         var analytics = bind(AdminAnalyticsController.class);
 

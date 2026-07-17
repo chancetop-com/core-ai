@@ -1,6 +1,5 @@
 package ai.core.server.analytics;
 
-import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
 import ai.core.server.trace.domain.Trace;
 import com.mongodb.client.model.Accumulators;
@@ -10,12 +9,10 @@ import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -51,7 +48,7 @@ public class AdminAnalyticsService {
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    AnalyticsMappingService mappingService;
 
     // === Global summary ===
 
@@ -83,8 +80,9 @@ public class AdminAnalyticsService {
     }
 
     private AnalyticsModels.GlobalSummary globalFromTraces(DateRange bounds) {
-        var modelToProvider = loadModelToProviderMapping();
-        var rows = aggregateRealtimeTraces(bounds, null, modelToProvider);
+        var modelToProvider = mappingService.loadModelToProviderMapping();
+        var providerIdToName = mappingService.loadProviderIdToNameMapping();
+        var rows = aggregateRealtimeTraces(bounds, null, modelToProvider, providerIdToName);
         return buildGlobalSummary(rows);
     }
 
@@ -105,8 +103,9 @@ public class AdminAnalyticsService {
     }
 
     private List<AnalyticsModels.TrendPoint> trendFromTraces(DateRange bounds) {
-        var modelToProvider = loadModelToProviderMapping();
-        var rows = aggregateRealtimeTracesTrend(bounds, modelToProvider);
+        var modelToProvider = mappingService.loadModelToProviderMapping();
+        var providerIdToName = mappingService.loadProviderIdToNameMapping();
+        var rows = aggregateRealtimeTracesTrend(bounds, modelToProvider, providerIdToName);
         return buildTrendPoints(rows);
     }
 
@@ -136,8 +135,9 @@ public class AdminAnalyticsService {
         var bounds = AnalyticsDateUtils.resolveDateRange(mode, range, from, to);
         List<Document> rows;
         if ("realtime".equals(mode)) {
-            var modelToProvider = loadModelToProviderMapping();
-            rows = aggregateRealtimeTraces(bounds, dim, modelToProvider);
+            var modelToProvider = mappingService.loadModelToProviderMapping();
+            var providerIdToName = mappingService.loadProviderIdToNameMapping();
+            rows = aggregateRealtimeTraces(bounds, dim, modelToProvider, providerIdToName);
         } else {
             rows = aggregateStats(bounds, dim);
         }
@@ -184,17 +184,19 @@ public class AdminAnalyticsService {
         return analyticsStatsCollection.aggregate(aggregate);
     }
 
-    private List<Document> aggregateRealtimeTraces(DateRange bounds, Dimension dim, Map<String, String> modelToProvider) {
+    private List<Document> aggregateRealtimeTraces(DateRange bounds, Dimension dim, Map<String, String> modelToProvider, Map<String, String> providerIdToName) {
         var match = Aggregates.match(Filters.and(
             Filters.gte("started_at", bounds.from()),
             Filters.lt("started_at", bounds.to())
         ));
-        var addFields = buildProviderAddFields(modelToProvider);
+        var addFields = AnalyticsMappingService.buildProviderAddFields(modelToProvider);
+        var addProviderName = AnalyticsMappingService.buildProviderNameAddFields(providerIdToName);
         String groupField = dim != null ? "$" + dim.field : null;
         var pipeline = buildStatsPipeline(match, groupField, true);
         var list = new ArrayList<Bson>();
         list.add(match);
         list.add(addFields);
+        list.add(addProviderName);
         list.addAll(pipeline.subList(1, pipeline.size()));
         var aggregate = new Aggregate<Document>();
         aggregate.resultClass = Document.class;
@@ -202,16 +204,18 @@ public class AdminAnalyticsService {
         return traceCollection.aggregate(aggregate);
     }
 
-    private List<Document> aggregateRealtimeTracesTrend(DateRange bounds, Map<String, String> modelToProvider) {
+    private List<Document> aggregateRealtimeTracesTrend(DateRange bounds, Map<String, String> modelToProvider, Map<String, String> providerIdToName) {
         var match = Aggregates.match(Filters.and(
             Filters.gte("started_at", bounds.from()),
             Filters.lt("started_at", bounds.to())
         ));
-        var addFields = buildProviderAddFields(modelToProvider);
+        var addFields = AnalyticsMappingService.buildProviderAddFields(modelToProvider);
+        var addProviderName = AnalyticsMappingService.buildProviderNameAddFields(providerIdToName);
         var pipeline = buildTrendPipeline(match, "started_at");
         var list = new ArrayList<Bson>();
         list.add(match);
         list.add(addFields);
+        list.add(addProviderName);
         list.addAll(pipeline.subList(1, pipeline.size()));
         var aggregate = new Aggregate<Document>();
         aggregate.resultClass = Document.class;
@@ -235,7 +239,9 @@ public class AdminAnalyticsService {
             Accumulators.avg("avg_cost_usd", realtime ? "$cost_usd" : "$avg_cost_usd"),
             Accumulators.max("max_total_tokens", realtime ? "$total_tokens" : "$max_total_tokens"),
             Accumulators.max("max_cost_usd", realtime ? "$cost_usd" : "$max_cost_usd"),
-            Accumulators.max("p90_total_tokens", realtime ? "$total_tokens" : "$p90_total_tokens")
+            Accumulators.max("p90_total_tokens", realtime ? "$total_tokens" : "$p90_total_tokens"),
+            Accumulators.first("agent_name", "$agent_name"),
+            Accumulators.first("provider_name", "$provider_name")
         );
         pipeline.add(group);
         pipeline.add(Aggregates.sort(Sorts.descending("total_tokens")));
@@ -262,31 +268,6 @@ public class AdminAnalyticsService {
         ));
         pipeline.add(Aggregates.sort(Sorts.ascending("_id")));
         return pipeline;
-    }
-
-    private Document buildProviderAddFields(Map<String, String> modelToProvider) {
-        var branches = new ArrayList<Document>();
-        for (var entry : modelToProvider.entrySet()) {
-            branches.add(new Document("case",
-                new Document("$eq", List.of("$model", entry.getKey())))
-                .append("then", entry.getValue()));
-        }
-        return new Document("$addFields",
-            new Document("provider_id",
-                new Document("$switch",
-                    new Document("branches", branches)
-                        .append("default", "unknown"))));
-    }
-
-    private Map<String, String> loadModelToProviderMapping() {
-        var models = gatewayModelCollection.find(new Query());
-        Map<String, String> mapping = new LinkedHashMap<>();
-        for (var model : models) {
-            if (model.modelId != null && model.providerId != null) {
-                mapping.put(model.modelId, model.providerId);
-            }
-        }
-        return mapping;
     }
 
     // === Response builders ===
@@ -344,7 +325,12 @@ public class AdminAnalyticsService {
 
     private String resolveLabel(Dimension dim, Document row) {
         if (dim == AGENT) {
-            return row.getString("_id");
+            String name = row.getString("agent_name");
+            return name != null ? name : row.getString("_id");
+        }
+        if (dim == PROVIDER) {
+            String name = row.getString("provider_name");
+            return name != null ? name : row.getString("_id");
         }
         return row.getString("_id");
     }
@@ -396,12 +382,14 @@ public class AdminAnalyticsService {
     }
 
     private List<AnalyticsModels.TrendPoint> dimensionTrendFromTraces(Dimension dim, DateRange bounds, List<String> keys) {
-        var modelToProvider = loadModelToProviderMapping();
+        var modelToProvider = mappingService.loadModelToProviderMapping();
+        var providerIdToName = mappingService.loadProviderIdToNameMapping();
         var match = Aggregates.match(Filters.and(
             Filters.gte("started_at", bounds.from()),
             Filters.lt("started_at", bounds.to())
         ));
-        var addFields = buildProviderAddFields(modelToProvider);
+        var addFields = AnalyticsMappingService.buildProviderAddFields(modelToProvider);
+        var addProviderName = AnalyticsMappingService.buildProviderNameAddFields(providerIdToName);
         var group = Aggregates.group(
             new Document("dim", "$" + dim.field).append("hour",
                 new Document("$dateTrunc",
@@ -413,7 +401,7 @@ public class AdminAnalyticsService {
             Accumulators.sum("call_count", 1L)
         );
         var keyMatch = Aggregates.match(Filters.in("_id.dim", keys));
-        var pipeline = List.<Bson>of(match, addFields, group, keyMatch,
+        var pipeline = List.<Bson>of(match, addFields, addProviderName, group, keyMatch,
             Aggregates.sort(Sorts.ascending("_id.hour")));
         var aggregate = new Aggregate<Document>();
         aggregate.resultClass = Document.class;
