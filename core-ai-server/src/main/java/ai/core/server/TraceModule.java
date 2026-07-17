@@ -47,7 +47,7 @@ public class TraceModule extends Module {
         archiveService.setArchiveContainer(container);
         archiveService.setArchivePrefix(resolveArchivePrefix());
         var traceDailyMaintenanceTask = bind(TraceDailyMaintenanceTask.class);
-        var taskRunner = bind(TaskRunner.class);   // must be before bindService() — TaskController injects it
+        var taskRunner = bean(TaskRunner.class);
         onStartup(() -> taskRunner.register(traceDailyMaintenanceTask));
         schedule().fixedRate("trace-daily-maintenance", bind(TraceDailyMaintenanceJob.class), Duration.ofHours(1));
         var traceArchivingTask = bind(TraceArchivingTask.class);

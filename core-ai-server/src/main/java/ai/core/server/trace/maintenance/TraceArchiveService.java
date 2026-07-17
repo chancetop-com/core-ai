@@ -58,7 +58,7 @@ public class TraceArchiveService {
     @Inject
     MongoCollection<Span> spanCollection;
 
-    // Configuration — set by ServerModule after object storage is initialized
+    // Configuration — set after object storage is initialized
     ObjectStorageService storageService;
     String archiveContainer;
     String archivePrefix;

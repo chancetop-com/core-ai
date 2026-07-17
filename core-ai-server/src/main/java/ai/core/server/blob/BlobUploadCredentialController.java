@@ -13,7 +13,7 @@ import java.util.UUID;
  * Issues upload credentials (pre-signed URL + container/blob info) for direct browser-to-storage uploads.
  * <p>
  * The storage provider (Azure, MinIO, etc.) is abstracted behind {@link ObjectStorageService}.
- * To switch providers, change the binding in {@code ServerModule}.
+ * To switch providers, change the binding in {@code ObjectStorageModule}.
  *
  * @author stephen
  */

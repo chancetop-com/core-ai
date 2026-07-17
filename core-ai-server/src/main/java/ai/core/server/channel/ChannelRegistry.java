@@ -22,7 +22,7 @@ public class ChannelRegistry {
     private final ConcurrentMap<String, ChannelEventBridge> sessionBridges = new ConcurrentHashMap<>();
 
     /**
-     * Register a channel adapter pair. Called during ServerModule initialization.
+     * Register a channel adapter pair during channel infrastructure initialization.
      */
     public void register(ChannelInboundAdapter inbound, ChannelOutboundAdapter outbound) {
         var type = inbound.type();

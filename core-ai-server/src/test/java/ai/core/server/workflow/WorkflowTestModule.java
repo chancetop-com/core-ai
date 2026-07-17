@@ -44,11 +44,11 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
         bind(WorkflowPublishService.class);
         // bind the graph-loader seam before WorkflowRunService: the framework injects eagerly at bind() time, so a
-        // dependency must already be registered when its dependent is bound (matches ServerModule's ordering).
+        // dependency must already be registered when its dependent is bound.
         var graphLoader = bind(MongoWorkflowGraphLoader.class);
         bind(WorkflowGraphLoader.class, graphLoader);
         bind(WorkflowRunService.class);
-        // bind the sub-workflow gateway before the executor/runner that depend on it (eager injection, mirrors ServerModule)
+        // bind the sub-workflow gateway before the executor/runner that depend on it because injection is eager
         var workflowRunGateway = bind(MongoWorkflowRunGateway.class);
         bind(WorkflowRunGateway.class, workflowRunGateway);
         var registry = new NodeExecutorRegistry(Map.of(

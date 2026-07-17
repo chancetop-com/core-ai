@@ -40,8 +40,6 @@ import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.migration.SchemaVersion;
 import ai.core.server.sandbox.snapshot.SandboxEpochDoc;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotDoc;
-import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
-import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.domain.Span;
@@ -49,8 +47,6 @@ import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trigger.domain.Trigger;
-import ai.core.server.web.sse.ChannelService;
-import ai.core.server.web.sse.SessionChannelService;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
 import core.framework.mongo.module.MongoConfig;
@@ -74,28 +70,55 @@ public class ServerApp extends App {
         load(new McpServerModule());
         load(new McpModule());
 
-        bindServices();
+        loadPlatformInfrastructure();
+        loadDomainModules();
+        loadTransportModules();
+    }
 
+    private void loadPlatformInfrastructure() {
         load(new ObjectStorageModule());
         load(new GatewayModule());
+        load(new SettingsModule());
+        load(new PromptModule());
+        load(new AnalyticsModule());
+        load(new SseTransportModule());
+        load(new SandboxSnapshotModule());
+        load(new TaskModule());
         load(new TraceModule());
         load(new MemoryModule());
         load(new SandboxModule());
         load(new MessagingInfrastructureModule());
-        load(new ServerModule());
+        load(new AuthModule());
+        load(new UserModule());
+        load(new ArtifactModule());
+        load(new ChannelInfrastructureModule());
+    }
+
+    private void loadDomainModules() {
+        load(new SkillModule());
+        load(new GitHubModule());
+        load(new AgentDefinitionModule());
+        load(new DatasetModule());
+        load(new ToolRegistryModule());
+        load(new WebFoundationModule());
         load(new SessionModule());
+        load(new BuilderToolsModule());
+        load(new OpenClawModule());
+        load(new PlatformApiModule());
+        load(new SelfHarnessModule());
+        load(new A2AModule());
+        load(new NotificationModule());
+        load(new ForYouModule());
         load(new AgentRunnerModule());
+        load(new TriggerModule());
         load(new MessagingModule());
         load(new ChannelModule());
         load(new WorkflowModule());
-        load(new WebModule());
     }
 
-    private void bindServices() {
-        bind(ChannelService.class);
-        bind(SessionChannelService.class);
-        bind(SystemSettingsService.class);
-        bind(SandboxSnapshotService.class);
+    private void loadTransportModules() {
+
+        load(new WebModule());
     }
 
     private void registerMongo() {

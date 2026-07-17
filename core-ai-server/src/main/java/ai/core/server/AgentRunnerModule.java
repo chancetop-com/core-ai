@@ -9,11 +9,8 @@ import ai.core.server.run.AgentRunner;
 import ai.core.server.schedule.AgentScheduleService;
 import ai.core.server.schedule.AgentScheduler;
 import ai.core.server.schedule.AgentSchedulerJob;
-import ai.core.server.trigger.action.RunAgentAction;
-import ai.core.server.trigger.TriggerController;
 import ai.core.server.web.AgentRunWebServiceImpl;
 import ai.core.server.web.AgentScheduleWebServiceImpl;
-import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 
 import java.time.Duration;
@@ -28,7 +25,6 @@ public class AgentRunnerModule extends Module {
         bindServices();
         bindScheduledJobs();
         bindWebServices();
-        registerWebhookTrigger();
     }
 
     private void bindServices() {
@@ -39,7 +35,6 @@ public class AgentRunnerModule extends Module {
         bind(AgentRunService.class);
         bind(AgentScheduler.class);
         bind(AgentScheduleService.class);
-        bind(RunAgentAction.class);
     }
 
     private void bindScheduledJobs() {
@@ -51,10 +46,4 @@ public class AgentRunnerModule extends Module {
         api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
     }
 
-    private void registerWebhookTrigger() {
-        var controller = bind(TriggerController.class);
-        http().route(HTTPMethod.POST, "/api/webhook-triggers/:id", controller);
-        // GET for Slack URL verification challenge
-        http().route(HTTPMethod.GET, "/api/webhook-triggers/:id", controller);
-    }
 }

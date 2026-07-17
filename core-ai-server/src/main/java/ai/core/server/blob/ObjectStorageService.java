@@ -6,7 +6,7 @@ package ai.core.server.blob;
  * <p>
  * Implementations handle provider-specific credential generation (SAS for Azure,
  * pre-signed URL for S3/MinIO, etc.). Switch providers by implementing this interface
- * and updating the binding in {@code ServerModule}.
+ * and updating the binding in {@code ObjectStorageModule}.
  *
  * @author stephen
  */

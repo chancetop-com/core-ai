@@ -54,7 +54,7 @@ public final class SubmitArtifactsTool extends ToolCall {
             only the sandbox path and optional metadata.
             """;
 
-    /** Set once at module bootstrap via ServerModule. Used to build absolute download URLs in tool results. */
+    /** Set once at application bootstrap. Used to build absolute download URLs in tool results. */
     @SuppressWarnings("PMD.MutableStaticState")
     @SuppressFBWarnings("MS_CANNOT_BE_FINAL")
     public static String publicUrl = "";
