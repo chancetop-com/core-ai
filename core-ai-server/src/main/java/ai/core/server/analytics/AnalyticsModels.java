@@ -5,12 +5,12 @@ import java.util.List;
 /**
  * Response DTOs for admin analytics API.
  */
-final class AnalyticsModels {
+public final class AnalyticsModels {
 
     private AnalyticsModels() {
     }
 
-    record GlobalSummary(
+    public record GlobalSummary(
         long totalInputTokens,
         long totalOutputTokens,
         long totalTokens,
@@ -27,7 +27,7 @@ final class AnalyticsModels {
     ) {
     }
 
-    record TrendPoint(
+    public record TrendPoint(
         String timestamp,
         long inputTokens,
         long outputTokens,
@@ -37,7 +37,7 @@ final class AnalyticsModels {
     ) {
     }
 
-    record DimensionItem(
+    public record DimensionItem(
         String key,
         String label,
         long inputTokens,
@@ -58,7 +58,7 @@ final class AnalyticsModels {
     ) {
     }
 
-    record DimensionAnalytics(
+    public record DimensionAnalytics(
         List<DimensionItem> items,
         GlobalSummary totals
     ) {
