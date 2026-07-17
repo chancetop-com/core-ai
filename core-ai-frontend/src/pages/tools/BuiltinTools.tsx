@@ -238,6 +238,43 @@ const tools: Tool[] = [
       { name: 'question', description: 'The question to ask the user', required: true },
     ],
   },
+  {
+    name: 'generate_image',
+    description: 'Generate one or more images from a text prompt. Single images are returned inline; multiple images return a summary with URLs.',
+    category: 'Media Generation',
+    parameters: [
+      { name: 'prompt', description: 'A detailed text description of the desired image', required: true },
+      { name: 'model', description: 'The image generation model to use (uses the default if omitted)' },
+      { name: 'n', description: 'Number of images to generate (1-10, default 1)' },
+      { name: 'size', description: 'Image dimensions, e.g. 1024x1024, 1792x1024, 1024x1792' },
+      { name: 'quality', description: 'Output quality — standard or hd' },
+      { name: 'output_format', description: 'Image format — png or jpeg' },
+      { name: 'output_compression', description: 'PNG compression level 0-9' },
+      { name: 'background', description: "Set to 'transparent' for transparent PNG backgrounds" },
+      { name: 'provider_extra', description: 'Provider-specific JSON parameters' },
+    ],
+  },
+  {
+    name: 'generate_video',
+    description: 'Submit an asynchronous video generation request. Returns a task ID — use get_video_status to poll for completion. Videos typically take 1-10 minutes.',
+    category: 'Media Generation',
+    parameters: [
+      { name: 'prompt', description: 'A detailed text description of the video scene', required: true },
+      { name: 'model', description: 'The video generation model to use (uses the default if omitted)' },
+      { name: 'seconds', description: 'Video duration in seconds (model-specific, e.g. 5 or 10)' },
+      { name: 'size', description: 'Video dimensions, e.g. 1280x720' },
+      { name: 'input_references', description: 'JSON string with reference images for video generation' },
+      { name: 'provider_extra', description: 'Provider-specific JSON parameters' },
+    ],
+  },
+  {
+    name: 'get_video_status',
+    description: 'Check the status of a previously submitted video generation task. Returns progress percentage and status. Poll until completed.',
+    category: 'Media Generation',
+    parameters: [
+      { name: 'video_id', description: 'The video task ID returned by generate_video', required: true },
+    ],
+  },
 ];
 
 const categoryColors: Record<string, string> = {
@@ -250,6 +287,7 @@ const categoryColors: Record<string, string> = {
   'Tool Management': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   Memory: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
   'User Interaction': 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+  'Media Generation': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
 };
 
 function ToolCard({ tool }: { tool: Tool }) {

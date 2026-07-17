@@ -6,6 +6,7 @@ import ai.core.llm.LLMProviders;
 import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
 import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
 import ai.core.server.gateway.GatewayLLMProvider;
+import ai.core.server.gateway.GatewayMediaProvider;
 import ai.core.server.gateway.GatewayModelController;
 import ai.core.server.gateway.GatewayModelDiscoveryService;
 import ai.core.server.gateway.GatewayModelService;
@@ -19,6 +20,7 @@ import ai.core.server.gateway.GatewayRoutingEngine;
 import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.sse.PatchedServerSentEventConfig;
 import ai.core.telemetry.LLMTracer;
+import ai.core.tool.tools.VideoPollingHelper;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -63,6 +65,13 @@ public class GatewayModule extends Module {
         bind(gatewayLLMProvider);
         llmProviders.addProvider(LLMProviderType.GATEWAY, gatewayLLMProvider);
         llmProviders.setDefaultProvider(LLMProviderType.GATEWAY);
+        bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector);
+    }
+
+    private void bindGatewayMediaProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector) {
+        var mediaProvider = new GatewayMediaProvider(routingEngine, secretProtector);
+        bind(mediaProvider);
+        VideoPollingHelper.setProvider(mediaProvider);
     }
 
     private void registerGatewayProviderRoutes() {
@@ -91,6 +100,10 @@ public class GatewayModule extends Module {
         http().route(HTTPMethod.GET, "/api/gateway/v1/models", gatewayProxyController::models);
         http().route(HTTPMethod.POST, "/api/gateway/v1/chat/completions", gatewayProxyController::chatCompletions);
         http().route(HTTPMethod.POST, "/api/gateway/v1/responses", gatewayProxyController::responses);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/images/generations", gatewayProxyController::imageGenerations);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/videos", gatewayProxyController::videoGenerations);
+        http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id", gatewayProxyController::videoStatus);
+        http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id/content", gatewayProxyController::videoContent);
         var gatewaySse = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         gatewaySse.listen(HTTPMethod.POST, "/api/gateway/v1/chat/completions", GatewayChatCompletionsSseEvent.class, bind(GatewayChatCompletionsChannelListener.class));
         gatewaySse.requireEventStreamAccept(HTTPMethod.POST, "/api/gateway/v1/chat/completions");

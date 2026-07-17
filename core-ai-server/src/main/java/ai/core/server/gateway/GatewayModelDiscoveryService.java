@@ -168,8 +168,10 @@ public class GatewayModelDiscoveryService {
         var mode = firstText(source, "mode", "endpoint", "endpoint_type", "model_type");
         if (mode == null) return null;
         var value = mode.toLowerCase(Locale.ROOT);
-        if (containsAny(value, "embedding", "audio", "image", "moderation")) return List.of();
+        if (containsAny(value, "embedding", "audio", "moderation")) return List.of();
         var endpoints = new LinkedHashSet<String>();
+        if (value.contains("image")) endpoints.add(GatewayModelService.ENDPOINT_IMAGE_GENERATION);
+        if (value.contains("video")) endpoints.add(GatewayModelService.ENDPOINT_VIDEO_GENERATION);
         if (value.contains("response")) endpoints.add(GatewayModelService.ENDPOINT_RESPONSES);
         if (value.contains("chat") || value.contains("completion") || endpoints.isEmpty()) {
             endpoints.add(GatewayModelService.ENDPOINT_CHAT_COMPLETIONS);

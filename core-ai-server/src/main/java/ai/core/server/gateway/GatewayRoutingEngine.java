@@ -235,7 +235,11 @@ public class GatewayRoutingEngine {
     }
 
     private String defaultModel(GatewayProviderConfig provider, GatewayEndpointType endpoint) {
-        return endpoint == GatewayEndpointType.CHAT_COMPLETIONS ? provider.defaultChatModel : provider.defaultResponsesModel;
+        return switch (endpoint) {
+            case CHAT_COMPLETIONS -> provider.defaultChatModel;
+            case RESPONSES -> provider.defaultResponsesModel;
+            case IMAGE_GENERATION, VIDEO_GENERATION -> null;
+        };
     }
 
     private boolean supportsEndpoint(GatewayModelConfig model, GatewayEndpointType endpoint) {

@@ -47,6 +47,50 @@ public class GatewayProxyService {
         return proxy(body, GatewayEndpointType.RESPONSES);
     }
 
+    public Response proxyImageGenerations(byte[] body) {
+        return proxy(body, GatewayEndpointType.IMAGE_GENERATION);
+    }
+
+    public Response proxyVideoGenerations(byte[] body) {
+        return proxy(body, GatewayEndpointType.VIDEO_GENERATION);
+    }
+
+    public Response getVideoStatus(String videoId) {
+        return proxyVideoGet("/" + videoId);
+    }
+
+    public Response downloadVideoContent(String videoId) {
+        return proxyVideoGet("/" + videoId + "/content");
+    }
+
+    private Response proxyVideoGet(String path) {
+        var selection = resolveVideoProvider();
+        if (selection == null) throw new BadRequestException("no gateway provider configured for video generation");
+        var provider = selection.provider();
+        var url = stripTrailingSlash(provider.baseUrl) + "/videos" + path;
+        GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(provider.allowPrivateNetwork));
+        var request = new HTTPRequest(HTTPMethod.GET, url);
+        request.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
+        GatewaySupport.applyAuth(provider, request, apiKey(provider));
+        applyTimeouts(provider, request);
+        return response(execute(request, provider));
+    }
+
+    /**
+     * Finds a provider that supports video generation by checking published models.
+     * Returns null if no video-capable provider is configured.
+     */
+    private GatewayRoute resolveVideoProvider() {
+        for (var model : routingEngine.models()) {
+            try {
+                return routingEngine.route(model.id(), GatewayEndpointType.VIDEO_GENERATION);
+            } catch (BadRequestException ignored) {
+                // model does not support video endpoint — skip to next model
+            }
+        }
+        return null;
+    }
+
     public Response models() {
         var data = routingEngine.models().stream().map(model -> {
             var row = new LinkedHashMap<String, Object>();

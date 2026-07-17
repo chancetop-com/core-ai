@@ -2,7 +2,9 @@ package ai.core.server.gateway;
 
 enum GatewayEndpointType {
     CHAT_COMPLETIONS("/chat/completions", GatewayModelService.ENDPOINT_CHAT_COMPLETIONS),
-    RESPONSES("/responses", GatewayModelService.ENDPOINT_RESPONSES);
+    RESPONSES("/responses", GatewayModelService.ENDPOINT_RESPONSES),
+    IMAGE_GENERATION("/images/generations", GatewayModelService.ENDPOINT_IMAGE_GENERATION),
+    VIDEO_GENERATION("/videos", GatewayModelService.ENDPOINT_VIDEO_GENERATION);
 
     final String path;
     final String id;

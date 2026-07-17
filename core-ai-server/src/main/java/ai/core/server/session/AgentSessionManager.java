@@ -3,6 +3,7 @@ package ai.core.server.session;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
+import ai.core.media.MediaProvider;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
@@ -94,6 +95,8 @@ public class AgentSessionManager {
     SubAgentAssembler subAgentAssembler;
     @Inject
     AgentMemoryExperimentService memoryExperimentService;
+    @Inject
+    MediaProvider mediaProvider;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -158,6 +161,7 @@ public class AgentSessionManager {
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
                 .build();
+        context.setMediaProvider(mediaProvider);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
         Map<String, Object> extraVars = null;

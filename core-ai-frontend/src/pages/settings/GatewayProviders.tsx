@@ -15,6 +15,8 @@ const PROVIDER_TYPES = [
 const ENDPOINT_TYPES = [
   { value: 'chat.completions', label: 'Chat' },
   { value: 'responses', label: 'Responses' },
+  { value: 'image.generations', label: 'Image' },
+  { value: 'video.generations', label: 'Video' },
 ];
 
 type Tab = 'providers' | 'models';

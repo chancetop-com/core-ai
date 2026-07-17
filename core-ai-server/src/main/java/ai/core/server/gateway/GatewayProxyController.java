@@ -17,6 +17,22 @@ public class GatewayProxyController {
         return gatewayProxyService.proxyResponses(body(request));
     }
 
+    public Response imageGenerations(Request request) {
+        return gatewayProxyService.proxyImageGenerations(body(request));
+    }
+
+    public Response videoGenerations(Request request) {
+        return gatewayProxyService.proxyVideoGenerations(body(request));
+    }
+
+    public Response videoStatus(Request request) {
+        return gatewayProxyService.getVideoStatus(request.pathParam("id"));
+    }
+
+    public Response videoContent(Request request) {
+        return gatewayProxyService.downloadVideoContent(request.pathParam("id"));
+    }
+
     public Response models(Request request) {
         return gatewayProxyService.models();
     }

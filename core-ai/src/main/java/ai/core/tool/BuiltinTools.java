@@ -3,6 +3,9 @@ package ai.core.tool;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.tools.CaptionImageTool;
 import ai.core.tool.tools.EditFileTool;
+import ai.core.tool.tools.GenerateImageTool;
+import ai.core.tool.tools.GenerateVideoTool;
+import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
 import ai.core.tool.tools.PowershellCommandTool;
@@ -47,7 +50,11 @@ public final class BuiltinTools {
             ShellCommandTool.builder().build(),
             PythonScriptTool.builder().build(),
             // GitHub
-            RequireGithubInstallationTokenTool.builder().build()
+            RequireGithubInstallationTokenTool.builder().build(),
+            // Media generation
+            GenerateImageTool.builder().build(),
+            GenerateVideoTool.builder().build(),
+            GetVideoStatusTool.builder().build()
     );
 
     public static final List<ToolCall> PLANNING = List.of(
@@ -99,6 +106,12 @@ public final class BuiltinTools {
             RequireGithubInstallationTokenTool.builder().build()
     );
 
+    public static final List<ToolCall> MEDIA_GENERATION = List.of(
+            GenerateImageTool.builder().build(),
+            GenerateVideoTool.builder().build(),
+            GetVideoStatusTool.builder().build()
+    );
+
     public static final Map<String, List<ToolCall>> GROUPED_SETS = Map.ofEntries(
             Map.entry(ToolProvider.BUILTIN_ALL, ALL),
             Map.entry(ToolProvider.BUILTIN_PLANNING, PLANNING),
@@ -109,7 +122,8 @@ public final class BuiltinTools {
             Map.entry(ToolProvider.BUILTIN_WEB, WEB),
             Map.entry(ToolProvider.BUILTIN_BASH, BASH_EXECUTION),
             Map.entry(ToolProvider.BUILTIN_CODE_EXECUTION, CODE_EXECUTION),
-            Map.entry(ToolProvider.BUILTIN_GITHUB, GITHUB)
+            Map.entry(ToolProvider.BUILTIN_GITHUB, GITHUB),
+            Map.entry(ToolProvider.BUILTIN_MEDIA_GENERATION, MEDIA_GENERATION)
     );
 
     @SafeVarargs

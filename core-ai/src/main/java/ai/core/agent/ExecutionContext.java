@@ -4,6 +4,7 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Usage;
+import ai.core.media.MediaProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.BackgroundTaskManager;
@@ -52,6 +53,7 @@ public final class ExecutionContext {
     private BackgroundTaskManager backgroundTaskManager;
     private CancellationToken cancellationToken;
     private LLMProvider llmProvider;
+    private MediaProvider mediaProvider;
     private String model;
     private String multiModalModel;
     private StreamingCallback streamingCallback;
@@ -174,6 +176,14 @@ public final class ExecutionContext {
 
     public void setLlmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
+    }
+
+    public MediaProvider getMediaProvider() {
+        return mediaProvider;
+    }
+
+    public void setMediaProvider(MediaProvider mediaProvider) {
+        this.mediaProvider = mediaProvider;
     }
 
     public String getModel() {

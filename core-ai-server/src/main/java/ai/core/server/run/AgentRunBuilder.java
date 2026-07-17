@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.agent.AgentBuilder;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProviders;
+import ai.core.media.MediaProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.artifact.AgentRunArtifactSink;
 import ai.core.server.agent.AgentDefinitionService;
@@ -95,6 +96,8 @@ public class AgentRunBuilder {
     @Inject
     LLMProviders llmProviders;
     @Inject
+    MediaProvider mediaProvider;
+    @Inject
     SystemSettingsService systemSettingsService;
     @Inject
     LLMCallExecutor llmCallExecutor;
@@ -145,6 +148,7 @@ public class AgentRunBuilder {
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
                 .build();
         if (sandbox != null) context.sandbox(sandbox);
+        if (mediaProvider != null) context.setMediaProvider(mediaProvider);
         return context;
     }
 
