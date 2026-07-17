@@ -339,6 +339,13 @@ export function formatCostUsd(cost?: number | null): string {
   return `$${cost.toFixed(2)}`;
 }
 
+export function formatCompact(n: number): string {
+  if (!Number.isFinite(n)) return '0';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2).replace(/\.00$/, '')}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  return Math.round(n).toLocaleString();
+}
+
 export function prettyContent(content?: string): string {
   if (!content) return '';
   try {

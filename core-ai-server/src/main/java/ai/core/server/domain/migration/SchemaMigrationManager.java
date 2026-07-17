@@ -117,7 +117,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVTraceDailyStatsAgent(),
             new SchemaMigrationVSessionFeedbackIndexes(),
             new SchemaMigrationVMemoryExperimentIndexes(),
-            new SchemaMigrationVTraceDailyStatsDateIndex()
+            new SchemaMigrationVTraceDailyStatsDateIndex(),
+            new SchemaMigrationVAnalyticsDailyStats()
         );
     }
 }

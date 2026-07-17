@@ -84,6 +84,8 @@ import ai.core.server.web.CapabilitiesController;
 import ai.core.server.web.SpeechController;
 import ai.core.server.web.foryou.ForYouController;
 import ai.core.server.web.foryou.ForYouService;
+import ai.core.server.analytics.AdminAnalyticsController;
+import ai.core.server.analytics.AdminAnalyticsService;
 import ai.core.server.task.TaskController;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.sse.PatchedServerSentEventConfig;
@@ -239,6 +241,22 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/api/admin/tasks", taskController::list);
         http().route(HTTPMethod.PUT, "/api/admin/tasks/:taskId/retry", taskController::retry);
         http().route(HTTPMethod.POST, "/api/admin/tasks", taskController::run);
+
+        registerAnalyticsRoutes();
+    }
+
+    private void registerAnalyticsRoutes() {
+        bind(AdminAnalyticsService.class);
+        var analytics = bind(AdminAnalyticsController.class);
+
+        http().route(HTTPMethod.GET, "/api/admin/analytics/global", analytics::global);
+        http().route(HTTPMethod.GET, "/api/admin/analytics/trend", analytics::trend);
+        http().route(HTTPMethod.GET, "/api/admin/analytics/by-source", analytics::bySource);
+        http().route(HTTPMethod.GET, "/api/admin/analytics/by-agent", analytics::byAgent);
+        http().route(HTTPMethod.GET, "/api/admin/analytics/by-user", analytics::byUser);
+        http().route(HTTPMethod.GET, "/api/admin/analytics/by-provider", analytics::byProvider);
+        http().route(HTTPMethod.GET, "/api/admin/analytics/by-model", analytics::byModel);
+        http().route(HTTPMethod.GET, "/api/admin/analytics/:dimension/trend", analytics::dimensionTrend);
     }
 
     private void bindWebService() {

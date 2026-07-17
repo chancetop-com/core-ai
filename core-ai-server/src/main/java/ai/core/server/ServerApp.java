@@ -42,6 +42,7 @@ import ai.core.server.sandbox.snapshot.SandboxEpochDoc;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotDoc;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.trace.domain.AnalyticsDailyStats;
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
@@ -135,6 +136,7 @@ public class ServerApp extends App {
 
         mongo.collection(BackgroundTask.class);
         mongo.collection(TraceDailyStats.class);
+        mongo.collection(AnalyticsDailyStats.class);
 
         mongo.collection(Notification.class);
     }

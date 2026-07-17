@@ -1138,6 +1138,16 @@ export interface UnreadCountResponse {
   unread_count: number;
 }
 
+function buildAnalyticsParams(params: AnalyticsParams): string {
+  const p = new URLSearchParams();
+  p.set('mode', params.mode);
+  if (params.range) p.set('range', params.range);
+  if (params.from) p.set('from', params.from);
+  if (params.to) p.set('to', params.to);
+  if (params.sort) p.set('sort', params.sort);
+  return p.toString();
+}
+
 export const api = {
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
@@ -1572,6 +1582,40 @@ export const api = {
         return request<ForYouTokenUsage>(`/api/for-you/token-usage?${params.toString()}`);
       },
   },
+  adminAnalytics: {
+    global: (params: AnalyticsParams) => {
+      const qs = buildAnalyticsParams(params);
+      return request<AnalyticsGlobal>(`/api/admin/analytics/global?${qs}`);
+    },
+    trend: (params: AnalyticsParams) => {
+      const qs = buildAnalyticsParams(params);
+      return request<TrendPoint[]>(`/api/admin/analytics/trend?${qs}`);
+    },
+    bySource: (params: AnalyticsParams) => {
+      const qs = buildAnalyticsParams(params);
+      return request<DimensionAnalytics>(`/api/admin/analytics/by-source?${qs}`);
+    },
+    byAgent: (params: AnalyticsParams) => {
+      const qs = buildAnalyticsParams(params);
+      return request<DimensionAnalytics>(`/api/admin/analytics/by-agent?${qs}`);
+    },
+    byUser: (params: AnalyticsParams) => {
+      const qs = buildAnalyticsParams(params);
+      return request<DimensionAnalytics>(`/api/admin/analytics/by-user?${qs}`);
+    },
+    byProvider: (params: AnalyticsParams) => {
+      const qs = buildAnalyticsParams(params);
+      return request<DimensionAnalytics>(`/api/admin/analytics/by-provider?${qs}`);
+    },
+    byModel: (params: AnalyticsParams) => {
+      const qs = buildAnalyticsParams(params);
+      return request<DimensionAnalytics>(`/api/admin/analytics/by-model?${qs}`);
+    },
+    dimensionTrend: (dimension: AnalyticsDimension, params: AnalyticsParams & { keys: string }) => {
+      const qs = buildAnalyticsParams(params);
+      return request<TrendPoint[]>(`/api/admin/analytics/${dimension}/trend?${qs}&keys=${encodeURIComponent(params.keys)}`);
+    },
+  },
   artifacts: {
     listMy: (offset = 0, limit = 20) => {
       const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
@@ -1790,6 +1834,69 @@ export interface DailyTokenUsage {
   total_tokens: number;
   cached_tokens: number;
   cost_usd: number;
+}
+
+// --- Admin Analytics types ---
+
+export interface AnalyticsGlobal {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalCachedTokens: number;
+  totalCostUsd: number;
+  totalCalls: number;
+  avgTokensPerCall: number;
+  avgCostPerCall: number;
+  maxTokensPerCall: number;
+  maxCostPerCall: number;
+  p90TokensPerCall: number;
+  prevTotalTokens: number | null;
+  prevTotalCostUsd: number | null;
+}
+
+export interface TrendPoint {
+  timestamp: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  costUsd: number;
+  callCount: number;
+}
+
+export interface DimensionItem {
+  key: string;
+  label: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cachedTokens: number;
+  costUsd: number;
+  callCount: number;
+  avgInputTokens: number;
+  avgOutputTokens: number;
+  avgTotalTokens: number;
+  avgCostUsd: number;
+  maxTotalTokens: number;
+  maxCostUsd: number;
+  p90TotalTokens: number;
+  tokenShare: number;
+  costShare: number;
+}
+
+export interface DimensionAnalytics {
+  items: DimensionItem[];
+  totals: AnalyticsGlobal;
+}
+
+export type AnalyticsMode = 'history' | 'realtime';
+export type AnalyticsDimension = 'source' | 'agent' | 'user' | 'provider' | 'model';
+
+export interface AnalyticsParams {
+  mode: AnalyticsMode;
+  range?: string;
+  from?: string;
+  to?: string;
+  sort?: string;
 }
 
 // --- Artifacts ---
