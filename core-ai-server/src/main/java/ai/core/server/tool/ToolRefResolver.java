@@ -2,6 +2,7 @@ package ai.core.server.tool;
 
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.media.MediaProvider;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
@@ -9,6 +10,7 @@ import ai.core.server.domain.ToolType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.BuiltinToolProvider;
 import ai.core.tool.mcp.McpToolCalls;
+import ai.core.tool.github.GitHubTokenProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,13 +33,23 @@ public class ToolRefResolver {
     private final Map<String, ToolRegistryEntry> toolRegistry;
     private final InternalApiToolLoader apiToolLoader;
     private final Map<String, List<ToolCall>> dynamicToolSets;
+    private final MediaProvider mediaProvider;
+    private final GitHubTokenProvider gitHubTokenProvider;
     private final Map<String, List<ToolCall>> apiToolCache = new ConcurrentHashMap<>();
 
     public ToolRefResolver(Map<String, ToolRegistryEntry> toolRegistry, InternalApiToolLoader apiToolLoader,
                            Map<String, List<ToolCall>> dynamicToolSets) {
+        this(toolRegistry, apiToolLoader, dynamicToolSets, null, null);
+    }
+
+    public ToolRefResolver(Map<String, ToolRegistryEntry> toolRegistry, InternalApiToolLoader apiToolLoader,
+                           Map<String, List<ToolCall>> dynamicToolSets, MediaProvider mediaProvider,
+                           GitHubTokenProvider gitHubTokenProvider) {
         this.toolRegistry = toolRegistry;
         this.apiToolLoader = apiToolLoader;
         this.dynamicToolSets = dynamicToolSets;
+        this.mediaProvider = mediaProvider;
+        this.gitHubTokenProvider = gitHubTokenProvider;
     }
 
     public List<ToolCall> resolve(List<ToolRef> toolRefs) {
@@ -97,7 +109,7 @@ public class ToolRefResolver {
         if (entry != null) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
-                var provider = BuiltinToolProvider.fromSet(setName);
+                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider);
                 result.addAll(provider.provide().values());
             }
             return;
@@ -209,7 +221,7 @@ public class ToolRefResolver {
             case MCP -> result.addAll(resolveMcpTools(entry, sessionMgr));
             case BUILTIN -> {
                 var setName = entry.config != null ? entry.config.get("set") : null;
-                var provider = BuiltinToolProvider.fromSet(setName);
+                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider);
                 result.addAll(provider.provide().values());
             }
             case API -> result.addAll(resolveApiTools(entry));

@@ -7,7 +7,7 @@ import ai.core.server.a2a.A2AMessageController;
 import ai.core.server.a2a.A2AStreamChannelListener;
 import ai.core.server.a2a.A2ATaskController;
 import ai.core.server.a2a.ServerA2AService;
-import ai.core.sse.PatchedServerSentEventConfig;
+import ai.core.server.sse.SseEndpointRegistry;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 
@@ -29,7 +29,7 @@ public class A2AModule extends Module {
         http().route(HTTPMethod.GET, "/api/a2a/tasks/:taskId", taskController::get);
         http().route(HTTPMethod.POST, "/api/a2a/tasks/:taskId" + A2AHttpPaths.TASK_CANCEL, taskController::cancel);
 
-        var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
-        sseConfig.listen(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_STREAM, StreamResponse.class, bind(A2AStreamChannelListener.class));
+        var registry = bean(SseEndpointRegistry.class);
+        registry.register(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_STREAM, StreamResponse.class, bind(A2AStreamChannelListener.class), false);
     }
 }

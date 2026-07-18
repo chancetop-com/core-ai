@@ -60,9 +60,6 @@ public class ServerApp extends App {
         load(new SystemModule("sys.properties"));
         loadProperties("agent.properties");
 
-        // Pass mcp.servers.json to system properties for ToolRegistryService
-        property("mcp.servers.json").ifPresent(json -> System.setProperty("mcp.servers.json", json));
-
         registerMongo();
 
         load(new MultiAgentModule());
@@ -77,11 +74,11 @@ public class ServerApp extends App {
 
     private void loadPlatformInfrastructure() {
         load(new ObjectStorageModule());
+        load(new SseTransportModule());
         load(new GatewayModule());
         load(new SettingsModule());
         load(new PromptModule());
         load(new AnalyticsModule());
-        load(new SseTransportModule());
         load(new SandboxSnapshotModule());
         load(new TaskModule());
         load(new TraceModule());

@@ -2,6 +2,7 @@ package ai.core.server.tool;
 
 import ai.core.api.server.tool.UpdateMcpServerRequest;
 import ai.core.mcp.client.McpClientManager;
+import ai.core.media.MediaProvider;
 import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -11,6 +12,7 @@ import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.github.GitHubTokenProvider;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
@@ -53,12 +55,20 @@ public class ToolRegistryService {
 
     @Inject
     SandboxService sandboxService;
+    @Inject
+    MediaProvider mediaProvider;
+
+    private GitHubTokenProvider gitHubTokenProvider;
 
     private void initializeDependencies() {
         if (mcpConnectionManager != null) return;
         mcpConnectionManager = new McpServerConnectionManager(sandboxService);
-        resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpConnectionManager, sandboxService);
+        resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpConnectionManager, sandboxService, mediaProvider, gitHubTokenProvider);
         mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager);
+    }
+
+    public void setGitHubTokenProvider(GitHubTokenProvider gitHubTokenProvider) {
+        this.gitHubTokenProvider = gitHubTokenProvider;
     }
 
     public void initialize(String mcpServersJson) {

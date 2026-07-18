@@ -1,5 +1,6 @@
 package ai.core.tool;
 
+import ai.core.media.MediaProvider;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.tools.CaptionImageTool;
 import ai.core.tool.tools.EditFileTool;
@@ -20,6 +21,7 @@ import ai.core.tool.tools.WebSearchTool;
 import ai.core.tool.tools.WriteFileTool;
 import ai.core.tool.tools.WriteTodoTaskTool;
 import ai.core.tool.tools.WriteTodosTool;
+import ai.core.tool.github.GitHubTokenProvider;
 
 import java.util.Arrays;
 import java.util.List;
@@ -125,6 +127,23 @@ public final class BuiltinTools {
             Map.entry(ToolProvider.BUILTIN_GITHUB, GITHUB),
             Map.entry(ToolProvider.BUILTIN_MEDIA_GENERATION, MEDIA_GENERATION)
     );
+
+    public static List<ToolCall> all(MediaProvider mediaProvider, GitHubTokenProvider gitHubTokenProvider) {
+        var tools = new java.util.ArrayList<>(ALL);
+        tools.removeIf(tool -> tool instanceof RequireGithubInstallationTokenTool || tool instanceof GenerateVideoTool);
+        tools.add(RequireGithubInstallationTokenTool.builder(gitHubTokenProvider).build());
+        tools.add(GenerateVideoTool.builder(mediaProvider).build());
+        return List.copyOf(tools);
+    }
+
+    public static List<ToolCall> fromSet(String setName, MediaProvider mediaProvider, GitHubTokenProvider gitHubTokenProvider) {
+        if (ToolProvider.BUILTIN_ALL.equals(setName)) return all(mediaProvider, gitHubTokenProvider);
+        if (ToolProvider.BUILTIN_GITHUB.equals(setName)) return List.of(RequireGithubInstallationTokenTool.builder(gitHubTokenProvider).build());
+        if (ToolProvider.BUILTIN_MEDIA_GENERATION.equals(setName)) {
+            return List.of(GenerateImageTool.builder().build(), GenerateVideoTool.builder(mediaProvider).build(), GetVideoStatusTool.builder().build());
+        }
+        return GROUPED_SETS.getOrDefault(setName, List.of());
+    }
 
     @SafeVarargs
     @SuppressWarnings("varargs")

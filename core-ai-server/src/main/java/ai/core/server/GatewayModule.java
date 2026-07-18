@@ -19,9 +19,8 @@ import ai.core.server.gateway.GatewayResponsesChannelListener;
 import ai.core.server.gateway.GatewayResponsesSseEvent;
 import ai.core.server.gateway.GatewayRoutingEngine;
 import ai.core.server.gateway.GatewaySecretProtector;
-import ai.core.sse.PatchedServerSentEventConfig;
+import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.telemetry.LLMTracer;
-import ai.core.tool.tools.VideoPollingHelper;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -72,7 +71,6 @@ public class GatewayModule extends Module {
     private void bindGatewayMediaProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector) {
         var mediaProvider = new GatewayMediaProvider(routingEngine, secretProtector);
         bind(MediaProvider.class, mediaProvider);
-        VideoPollingHelper.setProvider(mediaProvider);
     }
 
     private void registerGatewayProviderRoutes() {
@@ -105,10 +103,10 @@ public class GatewayModule extends Module {
         http().route(HTTPMethod.POST, "/api/gateway/v1/videos", gatewayProxyController::videoGenerations);
         http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id", gatewayProxyController::videoStatus);
         http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id/content", gatewayProxyController::videoContent);
-        var gatewaySse = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
-        gatewaySse.listen(HTTPMethod.POST, "/api/gateway/v1/chat/completions", GatewayChatCompletionsSseEvent.class, bind(GatewayChatCompletionsChannelListener.class));
-        gatewaySse.requireEventStreamAccept(HTTPMethod.POST, "/api/gateway/v1/chat/completions");
-        gatewaySse.listen(HTTPMethod.POST, "/api/gateway/v1/responses", GatewayResponsesSseEvent.class, bind(GatewayResponsesChannelListener.class));
-        gatewaySse.requireEventStreamAccept(HTTPMethod.POST, "/api/gateway/v1/responses");
+        var registry = bean(SseEndpointRegistry.class);
+        registry.register(HTTPMethod.POST, "/api/gateway/v1/chat/completions", GatewayChatCompletionsSseEvent.class,
+                bind(GatewayChatCompletionsChannelListener.class), true);
+        registry.register(HTTPMethod.POST, "/api/gateway/v1/responses", GatewayResponsesSseEvent.class,
+                bind(GatewayResponsesChannelListener.class), true);
     }
 }

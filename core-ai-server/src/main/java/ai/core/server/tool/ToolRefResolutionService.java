@@ -2,6 +2,7 @@ package ai.core.server.tool;
 
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.media.MediaProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.server.domain.ToolRef;
@@ -17,6 +18,7 @@ import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolProvider.RefreshPolicy;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
+import ai.core.tool.github.GitHubTokenProvider;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -66,17 +68,23 @@ class ToolRefResolutionService {
     private final McpServerConnectionManager mcpConnectionManager;
     private InternalApiToolLoader internalApiToolLoader;
     private final SandboxService sandboxService;
+    private final MediaProvider mediaProvider;
+    private final GitHubTokenProvider gitHubTokenProvider;
 
     // ── Constructor ──────────────────────────────────────────────────────────────
 
     ToolRefResolutionService(Map<String, ToolRegistryEntry> tools,
                              Map<String, List<ToolCall>> dynamicToolSets,
-                             McpServerConnectionManager mcpConnectionManager,
-                             SandboxService sandboxService) {
+                              McpServerConnectionManager mcpConnectionManager,
+                              SandboxService sandboxService, MediaProvider mediaProvider,
+                              GitHubTokenProvider gitHubTokenProvider) {
+
         this.tools = tools;
         this.dynamicToolSets = dynamicToolSets;
         this.mcpConnectionManager = mcpConnectionManager;
         this.sandboxService = sandboxService;
+        this.mediaProvider = mediaProvider;
+        this.gitHubTokenProvider = gitHubTokenProvider;
     }
 
     // ── Dependency injection (called after construction) ─────────────────────────
@@ -117,7 +125,7 @@ class ToolRefResolutionService {
                 sessionMgr = prepareSessionMcpServers(toolRefs, sessionId, sandbox);
             }
         }
-        return new ToolRefResolver(tools, internalApiToolLoader, dynamicToolSets).resolve(toolRefs, sessionMgr);
+        return new ToolRefResolver(tools, internalApiToolLoader, dynamicToolSets, mediaProvider, gitHubTokenProvider).resolve(toolRefs, sessionMgr);
     }
 
     /**
@@ -203,7 +211,7 @@ class ToolRefResolutionService {
         if (entry != null && entry.type == ToolType.BUILTIN) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
-                registry.registerProvider(BuiltinToolProvider.fromSet(setName));
+                registry.registerProvider(BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider));
                 return;
             }
         }

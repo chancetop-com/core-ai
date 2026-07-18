@@ -3,6 +3,7 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.github.GitHubTokenProvider;
 import ai.core.tool.github.GitHubTokenProviderRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,7 +11,7 @@ import org.slf4j.LoggerFactory;
 /**
  * @author stephen
  */
-public class RequireGithubInstallationTokenTool extends ToolCall {
+public final class RequireGithubInstallationTokenTool extends ToolCall {
 
     public static final String TOOL_NAME = "require_github_installation_token";
 
@@ -35,6 +36,16 @@ public class RequireGithubInstallationTokenTool extends ToolCall {
         return new Builder();
     }
 
+    public static Builder builder(GitHubTokenProvider tokenProvider) {
+        return new Builder().tokenProvider(tokenProvider);
+    }
+
+    private final GitHubTokenProvider tokenProvider;
+
+    private RequireGithubInstallationTokenTool(GitHubTokenProvider tokenProvider) {
+        this.tokenProvider = tokenProvider;
+    }
+
     @Override
     public ToolCallResult execute(String arguments) {
         long startTime = System.currentTimeMillis();
@@ -44,7 +55,7 @@ public class RequireGithubInstallationTokenTool extends ToolCall {
             if (repo == null || repo.isBlank()) {
                 return ToolCallResult.failed("'repo' is required (e.g. 'owner/repo')");
             }
-            var provider = GitHubTokenProviderRegistry.getProvider();
+            var provider = tokenProvider != null ? tokenProvider : GitHubTokenProviderRegistry.getProvider();
             if (provider == null) {
                 return ToolCallResult.failed("GitHub token provider is not configured on this server. "
                         + "Please configure github.app.id and github.app.private_key in agent.properties.");
@@ -71,6 +82,13 @@ public class RequireGithubInstallationTokenTool extends ToolCall {
     }
 
     public static class Builder extends ToolCall.Builder<Builder, RequireGithubInstallationTokenTool> {
+        private GitHubTokenProvider tokenProvider;
+
+        public Builder tokenProvider(GitHubTokenProvider tokenProvider) {
+            this.tokenProvider = tokenProvider;
+            return this;
+        }
+
         @Override
         protected Builder self() {
             return this;
@@ -83,7 +101,7 @@ public class RequireGithubInstallationTokenTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "repo",
                             "Full repository name in owner/repo format (e.g. 'chancetop-com/core-ai')").required()
             ));
-            var tool = new RequireGithubInstallationTokenTool();
+            var tool = new RequireGithubInstallationTokenTool(tokenProvider);
             build(tool);
             return tool;
         }

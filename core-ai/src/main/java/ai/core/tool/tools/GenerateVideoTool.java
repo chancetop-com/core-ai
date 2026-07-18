@@ -1,6 +1,7 @@
 package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.media.MediaProvider;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
@@ -20,7 +21,7 @@ import java.util.Map;
  *
  * @author stephen
  */
-public class GenerateVideoTool extends ToolCall {
+public final class GenerateVideoTool extends ToolCall {
     public static final String TOOL_NAME = "generate_video";
 
     private static final String TOOL_DESC = """
@@ -43,6 +44,29 @@ public class GenerateVideoTool extends ToolCall {
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    public static Builder builder(MediaProvider mediaProvider) {
+        return new Builder().mediaProvider(mediaProvider);
+    }
+
+    private static Integer parseInteger(Map<String, Object> args, String key) {
+        var val = args.get(key);
+        if (val instanceof Number n) return n.intValue();
+        if (val instanceof String s && !s.isBlank()) {
+            try {
+                return Integer.parseInt(s);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private final MediaProvider mediaProvider;
+
+    private GenerateVideoTool(MediaProvider mediaProvider) {
+        this.mediaProvider = mediaProvider;
     }
 
     @Override
@@ -81,28 +105,39 @@ public class GenerateVideoTool extends ToolCall {
     }
 
     @Override
-    public ToolCallResult poll(String taskId) {
-        return VideoPollingHelper.poll(taskId);
-    }
-
-    @Override
     public ToolCallResult execute(String arguments) {
         return ToolCallResult.failed("generate_video requires execution context");
     }
 
-    private static Integer parseInteger(Map<String, Object> args, String key) {
-        var val = args.get(key);
-        if (val instanceof Number n) return n.intValue();
-        if (val instanceof String s && !s.isBlank()) {
-            try {
-                return Integer.parseInt(s);
-            } catch (NumberFormatException ignored) {
-            }
+    @Override
+    public ToolCallResult poll(String taskId) {
+        if (mediaProvider == null) return ToolCallResult.failed("media provider not configured — video polling unavailable");
+        try {
+            var status = mediaProvider.getVideoStatus(taskId);
+            return switch (status.status()) {
+                case "completed" -> ToolCallResult.completed(
+                        "Video " + taskId + " is ready. The video generation has completed successfully.");
+                case "failed" -> ToolCallResult.failed(
+                        "Video generation failed: " + (status.error() != null ? status.error() : "unknown error"));
+                default -> {
+                    var progress = status.progress() != null ? status.progress() + "%" : "unknown";
+                    yield ToolCallResult.pending(taskId,
+                            "Video is still processing (progress: " + progress + "). Poll again.");
+                }
+            };
+        } catch (Exception e) {
+            return ToolCallResult.failed("Video polling failed: " + e.getMessage(), e);
         }
-        return null;
     }
 
     public static class Builder extends ToolCall.Builder<Builder, GenerateVideoTool> {
+        private MediaProvider mediaProvider;
+
+        public Builder mediaProvider(MediaProvider mediaProvider) {
+            this.mediaProvider = mediaProvider;
+            return this;
+        }
+
         @Override
         protected Builder self() {
             return this;
@@ -120,7 +155,7 @@ public class GenerateVideoTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON string with reference image data"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));
-            var tool = new GenerateVideoTool();
+            var tool = new GenerateVideoTool(mediaProvider);
             build(tool);
             return tool;
         }

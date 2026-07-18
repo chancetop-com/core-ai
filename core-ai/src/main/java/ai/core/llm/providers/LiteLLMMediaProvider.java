@@ -5,7 +5,6 @@ import ai.core.media.MediaProvider;
 import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
-import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.Usage;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;

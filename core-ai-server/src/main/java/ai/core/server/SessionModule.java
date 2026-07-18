@@ -3,6 +3,7 @@ package ai.core.server;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.run.LLMCallExecutor;
+import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
@@ -12,7 +13,6 @@ import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.web.sse.AgentSessionChannelListener;
 import ai.core.server.web.sse.LiteLLMProxyChannelListener;
 import ai.core.server.web.sse.SseAuthInterceptor;
-import ai.core.sse.PatchedServerSentEventConfig;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 
@@ -46,9 +46,9 @@ public class SessionModule extends Module {
     }
 
     private void registerSseEndpoints() {
-        var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
-        sseConfig.intercept(new SseAuthInterceptor(bean(RequestAuthenticator.class)));
-        sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
-        sseConfig.listen(HTTPMethod.POST, "/api/litellm/v1/chat/completions", Object.class, bind(LiteLLMProxyChannelListener.class));
+        var registry = bean(SseEndpointRegistry.class);
+        registry.addInterceptor(new SseAuthInterceptor(bean(RequestAuthenticator.class)));
+        registry.register(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class), false);
+        registry.register(HTTPMethod.POST, "/api/litellm/v1/chat/completions", Object.class, bind(LiteLLMProxyChannelListener.class), false);
     }
 }

@@ -20,8 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -59,9 +59,6 @@ public class SandboxService {
     private final Set<String> persistentSessionIds = ConcurrentHashMap.newKeySet();
     @SuppressWarnings("this-escape")
     private final SandboxFileService sandboxFileService = new SandboxFileService(this);
-    // Per-session McpClientManager + the MCP server ids started on that session's sandbox.
-    // Sandbox-hosted MCP servers live in these per-session managers (not the global one),
-    // so concurrent sessions don't collide on shared server ids.
     private final Map<String, McpClientManager> sessionMcpManagers = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> sessionMcpServerIds = new ConcurrentHashMap<>();
 
@@ -101,6 +98,15 @@ public class SandboxService {
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox, SandboxServiceDependencies dependencies) {
+        this(provider, defaultConfig, serverUrlFromSandbox, dependencies, new ScheduledThreadPoolExecutor(1, r -> {
+            var t = new Thread(r, "sandbox-cleanup");
+            t.setDaemon(true);
+            return t;
+        }));
+    }
+
+    SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox,
+                   SandboxServiceDependencies dependencies, ScheduledExecutorService cleanupScheduler) {
         this.sandboxManager = new SandboxManager(provider);
         this.defaultConfig = defaultConfig != null ? defaultConfig : createDefaultConfig();
         this.serverUrlFromSandbox = serverUrlFromSandbox;
@@ -109,12 +115,7 @@ public class SandboxService {
         this.fileService = dependencies.fileService();
         this.snapshotService = dependencies.snapshotService();
         this.redisStore = new SandboxRedisStore(dependencies.jedisPool());
-
-        this.cleanupScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            var t = new Thread(r, "sandbox-cleanup");
-            t.setDaemon(true);
-            return t;
-        });
+        this.cleanupScheduler = cleanupScheduler;
         cleanupScheduler.scheduleAtFixedRate(new SandboxCleanupJob(sandboxManager, provider), 5, 5, TimeUnit.MINUTES);
     }
 

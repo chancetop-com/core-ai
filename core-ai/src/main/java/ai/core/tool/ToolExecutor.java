@@ -191,6 +191,15 @@ public class ToolExecutor {
         return null;
     }
 
+    private ToolCallResult executeToolCall(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
+        context.setCurrentToolCallId(functionCall.id);
+        try {
+            return traceToolSpan(functionCall, tool.isSubAgent(), () -> tool.execute(functionCall.function.arguments, context));
+        } finally {
+            context.clearCurrentToolCallId();
+        }
+    }
+
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private ToolCallResult executeWithTimeout(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
         var timeoutMs = tool.getTimeoutMs();
@@ -201,12 +210,7 @@ public class ToolExecutor {
         var future = CompletableFuture.supplyAsync(() -> {
             threadRef.set(Thread.currentThread());
             try (var scope = otelContext.makeCurrent()) {
-                context.setCurrentToolCallId(functionCall.id);
-                try {
-                    return traceToolSpan(functionCall, tool.isSubAgent(), () -> tool.execute(functionCall.function.arguments, context));
-                } finally {
-                    context.clearCurrentToolCallId();
-                }
+                return executeToolCall(tool, functionCall, context);
             }
         }, AsyncToolTaskExecutor.getInstance().getExecutor());
 

@@ -6,9 +6,9 @@ import ai.core.server.notification.NotificationEventPublisher;
 import ai.core.server.notification.NotificationService;
 import ai.core.server.notification.NotificationTools;
 import ai.core.server.notification.SendNotificationHandler;
+import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.server.web.NotificationWebServiceImpl;
 import ai.core.server.web.sse.NotificationChannelListener;
-import ai.core.sse.PatchedServerSentEventConfig;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 
@@ -26,7 +26,7 @@ public class NotificationModule extends Module {
 
         api().service(NotificationWebService.class, bind(NotificationWebServiceImpl.class));
 
-        var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
-        sseConfig.listen(HTTPMethod.PUT, "/api/notifications/events", NotificationSseEvent.class, bind(NotificationChannelListener.class));
+        var registry = bean(SseEndpointRegistry.class);
+        registry.register(HTTPMethod.PUT, "/api/notifications/events", NotificationSseEvent.class, bind(NotificationChannelListener.class), false);
     }
 }

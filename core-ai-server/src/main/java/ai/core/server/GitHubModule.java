@@ -1,6 +1,7 @@
 package ai.core.server;
 
 import ai.core.server.github.GitHubInstallationTokenService;
+import ai.core.tool.github.GitHubTokenProvider;
 import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,7 @@ public class GitHubModule extends Module {
                 .orElse(null);
         if (appId != null && installationId != null && privateKey != null && !appId.isBlank() && !privateKey.isBlank() && privateKey.contains("BEGIN")) {
             var githubService = new GitHubInstallationTokenService(appId, privateKey, installationId);
+            bind(GitHubTokenProvider.class, githubService);
             githubService.register();
             LOGGER.info("GitHub installation token service configured");
         } else {

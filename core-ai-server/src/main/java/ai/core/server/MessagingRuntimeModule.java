@@ -9,21 +9,22 @@ import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.EventSubscriber;
 import ai.core.server.messaging.InProcessCommandHandler;
-import ai.core.server.messaging.InProcessCommandHandlerDependencies;
+import ai.core.server.messaging.CommandRpcDependencies;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.RpcResponseSubscriber;
 import ai.core.server.messaging.SessionCommand;
+import ai.core.server.messaging.SessionCommandDependencies;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.AgentSessionWebServiceImpl;
 import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.sse.AgentMessageStreamChannelListener;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.api.server.session.sse.SseBaseEvent;
-import ai.core.sse.PatchedServerSentEventConfig;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -52,17 +53,11 @@ class MessagingRuntimeModule extends Module {
         onStartup(eventSubscriber::start);
         onShutdown(eventSubscriber::stop);
         var sandboxService = bean(SandboxService.class);
-        var commandHandler = new InProcessCommandHandler(new InProcessCommandHandlerDependencies()
-                .sessionManager(bean(AgentSessionManager.class))
-                .chatMessageService(bean(ChatMessageService.class))
-                .ownershipRegistry(ownershipRegistry)
-                .agentDraftGenerator(bean(AgentDraftGenerator.class))
-                .agentDefinitionService(bean(AgentDefinitionService.class))
-                .serverA2AService(bean(ServerA2AService.class))
-                .jedisPool(jedisPool)
-                .sandboxService(sandboxService)
-                .eventPublisher(bean(EventPublisher.class))
-                .toolRegistryService(bean(ToolRegistryService.class)));
+        var sessionDependencies = new SessionCommandDependencies(bean(AgentSessionManager.class), bean(ChatMessageService.class),
+                ownershipRegistry, sandboxService, bean(EventPublisher.class));
+        var rpcDependencies = new CommandRpcDependencies(bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class),
+                bean(ServerA2AService.class), jedisPool, bean(ToolRegistryService.class));
+        var commandHandler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
         bind(new CommandPublisher(jedisPool, ownershipRegistry, sandboxService, commandHandler));
         bind(PodLocalExecutor.class);
         api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
@@ -72,8 +67,8 @@ class MessagingRuntimeModule extends Module {
     }
 
     private void registerSseEndpoints() {
-        var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
-        sseConfig.listen(HTTPMethod.POST, "/api/sessions/messages/stream", SseBaseEvent.class, bind(AgentMessageStreamChannelListener.class));
+        var registry = bean(SseEndpointRegistry.class);
+        registry.register(HTTPMethod.POST, "/api/sessions/messages/stream", SseBaseEvent.class, bind(AgentMessageStreamChannelListener.class), false);
     }
 
     private void setupCommandConsumer(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, InProcessCommandHandler commandHandler) {

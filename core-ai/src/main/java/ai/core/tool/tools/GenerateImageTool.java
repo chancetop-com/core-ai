@@ -43,6 +43,19 @@ public class GenerateImageTool extends ToolCall {
         return new Builder();
     }
 
+    private static Integer parseInteger(Map<String, Object> args, String key) {
+        var val = args.get(key);
+        if (val instanceof Number n) return n.intValue();
+        if (val instanceof String s && !s.isBlank()) {
+            try {
+                return Integer.parseInt(s);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var startTime = System.currentTimeMillis();
@@ -99,19 +112,6 @@ public class GenerateImageTool extends ToolCall {
         }
     }
 
-    private static Integer parseInteger(Map<String, Object> args, String key) {
-        var val = args.get(key);
-        if (val instanceof Number n) return n.intValue();
-        if (val instanceof String s && !s.isBlank()) {
-            try {
-                return Integer.parseInt(s);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return null;
-    }
-
-    // Use the no-context execute as fallback (should never be called since tools always pass context)
     @Override
     public ToolCallResult execute(String arguments) {
         return ToolCallResult.failed("generate_image requires execution context");
