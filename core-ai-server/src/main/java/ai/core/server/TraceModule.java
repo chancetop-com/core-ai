@@ -36,11 +36,9 @@ public class TraceModule extends Module {
     @Override
     protected void initialize() {
         bind(TraceDailyMaintenanceService.class);
-        var archiveService = bind(TraceArchiveService.class);
-        archiveService.setStorageService(bean(ObjectStorageConfiguration.class).service);
         var container = property("trace.archive.container").orElse(property("azure.blob.multimodal.container").orElse("traces-archive"));
-        archiveService.setArchiveContainer(container);
-        archiveService.setArchivePrefix(resolveArchivePrefix());
+        var archiveService = new TraceArchiveService(bean(ObjectStorageConfiguration.class).service, container, resolveArchivePrefix());
+        bind(archiveService);
         var traceDailyMaintenanceTask = bind(TraceDailyMaintenanceTask.class);
         var taskRunner = bean(TaskRunner.class);
         onStartup(() -> taskRunner.register(traceDailyMaintenanceTask));

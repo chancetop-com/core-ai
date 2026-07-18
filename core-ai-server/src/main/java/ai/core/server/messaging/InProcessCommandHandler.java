@@ -43,21 +43,17 @@ public class InProcessCommandHandler {
     private final EventPublisher eventPublisher;
     private final ToolRegistryService toolRegistryService;
 
-    public InProcessCommandHandler(AgentSessionManager sessionManager, ChatMessageService chatMessageService,
-                                   SessionOwnershipRegistry ownershipRegistry, AgentDraftGenerator agentDraftGenerator,
-                                   AgentDefinitionService agentDefinitionService, ServerA2AService serverA2AService,
-                                   JedisPool jedisPool, SandboxService sandboxService, EventPublisher eventPublisher,
-                                   ToolRegistryService toolRegistryService) {
-        this.sessionManager = sessionManager;
-        this.chatMessageService = chatMessageService;
-        this.ownershipRegistry = ownershipRegistry;
-        this.agentDraftGenerator = agentDraftGenerator;
-        this.agentDefinitionService = agentDefinitionService;
-        this.serverA2AService = serverA2AService;
-        this.jedisPool = jedisPool;
-        this.sandboxService = sandboxService;
-        this.eventPublisher = eventPublisher;
-        this.toolRegistryService = toolRegistryService;
+    public InProcessCommandHandler(InProcessCommandHandlerDependencies dependencies) {
+        this.sessionManager = dependencies.sessionManager;
+        this.chatMessageService = dependencies.chatMessageService;
+        this.ownershipRegistry = dependencies.ownershipRegistry;
+        this.agentDraftGenerator = dependencies.agentDraftGenerator;
+        this.agentDefinitionService = dependencies.agentDefinitionService;
+        this.serverA2AService = dependencies.serverA2AService;
+        this.jedisPool = dependencies.jedisPool;
+        this.sandboxService = dependencies.sandboxService;
+        this.eventPublisher = dependencies.eventPublisher;
+        this.toolRegistryService = dependencies.toolRegistryService;
     }
 
     /**

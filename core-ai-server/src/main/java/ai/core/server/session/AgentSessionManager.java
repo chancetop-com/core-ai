@@ -5,6 +5,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.media.MediaProvider;
 import ai.core.server.artifact.ChatArtifactSetup;
+import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.file.FileDownloadUrlResolver;
@@ -17,7 +18,6 @@ import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
-import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.server.sandbox.LazySandbox;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
@@ -85,6 +85,8 @@ public class AgentSessionManager {
     @Inject
     FileService fileService;
     @Inject
+    PublicUrlConfiguration publicUrlConfiguration;
+    @Inject
     SandboxSnapshotService sandboxSnapshotService;
 
     @Inject
@@ -123,7 +125,8 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection,
                     skillManager(), subAgentManager(), sandboxService, artifactSetup,
-                    toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, eventPublisher, ownershipRegistry));
+                    toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService,
+                    publicUrlConfiguration, eventPublisher, ownershipRegistry));
         }
         return rebuildManager;
     }
@@ -153,7 +156,7 @@ public class AgentSessionManager {
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
-                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .build();
         context.setMediaProvider(mediaProvider);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
@@ -173,7 +176,7 @@ public class AgentSessionManager {
         }
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry, context, null, extraVars, null,
-                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
                 null, channelInject(effectiveConfig)));
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
@@ -269,7 +272,7 @@ public class AgentSessionManager {
             extraVars.put("system.channel.type", config.channelType);
         }
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
-                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .build();
         if (sandbox2 != null) context.sandbox(sandbox2);
 
@@ -278,7 +281,7 @@ public class AgentSessionManager {
 
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 config, toolRegistry, context, definition.name, extraVars, definition.id,
-                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId))) : null,
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
                 memoryInject, channelInject(config)));
 
         var experimentConfig = memoryExperimentService.getConfig(definition.id);

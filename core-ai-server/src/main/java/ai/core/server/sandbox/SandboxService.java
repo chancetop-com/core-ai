@@ -31,8 +31,6 @@ import java.util.function.Consumer;
 public class SandboxService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxService.class);
 
-    // Default deadline slightly longer than the session idle threshold (60min) so that an active session's
-    // renewed sandbox is reclaimed by session close, not by its own expiry firing first.
     public static SandboxConfig createDefaultConfig() {
         var config = new SandboxConfig();
         config.enabled = Boolean.TRUE;
@@ -71,39 +69,46 @@ public class SandboxService {
 
     @SuppressFBWarnings("PME_POOR_MANS_ENUM")
     private final boolean enabled;
-    ObjectStorageService storageService;
-    FileService fileService;
-    private SandboxSnapshotService snapshotService;
+    final ObjectStorageService storageService;
+    final FileService fileService;
+    private final SandboxSnapshotService snapshotService;
     private SandboxRedisStore redisStore;
 
     public SandboxService() {
-        this(null);
+        this((JedisPool) null, null, null, null);
     }
 
-    public SandboxService(JedisPool jedisPool) {
+    public SandboxService(JedisPool jedisPool, SandboxSnapshotService snapshotService,
+                          ObjectStorageService storageService, FileService fileService) {
         this.sandboxManager = null;
         this.defaultConfig = new SandboxConfig();
         this.defaultConfig.enabled = Boolean.FALSE;
         this.cleanupScheduler = null;
         this.serverUrlFromSandbox = null;
         this.enabled = false;
+        this.storageService = storageService;
+        this.fileService = fileService;
+        this.snapshotService = snapshotService;
         this.redisStore = new SandboxRedisStore(jedisPool);
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig) {
-        this(provider, defaultConfig, null, null);
+        this(provider, defaultConfig, null, new SandboxServiceDependencies(null, null, null, null));
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox) {
-        this(provider, defaultConfig, serverUrlFromSandbox, null);
+        this(provider, defaultConfig, serverUrlFromSandbox, new SandboxServiceDependencies(null, null, null, null));
     }
 
-    public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox, JedisPool jedisPool) {
+    public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox, SandboxServiceDependencies dependencies) {
         this.sandboxManager = new SandboxManager(provider);
         this.defaultConfig = defaultConfig != null ? defaultConfig : createDefaultConfig();
         this.serverUrlFromSandbox = serverUrlFromSandbox;
         this.enabled = true;
-        this.redisStore = new SandboxRedisStore(jedisPool);
+        this.storageService = dependencies.storageService();
+        this.fileService = dependencies.fileService();
+        this.snapshotService = dependencies.snapshotService();
+        this.redisStore = new SandboxRedisStore(dependencies.jedisPool());
 
         this.cleanupScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             var t = new Thread(r, "sandbox-cleanup");
@@ -111,16 +116,6 @@ public class SandboxService {
             return t;
         });
         cleanupScheduler.scheduleAtFixedRate(new SandboxCleanupJob(sandboxManager, provider), 5, 5, TimeUnit.MINUTES);
-    }
-
-    public void setStorageService(ObjectStorageService storageService) {
-        this.storageService = storageService;
-    }
-    public void setFileService(FileService fileService) {
-        this.fileService = fileService;
-    }
-    public void setSnapshotService(SandboxSnapshotService snapshotService) {
-        this.snapshotService = snapshotService;
     }
 
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
@@ -439,7 +434,6 @@ public class SandboxService {
             discoverySandbox = null;
         }
 
-        // Shutdown cleanup scheduler
         cleanupScheduler.shutdown();
         try {
             if (!cleanupScheduler.awaitTermination(5, TimeUnit.SECONDS)) {

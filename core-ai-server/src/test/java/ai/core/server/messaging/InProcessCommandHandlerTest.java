@@ -22,8 +22,11 @@ class InProcessCommandHandlerTest {
         var ownershipRegistry = mock(SessionOwnershipRegistry.class);
         var eventPublisher = mock(EventPublisher.class);
         doThrow(new RuntimeException("session missing")).when(sessionManager).getSession("s-1");
-        var handler = new InProcessCommandHandler(sessionManager, null, ownershipRegistry, null, null, null,
-                mock(JedisPool.class), null, eventPublisher, null);
+        var handler = new InProcessCommandHandler(new InProcessCommandHandlerDependencies()
+                .sessionManager(sessionManager)
+                .ownershipRegistry(ownershipRegistry)
+                .jedisPool(mock(JedisPool.class))
+                .eventPublisher(eventPublisher));
 
         handler.handle(SessionCommand.sendMessage("s-1", "u-1", "hello", null));
 
@@ -40,8 +43,11 @@ class InProcessCommandHandlerTest {
         var eventPublisher = mock(EventPublisher.class);
         var session = mock(InProcessAgentSession.class);
         when(sessionManager.getSession("s-1")).thenReturn(session);
-        var handler = new InProcessCommandHandler(sessionManager, null, ownershipRegistry, null, null, null,
-                mock(JedisPool.class), null, eventPublisher, null);
+        var handler = new InProcessCommandHandler(new InProcessCommandHandlerDependencies()
+                .sessionManager(sessionManager)
+                .ownershipRegistry(ownershipRegistry)
+                .jedisPool(mock(JedisPool.class))
+                .eventPublisher(eventPublisher));
 
         handler.handle(SessionCommand.cancelTurn("s-1", "u-1"));
 

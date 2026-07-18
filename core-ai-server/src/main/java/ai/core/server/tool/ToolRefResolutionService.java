@@ -65,26 +65,24 @@ class ToolRefResolutionService {
     private final Map<String, List<ToolCall>> dynamicToolSets;
     private final McpServerConnectionManager mcpConnectionManager;
     private InternalApiToolLoader internalApiToolLoader;
-    private SandboxService sandboxService;
+    private final SandboxService sandboxService;
 
     // ── Constructor ──────────────────────────────────────────────────────────────
 
     ToolRefResolutionService(Map<String, ToolRegistryEntry> tools,
                              Map<String, List<ToolCall>> dynamicToolSets,
-                             McpServerConnectionManager mcpConnectionManager) {
+                             McpServerConnectionManager mcpConnectionManager,
+                             SandboxService sandboxService) {
         this.tools = tools;
         this.dynamicToolSets = dynamicToolSets;
         this.mcpConnectionManager = mcpConnectionManager;
+        this.sandboxService = sandboxService;
     }
 
     // ── Dependency injection (called after construction) ─────────────────────────
 
     void setInternalApiToolLoader(InternalApiToolLoader internalApiToolLoader) {
         this.internalApiToolLoader = internalApiToolLoader;
-    }
-
-    void setSandboxService(SandboxService sandboxService) {
-        this.sandboxService = sandboxService;
     }
 
     // ── Public API ───────────────────────────────────────────────────────────────

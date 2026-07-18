@@ -51,13 +51,9 @@ class McpServerConnectionManager {
         }
     }
 
-    private SandboxService sandboxService;
+    private final SandboxService sandboxService;
 
     McpServerConnectionManager(SandboxService sandboxService) {
-        this.sandboxService = sandboxService;
-    }
-
-    void setSandboxService(SandboxService sandboxService) {
         this.sandboxService = sandboxService;
     }
 

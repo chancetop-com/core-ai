@@ -7,6 +7,7 @@ import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.SandboxServiceDependencies;
 import ai.core.server.sandbox.TokenResolver;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxExtensionsClient;
@@ -36,7 +37,8 @@ class SandboxModule extends Module {
     protected void initialize() {
         var providerName = property("sys.sandbox.provider").orElse(null);
         if (providerName == null || providerName.isBlank()) {
-            sandboxService = new SandboxService(bean(JedisPool.class));
+            sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
+                    bean(ObjectStorageConfiguration.class).service, bean(FileService.class));
             bind(sandboxService);
             return;
         }
@@ -55,23 +57,21 @@ class SandboxModule extends Module {
             provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
             serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
         } else {
-            sandboxService = new SandboxService(bean(JedisPool.class));
+            sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
+                    bean(ObjectStorageConfiguration.class).service, bean(FileService.class));
             bind(sandboxService);
             return;
         }
-        sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox, bean(JedisPool.class));
-        bind(sandboxService);
-
-        sandboxService.setFileService(bean(FileService.class));
         var objectStorage = bean(ObjectStorageConfiguration.class).service;
-        sandboxService.setStorageService(objectStorage);
-
-        configureSandboxSnapshot(objectStorage);
+        var snapshotService = configureSandboxSnapshot(objectStorage);
+        sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox,
+                new SandboxServiceDependencies(bean(JedisPool.class), snapshotService, objectStorage, bean(FileService.class)));
+        bind(sandboxService);
 
         onShutdown(sandboxService::shutdown);
     }
 
-    private void configureSandboxSnapshot(ObjectStorageService objectStorage) {
+    private SandboxSnapshotService configureSandboxSnapshot(ObjectStorageService objectStorage) {
 
         var snapshotEnabled = "true".equalsIgnoreCase(property("sys.sandbox.snapshot.enabled").orElse("false"));
         var snapshotContainer = property("azure.blob.snapshot.container").orElse("sandbox-snapshots");
@@ -82,9 +82,7 @@ class SandboxModule extends Module {
         }
         var snapshotService = bean(SandboxSnapshotService.class);
         snapshotService.configure(objectStorage, snapshotContainer, snapshotEnabled && objectStorage != null);
-        if (sandboxService != null) {
-            sandboxService.setSnapshotService(snapshotService);
-        }
+        return snapshotService;
     }
 
     // Sandbox lifetime in seconds, overridable via SYS_SANDBOX_TIMEOUT; defaults to createDefaultConfig (3900s).

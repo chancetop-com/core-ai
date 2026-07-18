@@ -5,6 +5,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.agent.Node;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.server.artifact.ArtifactSink;
+import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.file.FileService;
 import ai.core.server.run.SubmitArtifactsTool;
 import org.slf4j.Logger;
@@ -26,10 +27,13 @@ public final class SandboxLifecycle extends AbstractLifecycle {
 
     private final FileService fileService;
     private final ArtifactSink artifactSink;
+    private final PublicUrlConfiguration publicUrlConfiguration;
 
-    public SandboxLifecycle(FileService fileService, ArtifactSink artifactSink) {
+    public SandboxLifecycle(FileService fileService, ArtifactSink artifactSink,
+                            PublicUrlConfiguration publicUrlConfiguration) {
         this.fileService = fileService;
         this.artifactSink = artifactSink;
+        this.publicUrlConfiguration = publicUrlConfiguration;
     }
 
     @Override
@@ -48,7 +52,7 @@ public final class SandboxLifecycle extends AbstractLifecycle {
             return;
         }
 
-        var tool = SubmitArtifactsTool.create(userId, fileService, artifactSink);
+        var tool = SubmitArtifactsTool.create(userId, fileService, artifactSink, publicUrlConfiguration);
         agent.addTools(List.of(tool));
 
         agent.setSystemPrompt(SubmitArtifactsTool.appendInstructions(agent.getSystemPrompt()));

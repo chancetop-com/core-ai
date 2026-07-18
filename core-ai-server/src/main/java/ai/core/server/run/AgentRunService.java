@@ -10,6 +10,7 @@ import ai.core.api.server.run.ListRunsRequest;
 import ai.core.api.server.run.ListRunsResponse;
 import ai.core.api.server.run.TriggerRunRequest;
 import ai.core.api.server.run.TriggerRunResponse;
+import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
@@ -38,6 +39,8 @@ public class AgentRunService {
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
     FileService fileService;
+    @Inject
+    PublicUrlConfiguration publicUrlConfiguration;
 
     public TriggerRunResponse trigger(String agentId, TriggerRunRequest request) {
         var definition = agentDefinitionCollection.get(agentId)
@@ -208,7 +211,7 @@ public class AgentRunService {
                 artifact.title = a.title;
                 artifact.description = a.description;
                 var shared = fileService.share(a.fileId, entity.userId);
-                artifact.downloadUrl = SubmitArtifactsTool.sharedDownloadUrl(shared.shareToken);
+                artifact.downloadUrl = publicUrlConfiguration.sharedArtifactDownloadUrl(shared.shareToken);
                 artifact.createdAt = a.createdAt;
                 return artifact;
             }).toList();

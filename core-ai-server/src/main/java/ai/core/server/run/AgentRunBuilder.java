@@ -7,6 +7,7 @@ import ai.core.llm.LLMProviders;
 import ai.core.media.MediaProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.artifact.AgentRunArtifactSink;
+import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.dataset.DatasetRecordService;
@@ -90,6 +91,8 @@ public class AgentRunBuilder {
     @Inject
     FileService fileService;
     @Inject
+    PublicUrlConfiguration publicUrlConfiguration;
+    @Inject
     DatasetService datasetService;
     @Inject
     DatasetRecordService datasetRecordService;
@@ -133,7 +136,7 @@ public class AgentRunBuilder {
         }
         if (sandbox != null) {
             builder.addAgentLifecycle(new SandboxLifecycle(fileService,
-                    new AgentRunArtifactSink(runEntity.id, agentRunCollection)));
+                    new AgentRunArtifactSink(runEntity.id, agentRunCollection), publicUrlConfiguration));
         }
         var agent = builder.build();
         agent.setAuthenticated(true);
@@ -145,7 +148,7 @@ public class AgentRunBuilder {
                 .sessionId("run:" + runEntity.id)
                 .userId(definition.userId)
                 .customVariables(variables)
-                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .build();
         if (sandbox != null) context.sandbox(sandbox);
         if (mediaProvider != null) context.setMediaProvider(mediaProvider);

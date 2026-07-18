@@ -39,9 +39,9 @@ public class ToolRegistryService {
 
     private final Map<String, ToolRegistryEntry> tools = new ConcurrentHashMap<>();
     private final Map<String, List<ToolCall>> dynamicToolSets = new ConcurrentHashMap<>();
-    private final McpServerConnectionManager mcpConnectionManager;
-    private final ToolRefResolutionService resolutionService;
-    private final McpServerOperationService mcpOperationService;
+    private McpServerConnectionManager mcpConnectionManager;
+    private ToolRefResolutionService resolutionService;
+    private McpServerOperationService mcpOperationService;
 
     @Inject
     MongoCollection<ToolRegistryEntry> toolRegistryCollection;
@@ -51,18 +51,18 @@ public class ToolRegistryService {
 
     private InternalApiToolLoader internalApiToolLoader;
 
-    public ToolRegistryService() {
-        this.mcpConnectionManager = new McpServerConnectionManager(null);
-        this.resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpConnectionManager);
-        this.mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager);
-    }
+    @Inject
+    SandboxService sandboxService;
 
-    public void setSandboxService(SandboxService sandboxService) {
-        mcpConnectionManager.setSandboxService(sandboxService);
-        resolutionService.setSandboxService(sandboxService);
+    private void initializeDependencies() {
+        if (mcpConnectionManager != null) return;
+        mcpConnectionManager = new McpServerConnectionManager(sandboxService);
+        resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpConnectionManager, sandboxService);
+        mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager);
     }
 
     public void initialize(String mcpServersJson) {
+        initializeDependencies();
         mcpOperationService.setToolRegistryCollection(toolRegistryCollection);
         loadBuiltinTools();
         loadServiceApiTools();

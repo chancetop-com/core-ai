@@ -58,21 +58,14 @@ public class TraceArchiveService {
     @Inject
     MongoCollection<Span> spanCollection;
 
-    // Configuration — set after object storage is initialized
-    ObjectStorageService storageService;
-    String archiveContainer;
-    String archivePrefix;
+    private final ObjectStorageService storageService;
+    private final String archiveContainer;
+    private final String archivePrefix;
     int retentionDays = 30;
 
-    public void setStorageService(ObjectStorageService storageService) {
+    public TraceArchiveService(ObjectStorageService storageService, String archiveContainer, String archivePrefix) {
         this.storageService = storageService;
-    }
-
-    public void setArchiveContainer(String archiveContainer) {
         this.archiveContainer = archiveContainer;
-    }
-
-    public void setArchivePrefix(String archivePrefix) {
         this.archivePrefix = archivePrefix;
     }
 

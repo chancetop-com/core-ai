@@ -1,7 +1,6 @@
 package ai.core.server;
 
 import ai.core.api.server.ToolRegistryWebService;
-import ai.core.server.sandbox.SandboxService;
 import ai.core.server.schedule.ToolRegistrySyncJob;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
@@ -16,7 +15,6 @@ public class ToolRegistryModule extends Module {
     @Override
     protected void initialize() {
         var toolRegistryService = bind(ToolRegistryService.class);
-        toolRegistryService.setSandboxService(bean(SandboxService.class));
 
         var mcpConfig = property("mcp.servers.json").orElse(null);
         onStartup(() -> toolRegistryService.initialize(mcpConfig));

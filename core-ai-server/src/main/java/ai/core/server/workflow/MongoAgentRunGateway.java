@@ -1,5 +1,6 @@
 package ai.core.server.workflow;
 
+import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
@@ -16,7 +17,6 @@ import ai.core.server.run.AgentRunner;
 import ai.core.server.run.WorkflowRunContext;
 import ai.core.server.run.WorkflowTraceContext;
 import ai.core.server.sandbox.StagedFile;
-import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.server.workflow.engine.WorkflowNode;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
@@ -82,6 +82,8 @@ public class MongoAgentRunGateway implements AgentRunGateway {
 
     @Inject
     FileService fileService;
+    @Inject
+    PublicUrlConfiguration publicUrlConfiguration;
 
     @Override
     public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<StagedFile> stagedFiles) {
@@ -129,7 +131,7 @@ public class MongoAgentRunGateway implements AgentRunGateway {
         var refs = new ArrayList<ArtifactRef>(child.artifacts.size());
         for (AgentRunArtifact artifact : child.artifacts) {
             var shared = fileService.share(artifact.fileId, child.userId);
-            refs.add(ArtifactRef.of(artifact, SubmitArtifactsTool.sharedDownloadUrl(shared.shareToken)));
+            refs.add(ArtifactRef.of(artifact, publicUrlConfiguration.sharedArtifactDownloadUrl(shared.shareToken)));
         }
         return refs;
     }

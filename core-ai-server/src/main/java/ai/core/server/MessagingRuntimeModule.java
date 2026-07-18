@@ -9,6 +9,7 @@ import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.EventSubscriber;
 import ai.core.server.messaging.InProcessCommandHandler;
+import ai.core.server.messaging.InProcessCommandHandlerDependencies;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.RpcResponseSubscriber;
 import ai.core.server.messaging.SessionCommand;
@@ -51,10 +52,17 @@ class MessagingRuntimeModule extends Module {
         onStartup(eventSubscriber::start);
         onShutdown(eventSubscriber::stop);
         var sandboxService = bean(SandboxService.class);
-        var commandHandler = new InProcessCommandHandler(
-                bean(AgentSessionManager.class), bean(ChatMessageService.class), ownershipRegistry,
-                bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class), bean(ServerA2AService.class),
-                jedisPool, sandboxService, bean(EventPublisher.class), bean(ToolRegistryService.class));
+        var commandHandler = new InProcessCommandHandler(new InProcessCommandHandlerDependencies()
+                .sessionManager(bean(AgentSessionManager.class))
+                .chatMessageService(bean(ChatMessageService.class))
+                .ownershipRegistry(ownershipRegistry)
+                .agentDraftGenerator(bean(AgentDraftGenerator.class))
+                .agentDefinitionService(bean(AgentDefinitionService.class))
+                .serverA2AService(bean(ServerA2AService.class))
+                .jedisPool(jedisPool)
+                .sandboxService(sandboxService)
+                .eventPublisher(bean(EventPublisher.class))
+                .toolRegistryService(bean(ToolRegistryService.class)));
         bind(new CommandPublisher(jedisPool, ownershipRegistry, sandboxService, commandHandler));
         bind(PodLocalExecutor.class);
         api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));

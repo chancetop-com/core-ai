@@ -6,6 +6,7 @@ import ai.core.api.server.session.SessionConfig;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.artifact.ChatArtifactSetup;
+import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetAccessRegistry;
@@ -21,7 +22,6 @@ import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
-import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.sandbox.Sandbox;
@@ -60,6 +60,7 @@ public class SessionRebuildManager {
     private final DatasetService datasetService;
     private final DatasetRecordService datasetRecordService;
     private final FileService fileService;
+    private final PublicUrlConfiguration publicUrlConfiguration;
     private final EventPublisher eventPublisher;
     private final SessionOwnershipRegistry ownershipRegistry;
 
@@ -75,6 +76,7 @@ public class SessionRebuildManager {
         this.datasetService = deps.datasetService;
         this.datasetRecordService = deps.datasetRecordService;
         this.fileService = deps.fileService;
+        this.publicUrlConfiguration = deps.publicUrlConfiguration;
         this.eventPublisher = deps.eventPublisher;
         this.ownershipRegistry = deps.ownershipRegistry;
     }
@@ -192,7 +194,7 @@ public class SessionRebuildManager {
 
     private SandboxSetup setupSandboxContext(String sessionId, String userId) {
         var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId)
-                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .build() : null;
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
         var sessionRef = new InProcessAgentSession[1];
@@ -256,7 +258,7 @@ public class SessionRebuildManager {
         var agent = subAgentManager.buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, SessionSubAgentManager.toolsToRegistry(tools),
                 sandbox.context, params.agentName, extraVars, agentId,
-                sandbox.sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(params.sessionId))) : null,
+                sandbox.sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(params.sessionId), publicUrlConfiguration)) : null,
                 null, null));
         var session = new InProcessAgentSession(params.sessionId, agent, true, new InMemoryToolPermissionStore());
         sandbox.sessionRef[0] = session;
@@ -439,6 +441,7 @@ public class SessionRebuildManager {
                         DatasetService datasetService,
                         DatasetRecordService datasetRecordService,
                         FileService fileService,
+                        PublicUrlConfiguration publicUrlConfiguration,
                         EventPublisher eventPublisher,
                         SessionOwnershipRegistry ownershipRegistry) {
     }

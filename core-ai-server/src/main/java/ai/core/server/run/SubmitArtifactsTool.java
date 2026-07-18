@@ -2,6 +2,7 @@ package ai.core.server.run;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.server.artifact.ArtifactSink;
+import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.file.FileService;
 import ai.core.tool.ToolCall;
@@ -54,18 +55,14 @@ public final class SubmitArtifactsTool extends ToolCall {
             only the sandbox path and optional metadata.
             """;
 
-    /** Set once at application bootstrap. Used to build absolute download URLs in tool results. */
-    @SuppressWarnings("PMD.MutableStaticState")
-    @SuppressFBWarnings("MS_CANNOT_BE_FINAL")
-    public static String publicUrl = "";
-
     public static String appendInstructions(String systemPrompt) {
         if (systemPrompt == null || systemPrompt.isBlank()) return SYSTEM_INSTRUCTIONS.strip();
         return systemPrompt + SYSTEM_INSTRUCTIONS;
     }
 
-    public static SubmitArtifactsTool create(String userId, FileService fileService, ArtifactSink sink) {
-        var tool = new SubmitArtifactsTool(userId, fileService, sink);
+    public static SubmitArtifactsTool create(String userId, FileService fileService, ArtifactSink sink,
+                                             PublicUrlConfiguration publicUrlConfiguration) {
+        var tool = new SubmitArtifactsTool(userId, fileService, sink, publicUrlConfiguration);
         tool.setName(TOOL_NAME);
         tool.setDescription(TOOL_DESC);
         tool.setParameters(parameters());
@@ -85,23 +82,6 @@ public final class SubmitArtifactsTool extends ToolCall {
                 Do NOT pass an array of strings like ["/tmp/report.pdf"].
                 """).required()
         );
-    }
-
-    private static String baseUrl() {
-        var url = publicUrl;
-        if (url == null || url.isEmpty()) return "";
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
-    }
-
-    /** The authenticated download URL for a stored file. Prefer {@link #sharedDownloadUrl(String)} for artifacts
-     *  that are handed to browsers or external workflow callers. */
-    public static String downloadUrl(String fileId) {
-        return baseUrl() + "/api/files/" + fileId + "/content";
-    }
-
-    /** Public artifact-content URL backed by a share token, safe to hand to workflow callers and opened tabs. */
-    public static String sharedDownloadUrl(String shareToken) {
-        return baseUrl() + "/api/public/artifacts/" + shareToken + "/content";
     }
 
     @SuppressFBWarnings("REC_CATCH_EXCEPTION")
@@ -138,11 +118,14 @@ public final class SubmitArtifactsTool extends ToolCall {
     private final String userId;
     private final FileService fileService;
     private final ArtifactSink sink;
+    private final PublicUrlConfiguration publicUrlConfiguration;
 
-    private SubmitArtifactsTool(String userId, FileService fileService, ArtifactSink sink) {
+    private SubmitArtifactsTool(String userId, FileService fileService, ArtifactSink sink,
+                                PublicUrlConfiguration publicUrlConfiguration) {
         this.userId = userId;
         this.fileService = fileService;
         this.sink = sink;
+        this.publicUrlConfiguration = publicUrlConfiguration;
     }
 
     @Override
@@ -209,7 +192,7 @@ public final class SubmitArtifactsTool extends ToolCall {
                 "path", item.path,
                 "file_id", record.id,
                 "file_name", record.fileName,
-                "download_url", sharedDownloadUrl(shared.shareToken)
+                "download_url", publicUrlConfiguration.sharedArtifactDownloadUrl(shared.shareToken)
             ));
         } catch (Exception e) {
             failed.add(Map.of("path", item.path, "error", errorMessage(e)));
