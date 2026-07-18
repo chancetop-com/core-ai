@@ -27,6 +27,7 @@ public class GatewayModelService {
     static final String ENDPOINT_CHAT_COMPLETIONS = "chat.completions";
     static final String ENDPOINT_RESPONSES = "responses";
     static final String ENDPOINT_IMAGE_GENERATION = "image.generations";
+    static final String ENDPOINT_IMAGE_EDIT = "image.edits";
     static final String ENDPOINT_VIDEO_GENERATION = "video.generations";
 
     static List<String> normalizeEndpointTypes(List<String> endpointTypes) {
@@ -44,6 +45,7 @@ public class GatewayModelService {
             case "chat", "chat.completion", "chat.completions" -> ENDPOINT_CHAT_COMPLETIONS;
             case "response", "responses" -> ENDPOINT_RESPONSES;
             case "image", "image.generation", "image.generations" -> ENDPOINT_IMAGE_GENERATION;
+            case "image.edit", "image.edits" -> ENDPOINT_IMAGE_EDIT;
             case "video", "video.generation", "video.generations" -> ENDPOINT_VIDEO_GENERATION;
             default -> throw new BadRequestException("unsupported endpoint type: " + value);
         };

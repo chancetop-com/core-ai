@@ -15,6 +15,13 @@ public class GatewayProviderView {
     public String modelPrefix;
     public String defaultChatModel;
     public String defaultResponsesModel;
+    public String defaultImageModel;
+    public String defaultVideoModel;
+    public String mediaProtocol;
+    public String mediaAuthType;
+    public Boolean hasGoogleCredentials;
+    public String vertexProjectId;
+    public String vertexLocation;
     public String requestExtraBody;
     public Long timeoutSeconds;
     public Long connectTimeoutSeconds;

@@ -22,6 +22,7 @@ import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.media.MediaProvider;
 import ai.core.session.FileRuleBasedPermissionStore;
 import ai.core.session.FileSessionPersistence;
 import ai.core.session.PermissionGate;
@@ -135,7 +136,11 @@ public class AcpAgentRunner {
                 props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(Boolean.FALSE),
                 props.property("agent.max.turn").map(Integer::parseInt).orElse(100),
                 A2ARemoteAgentConfigLoader.load(props),
-                A2ARemoteAgentConfigLoader.loadServers(props));
+                A2ARemoteAgentConfigLoader.loadServers(props),
+                CliAppHelper.imageMediaProvider(props),
+                CliAppHelper.videoMediaProvider(props),
+                props.property("media.image.model").orElse(null),
+                props.property("media.video.model").orElse(null));
         restoreActiveProvider(props, result.llmProviders);
 
         var agent = buildAgent(ctx);
@@ -201,7 +206,7 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                   Map.of(), false);
+                    Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -241,7 +246,7 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of(), false);
+                Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -399,9 +404,16 @@ public class AcpAgentRunner {
         }
     }
 
-    private record AgentContext(BootstrapResult result, boolean memoryEnabled,
-                                 boolean dailyLogsEnabled, boolean coding,
-                                 int maxTurn, List<A2ARemoteAgentConfig> remoteAgents,
-                                 List<A2ARemoteServerConfig> remoteServers) {
+    private record AgentContext(BootstrapResult result,
+                                boolean memoryEnabled,
+                                boolean dailyLogsEnabled,
+                                boolean coding,
+                                int maxTurn,
+                                List<A2ARemoteAgentConfig> remoteAgents,
+                                List<A2ARemoteServerConfig> remoteServers,
+                                MediaProvider imageMediaProvider,
+                                MediaProvider videoMediaProvider,
+                                String defaultImageModel,
+                                String defaultVideoModel) {
     }
 }

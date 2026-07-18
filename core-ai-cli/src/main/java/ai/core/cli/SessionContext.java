@@ -7,6 +7,7 @@ import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteServerConfig;
+import ai.core.media.MediaProvider;
 import ai.core.session.FileSessionPersistence;
 import ai.core.session.SessionManager;
 import ai.core.session.ToolPermissionStore;
@@ -24,5 +25,7 @@ record SessionContext(BootstrapResult result, PropertiesFileSource props, int ma
         boolean coding, boolean todoV2Enabled,
         List<A2ARemoteAgentConfig> remoteAgents, List<A2ARemoteServerConfig> remoteServers,
         Map<String, SubAgentConfig> subAgentConfigs,
-        boolean promptExtractionEnabled, Integer timeLimitSeconds, boolean a2aAutoDiscover) {
+        boolean promptExtractionEnabled, Integer timeLimitSeconds, boolean a2aAutoDiscover,
+        MediaProvider mediaProvider, MediaProvider imageMediaProvider, MediaProvider videoMediaProvider,
+        String defaultImageModel, String defaultVideoModel) {
 }

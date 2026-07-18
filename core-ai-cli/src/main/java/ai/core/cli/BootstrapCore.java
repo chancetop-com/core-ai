@@ -5,6 +5,7 @@ import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteServerConfig;
+import ai.core.media.MediaProvider;
 import ai.core.session.FileSessionPersistence;
 import ai.core.session.SessionManager;
 import ai.core.session.ToolPermissionStore;
@@ -17,5 +18,7 @@ record BootstrapCore(PropertiesFileSource props, BootstrapResult result, int max
                      boolean todoV2Enabled, List<A2ARemoteAgentConfig> remoteAgents,
                      List<A2ARemoteServerConfig> remoteServers, FileSessionPersistence sessionPersistence,
                      SessionManager sessionManager, ToolPermissionStore permissionStore,
-                     Map<String, SubAgentConfig> subAgentConfigs, boolean a2aAutoDiscover) {
+                      Map<String, SubAgentConfig> subAgentConfigs, boolean a2aAutoDiscover,
+                       MediaProvider mediaProvider, MediaProvider imageMediaProvider, MediaProvider videoMediaProvider,
+                       String defaultImageModel, String defaultVideoModel) {
 }

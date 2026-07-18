@@ -7,6 +7,10 @@ import ai.core.tool.ToolCallResult;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 /**
  * Polls the status of an asynchronous video generation task.
  * The agent MUST call this after {@code generate_video} to check completion.
@@ -35,7 +39,7 @@ public class GetVideoStatusTool extends ToolCall {
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var startTime = System.currentTimeMillis();
         try {
-            var provider = context.getMediaProvider();
+            var provider = context.getVideoMediaProvider();
             if (provider == null) throw new BadRequestException("no media provider configured");
 
             var args = parseArguments(arguments);
@@ -45,12 +49,15 @@ public class GetVideoStatusTool extends ToolCall {
             var status = provider.getVideoStatus(videoId);
 
             return switch (status.status()) {
-                case "completed" -> ToolCallResult.completed(
-                        "Video generation completed.\nvideo_id: " + videoId + "\n"
-                                + "The video is ready. Use a follow-up action to present it to the user.")
-                        .withDuration(System.currentTimeMillis() - startTime)
-                        .withStats("video_id", videoId)
-                        .withStats("status", "completed");
+                case "completed" -> {
+                    var outputPath = saveVideo(context, provider.downloadVideo(videoId), videoId);
+                    yield ToolCallResult.completed(
+                            "Video generation completed.\nvideo_id: " + videoId + "\nvideo_path: " + outputPath)
+                            .withDuration(System.currentTimeMillis() - startTime)
+                            .withStats("video_id", videoId)
+                            .withStats("video_path", outputPath.toString())
+                            .withStats("status", "completed");
+                }
                 case "failed" -> ToolCallResult.failed(
                         "Video generation failed: " + (status.error() != null ? status.error() : "unknown error"))
                         .withDuration(System.currentTimeMillis() - startTime)
@@ -71,6 +78,22 @@ public class GetVideoStatusTool extends ToolCall {
         } catch (Exception e) {
             return ToolCallResult.failed("Video status check failed: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
+        }
+    }
+
+    private Path saveVideo(ExecutionContext context, byte[] data, String videoId) {
+        var workspace = context.getCustomVariables().get("workspace");
+        if (!(workspace instanceof String workspacePath) || workspacePath.isBlank()) {
+            throw new BadRequestException("workspace is required to save the generated video");
+        }
+        var outputDirectory = Path.of(workspacePath).resolve(".core-ai").resolve("media").resolve("videos");
+        var outputPath = outputDirectory.resolve("video-" + videoId + ".mp4");
+        try {
+            Files.createDirectories(outputDirectory);
+            Files.write(outputPath, data);
+            return outputPath;
+        } catch (IOException e) {
+            throw new RuntimeException("failed to save generated video: " + outputPath, e);
         }
     }
 

@@ -8,15 +8,18 @@ import ai.core.tool.ToolCallResult;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Map;
+import java.util.UUID;
 
-/**
- * Generates images via the configured MediaProvider. Single images are returned as base64
- * in the tool response; multiple images return a summary with URLs/indices for the agent
- * to reference.
- *
- * @author stephen
- */
+    /**
+     * Generates images via the configured MediaProvider.
+     *
+     * @author stephen
+     */
 public class GenerateImageTool extends ToolCall {
     public static final String TOOL_NAME = "generate_image";
 
@@ -35,8 +38,7 @@ public class GenerateImageTool extends ToolCall {
             - input_images: Array of input image URLs for image-to-image generation (not all models support this)
             - provider_extra: JSON string with provider-specific parameters forwarded as-is
 
-            Returns the generated image(s). For single images, the image is embedded inline.
-            For multiple images, a text summary with indices is returned.
+            Returns the generated image path. Generated files are saved in .core-ai/media/images.
             """;
 
     public static Builder builder() {
@@ -60,7 +62,7 @@ public class GenerateImageTool extends ToolCall {
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var startTime = System.currentTimeMillis();
         try {
-            var provider = context.getMediaProvider();
+            var provider = context.getImageMediaProvider();
             if (provider == null) throw new BadRequestException("no media provider configured");
 
             var args = parseArguments(arguments);
@@ -68,7 +70,7 @@ public class GenerateImageTool extends ToolCall {
             if (Strings.isBlank(prompt)) return ToolCallResult.failed("prompt is required");
 
             var request = new ImageGenerationRequest(
-                    getStringValue(args, "model"),
+                    getStringValue(args, "model") != null ? getStringValue(args, "model") : defaultModel(context),
                     prompt,
                     parseInteger(args, "n"),
                     getStringValue(args, "size"),
@@ -85,8 +87,8 @@ public class GenerateImageTool extends ToolCall {
             if (response.data() != null && response.data().size() == 1) {
                 var image = response.data().get(0);
                 if (image.b64Json() != null) {
-                    return ToolCallResult.completed(image.b64Json())
-                            .withImage(image.b64Json(), "png")
+                    var outputPath = saveImage(context, image.b64Json(), getStringValue(args, "output_format"));
+                    return ToolCallResult.completed("Image generated: " + outputPath)
                             .withDuration(System.currentTimeMillis() - startTime);
                 }
                 return ToolCallResult.completed("Image generated: " + (image.url() != null ? image.url() : "(no URL)"))
@@ -109,6 +111,30 @@ public class GenerateImageTool extends ToolCall {
         } catch (Exception e) {
             return ToolCallResult.failed("Image generation failed: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
+        }
+    }
+
+    private String defaultModel(ExecutionContext context) {
+        var model = context.getCustomVariables().get("media.image.model");
+        return model instanceof String value && !value.isBlank() ? value : null;
+    }
+
+    private Path saveImage(ExecutionContext context, String base64, String outputFormat) {
+        var workspace = context.getCustomVariables().get("workspace");
+        if (!(workspace instanceof String workspacePath) || workspacePath.isBlank()) {
+            throw new BadRequestException("workspace is required to save the generated image");
+        }
+        var extension = "jpeg".equalsIgnoreCase(outputFormat) ? "jpeg" : "png";
+        var outputDirectory = Path.of(workspacePath).resolve(".core-ai").resolve("media").resolve("images");
+        var outputPath = outputDirectory.resolve("image-" + UUID.randomUUID() + "." + extension);
+        try {
+            Files.createDirectories(outputDirectory);
+            Files.write(outputPath, Base64.getDecoder().decode(base64));
+            return outputPath;
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("image provider returned invalid base64 data");
+        } catch (IOException e) {
+            throw new RuntimeException("failed to save generated image: " + outputPath, e);
         }
     }
 

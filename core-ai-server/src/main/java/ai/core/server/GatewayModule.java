@@ -8,6 +8,7 @@ import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
 import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
 import ai.core.server.gateway.GatewayLLMProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
+import ai.core.server.gateway.MediaJobService;
 import ai.core.server.gateway.GatewayModelController;
 import ai.core.server.gateway.GatewayModelDiscoveryService;
 import ai.core.server.gateway.GatewayModelService;
@@ -45,6 +46,7 @@ public class GatewayModule extends Module {
         bind(GatewayModelDiscoveryService.class);
         bind(GatewayModelService.class);
         bind(GatewayProviderService.class);
+        var mediaJobService = bind(MediaJobService.class);
         bind(GatewayProxyService.class);
         registerGatewayProviderRoutes();
         registerGatewayModelRoutes();
@@ -65,11 +67,11 @@ public class GatewayModule extends Module {
         bind(gatewayLLMProvider);
         llmProviders.addProvider(LLMProviderType.GATEWAY, gatewayLLMProvider);
         llmProviders.setDefaultProvider(LLMProviderType.GATEWAY);
-        bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector);
+        bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector, mediaJobService);
     }
 
-    private void bindGatewayMediaProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector) {
-        var mediaProvider = new GatewayMediaProvider(routingEngine, secretProtector);
+    private void bindGatewayMediaProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector, MediaJobService mediaJobService) {
+        var mediaProvider = new GatewayMediaProvider(routingEngine, secretProtector, mediaJobService);
         bind(MediaProvider.class, mediaProvider);
     }
 
@@ -100,6 +102,7 @@ public class GatewayModule extends Module {
         http().route(HTTPMethod.POST, "/api/gateway/v1/chat/completions", gatewayProxyController::chatCompletions);
         http().route(HTTPMethod.POST, "/api/gateway/v1/responses", gatewayProxyController::responses);
         http().route(HTTPMethod.POST, "/api/gateway/v1/images/generations", gatewayProxyController::imageGenerations);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/images/edits", gatewayProxyController::imageEdits);
         http().route(HTTPMethod.POST, "/api/gateway/v1/videos", gatewayProxyController::videoGenerations);
         http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id", gatewayProxyController::videoStatus);
         http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id/content", gatewayProxyController::videoContent);

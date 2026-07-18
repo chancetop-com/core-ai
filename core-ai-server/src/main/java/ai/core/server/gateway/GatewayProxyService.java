@@ -1,6 +1,8 @@
 package ai.core.server.gateway;
 
+import ai.core.media.domain.VideoStatusResponse;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.server.domain.MediaJob;
 import ai.core.sse.RawSseChannel;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.api.http.HTTPStatus;
@@ -38,6 +40,8 @@ public class GatewayProxyService {
     GatewayRoutingEngine routingEngine;
     @Inject
     GatewaySecretProtector secretProtector;
+    @Inject
+    MediaJobService mediaJobService;
 
     public Response proxyChatCompletions(byte[] body) {
         return proxy(body, GatewayEndpointType.CHAT_COMPLETIONS);
@@ -51,45 +55,39 @@ public class GatewayProxyService {
         return proxy(body, GatewayEndpointType.IMAGE_GENERATION);
     }
 
-    public Response proxyVideoGenerations(byte[] body) {
-        return proxy(body, GatewayEndpointType.VIDEO_GENERATION);
+    public Response proxyImageEdits(byte[] body) {
+        return proxy(body, GatewayEndpointType.IMAGE_EDIT);
     }
 
-    public Response getVideoStatus(String videoId) {
-        return proxyVideoGet("/" + videoId);
+    public Response proxyVideoGenerations(byte[] body, MediaJobOwner owner) {
+        return proxy(body, GatewayEndpointType.VIDEO_GENERATION, owner);
     }
 
-    public Response downloadVideoContent(String videoId) {
-        return proxyVideoGet("/" + videoId + "/content");
+    public Response getVideoStatus(String videoId, String userId) {
+        return proxyVideoGet(videoId, userId, false);
     }
 
-    private Response proxyVideoGet(String path) {
-        var selection = resolveVideoProvider();
-        if (selection == null) throw new BadRequestException("no gateway provider configured for video generation");
-        var provider = selection.provider();
-        var url = stripTrailingSlash(provider.baseUrl) + "/videos" + path;
+    public Response downloadVideoContent(String videoId, String userId) {
+        return proxyVideoGet(videoId, userId, true);
+    }
+
+    private Response proxyVideoGet(String videoId, String userId, boolean content) {
+        var job = mediaJobService.getOwned(GatewayVideoHandle.decode(videoId), userId);
+        var provider = routingEngine.jobProvider(job.providerId);
+        var suffix = content ? "/content" : "";
+        var url = stripTrailingSlash(provider.baseUrl) + "/videos/" + urlEncode(job.upstreamVideoId) + suffix;
         GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(provider.allowPrivateNetwork));
         var request = new HTTPRequest(HTTPMethod.GET, url);
         request.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
         GatewaySupport.applyAuth(provider, request, apiKey(provider));
         applyTimeouts(provider, request);
-        return response(execute(request, provider));
+        var upstream = execute(request, provider);
+        if (!content && upstream.statusCode >= 200 && upstream.statusCode < 300) {
+            updateVideoJobStatus(job, upstream);
+        }
+        return response(upstream);
     }
 
-    /**
-     * Finds a provider that supports video generation by checking published models.
-     * Returns null if no video-capable provider is configured.
-     */
-    private GatewayRoute resolveVideoProvider() {
-        for (var model : routingEngine.models()) {
-            try {
-                return routingEngine.route(model.id(), GatewayEndpointType.VIDEO_GENERATION);
-            } catch (BadRequestException ignored) {
-                // model does not support video endpoint — skip to next model
-            }
-        }
-        return null;
-    }
 
     public Response models() {
         var data = routingEngine.models().stream().map(model -> {
@@ -121,9 +119,20 @@ public class GatewayProxyService {
     }
 
     private Response proxy(byte[] body, GatewayEndpointType endpoint) {
+        return proxy(body, endpoint, MediaJobOwner.UNKNOWN);
+    }
+
+    private Response proxy(byte[] body, GatewayEndpointType endpoint, MediaJobOwner owner) {
         var call = prepare(body, endpoint);
+        if (endpoint == GatewayEndpointType.VIDEO_GENERATION && call.stream()) {
+            throw new BadRequestException("streaming video generation is not supported by the gateway");
+        }
         if (call.stream()) return bufferedStream(call);
-        return response(execute(call.request(), call.provider()));
+        var upstream = execute(call.request(), call.provider());
+        if (endpoint == GatewayEndpointType.VIDEO_GENERATION && upstream.statusCode >= 200 && upstream.statusCode < 300) {
+            return gatewayVideoResponse(upstream, call, owner);
+        }
+        return response(upstream);
     }
 
     private GatewayUpstreamCall prepare(byte[] body, GatewayEndpointType endpoint) {
@@ -141,7 +150,8 @@ public class GatewayProxyService {
         GatewaySupport.applyAuth(provider, upstreamRequest, apiKey(provider));
         applyTimeouts(provider, upstreamRequest);
         upstreamRequest.body(writeJson(outgoingBody), ContentType.APPLICATION_JSON);
-        return new GatewayUpstreamCall(upstreamRequest, provider, Boolean.TRUE.equals(requestBody.get("stream")));
+        return new GatewayUpstreamCall(upstreamRequest, provider, string(requestBody.get("model")),
+                selection.upstreamModel(), Boolean.TRUE.equals(requestBody.get("stream")));
     }
 
     private String endpointUrl(GatewayProviderConfig provider, GatewayEndpointType endpoint, String model) {
@@ -194,6 +204,25 @@ public class GatewayProxyService {
         return CLIENT.sse(request);
     }
 
+    private void updateVideoJobStatus(MediaJob job, HTTPResponse upstream) {
+        var body = parseBody(upstream.body == null ? new byte[0] : upstream.body);
+        mediaJobService.updateVideoStatus(job, new VideoStatusResponse(
+                string(body.get("id")), string(body.get("status")), integer(body.get("progress")), string(body.get("error")), null));
+    }
+
+    private Response gatewayVideoResponse(HTTPResponse upstream, GatewayUpstreamCall call, MediaJobOwner owner) {
+        var body = parseBody(upstream.body == null ? new byte[0] : upstream.body);
+        var upstreamVideoId = string(body.get("id"));
+        if (!hasText(upstreamVideoId)) throw new BadRequestException("upstream video response is missing id");
+        var route = new GatewayRoute(call.provider(), call.upstreamModel());
+        var job = mediaJobService.createVideoJob(owner, route, call.requestedModel(), upstreamVideoId);
+        body.put("id", GatewayVideoHandle.encode(job.id));
+        var response = Response.bytes(writeJson(body));
+        response.status(status(upstream.statusCode));
+        response.contentType(ContentType.APPLICATION_JSON);
+        return response;
+    }
+
     private Response response(HTTPResponse upstream) {
         var body = upstream.body == null ? new byte[0] : upstream.body;
         var response = body.length == 0 ? Response.empty() : Response.bytes(body);
@@ -236,6 +265,10 @@ public class GatewayProxyService {
         } catch (Exception e) {
             throw new RuntimeException("failed to serialize gateway JSON", e);
         }
+    }
+
+    private Integer integer(Object value) {
+        return value instanceof Number number ? number.intValue() : null;
     }
 
     private String string(Object value) {

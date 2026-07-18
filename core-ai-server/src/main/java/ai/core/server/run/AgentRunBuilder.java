@@ -5,6 +5,9 @@ import ai.core.agent.AgentBuilder;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProviders;
 import ai.core.media.MediaProvider;
+import ai.core.server.gateway.ContextualMediaProvider;
+import ai.core.server.gateway.GatewayMediaProvider;
+import ai.core.server.gateway.MediaJobOwner;
 import ai.core.sandbox.Sandbox;
 import ai.core.telemetry.AgentTracer;
 import ai.core.server.artifact.AgentRunArtifactSink;
@@ -154,7 +157,12 @@ public class AgentRunBuilder {
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .build();
         if (sandbox != null) context.sandbox(sandbox);
-        if (mediaProvider != null) context.setMediaProvider(mediaProvider);
+        if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
+            context.setMediaProvider(new ContextualMediaProvider(gatewayMediaProvider,
+                    new MediaJobOwner(definition.userId, context.getSessionId(), runEntity.id)));
+        } else if (mediaProvider != null) {
+            context.setMediaProvider(mediaProvider);
+        }
         return context;
     }
 

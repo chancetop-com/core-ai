@@ -8,6 +8,10 @@ import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderType;
+import ai.core.llm.providers.LiteLLMMediaProvider;
+import ai.core.media.GoogleAccessTokenProvider;
+import ai.core.media.MediaProvider;
+import ai.core.media.VertexGeminiOmniMediaProvider;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
@@ -124,6 +128,50 @@ public class CliAppHelper {
         if (auth != null && auth.apiKey() != null) {
             props.putProperty("litellm.api.base", auth.serverUrl() + "/api/litellm/v1");
             props.putProperty("litellm.api.key", auth.apiKey());
+        }
+    }
+
+    public static MediaProvider imageMediaProvider(PropertiesFileSource props) {
+        var baseUrl = props.property("media.image.api.base")
+                .orElseGet(() -> props.property("media.api.base").orElseGet(() -> props.property("litellm.api.base").orElse(null)));
+        var apiKey = props.property("media.image.api.key")
+                .orElseGet(() -> props.property("media.api.key").orElseGet(() -> props.property("litellm.api.key").orElse(null)));
+        if (baseUrl == null || baseUrl.isBlank()) return null;
+        return new LiteLLMMediaProvider(baseUrl, apiKey);
+    }
+
+    public static MediaProvider videoMediaProvider(PropertiesFileSource props) {
+        var protocol = props.property("media.video.protocol").orElseGet(() -> props.property("media.protocol").orElse(null));
+        if (!"VERTEX_GEMINI_INTERACTIONS".equalsIgnoreCase(protocol)) {
+            var baseUrl = props.property("media.video.api.base").orElseGet(() -> props.property("media.api.base")
+                    .orElseGet(() -> props.property("litellm.api.base").orElse(null)));
+            var apiKey = props.property("media.video.api.key").orElseGet(() -> props.property("media.api.key")
+                    .orElseGet(() -> props.property("litellm.api.key").orElse(null)));
+            return baseUrl == null || baseUrl.isBlank() ? null : new LiteLLMMediaProvider(baseUrl, apiKey);
+        }
+        return new VertexGeminiOmniMediaProvider(
+                props.property("media.vertex.api.base").orElse(null),
+                props.property("media.vertex.project-id").orElse(null),
+                props.property("media.vertex.location").orElse("global"),
+                new GoogleAccessTokenProvider(googleServiceAccountJson(props)));
+    }
+
+    public static MediaProvider mediaProvider(PropertiesFileSource props) {
+        var imageProvider = imageMediaProvider(props);
+        return imageProvider != null ? imageProvider : videoMediaProvider(props);
+    }
+
+    private static String googleServiceAccountJson(PropertiesFileSource props) {
+        var inlineJson = props.property("media.video.google.service-account-json")
+                .orElseGet(() -> props.property("media.google.service-account-json").orElse(null));
+        if (inlineJson != null && !inlineJson.isBlank()) return inlineJson;
+        var serviceAccountFile = props.property("media.video.google.service-account-file")
+                .orElseGet(() -> props.property("media.google.service-account-file").orElse(null));
+        if (serviceAccountFile == null || serviceAccountFile.isBlank()) return null;
+        try {
+            return Files.readString(Path.of(serviceAccountFile));
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to read Google service account file: " + serviceAccountFile, e);
         }
     }
 

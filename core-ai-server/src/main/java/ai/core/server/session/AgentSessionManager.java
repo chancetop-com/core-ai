@@ -4,6 +4,9 @@ import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.media.MediaProvider;
+import ai.core.server.gateway.ContextualMediaProvider;
+import ai.core.server.gateway.GatewayMediaProvider;
+import ai.core.server.gateway.MediaJobOwner;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.dataset.DatasetRecordService;
@@ -158,7 +161,7 @@ public class AgentSessionManager {
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .build();
-        context.setMediaProvider(mediaProvider);
+        setMediaProvider(context, userId, sessionId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
         Map<String, Object> extraVars = null;
@@ -275,6 +278,7 @@ public class AgentSessionManager {
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .build();
         if (sandbox2 != null) context.sandbox(sandbox2);
+        setMediaProvider(context, userId, sessionId);
 
         var injectionResult = memoryExperimentService.prepareInjection(definition.id);
         var memoryInject = injectionResult.injected ? injectionResult.promptInject : null;
@@ -289,6 +293,14 @@ public class AgentSessionManager {
             memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);
         }
         return new AgentBuildResult(agent, sessionRef);
+    }
+
+    private void setMediaProvider(ExecutionContext context, String userId, String sessionId) {
+        if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
+            context.setMediaProvider(new ContextualMediaProvider(gatewayMediaProvider, new MediaJobOwner(userId, sessionId, null)));
+        } else {
+            context.setMediaProvider(mediaProvider);
+        }
     }
 
     private void claimOwnership(String sessionId) {

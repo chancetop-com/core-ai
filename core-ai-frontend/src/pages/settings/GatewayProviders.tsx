@@ -10,12 +10,28 @@ const PROVIDER_TYPES = [
   { value: 'qwen', label: 'Qwen', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', prefix: 'qwen/' },
   { value: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', prefix: 'openrouter/' },
   { value: 'openai-compatible', label: 'OpenAI Compatible', baseUrl: '', prefix: '' },
+  { value: 'gemini', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', prefix: 'google/' },
+];
+
+const MEDIA_PROTOCOLS = [
+  { value: '', label: 'Automatic' },
+  { value: 'OPENAI_IMAGES', label: 'OpenAI Images' },
+  { value: 'OPENAI_COMPATIBLE', label: 'OpenAI Compatible' },
+  { value: 'GEMINI_GENERATE_CONTENT', label: 'Gemini generateContent' },
+  { value: 'VERTEX_GEMINI_GENERATE_CONTENT', label: 'Vertex Gemini generateContent' },
+];
+
+const GOOGLE_AUTH_TYPES = [
+  { value: 'API_KEY', label: 'API Key' },
+  { value: 'GOOGLE_APPLICATION_DEFAULT_CREDENTIALS', label: 'Application Default Credentials' },
+  { value: 'GOOGLE_SERVICE_ACCOUNT_JSON', label: 'Service Account JSON' },
 ];
 
 const ENDPOINT_TYPES = [
   { value: 'chat.completions', label: 'Chat' },
   { value: 'responses', label: 'Responses' },
-  { value: 'image.generations', label: 'Image' },
+  { value: 'image.generations', label: 'Image Generation' },
+  { value: 'image.edits', label: 'Image Edit' },
   { value: 'video.generations', label: 'Video' },
 ];
 
@@ -33,6 +49,14 @@ type ProviderFormState = {
   modelPrefix: string;
   defaultChatModel: string;
   defaultResponsesModel: string;
+  defaultImageModel: string;
+  defaultVideoModel: string;
+  mediaProtocol: string;
+  mediaAuthType: string;
+  googleCredentialsJson: string;
+  hasGoogleCredentials: boolean;
+  vertexProjectId: string;
+  vertexLocation: string;
   requestExtraBody: string;
   timeoutSeconds: string;
   connectTimeoutSeconds: string;
@@ -66,6 +90,14 @@ const emptyProviderForm: ProviderFormState = {
   modelPrefix: 'openai/',
   defaultChatModel: '',
   defaultResponsesModel: '',
+  defaultImageModel: '',
+  defaultVideoModel: '',
+  mediaProtocol: '',
+  mediaAuthType: 'API_KEY',
+  googleCredentialsJson: '',
+  hasGoogleCredentials: false,
+  vertexProjectId: '',
+  vertexLocation: 'us-central1',
   requestExtraBody: '',
   timeoutSeconds: '30',
   connectTimeoutSeconds: '10',
@@ -154,8 +186,16 @@ export default function GatewayProviders() {
       allowPrivateNetwork: provider.allowPrivateNetwork === true,
       modelPrefix: provider.modelPrefix || '',
       defaultChatModel: provider.defaultChatModel || '',
-      defaultResponsesModel: provider.defaultResponsesModel || '',
-      requestExtraBody: provider.requestExtraBody || '',
+       defaultResponsesModel: provider.defaultResponsesModel || '',
+       defaultImageModel: provider.defaultImageModel || '',
+       defaultVideoModel: provider.defaultVideoModel || '',
+       mediaProtocol: provider.mediaProtocol || '',
+       mediaAuthType: provider.mediaAuthType || 'API_KEY',
+       googleCredentialsJson: '',
+       hasGoogleCredentials: provider.hasGoogleCredentials === true,
+       vertexProjectId: provider.vertexProjectId || '',
+       vertexLocation: provider.vertexLocation || 'us-central1',
+       requestExtraBody: provider.requestExtraBody || '',
       timeoutSeconds: String(provider.timeoutSeconds || 30),
       connectTimeoutSeconds: String(provider.connectTimeoutSeconds || 10),
     });
@@ -186,8 +226,15 @@ export default function GatewayProviders() {
         allowPrivateNetwork: providerForm.allowPrivateNetwork,
         modelPrefix: providerForm.modelPrefix,
         defaultChatModel: providerForm.defaultChatModel,
-        defaultResponsesModel: providerForm.defaultResponsesModel,
-        requestExtraBody: providerForm.requestExtraBody,
+         defaultResponsesModel: providerForm.defaultResponsesModel,
+         defaultImageModel: providerForm.defaultImageModel,
+         defaultVideoModel: providerForm.defaultVideoModel,
+         mediaProtocol: providerForm.mediaProtocol,
+         mediaAuthType: providerForm.mediaAuthType,
+         googleCredentialsJson: providerForm.googleCredentialsJson,
+         vertexProjectId: providerForm.vertexProjectId,
+         vertexLocation: providerForm.vertexLocation,
+         requestExtraBody: providerForm.requestExtraBody,
         timeoutSeconds: Number(providerForm.timeoutSeconds || 30),
         connectTimeoutSeconds: Number(providerForm.connectTimeoutSeconds || 10),
       };
@@ -713,19 +760,55 @@ function renderProviderPanel(props: {
           <Field label="Model Prefix">
             <input className={inputClass} style={inputStyle} value={form.modelPrefix} onChange={e => setForm({ ...form, modelPrefix: e.target.value })} />
           </Field>
-          <Field label="API Version">
-            <input className={inputClass} style={inputStyle} value={form.apiVersion} onChange={e => setForm({ ...form, apiVersion: e.target.value })} />
-          </Field>
-        </div>
+           <Field label="API Version">
+             <input className={inputClass} style={inputStyle} value={form.apiVersion} onChange={e => setForm({ ...form, apiVersion: e.target.value })} />
+           </Field>
+           <Field label="Media Protocol">
+             <select className={inputClass} style={inputStyle} value={form.mediaProtocol} onChange={e => setForm({ ...form, mediaProtocol: e.target.value })}>
+               {MEDIA_PROTOCOLS.map(protocol => <option key={protocol.value} value={protocol.value}>{protocol.label}</option>)}
+             </select>
+           </Field>
+           {form.mediaProtocol === 'VERTEX_GEMINI_GENERATE_CONTENT' && (
+             <Field label="Google Credentials">
+               <select className={inputClass} style={inputStyle} value={form.mediaAuthType} onChange={e => setForm({ ...form, mediaAuthType: e.target.value })}>
+                 {GOOGLE_AUTH_TYPES.slice(1).map(authType => <option key={authType.value} value={authType.value}>{authType.label}</option>)}
+               </select>
+             </Field>
+           )}
+         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Chat Model">
-            <input className={inputClass} style={inputStyle} value={form.defaultChatModel} onChange={e => setForm({ ...form, defaultChatModel: e.target.value })} />
-          </Field>
-          <Field label="Responses Model">
-            <input className={inputClass} style={inputStyle} value={form.defaultResponsesModel} onChange={e => setForm({ ...form, defaultResponsesModel: e.target.value })} />
-          </Field>
-        </div>
+         {form.mediaProtocol === 'VERTEX_GEMINI_GENERATE_CONTENT' && (
+           <>
+             <div className="grid grid-cols-2 gap-4">
+               <Field label="GCP Project ID">
+                 <input className={inputClass} style={inputStyle} value={form.vertexProjectId} onChange={e => setForm({ ...form, vertexProjectId: e.target.value })} />
+               </Field>
+               <Field label="GCP Location">
+                 <input className={inputClass} style={inputStyle} value={form.vertexLocation} onChange={e => setForm({ ...form, vertexLocation: e.target.value })} />
+               </Field>
+             </div>
+             {form.mediaAuthType === 'GOOGLE_SERVICE_ACCOUNT_JSON' && (
+               <Field label={form.hasGoogleCredentials ? 'Service Account JSON (leave empty to keep current)' : 'Service Account JSON'}>
+                 <textarea className={`${inputClass} min-h-36 font-mono`} style={inputStyle} value={form.googleCredentialsJson} onChange={e => setForm({ ...form, googleCredentialsJson: e.target.value })} />
+               </Field>
+             )}
+           </>
+         )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Chat Model">
+             <input className={inputClass} style={inputStyle} value={form.defaultChatModel} onChange={e => setForm({ ...form, defaultChatModel: e.target.value })} />
+           </Field>
+           <Field label="Responses Model">
+             <input className={inputClass} style={inputStyle} value={form.defaultResponsesModel} onChange={e => setForm({ ...form, defaultResponsesModel: e.target.value })} />
+           </Field>
+           <Field label="Image Model">
+             <input className={inputClass} style={inputStyle} value={form.defaultImageModel} onChange={e => setForm({ ...form, defaultImageModel: e.target.value })} />
+           </Field>
+           <Field label="Video Model">
+             <input className={inputClass} style={inputStyle} value={form.defaultVideoModel} onChange={e => setForm({ ...form, defaultVideoModel: e.target.value })} />
+           </Field>
+         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Timeout Seconds">

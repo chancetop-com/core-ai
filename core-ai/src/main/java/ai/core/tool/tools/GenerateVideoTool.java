@@ -38,7 +38,6 @@ public final class GenerateVideoTool extends ToolCall {
             - model: The video generation model to use (uses the default if omitted)
             - seconds: Video duration in seconds (model-specific, e.g. 5 or 10)
             - size: Video dimensions, e.g. "1280x720"
-            - input_references: JSON string with reference images for video generation
             - provider_extra: JSON string with provider-specific parameters
             """;
 
@@ -73,7 +72,7 @@ public final class GenerateVideoTool extends ToolCall {
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var startTime = System.currentTimeMillis();
         try {
-            var provider = context.getMediaProvider();
+            var provider = context.getVideoMediaProvider();
             if (provider == null) throw new BadRequestException("no media provider configured");
 
             var args = parseArguments(arguments);
@@ -81,7 +80,7 @@ public final class GenerateVideoTool extends ToolCall {
             if (Strings.isBlank(prompt)) return ToolCallResult.failed("prompt is required");
 
             var request = new VideoGenerationRequest(
-                    getStringValue(args, "model"),
+                    getStringValue(args, "model") != null ? getStringValue(args, "model") : defaultModel(context),
                     prompt,
                     parseInteger(args, "seconds"),
                     getStringValue(args, "size"),
@@ -104,6 +103,11 @@ public final class GenerateVideoTool extends ToolCall {
         }
     }
 
+    private String defaultModel(ExecutionContext context) {
+        var model = context.getCustomVariables().get("media.video.model");
+        return model instanceof String value && !value.isBlank() ? value : null;
+    }
+
     @Override
     public ToolCallResult execute(String arguments) {
         return ToolCallResult.failed("generate_video requires execution context");
@@ -116,7 +120,7 @@ public final class GenerateVideoTool extends ToolCall {
             var status = mediaProvider.getVideoStatus(taskId);
             return switch (status.status()) {
                 case "completed" -> ToolCallResult.completed(
-                        "Video " + taskId + " is ready. The video generation has completed successfully.");
+                        "Video " + taskId + " is ready. Call get_video_status with this video_id to save it locally.");
                 case "failed" -> ToolCallResult.failed(
                         "Video generation failed: " + (status.error() != null ? status.error() : "unknown error"));
                 default -> {
@@ -152,7 +156,6 @@ public final class GenerateVideoTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "model", "The video generation model to use (uses the default if omitted)"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (model-specific, e.g. 5 or 10)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720"),
-                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON string with reference image data"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));
             var tool = new GenerateVideoTool(mediaProvider);

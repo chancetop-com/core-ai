@@ -44,6 +44,27 @@ public class GatewayProviderConfig {
     @Field(name = "default_responses_model")
     public String defaultResponsesModel;
 
+    @Field(name = "default_image_model")
+    public String defaultImageModel;
+
+    @Field(name = "default_video_model")
+    public String defaultVideoModel;
+
+    @Field(name = "media_protocol")
+    public String mediaProtocol;
+
+    @Field(name = "media_auth_type")
+    public String mediaAuthType;
+
+    @Field(name = "google_credentials_encrypted")
+    public String googleCredentialsEncrypted;
+
+    @Field(name = "vertex_project_id")
+    public String vertexProjectId;
+
+    @Field(name = "vertex_location")
+    public String vertexLocation;
+
     @Field(name = "request_extra_body")
     public String requestExtraBody;
 

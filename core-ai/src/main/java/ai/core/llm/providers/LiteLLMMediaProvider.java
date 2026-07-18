@@ -47,7 +47,7 @@ public class LiteLLMMediaProvider implements MediaProvider {
     @Override
     @SuppressWarnings("unchecked")
     public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
-        var reqBody = new LinkedHashMap<>(JsonUtil.toMap(request));
+        var reqBody = imageRequestBody(request);
         mergeProviderExtra(reqBody, request.providerExtra());
 
         var httpRequest = new HTTPRequest(HTTPMethod.POST, url + "/images/generations");
@@ -136,6 +136,23 @@ public class LiteLLMMediaProvider implements MediaProvider {
             throw new RuntimeException("video download failed: HTTP " + httpResponse.statusCode + ": " + httpResponse.text());
         }
         return httpResponse.body;
+    }
+
+    private LinkedHashMap<String, Object> imageRequestBody(ImageGenerationRequest request) {
+        var body = new LinkedHashMap<String, Object>();
+        putIfNotNull(body, "model", request.model());
+        putIfNotNull(body, "prompt", request.prompt());
+        putIfNotNull(body, "n", request.n());
+        putIfNotNull(body, "size", request.size());
+        putIfNotNull(body, "quality", request.quality());
+        putIfNotNull(body, "output_format", request.outputFormat());
+        putIfNotNull(body, "output_compression", request.outputCompression());
+        putIfNotNull(body, "background", request.background());
+        return body;
+    }
+
+    private void putIfNotNull(Map<String, Object> body, String key, Object value) {
+        if (value != null) body.put(key, value);
     }
 
     private void setHeaders(HTTPRequest request) {

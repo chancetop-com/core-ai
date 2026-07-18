@@ -111,6 +111,20 @@ public class GatewayRoutingEngine {
         return !snapshot().providers.isEmpty();
     }
 
+    public GatewayProviderConfig provider(String providerId) {
+        if (!hasText(providerId)) throw new BadRequestException("gateway provider ID is required");
+        return snapshot().providers.stream()
+                .filter(provider -> providerId.equals(provider.id))
+                .findFirst()
+                .orElseThrow(() -> new BadRequestException("gateway provider is unavailable for video task: " + providerId));
+    }
+
+    public GatewayProviderConfig jobProvider(String providerId) {
+        if (!hasText(providerId)) throw new BadRequestException("gateway provider ID is required");
+        return gatewayProviderCollection.get(providerId)
+                .orElseThrow(() -> new BadRequestException("gateway provider is unavailable for video task: " + providerId));
+    }
+
     /**
      * Whether any gateway model (enabled or not) is registered under this modelId —
      * lets callers distinguish "never registered" from "registered but disabled".
@@ -238,7 +252,8 @@ public class GatewayRoutingEngine {
         return switch (endpoint) {
             case CHAT_COMPLETIONS -> provider.defaultChatModel;
             case RESPONSES -> provider.defaultResponsesModel;
-            case IMAGE_GENERATION, VIDEO_GENERATION -> null;
+            case IMAGE_GENERATION, IMAGE_EDIT -> provider.defaultImageModel;
+            case VIDEO_GENERATION -> provider.defaultVideoModel;
         };
     }
 

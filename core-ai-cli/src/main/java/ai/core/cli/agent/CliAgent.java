@@ -25,6 +25,7 @@ import ai.core.cli.task.FileTodoStoreFactory;
 import ai.core.cli.trace.HttpTraceUploader;
 import ai.core.cli.trace.TraceCollectorLifecycle;
 import ai.core.llm.LLMProviders;
+import ai.core.media.MediaProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.PromptInject;
 import ai.core.skill.SkillConfig;
@@ -36,6 +37,9 @@ import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
+import ai.core.tool.tools.GenerateImageTool;
+import ai.core.tool.tools.GenerateVideoTool;
+import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.utils.SystemUtil;
 
 import java.nio.file.Files;
@@ -56,6 +60,9 @@ public class CliAgent {
         toolRegistry.registerProvider(new McpToolProvider());
         toolRegistry.registerProvider(new SkillToolProvider(buildSkillConfig(config, pluginManager), config.workspace.toAbsolutePath().toString()));
         toolRegistry.registerProvider(ListToolProvider.of(cliUserTools(config)));
+        if (config.imageMediaProvider != null || config.videoMediaProvider != null || config.mediaProvider != null) {
+            toolRegistry.registerProvider(ListToolProvider.of(mediaTools(config.imageMediaProvider, config.videoMediaProvider, config.mediaProvider)));
+        }
         toolRegistry.registerProvider(buildRemoteAgentProvider(config));
 
         var hookConfig = HookConfig.load(config.workspace, pluginManager);
@@ -82,12 +89,18 @@ public class CliAgent {
         var execCtx = ExecutionContext.builder()
                 .sessionId(config.sessionId)
                 .userId(auth != null ? auth.userId() : null)
-                .customVariables(Map.of("workspace", config.workspace.toAbsolutePath().toString()))
+                .customVariables(Map.of(
+                        "workspace", config.workspace.toAbsolutePath().toString(),
+                        "media.image.model", config.defaultImageModel != null ? config.defaultImageModel : "",
+                        "media.video.model", config.defaultVideoModel != null ? config.defaultVideoModel : ""))
                 .persistenceProvider(config.persistenceProvider)
                 .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))
                 .todoStoreFactory(new FileTodoStoreFactory(config.workspace.resolve(".core-ai/todos")))
                 .promptSections(constructPromptSection(config, hookOutput))
                 .build();
+        execCtx.setMediaProvider(config.mediaProvider);
+        execCtx.setImageMediaProvider(config.imageMediaProvider);
+        execCtx.setVideoMediaProvider(config.videoMediaProvider);
         execCtx.setSubAgentConfigs(config.subAgentConfigs);
         execCtx.setAgentProfileRegistry(buildAgentProfileRegistry(config));
         agent.setExecutionContext(execCtx);
@@ -126,6 +139,18 @@ public class CliAgent {
         return List.of(
                 AskUserTool.builder().questionHandler(config.askUserHandler()).build(),
                 AddMcpServerTool.builder().build());
+    }
+
+    private static List<ToolCall> mediaTools(MediaProvider imageMediaProvider, MediaProvider videoMediaProvider, MediaProvider mediaProvider) {
+        var imageProvider = imageMediaProvider != null ? imageMediaProvider : mediaProvider;
+        var videoProvider = videoMediaProvider != null ? videoMediaProvider : mediaProvider;
+        var tools = new ArrayList<ToolCall>();
+        if (imageProvider != null) tools.add(GenerateImageTool.builder().build());
+        if (videoProvider != null) {
+            tools.add(GenerateVideoTool.builder(videoProvider).build());
+            tools.add(GetVideoStatusTool.builder().build());
+        }
+        return tools;
     }
 
     private static RemoteAgentToolProvider buildRemoteAgentProvider(Config config) {
@@ -181,7 +206,12 @@ public class CliAgent {
                          String sessionId,
                          List<A2ARemoteAgentConfig> remoteAgents,
                          List<A2ARemoteServerConfig> remoteServers,
-                         Map<String, SubAgentConfig> subAgentConfigs,
-                         boolean a2aAutoDiscover) {
+                          Map<String, SubAgentConfig> subAgentConfigs,
+                            boolean a2aAutoDiscover,
+                             MediaProvider mediaProvider,
+                             MediaProvider imageMediaProvider,
+                             MediaProvider videoMediaProvider,
+                             String defaultImageModel,
+                            String defaultVideoModel) {
     }
 }

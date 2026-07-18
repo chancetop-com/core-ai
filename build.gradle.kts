@@ -100,6 +100,7 @@ project(":core-ai") {
         implementation("org.yaml:snakeyaml:${Versions.SNAKEYAML_VERSION}")
         // Jsoup for HTML parsing (DuckDuckGo search provider)
         implementation("org.jsoup:jsoup:${Versions.JSOUP_VERSION}")
+        implementation("com.google.auth:google-auth-library-oauth2-http:${Versions.GOOGLE_AUTH_VERSION}")
     }
 }
 

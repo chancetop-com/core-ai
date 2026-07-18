@@ -46,6 +46,8 @@ final class GatewaySupport {
         if (isBlank(apiKey)) return;
         if ("azure".equals(provider.type)) {
             request.headers.put("api-key", apiKey);
+        } else if ("gemini".equals(provider.type)) {
+            request.headers.put("x-goog-api-key", apiKey);
         } else {
             request.headers.put("Authorization", "Bearer " + apiKey);
         }

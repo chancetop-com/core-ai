@@ -143,6 +143,7 @@ public class GatewayProviderService {
             var version = isBlank(entity.apiVersion) ? "2024-10-21" : entity.apiVersion;
             return baseUrl + "/openai/deployments?api-version=" + urlEncode(version);
         }
+        if ("gemini".equals(entity.type)) return baseUrl + "/models";
         return baseUrl + "/models";
     }
 
@@ -175,6 +176,15 @@ public class GatewayProviderService {
         if (entity.modelPrefix == null) entity.modelPrefix = defaultModelPrefix(entity.type);
         if (request.defaultChatModel != null) entity.defaultChatModel = trimToNull(request.defaultChatModel);
         if (request.defaultResponsesModel != null) entity.defaultResponsesModel = trimToNull(request.defaultResponsesModel);
+        if (request.defaultImageModel != null) entity.defaultImageModel = trimToNull(request.defaultImageModel);
+        if (request.defaultVideoModel != null) entity.defaultVideoModel = trimToNull(request.defaultVideoModel);
+        if (request.mediaProtocol != null) entity.mediaProtocol = normalizeMediaProtocol(request.mediaProtocol);
+        if (request.mediaAuthType != null) entity.mediaAuthType = normalizeMediaAuthType(request.mediaAuthType);
+        if (request.googleCredentialsJson != null && (!keepExistingSecret || !request.googleCredentialsJson.isBlank())) {
+            entity.googleCredentialsEncrypted = secretProtector.protect(request.googleCredentialsJson.trim());
+        }
+        if (request.vertexProjectId != null) entity.vertexProjectId = trimToNull(request.vertexProjectId);
+        if (request.vertexLocation != null) entity.vertexLocation = trimToNull(request.vertexLocation);
         if (request.requestExtraBody != null) entity.requestExtraBody = trimToNull(request.requestExtraBody);
         if (request.timeoutSeconds != null) entity.timeoutSeconds = request.timeoutSeconds;
         if (request.connectTimeoutSeconds != null) entity.connectTimeoutSeconds = request.connectTimeoutSeconds;
@@ -190,6 +200,9 @@ public class GatewayProviderService {
         if (request.baseUrl != null && request.baseUrl.isBlank()) throw new BadRequestException("baseUrl is required");
         if (request.baseUrl != null && !request.baseUrl.isBlank()) GatewayNetworkGuard.validateHttpUrlSyntax(request.baseUrl.trim());
         if (request.type != null) normalizeType(request.type);
+        if (request.mediaProtocol != null) normalizeMediaProtocol(request.mediaProtocol);
+        if (request.mediaAuthType != null) normalizeMediaAuthType(request.mediaAuthType);
+        if (request.googleCredentialsJson != null && !request.googleCredentialsJson.isBlank()) validateGoogleCredentials(request.googleCredentialsJson);
         if (request.requestExtraBody != null) validateExtraBody(request.requestExtraBody);
         if (request.timeoutSeconds != null && request.timeoutSeconds <= 0) {
             throw new BadRequestException("timeoutSeconds must be positive");
@@ -214,6 +227,13 @@ public class GatewayProviderService {
         view.modelPrefix = entity.modelPrefix;
         view.defaultChatModel = entity.defaultChatModel;
         view.defaultResponsesModel = entity.defaultResponsesModel;
+        view.defaultImageModel = entity.defaultImageModel;
+        view.defaultVideoModel = entity.defaultVideoModel;
+        view.mediaProtocol = entity.mediaProtocol;
+        view.mediaAuthType = entity.mediaAuthType;
+        view.hasGoogleCredentials = !isBlank(entity.googleCredentialsEncrypted);
+        view.vertexProjectId = entity.vertexProjectId;
+        view.vertexLocation = entity.vertexLocation;
         view.requestExtraBody = entity.requestExtraBody;
         view.timeoutSeconds = entity.timeoutSeconds;
         view.connectTimeoutSeconds = entity.connectTimeoutSeconds;
@@ -252,9 +272,39 @@ public class GatewayProviderService {
     private String normalizeType(String type) {
         var value = type.trim().toLowerCase(Locale.ROOT);
         return switch (value) {
-            case "openai", "azure", "litellm", "deepseek", "qwen", "openrouter", "openai-compatible" -> value;
+            case "openai", "azure", "litellm", "deepseek", "qwen", "openrouter", "openai-compatible", "gemini" -> value;
             default -> throw new BadRequestException("unsupported provider type: " + type);
         };
+    }
+
+    private String normalizeMediaProtocol(String mediaProtocol) {
+        var value = mediaProtocol.trim().toUpperCase(Locale.ROOT);
+        return switch (value) {
+            case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_GENERATE_CONTENT" -> value;
+            default -> throw new BadRequestException("unsupported media protocol: " + mediaProtocol);
+        };
+    }
+
+    private String normalizeMediaAuthType(String mediaAuthType) {
+        var value = mediaAuthType.trim().toUpperCase(Locale.ROOT);
+        return switch (value) {
+            case "API_KEY", "GOOGLE_APPLICATION_DEFAULT_CREDENTIALS", "GOOGLE_SERVICE_ACCOUNT_JSON" -> value;
+            default -> throw new BadRequestException("unsupported media auth type: " + mediaAuthType);
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private void validateGoogleCredentials(String credentialsJson) {
+        try {
+            var credentials = GatewayJson.MAPPER.readValue(credentialsJson, java.util.Map.class);
+            if (!"service_account".equals(credentials.get("type")) || isBlank((String) credentials.get("client_email")) || isBlank((String) credentials.get("private_key"))) {
+                throw new BadRequestException("googleCredentialsJson must be a service account JSON key");
+            }
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BadRequestException("googleCredentialsJson must be valid JSON: " + e.getMessage(), "BAD_REQUEST", e);
+        }
     }
 
     private String defaultModelPrefix(String type) {

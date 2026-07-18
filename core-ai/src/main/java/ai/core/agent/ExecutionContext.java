@@ -54,6 +54,8 @@ public final class ExecutionContext {
     private CancellationToken cancellationToken;
     private LLMProvider llmProvider;
     private MediaProvider mediaProvider;
+    private MediaProvider imageMediaProvider;
+    private MediaProvider videoMediaProvider;
     private String model;
     private String multiModalModel;
     private StreamingCallback streamingCallback;
@@ -185,6 +187,22 @@ public final class ExecutionContext {
 
     public void setMediaProvider(MediaProvider mediaProvider) {
         this.mediaProvider = mediaProvider;
+    }
+
+    public MediaProvider getImageMediaProvider() {
+        return imageMediaProvider != null ? imageMediaProvider : mediaProvider;
+    }
+
+    public void setImageMediaProvider(MediaProvider imageMediaProvider) {
+        this.imageMediaProvider = imageMediaProvider;
+    }
+
+    public MediaProvider getVideoMediaProvider() {
+        return videoMediaProvider != null ? videoMediaProvider : mediaProvider;
+    }
+
+    public void setVideoMediaProvider(MediaProvider videoMediaProvider) {
+        this.videoMediaProvider = videoMediaProvider;
     }
 
     public String getModel() {
