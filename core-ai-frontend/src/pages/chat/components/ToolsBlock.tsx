@@ -86,7 +86,9 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
   const formatJson = (s: string) => {
     try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
   };
-  const doneCount = tools.filter(t => t.type === 'result' && (t.resultStatus === 'success' || t.resultStatus === 'COMPLETED')).length;
+  const isSuccessful = (status?: string) => status === 'success' || status === 'COMPLETED';
+  const isPending = (status?: string) => status === 'pending' || status === 'PENDING' || status === 'async_launched';
+  const doneCount = tools.filter(t => t.type === 'result' && (isSuccessful(t.resultStatus) || isPending(t.resultStatus))).length;
 
   const buildTaskToolLabel = (t: ToolEvent): string | null => {
     if (t.tool !== 'task') return null;
@@ -122,8 +124,8 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
         {t.type === 'start' ? (
           <Loader2 size={14} className="animate-spin shrink-0" style={{ color: 'var(--color-warning)' }} />
         ) : (
-          <span className="shrink-0" style={{ color: (t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? 'var(--color-success)' : 'var(--color-error)' }}>
-            {(t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? '\u2713' : '\u2717'}
+          <span className="shrink-0" style={{ color: isSuccessful(t.resultStatus) ? 'var(--color-success)' : isPending(t.resultStatus) ? 'var(--color-warning)' : 'var(--color-error)' }}>
+            {isSuccessful(t.resultStatus) ? '\u2713' : isPending(t.resultStatus) ? '\u2026' : '\u2717'}
           </span>
         )}
         <span className="font-mono font-medium truncate" style={{ color: hasChildren ? '#8b5cf6' : 'var(--color-primary)' }}>{buildTaskToolLabel(t) ?? t.tool}</span>
@@ -144,8 +146,8 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
         )}
         {t.type === 'result' && (
           <>
-            <span className="shrink-0" style={{ color: (t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? 'var(--color-success)' : 'var(--color-error)' }}>
-              {(t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? 'done' : (t.resultStatus || 'error')}
+            <span className="shrink-0" style={{ color: isSuccessful(t.resultStatus) ? 'var(--color-success)' : isPending(t.resultStatus) ? 'var(--color-warning)' : 'var(--color-error)' }}>
+              {isSuccessful(t.resultStatus) ? 'done' : isPending(t.resultStatus) ? 'submitted' : (t.resultStatus || 'error')}
             </span>
             {detail && (
               <button onClick={() => toggleResult(key)}

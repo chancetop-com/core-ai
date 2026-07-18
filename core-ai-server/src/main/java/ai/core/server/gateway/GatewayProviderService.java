@@ -5,6 +5,7 @@ import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
+import ai.core.media.GoogleAccessTokenProvider;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
@@ -114,19 +115,34 @@ public class GatewayProviderService {
     private TestGatewayProviderResponse test(GatewayProviderConfig entity) {
         var started = System.nanoTime();
         var result = new TestGatewayProviderResponse();
+        if (isVertexMediaProvider(entity) && vertexMediaProviderConfigurationInvalid(entity)) {
+            result.ok = false;
+            result.status = "failed";
+            result.message = "Vertex provider requires GCP Project ID and GCP Location";
+            result.durationMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
+            return result;
+        }
         try {
-            GatewayNetworkGuard.validateOutboundUrl(testUrl(entity), Boolean.TRUE.equals(entity.allowPrivateNetwork));
-            var request = new HTTPRequest(HTTPMethod.GET, testUrl(entity));
-            request.headers.put("Content-Type", "application/json");
-            request.connectTimeout = Duration.ofSeconds(valueOrDefault(entity.connectTimeoutSeconds, 10));
-            request.timeout = Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, 30));
-            GatewaySupport.applyAuth(entity, request, secret(entity));
+            if (isVertexMediaProvider(entity)) {
+                var credentials = secretProtector.unprotect(entity.googleCredentialsEncrypted);
+                new GoogleAccessTokenProvider("GOOGLE_SERVICE_ACCOUNT_JSON".equals(entity.mediaAuthType) ? credentials : null).accessToken();
+                result.ok = true;
+                result.status = "ok";
+                result.message = "Google credentials verified; video generation is not started by provider test";
+            } else {
+                GatewayNetworkGuard.validateOutboundUrl(testUrl(entity), Boolean.TRUE.equals(entity.allowPrivateNetwork));
+                var request = new HTTPRequest(HTTPMethod.GET, testUrl(entity));
+                request.headers.put("Content-Type", "application/json");
+                request.connectTimeout = Duration.ofSeconds(valueOrDefault(entity.connectTimeoutSeconds, 10));
+                request.timeout = Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, 30));
+                GatewaySupport.applyAuth(entity, request, secret(entity));
 
-            var response = CLIENT.execute(request);
-            result.ok = response.statusCode >= 200 && response.statusCode < 300;
-            result.status = result.ok ? "ok" : "failed";
-            result.message = result.ok ? "Connected" : truncate("HTTP " + response.statusCode + ": " + response.text(), 300);
-        } catch (Exception e) {
+                var response = CLIENT.execute(request);
+                result.ok = response.statusCode >= 200 && response.statusCode < 300;
+                result.status = result.ok ? "ok" : "failed";
+                result.message = result.ok ? "Connected" : truncate("HTTP " + response.statusCode + ": " + response.text(), 300);
+            }
+        } catch (RuntimeException e) {
             LOGGER.warn("gateway provider test failed, providerId={}, error={}", entity.id, e.getMessage());
             result.ok = false;
             result.status = "failed";
@@ -135,6 +151,15 @@ public class GatewayProviderService {
             result.durationMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
         }
         return result;
+    }
+
+    private boolean isVertexMediaProvider(GatewayProviderConfig provider) {
+        return "VERTEX_GEMINI_GENERATE_CONTENT".equals(provider.mediaProtocol)
+                || "VERTEX_GEMINI_INTERACTIONS".equals(provider.mediaProtocol);
+    }
+
+    private boolean vertexMediaProviderConfigurationInvalid(GatewayProviderConfig provider) {
+        return isBlank(provider.vertexProjectId) || isBlank(provider.vertexLocation);
     }
 
     private String testUrl(GatewayProviderConfig entity) {
@@ -280,7 +305,7 @@ public class GatewayProviderService {
     private String normalizeMediaProtocol(String mediaProtocol) {
         var value = mediaProtocol.trim().toUpperCase(Locale.ROOT);
         return switch (value) {
-            case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_GENERATE_CONTENT" -> value;
+            case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_INTERACTIONS" -> value;
             default -> throw new BadRequestException("unsupported media protocol: " + mediaProtocol);
         };
     }

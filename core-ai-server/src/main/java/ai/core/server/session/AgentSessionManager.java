@@ -9,6 +9,7 @@ import ai.core.server.gateway.GatewayMediaProvider;
 import ai.core.server.gateway.MediaJobOwner;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
+import ai.core.server.artifact.ServerImageOutputSink;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.file.FileDownloadUrlResolver;
@@ -33,6 +34,8 @@ import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.web.sse.SessionChannelService;
+import ai.core.tool.tools.GenerateImageTool;
+import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.InternalUrlResolver;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.web.sse.SseEventBridge;
@@ -111,16 +114,12 @@ public class AgentSessionManager {
     private SessionDatasetHelper datasetHelper;
 
     private SessionSkillManager skillManager() {
-        if (skillManager == null) {
-            skillManager = new SessionSkillManager(skillService, mongoSkillProvider, skillArchiveBuilder, chatMessageService);
-        }
+        if (skillManager == null) skillManager = new SessionSkillManager(skillService, mongoSkillProvider, skillArchiveBuilder, chatMessageService);
         return skillManager;
     }
 
     private SessionSubAgentManager subAgentManager() {
-        if (subAgentManager == null) {
-            subAgentManager = new SessionSubAgentManager(chatMessageService, subAgentAssembler);
-        }
+        if (subAgentManager == null) subAgentManager = new SessionSubAgentManager(chatMessageService, subAgentAssembler);
         return subAgentManager;
     }
 
@@ -135,37 +134,43 @@ public class AgentSessionManager {
     }
 
     private SessionDatasetHelper datasetHelper() {
-        if (datasetHelper == null) {
-            datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
-        }
+        if (datasetHelper == null) datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
         return datasetHelper;
+    }
+
+    private PromptInject channelInject(SessionConfig config) {
+        if (config == null || config.channelType == null || config.channelType.isBlank()) return null;
+        return () -> "You are communicating with the user through the " + config.channelType + " channel.";
     }
 
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
         session.onEvent(chatMessageService.listener(sessionId));
         session.onEvent(new SseEventBridge(sessionId, eventPublisher));
     }
-
     public void touchActivity(String sessionId) {
         sessionLastActivity.put(sessionId, System.currentTimeMillis());
         sandboxService.renewSandbox(sessionId);
     }
-
     public String createSession(SessionConfig config, String userId) {
         return createSession(config, userId, "chat");
     }
-
     public String createSession(SessionConfig config, String userId, String source) {
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
+                .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
+                        new ServerImageOutputSink(userId, fileService,
+                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
+                .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
+                        new ServerImageOutputSink(userId, fileService,
+                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
                 .build();
         setMediaProvider(context, userId, sessionId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
         Map<String, Object> extraVars = null;
-        if (hasText(effectiveConfig.datasetId)) {
+        if (effectiveConfig.datasetId != null && !effectiveConfig.datasetId.isBlank()) {
             var dp = new AgentDatasetConfig();
             dp.datasetId = effectiveConfig.datasetId;
             dp.permission = DatasetPermission.READ;
@@ -192,11 +197,9 @@ public class AgentSessionManager {
         claimOwnership(sessionId);
         return sessionId;
     }
-
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
         return createSessionFromAgent(definition, overrides, userId, "chat");
     }
-
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId, String source) {
         var config = subAgentManager().toSessionConfig(definition);
         if (overrides != null) {
@@ -243,7 +246,7 @@ public class AgentSessionManager {
                 return perm;
             }).toList();
             config.datasetConfigs = overrides.datasetConfigs;
-        } else if (overrides != null && hasText(overrides.datasetId)) {
+        } else if (overrides != null && overrides.datasetId != null && !overrides.datasetId.isBlank()) {
             var overridePerm = new AgentDatasetConfig();
             overridePerm.datasetId = overrides.datasetId;
             overridePerm.permission = DatasetPermission.READ;
@@ -276,6 +279,12 @@ public class AgentSessionManager {
         }
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
+                .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
+                        new ServerImageOutputSink(userId, fileService,
+                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
+                .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
+                        new ServerImageOutputSink(userId, fileService,
+                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
                 .build();
         if (sandbox2 != null) context.sandbox(sandbox2);
         setMediaProvider(context, userId, sessionId);
@@ -297,9 +306,12 @@ public class AgentSessionManager {
 
     private void setMediaProvider(ExecutionContext context, String userId, String sessionId) {
         if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
-            context.setMediaProvider(new ContextualMediaProvider(gatewayMediaProvider, new MediaJobOwner(userId, sessionId, null)));
+            var contextualProvider = new ContextualMediaProvider(gatewayMediaProvider, new MediaJobOwner(userId, sessionId, null));
+            context.setImageMediaProvider(contextualProvider);
+            context.setVideoMediaProvider(contextualProvider);
         } else {
-            context.setMediaProvider(mediaProvider);
+            context.setImageMediaProvider(mediaProvider);
+            context.setVideoMediaProvider(mediaProvider);
         }
     }
 
@@ -314,11 +326,9 @@ public class AgentSessionManager {
             ownershipRegistry.claimOrRenew(sessionId);
         }
     }
-
     public InProcessAgentSession getSession(String sessionId) {
         return getSession(sessionId, null);
     }
-
     public InProcessAgentSession getSession(String sessionId, SessionState state) {
         var session = sessions.get(sessionId);
         if (session != null) {
@@ -351,13 +361,11 @@ public class AgentSessionManager {
         touchActivity(sessionId);
         return built;
     }
-
     public void touchSession(String sessionId) {
         if (ownershipRegistry != null) {
             ownershipRegistry.claimOrRenew(sessionId);
         }
     }
-
     public void closeSession(String sessionId) {
         var session = sessions.remove(sessionId);
         if (session != null) session.close();
@@ -375,8 +383,6 @@ public class AgentSessionManager {
         }
     }
 
-    // Capture only on the session-close path (60min idle cleanup + explicit close).
-    // Run/workflow/OCG releases and shutdown() intentionally never capture (v1 scope).
     private void captureSandboxSnapshot(String sessionId) {
         if (sandboxSnapshotService == null || !sandboxSnapshotService.enabled()) return;
         try {
@@ -395,7 +401,6 @@ public class AgentSessionManager {
             logger.warn("sandbox snapshot capture failed, releasing anyway: sessionId={}", sessionId, e);
         }
     }
-
     public int cleanupIdleSessions(Duration maxIdle) {
         var threshold = System.currentTimeMillis() - maxIdle.toMillis();
         var closed = 0;
@@ -416,7 +421,6 @@ public class AgentSessionManager {
         }
         return closed;
     }
-
     public List<ToolRef> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {
         var session = getSession(sessionId);
         var tools = toolRegistryService.resolveToolRefs(toolRefs, sessionId);
@@ -427,30 +431,17 @@ public class AgentSessionManager {
         chatMessageService.addLoadedTools(sessionId, toolRefs);
         return toolRefs;
     }
-
     public List<String> unloadSkills(String sessionId, List<String> skillIds) {
         return skillManager().unloadSkills(sessionId, skillIds);
     }
-
     public List<String> loadSkills(String sessionId, List<String> skillIds) {
         var session = getSession(sessionId);
         return skillManager().loadSkills(session, skillIds);
     }
-
     public List<String> loadSubAgents(String sessionId, List<AgentDefinition> definitions) {
         var session = getSession(sessionId);
         return subAgentManager().loadSubAgents(session, definitions);
     }
-
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
-    }
-
-    private PromptInject channelInject(SessionConfig config) {
-        if (config == null || config.channelType == null || config.channelType.isBlank()) return null;
-        return () -> "You are communicating with the user through the " + config.channelType + " channel.";
-    }
-
     public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds) {
     }
 

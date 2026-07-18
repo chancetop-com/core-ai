@@ -10,6 +10,7 @@ import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 
 import java.time.ZonedDateTime;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -20,13 +21,13 @@ public class MediaJobService {
     MongoCollection<MediaJob> mediaJobCollection;
 
     public MediaJob createVideoJob(MediaJobOwner owner, GatewayRoute route, String requestedModel, String upstreamVideoId) {
-        if (owner == null) owner = MediaJobOwner.UNKNOWN;
+        var jobOwner = owner == null ? MediaJobOwner.UNKNOWN : owner;
         var now = ZonedDateTime.now();
         var job = new MediaJob();
         job.id = UUID.randomUUID().toString();
-        job.userId = owner.userId();
-        job.sessionId = owner.sessionId();
-        job.agentRunId = owner.agentRunId();
+        job.userId = jobOwner.userId();
+        job.sessionId = jobOwner.sessionId();
+        job.agentRunId = jobOwner.agentRunId();
         job.providerId = route.provider().id;
         job.upstreamVideoId = upstreamVideoId;
         job.requestedModel = requestedModel;
@@ -54,12 +55,13 @@ public class MediaJobService {
     public void updateVideoStatus(MediaJob job, VideoStatusResponse status) {
         var now = ZonedDateTime.now();
         var state = normalizeState(status.status());
+        var completed = job.completedAt == null && "completed".equals(state);
         var updates = Updates.combine(
                 Updates.set("state", state),
                 Updates.set("progress", status.progress()),
                 Updates.set("error", status.error()),
                 Updates.set("updated_at", now));
-        if ("completed".equals(state) && job.completedAt == null) {
+        if (completed) {
             updates = Updates.combine(updates, Updates.set("completed_at", now));
         }
         mediaJobCollection.update(Filters.eq("_id", job.id), updates);
@@ -67,12 +69,12 @@ public class MediaJobService {
         job.progress = status.progress();
         job.error = status.error();
         job.updatedAt = now;
-        if ("completed".equals(state) && job.completedAt == null) job.completedAt = now;
+        if (completed) job.completedAt = now;
     }
 
     private String normalizeState(String value) {
         if (value == null || value.isBlank()) return "processing";
-        return switch (value.toLowerCase()) {
+        return switch (value.toLowerCase(Locale.getDefault())) {
             case "completed", "succeeded", "success" -> "completed";
             case "failed", "error" -> "failed";
             case "cancelled", "canceled" -> "cancelled";

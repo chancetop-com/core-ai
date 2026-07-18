@@ -7,7 +7,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import core.framework.util.Strings;
-import core.framework.web.exception.BadRequestException;
 
 import java.util.Map;
 
@@ -36,7 +35,7 @@ public final class GenerateVideoTool extends ToolCall {
             Parameters:
             - prompt (required): A detailed text description of the video scene
             - model: The video generation model to use (uses the default if omitted)
-            - seconds: Video duration in seconds (model-specific, e.g. 5 or 10)
+            - seconds: Video duration in seconds (optional; defaults to 10, model-specific)
             - size: Video dimensions, e.g. "1280x720"
             - provider_extra: JSON string with provider-specific parameters
             """;
@@ -69,12 +68,16 @@ public final class GenerateVideoTool extends ToolCall {
     }
 
     @Override
+    public ToolCallResult execute(String arguments) {
+        return ToolCallResult.failed("generate_video requires execution context");
+    }
+
+    @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var startTime = System.currentTimeMillis();
+        var provider = context.getVideoMediaProvider();
+        if (provider == null) return ToolCallResult.failed("no media provider configured");
         try {
-            var provider = context.getVideoMediaProvider();
-            if (provider == null) throw new BadRequestException("no media provider configured");
-
             var args = parseArguments(arguments);
             var prompt = getStringValue(args, "prompt");
             if (Strings.isBlank(prompt)) return ToolCallResult.failed("prompt is required");
@@ -106,11 +109,6 @@ public final class GenerateVideoTool extends ToolCall {
     private String defaultModel(ExecutionContext context) {
         var model = context.getCustomVariables().get("media.video.model");
         return model instanceof String value && !value.isBlank() ? value : null;
-    }
-
-    @Override
-    public ToolCallResult execute(String arguments) {
-        return ToolCallResult.failed("generate_video requires execution context");
     }
 
     @Override
@@ -154,7 +152,7 @@ public final class GenerateVideoTool extends ToolCall {
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "A detailed text description of the video scene").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "model", "The video generation model to use (uses the default if omitted)"),
-                    ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (model-specific, e.g. 5 or 10)"),
+                    ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; defaults to 10, model-specific)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));

@@ -11,9 +11,6 @@ import java.util.Base64;
 final class GatewayVideoHandle {
     private static final String PREFIX = "gateway-video-v1";
 
-    private GatewayVideoHandle() {
-    }
-
     static String encode(String jobId) {
         if (isBlank(jobId)) throw new BadRequestException("gateway media job ID is required");
         return PREFIX + "." + encodePart(jobId);
@@ -30,7 +27,7 @@ final class GatewayVideoHandle {
             if (isBlank(jobId)) throw new BadRequestException("invalid gateway video ID");
             return jobId;
         } catch (IllegalArgumentException e) {
-            throw new BadRequestException("invalid gateway video ID");
+            throw new BadRequestException("invalid gateway video ID", "BAD_REQUEST", e);
         }
     }
 
@@ -46,4 +43,6 @@ final class GatewayVideoHandle {
         return value == null || value.isBlank();
     }
 
+    private GatewayVideoHandle() {
+    }
 }

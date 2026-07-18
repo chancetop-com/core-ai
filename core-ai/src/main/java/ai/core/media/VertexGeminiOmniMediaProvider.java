@@ -14,6 +14,7 @@ import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -103,7 +104,7 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
     private Map<String, Object> responseFormat(VideoGenerationRequest request) {
         var format = new LinkedHashMap<String, Object>();
         format.put("type", "video");
-        if (request.seconds() != null) format.put("duration", request.seconds());
+        if (request.seconds() != null) format.put("duration", request.seconds() + "s");
         var aspectRatio = aspectRatio(request.size());
         if (aspectRatio != null) format.put("aspect_ratio", aspectRatio);
         return format;
@@ -182,7 +183,7 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
     }
 
     private byte[] decodeData(String data) {
-        var marker = data.indexOf(",");
+        var marker = data.indexOf(',');
         var encoded = data.startsWith("data:") && marker >= 0 ? data.substring(marker + 1) : data;
         return Base64.getDecoder().decode(encoded);
     }
@@ -198,7 +199,7 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
 
     private String aspectRatio(String size) {
         if (size == null || size.isBlank()) return null;
-        var dimensions = size.toLowerCase().split("x");
+        var dimensions = size.toLowerCase(Locale.ROOT).split("x");
         if (dimensions.length != 2) return null;
         try {
             var width = Integer.parseInt(dimensions[0]);
@@ -211,7 +212,7 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
 
     private String normalizeStatus(String status) {
         if (status == null) return "processing";
-        return switch (status.toLowerCase()) {
+        return switch (status.toLowerCase(Locale.ROOT)) {
             case "complete", "completed", "succeeded", "success" -> "completed";
             case "failed", "cancelled", "canceled", "error" -> "failed";
             default -> "processing";

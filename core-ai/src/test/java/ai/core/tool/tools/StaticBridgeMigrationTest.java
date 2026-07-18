@@ -35,7 +35,7 @@ class StaticBridgeMigrationTest {
         assertEquals("owner/repo", provider.repo);
     }
 
-    private static class RecordingGitHubTokenProvider implements GitHubTokenProvider {
+    private static final class RecordingGitHubTokenProvider implements GitHubTokenProvider {
         private String repo;
 
         @Override
@@ -45,7 +45,7 @@ class StaticBridgeMigrationTest {
         }
     }
 
-    private static class TestMediaProvider implements MediaProvider {
+    private static final class TestMediaProvider implements MediaProvider {
         private String lastVideoId;
 
         @Override

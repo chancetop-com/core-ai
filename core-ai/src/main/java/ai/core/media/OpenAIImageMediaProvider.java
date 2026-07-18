@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -41,7 +42,7 @@ public class OpenAIImageMediaProvider implements MediaProvider {
 
     @Override
     public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
-        var editing = (request.inputImages() != null && !request.inputImages().isEmpty()) || request.mask() != null;
+        var editing = request.inputImages() != null && !request.inputImages().isEmpty() || request.mask() != null;
         var httpRequest = editing ? editRequest(request) : generationRequest(request);
         var response = client.execute(httpRequest);
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -71,7 +72,7 @@ public class OpenAIImageMediaProvider implements MediaProvider {
         put(body, "prompt", request.prompt());
         put(body, "n", request.n());
         put(body, "size", request.size());
-        put(body, "quality", request.quality());
+        put(body, "quality", normalizedQuality(request.quality()));
         put(body, "output_format", request.outputFormat());
         put(body, "output_compression", request.outputCompression());
         put(body, "background", request.background());
@@ -88,7 +89,7 @@ public class OpenAIImageMediaProvider implements MediaProvider {
         field(body, boundary, "prompt", request.prompt());
         field(body, boundary, "n", request.n());
         field(body, boundary, "size", request.size());
-        field(body, boundary, "quality", request.quality());
+        field(body, boundary, "quality", normalizedQuality(request.quality()));
         field(body, boundary, "output_format", request.outputFormat());
         field(body, boundary, "output_compression", request.outputCompression());
         field(body, boundary, "background", request.background());
@@ -146,6 +147,15 @@ public class OpenAIImageMediaProvider implements MediaProvider {
     private String dataPart(String value) {
         var comma = value.indexOf(',');
         return value.startsWith("data:") && comma >= 0 ? value.substring(comma + 1) : value;
+    }
+
+    private String normalizedQuality(String quality) {
+        if (quality == null || quality.isBlank()) return null;
+        return switch (quality.toLowerCase(Locale.ROOT)) {
+            case "standard" -> "medium";
+            case "hd" -> "high";
+            default -> quality;
+        };
     }
 
     private void put(Map<String, Object> body, String key, Object value) {

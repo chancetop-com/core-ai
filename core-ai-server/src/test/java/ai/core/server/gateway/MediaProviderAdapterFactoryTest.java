@@ -4,6 +4,7 @@ import ai.core.llm.providers.LiteLLMMediaProvider;
 import ai.core.media.GeminiImageMediaProvider;
 import ai.core.media.OpenAIImageMediaProvider;
 import ai.core.media.VertexGeminiImageMediaProvider;
+import ai.core.media.VertexGeminiOmniMediaProvider;
 import ai.core.server.domain.GatewayProviderConfig;
 import org.junit.jupiter.api.Test;
 
@@ -34,6 +35,16 @@ class MediaProviderAdapterFactoryTest {
         provider.vertexLocation = "us-central1";
 
         assertInstanceOf(VertexGeminiImageMediaProvider.class, factory.create(provider, ""));
+    }
+
+    @Test
+    void createsVertexOmniAdapterWithApplicationDefaultCredentials() {
+        var provider = provider("gemini", "VERTEX_GEMINI_INTERACTIONS");
+        provider.mediaAuthType = "GOOGLE_APPLICATION_DEFAULT_CREDENTIALS";
+        provider.vertexProjectId = "project";
+        provider.vertexLocation = "global";
+
+        assertInstanceOf(VertexGeminiOmniMediaProvider.class, factory.create(provider, ""));
     }
 
     @Test

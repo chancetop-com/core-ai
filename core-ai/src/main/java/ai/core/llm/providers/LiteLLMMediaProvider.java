@@ -138,8 +138,8 @@ public class LiteLLMMediaProvider implements MediaProvider {
         return httpResponse.body;
     }
 
-    private LinkedHashMap<String, Object> imageRequestBody(ImageGenerationRequest request) {
-        var body = new LinkedHashMap<String, Object>();
+    private Map<String, Object> imageRequestBody(ImageGenerationRequest request) {
+        Map<String, Object> body = new LinkedHashMap<>();
         putIfNotNull(body, "model", request.model());
         putIfNotNull(body, "prompt", request.prompt());
         putIfNotNull(body, "n", request.n());

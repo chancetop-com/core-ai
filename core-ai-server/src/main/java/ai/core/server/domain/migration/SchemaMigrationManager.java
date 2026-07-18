@@ -61,7 +61,6 @@ public class SchemaMigrationManager {
         }
     }
 
-    // duplicate versions make later migrations silently skip forever (seen twice on dev) — fail fast at startup
     private void validateUniqueVersions(List<SchemaMigration> migrations) {
         Set<String> versions = new HashSet<>(migrations.size());
         for (var migration : migrations) {
@@ -73,53 +72,40 @@ public class SchemaMigrationManager {
 
     private List<SchemaMigration> migrations() {
         return List.of(
-            new SchemaMigrationVInitialize(),
-            new SchemaMigrationVDefaultAgent(),
-            new SchemaMigrationVTraceIndexes(),
-            new SchemaMigrationVSkillIndexes(),
-            new SchemaMigrationVSystemPromptIndexes(),
-            new SchemaMigrationVServiceApiIndexes(),
-            new SchemaMigrationVMigrateToolIdsToTools(),
-            new SchemaMigrationVChatMessageIndexes(),
-            new SchemaMigrationVChatSessionIndexes(),
-            new SchemaMigrationVChatSessionSourceIndexes(),
-            new SchemaMigrationVUsersIndexes(),
-            new SchemaMigrationVFileRecordsTTL(),
-            new SchemaMigrationVTriggerIndexes(),
-            new SchemaMigrationVDatasetIndexes(),
-            new SchemaMigrationVDatasetRecordUserIndex(),
-            new SchemaMigrationVTraceAccountScopeIndexes(),
-            new SchemaMigrationVFileShareTokenIndex(),
-            new SchemaMigrationVFixShareTokenIndex(),
-            new SchemaMigrationVWorkflowIndexes(),
-            new SchemaMigrationVWorkflowDefinitionIndexes(),
-            new SchemaMigrationVWorkflowRunIndexes(),
-            new SchemaMigrationVWorkflowPreviewIndexFix(),
-            new SchemaMigrationVWorkflowPreviewRunTTL(),
-            new SchemaMigrationVBumpDefaultMaxTurns(),
-            new SchemaMigrationVMemoryIndexes(),
-            new SchemaMigrationVTraceAgentIdIndex(),
-            new SchemaMigrationVTraceListFilterIndexes(),
-            new SchemaMigrationVAgentRunTraceIndex(),
-            new SchemaMigrationVChatSessionCreatedAtIndex(),
-            new SchemaMigrationVWorkflowPublicIndex(),
-            new SchemaMigrationVWorkflowParentRunIndex(),
-            new SchemaMigrationVWorkflowVisibilityStatusIndex(),
-            new SchemaMigrationVIssueReporterAgent(),
-            new SchemaMigrationVToolRegistryTypeNameIndex(),
-            new SchemaMigrationVGatewayModelProviderIndex(),
-            new SchemaMigrationVGatewayModelModelIdIndex(),
-            new SchemaMigrationVMemoryLayerIndex(),
-            new SchemaMigrationVSandboxSnapshotIndexes(),
-            new SchemaMigrationVTraceMemoryConsolidationIndexes(),
-            new SchemaMigrationVBackgroundTasks(),
-            new SchemaMigrationVTraceDailyStats(),
-            new SchemaMigrationVTraceDailyStatsAgent(),
-            new SchemaMigrationVSessionFeedbackIndexes(),
-            new SchemaMigrationVMemoryExperimentIndexes(),
-            new SchemaMigrationVTraceDailyStatsDateIndex(),
-            new SchemaMigrationVAnalyticsDailyStats(),
-            new SchemaMigrationVMediaJobIndexes()
+            initialMigrations(),
+            workflowMigrations(),
+            operationalMigrations()
+        ).stream().flatMap(List::stream).toList();
+    }
+
+    private List<SchemaMigration> initialMigrations() {
+        return List.of(
+            new SchemaMigrationVInitialize(), new SchemaMigrationVDefaultAgent(), new SchemaMigrationVTraceIndexes(),
+            new SchemaMigrationVSkillIndexes(), new SchemaMigrationVSystemPromptIndexes(), new SchemaMigrationVServiceApiIndexes(),
+            new SchemaMigrationVMigrateToolIdsToTools(), new SchemaMigrationVChatMessageIndexes(), new SchemaMigrationVChatSessionIndexes(),
+            new SchemaMigrationVChatSessionSourceIndexes(), new SchemaMigrationVUsersIndexes(), new SchemaMigrationVFileRecordsTTL(),
+            new SchemaMigrationVTriggerIndexes(), new SchemaMigrationVDatasetIndexes(), new SchemaMigrationVDatasetRecordUserIndex(),
+            new SchemaMigrationVTraceAccountScopeIndexes(), new SchemaMigrationVFileShareTokenIndex(), new SchemaMigrationVFixShareTokenIndex()
+        );
+    }
+
+    private List<SchemaMigration> workflowMigrations() {
+        return List.of(
+            new SchemaMigrationVWorkflowIndexes(), new SchemaMigrationVWorkflowDefinitionIndexes(), new SchemaMigrationVWorkflowRunIndexes(),
+            new SchemaMigrationVWorkflowPreviewIndexFix(), new SchemaMigrationVWorkflowPreviewRunTTL(), new SchemaMigrationVBumpDefaultMaxTurns(),
+            new SchemaMigrationVMemoryIndexes(), new SchemaMigrationVTraceAgentIdIndex(), new SchemaMigrationVTraceListFilterIndexes(),
+            new SchemaMigrationVAgentRunTraceIndex(), new SchemaMigrationVChatSessionCreatedAtIndex(), new SchemaMigrationVWorkflowPublicIndex(),
+            new SchemaMigrationVWorkflowParentRunIndex(), new SchemaMigrationVWorkflowVisibilityStatusIndex(), new SchemaMigrationVIssueReporterAgent(),
+            new SchemaMigrationVToolRegistryTypeNameIndex(), new SchemaMigrationVGatewayModelProviderIndex(), new SchemaMigrationVGatewayModelModelIdIndex()
+        );
+    }
+
+    private List<SchemaMigration> operationalMigrations() {
+        return List.of(
+            new SchemaMigrationVMemoryLayerIndex(), new SchemaMigrationVSandboxSnapshotIndexes(), new SchemaMigrationVTraceMemoryConsolidationIndexes(),
+            new SchemaMigrationVBackgroundTasks(), new SchemaMigrationVTraceDailyStats(), new SchemaMigrationVTraceDailyStatsAgent(),
+            new SchemaMigrationVSessionFeedbackIndexes(), new SchemaMigrationVMemoryExperimentIndexes(), new SchemaMigrationVTraceDailyStatsDateIndex(),
+            new SchemaMigrationVAnalyticsDailyStats(), new SchemaMigrationVMediaJobIndexes()
         );
     }
 }

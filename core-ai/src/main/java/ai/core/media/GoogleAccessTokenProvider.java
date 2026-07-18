@@ -21,17 +21,19 @@ public class GoogleAccessTokenProvider {
         this.serviceAccountJson = serviceAccountJson;
     }
 
-    public synchronized String accessToken() {
-        try {
-            if (credentials == null) credentials = loadCredentials();
-            credentials.refreshIfExpired();
-            var token = credentials.getAccessToken();
-            if (token == null || token.getTokenValue() == null || token.getTokenValue().isBlank()) {
-                throw new IllegalStateException("Google application credentials did not provide an access token");
+    public String accessToken() {
+        synchronized (this) {
+            try {
+                if (credentials == null) credentials = loadCredentials();
+                credentials.refreshIfExpired();
+                var token = credentials.getAccessToken();
+                if (token == null || token.getTokenValue() == null || token.getTokenValue().isBlank()) {
+                    throw new IllegalStateException("Google application credentials did not provide an access token");
+                }
+                return token.getTokenValue();
+            } catch (IOException e) {
+                throw new IllegalStateException("failed to refresh Google access token", e);
             }
-            return token.getTokenValue();
-        } catch (IOException e) {
-            throw new IllegalStateException("failed to refresh Google access token", e);
         }
     }
 

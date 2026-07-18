@@ -451,6 +451,7 @@ function renderPreview(spec: ArtifactSpec, state: FileState & FileSourceState) {
     }
     const lowerName = spec.fileName?.toLowerCase() ?? '';
     const isImage = spec.contentType?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(lowerName);
+    const isVideo = spec.contentType?.startsWith('video/') || /\.(mp4|webm|ogv|mov|m4v)$/.test(lowerName);
     const isHtml = spec.contentType === 'text/html' || /\.html?$/.test(lowerName);
     const isMarkdown = spec.contentType === 'text/markdown' || /\.(md|markdown)$/.test(lowerName);
     const isPdf = spec.contentType === 'application/pdf' || /\.pdf$/i.test(lowerName);
@@ -460,6 +461,9 @@ function renderPreview(spec: ArtifactSpec, state: FileState & FileSourceState) {
     }
     if (isImage) {
       return <div className="p-6 flex items-center justify-center"><img src={state.fileBlobUrl} alt={spec.title} className="max-w-full max-h-full" /></div>;
+    }
+    if (isVideo) {
+      return <div className="p-6 flex items-center justify-center"><video controls src={state.fileBlobUrl} className="max-w-full max-h-full" /></div>;
     }
     if (isHtml) {
       return <iframe sandbox="allow-scripts" src={state.fileBlobUrl} title={spec.title} className="w-full h-full border-0" />;

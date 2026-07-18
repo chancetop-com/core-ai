@@ -19,6 +19,7 @@ const MEDIA_PROTOCOLS = [
   { value: 'OPENAI_COMPATIBLE', label: 'OpenAI Compatible' },
   { value: 'GEMINI_GENERATE_CONTENT', label: 'Gemini generateContent' },
   { value: 'VERTEX_GEMINI_GENERATE_CONTENT', label: 'Vertex Gemini generateContent' },
+  { value: 'VERTEX_GEMINI_INTERACTIONS', label: 'Vertex Gemini Interactions (video)' },
 ];
 
 const GOOGLE_AUTH_TYPES = [
@@ -768,8 +769,8 @@ function renderProviderPanel(props: {
                {MEDIA_PROTOCOLS.map(protocol => <option key={protocol.value} value={protocol.value}>{protocol.label}</option>)}
              </select>
            </Field>
-           {form.mediaProtocol === 'VERTEX_GEMINI_GENERATE_CONTENT' && (
-             <Field label="Google Credentials">
+            {isVertexMediaProtocol(form.mediaProtocol) && (
+              <Field label="Google Credentials">
                <select className={inputClass} style={inputStyle} value={form.mediaAuthType} onChange={e => setForm({ ...form, mediaAuthType: e.target.value })}>
                  {GOOGLE_AUTH_TYPES.slice(1).map(authType => <option key={authType.value} value={authType.value}>{authType.label}</option>)}
                </select>
@@ -777,8 +778,8 @@ function renderProviderPanel(props: {
            )}
          </div>
 
-         {form.mediaProtocol === 'VERTEX_GEMINI_GENERATE_CONTENT' && (
-           <>
+          {isVertexMediaProtocol(form.mediaProtocol) && (
+            <>
              <div className="grid grid-cols-2 gap-4">
                <Field label="GCP Project ID">
                  <input className={inputClass} style={inputStyle} value={form.vertexProjectId} onChange={e => setForm({ ...form, vertexProjectId: e.target.value })} />
@@ -871,22 +872,17 @@ function renderModelPanel(props: {
           </Field>
         </div>
 
-        {isCreate ? (
-          <Field label="Official Model">
-            <input
-              className={inputClass}
-              style={inputStyle}
-              value={form.upstreamModel}
-              onChange={e => setForm({ ...form, upstreamModel: e.target.value })}
-              placeholder="e.g. gpt-4o"
-            />
-          </Field>
-        ) : (
-          <>
-            <ReadOnlyField label="Provider">{provider?.name || form.providerId}</ReadOnlyField>
-            <ReadOnlyField label="Official Model">{form.upstreamModel}</ReadOnlyField>
-          </>
-        )}
+        {!isCreate && <ReadOnlyField label="Provider">{provider?.name || form.providerId}</ReadOnlyField>}
+
+        <Field label="Official Model">
+          <input
+            className={inputClass}
+            style={inputStyle}
+            value={form.upstreamModel}
+            onChange={e => setForm({ ...form, upstreamModel: e.target.value })}
+            placeholder="e.g. gpt-4o"
+          />
+        </Field>
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Enabled">
@@ -1133,6 +1129,10 @@ function ReadOnlyField({ label, children }: { label: string; children: ReactNode
       </div>
     </div>
   );
+}
+
+function isVertexMediaProtocol(protocol: string) {
+  return protocol === 'VERTEX_GEMINI_GENERATE_CONTENT' || protocol === 'VERTEX_GEMINI_INTERACTIONS';
 }
 
 function labelEndpoint(value: string) {

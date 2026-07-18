@@ -12,6 +12,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.telemetry.AgentTracer;
 import ai.core.server.artifact.AgentRunArtifactSink;
 import ai.core.server.artifact.PublicUrlConfiguration;
+import ai.core.server.artifact.ServerImageOutputSink;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.dataset.DatasetRecordService;
@@ -39,6 +40,8 @@ import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.tools.GenerateImageTool;
+import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.InternalUrlResolver;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -155,13 +158,22 @@ public class AgentRunBuilder {
                 .userId(definition.userId)
                 .customVariables(variables)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
+                .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
+                        new ServerImageOutputSink(definition.userId, fileService,
+                                new AgentRunArtifactSink(runEntity.id, agentRunCollection), publicUrlConfiguration))
+                .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
+                        new ServerImageOutputSink(definition.userId, fileService,
+                                new AgentRunArtifactSink(runEntity.id, agentRunCollection), publicUrlConfiguration))
                 .build();
         if (sandbox != null) context.sandbox(sandbox);
         if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
-            context.setMediaProvider(new ContextualMediaProvider(gatewayMediaProvider,
-                    new MediaJobOwner(definition.userId, context.getSessionId(), runEntity.id)));
+            var contextualProvider = new ContextualMediaProvider(gatewayMediaProvider,
+                    new MediaJobOwner(definition.userId, context.getSessionId(), runEntity.id));
+            context.setImageMediaProvider(contextualProvider);
+            context.setVideoMediaProvider(contextualProvider);
         } else if (mediaProvider != null) {
-            context.setMediaProvider(mediaProvider);
+            context.setImageMediaProvider(mediaProvider);
+            context.setVideoMediaProvider(mediaProvider);
         }
         return context;
     }

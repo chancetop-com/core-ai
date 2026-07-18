@@ -22,23 +22,26 @@ import java.util.UUID;
      */
 public class GenerateImageTool extends ToolCall {
     public static final String TOOL_NAME = "generate_image";
+    public static final String IMAGE_OUTPUT_SINK_CONTEXT_KEY = "__image_output_sink";
 
     private static final String TOOL_DESC = """
             Generate one or more images from a text prompt using the configured image generation model.
+
+            For gpt-image-2, do not include the quality parameter unless the user explicitly requests a quality level. When requested, quality must be exactly one of: low, medium, high, or auto. Never send standard or hd; they are invalid for gpt-image-2.
 
             Parameters:
             - prompt (required): A detailed text description of the desired image
             - model: The image generation model to use (uses the default if omitted)
             - n: Number of images to generate (1-10, default 1)
             - size: Image dimensions, e.g. "1024x1024", "1792x1024", "1024x1792"
-            - quality: Output quality — "standard" or "hd"
+            - quality: Optional output quality. For gpt-image-2, use only "low", "medium", "high", or "auto". Omit it unless the user requests a quality preference. Never use "standard" or "hd".
             - output_format: Image format — "png" or "jpeg" (default depends on model)
             - output_compression: PNG compression level 0–9 where 0 is no compression
             - background: Set to "transparent" to generate PNGs with transparent backgrounds
             - input_images: Array of input image URLs for image-to-image generation (not all models support this)
             - provider_extra: JSON string with provider-specific parameters forwarded as-is
 
-            Returns the generated image path. Generated files are saved in .core-ai/media/images.
+            The result provides a display-ready Markdown image link. In your final response, you MUST include that exact Markdown image link unchanged so the generated image is rendered inline. Do not merely say that the image was generated.
             """;
 
     public static Builder builder() {
@@ -59,12 +62,16 @@ public class GenerateImageTool extends ToolCall {
     }
 
     @Override
+    public ToolCallResult execute(String arguments) {
+        return ToolCallResult.failed("generate_image requires execution context");
+    }
+
+    @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var startTime = System.currentTimeMillis();
+        var provider = context.getImageMediaProvider();
+        if (provider == null) return ToolCallResult.failed("no media provider configured");
         try {
-            var provider = context.getImageMediaProvider();
-            if (provider == null) throw new BadRequestException("no media provider configured");
-
             var args = parseArguments(arguments);
             var prompt = getStringValue(args, "prompt");
             if (Strings.isBlank(prompt)) return ToolCallResult.failed("prompt is required");
@@ -87,11 +94,11 @@ public class GenerateImageTool extends ToolCall {
             if (response.data() != null && response.data().size() == 1) {
                 var image = response.data().get(0);
                 if (image.b64Json() != null) {
-                    var outputPath = saveImage(context, image.b64Json(), getStringValue(args, "output_format"));
-                    return ToolCallResult.completed("Image generated: " + outputPath)
+                    var output = saveImage(context, image.b64Json(), getStringValue(args, "output_format"));
+                    return ToolCallResult.completed(imageResult(output))
                             .withDuration(System.currentTimeMillis() - startTime);
                 }
-                return ToolCallResult.completed("Image generated: " + (image.url() != null ? image.url() : "(no URL)"))
+                return ToolCallResult.completed(imageResult(image.url() != null ? image.url() : "(no URL)"))
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
@@ -114,33 +121,47 @@ public class GenerateImageTool extends ToolCall {
         }
     }
 
+    private String imageResult(String output) {
+        return "Image generated. Include this exact Markdown image link in your final response:\n\n![Generated image](" + output + ")";
+    }
+
     private String defaultModel(ExecutionContext context) {
         var model = context.getCustomVariables().get("media.image.model");
         return model instanceof String value && !value.isBlank() ? value : null;
     }
 
-    private Path saveImage(ExecutionContext context, String base64, String outputFormat) {
+    private String saveImage(ExecutionContext context, String base64, String outputFormat) {
+        var extension = "jpeg".equalsIgnoreCase(outputFormat) ? "jpeg" : "png";
+        var fileName = "image-" + UUID.randomUUID() + "." + extension;
+        var bytes = decodeImage(base64);
+        var sink = context.getCustomVariable(IMAGE_OUTPUT_SINK_CONTEXT_KEY, ImageOutputSink.class);
+        if (sink != null) return sink.save(fileName, "image/" + extension, bytes);
+
         var workspace = context.getCustomVariables().get("workspace");
         if (!(workspace instanceof String workspacePath) || workspacePath.isBlank()) {
             throw new BadRequestException("workspace is required to save the generated image");
         }
-        var extension = "jpeg".equalsIgnoreCase(outputFormat) ? "jpeg" : "png";
         var outputDirectory = Path.of(workspacePath).resolve(".core-ai").resolve("media").resolve("images");
-        var outputPath = outputDirectory.resolve("image-" + UUID.randomUUID() + "." + extension);
+        var outputPath = outputDirectory.resolve(fileName);
         try {
             Files.createDirectories(outputDirectory);
-            Files.write(outputPath, Base64.getDecoder().decode(base64));
-            return outputPath;
-        } catch (IllegalArgumentException e) {
-            throw new BadRequestException("image provider returned invalid base64 data");
+            Files.write(outputPath, bytes);
+            return outputPath.toString();
         } catch (IOException e) {
             throw new RuntimeException("failed to save generated image: " + outputPath, e);
         }
     }
 
-    @Override
-    public ToolCallResult execute(String arguments) {
-        return ToolCallResult.failed("generate_image requires execution context");
+    private byte[] decodeImage(String base64) {
+        try {
+            return Base64.getDecoder().decode(base64);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("image provider returned invalid base64 data", "BAD_REQUEST", e);
+        }
+    }
+
+    public interface ImageOutputSink {
+        String save(String fileName, String contentType, byte[] bytes);
     }
 
     public static class Builder extends ToolCall.Builder<Builder, GenerateImageTool> {
@@ -157,7 +178,7 @@ public class GenerateImageTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "model", "The image generation model to use (uses the default if omitted)"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "n", "Number of images to generate (1-10, default 1)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Image dimensions, e.g. 1024x1024, 1792x1024, 1024x1792"),
-                    ToolCallParameters.ParamSpec.of(String.class, "quality", "Output quality — standard or hd"),
+                    ToolCallParameters.ParamSpec.of(String.class, "quality", "Optional output quality. For gpt-image-2 use only low, medium, high, or auto. Omit it when no quality preference was requested; do not use standard or hd."),
                     ToolCallParameters.ParamSpec.of(String.class, "output_format", "Image format — png or jpeg"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "output_compression", "PNG compression level 0-9 where 0 is no compression"),
                     ToolCallParameters.ParamSpec.of(String.class, "background", "Set to 'transparent' for transparent PNG backgrounds"),

@@ -200,7 +200,9 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         var toolName = functionCall.function.name;
         var arguments = functionCall.function.arguments;
         Map<String, Object> argMap = parseArguments(arguments);
-        var status = toolResult.isCompleted() ? "success" : toolResult.isAsyncLaunched() ? "async_launched" : "failure";
+        var status = toolResult.isCompleted() ? "success"
+                : toolResult.isPending() ? "pending"
+                : toolResult.isAsyncLaunched() ? "async_launched" : "failure";
         var result = toolResult.getResult();
 
         logger.debug("afterTool: tool={}, callId={}, status={}", toolName, callId, status);

@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { ComponentProps, CSSProperties, HTMLAttributes, ReactNode, RefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -77,6 +77,29 @@ function messageKey(msg: ChatMessage, idx: number): string {
   return `${msg.role}-${msg.timestamp || 'pending'}-${idx}`;
 }
 
+const GENERATED_VIDEO_LINK = /\[([^\]]*(?:video|视频)[^\]]*)\]\((https?:\/\/[^\s)]+\/api\/public\/artifacts\/[^/]+\/content(?:\?[^\s)]*)?)\)/i;
+
+function extractGeneratedVideo(content: string): { content: string; label: string; url: string } | null {
+  const match = GENERATED_VIDEO_LINK.exec(content);
+  if (!match) return null;
+  return { content: content.replace(match[0], '').replace(/\n{3,}/g, '\n\n').trim(), label: match[1], url: match[2] };
+}
+
+function GeneratedVideo({ href, label }: { href: string; label: string }) {
+  const [error, setError] = useState(false);
+  return (
+    <div className="my-3">
+      <video controls preload="metadata" onError={() => setError(true)} className="block w-full max-w-2xl rounded-lg border"
+        style={{ borderColor: 'var(--color-border)', maxHeight: '480px' }}>
+        <source src={href} type="video/mp4" />
+        Your browser does not support video playback.
+      </video>
+      {error && <span className="mt-1 block text-xs" style={{ color: 'var(--color-error)' }}>Unable to load the video. Use the link below to open it directly.</span>}
+      <a href={href} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs underline">{label}</a>
+    </div>
+  );
+}
+
 interface ChatMessageRowProps {
   msg: ChatMessage;
   msgIndex: number;
@@ -112,6 +135,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
   const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
   const textSeg = msg.segments?.find(s => s.type === 'text');
+  const generatedVideo = textSeg && msg.role === 'agent' ? extractGeneratedVideo(textSeg.content) : null;
   const msgArtifacts = msg.role === 'agent' ? getMessageArtifacts(msg, sessionArtifacts) : [];
 
   // content-visibility: auto skips paint for off-screen elements, but the browser
@@ -119,7 +143,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   // content grows rapidly (e.g. TEXT_CHUNK arrives while scrollIntoView is in
   // flight).  That causes the symptom "SSE has events but UI never paints them".
   // Keep the optimization only for completed (non-streaming) messages.
-  const messageStyle = isStreamingLast ? undefined : OFFSCREEN_MESSAGE_STYLE;
+  const messageStyle = isStreamingLast || generatedVideo ? undefined : OFFSCREEN_MESSAGE_STYLE;
 
   return (
     <div className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`} style={messageStyle}>
@@ -184,8 +208,9 @@ const ChatMessageRow = memo(function ChatMessageRow({
                   remarkPlugins={REMARK_PLUGINS}
                   rehypePlugins={msg.role === 'agent' && !isStreamingLast ? AGENT_REHYPE_PLUGINS : undefined}
                   components={msg.role === 'agent' ? agentMarkdownComponents : undefined}>
-                  {textSeg.content}
+                  {generatedVideo ? generatedVideo.content : textSeg.content}
                 </ReactMarkdown>
+                {generatedVideo && <GeneratedVideo href={generatedVideo.url} label={generatedVideo.label} />}
               </div>
               {isStreamingLast && textSeg.content && (
                 <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />

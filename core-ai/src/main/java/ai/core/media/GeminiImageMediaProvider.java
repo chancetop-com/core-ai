@@ -18,7 +18,6 @@ import core.framework.http.HTTPRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,13 +104,15 @@ public class GeminiImageMediaProvider implements MediaProvider {
         var response = (Map<String, Object>) JsonUtil.fromJson(Map.class, json);
         var images = new ArrayList<ImageData>();
         var candidates = (List<Map<String, Object>>) response.get("candidates");
-        if (candidates != null) for (var candidate : candidates) {
-            var content = (Map<String, Object>) candidate.get("content");
-            var parts = content == null ? null : (List<Map<String, Object>>) content.get("parts");
-            if (parts == null) continue;
-            for (var part : parts) {
-                var inlineData = (Map<String, Object>) part.get("inlineData");
-                if (inlineData != null && inlineData.get("data") instanceof String data) images.add(new ImageData(data, null, null));
+        if (candidates != null) {
+            for (var candidate : candidates) {
+                var content = (Map<String, Object>) candidate.get("content");
+                var parts = content == null ? null : (List<Map<String, Object>>) content.get("parts");
+                if (parts == null) continue;
+                for (var part : parts) {
+                    var inlineData = (Map<String, Object>) part.get("inlineData");
+                    if (inlineData != null && inlineData.get("data") instanceof String data) images.add(new ImageData(data, null, null));
+                }
             }
         }
         return new ImageGenerationResponse(images, usage(response));

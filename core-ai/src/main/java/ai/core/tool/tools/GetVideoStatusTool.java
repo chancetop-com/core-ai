@@ -20,6 +20,7 @@ import java.nio.file.Path;
  */
 public class GetVideoStatusTool extends ToolCall {
     public static final String TOOL_NAME = "get_video_status";
+    public static final String VIDEO_OUTPUT_SINK_CONTEXT_KEY = "video.output.sink";
 
     private static final String TOOL_DESC = """
             Check the status of a previously submitted video generation task.
@@ -36,12 +37,16 @@ public class GetVideoStatusTool extends ToolCall {
     }
 
     @Override
+    public ToolCallResult execute(String arguments) {
+        return ToolCallResult.failed("get_video_status requires execution context");
+    }
+
+    @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var startTime = System.currentTimeMillis();
+        var provider = context.getVideoMediaProvider();
+        if (provider == null) return ToolCallResult.failed("no media provider configured");
         try {
-            var provider = context.getVideoMediaProvider();
-            if (provider == null) throw new BadRequestException("no media provider configured");
-
             var args = parseArguments(arguments);
             var videoId = getStringValue(args, "video_id");
             if (Strings.isBlank(videoId)) return ToolCallResult.failed("video_id is required");
@@ -50,12 +55,12 @@ public class GetVideoStatusTool extends ToolCall {
 
             return switch (status.status()) {
                 case "completed" -> {
-                    var outputPath = saveVideo(context, provider.downloadVideo(videoId), videoId);
+                    var output = saveVideo(context, provider.downloadVideo(videoId), videoId);
                     yield ToolCallResult.completed(
-                            "Video generation completed.\nvideo_id: " + videoId + "\nvideo_path: " + outputPath)
+                            "Video generation completed.\nvideo_id: " + videoId + "\n\n[Download/play video](" + output + ")")
                             .withDuration(System.currentTimeMillis() - startTime)
                             .withStats("video_id", videoId)
-                            .withStats("video_path", outputPath.toString())
+                            .withStats("video_path", output)
                             .withStats("status", "completed");
                 }
                 case "failed" -> ToolCallResult.failed(
@@ -81,25 +86,28 @@ public class GetVideoStatusTool extends ToolCall {
         }
     }
 
-    private Path saveVideo(ExecutionContext context, byte[] data, String videoId) {
+    private String saveVideo(ExecutionContext context, byte[] data, String videoId) {
+        var fileName = "video-" + videoId + ".mp4";
+        var outputSink = context.getCustomVariables().get(VIDEO_OUTPUT_SINK_CONTEXT_KEY);
+        if (outputSink instanceof VideoOutputSink sink) return sink.save(fileName, "video/mp4", data);
+
         var workspace = context.getCustomVariables().get("workspace");
         if (!(workspace instanceof String workspacePath) || workspacePath.isBlank()) {
-            throw new BadRequestException("workspace is required to save the generated video");
+            throw new BadRequestException("workspace or video output sink is required to save the generated video");
         }
         var outputDirectory = Path.of(workspacePath).resolve(".core-ai").resolve("media").resolve("videos");
-        var outputPath = outputDirectory.resolve("video-" + videoId + ".mp4");
+        var outputPath = outputDirectory.resolve(fileName);
         try {
             Files.createDirectories(outputDirectory);
             Files.write(outputPath, data);
-            return outputPath;
+            return outputPath.toString();
         } catch (IOException e) {
             throw new RuntimeException("failed to save generated video: " + outputPath, e);
         }
     }
 
-    @Override
-    public ToolCallResult execute(String arguments) {
-        return ToolCallResult.failed("get_video_status requires execution context");
+    public interface VideoOutputSink {
+        String save(String fileName, String contentType, byte[] bytes);
     }
 
     public static class Builder extends ToolCall.Builder<Builder, GetVideoStatusTool> {
