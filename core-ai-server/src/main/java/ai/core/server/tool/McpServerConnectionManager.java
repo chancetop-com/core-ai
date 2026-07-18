@@ -1,7 +1,6 @@
 package ai.core.server.tool;
 
 import ai.core.mcp.client.McpClientManager;
-import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.mcp.client.McpServerConfig;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConstants;
@@ -52,9 +51,11 @@ class McpServerConnectionManager {
     }
 
     private final SandboxService sandboxService;
+    private final ApplicationMcpManager applicationMcpManager;
 
-    McpServerConnectionManager(SandboxService sandboxService) {
+    McpServerConnectionManager(SandboxService sandboxService, ApplicationMcpManager applicationMcpManager) {
         this.sandboxService = sandboxService;
+        this.applicationMcpManager = applicationMcpManager;
     }
 
     // Registers a non-sandbox MCP server (STDIO or HTTP) with the global manager.
@@ -171,12 +172,12 @@ class McpServerConnectionManager {
     }
 
     void unregisterMcpServer(String serverId) {
-        var mcpManager = McpClientManagerRegistry.getManager();
+        var mcpManager = applicationMcpManager.get();
         if (mcpManager != null && mcpManager.hasServer(serverId)) mcpManager.removeServer(serverId);
     }
 
     void warmupMcpServer(String serverId) {
-        var mcpManager = McpClientManagerRegistry.getManager();
+        var mcpManager = applicationMcpManager.get();
         if (mcpManager == null || !mcpManager.hasServer(serverId)) return;
         var state = mcpManager.getState(serverId);
         if (state == McpClientManager.ConnectionState.FAILED
@@ -209,11 +210,6 @@ class McpServerConnectionManager {
     }
 
     private McpClientManager getOrCreateGlobalMcpManager() {
-        var mcpManager = McpClientManagerRegistry.getManager();
-        if (mcpManager == null) {
-            mcpManager = new McpClientManager();
-            McpClientManagerRegistry.setManager(mcpManager);
-        }
-        return mcpManager;
+        return applicationMcpManager.getOrCreate();
     }
 }

@@ -57,14 +57,17 @@ public class ToolRegistryService {
     SandboxService sandboxService;
     @Inject
     MediaProvider mediaProvider;
+    @Inject
+    ApplicationMcpManager applicationMcpManager;
 
     private GitHubTokenProvider gitHubTokenProvider;
 
     private void initializeDependencies() {
         if (mcpConnectionManager != null) return;
-        mcpConnectionManager = new McpServerConnectionManager(sandboxService);
-        resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpConnectionManager, sandboxService, mediaProvider, gitHubTokenProvider);
-        mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager);
+        mcpConnectionManager = new McpServerConnectionManager(sandboxService, applicationMcpManager);
+        var mcpDependencies = new McpResolutionDependencies(mcpConnectionManager, sandboxService, applicationMcpManager);
+        resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpDependencies, mediaProvider, gitHubTokenProvider);
+        mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager, applicationMcpManager);
     }
 
     public void setGitHubTokenProvider(GitHubTokenProvider gitHubTokenProvider) {

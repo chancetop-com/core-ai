@@ -1,7 +1,6 @@
 package ai.core.server.tool;
 
 import ai.core.mcp.client.McpClientManager;
-import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.media.MediaProvider;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -35,21 +34,23 @@ public class ToolRefResolver {
     private final Map<String, List<ToolCall>> dynamicToolSets;
     private final MediaProvider mediaProvider;
     private final GitHubTokenProvider gitHubTokenProvider;
+    private final ApplicationMcpManager applicationMcpManager;
     private final Map<String, List<ToolCall>> apiToolCache = new ConcurrentHashMap<>();
 
     public ToolRefResolver(Map<String, ToolRegistryEntry> toolRegistry, InternalApiToolLoader apiToolLoader,
                            Map<String, List<ToolCall>> dynamicToolSets) {
-        this(toolRegistry, apiToolLoader, dynamicToolSets, null, null);
+        this(toolRegistry, apiToolLoader, dynamicToolSets, null, null, null);
     }
 
     public ToolRefResolver(Map<String, ToolRegistryEntry> toolRegistry, InternalApiToolLoader apiToolLoader,
-                           Map<String, List<ToolCall>> dynamicToolSets, MediaProvider mediaProvider,
-                           GitHubTokenProvider gitHubTokenProvider) {
+                            Map<String, List<ToolCall>> dynamicToolSets, MediaProvider mediaProvider,
+                            GitHubTokenProvider gitHubTokenProvider, ApplicationMcpManager applicationMcpManager) {
         this.toolRegistry = toolRegistry;
         this.apiToolLoader = apiToolLoader;
         this.dynamicToolSets = dynamicToolSets;
         this.mediaProvider = mediaProvider;
         this.gitHubTokenProvider = gitHubTokenProvider;
+        this.applicationMcpManager = applicationMcpManager;
     }
 
     public List<ToolCall> resolve(List<ToolRef> toolRefs) {
@@ -189,7 +190,7 @@ public class ToolRefResolver {
     // STDIO/HTTP servers and for any sandbox-hosted server not in this session.
     private McpClientManager pickManager(String serverName, McpClientManager sessionMgr) {
         if (sessionMgr != null && serverName != null && sessionMgr.hasServer(serverName)) return sessionMgr;
-        return McpClientManagerRegistry.getManager();
+        return applicationMcpManager != null ? applicationMcpManager.get() : null;
     }
 
     private void resolveApiRef(ToolRef toolRef, List<ToolCall> result) {
@@ -267,7 +268,7 @@ public class ToolRefResolver {
         if (entry.id.startsWith(CONFIG_PREFIX)) {
             return entry.id.substring(CONFIG_PREFIX.length());
         }
-        var mcpManager = McpClientManagerRegistry.getManager();
+        var mcpManager = applicationMcpManager != null ? applicationMcpManager.get() : null;
         if (mcpManager != null && mcpManager.hasServer(entry.id)) {
             return entry.id;
         }

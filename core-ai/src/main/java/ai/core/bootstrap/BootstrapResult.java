@@ -14,6 +14,7 @@ import ai.core.telemetry.FlowTracer;
 import ai.core.telemetry.GroupTracer;
 import ai.core.telemetry.LLMTracer;
 import ai.core.telemetry.TelemetryConfig;
+import ai.core.telemetry.TracerBundle;
 import ai.core.vectorstore.VectorStores;
 import ai.core.vectorstore.vectorstores.hnswlib.HnswLibVectorStore;
 import ai.core.vectorstore.vectorstores.milvus.MilvusVectorStore;
@@ -47,6 +48,7 @@ public class BootstrapResult {
     public AgentTracer agentTracer;
     public FlowTracer flowTracer;
     public GroupTracer groupTracer;
+    public TracerBundle tracerBundle;
 
     public LangfusePromptConfig langfusePromptConfig;
     public LangfusePromptProvider langfusePromptProvider;

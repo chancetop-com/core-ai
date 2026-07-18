@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.server.schedule.ToolRegistrySyncJob;
+import ai.core.server.tool.ApplicationMcpManager;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
 import ai.core.tool.github.GitHubTokenProvider;
@@ -15,6 +16,8 @@ import java.time.Duration;
 public class ToolRegistryModule extends Module {
     @Override
     protected void initialize() {
+        var applicationMcpManager = bind(ApplicationMcpManager.class);
+        onShutdown(applicationMcpManager::shutdown);
         var toolRegistryService = bind(ToolRegistryService.class);
         bindGitHubTokenProvider(toolRegistryService);
 

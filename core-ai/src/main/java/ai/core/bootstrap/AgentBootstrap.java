@@ -21,6 +21,7 @@ import ai.core.telemetry.FlowTracer;
 import ai.core.telemetry.GroupTracer;
 import ai.core.telemetry.LLMTracer;
 import ai.core.telemetry.TelemetryConfig;
+import ai.core.telemetry.TracerBundle;
 import ai.core.telemetry.TracerRegistry;
 import ai.core.utils.JsonUtil;
 import ai.core.vectorstore.VectorStoreType;
@@ -147,6 +148,7 @@ public class AgentBootstrap {
         result.agentTracer = agentTracer;
         result.flowTracer = flowTracer;
         result.groupTracer = groupTracer;
+        result.tracerBundle = new TracerBundle(agentTracer, flowTracer, groupTracer);
 
         TracerRegistry.setAgentTracer(agentTracer);
         TracerRegistry.setFlowTracer(flowTracer);

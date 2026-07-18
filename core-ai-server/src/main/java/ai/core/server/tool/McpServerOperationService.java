@@ -2,7 +2,6 @@ package ai.core.server.tool;
 
 import ai.core.api.server.tool.UpdateMcpServerRequest;
 import ai.core.mcp.client.McpClientManager;
-import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.mcp.client.McpServerConfig;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolType;
@@ -54,14 +53,17 @@ class McpServerOperationService {
 
     private final Map<String, ToolRegistryEntry> tools;
     private final McpServerConnectionManager mcpConnectionManager;
+    private final ApplicationMcpManager applicationMcpManager;
     private final Map<String, CachedToolDetails> toolDetailsCache = new ConcurrentHashMap<>();
     private final Map<String, CachedState> stateCache = new ConcurrentHashMap<>();
     private MongoCollection<ToolRegistryEntry> toolRegistryCollection;
 
     McpServerOperationService(Map<String, ToolRegistryEntry> tools,
-                              McpServerConnectionManager mcpConnectionManager) {
+                               McpServerConnectionManager mcpConnectionManager,
+                               ApplicationMcpManager applicationMcpManager) {
         this.tools = tools;
         this.mcpConnectionManager = mcpConnectionManager;
+        this.applicationMcpManager = applicationMcpManager;
     }
 
     void setToolRegistryCollection(MongoCollection<ToolRegistryEntry> toolRegistryCollection) {
@@ -231,7 +233,7 @@ class McpServerOperationService {
         if (entity == null || entity.type != ToolType.MCP) {
             throw new RuntimeException("mcp server not found or not MCP type, id=" + serverId);
         }
-        var mcpManager = McpClientManagerRegistry.getManager();
+        var mcpManager = applicationMcpManager.get();
         if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
             return List.of();
         }
@@ -257,7 +259,7 @@ class McpServerOperationService {
             mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
         }
 
-        var mcpManager = McpClientManagerRegistry.getManager();
+        var mcpManager = applicationMcpManager.get();
         if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
             toolDetailsCache.put(serverId, new CachedToolDetails(List.of(), System.nanoTime()));
             return List.of();
@@ -290,7 +292,7 @@ class McpServerOperationService {
         }
 
         var entity = requireMcpEntity(serverId);
-        var mcpManager = McpClientManagerRegistry.getManager();
+        var mcpManager = applicationMcpManager.get();
         McpClientManager.ConnectionState state;
         if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
             state = McpClientManager.ConnectionState.NOT_CONNECTED;
@@ -306,7 +308,7 @@ class McpServerOperationService {
         var entity = requireMcpEntity(serverId);
         if (!Boolean.TRUE.equals(entity.enabled)) throw new RuntimeException("mcp server is disabled, id=" + serverId);
 
-        var mcpManager = McpClientManagerRegistry.getManager();
+        var mcpManager = applicationMcpManager.get();
         if (mcpManager == null) throw new RuntimeException("mcp manager not initialized");
 
         var currentState = mcpManager.getState(entity.id);
@@ -363,7 +365,7 @@ class McpServerOperationService {
         if (isSandboxHosted(entity)) {
             mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
         }
-        var mcpManager = McpClientManagerRegistry.getManager();
+        var mcpManager = applicationMcpManager.get();
         if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
             throw new RuntimeException("mcp server not connected, id=" + serverId);
         }

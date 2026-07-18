@@ -3,6 +3,7 @@ package ai.core;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.llm.providers.LiteLLMProvider;
+import ai.core.telemetry.TracerBundle;
 import core.framework.module.Module;
 
 /**
@@ -79,6 +80,9 @@ public class MultiAgentModule extends Module {
         }
         if (r.groupTracer != null) {
             bind(r.groupTracer);
+        }
+        if (r.tracerBundle != null) {
+            bind(TracerBundle.class, r.tracerBundle);
         }
     }
 

@@ -8,6 +8,7 @@ import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
+import ai.core.telemetry.AgentTracer;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
@@ -49,6 +50,8 @@ public class SubAgentAssembler {
     PersistenceProviders persistenceProviders;
     @Inject
     SkillToolAssembler skillToolAssembler;
+    @Inject
+    AgentTracer agentTracer;
 
     /**
      * Loads sub-agent definitions by id and wraps each as a callable tool.
@@ -123,7 +126,8 @@ public class SubAgentAssembler {
                 .name(c.agentName != null && !c.agentName.isBlank() ? c.agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
                 .llmProvider(llmProvider)
                 .toolRegistry(c.toolRegistry)
-                .temperature(c.config != null && c.config.temperature != null ? c.config.temperature : 0.8);
+                .temperature(c.config != null && c.config.temperature != null ? c.config.temperature : 0.8)
+                .tracer(agentTracer);
         if (c.agentId != null && !c.agentId.isBlank()) {
             builder.id(c.agentId);
         }

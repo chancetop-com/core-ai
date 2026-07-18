@@ -1,7 +1,6 @@
 package ai.core.server.tool;
 
 import ai.core.mcp.client.McpClientManager;
-import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.media.MediaProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConstants;
@@ -9,7 +8,6 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
-import ai.core.server.sandbox.SandboxService;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolProvider;
 import ai.core.tool.registry.BuiltinToolProvider;
@@ -47,42 +45,26 @@ class ToolRefResolutionService {
         };
     }
 
-    static String resolveMcpServerName(String name) {
-        if (name.startsWith(CONFIG_PREFIX)) {
-            return name.substring(CONFIG_PREFIX.length());
-        }
-        var mcpManager = McpClientManagerRegistry.getManager();
-        if (mcpManager != null && mcpManager.hasServer(name)) return name;
-        return name;
-    }
-
-    private static McpClientManager pickMcpManager(String serverName, McpClientManager sessionMgr) {
-        if (sessionMgr != null && serverName != null && sessionMgr.hasServer(serverName)) return sessionMgr;
-        return McpClientManagerRegistry.getManager();
-    }
 
     // ── Fields ───────────────────────────────────────────────────────────────────
 
     private final Map<String, ToolRegistryEntry> tools;
     private final Map<String, List<ToolCall>> dynamicToolSets;
-    private final McpServerConnectionManager mcpConnectionManager;
+    private final McpResolutionDependencies mcpDependencies;
     private InternalApiToolLoader internalApiToolLoader;
-    private final SandboxService sandboxService;
     private final MediaProvider mediaProvider;
     private final GitHubTokenProvider gitHubTokenProvider;
 
     // ── Constructor ──────────────────────────────────────────────────────────────
 
     ToolRefResolutionService(Map<String, ToolRegistryEntry> tools,
-                             Map<String, List<ToolCall>> dynamicToolSets,
-                              McpServerConnectionManager mcpConnectionManager,
-                              SandboxService sandboxService, MediaProvider mediaProvider,
+                              Map<String, List<ToolCall>> dynamicToolSets,
+                              McpResolutionDependencies mcpDependencies, MediaProvider mediaProvider,
                               GitHubTokenProvider gitHubTokenProvider) {
 
         this.tools = tools;
         this.dynamicToolSets = dynamicToolSets;
-        this.mcpConnectionManager = mcpConnectionManager;
-        this.sandboxService = sandboxService;
+        this.mcpDependencies = mcpDependencies;
         this.mediaProvider = mediaProvider;
         this.gitHubTokenProvider = gitHubTokenProvider;
     }
@@ -107,7 +89,7 @@ class ToolRefResolutionService {
      * client in the session-scoped McpClientManager — so concurrent sessions don't
      * collide on shared server ids. Non-sandbox MCP refs use the global manager.
      * <p>
-     * The session's sandbox must already exist (via {@code sandboxService.createSandbox})
+     * The session's sandbox must already exist (via {@code mcpDependencies.sandboxService().createSandbox})
      * before calling this. If it doesn't, sandbox-hosted refs fall back to the global
      * manager, which won't have them registered (intentionally) — those tools will be
      * unavailable until either this is re-called after the sandbox exists, or the
@@ -119,13 +101,14 @@ class ToolRefResolutionService {
     List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs, String sessionId) {
         if (toolRefs == null) return List.of();
         McpClientManager sessionMgr = null;
-        if (sessionId != null && sandboxService != null && !toolRefs.isEmpty()) {
-            var sandbox = sandboxService.getSandbox(sessionId);
+        if (sessionId != null && mcpDependencies.sandboxService() != null && !toolRefs.isEmpty()) {
+            var sandbox = mcpDependencies.sandboxService().getSandbox(sessionId);
             if (sandbox != null) {
                 sessionMgr = prepareSessionMcpServers(toolRefs, sessionId, sandbox);
             }
         }
-        return new ToolRefResolver(tools, internalApiToolLoader, dynamicToolSets, mediaProvider, gitHubTokenProvider).resolve(toolRefs, sessionMgr);
+        return new ToolRefResolver(tools, internalApiToolLoader, dynamicToolSets, mediaProvider, gitHubTokenProvider,
+                mcpDependencies.applicationMcpManager()).resolve(toolRefs, sessionMgr);
     }
 
     /**
@@ -147,8 +130,8 @@ class ToolRefResolutionService {
         if (toolRefs == null || toolRefs.isEmpty()) return registry;
 
         McpClientManager sessionMgr = null;
-        if (sessionId != null && sandboxService != null) {
-            var sandbox = sandboxService.getSandbox(sessionId);
+        if (sessionId != null && mcpDependencies.sandboxService() != null) {
+            var sandbox = mcpDependencies.sandboxService().getSandbox(sessionId);
             if (sandbox != null) {
                 sessionMgr = prepareSessionMcpServers(toolRefs, sessionId, sandbox);
             }
@@ -194,6 +177,16 @@ class ToolRefResolutionService {
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────────
+
+    private String resolveMcpServerName(String name) {
+        if (name.startsWith(CONFIG_PREFIX)) return name.substring(CONFIG_PREFIX.length());
+        return name;
+    }
+
+    private McpClientManager pickMcpManager(String serverName, McpClientManager sessionMgr) {
+        if (sessionMgr != null && serverName != null && sessionMgr.hasServer(serverName)) return sessionMgr;
+        return mcpDependencies.applicationMcpManager().get();
+    }
 
     private ToolSourceType effectiveType(ToolRef ref) {
         var entry = lookupToolEntry(ref.id);
@@ -301,18 +294,18 @@ class ToolRefResolutionService {
         var sandboxHostedEntries = collectSandboxHostedEntries(toolRefs);
         if (sandboxHostedEntries.isEmpty()) return null;
 
-        if (sandboxService != null) sandboxService.ensureSandboxReady(sessionId);
+        if (mcpDependencies.sandboxService() != null) mcpDependencies.sandboxService().ensureSandboxReady(sessionId);
 
-        var sessionMgr = sandboxService != null ? sandboxService.getOrCreateSessionMcpManager(sessionId) : null;
+        var sessionMgr = mcpDependencies.sandboxService() != null ? mcpDependencies.sandboxService().getOrCreateSessionMcpManager(sessionId) : null;
         if (sessionMgr == null) return null;
 
         var startupTimeout = SandboxConstants.SESSION_MCP_STARTUP_TIMEOUT_SECONDS;
 
         sandboxHostedEntries.parallelStream().forEach(entry -> {
             try {
-                var registered = mcpConnectionManager.registerOnSession(entry, sessionMgr, sandbox, startupTimeout);
-                if (registered && sandboxService != null) {
-                    sandboxService.recordSessionMcpServer(sessionId, entry.id);
+                var registered = mcpDependencies.connectionManager().registerOnSession(entry, sessionMgr, sandbox, startupTimeout);
+                if (registered && mcpDependencies.sandboxService() != null) {
+                    mcpDependencies.sandboxService().recordSessionMcpServer(sessionId, entry.id);
                 }
             } catch (Exception e) {
                 LOGGER.warn("failed to start sandbox-hosted mcp server during session creation, id={}, name={}: {}",

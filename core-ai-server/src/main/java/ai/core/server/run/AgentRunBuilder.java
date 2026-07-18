@@ -6,6 +6,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProviders;
 import ai.core.media.MediaProvider;
 import ai.core.sandbox.Sandbox;
+import ai.core.telemetry.AgentTracer;
 import ai.core.server.artifact.AgentRunArtifactSink;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.agent.AgentDefinitionService;
@@ -104,6 +105,8 @@ public class AgentRunBuilder {
     SystemSettingsService systemSettingsService;
     @Inject
     LLMCallExecutor llmCallExecutor;
+    @Inject
+    AgentTracer agentTracer;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
 
@@ -346,6 +349,7 @@ public class AgentRunBuilder {
                 .description(definition.description != null ? definition.description : definition.name)
                 .llmProvider(llmProviders.getProvider())
                 .toolRegistry(registry)
-                .executionContext(context);
+                .executionContext(context)
+                .tracer(agentTracer);
     }
 }
