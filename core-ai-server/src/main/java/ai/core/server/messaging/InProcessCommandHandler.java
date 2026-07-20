@@ -163,9 +163,9 @@ public class InProcessCommandHandler {
     }
 
     private boolean validImageAttachment(String container, String blobName, String contentType) {
-        return container != null && container.equals(objectStorageConfiguration.multimodalContainer)
-                && blobName != null && blobName.startsWith("ai/")
-                && contentType != null && contentType.startsWith("image/");
+        return container != null && blobName != null && contentType != null
+                && container.equals(objectStorageConfiguration.multimodalContainer)
+                && blobName.startsWith("ai/") && contentType.startsWith("image/");
     }
 
     private void handleApproveTool(SessionCommand command) {
