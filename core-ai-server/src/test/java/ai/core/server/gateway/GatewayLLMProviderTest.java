@@ -103,22 +103,15 @@ class GatewayLLMProviderTest {
     }
 
     @Test
-    void azureRouteFallsBackToStaticProviderWhenAvailable() {
-        var provider = provider("azure-1", "azure", "https://example.openai.azure.com");
-        var fallback = new CapturingLiteLLMProvider(new LLMProviderConfig(null, null, null), "https://static.example.com", "answered by fallback");
-        var gateway = gateway(List.of(provider), List.of(model("azure-chat", provider.id, "my-deployment")), fallback);
+    void azureRouteGoesThroughUpstreamProvider() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com/openai/v1");
+        var gateway = gateway(List.of(provider), List.of(model("azure-chat", provider.id, "my-deployment")), null);
 
         var response = gateway.completion(request("azure-chat"));
 
-        assertEquals("answered by fallback", response.choices.getFirst().message.content);
-    }
-
-    @Test
-    void azureRouteWithoutFallbackIsRejected() {
-        var provider = provider("azure-1", "azure", "https://example.openai.azure.com");
-        var gateway = gateway(List.of(provider), List.of(model("azure-chat", provider.id, "my-deployment")), null);
-
-        assertThrows(BadRequestException.class, () -> gateway.completion(request("azure-chat")));
+        assertEquals("ok", response.choices.getFirst().message.content);
+        assertEquals("my-deployment", gateway.upstream.capturedModel);
+        assertEquals("https://example.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2024-10-21", gateway.upstreamBaseUrl);
     }
 
     private CompletionRequest request(String model) {
@@ -169,9 +162,11 @@ class GatewayLLMProviderTest {
         }
 
         @Override
-        LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider) {
-            upstreamBaseUrl = provider.baseUrl;
-            upstream = new CapturingLiteLLMProvider(new LLMProviderConfig(null, null, null), provider.baseUrl, "ok");
+        LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider, String upstreamModel) {
+            upstreamBaseUrl = "azure".equals(provider.type)
+                    ? "https://example.openai.azure.com/openai/deployments/" + upstreamModel + "/chat/completions?api-version=2024-10-21"
+                    : provider.baseUrl;
+            upstream = new CapturingLiteLLMProvider(new LLMProviderConfig(null, null, null), upstreamBaseUrl, "ok");
             return upstream;
         }
     }

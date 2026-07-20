@@ -22,6 +22,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static ai.core.server.gateway.GatewaySupport.hasText;
+import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
+import static ai.core.server.gateway.GatewaySupport.urlEncode;
 
 /**
  * Bridges the agent runtime {@link LLMProvider} interface onto gateway-managed providers:
@@ -71,16 +73,10 @@ public class GatewayLLMProvider extends LLMProvider {
         var resolved = resolveRoute(request.model);
         if (resolved == null) return fallbackCompletionStream(request, callback);
         var provider = resolved.route().provider();
-        if ("azure".equals(provider.type)) {
-            if (fallback != null) {
-                LOGGER.warn("azure gateway provider is not supported for agent runtime yet, falling back to static LLM provider, model={}, provider={}", request.model, provider.name);
-                return fallbackCompletionStream(request, callback);
-            }
-            throw new BadRequestException("azure gateway provider is not supported for agent runtime yet: " + provider.name);
-        }
-        var upstream = upstreamProvider(provider);
+        var upstreamModel = upstreamModel(resolved);
+        var upstream = upstreamProvider(provider, upstreamModel);
         var originalModel = request.model;
-        request.model = upstreamModel(resolved);
+        request.model = upstreamModel;
         applyPreprocess(request);
         try {
             return upstream.delegateCompletionStream(request, callback);
@@ -158,23 +154,35 @@ public class GatewayLLMProvider extends LLMProvider {
         throw new IllegalStateException("unsupported fallback LLM provider: " + fallback.name());
     }
 
-    private LiteLLMProvider upstreamProvider(GatewayProviderConfig provider) {
-        // updatedAt is part of the key, so config changes naturally invalidate cached upstream clients
-        var key = provider.id + ":" + provider.updatedAt;
+    private LiteLLMProvider upstreamProvider(GatewayProviderConfig provider, String upstreamModel) {
+        // updatedAt is part of the key, so config changes naturally invalidate cached upstream clients;
+        // for azure, the upstreamModel must be in the cache key because the deployment URL is model-specific
+        var key = "azure".equals(provider.type)
+                ? provider.id + ":" + upstreamModel + ":" + provider.updatedAt
+                : provider.id + ":" + provider.updatedAt;
         var cached = upstreamProviders.get(key);
         if (cached != null) return cached;
         if (upstreamProviders.size() >= MAX_CACHED_UPSTREAM_PROVIDERS) upstreamProviders.clear();
-        return upstreamProviders.computeIfAbsent(key, ignored -> createUpstreamProvider(provider));
+        return upstreamProviders.computeIfAbsent(key, ignored -> createUpstreamProvider(provider, upstreamModel));
     }
 
-    LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider) {
+    LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider, String upstreamModel) {
         // fresh config: the static provider's extra-body/model settings must not leak to gateway upstreams
         var upstreamConfig = new LLMProviderConfig(null, config.getTemperature(), null);
         if (provider.timeoutSeconds != null) upstreamConfig.setTimeout(provider.timeoutSeconds);
         if (provider.connectTimeoutSeconds != null) upstreamConfig.setConnectTimeout(provider.connectTimeoutSeconds);
         if (hasText(provider.requestExtraBody)) upstreamConfig.setRequestExtraBody(provider.requestExtraBody);
         var apiKey = secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);
-        return new LiteLLMProvider(upstreamConfig, provider.baseUrl, apiKey == null ? "" : apiKey);
+        var key = apiKey == null ? "" : apiKey;
+        if ("azure".equals(provider.type)) {
+            var resourceBase = stripTrailingSlash(provider.baseUrl);
+            // azure provider baseUrl typically ends with /openai/v1, strip /v1 to get resource root
+            if (resourceBase.endsWith("/v1")) resourceBase = resourceBase.substring(0, resourceBase.length() - 3);
+            var version = hasText(provider.apiVersion) ? provider.apiVersion : "2024-10-21";
+            var azureUrl = resourceBase + "/deployments/" + urlEncode(upstreamModel) + "/chat/completions?api-version=" + urlEncode(version);
+            return new LiteLLMProvider(upstreamConfig, azureUrl, key, "api-key", "");
+        }
+        return new LiteLLMProvider(upstreamConfig, provider.baseUrl, key);
     }
 
     private record ResolvedRoute(GatewayRoute route, boolean responses) {

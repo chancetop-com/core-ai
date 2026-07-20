@@ -50,6 +50,8 @@ public class LiteLLMProvider extends LLMProvider {
 
     private volatile String url;
     private volatile String token;
+    private volatile String authHeaderName = "Authorization";
+    private volatile String authHeaderValuePrefix = "Bearer ";
     private final HTTPClient client;
 
     public LiteLLMProvider(LLMProviderConfig config, String url, String token) {
@@ -61,6 +63,12 @@ public class LiteLLMProvider extends LLMProvider {
                 .timeout(config.getTimeout())
                 .trustAll()
                 .build();
+    }
+
+    public LiteLLMProvider(LLMProviderConfig config, String url, String token, String authHeaderName, String authHeaderValuePrefix) {
+        this(config, url, token);
+        this.authHeaderName = authHeaderName;
+        this.authHeaderValuePrefix = authHeaderValuePrefix;
     }
 
     /**
@@ -160,13 +168,14 @@ public class LiteLLMProvider extends LLMProvider {
     @SuppressWarnings("unchecked")
     public CompletionResponse chatCompletionStream(CompletionRequest request, StreamingCallback callback) {
         var extraBody = request.getExtraBody() != null ? request.getExtraBody() : config.resolveExtraBody(request.model);
-        var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
+        var reqUrl = url.contains("/chat/completions") ? url : url + "/chat/completions";
+        var req = new HTTPRequest(HTTPMethod.POST, reqUrl);
         if (request.getTimeoutSeconds() != null) {
             req.timeout = Duration.ofSeconds(request.getTimeoutSeconds());
         }
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
         if (!Strings.isBlank(token)) {
-            req.headers.put("Authorization", "Bearer " + token);
+            req.headers.put(authHeaderName, authHeaderValuePrefix + token);
         }
 
         var bodyMap = (Map<String, Object>) JsonUtil.toMap(request);

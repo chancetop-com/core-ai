@@ -216,8 +216,11 @@ public class GatewayModelDiscoveryService {
     private String modelsUrl(GatewayProviderConfig provider) {
         var baseUrl = stripTrailingSlash(provider.baseUrl);
         if ("azure".equals(provider.type)) {
+            // azure provider baseUrl typically ends with /openai/v1 (the chat API root),
+            // but the deployments list lives under /openai without /v1
+            var resourceBase = baseUrl.endsWith("/v1") ? baseUrl.substring(0, baseUrl.length() - 3) : baseUrl;
             var version = isBlank(provider.apiVersion) ? "2024-10-21" : provider.apiVersion;
-            return baseUrl + "/openai/deployments?api-version=" + urlEncode(version);
+            return resourceBase + "/deployments?api-version=" + urlEncode(version);
         }
         return baseUrl + "/models";
     }

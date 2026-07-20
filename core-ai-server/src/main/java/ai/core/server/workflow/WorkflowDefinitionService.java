@@ -95,6 +95,16 @@ public class WorkflowDefinitionService {
             && visibilityOf(definition) == WorkflowVisibility.PUBLIC;
     }
 
+    private static Bson archivedFilter(String userId, String keyword) {
+        var conditions = new ArrayList<Bson>();
+        conditions.add(Filters.eq("user_id", userId));
+        conditions.add(Filters.eq("status", WorkflowDefinitionStatus.ARCHIVED));
+        if (keyword != null && !keyword.isBlank()) {
+            conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
+        }
+        return Filters.and(conditions);
+    }
+
     @Inject
     MongoCollection<WorkflowDefinition> definitionCollection;
 
@@ -202,16 +212,6 @@ public class WorkflowDefinitionService {
 
     public long listArchivedCount(String userId, String keyword) {
         return definitionCollection.count(archivedFilter(userId, keyword));
-    }
-
-    private static Bson archivedFilter(String userId, String keyword) {
-        var conditions = new ArrayList<Bson>();
-        conditions.add(Filters.eq("user_id", userId));
-        conditions.add(Filters.eq("status", WorkflowDefinitionStatus.ARCHIVED));
-        if (keyword != null && !keyword.isBlank()) {
-            conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
-        }
-        return Filters.and(conditions);
     }
 
     // Other users' public workflows for the Explore page: optional case-insensitive substring match on name,
