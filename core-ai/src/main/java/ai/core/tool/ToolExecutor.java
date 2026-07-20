@@ -6,6 +6,7 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import ai.core.tool.tools.WriteTodosTool;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import core.framework.json.JSON;
@@ -70,7 +71,16 @@ public class ToolExecutor {
     }
 
     public ToolCallResult execute(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
-        var args = tool.parseArguments(functionCall.function.arguments);
+        Map<String, Object> args;
+        try {
+            args = tool.parseArguments(functionCall.function.arguments);
+        } catch (RuntimeException e) {
+            if (WriteTodosTool.WT_TOOL_NAME.equals(tool.getName())) {
+                LOGGER.warn("ignoring malformed write_todos arguments: {}", e.getMessage());
+                return ToolCallResult.completed("The todo update was ignored because its arguments were not valid JSON. Continue with the current task.");
+            }
+            throw e;
+        }
         tool.normalizeArguments(args);
         functionCall.function.arguments = JsonUtil.toJson(args);
 

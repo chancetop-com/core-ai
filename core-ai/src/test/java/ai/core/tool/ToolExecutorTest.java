@@ -6,6 +6,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.SessionStreamingCallback;
 import ai.core.sandbox.SandboxFile;
+import ai.core.tool.tools.WriteTodosTool;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.RecordingSpanProcessor;
@@ -20,6 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolExecutorTest {
     private static final AttributeKey<Boolean> TOOL_IS_SUB_AGENT = AttributeKey.booleanKey("tool.is_sub_agent");
@@ -72,6 +74,19 @@ class ToolExecutorTest {
         } finally {
             tracerProvider.shutdown();
         }
+    }
+
+    @Test
+    void ignoresMalformedWriteTodosArguments() {
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var tool = WriteTodosTool.self();
+        var functionCall = FunctionCall.of("call_1", "function", WriteTodosTool.WT_TOOL_NAME,
+                "{\"todos\":[{\"content\":\"update\" \"status\":\"in_progress\"}]}");
+
+        ToolCallResult result = executor.execute(tool, functionCall, ExecutionContext.empty());
+
+        assertTrue(result.isCompleted());
+        assertEquals("The todo update was ignored because its arguments were not valid JSON. Continue with the current task.", result.getResult());
     }
 
     @Test
