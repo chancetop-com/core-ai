@@ -11,7 +11,6 @@ import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import ai.core.llm.LLMModelContextRegistry;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
@@ -66,6 +65,8 @@ public class IngestService {
     MongoCollection<Trace> traceCollection;
     @Inject
     MongoCollection<Span> spanCollection;
+    @Inject
+    ModelPricingService modelPricingService;
 
     public void ingest(IngestRequest request) {
         ingest(request, null, null);
@@ -193,8 +194,7 @@ public class IngestService {
         span.inputTokens = spanReq.inputTokens;
         span.outputTokens = spanReq.outputTokens;
         span.cachedTokens = resolveCachedTokens(spanReq);
-        span.costUsd = resolveCostUsd(spanReq.model, span.inputTokens, span.outputTokens, span.cachedTokens,
-            spanReq.costUsd, spanReq.attributes);
+        applyCost(span, spanReq.costUsd, spanReq.attributes);
         span.durationMs = spanReq.durationMs;
         span.status = mapSpanStatus(spanReq.status, spanReq.attributes);
         span.attributes = spanReq.attributes;
@@ -306,16 +306,27 @@ public class IngestService {
             "prompt_tokens_details.cached_tokens");
     }
 
-    private Double resolveCostUsd(String model, Long inputTokens, Long outputTokens, Long cachedTokens,
-                                  Double requestCostUsd, Map<String, String> attributes) {
-        if (requestCostUsd != null) return requestCostUsd;
+    private void applyCost(Span span, Double requestCostUsd, Map<String, String> attributes) {
+        if (requestCostUsd != null) {
+            span.costUsd = requestCostUsd;
+            span.costSource = "request";
+            return;
+        }
         var attrCost = parseDoubleAttr(attributes,
             "gen_ai.usage.cost_usd",
             "gen_ai.usage.cost",
             "langfuse.observation.total_cost");
-        if (attrCost != null) return attrCost;
-        return LLMModelContextRegistry.getInstance().estimateCostUsd(model,
-            safeLong(inputTokens), safeLong(outputTokens), safeLong(cachedTokens));
+        if (attrCost != null) {
+            span.costUsd = attrCost;
+            span.costSource = "upstream";
+            return;
+        }
+        var price = modelPricingService.resolve(span.model, span.inputTokens, span.outputTokens, span.cachedTokens);
+        span.costUsd = price.costUsd();
+        span.costSource = price.source();
+        span.pricingModelId = price.modelId();
+        span.inputPricePer1MTokens = price.inputPricePer1MTokens();
+        span.outputPricePer1MTokens = price.outputPricePer1MTokens();
     }
 
     private Long parseLongAttr(Map<String, String> attributes, String... keys) {

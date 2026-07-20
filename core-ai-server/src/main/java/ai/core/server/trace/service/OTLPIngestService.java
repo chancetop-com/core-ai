@@ -16,7 +16,6 @@ import io.opentelemetry.proto.trace.v1.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import ai.core.llm.LLMModelContextRegistry;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.trace.domain.Span;
@@ -54,6 +53,8 @@ public class OTLPIngestService {
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
     MongoCollection<Span> spanCollection;
+    @Inject
+    ModelPricingService modelPricingService;
 
     public void ingest(ExportTraceServiceRequest request) {
         int spanCount = 0;
@@ -166,7 +167,7 @@ public class OTLPIngestService {
             "gen_ai.usage.input_tokens_details.cached_tokens",
             "usage.prompt_tokens_details.cached_tokens",
             "prompt_tokens_details.cached_tokens");
-        span.costUsd = resolveCostUsd(span.model, span.inputTokens, span.outputTokens, span.cachedTokens, attrs);
+        applyCost(span, attrs);
         spanCollection.insert(span);
 
         // Back-fill model onto trace if not yet set
@@ -403,14 +404,22 @@ public class OTLPIngestService {
         return "true".equalsIgnoreCase(attrs.get(CORE_AI_CANCELLED));
     }
 
-    private Double resolveCostUsd(String model, Long inputTokens, Long outputTokens, Long cachedTokens, Map<String, String> attrs) {
+    private void applyCost(Span span, Map<String, String> attrs) {
         var attrCost = OTLPParseHelper.parseDoubleAttr(attrs,
             "gen_ai.usage.cost_usd",
             "gen_ai.usage.cost",
             "langfuse.observation.total_cost");
-        if (attrCost != null) return attrCost;
-        return LLMModelContextRegistry.getInstance().estimateCostUsd(model,
-            OTLPParseHelper.safeLong(inputTokens), OTLPParseHelper.safeLong(outputTokens), OTLPParseHelper.safeLong(cachedTokens));
+        if (attrCost != null) {
+            span.costUsd = attrCost;
+            span.costSource = "upstream";
+            return;
+        }
+        var price = modelPricingService.resolve(span.model, span.inputTokens, span.outputTokens, span.cachedTokens);
+        span.costUsd = price.costUsd();
+        span.costSource = price.source();
+        span.pricingModelId = price.modelId();
+        span.inputPricePer1MTokens = price.inputPricePer1MTokens();
+        span.outputPricePer1MTokens = price.outputPricePer1MTokens();
     }
 
 }

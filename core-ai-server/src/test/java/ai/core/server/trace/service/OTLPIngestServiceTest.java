@@ -2,6 +2,7 @@ package ai.core.server.trace.service;
 
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import com.google.protobuf.ByteString;
@@ -25,6 +26,28 @@ import static org.mockito.Mockito.when;
 
 class OTLPIngestServiceTest {
     @Test
+    void calculatesCostFromGatewayModelPrice() {
+        var service = service();
+        var model = new GatewayModelConfig();
+        model.modelId = "gpt-5.6-terra";
+        model.inputPricePer1MTokens = 2D;
+        model.outputPricePer1MTokens = 8D;
+        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+
+        service.ingest(request(span("chat",
+            attr("gen_ai.request.model", "gpt-5.6-terra"),
+            attr("gen_ai.usage.input_tokens", "1000000"),
+            attr("gen_ai.usage.output_tokens", "500000"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection).insert(inserted.capture());
+        assertEquals(6D, inserted.getValue().costUsd);
+        assertEquals("gateway_model", inserted.getValue().costSource);
+        assertEquals("gpt-5.6-terra", inserted.getValue().pricingModelId);
+    }
+
+    @Test
     void rootOperationSpanUsesAgentNameForTraceTitle() {
         var service = service();
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
@@ -47,6 +70,8 @@ class OTLPIngestServiceTest {
         service.spanCollection = spanCollection();
         service.agentRunCollection = agentRunCollection();
         service.chatSessionCollection = chatSessionCollection();
+        service.modelPricingService = new ModelPricingService();
+        service.modelPricingService.gatewayModelCollection = gatewayModelCollection();
         return service;
     }
 
@@ -75,6 +100,11 @@ class OTLPIngestServiceTest {
             .setKey(key)
             .setValue(AnyValue.newBuilder().setStringValue(value))
             .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private MongoCollection<GatewayModelConfig> gatewayModelCollection() {
+        return (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
     }
 
     @SuppressWarnings("unchecked")

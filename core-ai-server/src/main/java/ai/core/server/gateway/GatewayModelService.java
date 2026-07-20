@@ -245,6 +245,10 @@ public class GatewayModelService {
         if (specified(request, "supportsVision", create)) entity.supportsVision = request.supportsVision;
         if (specified(request, "inputPricePer1MTokens", create)) entity.inputPricePer1MTokens = request.inputPricePer1MTokens;
         if (specified(request, "outputPricePer1MTokens", create)) entity.outputPricePer1MTokens = request.outputPricePer1MTokens;
+        if (specified(request, "inputPricePer1MTokens", create) || specified(request, "outputPricePer1MTokens", create)) {
+            entity.pricingSource = "manual";
+            entity.pricingUpdatedAt = ZonedDateTime.now();
+        }
     }
 
     private void applyMetadata(GatewayModelConfig entity, GatewayModelMetadata metadata) {
@@ -256,6 +260,10 @@ public class GatewayModelService {
         if (metadata.supportsVision() != null) entity.supportsVision = metadata.supportsVision();
         if (metadata.inputPricePer1MTokens() != null) entity.inputPricePer1MTokens = metadata.inputPricePer1MTokens();
         if (metadata.outputPricePer1MTokens() != null) entity.outputPricePer1MTokens = metadata.outputPricePer1MTokens();
+        if (metadata.inputPricePer1MTokens() != null || metadata.outputPricePer1MTokens() != null) {
+            entity.pricingSource = "provider";
+            entity.pricingUpdatedAt = ZonedDateTime.now();
+        }
     }
 
     private void rejectDuplicateModelId(GatewayModelConfig entity) {
@@ -336,6 +344,8 @@ public class GatewayModelService {
         view.supportsVision = entity.supportsVision;
         view.inputPricePer1MTokens = entity.inputPricePer1MTokens;
         view.outputPricePer1MTokens = entity.outputPricePer1MTokens;
+        view.pricingSource = entity.pricingSource;
+        view.pricingUpdatedAt = entity.pricingUpdatedAt;
         view.createdBy = entity.createdBy;
         view.updatedBy = entity.updatedBy;
         view.createdAt = entity.createdAt;

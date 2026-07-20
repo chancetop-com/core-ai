@@ -54,6 +54,12 @@ public class GatewayModelConfig {
     @Field(name = "output_price_per_1m_tokens")
     public Double outputPricePer1MTokens;
 
+    @Field(name = "pricing_source")
+    public String pricingSource;
+
+    @Field(name = "pricing_updated_at")
+    public ZonedDateTime pricingUpdatedAt;
+
     @Field(name = "created_by")
     public String createdBy;
 

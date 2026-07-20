@@ -20,6 +20,8 @@ public class GatewayModelView {
     public Boolean supportsVision;
     public Double inputPricePer1MTokens;
     public Double outputPricePer1MTokens;
+    public String pricingSource;
+    public ZonedDateTime pricingUpdatedAt;
     public String createdBy;
     public String updatedBy;
     public ZonedDateTime createdAt;

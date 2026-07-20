@@ -54,6 +54,18 @@ public class Span {
     @Field(name = "cost_usd")
     public Double costUsd;
 
+    @Field(name = "cost_source")
+    public String costSource;
+
+    @Field(name = "pricing_model_id")
+    public String pricingModelId;
+
+    @Field(name = "input_price_per_1m_tokens")
+    public Double inputPricePer1MTokens;
+
+    @Field(name = "output_price_per_1m_tokens")
+    public Double outputPricePer1MTokens;
+
     @Field(name = "duration_ms")
     public Long durationMs;
 

@@ -9,6 +9,7 @@ import ai.core.server.trace.maintenance.TraceDailyMaintenanceJob;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceService;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceTask;
 import ai.core.server.trace.service.IngestService;
+import ai.core.server.trace.service.ModelPricingService;
 import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.service.PromptService;
 import ai.core.server.trace.service.TraceService;
@@ -52,6 +53,7 @@ public class TraceModule extends Module {
     private void registerTrace() {
         bind(TraceService.class);
         bind(PromptService.class);
+        bind(ModelPricingService.class);
         var otlpIngestService = bind(OTLPIngestService.class);
         bind(IngestService.class);
 

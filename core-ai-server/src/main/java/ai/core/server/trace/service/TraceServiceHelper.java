@@ -1,12 +1,12 @@
 package ai.core.server.trace.service;
 
+import ai.core.llm.LLMModelContextRegistry;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
-import ai.core.llm.LLMModelContextRegistry;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 
