@@ -24,6 +24,14 @@ import static org.mockito.Mockito.when;
 
 class SkillServiceTest {
     @Test
+    void repoRegistrationUsesInjectedSkillCollection() {
+        var service = new SkillService();
+        service.skillCollection = skillCollection();
+
+        assertEquals("nextlevelbuilder", service.extractRepoOwner("https://github.com/nextlevelbuilder/ui-ux-pro-max-skill"));
+    }
+
+    @Test
     void listAppliesDbPagingWithoutInMemoryFilters() {
         var service = new SkillService();
         service.skillCollection = skillCollection();

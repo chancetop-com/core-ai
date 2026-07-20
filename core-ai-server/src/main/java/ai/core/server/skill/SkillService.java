@@ -44,14 +44,8 @@ public class SkillService {
     @Inject
     MongoCollection<SkillDefinition> skillCollection;
 
-    private final SkillRepoManager repoManager;
-
-    public SkillService() {
-        this.repoManager = new SkillRepoManager(skillCollection);
-    }
-
     public String extractRepoOwner(String repoUrl) {
-        return repoManager.extractRepoOwner(repoUrl);
+        return repoManager().extractRepoOwner(repoUrl);
     }
 
     public SkillDefinition upload(String userId, String namespace, byte[] skillFileBytes, Map<String, byte[]> resources) {
@@ -92,7 +86,7 @@ public class SkillService {
     }
 
     public List<SkillDefinition> registerFromRepo(String userId, String repoUrl, String branch, String skillPath) {
-        String namespace = repoManager.extractRepoOwner(repoUrl);
+        String namespace = repoManager().extractRepoOwner(repoUrl);
         if (namespace == null) {
             throw new RuntimeException("cannot extract owner from repo URL: " + repoUrl);
         }
@@ -100,7 +94,7 @@ public class SkillService {
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory("skill-repo-");
-            repoManager.cloneRepo(repoUrl, branch, tempDir);
+            repoManager().cloneRepo(repoUrl, branch, tempDir);
 
             String effectiveSkillPath = skillPath;
             if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
@@ -132,7 +126,7 @@ public class SkillService {
 
             var results = new ArrayList<SkillDefinition>();
             for (var skill : skills) {
-                var entity = repoManager.registerOrUpdate(userId, namespace, skill, repoUrl, branch, effectiveSkillPath);
+                var entity = repoManager().registerOrUpdate(userId, namespace, skill, repoUrl, branch, effectiveSkillPath);
                 results.add(entity);
             }
             LOGGER.info("registered {} skills from repo {}", results.size(), repoUrl);
@@ -140,7 +134,7 @@ public class SkillService {
         } catch (IOException e) {
             throw new RuntimeException("failed to clone repo: " + repoUrl, e);
         } finally {
-            repoManager.deleteTempDir(tempDir);
+            repoManager().deleteTempDir(tempDir);
         }
     }
 
@@ -207,7 +201,7 @@ public class SkillService {
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory("skill-repo-sync-");
-            repoManager.cloneRepo(config.repoUrl, config.branch, tempDir);
+            repoManager().cloneRepo(config.repoUrl, config.branch, tempDir);
 
             String effectiveSkillPath = config.skillPath;
             if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
@@ -241,7 +235,7 @@ public class SkillService {
         } catch (IOException e) {
             throw new RuntimeException("failed to sync repo: " + config.repoUrl, e);
         } finally {
-            repoManager.deleteTempDir(tempDir);
+            repoManager().deleteTempDir(tempDir);
         }
     }
 
@@ -252,8 +246,8 @@ public class SkillService {
         if (skillDir == null) {
             throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
         }
-        entity.content = repoManager.readSkillMdFromDir(skillDir);
-        entity.resources = repoManager.readResourcesFromDir(skillDir, skill.getResources());
+        entity.content = repoManager().readSkillMdFromDir(skillDir);
+        entity.resources = repoManager().readResourcesFromDir(skillDir, skill.getResources());
         entity.description = skill.getDescription();
         entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
         entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
@@ -264,6 +258,10 @@ public class SkillService {
 
     public SkillDefinition download(String id) {
         return get(id);
+    }
+
+    private SkillRepoManager repoManager() {
+        return new SkillRepoManager(skillCollection);
     }
 
     private Bson indexedFilter(SkillFilter filter) {
