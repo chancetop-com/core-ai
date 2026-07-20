@@ -187,6 +187,33 @@ public class WorkflowDefinitionService {
         return definitionCollection.count(listFilter(userId, myWorkflows, keyword));
     }
 
+    // The owner's archived workflows: delete() archives instead of hard-deleting once runs or published versions
+    // exist, and this list is the only way back to those workflows (and to the run history attached to them).
+    public List<WorkflowDefinition> listArchived(String userId, String keyword, Integer offset, Integer limit) {
+        var query = new Query();
+        query.filter = archivedFilter(userId, keyword);
+        query.sort = Sorts.descending("updated_at");
+        if (offset != null || limit != null) {
+            query.skip = Math.max(0, offset != null ? offset : 0);
+            query.limit = Math.min(Math.max(limit != null ? limit : 20, 1), 100);
+        }
+        return definitionCollection.find(query);
+    }
+
+    public long listArchivedCount(String userId, String keyword) {
+        return definitionCollection.count(archivedFilter(userId, keyword));
+    }
+
+    private static Bson archivedFilter(String userId, String keyword) {
+        var conditions = new ArrayList<Bson>();
+        conditions.add(Filters.eq("user_id", userId));
+        conditions.add(Filters.eq("status", WorkflowDefinitionStatus.ARCHIVED));
+        if (keyword != null && !keyword.isBlank()) {
+            conditions.add(Filters.regex("name", Pattern.quote(keyword), "i"));
+        }
+        return Filters.and(conditions);
+    }
+
     // Other users' public workflows for the Explore page: optional case-insensitive substring match on name,
     // newest-updated first, paged. Null visibility/status are treated as legacy PUBLIC/ACTIVE when a published
     // pointer exists, so existing published workflows remain discoverable until they are touched.

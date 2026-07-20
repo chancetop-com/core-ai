@@ -678,6 +678,7 @@ export default function WorkflowEditor() {
                 focusNodeId={selectedId}
                 onRun={startRun}
                 allowRunVisibility={readOnly}
+                defaultVisibility={visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE'}
                 onResume={startResume}
                 onResumeFromNode={startResumeFromNode}
                 resumedFrom={resumedFrom ?? undefined}

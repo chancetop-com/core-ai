@@ -10,6 +10,10 @@ public class ListWorkflowsRequest {
     @QueryParam(name = "my")
     public String myWorkflows;
 
+    // "true" -> the caller's ARCHIVED workflows (read-only; run history stays reachable through them)
+    @QueryParam(name = "archived")
+    public Boolean archived;
+
     @QueryParam(name = "keyword")
     public String keyword;
 

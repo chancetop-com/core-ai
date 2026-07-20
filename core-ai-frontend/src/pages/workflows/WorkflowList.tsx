@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, History, Download, FileUp, Copy, ChevronLeft, ChevronRight, Search, Star, Workflow as WorkflowIcon } from 'lucide-react';
+import { Plus, Trash2, History, Download, FileUp, Copy, ChevronLeft, ChevronRight, Search, Star, Archive, Workflow as WorkflowIcon } from 'lucide-react';
 import { api, type WorkflowView } from '../../api/client';
 import { AuthContext } from '../../api/auth';
 import { newGraph } from './graph';
@@ -8,7 +8,7 @@ import { newGraph } from './graph';
 const PAGE_SIZE = 10;
 
 interface WorkflowListProps {
-  initialTab?: 'my' | 'shared';
+  initialTab?: 'my' | 'shared' | 'archived';
 }
 
 function workflowPageKey(keyword: string, offset: number) {
@@ -18,18 +18,22 @@ function workflowPageKey(keyword: string, offset: number) {
 export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
   const [myWorkflows, setMyWorkflows] = useState<WorkflowView[]>([]);
   const [sharedWorkflows, setSharedWorkflows] = useState<WorkflowView[]>([]);
+  const [archivedWorkflows, setArchivedWorkflows] = useState<WorkflowView[]>([]);
   const [myTotal, setMyTotal] = useState(0);
   const [sharedTotal, setSharedTotal] = useState(0);
+  const [archivedTotal, setArchivedTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [myLoading, setMyLoading] = useState(false);
   const [sharedLoading, setSharedLoading] = useState(false);
+  const [archivedLoading, setArchivedLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [cloningId, setCloningId] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'my' | 'shared'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'my' | 'shared' | 'archived'>(initialTab);
   const [keyword, setKeyword] = useState('');
   const [myOffset, setMyOffset] = useState(0);
   const [sharedOffset, setSharedOffset] = useState(0);
+  const [archivedOffset, setArchivedOffset] = useState(0);
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const isAdmin = user?.role === 'admin';
@@ -37,10 +41,13 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const myReqIdRef = useRef(0);
   const sharedReqIdRef = useRef(0);
+  const archivedReqIdRef = useRef(0);
   const myPageKeyRef = useRef<string | null>(null);
   const myLoadingKeyRef = useRef<string | null>(null);
   const sharedPageKeyRef = useRef<string | null>(null);
   const sharedLoadingKeyRef = useRef<string | null>(null);
+  const archivedPageKeyRef = useRef<string | null>(null);
+  const archivedLoadingKeyRef = useRef<string | null>(null);
 
   const loadMy = useCallback(async (kw: string, offset: number) => {
     const key = workflowPageKey(kw, offset);
@@ -84,6 +91,27 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
     }
   }, []);
 
+  const loadArchived = useCallback(async (kw: string, offset: number) => {
+    const key = workflowPageKey(kw, offset);
+    if (archivedPageKeyRef.current === key || archivedLoadingKeyRef.current === key) return;
+    const myReq = ++archivedReqIdRef.current;
+    archivedLoadingKeyRef.current = key;
+    setArchivedLoading(true);
+    setError('');
+    try {
+      const res = await api.workflows.list(true, kw, offset, PAGE_SIZE, true);
+      if (myReq !== archivedReqIdRef.current) return;
+      setArchivedWorkflows(res.workflows || []);
+      setArchivedTotal(res.total || 0);
+      archivedPageKeyRef.current = key;
+    } catch (e) {
+      if (myReq === archivedReqIdRef.current) setError((e as Error).message);
+    } finally {
+      if (archivedLoadingKeyRef.current === key) archivedLoadingKeyRef.current = null;
+      if (myReq === archivedReqIdRef.current) setArchivedLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -104,21 +132,23 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
 
   useEffect(() => {
     if (loading) return;
-    const offset = activeTab === 'my' ? myOffset : sharedOffset;
+    const offset = activeTab === 'my' ? myOffset : activeTab === 'shared' ? sharedOffset : archivedOffset;
     const key = workflowPageKey(keyword, offset);
-    const loadedKey = activeTab === 'my' ? myPageKeyRef.current : sharedPageKeyRef.current;
-    const loadingKey = activeTab === 'my' ? myLoadingKeyRef.current : sharedLoadingKeyRef.current;
+    const loadedKey = activeTab === 'my' ? myPageKeyRef.current : activeTab === 'shared' ? sharedPageKeyRef.current : archivedPageKeyRef.current;
+    const loadingKey = activeTab === 'my' ? myLoadingKeyRef.current : activeTab === 'shared' ? sharedLoadingKeyRef.current : archivedLoadingKeyRef.current;
     if (loadedKey === key || loadingKey === key) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       if (activeTab === 'my') {
         void loadMy(keyword, offset);
-      } else {
+      } else if (activeTab === 'shared') {
         void loadShared(keyword, offset);
+      } else {
+        void loadArchived(keyword, offset);
       }
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [activeTab, keyword, myOffset, sharedOffset, loading, loadMy, loadShared]);
+  }, [activeTab, keyword, myOffset, sharedOffset, archivedOffset, loading, loadMy, loadShared, loadArchived]);
 
   const create = async () => {
     setCreating(true);
@@ -217,20 +247,21 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
     }
   };
 
-  const handleTabChange = (tab: 'my' | 'shared') => {
+  const handleTabChange = (tab: 'my' | 'shared' | 'archived') => {
     setActiveTab(tab);
     setKeyword('');
     setMyOffset(0);
     setSharedOffset(0);
+    setArchivedOffset(0);
   };
 
-  const currentWorkflows = activeTab === 'my' ? myWorkflows : sharedWorkflows;
-  const currentLoading = loading || (activeTab === 'my' ? myLoading : sharedLoading);
-  const currentTotal = activeTab === 'my' ? myTotal : sharedTotal;
-  const currentOffset = activeTab === 'my' ? myOffset : sharedOffset;
+  const currentWorkflows = activeTab === 'my' ? myWorkflows : activeTab === 'shared' ? sharedWorkflows : archivedWorkflows;
+  const currentLoading = loading || (activeTab === 'my' ? myLoading : activeTab === 'shared' ? sharedLoading : archivedLoading);
+  const currentTotal = activeTab === 'my' ? myTotal : activeTab === 'shared' ? sharedTotal : archivedTotal;
+  const currentOffset = activeTab === 'my' ? myOffset : activeTab === 'shared' ? sharedOffset : archivedOffset;
   const nextDisabled = currentOffset + PAGE_SIZE >= currentTotal;
   const prevDisabled = currentOffset === 0;
-  const setCurrentOffset = activeTab === 'my' ? setMyOffset : setSharedOffset;
+  const setCurrentOffset = activeTab === 'my' ? setMyOffset : activeTab === 'shared' ? setSharedOffset : setArchivedOffset;
 
   return (
     <div className="p-6">
@@ -284,6 +315,16 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
               {sharedTotal}
             </span>
           </button>
+          <button
+            onClick={() => handleTabChange('archived')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            style={{
+              background: activeTab === 'archived' ? 'var(--color-bg-tertiary)' : 'transparent',
+              color: activeTab === 'archived' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+            }}>
+            <Archive size={14} />
+            Archived
+          </button>
         </div>
         <div className="relative w-64">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
@@ -311,18 +352,23 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
         <div style={emptyState}>
           {activeTab === 'my'
             ? 'No workflows yet. Create one to get started, or import from a JSON file.'
-            : keyword ? 'No shared workflows match your search.' : 'No shared workflows available yet.'}
+            : activeTab === 'archived'
+              ? (keyword ? 'No archived workflows match your search.' : 'No archived workflows. Deleting a workflow that has runs or published versions archives it here.')
+              : keyword ? 'No shared workflows match your search.' : 'No shared workflows available yet.'}
         </div>
       ) : (
         <div style={grid}>
           {currentWorkflows.map((wf) => (
-            <div key={wf.id} onClick={() => navigate(`/workflows/${wf.id}`)} style={card} title={activeTab === 'shared' ? 'Open read-only to run' : undefined}>
+            <div key={wf.id} onClick={() => navigate(`/workflows/${wf.id}`)} style={card}
+              title={activeTab === 'shared' ? 'Open read-only to run' : activeTab === 'archived' ? 'Archived — open read-only to browse run history' : undefined}>
               {activeTab === 'my' ? (
                 <>
                   <button onClick={(e) => exportWorkflow(e, wf)} style={exportBtn} title="Export workflow"><Download size={14} /></button>
                   <button onClick={(e) => openRuns(e, wf)} style={histBtn} title="Run history"><History size={14} /></button>
                   <button onClick={(e) => del(e, wf)} style={delBtn} title={wf.published_version ? 'Archive workflow' : 'Delete workflow'}><Trash2 size={14} /></button>
                 </>
+              ) : activeTab === 'archived' ? (
+                <button onClick={(e) => openRuns(e, wf)} style={delBtn} title="Run history"><History size={14} /></button>
               ) : (
                 <>
                   {isAdmin && <button onClick={(e) => del(e, wf)} style={adminDelBtn} title="Admin archive public workflow"><Trash2 size={14} /></button>}

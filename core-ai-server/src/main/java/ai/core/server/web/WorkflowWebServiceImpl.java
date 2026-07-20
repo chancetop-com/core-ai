@@ -29,6 +29,7 @@ import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.User;
 import ai.core.server.domain.WorkflowDefinition;
+import ai.core.server.domain.WorkflowDefinitionStatus;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
@@ -96,16 +97,22 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         var keyword = request == null ? null : request.keyword;
         var offset = request == null ? null : request.offset;
         var limit = request == null ? null : request.limit;
-        var definitions = definitionService.list(userId, myWorkflows, keyword, offset, limit);
+        boolean archived = request != null && Boolean.TRUE.equals(request.archived);
+        var definitions = archived
+            ? definitionService.listArchived(userId, keyword, offset, limit)
+            : definitionService.list(userId, myWorkflows, keyword, offset, limit);
         var userNames = resolveUserNames(definitions);
         var response = new ListWorkflowsResponse();
         response.workflows = definitions.stream().map(d -> {
             var view = WorkflowViewMapper.toView(d, userNames.get(d.userId));
-            view.editable = userId.equals(d.userId);   // caller userId is non-null; tolerates a null d.userId row
+            // archived workflows open read-only even for the owner; caller userId is non-null, tolerates a null d.userId row
+            view.editable = !archived && userId.equals(d.userId);
             view.draftGraph = null;   // the list UI never reads the graph — and must never ship another owner's draft
             return view;
         }).toList();
-        response.total = definitionService.listCount(userId, myWorkflows, keyword);
+        response.total = archived
+            ? definitionService.listArchivedCount(userId, keyword)
+            : definitionService.listCount(userId, myWorkflows, keyword);
         response.offset = offset;
         response.limit = limit;
         return response;
@@ -168,7 +175,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     public WorkflowView get(String id) {
         var userId = AuthContext.userId(webContext);
         var definition = definitionService.getReadable(id, userId);   // owner: editable draft; other user: read-only published
-        boolean editable = definition.userId.equals(userId);
+        // an archived workflow opens read-only even for its owner (update would 409); it exists only for run history
+        boolean editable = definition.userId.equals(userId)
+            && WorkflowDefinitionService.statusOf(definition) != WorkflowDefinitionStatus.ARCHIVED;
         var ownerName = editable ? null : userCollection.get(definition.userId).map(u -> u.name).orElse(null);
         var view = WorkflowViewMapper.toView(definition, ownerName);
         view.editable = editable;
@@ -315,14 +324,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     public ListWorkflowRunsResponse listRuns(String id) {
         var userId = AuthContext.userId(webContext);
         var response = new ListWorkflowRunsResponse();
-        response.runs = runService.listRuns(id, userId).stream().map(WorkflowViewMapper::toRunView).toList();
+        response.runs = runService.listRuns(id, userId, isAdmin(userId)).stream().map(WorkflowViewMapper::toRunView).toList();
         return response;
     }
 
     @Override
     public WorkflowRunView getRun(String runId) {
         var userId = AuthContext.userId(webContext);
-        return toRunViewWithPending(runService.getRun(runId, userId));
+        return toRunViewWithPending(runService.getRun(runId, userId, isAdmin(userId)));
     }
 
     // single-run reads attach the resume contract of a PAUSED run; list endpoints stay cheap (no node-run query)
@@ -339,7 +348,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     public ListNodeRunsResponse listNodeRuns(String runId) {
         var userId = AuthContext.userId(webContext);
         var response = new ListNodeRunsResponse();
-        response.nodeRuns = runService.listNodeRuns(runId, userId).stream().map(this::toNodeRunView).toList();
+        response.nodeRuns = runService.listNodeRuns(runId, userId, isAdmin(userId)).stream().map(this::toNodeRunView).toList();
         return response;
     }
 
@@ -347,7 +356,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     public WorkflowRunGraphResponse runGraph(String runId) {
         var userId = AuthContext.userId(webContext);
         var response = new WorkflowRunGraphResponse();
-        response.graph = runService.getRunGraph(runId, userId);
+        response.graph = runService.getRunGraph(runId, userId, isAdmin(userId));
         return response;
     }
 

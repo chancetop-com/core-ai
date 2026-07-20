@@ -97,8 +97,9 @@ class WorkflowViewMapper {
     }
 
     static WorkflowVisibility runVisibility(CreateRunRequest request) {
+        // null = no explicit choice; the run service then inherits the workflow's visibility
         if (request == null || request.visibility == null || request.visibility.isBlank()) {
-            return WorkflowVisibility.PRIVATE;
+            return null;
         }
         var trimmed = request.visibility.trim().toUpperCase(Locale.getDefault());
         for (var v : WorkflowVisibility.values()) {

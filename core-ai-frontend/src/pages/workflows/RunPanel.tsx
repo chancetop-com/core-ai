@@ -17,6 +17,7 @@ interface Props {
   focusNodeId: string | null;        // a node clicked on the canvas auto-expands in the trace
   onRun: (input: string, visibility?: RunVisibility) => void;
   allowRunVisibility?: boolean;
+  defaultVisibility?: RunVisibility;   // seeds the selector with the workflow's own visibility
   onResume: (nodeId: string, body: { approve?: boolean; input?: string }) => void;
   onResumeFromNode: (nodeId: string) => void;
   resumedFrom?: { runId: string; nodeId: string };
@@ -25,11 +26,11 @@ interface Props {
 
 /** The test panel (Dify-style): enter input → Test → watch each node execute with status, timing and
  *  input/output → see the final result. Runs the current draft, no publish required. */
-export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, error, focusNodeId, onRun, allowRunVisibility, onResume, onResumeFromNode, resumedFrom, onClose }: Props) {
+export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, error, focusNodeId, onRun, allowRunVisibility, defaultVisibility, onResume, onResumeFromNode, resumedFrom, onClose }: Props) {
   const inputVars = startInputVars(nodes);
   const [input, setInput] = useState('');                                 // free-text/JSON fallback (no declared inputs)
   const [form, setForm] = useState<Record<string, string | boolean>>({}); // typed form values
-  const [visibility, setVisibility] = useState<RunVisibility>('PRIVATE');
+  const [visibility, setVisibility] = useState<RunVisibility>(defaultVisibility ?? 'PRIVATE');
   const [err, setErr] = useState('');
   const runLabel = allowRunVisibility ? 'Run' : 'Test';
 

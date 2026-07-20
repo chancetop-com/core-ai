@@ -1277,12 +1277,13 @@ export const api = {
       request<void>(`/api/agents/${agentId}/memories`, { method: 'DELETE' }),
   },
   workflows: {
-    list: (my?: boolean, keyword?: string, offset?: number, limit?: number) => {
+    list: (my?: boolean, keyword?: string, offset?: number, limit?: number, archived?: boolean) => {
       const params = new URLSearchParams();
       if (my !== undefined) params.set('my', String(my));
       if (keyword) params.set('keyword', keyword);
       if (offset !== undefined) params.set('offset', String(offset));
       if (limit !== undefined) params.set('limit', String(limit));
+      if (archived) params.set('archived', 'true');
       return request<ListWorkflowsResponse>(`/api/workflows${params.toString() ? `?${params}` : ''}`);
     },
     clone: (id: string) => request<CloneWorkflowResponse>(`/api/workflows/${id}/clone`, { method: 'POST' }),

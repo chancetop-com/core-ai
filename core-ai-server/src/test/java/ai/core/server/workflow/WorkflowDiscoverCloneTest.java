@@ -19,9 +19,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -111,22 +113,58 @@ class WorkflowDiscoverCloneTest {
     }
 
     @Test
-    void workflowRunsArePrivateByDefaultAndPublicWhenRequested() {
+    void runInheritsWorkflowVisibilityWhenCallerDoesNotChoose() {
         WorkflowDefinition published = definitionService.create("runnable", "WORKFLOW", GRAPH, "owner-1");
         publishService.publish(published.id, "owner-1");
 
-        WorkflowRun privateRun = runService.createRun(published.id, "{}", TriggerType.API, "viewer-2");
-        assertEquals("viewer-2", privateRun.userId, "run is attributed to the caller, not the owner");
-        assertEquals(RunStatus.PENDING, privateRun.status);
-        assertEquals(WorkflowVisibility.PRIVATE, WorkflowRunService.visibilityOf(privateRun.visibility));
+        WorkflowRun inherited = runService.createRun(published.id, "{}", TriggerType.API, "viewer-2");
+        assertEquals("viewer-2", inherited.userId, "run is attributed to the caller, not the owner");
+        assertEquals(RunStatus.PENDING, inherited.status);
+        assertEquals(WorkflowVisibility.PUBLIC, inherited.visibility, "run on a public workflow defaults to public");
+        assertTrue(runService.listRuns(published.id, "owner-1").stream().anyMatch(r -> r.id.equals(inherited.id)));
+        assertEquals(inherited.id, runService.getRun(inherited.id, "third-user").id);
+
+        WorkflowRun privateRun = runService.createRun(published.id, "{}", TriggerType.API, "viewer-2", WorkflowVisibility.PRIVATE);
+        assertEquals(WorkflowVisibility.PRIVATE, privateRun.visibility, "explicit visibility still wins over inheritance");
         assertTrue(runService.listRuns(published.id, "viewer-2").stream().anyMatch(r -> r.id.equals(privateRun.id)));
         assertFalse(runService.listRuns(published.id, "owner-1").stream().anyMatch(r -> r.id.equals(privateRun.id)));
         assertThrows(ForbiddenException.class, () -> runService.getRun(privateRun.id, "owner-1"));
+    }
 
-        WorkflowRun publicRun = runService.createRun(published.id, "{}", TriggerType.API, "viewer-2", WorkflowVisibility.PUBLIC);
-        assertEquals(WorkflowVisibility.PUBLIC, WorkflowRunService.visibilityOf(publicRun.visibility));
-        assertTrue(runService.listRuns(published.id, "owner-1").stream().anyMatch(r -> r.id.equals(publicRun.id)));
-        assertEquals(publicRun.id, runService.getRun(publicRun.id, "third-user").id);
+    @Test
+    void adminSeesAllRunsRegardlessOfVisibility() {
+        WorkflowDefinition published = definitionService.create("runnable-admin", "WORKFLOW", GRAPH, "owner-1");
+        publishService.publish(published.id, "owner-1");
+        WorkflowRun privateRun = runService.createRun(published.id, "{}", TriggerType.API, "viewer-2", WorkflowVisibility.PRIVATE);
+
+        assertFalse(runService.listRuns(published.id, "admin-user", false).stream().anyMatch(r -> r.id.equals(privateRun.id)));
+        assertTrue(runService.listRuns(published.id, "admin-user", true).stream().anyMatch(r -> r.id.equals(privateRun.id)));
+        assertThrows(ForbiddenException.class, () -> runService.getRun(privateRun.id, "admin-user"));
+        assertEquals(privateRun.id, runService.getRun(privateRun.id, "admin-user", true).id);
+        assertNotNull(runService.listNodeRuns(privateRun.id, "admin-user", true));
+        assertThrows(ForbiddenException.class, () -> runService.listNodeRuns(privateRun.id, "admin-user", false));
+        assertNotNull(runService.getRunGraph(privateRun.id, "admin-user", true));
+        assertThrows(ForbiddenException.class, () -> runService.getRunGraph(privateRun.id, "admin-user", false));
+    }
+
+    @Test
+    void archivedWorkflowStaysReachableToItsOwner() {
+        // unique name: the wftest database persists across runs, so count assertions must not see older leftovers
+        var name = "to-archive-" + UUID.randomUUID();
+        WorkflowDefinition definition = definitionService.create(name, "WORKFLOW", GRAPH, "owner-1");
+        publishService.publish(definition.id, "owner-1");
+        WorkflowRun run = runService.createRun(definition.id, "{}", TriggerType.API, "viewer-2");
+        definitionService.delete(definition.id, "owner-1");   // has a run -> archived, not hard-deleted
+
+        assertFalse(definitionService.list("owner-1", Boolean.TRUE).stream().anyMatch(d -> d.id.equals(definition.id)),
+            "archived workflow leaves the active list");
+        assertTrue(definitionService.listArchived("owner-1", null, null, null).stream().anyMatch(d -> d.id.equals(definition.id)),
+            "owner finds it in the archived list");
+        assertTrue(definitionService.listArchived("viewer-2", null, null, null).stream().noneMatch(d -> d.id.equals(definition.id)),
+            "archived list is owner-scoped");
+        assertEquals(1, definitionService.listArchivedCount("owner-1", name));
+        assertTrue(runService.listRuns(definition.id, "viewer-2").stream().anyMatch(r -> r.id.equals(run.id)),
+            "run history stays reachable after the workflow is archived");
     }
 
     @Test

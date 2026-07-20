@@ -88,7 +88,7 @@ public class WorkflowRunService {
     WorkflowGraphLoader graphLoader;
 
     public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
-        return createRun(workflowId, input, triggeredBy, userId, WorkflowVisibility.PRIVATE);
+        return createRun(workflowId, input, triggeredBy, userId, null);
     }
 
     public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId, WorkflowVisibility visibility) {
@@ -107,7 +107,10 @@ public class WorkflowRunService {
         if (version.status == WorkflowVersionStatus.DISABLED) {
             throw new ForbiddenException("workflow version is disabled: " + version.id);
         }
-        return insertRun(definition, version, input, triggeredBy, userId, visibilityOf(visibility));
+        // null = the caller made no choice: inherit the workflow's visibility, so runs on a public workflow are
+        // visible to everyone who can see the workflow instead of silently defaulting to private
+        var effective = visibility != null ? visibility : WorkflowDefinitionService.visibilityOf(definition);
+        return insertRun(definition, version, input, triggeredBy, userId, effective);
     }
 
     /** Run the current DRAFT without publishing: snapshot it into a throwaway preview version and run that. */
@@ -216,9 +219,13 @@ public class WorkflowRunService {
     }
 
     public WorkflowRun getRun(String runId, String userId) {
+        return getRun(runId, userId, false);
+    }
+
+    public WorkflowRun getRun(String runId, String userId, boolean admin) {
         WorkflowRun run = runCollection.get(runId)
             .orElseThrow(() -> new NotFoundException("workflow run not found: " + runId));
-        if (!canRead(run, userId)) {
+        if (!admin && !canRead(run, userId)) {
             throw new ForbiddenException("workflow run does not belong to the current user: " + runId);
         }
         return run;
@@ -234,13 +241,24 @@ public class WorkflowRunService {
     }
 
     public List<WorkflowRun> listRuns(String workflowId, String userId) {
+        return listRuns(workflowId, userId, false);
+    }
+
+    public List<WorkflowRun> listRuns(String workflowId, String userId, boolean admin) {
+        if (admin) {
+            return runCollection.find(Filters.eq("workflow_id", workflowId));
+        }
         return runCollection.find(Filters.and(
             Filters.eq("workflow_id", workflowId),
             Filters.or(Filters.eq("visibility", WorkflowVisibility.PUBLIC), Filters.eq("user_id", userId))));
     }
 
     public List<WorkflowNodeRun> listNodeRuns(String runId, String userId) {
-        getRun(runId, userId);   // ownership check
+        return listNodeRuns(runId, userId, false);
+    }
+
+    public List<WorkflowNodeRun> listNodeRuns(String runId, String userId, boolean admin) {
+        getRun(runId, userId, admin);   // ownership check
         return nodeRunCollection.find(Filters.eq("run_id", runId));
     }
 
@@ -307,7 +325,11 @@ public class WorkflowRunService {
 
     /** The frozen graph the run executed: the run pins a version, the version holds the immutable graph snapshot. */
     public String getRunGraph(String runId, String userId) {
-        WorkflowRun run = getRun(runId, userId);
+        return getRunGraph(runId, userId, false);
+    }
+
+    public String getRunGraph(String runId, String userId, boolean admin) {
+        WorkflowRun run = getRun(runId, userId, admin);
         WorkflowPublishedVersion version = versionCollection.get(run.versionId)
             .orElseThrow(() -> new NotFoundException("workflow version not found for run: " + runId));
         if (version.status == WorkflowVersionStatus.DISABLED) {
