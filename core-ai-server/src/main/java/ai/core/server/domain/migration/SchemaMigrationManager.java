@@ -105,7 +105,7 @@ public class SchemaMigrationManager {
             new SchemaMigrationVMemoryLayerIndex(), new SchemaMigrationVSandboxSnapshotIndexes(), new SchemaMigrationVTraceMemoryConsolidationIndexes(),
             new SchemaMigrationVBackgroundTasks(), new SchemaMigrationVTraceDailyStats(), new SchemaMigrationVTraceDailyStatsAgent(),
             new SchemaMigrationVSessionFeedbackIndexes(), new SchemaMigrationVMemoryExperimentIndexes(), new SchemaMigrationVTraceDailyStatsDateIndex(),
-            new SchemaMigrationVAnalyticsDailyStats(), new SchemaMigrationVMediaJobIndexes()
+            new SchemaMigrationVAnalyticsDailyStats(), new SchemaMigrationVMediaJobIndexes(), new SchemaMigrationVSharedArtifactIndexes()
         );
     }
 }
