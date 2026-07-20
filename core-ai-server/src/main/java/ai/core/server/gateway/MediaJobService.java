@@ -21,6 +21,10 @@ public class MediaJobService {
     MongoCollection<MediaJob> mediaJobCollection;
 
     public MediaJob createVideoJob(MediaJobOwner owner, GatewayRoute route, String requestedModel, String upstreamVideoId) {
+        return createVideoJob(owner, route, requestedModel, upstreamVideoId, null);
+    }
+
+    public MediaJob createVideoJob(MediaJobOwner owner, GatewayRoute route, String requestedModel, String upstreamVideoId, String parentJobId) {
         var jobOwner = owner == null ? MediaJobOwner.UNKNOWN : owner;
         var now = ZonedDateTime.now();
         var job = new MediaJob();
@@ -30,6 +34,7 @@ public class MediaJobService {
         job.agentRunId = jobOwner.agentRunId();
         job.providerId = route.provider().id;
         job.upstreamVideoId = upstreamVideoId;
+        job.parentJobId = parentJobId;
         job.requestedModel = requestedModel;
         job.resolvedModel = route.upstreamModel();
         job.state = "submitted";

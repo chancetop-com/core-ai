@@ -7,6 +7,7 @@ import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.server.domain.MediaJob;
 import core.framework.web.exception.BadRequestException;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,12 +55,15 @@ public class GatewayMediaProvider implements MediaProvider {
     }
 
     VideoGenerationResponse generateVideo(VideoGenerationRequest request, MediaJobOwner owner) {
-        var resolved = route(request.model(), GatewayEndpointType.VIDEO_GENERATION);
+        var parentJob = previousVideoJob(request.previousInteractionId(), owner);
+        var resolved = parentJob == null ? route(request.model(), GatewayEndpointType.VIDEO_GENERATION)
+                : new GatewayRoute(routingEngine.jobProvider(parentJob.providerId), parentJob.resolvedModel);
         var upstream = upstreamProvider(resolved.provider());
-        var rewritten = rewriteModel(request, resolved.upstreamModel());
+        var previousInteractionId = parentJob == null ? null : parentJob.upstreamVideoId;
+        var rewritten = rewriteModel(request, resolved.upstreamModel(), previousInteractionId);
         var response = upstream.generateVideo(rewritten);
         if (response == null || !hasText(response.id())) throw new IllegalStateException("upstream video response is missing id");
-        var job = mediaJobService.createVideoJob(owner, resolved, request.model(), response.id());
+        var job = mediaJobService.createVideoJob(owner, resolved, request.model(), response.id(), parentJob == null ? null : parentJob.id);
         var videoId = GatewayVideoHandle.encode(job.id);
         return new VideoGenerationResponse(videoId, response.status(), response.createdAt(), response.usage());
     }
@@ -88,13 +92,22 @@ public class GatewayMediaProvider implements MediaProvider {
         return new ImageGenerationRequest(
                 upstreamModel, request.prompt(), request.n(), request.size(), request.quality(),
                 request.outputFormat(), request.outputCompression(), request.background(),
-                request.inputImages(), request.mask(), request.providerExtra());
+                request.inputImages(), request.mask(), request.providerExtra(), request.previousInteractionId());
     }
 
-    private VideoGenerationRequest rewriteModel(VideoGenerationRequest request, String upstreamModel) {
+    private VideoGenerationRequest rewriteModel(VideoGenerationRequest request, String upstreamModel, String previousInteractionId) {
         return new VideoGenerationRequest(
                 upstreamModel, request.prompt(), request.seconds(), request.size(),
-                request.inputReferences(), request.providerExtra());
+                request.inputReferences(), request.providerExtra(), previousInteractionId);
+    }
+
+    private MediaJob previousVideoJob(String videoId, MediaJobOwner owner) {
+        if (!hasText(videoId)) return null;
+        var job = mediaJobService.get(GatewayVideoHandle.decode(videoId));
+        if (owner != null && hasText(owner.userId()) && !owner.userId().equals(job.userId)) {
+            throw new BadRequestException("video task does not belong to current user");
+        }
+        return job;
     }
 
     private MediaProvider upstreamProvider(GatewayProviderConfig provider) {

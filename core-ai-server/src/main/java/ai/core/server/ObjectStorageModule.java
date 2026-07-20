@@ -85,6 +85,7 @@ public class ObjectStorageModule extends Module {
             bind(ObjectStorageService.class, objectStorage);
         }
         bean(ObjectStorageConfiguration.class).service = objectStorage;
+        bean(ObjectStorageConfiguration.class).multimodalContainer = blobController.multimodalContainer;
 
         return blobController;
     }

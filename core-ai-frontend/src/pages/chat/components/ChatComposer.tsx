@@ -24,6 +24,7 @@ export interface ComposerAttachment {
   url: string;
   type: 'PDF' | 'IMAGE' | 'FILE';
   file_name?: string;
+  content_type?: string;
   category?: string;
   container?: string;
   blob_name?: string;
@@ -439,6 +440,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       url: attachment.url,
       type: attachment.contentType === 'application/pdf' ? 'PDF' : attachment.contentType.startsWith('image/') ? 'IMAGE' : 'FILE',
       file_name: attachment.name,
+      content_type: attachment.contentType,
       category: attachment.category,
       container: attachment.container,
       blob_name: attachment.blobName,

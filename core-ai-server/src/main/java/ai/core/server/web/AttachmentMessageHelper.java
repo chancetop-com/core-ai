@@ -57,6 +57,21 @@ public class AttachmentMessageHelper {
         return result.isEmpty() ? null : result;
     }
 
+    public static List<Map<String, String>> collectImageAttachments(SendMessageRequest request) {
+        if (request.attachments == null || request.attachments.isEmpty()) return null;
+        var result = new ArrayList<Map<String, String>>();
+        for (var att : request.attachments) {
+            if (!"multimodal".equals(att.category) || !"IMAGE".equals(att.type)
+                    || att.container == null || att.blobName == null || att.contentType == null) continue;
+            result.add(Map.of(
+                    "fileName", att.fileName != null ? att.fileName : att.blobName,
+                    "contentType", att.contentType,
+                    "container", att.container,
+                    "blobName", att.blobName));
+        }
+        return result.isEmpty() ? null : result;
+    }
+
     public static String buildMessageWithAttachments(SendMessageRequest request) {
         if (request.attachments == null || request.attachments.isEmpty()) {
             return request.message;

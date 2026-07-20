@@ -85,7 +85,20 @@ public class AgentHelper {
     }
 
     public static Message buildUserMessage(String query, ExecutionContext context) {
-        return buildUserMessage(query, context.getAttachedContent());
+        var attachedContents = context.getAttachedContents();
+        if (attachedContents == null || attachedContents.isEmpty()) {
+            return Message.of(RoleType.USER, query, buildRequestName(false), null, null);
+        }
+        var contents = new java.util.ArrayList<Content>(attachedContents.size() + 1);
+        contents.add(Content.of(query));
+        attachedContents.stream().map(AgentHelper::buildAttachedContent).forEach(contents::add);
+        return Message.of(new Message.MessageRecord(
+            RoleType.USER,
+            contents,
+            null,
+            buildRequestName(false),
+            null,
+            null));
     }
 
     public static Message buildUserMessage(String query, ExecutionContext.AttachedContent attachedContent) {

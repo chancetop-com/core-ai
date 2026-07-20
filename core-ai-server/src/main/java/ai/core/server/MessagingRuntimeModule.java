@@ -4,6 +4,7 @@ import ai.core.api.server.AgentSessionWebService;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
+import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.messaging.CommandConsumer;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.EventPublisher;
@@ -54,7 +55,7 @@ class MessagingRuntimeModule extends Module {
         onShutdown(eventSubscriber::stop);
         var sandboxService = bean(SandboxService.class);
         var sessionDependencies = new SessionCommandDependencies(bean(AgentSessionManager.class), bean(ChatMessageService.class),
-                ownershipRegistry, sandboxService, bean(EventPublisher.class));
+                ownershipRegistry, sandboxService, bean(EventPublisher.class), bean(ObjectStorageConfiguration.class));
         var rpcDependencies = new CommandRpcDependencies(bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class),
                 bean(ServerA2AService.class), jedisPool, bean(ToolRegistryService.class));
         var commandHandler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);

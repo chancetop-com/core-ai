@@ -1,6 +1,7 @@
 package ai.core.media;
 
 import ai.core.internal.http.PatchedHTTPClientBuilder;
+import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
@@ -42,7 +43,18 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
 
     @Override
     public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
-        throw new UnsupportedOperationException("Vertex Gemini Omni Interactions protocol supports video generation only");
+        if (request.model() == null || request.model().isBlank()) throw new IllegalArgumentException("image model is required");
+        if (request.prompt() == null || request.prompt().isBlank()) throw new IllegalArgumentException("image prompt is required");
+        var body = new LinkedHashMap<String, Object>();
+        body.put("model", request.model());
+        body.put("input", imageInput(request));
+        body.put("response_format", imageResponseFormat(request));
+        if (request.previousInteractionId() != null && !request.previousInteractionId().isBlank()) {
+            body.put("previous_interaction_id", request.previousInteractionId());
+        }
+        mergeProviderExtra(body, request.providerExtra());
+        var response = responseMap(execute(HTTPMethod.POST, interactionsUrl, body, "image generation"));
+        return new ImageGenerationResponse(outputImages(response), null, stringValue(response, "id"));
     }
 
     @Override
@@ -55,6 +67,9 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
         body.put("input", input(request));
         body.put("response_format", List.of(responseFormat(request)));
         body.put("background", Boolean.TRUE);
+        if (request.previousInteractionId() != null && !request.previousInteractionId().isBlank()) {
+            body.put("previous_interaction_id", request.previousInteractionId());
+        }
         body.put("generation_config", Map.of("video_config", Map.of("task", task(request))));
         mergeProviderExtra(body, request.providerExtra());
 
@@ -101,6 +116,24 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
         return input;
     }
 
+    private List<Map<String, Object>> imageInput(ImageGenerationRequest request) {
+        var input = new ArrayList<Map<String, Object>>();
+        input.add(Map.of("type", "text", "text", request.prompt()));
+        if (request.inputImages() != null) {
+            for (var image : request.inputImages()) input.add(referenceInput(image));
+        }
+        return input;
+    }
+
+    private Map<String, Object> imageResponseFormat(ImageGenerationRequest request) {
+        var format = new LinkedHashMap<String, Object>();
+        format.put("type", "image");
+        format.put("mime_type", "jpeg".equalsIgnoreCase(request.outputFormat()) ? "image/jpeg" : "image/png");
+        var aspectRatio = aspectRatio(request.size());
+        if (aspectRatio != null) format.put("aspect_ratio", aspectRatio);
+        return format;
+    }
+
     private Map<String, Object> responseFormat(VideoGenerationRequest request) {
         var format = new LinkedHashMap<String, Object>();
         format.put("type", "video");
@@ -111,14 +144,63 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
     }
 
     private Map<String, Object> referenceInput(MediaReference reference) {
-        if (reference.url() == null || reference.url().isBlank()) {
-            throw new IllegalArgumentException("Vertex Gemini Omni video references require Cloud Storage URIs");
+        var image = new LinkedHashMap<String, Object>();
+        image.put("type", "image");
+        image.put("mime_type", mimeType(reference.b64Json()));
+        if (reference.b64Json() != null && !reference.b64Json().isBlank()) {
+            image.put("data", base64Data(reference.b64Json()));
+            return image;
         }
-        return Map.of("type", "image", "uri", reference.url(), "mime_type", "image/png");
+        if (reference.url() != null && !reference.url().isBlank()) {
+            image.put("uri", reference.url());
+            return image;
+        }
+        throw new IllegalArgumentException("video reference image requires base64 data or a URI");
+    }
+
+    private String mimeType(String value) {
+        if (value == null || !value.startsWith("data:")) return "image/png";
+        var separator = value.indexOf(',');
+        if (separator < 0) throw new IllegalArgumentException("invalid image data URL");
+        var metadata = value.substring(5, separator);
+        var semicolon = metadata.indexOf(';');
+        return semicolon < 0 ? metadata : metadata.substring(0, semicolon);
+    }
+
+    private String base64Data(String value) {
+        if (value == null || !value.startsWith("data:")) return value;
+        var separator = value.indexOf(',');
+        if (separator < 0) throw new IllegalArgumentException("invalid image data URL");
+        return value.substring(separator + 1);
     }
 
     private String task(VideoGenerationRequest request) {
         return request.inputReferences() == null || request.inputReferences().isEmpty() ? "text_to_video" : "reference_to_video";
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ImageData> outputImages(Map<String, Object> interaction) {
+        var images = new ArrayList<ImageData>();
+        appendOutputImages(images, interaction.get("output"));
+        if (!images.isEmpty()) return images;
+        var steps = (List<Map<String, Object>>) interaction.get("steps");
+        if (steps != null) {
+            for (var step : steps) appendOutputImages(images, step.get("content"));
+        }
+        return images;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void appendOutputImages(List<ImageData> images, Object content) {
+        if (!(content instanceof List<?> items)) return;
+        for (var item : items) {
+            if (!(item instanceof Map<?, ?> map)) continue;
+            var image = (Map<String, Object>) map;
+            if (!"image".equals(image.get("type"))) continue;
+            var data = stringValue(image, "data");
+            if (data == null) data = stringValue(image, "data_base64");
+            if (data != null) images.add(new ImageData(base64Data(data), stringValue(image, "uri"), null));
+        }
     }
 
     @SuppressWarnings("unchecked")

@@ -5,4 +5,5 @@ package ai.core.server.blob;
  */
 public class ObjectStorageConfiguration {
     public ObjectStorageService service;
+    public String multimodalContainer;
 }

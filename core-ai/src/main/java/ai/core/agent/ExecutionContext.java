@@ -44,7 +44,7 @@ public final class ExecutionContext {
     private final String taskName;
     private final Map<String, Object> customVariables;
     private final ToolCallAsyncTaskManager asyncTaskManager;
-    private final AttachedContent attachedContent;
+    private List<AttachedContent> attachedContents;
     private final PersistenceProvider persistenceProvider;
     private final SubagentOutputSinkFactory subagentOutputSinkFactory;
     private final TodoStoreFactory todoStoreFactory;
@@ -71,7 +71,7 @@ public final class ExecutionContext {
         this.userId = builder.userId;
         this.taskId = builder.taskId;
         this.taskName = builder.taskName;
-        this.attachedContent = builder.attachedContent;
+        this.attachedContents = builder.attachedContent == null ? null : List.of(builder.attachedContent);
         this.customVariables = Maps.newHashMap();
         this.customVariables.putAll(builder.customVariables);
         this.asyncTaskManager = builder.asyncTaskManager;
@@ -174,7 +174,15 @@ public final class ExecutionContext {
     }
 
     public AttachedContent getAttachedContent() {
-        return attachedContent;
+        return attachedContents == null || attachedContents.isEmpty() ? null : attachedContents.getFirst();
+    }
+
+    public List<AttachedContent> getAttachedContents() {
+        return attachedContents;
+    }
+
+    public void setAttachedContents(List<AttachedContent> attachedContents) {
+        this.attachedContents = attachedContents == null || attachedContents.isEmpty() ? null : List.copyOf(attachedContents);
     }
 
     public void setLlmProvider(LLMProvider llmProvider) {

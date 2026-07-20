@@ -29,6 +29,9 @@ public class MediaJob {
     @Field(name = "upstream_video_id")
     public String upstreamVideoId;
 
+    @Field(name = "parent_job_id")
+    public String parentJobId;
+
     @Field(name = "requested_model")
     public String requestedModel;
 

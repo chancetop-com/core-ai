@@ -16,5 +16,6 @@ public record ImageGenerationRequest(
         String background,
         List<MediaReference> inputImages,
         MediaReference mask,
-        String providerExtra) {
+        String providerExtra,
+        String previousInteractionId) {
 }

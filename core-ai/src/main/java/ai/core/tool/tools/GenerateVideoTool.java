@@ -1,13 +1,18 @@
 package ai.core.tool.tools;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+
 import ai.core.agent.ExecutionContext;
 import ai.core.media.MediaProvider;
+import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.VideoGenerationRequest;
+import ai.core.utils.JsonUtil;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import core.framework.util.Strings;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -37,6 +42,8 @@ public final class GenerateVideoTool extends ToolCall {
             - model: The video generation model to use (uses the default if omitted)
             - seconds: Video duration in seconds (optional; defaults to 10, model-specific)
             - size: Video dimensions, e.g. "1280x720"
+            - input_references: JSON array of reference images. Each image must provide b64Json with base64 data or a data URL.
+            - previous_video_id: A video_id from this gateway to edit conversationally. Supported by Gemini Omni.
             - provider_extra: JSON string with provider-specific parameters
             """;
 
@@ -87,8 +94,9 @@ public final class GenerateVideoTool extends ToolCall {
                     prompt,
                     parseInteger(args, "seconds"),
                     getStringValue(args, "size"),
-                    null, // inputReferences — not parsed from args for now
-                    getStringValue(args, "provider_extra"));
+                    inputReferences(args, context),
+                    getStringValue(args, "provider_extra"),
+                    getStringValue(args, "previous_video_id"));
 
             var response = provider.generateVideo(request);
             var videoId = response.id();
@@ -104,6 +112,31 @@ public final class GenerateVideoTool extends ToolCall {
             return ToolCallResult.failed("Video generation failed: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    private List<MediaReference> inputReferences(Map<String, Object> args, ExecutionContext context) {
+        var references = getStringValue(args, "input_references");
+        if (!Strings.isBlank(references)) {
+            try {
+                return JsonUtil.fromJson(new TypeReference<>() { }, references);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("input_references must be a JSON array of reference images", e);
+            }
+        }
+        var attachedContents = context.getAttachedContents();
+        if (attachedContents == null) return null;
+        return attachedContents.stream()
+                .filter(content -> content.type == ExecutionContext.AttachedContent.AttachedContentType.IMAGE)
+                .map(this::mediaReference)
+                .toList();
+    }
+
+    private MediaReference mediaReference(ExecutionContext.AttachedContent content) {
+        if (content.isBase64()) {
+            var mimeType = Strings.isBlank(content.mediaType) ? "image/png" : content.mediaType;
+            return new MediaReference(null, "data:" + mimeType + ";base64," + content.data);
+        }
+        return new MediaReference(content.url, null);
     }
 
     private String defaultModel(ExecutionContext context) {
@@ -154,6 +187,8 @@ public final class GenerateVideoTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "model", "The video generation model to use (uses the default if omitted)"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; defaults to 10, model-specific)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720"),
+                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON array of reference images with b64Json base64 data or data URLs"),
+                    ToolCallParameters.ParamSpec.of(String.class, "previous_video_id", "A gateway video ID to edit conversationally with a supported provider"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));
             var tool = new GenerateVideoTool(mediaProvider);

@@ -11,5 +11,10 @@ public record VideoGenerationRequest(
         Integer seconds,
         String size,
         List<MediaReference> inputReferences,
-        String providerExtra) {
+        String providerExtra,
+        String previousInteractionId) {
+    public VideoGenerationRequest(String model, String prompt, Integer seconds, String size,
+                                  List<MediaReference> inputReferences, String providerExtra) {
+        this(model, prompt, seconds, size, inputReferences, providerExtra, null);
+    }
 }

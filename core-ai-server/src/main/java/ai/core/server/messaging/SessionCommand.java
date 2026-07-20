@@ -36,11 +36,19 @@ public record SessionCommand(CommandType type, String sessionId, String userId, 
     }
 
     public static SessionCommand sendMessage(String sessionId, String userId, String message, Map<String, Object> variables, List<Map<String, String>> pendingFiles) {
+        return sendMessage(sessionId, userId, message, variables, pendingFiles, null);
+    }
+
+    public static SessionCommand sendMessage(String sessionId, String userId, String message, Map<String, Object> variables,
+                                             List<Map<String, String>> pendingFiles, List<Map<String, String>> imageAttachments) {
         var payloadMap = new HashMap<String, Object>();
         payloadMap.put("message", message);
         payloadMap.put("variables", variables != null ? variables : Map.of());
         if (pendingFiles != null && !pendingFiles.isEmpty()) {
             payloadMap.put("pendingFiles", pendingFiles);
+        }
+        if (imageAttachments != null && !imageAttachments.isEmpty()) {
+            payloadMap.put("imageAttachments", imageAttachments);
         }
         var payload = JsonUtil.toJson(payloadMap);
         return new SessionCommand(CommandType.SEND_MESSAGE, sessionId, userId, payload, null);

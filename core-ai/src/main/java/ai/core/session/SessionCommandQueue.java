@@ -1,5 +1,7 @@
 package ai.core.session;
 
+import ai.core.agent.ExecutionContext;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -24,11 +26,15 @@ public class SessionCommandQueue {
     private final Condition notEmpty = lock.newCondition();
 
     public void enqueueUserInput(String value, Map<String, Object> variables) {
-        enqueue(new QueuedCommand(CommandMode.USER_INPUT, new QueuedMessage(value, variables)));
+        enqueueUserInput(value, variables, null);
+    }
+
+    public void enqueueUserInput(String value, Map<String, Object> variables, List<ExecutionContext.AttachedContent> attachedContents) {
+        enqueue(new QueuedCommand(CommandMode.USER_INPUT, new QueuedMessage(value, variables, attachedContents)));
     }
 
     public void enqueueTaskNotification(String value) {
-        enqueue(new QueuedCommand(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null)));
+        enqueue(new QueuedCommand(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null, null)));
     }
 
     private void enqueue(QueuedCommand command) {
@@ -129,7 +135,7 @@ public class SessionCommandQueue {
         }
     }
 
-    public record QueuedMessage(String value, Map<String, Object> variables) {
+    public record QueuedMessage(String value, Map<String, Object> variables, List<ExecutionContext.AttachedContent> attachedContents) {
 
     }
 

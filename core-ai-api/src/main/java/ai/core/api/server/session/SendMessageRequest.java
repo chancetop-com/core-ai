@@ -32,6 +32,9 @@ public class SendMessageRequest {
         @Property(name = "file_name")
         public String fileName;
 
+        @Property(name = "content_type")
+        public String contentType;
+
         @Property(name = "category")
         public String category;
 

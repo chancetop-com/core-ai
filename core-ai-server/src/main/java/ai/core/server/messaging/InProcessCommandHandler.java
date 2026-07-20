@@ -6,6 +6,8 @@ import ai.core.api.server.session.IdName;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
+import ai.core.agent.ExecutionContext;
+import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
@@ -22,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import redis.clients.jedis.JedisPool;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -42,6 +45,7 @@ public class InProcessCommandHandler {
     private final SandboxService sandboxService;
     private final EventPublisher eventPublisher;
     private final ToolRegistryService toolRegistryService;
+    private final ObjectStorageConfiguration objectStorageConfiguration;
 
     public InProcessCommandHandler(SessionCommandDependencies sessionDependencies, CommandRpcDependencies rpcDependencies) {
         this.sessionManager = sessionDependencies.sessionManager();
@@ -53,6 +57,7 @@ public class InProcessCommandHandler {
         this.jedisPool = rpcDependencies.jedisPool();
         this.sandboxService = sessionDependencies.sandboxService();
         this.eventPublisher = sessionDependencies.eventPublisher();
+        this.objectStorageConfiguration = sessionDependencies.objectStorageConfiguration();
         this.toolRegistryService = rpcDependencies.toolRegistryService();
     }
 
@@ -123,13 +128,44 @@ public class InProcessCommandHandler {
             sandboxService.uploadFiles(command.sessionId(), pendingFiles);
         }
 
+        var attachedContents = imageAttachments(payload);
         chatMessageService.writeUserMessage(command.sessionId(), message);
         LOGGER.info("handleSendMessage: sending message to agent");
-        session.sendMessage(message, variables);
+        session.sendMessage(message, variables, attachedContents);
         LOGGER.info("handleSendMessage: message sent to agent");
 
         // Renew session ownership after a successful command (session is active)
         ownershipRegistry.renew(command.sessionId());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ExecutionContext.AttachedContent> imageAttachments(Map<String, Object> payload) {
+        var attachments = (List<Map<String, Object>>) payload.get("imageAttachments");
+        if (attachments == null || attachments.isEmpty()) return null;
+        if (objectStorageConfiguration == null || objectStorageConfiguration.service == null) {
+            throw new IllegalStateException("object storage is not configured");
+        }
+        var contents = new ArrayList<ExecutionContext.AttachedContent>(attachments.size());
+        for (var attachment : attachments) {
+            var container = (String) attachment.get("container");
+            var blobName = (String) attachment.get("blobName");
+            var contentType = (String) attachment.get("contentType");
+            if (!validImageAttachment(container, blobName, contentType)) {
+                throw new IllegalArgumentException("invalid image attachment");
+            }
+            var bytes = objectStorageConfiguration.service.downloadObject(container, blobName);
+            contents.add(ExecutionContext.AttachedContent.ofBase64(
+                    Base64.getEncoder().encodeToString(bytes), contentType,
+                    ExecutionContext.AttachedContent.AttachedContentType.IMAGE,
+                    (String) attachment.get("fileName")));
+        }
+        return contents;
+    }
+
+    private boolean validImageAttachment(String container, String blobName, String contentType) {
+        return container != null && container.equals(objectStorageConfiguration.multimodalContainer)
+                && blobName != null && blobName.startsWith("ai/")
+                && contentType != null && contentType.startsWith("image/");
     }
 
     private void handleApproveTool(SessionCommand command) {

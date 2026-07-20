@@ -1,6 +1,7 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.agent.lifecycle.PlanUpdateLifecycle;
 import ai.core.api.server.session.AgentEvent;
@@ -100,7 +101,11 @@ public class InProcessAgentSession implements AgentSession {
 
     @Override
     public void sendMessage(String message, Map<String, Object> variables) {
-        commandQueue.enqueueUserInput(message, variables);
+        sendMessage(message, variables, null);
+    }
+
+    public void sendMessage(String message, Map<String, Object> variables, List<ExecutionContext.AttachedContent> attachedContents) {
+        commandQueue.enqueueUserInput(message, variables, attachedContents);
     }
 
     private void executeCommands(SessionCommandQueue.CommandBatch batch) {
@@ -148,10 +153,12 @@ public class InProcessAgentSession implements AgentSession {
         debug("agent run starting");
         String result;
         var context = agent.getExecutionContext();
-        var newVariables = values.getLast().variables();
+        var lastMessage = values.getLast();
+        var newVariables = lastMessage.variables();
         if (newVariables != null && !newVariables.isEmpty()) {
             context.getCustomVariables().putAll(newVariables);
         }
+        context.setAttachedContents(lastMessage.attachedContents());
         try {
             result = agent.run(combined, context);
         } catch (MaxTurnsExceededException e) {
@@ -165,6 +172,8 @@ public class InProcessAgentSession implements AgentSession {
             dispatch(turnComplete);
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             return;
+        } finally {
+            context.setAttachedContents(null);
         }
         if (agent.isCancelled()) {
             debug("agent run cancelled");

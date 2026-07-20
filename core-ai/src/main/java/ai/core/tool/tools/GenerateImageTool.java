@@ -39,6 +39,7 @@ public class GenerateImageTool extends ToolCall {
             - output_compression: PNG compression level 0–9 where 0 is no compression
             - background: Set to "transparent" to generate PNGs with transparent backgrounds
             - input_images: Array of input image URLs for image-to-image generation (not all models support this)
+            - previous_interaction_id: Gemini Interactions API ID to continue a multi-turn image edit
             - provider_extra: JSON string with provider-specific parameters forwarded as-is
 
             The result provides a display-ready Markdown image link. In your final response, you MUST include that exact Markdown image link unchanged so the generated image is rendered inline. Do not merely say that the image was generated.
@@ -87,7 +88,8 @@ public class GenerateImageTool extends ToolCall {
                     getStringValue(args, "background"),
                     null, // input_images — not parsed from args for now
                     null, // mask — not parsed from args for now
-                    getStringValue(args, "provider_extra"));
+                    getStringValue(args, "provider_extra"),
+                    getStringValue(args, "previous_interaction_id"));
 
             var response = provider.generateImage(request);
 
@@ -95,10 +97,10 @@ public class GenerateImageTool extends ToolCall {
                 var image = response.data().get(0);
                 if (image.b64Json() != null) {
                     var output = saveImage(context, image.b64Json(), getStringValue(args, "output_format"));
-                    return ToolCallResult.completed(imageResult(output))
+                    return ToolCallResult.completed(imageResult(output, response.interactionId()))
                             .withDuration(System.currentTimeMillis() - startTime);
                 }
-                return ToolCallResult.completed(imageResult(image.url() != null ? image.url() : "(no URL)"))
+                return ToolCallResult.completed(imageResult(image.url() != null ? image.url() : "(no URL)", response.interactionId()))
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
@@ -121,8 +123,10 @@ public class GenerateImageTool extends ToolCall {
         }
     }
 
-    private String imageResult(String output) {
-        return "Image generated. Include this exact Markdown image link in your final response:\n\n![Generated image](" + output + ")";
+    private String imageResult(String output, String interactionId) {
+        var result = "Image generated. Include this exact Markdown image link in your final response:\n\n![Generated image](" + output + ")";
+        if (interactionId != null) result += "\n\nprevious_interaction_id: " + interactionId;
+        return result;
     }
 
     private String defaultModel(ExecutionContext context) {
@@ -183,6 +187,7 @@ public class GenerateImageTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(Integer.class, "output_compression", "PNG compression level 0-9 where 0 is no compression"),
                     ToolCallParameters.ParamSpec.of(String.class, "background", "Set to 'transparent' for transparent PNG backgrounds"),
                     ToolCallParameters.ParamSpec.of(String.class, "input_images", "JSON array of input image URLs for image-to-image generation"),
+                    ToolCallParameters.ParamSpec.of(String.class, "previous_interaction_id", "Gemini Interactions API ID to continue a multi-turn image edit"),
                     ToolCallParameters.ParamSpec.of(String.class, "mask", "Mask image URL for inpainting"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));
