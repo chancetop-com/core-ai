@@ -68,6 +68,7 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
             case NodeOutcome.Fail fail -> {
                 nodeRun.status = NodeRunStatus.FAILED_RETRYABLE;
                 nodeRun.error = fail.error();
+                nodeRun.errorStack = fail.errorStack();
                 nodeRun.childRunId = fail.childRunId();
                 nodeRun.traceMetadata = fail.traceMetadata();
             }
@@ -95,6 +96,11 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
     NodeRunStatus status(String runId, String nodeId) {
         WorkflowNodeRun nodeRun = byId.get(key(runId, nodeId));
         return nodeRun == null ? null : nodeRun.status;
+    }
+
+    String errorStack(String runId, String nodeId) {
+        WorkflowNodeRun nodeRun = byId.get(key(runId, nodeId));
+        return nodeRun == null ? null : nodeRun.errorStack;
     }
 
     String childRunId(String runId, String nodeId) {

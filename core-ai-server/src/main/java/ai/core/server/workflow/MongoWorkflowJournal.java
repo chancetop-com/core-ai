@@ -99,6 +99,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
                 // today the engine treats both identically (out-edges PENDING), so this is only a metadata gap.
                 nodeRun.status = NodeRunStatus.FAILED_RETRYABLE;
                 nodeRun.error = fail.error();
+                nodeRun.errorStack = fail.errorStack();
                 nodeRun.childRunId = fail.childRunId();
                 nodeRun.traceMetadata = fail.traceMetadata();
             }

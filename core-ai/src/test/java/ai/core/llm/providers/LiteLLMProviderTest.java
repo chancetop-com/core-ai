@@ -81,6 +81,25 @@ class LiteLLMProviderTest {
     }
 
     @Test
+    void repairsInvalidJsonEscapesInsideStringValues() {
+        String invalidJson = "{\"choices\":[{\"delta\":{\"content\":\"path \\{value\\} and \\q\"}}]}";
+
+        String repaired = LiteLLMProvider.repairInvalidJsonEscapes(invalidJson);
+
+        var response = JsonUtil.fromJson(ai.core.llm.domain.CompletionResponse.class, repaired);
+        assertEquals("path \\{value\\} and \\q", response.choices.getFirst().delta.content);
+    }
+
+    @Test
+    void preservesValidJsonEscapes() {
+        String json = "{\"content\":\"line\\nquote: \\\"\\\"\"}";
+
+        String repaired = LiteLLMProvider.repairInvalidJsonEscapes(json);
+
+        assertEquals(json, repaired);
+    }
+
+    @Test
     void testParallelToolCallsMerge() {
         var finalChoice = createFinalChoice();
 

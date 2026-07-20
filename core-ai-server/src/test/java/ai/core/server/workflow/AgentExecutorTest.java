@@ -111,6 +111,7 @@ class AgentExecutorTest {
 
         var fail = assertInstanceOf(NodeOutcome.Fail.class, outcome);
         assertEquals("llm unavailable", fail.error());
+        assertEquals("java.lang.IllegalStateException: llm unavailable", fail.errorStack());
         assertEquals("agentrun-1", fail.childRunId());
     }
 
@@ -155,7 +156,7 @@ class AgentExecutorTest {
         }
 
         void scriptFail(String error) {
-            scripted = AgentRunResult.failed(error);
+            scripted = AgentRunResult.failed(error, "java.lang.IllegalStateException: " + error, null, null, null);
         }
 
         @Override

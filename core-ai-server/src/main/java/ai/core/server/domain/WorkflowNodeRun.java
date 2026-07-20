@@ -86,6 +86,9 @@ public class WorkflowNodeRun {
     @Field(name = "error")
     public String error;
 
+    @Field(name = "error_stack")
+    public String errorStack;
+
     @Field(name = "started_at")
     public ZonedDateTime startedAt;
 

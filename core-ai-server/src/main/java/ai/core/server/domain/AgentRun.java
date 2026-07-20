@@ -50,6 +50,9 @@ public class AgentRun {
     @Field(name = "error")
     public String error;
 
+    @Field(name = "error_stack")
+    public String errorStack;
+
     @Field(name = "schedule_id")
     public String scheduleId;
 

@@ -48,6 +48,38 @@ public class LiteLLMProvider extends LLMProvider {
         return LiteLLMResponsesBridge.isResponsesModel(model);
     }
 
+    static String repairInvalidJsonEscapes(String json) {
+        var repaired = new StringBuilder(json.length());
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = 0; i < json.length(); i++) {
+            char current = json.charAt(i);
+            if (!inString) {
+                if (current == '"') inString = true;
+                repaired.append(current);
+                continue;
+            }
+            if (escaped) {
+                if (current != '"' && current != '\\' && current != '/' && current != 'b' && current != 'f'
+                        && current != 'n' && current != 'r' && current != 't' && current != 'u') {
+                    repaired.append('\\');
+                }
+                repaired.append(current);
+                escaped = false;
+                continue;
+            }
+            if (current == '\\') {
+                repaired.append(current);
+                escaped = true;
+            } else {
+                if (current == '"') inString = false;
+                repaired.append(current);
+            }
+        }
+        if (escaped) repaired.append('\\');
+        return repaired.toString();
+    }
+
     private volatile String url;
     private volatile String token;
     private volatile String authHeaderName = "Authorization";
@@ -235,7 +267,7 @@ public class LiteLLMProvider extends LLMProvider {
                     break;
                 }
 
-                var chunk = JsonUtil.fromJson(CompletionResponse.class, data);
+                var chunk = JsonUtil.fromJson(CompletionResponse.class, repairInvalidJsonEscapes(data));
                 if (chunk.usage != null && response != null) {
                     response.usage = chunk.usage;
                 }

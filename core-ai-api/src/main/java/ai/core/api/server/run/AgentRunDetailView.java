@@ -36,6 +36,9 @@ public class AgentRunDetailView {
     @Property(name = "error")
     public String error;
 
+    @Property(name = "error_stack")
+    public String errorStack;
+
     @Property(name = "token_usage")
     public Map<String, Long> tokenUsage;
 

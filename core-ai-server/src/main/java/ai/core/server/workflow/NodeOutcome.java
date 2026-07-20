@@ -42,14 +42,22 @@ public sealed interface NodeOutcome {
     }
 
     /** Failure that halts the branch. retryable distinguishes a transient fault from a deterministic error. */
-    record Fail(String error, boolean retryable, String childRunId,
+    record Fail(String error, String errorStack, boolean retryable, String childRunId,
                 WorkflowNodeTraceMetadata traceMetadata) implements NodeOutcome {
         public Fail(String error, boolean retryable) {
-            this(error, retryable, null, null);
+            this(error, null, retryable, null, null);
+        }
+
+        public Fail(String error, String errorStack, boolean retryable) {
+            this(error, errorStack, retryable, null, null);
         }
 
         public Fail(String error, boolean retryable, String childRunId) {
-            this(error, retryable, childRunId, null);
+            this(error, null, retryable, childRunId, null);
+        }
+
+        public Fail(String error, boolean retryable, String childRunId, WorkflowNodeTraceMetadata traceMetadata) {
+            this(error, null, retryable, childRunId, traceMetadata);
         }
     }
 
@@ -63,4 +71,5 @@ public sealed interface NodeOutcome {
      *  links the two-layer run and is the handle for cascade-cancel. */
     record Suspended(String childRunId) implements NodeOutcome {
     }
+
 }

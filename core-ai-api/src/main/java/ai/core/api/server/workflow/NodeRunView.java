@@ -30,6 +30,9 @@ public class NodeRunView {
     @Property(name = "error")
     public String error;
 
+    @Property(name = "error_stack")
+    public String errorStack;
+
     @Property(name = "child_run_id")
     public String childRunId;
 

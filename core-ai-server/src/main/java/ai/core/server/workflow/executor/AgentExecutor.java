@@ -77,6 +77,6 @@ public class AgentExecutor implements NodeExecutor {
             ? new NodeOutcome.Normal(result.output(), child.runId(), result.artifacts(), metadata)
             // retryable: a child-run failure is treated as transient so RetryingNodeExecutor can start a fresh
             // child run; an exhausted retry budget then surfaces this as the terminal node failure.
-            : new NodeOutcome.Fail(result.error(), true, child.runId(), metadata);
+            : new NodeOutcome.Fail(result.error(), result.errorStack(), true, child.runId(), metadata);
     }
 }

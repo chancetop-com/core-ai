@@ -104,7 +104,7 @@ public class MongoAgentRunGateway implements AgentRunGateway {
                     return child.status == RunStatus.COMPLETED
                         ? AgentRunResult.completed(child.output, artifactRefs(child), child.traceId, child.status, child.tokenUsage)
                         : AgentRunResult.failed(child.error != null ? child.error : "child run " + child.status,
-                            child.traceId, child.status, child.tokenUsage);
+                            child.errorStack, child.traceId, child.status, child.tokenUsage);
                 }
                 if (child.startedAt != null && child.startedAt.isBefore(ZonedDateTime.now().minusSeconds(STALE_SECONDS))) {
                     return AgentRunResult.failed(

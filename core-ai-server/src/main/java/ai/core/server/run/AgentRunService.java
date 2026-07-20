@@ -157,6 +157,7 @@ public class AgentRunService {
         view.input = entity.input;
         view.output = entity.output;
         view.error = entity.error;
+        view.errorStack = entity.errorStack;
         view.traceId = entity.traceId;
         view.startedAt = entity.startedAt;
         view.completedAt = entity.completedAt;
@@ -178,6 +179,7 @@ public class AgentRunService {
         view.input = entity.input;
         view.output = entity.output;
         view.error = entity.error;
+        view.errorStack = entity.errorStack;
         view.traceId = entity.traceId;
         view.startedAt = entity.startedAt;
         view.completedAt = entity.completedAt;

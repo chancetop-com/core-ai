@@ -446,6 +446,7 @@ export interface AgentRun {
   input: string;
   output: string;
   error: string;
+  error_stack?: string;
   token_usage: Record<string, number>;
   trace_id?: string;
   started_at: string;
@@ -925,6 +926,7 @@ export interface WorkflowNodeRunView {
   output?: string;
   artifacts?: WorkflowArtifactView[];
   error?: string;
+  error_stack?: string;
   child_run_id?: string;
   child_run_type?: string;
   child_workflow_id?: string;

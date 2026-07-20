@@ -401,6 +401,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         view.output = nodeRun.output;
         view.artifacts = WorkflowViewMapper.toArtifactViews(nodeRun.artifacts);
         view.error = nodeRun.error;
+        view.errorStack = nodeRun.errorStack;
         view.childRunId = nodeRun.childRunId;
         view.traceMetadata = WorkflowViewMapper.toTraceMetadataView(nodeRun.traceMetadata);
         if (nodeRun.traceMetadata != null && nodeRun.traceMetadata.childTraceId != null && !nodeRun.traceMetadata.childTraceId.isBlank()) {

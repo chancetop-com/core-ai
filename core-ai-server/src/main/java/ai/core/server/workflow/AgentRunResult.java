@@ -16,8 +16,8 @@ import java.util.List;
  * @author Xander
  */
 @SuppressFBWarnings("MOM_MISLEADING_OVERLOAD_MODEL")
-public record AgentRunResult(boolean completed, String output, String error, List<ArtifactRef> artifacts,
-                             String traceId, RunStatus status, TokenUsage tokenUsage) {
+public record AgentRunResult(boolean completed, String output, String error, String errorStack, List<ArtifactRef> artifacts,
+                              String traceId, RunStatus status, TokenUsage tokenUsage) {
     public AgentRunResult {
         artifacts = artifacts == null ? List.of() : List.copyOf(artifacts);
     }
@@ -32,7 +32,7 @@ public record AgentRunResult(boolean completed, String output, String error, Lis
 
     public static AgentRunResult completed(String output, List<ArtifactRef> artifacts, String traceId,
                                            RunStatus status, TokenUsage tokenUsage) {
-        return new AgentRunResult(true, output, null, artifacts, traceId, status, tokenUsage);
+        return new AgentRunResult(true, output, null, null, artifacts, traceId, status, tokenUsage);
     }
 
     public static AgentRunResult failed(String error) {
@@ -40,6 +40,10 @@ public record AgentRunResult(boolean completed, String output, String error, Lis
     }
 
     public static AgentRunResult failed(String error, String traceId, RunStatus status, TokenUsage tokenUsage) {
-        return new AgentRunResult(false, null, error, List.of(), traceId, status, tokenUsage);
+        return failed(error, null, traceId, status, tokenUsage);
+    }
+
+    public static AgentRunResult failed(String error, String errorStack, String traceId, RunStatus status, TokenUsage tokenUsage) {
+        return new AgentRunResult(false, null, error, errorStack, List.of(), traceId, status, tokenUsage);
     }
 }

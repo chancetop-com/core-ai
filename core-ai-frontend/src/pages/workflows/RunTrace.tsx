@@ -102,6 +102,7 @@ export default function RunTrace({
                   <ResumeForm node={nodes.find((n) => n.id === r.node_id)} ask={r.input} busy={!!busy} onSubmit={(body) => onResume(r.node_id, body)} />
                 )}
                 {r.error && <Field title="Error" body={r.error} danger />}
+                {r.error_stack && <Field title="Stack trace" body={r.error_stack} danger />}
                 {r.trace_metadata && <TraceMetadata metadata={r.trace_metadata} />}
                 <Field title="Input" body={r.input} />
                 <Field title="Output" body={r.output} />

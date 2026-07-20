@@ -2037,6 +2037,13 @@ function RunDetailModal({ detail, onClose }: { detail: AgentRunDetail; onClose: 
               {detail.error}
             </pre>
           )}
+          {detail.error_stack && (
+            <div>
+              <div className="text-sm font-medium mb-1">Stack trace</div>
+              <pre className="text-xs whitespace-pre-wrap p-3 rounded-lg overflow-auto max-h-80"
+                style={{ background: 'var(--color-bg-tertiary)' }}>{detail.error_stack}</pre>
+            </div>
+          )}
 
           {/* Transcript */}
           {detail.transcript && detail.transcript.length > 0 && (

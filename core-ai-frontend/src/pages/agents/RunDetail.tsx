@@ -108,6 +108,13 @@ export default function RunDetail() {
             Error: {run.error}
           </div>
         )}
+        {run.error_stack && (
+          <div className="mt-3">
+            <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Stack trace</div>
+            <pre className="text-xs whitespace-pre-wrap p-3 rounded-lg overflow-auto max-h-80"
+              style={{ background: 'var(--color-bg-tertiary)' }}>{run.error_stack}</pre>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-6">

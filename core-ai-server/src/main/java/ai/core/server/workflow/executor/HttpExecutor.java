@@ -3,6 +3,7 @@ package ai.core.server.workflow.executor;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeOutcome;
+import ai.core.server.workflow.StackTraceFormatter;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
@@ -131,7 +132,7 @@ public class HttpExecutor implements NodeExecutor {
         } catch (RuntimeException e) {
             // only auto-retry idempotent methods — re-issuing a POST/PUT/DELETE after a post-send timeout
             // would duplicate the side effect.
-            return new NodeOutcome.Fail("http call failed: " + e.getMessage(), idempotent(method));
+            return new NodeOutcome.Fail("http call failed: " + e.getMessage(), StackTraceFormatter.format(e), idempotent(method));
         }
     }
 

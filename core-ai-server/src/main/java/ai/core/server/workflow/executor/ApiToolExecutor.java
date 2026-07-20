@@ -6,6 +6,7 @@ import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeOutcome;
+import ai.core.server.workflow.StackTraceFormatter;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 
@@ -49,7 +50,7 @@ public class ApiToolExecutor implements NodeExecutor {
                 ? new NodeOutcome.Fail(result.getResult(), true)
                 : new NodeOutcome.Normal(result.getResult());
         } catch (RuntimeException e) {
-            return new NodeOutcome.Fail("api tool call failed: " + e.getMessage(), true);
+            return new NodeOutcome.Fail("api tool call failed: " + e.getMessage(), StackTraceFormatter.format(e), true);
         }
     }
 

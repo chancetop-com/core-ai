@@ -216,6 +216,10 @@ public class AgentRunBuilder {
     }
 
     void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error, Agent agent) {
+        updateRunStatus(runEntity, status, output, error, null, agent);
+    }
+
+    void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error, String errorStack, Agent agent) {
         var latestRun = agentRunCollection.get(runEntity.id).orElse(runEntity);
         runEntity.artifacts = latestRun.artifacts;
         if ((runEntity.traceId == null || runEntity.traceId.isBlank()) && latestRun.traceId != null && !latestRun.traceId.isBlank()) {
@@ -224,6 +228,7 @@ public class AgentRunBuilder {
         runEntity.status = status;
         runEntity.output = output;
         runEntity.error = error;
+        runEntity.errorStack = errorStack;
         runEntity.completedAt = ZonedDateTime.now();
 
         if (agent != null) {

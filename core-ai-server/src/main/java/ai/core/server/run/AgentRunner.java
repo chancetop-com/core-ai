@@ -19,6 +19,8 @@ import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -169,7 +171,8 @@ public class AgentRunner {
                 return;
             }
             if (completed.compareAndSet(false, true)) {
-                builder.updateRunStatus(runEntity, RunStatus.FAILED, null, errorMessage(e), agent);
+                LOGGER.error("agent run failed, runId={}", runEntity.id, e);
+                builder.updateRunStatus(runEntity, RunStatus.FAILED, null, errorMessage(e), stackTrace(e), agent);
             }
         }
     }
@@ -199,7 +202,8 @@ public class AgentRunner {
             agentRunCollection.replace(runEntity);
             builder.extractDatasetRecords(result.output(), definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
         } catch (Exception e) {
-            builder.updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), null);
+            LOGGER.error("llm run failed, runId={}", runEntity.id, e);
+            builder.updateRunStatus(runEntity, RunStatus.FAILED, null, errorMessage(e), stackTrace(e), null);
         }
     }
 
@@ -207,11 +211,20 @@ public class AgentRunner {
         var cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
         var latest = agentRunCollection.get(runEntity.id).orElse(runEntity);
         if (latest.status != RunStatus.RUNNING && latest.status != RunStatus.PENDING) return;
-        builder.updateRunStatus(latest, RunStatus.FAILED, null, errorMessage(cause), null);
+        LOGGER.error("agent run failed asynchronously, runId={}", latest.id, cause);
+        builder.updateRunStatus(latest, RunStatus.FAILED, null, errorMessage(cause), stackTrace(cause), null);
     }
 
     private String errorMessage(Throwable error) {
         return error.getMessage() != null ? error.getMessage() : error.toString();
+    }
+
+    private String stackTrace(Throwable error) {
+        var writer = new StringWriter();
+        error.printStackTrace(new PrintWriter(writer));
+        String trace = writer.toString();
+        int maximumLength = 65536;
+        return trace.length() <= maximumLength ? trace : trace.substring(0, maximumLength) + "\n... stack trace truncated";
     }
 
     private void scheduleSandboxRelease(String runId, TriggerType trigger) {

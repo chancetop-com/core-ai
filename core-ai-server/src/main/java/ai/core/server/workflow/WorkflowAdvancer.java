@@ -142,7 +142,8 @@ public final class WorkflowAdvancer {
             } catch (Throwable e) {
                 // catch Throwable (not just RuntimeException): user code in a CODE node can throw Error
                 // (StackOverflow/OOM); without this the outcome is never recorded and the node stays RUNNING forever.
-                commit(journal, run, node, new NodeOutcome.Fail(String.valueOf(e.getMessage()), false), leaseHeld);
+                LOGGER.error("workflow node execution failed, runId={}, nodeId={}", run.id, node.id(), e);
+                commit(journal, run, node, new NodeOutcome.Fail(errorMessage(e), StackTraceFormatter.format(e), false), leaseHeld);
             } finally {
                 // Order matters: remove from inflight BEFORE completing the future, so a drive thread woken by
                 // awaitAny() re-reads an inflight map that no longer contains this node (else a transient spin).
@@ -150,6 +151,10 @@ public final class WorkflowAdvancer {
                 done.complete(null);
             }
         });
+    }
+
+    static String errorMessage(Throwable error) {
+        return error.getMessage() != null ? error.getMessage() : error.toString();
     }
 
     private static void recordInput(WorkflowJournal journal, WorkflowRun run, WorkflowNode node, NodeContext ctx) {

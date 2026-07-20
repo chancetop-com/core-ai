@@ -104,6 +104,20 @@ class WorkflowAdvancerTest {
     }
 
     @Test
+    void recordsStackTraceWhenNodeExecutorThrows() {
+        WorkflowGraph graph = graph(List.of(node("start")), List.of());
+        var journal = new InMemoryWorkflowJournal();
+        NodeExecutor executor = ctx -> {
+            throw new IllegalStateException("broken tool call");
+        };
+
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, new WorkflowAdvancer.ExecCtx(executor, SAME_THREAD), () -> false);
+
+        assertEquals(RunStatus.FAILED, status);
+        assertTrue(journal.errorStack("run-1", "start").contains("IllegalStateException: broken tool call"));
+    }
+
+    @Test
     void recordsResolvedInputSnapshotForTrace() {
         WorkflowNode agent = new WorkflowNode("agent", "AGENT", List.of(),
             Map.of("input", "Hello {{ nodes.start.output.name }}"));
