@@ -67,6 +67,7 @@ function renderPreview(file: SharedArtifactResponse, state: FileState) {
   const lowerName = file.file_name.toLowerCase();
   const contentType = file.content_type ?? '';
   const isImage = contentType.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(lowerName);
+  const isVideo = contentType.startsWith('video/') || /\.(mp4|webm|ogv|mov|m4v)$/.test(lowerName);
   const isHtml = contentType === 'text/html' || /\.html?$/.test(lowerName);
   const isMarkdown = contentType === 'text/markdown' || /\.(md|markdown)$/.test(lowerName);
   const isPdf = contentType === 'application/pdf' || /\.pdf$/i.test(lowerName);
@@ -76,6 +77,9 @@ function renderPreview(file: SharedArtifactResponse, state: FileState) {
   }
   if (isImage) {
     return <div className="h-full p-6 flex items-center justify-center"><img src={state.fileBlobUrl} alt={file.file_name} className="max-w-full max-h-full" /></div>;
+  }
+  if (isVideo) {
+    return <div className="h-full p-6 flex items-center justify-center"><video controls src={state.fileBlobUrl} className="max-w-full max-h-full" /></div>;
   }
   if (isHtml) {
     return <iframe sandbox="allow-scripts" src={state.fileBlobUrl} title={file.file_name} className="w-full h-full border-0" />;
