@@ -42,12 +42,11 @@ public class WriteFileTool extends ToolCall {
             - Only use emojis if the user explicitly requests it. Avoid writing emojis to
             files unless asked.
             
-            - IMPORTANT: If the content to write is very large (e.g., a file with thousands of lines),
-            you MUST split it into multiple write_file calls by chapters, sections,
-            or logical boundaries using the EditFileTool instead.
-            Do NOT attempt to write an extremely large file in a single call — this will
-            likely fail due to content length limits. Write the skeleton/structure first,
-            then append or edit in subsequent calls.
+            - IMPORTANT: For a large file, especially documentation containing code blocks or JSON,
+            do NOT put the entire file in one write_file call. First write its title, outline, and
+            initial section, etc. Then use edit_file to append one/multi chapter or logical section at a time.
+            Keeping each tool-call payload avoids malformed JSON from long, heavily escaped content.
+            Do not retry a failed large write with the same full content; split it into multi sections.
             """;
 
     public static Builder builder() {

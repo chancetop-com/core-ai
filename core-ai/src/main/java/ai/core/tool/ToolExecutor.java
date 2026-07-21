@@ -6,6 +6,7 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import ai.core.tool.tools.WriteFileTool;
 import ai.core.tool.tools.WriteTodosTool;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -75,11 +76,7 @@ public class ToolExecutor {
         try {
             args = tool.parseArguments(functionCall.function.arguments);
         } catch (RuntimeException e) {
-            if (WriteTodosTool.WT_TOOL_NAME.equals(tool.getName())) {
-                LOGGER.warn("ignoring malformed write_todos arguments: {}", e.getMessage());
-                return ToolCallResult.completed("The todo update was ignored because its arguments were not valid JSON. Continue with the current task.");
-            }
-            throw e;
+            return malformedArgumentsResult(tool, e);
         }
         tool.normalizeArguments(args);
         functionCall.function.arguments = JsonUtil.toJson(args);
@@ -91,12 +88,32 @@ public class ToolExecutor {
     }
 
     public ToolCallResult executeWithoutLifecycle(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
-        var args = tool.parseArguments(functionCall.function.arguments);
-        return doExecute(tool, functionCall, args, context);
+        try {
+            var args = tool.parseArguments(functionCall.function.arguments);
+            return doExecute(tool, functionCall, args, context);
+        } catch (RuntimeException e) {
+            return malformedArgumentsResult(tool, e);
+        }
     }
 
     public ToolCallResult executeWithoutLifecycle(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {
         return doExecute(tool, functionCall, args, context);
+    }
+
+    private ToolCallResult malformedArgumentsResult(ToolCall tool, RuntimeException error) {
+        if (WriteTodosTool.WT_TOOL_NAME.equals(tool.getName())) {
+            LOGGER.warn("ignoring malformed write_todos arguments: {}", error.getMessage());
+            return ToolCallResult.completed("The todo update was ignored because its arguments were not valid JSON. Continue with the current task.");
+        }
+        return ToolCallResult.failed(malformedArgumentsMessage(tool), error);
+    }
+
+    private String malformedArgumentsMessage(ToolCall tool) {
+        if (WriteFileTool.TOOL_NAME.equals(tool.getName())) {
+            return "write_file arguments are not valid JSON. The content is likely too large or contains heavily escaped code. "
+                + "Write the file skeleton first, then use edit_file to append one chapter or logical section at a time.";
+        }
+        return "Tool arguments are not valid JSON. Fix the arguments and retry this tool call.";
     }
 
     private ToolCallResult doExecute(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {

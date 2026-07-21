@@ -6,6 +6,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.SessionStreamingCallback;
 import ai.core.sandbox.SandboxFile;
+import ai.core.tool.tools.WriteFileTool;
 import ai.core.tool.tools.WriteTodosTool;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.telemetry.AgentTracer;
@@ -87,6 +88,40 @@ class ToolExecutorTest {
 
         assertTrue(result.isCompleted());
         assertEquals("The todo update was ignored because its arguments were not valid JSON. Continue with the current task.", result.getResult());
+    }
+
+    @Test
+    void returnsFailureForMalformedToolArguments() {
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var functionCall = FunctionCall.of("call_1", "function", "read_file", "{\"path\": \"missing comma\" \"offset\": 1}");
+
+        ToolCallResult result = executor.execute(tool("read_file", false), functionCall, ExecutionContext.empty());
+
+        assertTrue(result.isFailed());
+        assertEquals("Tool arguments are not valid JSON. Fix the arguments and retry this tool call.", result.getResult());
+    }
+
+    @Test
+    void recommendsSectionedWritesForMalformedWriteFileArguments() {
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var functionCall = FunctionCall.of("call_1", "function", "write_file", "{\"file_path\": \"design.md\" \"content\": \"long code block\"}");
+
+        ToolCallResult result = executor.execute(WriteFileTool.builder().build(), functionCall, ExecutionContext.empty());
+
+        assertTrue(result.isFailed());
+        assertEquals("write_file arguments are not valid JSON. The content is likely too large or contains heavily escaped code. "
+            + "Write the file skeleton first, then use edit_file to append one chapter or logical section at a time.", result.getResult());
+    }
+
+    @Test
+    void returnsFailureForMalformedConcurrentToolArguments() {
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var functionCall = FunctionCall.of("call_1", "function", "read_file", "{\"path\": \"missing comma\" \"offset\": 1}");
+
+        ToolCallResult result = executor.executeWithoutLifecycle(tool("read_file", false), functionCall, ExecutionContext.empty());
+
+        assertTrue(result.isFailed());
+        assertEquals("Tool arguments are not valid JSON. Fix the arguments and retry this tool call.", result.getResult());
     }
 
     @Test
