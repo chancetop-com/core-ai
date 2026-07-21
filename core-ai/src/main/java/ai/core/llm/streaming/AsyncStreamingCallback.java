@@ -16,6 +16,14 @@ public class AsyncStreamingCallback implements StreamingCallback {
     private static final Logger LOGGER = LoggerFactory.getLogger(AsyncStreamingCallback.class);
     private static final long DRAIN_TIMEOUT_SECONDS = 30;
 
+    private static ExecutorService newExecutor() {
+        return Executors.newSingleThreadExecutor(r -> {
+            var thread = new Thread(r, "async-streaming-callback");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
     private final StreamingCallback delegate;
     private volatile ExecutorService executor;
 
@@ -99,14 +107,6 @@ public class AsyncStreamingCallback implements StreamingCallback {
             executor.shutdownNow();
         }
         finalAction.run();
-    }
-
-    private static ExecutorService newExecutor() {
-        return Executors.newSingleThreadExecutor(r -> {
-            var thread = new Thread(r, "async-streaming-callback");
-            thread.setDaemon(true);
-            return thread;
-        });
     }
 
     private void shutdownExecutor() {

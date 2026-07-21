@@ -266,7 +266,7 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
 
     private byte[] decodeData(String data) {
         var marker = data.indexOf(',');
-        var encoded = data.startsWith("data:") && marker >= 0 ? data.substring(marker + 1) : data;
+        var encoded = marker >= 0 && data.startsWith("data:") ? data.substring(marker + 1) : data;
         return Base64.getDecoder().decode(encoded);
     }
 

@@ -146,7 +146,7 @@ public class OpenAIImageMediaProvider implements MediaProvider {
 
     private String dataPart(String value) {
         var comma = value.indexOf(',');
-        return value.startsWith("data:") && comma >= 0 ? value.substring(comma + 1) : value;
+        return comma >= 0 && value.startsWith("data:") ? value.substring(comma + 1) : value;
     }
 
     private String normalizedQuality(String quality) {

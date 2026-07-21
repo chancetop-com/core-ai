@@ -94,6 +94,7 @@ project(":core-ai") {
         implementation("io.opentelemetry:opentelemetry-api:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-sdk:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-exporter-otlp:${Versions.OPENTELEMETRY_VERSION}")
+        compileOnly("io.opentelemetry:opentelemetry-api-incubator:${Versions.OPENTELEMETRY_VERSION}-alpha")
         // MCP SDK — exposed via api so downstream modules (server/cli) can reference McpSchema types
         api("io.modelcontextprotocol.sdk:mcp:${Versions.MCP_SDK_VERSION}")
         // SnakeYAML for Skills YAML frontmatter parsing
@@ -101,6 +102,18 @@ project(":core-ai") {
         // Jsoup for HTML parsing (DuckDuckGo search provider)
         implementation("org.jsoup:jsoup:${Versions.JSOUP_VERSION}")
         implementation("com.google.auth:google-auth-library-oauth2-http:${Versions.GOOGLE_AUTH_VERSION}")
+    }
+    tasks.register("ciCheck") {
+        group = "verification"
+        description = "Runs production-focused Core AI verification for CI."
+        dependsOn(
+            "checkstyleMain",
+            "checkstyleTest",
+            "pmdMain",
+            "pmdTest",
+            "spotbugsMain",
+            "test"
+        )
     }
 }
 
