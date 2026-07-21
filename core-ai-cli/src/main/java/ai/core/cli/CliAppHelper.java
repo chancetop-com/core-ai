@@ -233,22 +233,34 @@ public class CliAppHelper {
     }
     static String pickSession(List<SessionInfo> sessions, SessionManager sessionManager,
                               Consumer<String> output, Supplier<String> input) {
-        output.accept("\nRecent sessions:\n\n");
-        int limit = Math.min(sessions.size(), 10);
-        for (int i = 0; i < limit; i++) {
-            var session = sessions.get(i);
-            String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
-            String title = truncate(sessionManager.firstUserMessage(session.id()), 50);
-            output.accept(String.format("  %2d) %s (%s)%n", i + 1, title, timeStr));
-        }
-        output.accept("\n");
+        int pageStart = 0;
         while (true) {
-            output.accept("Select session (1-" + limit + "), or 'n' for new: ");
+            int pageEnd = Math.min(pageStart + 10, sessions.size());
+            output.accept("\nRecent sessions " + (pageStart + 1) + "-" + pageEnd + " of " + sessions.size() + ":\n\n");
+            for (int i = pageStart; i < pageEnd; i++) {
+                var session = sessions.get(i);
+                String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
+                String title = truncate(sessionManager.firstUserMessage(session.id()), 50);
+                output.accept(String.format("  %2d) %s (%s)%n", i - pageStart + 1, title, timeStr));
+            }
+            output.accept("\n");
+            var prompt = new StringBuilder(80).append("Select session (1-").append(pageEnd - pageStart).append("), 'n' for new");
+            if (pageEnd < sessions.size()) prompt.append(", 'm' for more");
+            if (pageStart > 0) prompt.append(", 'p' for previous");
+            output.accept(prompt.append(": ").toString());
             var choice = input.get();
             if (choice == null || "n".equalsIgnoreCase(choice.trim())) return null;
+            if ("m".equalsIgnoreCase(choice.trim()) && pageEnd < sessions.size()) {
+                pageStart = pageEnd;
+                continue;
+            }
+            if ("p".equalsIgnoreCase(choice.trim()) && pageStart > 0) {
+                pageStart = Math.max(0, pageStart - 10);
+                continue;
+            }
             try {
                 int idx = Integer.parseInt(choice.trim());
-                if (idx >= 1 && idx <= limit) return sessions.get(idx - 1).id();
+                if (idx >= 1 && idx <= pageEnd - pageStart) return sessions.get(pageStart + idx - 1).id();
             } catch (NumberFormatException ignored) {
                 // fall through to re-prompt
             }

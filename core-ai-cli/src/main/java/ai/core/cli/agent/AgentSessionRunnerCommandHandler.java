@@ -219,26 +219,38 @@ class AgentSessionRunnerCommandHandler {
             ui.printStreamingChunk(AnsiTheme.MUTED + "No saved sessions found." + AnsiTheme.RESET + "\n");
             return null;
         }
-        int limit = Math.min(sessions.size(), 10);
-        List<String> labels = new java.util.ArrayList<>(limit);
-        for (int i = 0; i < limit; i++) {
-            var s = sessions.get(i);
-            String marker = s.id().equals(sessionId) ? " (current)" : "";
-            String timeStr = LocalDateTime.ofInstant(s.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
-            String title = sessionManager.firstUserMessage(s.id());
-            String display = title != null && !title.isBlank() ? TextUtil.truncateByDisplayWidth(title.replaceAll("[\\r\\n]+", " "), 50) : s.id();
-            labels.add(display + " (" + timeStr + ")" + marker);
+        int pageStart = 0;
+        while (true) {
+            int pageEnd = Math.min(pageStart + 8, sessions.size());
+            List<String> labels = new java.util.ArrayList<>(10);
+            for (int i = pageStart; i < pageEnd; i++) {
+                var s = sessions.get(i);
+                String marker = s.id().equals(sessionId) ? " (current)" : "";
+                String timeStr = LocalDateTime.ofInstant(s.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
+                String title = sessionManager.firstUserMessage(s.id());
+                String display = title != null && !title.isBlank() ? TextUtil.truncateByDisplayWidth(title.replaceAll("[\\r\\n]+", " "), 50) : s.id();
+                labels.add(display + " (" + timeStr + ")" + marker);
+            }
+            if (pageStart > 0) labels.add("← Previous sessions");
+            if (pageEnd < sessions.size()) labels.add("More sessions →");
+            ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Recent sessions " + (pageStart + 1) + "-" + pageEnd + " of " + sessions.size() + ":" + AnsiTheme.RESET + AnsiTheme.MUTED + " (↑↓ select, Enter confirm, q/Esc cancel)" + AnsiTheme.RESET + "\n");
+            int choice = ui.pickIndex(labels);
+            if (choice < 0) return null;
+            if (choice < pageEnd - pageStart) {
+                var picked = sessions.get(pageStart + choice).id();
+                if (picked.equals(sessionId)) {
+                    ui.printStreamingChunk(AnsiTheme.MUTED + "Already in this session." + AnsiTheme.RESET + "\n");
+                    return null;
+                }
+                ui.printStreamingChunk(AnsiTheme.MUTED + "Switching to session: " + picked + AnsiTheme.RESET + "\n");
+                return picked;
+            }
+            if (pageStart > 0 && choice == pageEnd - pageStart) {
+                pageStart = Math.max(0, pageStart - 8);
+            } else {
+                pageStart = pageEnd;
+            }
         }
-        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Recent sessions:" + AnsiTheme.RESET + AnsiTheme.MUTED + " (↑↓ select, Enter confirm, q/Esc cancel)" + AnsiTheme.RESET + "\n");
-        int choice = ui.pickIndex(labels);
-        if (choice < 0) return null;
-        var picked = sessions.get(choice).id();
-        if (picked.equals(sessionId)) {
-            ui.printStreamingChunk(AnsiTheme.MUTED + "Already in this session." + AnsiTheme.RESET + "\n");
-            return null;
-        }
-        ui.printStreamingChunk(AnsiTheme.MUTED + "Switching to session: " + picked + AnsiTheme.RESET + "\n");
-        return picked;
     }
 
     Agent getAgent() {

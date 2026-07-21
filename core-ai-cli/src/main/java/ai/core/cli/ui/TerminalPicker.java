@@ -36,9 +36,8 @@ final class TerminalPicker {
         this.writer = writer;
     }
 
-    int pickIndexRaw(List<String> items) {
+    int pickIndexRaw(List<String> items, int limit) {
         int selected = 0;
-        int limit = Math.min(items.size(), 10);
         renderPickerList(items, selected, limit);
 
         KeyMap<String> keyMap = buildPickerKeyMap();

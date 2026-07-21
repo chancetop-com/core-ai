@@ -208,16 +208,24 @@ public class TerminalUI {
     }
 
     public int pickIndex(List<String> items) {
+        return pickIndex(items, Math.min(items.size(), 10));
+    }
+
+    private int pickIndex(List<String> items, int limit) {
         if (items.isEmpty()) return -1;
         if (terminal == null || isDumbTerminal(terminal)) {
-            return pickIndexNumeric(items);
+            return pickIndexNumeric(items, limit);
         }
         var savedAttrs = terminal.enterRawMode();
         try {
-            return new TerminalPicker(terminal, writer).pickIndexRaw(items);
+            return new TerminalPicker(terminal, writer).pickIndexRaw(items, limit);
         } finally {
             terminal.setAttributes(savedAttrs);
         }
+    }
+
+    public int pickIndexAll(List<String> items) {
+        return pickIndex(items, items.size());
     }
 
     public int getTerminalWidth() {
@@ -331,8 +339,7 @@ public class TerminalUI {
         writer.flush();
     }
 
-    private int pickIndexNumeric(List<String> items) {
-        int limit = Math.min(items.size(), 10);
+    private int pickIndexNumeric(List<String> items, int limit) {
         for (int i = 0; i < limit; i++) {
             writer.println("  " + (i + 1) + ". " + items.get(i));
         }
