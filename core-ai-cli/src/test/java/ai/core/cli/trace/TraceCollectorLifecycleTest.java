@@ -166,4 +166,5 @@ class TraceCollectorLifecycleTest {
         assertTrue(tools.stream().allMatch(t -> llm.spanId.equals(t.parentSpanId)),
                 "both tools nest under the same triggering llm span");
     }
+
 }

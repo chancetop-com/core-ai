@@ -10,7 +10,7 @@ import static com.mongodb.client.model.Indexes.ascending;
 public class SchemaMigrationVGatewayModelModelIdIndex implements SchemaMigration {
     @Override
     public String version() {
-        return "20260706001";
+        return "20260721001";
     }
 
     @Override
