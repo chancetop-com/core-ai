@@ -21,7 +21,7 @@ public class AsyncStreamingCallback implements StreamingCallback {
 
     public AsyncStreamingCallback(StreamingCallback delegate) {
         this.delegate = delegate;
-        this.executor = Executors.newSingleThreadExecutor();
+        this.executor = newExecutor();
     }
 
     @Override
@@ -83,7 +83,7 @@ public class AsyncStreamingCallback implements StreamingCallback {
     @Override
     public void reset() {
         shutdownExecutor();
-        executor = Executors.newSingleThreadExecutor();
+        executor = newExecutor();
         delegate.reset();
     }
 
@@ -99,7 +99,14 @@ public class AsyncStreamingCallback implements StreamingCallback {
             executor.shutdownNow();
         }
         finalAction.run();
-        executor = Executors.newSingleThreadExecutor();
+    }
+
+    private static ExecutorService newExecutor() {
+        return Executors.newSingleThreadExecutor(r -> {
+            var thread = new Thread(r, "async-streaming-callback");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     private void shutdownExecutor() {

@@ -112,8 +112,14 @@ public class PythonScriptTool extends ToolCall {
 
         LOGGER.debug("Executing Python script with timeout {} seconds", timeout);
         var process = pb.start();
-
-        return handleProcessResult(process, timeout);
+        try {
+            return handleProcessResult(process, timeout);
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
+                waitFor(process);
+            }
+        }
     }
 
     private static String handleProcessResult(Process process, long timeout) {
@@ -162,6 +168,7 @@ public class PythonScriptTool extends ToolCall {
         try {
             process.waitFor();
         } catch (InterruptedException e) {
+            process.destroyForcibly();
             Thread.currentThread().interrupt();
         }
     }
@@ -171,6 +178,7 @@ public class PythonScriptTool extends ToolCall {
         try {
             timedOut = !process.waitFor(timeout, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
+            process.destroyForcibly();
             Thread.currentThread().interrupt();
             timedOut = true;
         }
