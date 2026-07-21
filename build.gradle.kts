@@ -198,6 +198,19 @@ project(":core-ai-cli") {
         testCompileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
+    tasks.register("releaseCheck") {
+        group = "verification"
+        description = "Runs CLI-scoped verification required before building release binaries."
+        dependsOn(
+            "checkstyleMain",
+            "checkstyleTest",
+            "pmdMain",
+            "pmdTest",
+            "spotbugsMain",
+            "spotbugsTest",
+            "test"
+        )
+    }
     tasks.withType<JavaExec> {
         standardInput = System.`in`
         jvmArgs("--enable-native-access=ALL-UNNAMED")

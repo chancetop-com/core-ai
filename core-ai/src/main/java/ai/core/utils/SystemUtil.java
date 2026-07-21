@@ -28,6 +28,8 @@ import java.util.zip.ZipInputStream;
  */
 public class SystemUtil {
     private static final Logger LOGGER = LoggerFactory.getLogger(SystemUtil.class);
+    private static final int HTTP_CONNECT_TIMEOUT_MILLIS = 10_000;
+    private static final int HTTP_READ_TIMEOUT_MILLIS = 30_000;
 
     public static Platform detectPlatform() {
         var os = System.getProperty("os.name").toLowerCase(Locale.getDefault());
@@ -129,13 +131,20 @@ public class SystemUtil {
         }
 
         var headConn = (HttpURLConnection) uri.openConnection();
-        headConn.setRequestMethod("HEAD");
-        int headCode = headConn.getResponseCode();
+        configureTimeouts(headConn, HTTP_CONNECT_TIMEOUT_MILLIS, HTTP_READ_TIMEOUT_MILLIS);
+        int headCode;
+        long remoteSize;
+        try {
+            headConn.setRequestMethod("HEAD");
+            headCode = headConn.getResponseCode();
+            remoteSize = headConn.getContentLengthLong();
+        } finally {
+            headConn.disconnect();
+        }
         if (headCode != HttpURLConnection.HTTP_OK) {
             return downloadHttp(url, tempFile, 0);
         }
 
-        long remoteSize = headConn.getContentLengthLong();
         if (remoteSize > 0 && existingSize == remoteSize) {
             LOGGER.debug("File already downloaded, skipping.");
             return tempFile;
@@ -154,19 +163,33 @@ public class SystemUtil {
     }
 
     private static File downloadHttp(String url, File tempFile, long resumeFrom) throws IOException, URISyntaxException {
+        return downloadHttp(url, tempFile, resumeFrom, HTTP_CONNECT_TIMEOUT_MILLIS, HTTP_READ_TIMEOUT_MILLIS);
+    }
+
+    static File downloadHttp(String url, File tempFile, long resumeFrom, int connectTimeoutMillis, int readTimeoutMillis) throws IOException, URISyntaxException {
         var uri = new URI(url).toURL();
         var connection = (HttpURLConnection) uri.openConnection();
-        connection.setRequestMethod("GET");
-        if (resumeFrom > 0) {
-            connection.setRequestProperty("Range", "bytes=" + resumeFrom + "-");
-        }
+        configureTimeouts(connection, connectTimeoutMillis, readTimeoutMillis);
+        try {
+            connection.setRequestMethod("GET");
+            if (resumeFrom > 0) {
+                connection.setRequestProperty("Range", "bytes=" + resumeFrom + "-");
+            }
 
-        int responseCode = connection.getResponseCode();
-        boolean isResume = resumeFrom > 0 && responseCode == HttpURLConnection.HTTP_PARTIAL;
-        if (responseCode != HttpURLConnection.HTTP_OK && !isResume) {
-            throw new IOException("Failed to download file. Server responded with code: " + responseCode);
-        }
+            int responseCode = connection.getResponseCode();
+            boolean isResume = resumeFrom > 0 && responseCode == HttpURLConnection.HTTP_PARTIAL;
+            if (responseCode != HttpURLConnection.HTTP_OK && !isResume) {
+                throw new IOException("Failed to download file. Server responded with code: " + responseCode);
+            }
 
+            copyResponseBody(connection, tempFile, resumeFrom);
+            return tempFile;
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private static void copyResponseBody(HttpURLConnection connection, File tempFile, long resumeFrom) throws IOException {
         try (var in = connection.getInputStream();
              var out = Files.newOutputStream(tempFile.toPath(), resumeFrom > 0 ? StandardOpenOption.APPEND : StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
             var buffer = new byte[8192];
@@ -176,6 +199,10 @@ public class SystemUtil {
                 bytesRead = in.read(buffer);
             }
         }
-        return tempFile;
+    }
+
+    private static void configureTimeouts(HttpURLConnection connection, int connectTimeoutMillis, int readTimeoutMillis) {
+        connection.setConnectTimeout(connectTimeoutMillis);
+        connection.setReadTimeout(readTimeoutMillis);
     }
 }
