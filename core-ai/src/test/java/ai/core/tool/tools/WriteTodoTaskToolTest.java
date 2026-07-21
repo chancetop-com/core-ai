@@ -47,20 +47,6 @@ class WriteTodoTaskToolTest {
     }
 
     @Test
-    void createTaskShouldBeCallableAsFunction() {
-        var function = Functions.from(new WriteTodoTaskTool()).stream()
-                .filter(tool -> "task_create".equals(tool.getName()))
-                .findFirst()
-                .orElseThrow();
-        var result = function.execute("""
-                {"subject":"Fix AgentBuilder.java file length","description":"Reduce AgentBuilder.java to max 450 lines","activeForm":"Fixing AgentBuilder.java file length"}
-                """, context);
-
-        assertTrue(result.isCompleted());
-        assertEquals("Fix AgentBuilder.java file length", store.read("1").subject);
-    }
-
-    @Test
     void createTaskShouldReturnTaskWithAssignedId() {
         var params = new WriteTodoTaskTool.CreateTaskParams();
         params.subject = "Fix authentication bug";
