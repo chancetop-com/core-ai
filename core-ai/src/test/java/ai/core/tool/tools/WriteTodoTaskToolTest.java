@@ -1,14 +1,9 @@
 package ai.core.tool.tools;
 
-import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
-import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.tool.function.Functions;
-import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -22,10 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
  * @author lim chen
@@ -55,36 +47,17 @@ class WriteTodoTaskToolTest {
     }
 
     @Test
-    void testMockCreateFc() {
-        var llmProvider = Mockito.mock(LiteLLMProvider.class);
-        var wtl = spy(new WriteTodoTaskTool());
-        var agent = Agent.builder()
-                .systemPrompt("You are a helpful assistant")
-                .llmProvider(llmProvider)
-                .toolCalls(Functions.from(wtl))
-                .maxTurn(2)
-                .build();
-        agent.setExecutionContext(ExecutionContext.builder()
-                .sessionId("test-session")
-                .todoStoreFactory(_ -> store)
-                .build());
-        String toolCallResponse = """
-                {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"I will create a task to fix the file length issue.","tool_calls":[{"id":"call_00_LcHBWhjiCMktHjwzn6Oc0436","type":"function","function":{"name":"task_create","arguments":"{\\"subject\\": \\"Fix AgentBuilder.java file length\\", \\"description\\": \\"Reduce AgentBuilder.java to max 450 lines\\", \\"activeForm\\": \\"Fixing AgentBuilder.java file length\\"}"},"index":null}]},"delta":null,"index":null}],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}
-                """;
-        String finishResponse = """
-                {"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"I've created a task to track this work.","tool_calls":[]},"delta":null,"index":null}],"usage":{"prompt_tokens":200,"completion_tokens":30,"total_tokens":230}}
-                """;
-        var crs1 = JsonUtil.fromJson(CompletionResponse.class, toolCallResponse);
-        var crs2 = JsonUtil.fromJson(CompletionResponse.class, finishResponse);
+    void createTaskShouldBeCallableAsFunction() {
+        var function = Functions.from(new WriteTodoTaskTool()).stream()
+                .filter(tool -> "task_create".equals(tool.getName()))
+                .findFirst()
+                .orElseThrow();
+        var result = function.execute("""
+                {"subject":"Fix AgentBuilder.java file length","description":"Reduce AgentBuilder.java to max 450 lines","activeForm":"Fixing AgentBuilder.java file length"}
+                """, context);
 
-        when(llmProvider.completionStream(any(), any(), any())).thenReturn(crs1, crs2);
-        try {
-            agent.run("Fix the file length checkstyle issue");
-        } catch (Exception ignored) {
-            // max turns exceeded is expected in unit test
-        }
-        verify(wtl).createTask(any(), any());
-
+        assertTrue(result.isCompleted());
+        assertEquals("Fix AgentBuilder.java file length", store.read("1").subject);
     }
 
     @Test
