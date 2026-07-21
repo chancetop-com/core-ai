@@ -47,7 +47,7 @@ public class GlobFileTool extends ToolCall {
     }
 
     private static String cleanPath(String file) {
-        return file.replaceFirst("^\\./", "");
+        return file.replaceFirst("^\\.[/\\\\]", "");
     }
 
     @Override

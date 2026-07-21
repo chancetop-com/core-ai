@@ -60,7 +60,7 @@ class GlobFileToolTest {
 
         var result = glob(Map.of("pattern", "src/component/*.tsx"));
 
-        assertTrue(result.contains("Button.tsx"));
+        assertTrue(result.contains(dir.resolve("src/component/Button.tsx").toString()));
     }
 
     @Test
