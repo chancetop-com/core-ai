@@ -250,11 +250,11 @@ public class CliAppHelper {
             output.accept(prompt.append(": ").toString());
             var choice = input.get();
             if (choice == null || "n".equalsIgnoreCase(choice.trim())) return null;
-            if ("m".equalsIgnoreCase(choice.trim()) && pageEnd < sessions.size()) {
+            if (pageEnd < sessions.size() && "m".equalsIgnoreCase(choice.trim())) {
                 pageStart = pageEnd;
                 continue;
             }
-            if ("p".equalsIgnoreCase(choice.trim()) && pageStart > 0) {
+            if (pageStart > 0 && "p".equalsIgnoreCase(choice.trim())) {
                 pageStart = Math.max(0, pageStart - 10);
                 continue;
             }
