@@ -208,6 +208,7 @@ public class AgentSessionManager {
             if (overrides.temperature != null) config.temperature = overrides.temperature;
             if (overrides.systemPrompt != null) config.systemPrompt = overrides.systemPrompt;
             if (overrides.maxTurns != null) config.maxTurns = overrides.maxTurns;
+            if (overrides.channelType != null) config.channelType = overrides.channelType;
         }
         var sessionId = UUID.randomUUID().toString();
         var datasetConfig = resolveDatasetConfig(definition, config, overrides);
@@ -444,7 +445,6 @@ public class AgentSessionManager {
     }
     public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds) {
     }
-
     private record AgentBuildResult(Agent agent, InProcessAgentSession[] sessionRef) {
     }
 }
