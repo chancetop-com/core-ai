@@ -8,18 +8,18 @@ import core.framework.api.json.Property;
 public class A2ACapabilities {
     public static A2ACapabilities cliMode() {
         var caps = new A2ACapabilities();
-        caps.chat = true;
-        caps.authRequired = false;
+        caps.chat = Boolean.TRUE;
+        caps.authRequired = Boolean.FALSE;
         return caps;
     }
 
     public static A2ACapabilities serverMode() {
         var caps = new A2ACapabilities();
-        caps.chat = true;
-        caps.traces = true;
-        caps.prompts = true;
-        caps.dashboard = true;
-        caps.authRequired = true;
+        caps.chat = Boolean.TRUE;
+        caps.traces = Boolean.TRUE;
+        caps.prompts = Boolean.TRUE;
+        caps.dashboard = Boolean.TRUE;
+        caps.authRequired = Boolean.TRUE;
         return caps;
     }
 

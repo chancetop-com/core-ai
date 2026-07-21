@@ -16,5 +16,5 @@ public class ImportMcpServersRequest {
 
     @NotNull
     @Property(name = "enabled")
-    public Boolean enabled = true;
+    public Boolean enabled = Boolean.TRUE;
 }

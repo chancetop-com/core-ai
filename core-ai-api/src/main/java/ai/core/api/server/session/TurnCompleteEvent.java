@@ -11,7 +11,7 @@ public class TurnCompleteEvent implements AgentEvent {
         var event = new TurnCompleteEvent();
         event.sessionId = sessionId;
         event.output = output;
-        event.cancelled = false;
+        event.cancelled = Boolean.FALSE;
         return event;
     }
 
@@ -19,7 +19,7 @@ public class TurnCompleteEvent implements AgentEvent {
         var event = new TurnCompleteEvent();
         event.sessionId = sessionId;
         event.output = "";
-        event.cancelled = true;
+        event.cancelled = Boolean.TRUE;
         return event;
     }
 
@@ -36,7 +36,7 @@ public class TurnCompleteEvent implements AgentEvent {
 
     @NotNull
     @Property(name = "max_turns_reached")
-    public Boolean maxTurnsReached = false;
+    public Boolean maxTurnsReached = Boolean.FALSE;
 
     @Property(name = "input_tokens")
     public Long inputTokens;
