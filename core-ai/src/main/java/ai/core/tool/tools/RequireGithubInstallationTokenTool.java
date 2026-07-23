@@ -73,12 +73,12 @@ public final class RequireGithubInstallationTokenTool extends ToolCall {
     }
 
     private String formatResult(String token, String repo) {
-        return "GitHub installation token obtained (valid for 1 hour).%n%n"
+        return ("GitHub installation token obtained (valid for 1 hour).%n%n"
                 + "Token: %s%n%n"
                 + "Clone with:%n  git clone https://x-access-token:%s@github.com/%s.git%n%n"
                 + "Or configure gh CLI:%n  echo \"%s\" | gh auth login --with-token%n%n"
                 + "After cloning, to create a PR:%n  gh pr create --title \"PR title\" --body \"PR description\"%n%n"
-                + "IMPORTANT: Do NOT echo or log the token. Use it directly in commands.%n".formatted(token, token, repo, token.replace("\"", "\\\""));
+                + "IMPORTANT: Do NOT echo or log the token. Use it directly in commands.%n").formatted(token, token, repo, token.replace("\"", "\\\""));
     }
 
     public static class Builder extends ToolCall.Builder<Builder, RequireGithubInstallationTokenTool> {
