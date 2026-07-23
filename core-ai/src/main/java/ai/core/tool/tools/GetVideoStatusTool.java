@@ -20,7 +20,7 @@ import java.nio.file.Path;
  */
 public class GetVideoStatusTool extends ToolCall {
     public static final String TOOL_NAME = "get_video_status";
-    public static final String VIDEO_OUTPUT_SINK_CONTEXT_KEY = "video.output.sink";
+    public static final String VIDEO_OUTPUT_SINK_CONTEXT_KEY = "__video_output_sink";
 
     private static final String TOOL_DESC = """
             Check the status of a previously submitted video generation task.
