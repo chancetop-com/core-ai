@@ -136,6 +136,9 @@ const ChatMessageRow = memo(function ChatMessageRow({
   const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
   const textSeg = msg.segments?.find(s => s.type === 'text');
   const generatedVideo = textSeg && msg.role === 'agent' ? extractGeneratedVideo(textSeg.content) : null;
+  const attachments = msg.attachments ?? [];
+  const hasAttachments = attachments.length > 0;
+  const hasRenderableText = textSeg != null && (textSeg.content.trim().length > 0 || generatedVideo != null);
   const msgArtifacts = msg.role === 'agent' ? getMessageArtifacts(msg, sessionArtifacts) : [];
 
   // content-visibility: auto skips paint for off-screen elements, but the browser
@@ -169,11 +172,12 @@ const ChatMessageRow = memo(function ChatMessageRow({
             <ToolsBlock tools={toolsSeg.tools} />
           </div>
         )}
-        {textSeg && (
+        {(hasAttachments || hasRenderableText) && (
           <div className="mb-3">
-            {msg.attachments && msg.attachments.length > 0 && (
-              <div className="flex gap-2 flex-wrap mb-2" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                {msg.attachments.map((att, idx) => (
+            {hasAttachments && (
+              <div className={`flex gap-2 flex-wrap ${hasRenderableText ? 'mb-2' : ''}`}
+                style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                {attachments.map((att, idx) => (
                   att.type === 'IMAGE' ? (
                     <a key={idx} href={att.url} target="_blank" rel="noopener noreferrer"
                       className="block rounded-lg overflow-hidden border"
@@ -197,25 +201,27 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 ))}
               </div>
             )}
-            <div className="rounded-xl px-4 py-3 text-sm overflow-x-auto"
-              style={{
-                background: msg.role === 'user' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
-                color: msg.role === 'user' ? 'white' : 'var(--color-text)',
-                border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
-              }}>
-              <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1 [&_svg]:block [&_svg]:max-w-full [&_svg]:h-auto">
-                <ReactMarkdown
-                  remarkPlugins={REMARK_PLUGINS}
-                  rehypePlugins={msg.role === 'agent' && !isStreamingLast ? AGENT_REHYPE_PLUGINS : undefined}
-                  components={msg.role === 'agent' ? agentMarkdownComponents : undefined}>
-                  {generatedVideo ? generatedVideo.content : textSeg.content}
-                </ReactMarkdown>
-                {generatedVideo && <GeneratedVideo href={generatedVideo.url} label={generatedVideo.label} />}
+            {hasRenderableText && textSeg && (
+              <div className="rounded-xl px-4 py-3 text-sm overflow-x-auto"
+                style={{
+                  background: msg.role === 'user' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
+                  color: msg.role === 'user' ? 'white' : 'var(--color-text)',
+                  border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
+                }}>
+                <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1 [&_svg]:block [&_svg]:max-w-full [&_svg]:h-auto">
+                  <ReactMarkdown
+                    remarkPlugins={REMARK_PLUGINS}
+                    rehypePlugins={msg.role === 'agent' && !isStreamingLast ? AGENT_REHYPE_PLUGINS : undefined}
+                    components={msg.role === 'agent' ? agentMarkdownComponents : undefined}>
+                    {generatedVideo ? generatedVideo.content : textSeg.content}
+                  </ReactMarkdown>
+                  {generatedVideo && <GeneratedVideo href={generatedVideo.url} label={generatedVideo.label} />}
+                </div>
+                {isStreamingLast && textSeg.content && (
+                  <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />
+                )}
               </div>
-              {isStreamingLast && textSeg.content && (
-                <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />
-              )}
-            </div>
+            )}
           </div>
         )}
         {isStreamingLast && msg.role === 'agent' && !hasAnySegments(msg.segments) && (
