@@ -224,6 +224,11 @@ export default function TraceList() {
   const chips = activeChips(filters);
   const isCustomRange = filters.range === 'custom';
 
+  // Auto-expand advanced filters when custom range is selected so the date inputs are visible
+  useEffect(() => {
+    if (isCustomRange) setShowAdvanced(true);
+  }, [isCustomRange]);
+
   return (
     <div className="flex h-full min-h-0">
       <div className="p-6 flex-1 min-w-0 overflow-auto">
@@ -360,13 +365,13 @@ export default function TraceList() {
                 <>
                   <input type="datetime-local"
                     value={toDateTimeLocalValue(filters.startFrom)}
-                    onChange={event => updateFilter({ startFrom: event.target.value ? new Date(event.target.value).toISOString() : '' })}
+                    onChange={event => updateFilter({ startFrom: event.target.value ? localDateTimeToUTC(event.target.value) : '' })}
                     className="px-3 py-2 rounded-md border text-sm"
                     style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
                   />
                   <input type="datetime-local"
                     value={toDateTimeLocalValue(filters.startTo)}
-                    onChange={event => updateFilter({ startTo: event.target.value ? new Date(event.target.value).toISOString() : '' })}
+                    onChange={event => updateFilter({ startTo: event.target.value ? localDateTimeToUTC(event.target.value) : '' })}
                     className="px-3 py-2 rounded-md border text-sm"
                     style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
                   />
@@ -871,7 +876,21 @@ function hasAdvancedFilters(filters: TraceFilter, isAdmin: boolean): boolean {
 
 function toDateTimeLocalValue(value?: string): string {
   if (!value) return '';
-  return value.slice(0, 16);
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function localDateTimeToUTC(localValue: string): string {
+  const [datePart, timePart] = localValue.split('T');
+  const [y, m, d] = datePart.split('-').map(Number);
+  const [hh, mm] = timePart.split(':').map(Number);
+  return new Date(y, m - 1, d, hh, mm).toISOString();
 }
 
 interface ChipDescriptor {
