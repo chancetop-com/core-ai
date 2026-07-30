@@ -30,6 +30,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     private static final String SERVICE_VERSION = "1";
     private static final String ENVIRONMENT = "cli";
     private static final int MAX_FIELD_LEN = 100_000;
+    private static final ThreadLocal<TurnState> TURN = new ThreadLocal<>();
 
     // Telemetry must never break the agent turn: isolate every hook body. Catch Throwable because
     // JsonUtil.toJson throws Error on null and the lifecycle dispatch in Agent has no try/catch.
@@ -61,7 +62,6 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     }
 
     private final TraceUploader uploader;
-    private static final ThreadLocal<TurnState> turn = new ThreadLocal<>();
 
     public TraceCollectorLifecycle(TraceUploader uploader) {
         this.uploader = uploader;
@@ -76,14 +76,14 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
             state.currentLlmSpanId = state.rootSpanId;
             state.startedAtMs = System.currentTimeMillis();
             state.input = query != null ? query.get() : null;
-            turn.set(state);
+            TURN.set(state);
         });
     }
 
     @Override
     public void beforeModel(CompletionRequest req, ExecutionContext ctx) {
         safe(() -> {
-            var state = turn.get();
+            var state = TURN.get();
             if (state == null) return;
             state.llmStartMs = System.currentTimeMillis();
         });
@@ -92,7 +92,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     @Override
     public void afterModel(CompletionRequest req, CompletionResponse resp, ExecutionContext ctx) {
         safe(() -> {
-            var state = turn.get();
+            var state = TURN.get();
             if (state == null) return;
             var now = System.currentTimeMillis();
             var span = new CliTraceSpan();
@@ -118,7 +118,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     @Override
     public void beforeTool(FunctionCall functionCall, ExecutionContext ctx) {
         safe(() -> {
-            var state = turn.get();
+            var state = TURN.get();
             if (state == null) return;
             state.toolStartMs.put(toolKey(functionCall), System.currentTimeMillis());
         });
@@ -127,7 +127,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     @Override
     public void afterTool(FunctionCall functionCall, ExecutionContext ctx, ToolCallResult result) {
         safe(() -> {
-            var state = turn.get();
+            var state = TURN.get();
             if (state == null) return;
             var now = System.currentTimeMillis();
             var start = state.toolStartMs.getOrDefault(toolKey(functionCall), now);
@@ -158,9 +158,9 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     }
 
     private void finish(String status, String output) {
-        var state = turn.get();
+        var state = TURN.get();
         if (state == null) return;
-        turn.remove();
+        TURN.remove();
         var now = System.currentTimeMillis();
         var root = new CliTraceSpan();
         root.traceId = state.traceId;
