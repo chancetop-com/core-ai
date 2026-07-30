@@ -61,7 +61,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     }
 
     private final TraceUploader uploader;
-    private volatile TurnState turn;
+    private final ThreadLocal<TurnState> turn = new ThreadLocal<>();
 
     public TraceCollectorLifecycle(TraceUploader uploader) {
         this.uploader = uploader;
@@ -76,14 +76,14 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
             state.currentLlmSpanId = state.rootSpanId;
             state.startedAtMs = System.currentTimeMillis();
             state.input = query != null ? query.get() : null;
-            this.turn = state;
+            turn.set(state);
         });
     }
 
     @Override
     public void beforeModel(CompletionRequest req, ExecutionContext ctx) {
         safe(() -> {
-            var state = turn;
+            var state = turn.get();
             if (state == null) return;
             state.llmStartMs = System.currentTimeMillis();
         });
@@ -92,7 +92,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     @Override
     public void afterModel(CompletionRequest req, CompletionResponse resp, ExecutionContext ctx) {
         safe(() -> {
-            var state = turn;
+            var state = turn.get();
             if (state == null) return;
             var now = System.currentTimeMillis();
             var span = new CliTraceSpan();
@@ -118,7 +118,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     @Override
     public void beforeTool(FunctionCall functionCall, ExecutionContext ctx) {
         safe(() -> {
-            var state = turn;
+            var state = turn.get();
             if (state == null) return;
             state.toolStartMs.put(toolKey(functionCall), System.currentTimeMillis());
         });
@@ -127,7 +127,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     @Override
     public void afterTool(FunctionCall functionCall, ExecutionContext ctx, ToolCallResult result) {
         safe(() -> {
-            var state = turn;
+            var state = turn.get();
             if (state == null) return;
             var now = System.currentTimeMillis();
             var start = state.toolStartMs.getOrDefault(toolKey(functionCall), now);
@@ -158,9 +158,9 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     }
 
     private void finish(String status, String output) {
-        var state = turn;
+        var state = turn.get();
         if (state == null) return;
-        this.turn = null;
+        turn.remove();
         var now = System.currentTimeMillis();
         var root = new CliTraceSpan();
         root.traceId = state.traceId;
@@ -194,9 +194,9 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
         span.cachedTokens = details != null ? (long) details.cachedTokens : 0L;
     }
 
-    // Mutable per-turn state. The REPL runs turns sequentially and all lifecycle callbacks fire on the
-    // main agent thread, so this is effectively single-threaded; the concurrent collections and volatile
-    // field are kept as cheap defensive guards. currentLlmSpanId points at the most recent LLM span so
+    // Mutable per-turn state. Each thread (main agent or sub-agent) has an independent turn via
+    // ThreadLocal — when a sub-agent runs on a worker thread, it creates its own turn without
+    // clobbering the parent thread's state. currentLlmSpanId points at the most recent LLM span so
     // tool spans nest under the call that triggered them.
     private static final class TurnState {
         String traceId;
