@@ -61,7 +61,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     }
 
     private final TraceUploader uploader;
-    private final ThreadLocal<TurnState> turn = new ThreadLocal<>();
+    private static final ThreadLocal<TurnState> turn = new ThreadLocal<>();
 
     public TraceCollectorLifecycle(TraceUploader uploader) {
         this.uploader = uploader;
