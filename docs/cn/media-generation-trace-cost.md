@@ -1521,7 +1521,7 @@ Current gaps
 - provider 实际账单项与本地请求参数不一致；
 - 上游返回 usage 后的 reconcile。
 
-建议第一期先以模型级固定单价闭环 trace / dashboard 统计。后续若实际模型需要不同 size / quality 价格，可将 mediaPricing 扩展为 List<MediaPricingRule>，保留已有 snapshot 兼容性。
+建议第一期先以模型级固定单价闭环 trace / dashboard 统计。后续若实际模型需要不同 size / quality 价格，可将 mediaPricing 扩展为 `List<MediaPricingRule>`，保留已有 snapshot 兼容性。
 
 ────────────────────────────────────────────────────────────────
 
