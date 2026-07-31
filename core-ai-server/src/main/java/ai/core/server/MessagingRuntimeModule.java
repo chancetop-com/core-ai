@@ -17,6 +17,7 @@ import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionCommandDependencies;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.sse.SseEndpointRegistry;
@@ -55,7 +56,8 @@ class MessagingRuntimeModule extends Module {
         onShutdown(eventSubscriber::stop);
         var sandboxService = bean(SandboxService.class);
         var sessionDependencies = new SessionCommandDependencies(bean(AgentSessionManager.class), bean(ChatMessageService.class),
-                ownershipRegistry, sandboxService, bean(EventPublisher.class), bean(ObjectStorageConfiguration.class));
+                ownershipRegistry, sandboxService, bean(EventPublisher.class), bean(ObjectStorageConfiguration.class),
+                bean(SessionAttachmentRefRepository.class));
         var rpcDependencies = new CommandRpcDependencies(bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class),
                 bean(ServerA2AService.class), jedisPool, bean(ToolRegistryService.class));
         var commandHandler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);

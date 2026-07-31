@@ -46,6 +46,7 @@ public class InProcessCommandHandler {
     private final EventPublisher eventPublisher;
     private final ToolRegistryService toolRegistryService;
     private final ObjectStorageConfiguration objectStorageConfiguration;
+    private final ai.core.server.domain.SessionAttachmentRefRepository attachmentRepository;
 
     public InProcessCommandHandler(SessionCommandDependencies sessionDependencies, CommandRpcDependencies rpcDependencies) {
         this.sessionManager = sessionDependencies.sessionManager();
@@ -58,6 +59,7 @@ public class InProcessCommandHandler {
         this.sandboxService = sessionDependencies.sandboxService();
         this.eventPublisher = sessionDependencies.eventPublisher();
         this.objectStorageConfiguration = sessionDependencies.objectStorageConfiguration();
+        this.attachmentRepository = sessionDependencies.attachmentRepository();
         this.toolRegistryService = rpcDependencies.toolRegistryService();
     }
 
@@ -128,8 +130,8 @@ public class InProcessCommandHandler {
             sandboxService.uploadFiles(command.sessionId(), pendingFiles);
         }
 
-        var attachedContents = imageAttachments(payload);
-        chatMessageService.writeUserMessage(command.sessionId(), message);
+        var attachedContents = multimodalAttachments(payload, command.sessionId(), command.userId());
+        chatMessageService.writeUserMessage(command.sessionId(), appendVideoHints(message, attachedContents));
         LOGGER.info("handleSendMessage: sending message to agent");
         session.sendMessage(message, variables, attachedContents);
         LOGGER.info("handleSendMessage: message sent to agent");
@@ -139,33 +141,87 @@ public class InProcessCommandHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private List<ExecutionContext.AttachedContent> imageAttachments(Map<String, Object> payload) {
-        var attachments = (List<Map<String, Object>>) payload.get("imageAttachments");
+    private List<ExecutionContext.AttachedContent> multimodalAttachments(Map<String, Object> payload, String sessionId, String userId) {
+        var attachments = (List<Map<String, Object>>) payload.get("multimodalAttachments");
+        if (attachments == null || attachments.isEmpty()) {
+            attachments = (List<Map<String, Object>>) payload.get("imageAttachments");
+        }
         if (attachments == null || attachments.isEmpty()) return null;
         if (objectStorageConfiguration == null || objectStorageConfiguration.service == null) {
             throw new IllegalStateException("object storage is not configured");
         }
         var contents = new ArrayList<ExecutionContext.AttachedContent>(attachments.size());
         for (var attachment : attachments) {
+            var type = (String) attachment.get("type");
             var container = (String) attachment.get("container");
             var blobName = (String) attachment.get("blobName");
             var contentType = (String) attachment.get("contentType");
-            if (!validImageAttachment(container, blobName, contentType)) {
-                throw new IllegalArgumentException("invalid image attachment");
+            if ("VIDEO".equals(type)) {
+                if (!validVideoAttachment(container, blobName)) {
+                    throw new IllegalArgumentException("invalid video attachment");
+                }
+                var reference = new ai.core.server.domain.SessionAttachmentRef();
+                reference.id = "video_" + java.util.UUID.randomUUID();
+                reference.sessionId = sessionId;
+                reference.userId = userId;
+                reference.container = container;
+                reference.blobName = blobName;
+                var metadata = objectStorageConfiguration.service.headObject(container, blobName);
+                reference.sourceETag = metadata.etag();
+                reference.sourceSizeBytes = metadata.sizeBytes();
+                reference.contentType = resolveVideoContentType(metadata.contentType(), contentType);
+                reference.fileName = (String) attachment.get("fileName");
+                reference.createdAt = java.time.ZonedDateTime.now();
+                attachmentRepository.insert(reference);
+                contents.add(ExecutionContext.AttachedContent.ofReference(
+                        reference.id, reference.contentType, reference.fileName));
+            } else {
+                if (!validImageAttachment(container, blobName, contentType)) {
+                    throw new IllegalArgumentException("invalid image attachment");
+                }
+                var bytes = objectStorageConfiguration.service.downloadObject(container, blobName);
+                contents.add(ExecutionContext.AttachedContent.ofBase64(
+                        Base64.getEncoder().encodeToString(bytes), contentType,
+                        ExecutionContext.AttachedContent.AttachedContentType.IMAGE,
+                        (String) attachment.get("fileName")));
             }
-            var bytes = objectStorageConfiguration.service.downloadObject(container, blobName);
-            contents.add(ExecutionContext.AttachedContent.ofBase64(
-                    Base64.getEncoder().encodeToString(bytes), contentType,
-                    ExecutionContext.AttachedContent.AttachedContentType.IMAGE,
-                    (String) attachment.get("fileName")));
         }
         return contents;
     }
 
+    private String appendVideoHints(String message, List<ExecutionContext.AttachedContent> attachedContents) {
+        if (attachedContents == null || attachedContents.isEmpty()) return message;
+        var hints = new ArrayList<String>();
+        for (var content : attachedContents) {
+            if (content.type != ExecutionContext.AttachedContent.AttachedContentType.VIDEO) continue;
+            var name = content.filename != null ? content.filename : "video";
+            hints.add("[Video attachment: " + name + "]\nreference: " + content.url);
+        }
+        if (hints.isEmpty()) return message;
+        var text = String.join("\n", hints);
+        return message == null || message.isBlank() ? text : message + "\n\n" + text;
+    }
+
+    private String resolveVideoContentType(String storageContentType, String clientContentType) {
+        if (storageContentType != null && storageContentType.startsWith("video/")) return storageContentType;
+        if (clientContentType != null && clientContentType.startsWith("video/")) return clientContentType;
+        return "video/mp4";
+    }
+
     private boolean validImageAttachment(String container, String blobName, String contentType) {
+        return validObjectAttachment(container, blobName, contentType) && contentType.startsWith("image/");
+    }
+
+    private boolean validVideoAttachment(String container, String blobName) {
+        return container != null && blobName != null
+                && container.equals(objectStorageConfiguration.multimodalContainer)
+                && blobName.startsWith("ai/");
+    }
+
+    private boolean validObjectAttachment(String container, String blobName, String contentType) {
         return container != null && blobName != null && contentType != null
                 && container.equals(objectStorageConfiguration.multimodalContainer)
-                && blobName.startsWith("ai/") && contentType.startsWith("image/");
+                && blobName.startsWith("ai/");
     }
 
     private void handleApproveTool(SessionCommand command) {

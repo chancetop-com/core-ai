@@ -65,6 +65,9 @@ public class GatewayProviderConfig {
     @Field(name = "vertex_location")
     public String vertexLocation;
 
+    @Field(name = "vertex_gcs_bucket")
+    public String vertexGcsBucket;
+
     @Field(name = "request_extra_body")
     public String requestExtraBody;
 

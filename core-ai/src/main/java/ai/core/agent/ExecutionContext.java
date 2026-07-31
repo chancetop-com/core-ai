@@ -417,6 +417,15 @@ public final class ExecutionContext {
             return content;
         }
 
+        public static AttachedContent ofReference(String referenceId, String mediaType, String filename) {
+            var content = new AttachedContent();
+            content.url = referenceId;
+            content.mediaType = mediaType;
+            content.filename = filename;
+            content.type = AttachedContentType.VIDEO;
+            return content;
+        }
+
         public String url;
         public String data;
         public String mediaType;
@@ -429,7 +438,8 @@ public final class ExecutionContext {
 
         public enum AttachedContentType {
             IMAGE,
-            PDF
+            PDF,
+            VIDEO
         }
     }
 }

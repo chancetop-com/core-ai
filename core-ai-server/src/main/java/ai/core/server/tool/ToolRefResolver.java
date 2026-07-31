@@ -7,6 +7,7 @@ import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
 import ai.core.tool.ToolCall;
+import ai.core.tool.tools.UnderstandVideoTool;
 import ai.core.tool.registry.BuiltinToolProvider;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.github.GitHubTokenProvider;
@@ -35,6 +36,7 @@ public class ToolRefResolver {
     private final MediaProvider mediaProvider;
     private final GitHubTokenProvider gitHubTokenProvider;
     private final ApplicationMcpManager applicationMcpManager;
+    private UnderstandVideoTool.VideoUnderstandingService videoService;
     private final Map<String, List<ToolCall>> apiToolCache = new ConcurrentHashMap<>();
 
     public ToolRefResolver(Map<String, ToolRegistryEntry> toolRegistry, InternalApiToolLoader apiToolLoader,
@@ -43,14 +45,18 @@ public class ToolRefResolver {
     }
 
     public ToolRefResolver(Map<String, ToolRegistryEntry> toolRegistry, InternalApiToolLoader apiToolLoader,
-                            Map<String, List<ToolCall>> dynamicToolSets, MediaProvider mediaProvider,
-                            GitHubTokenProvider gitHubTokenProvider, ApplicationMcpManager applicationMcpManager) {
+                             Map<String, List<ToolCall>> dynamicToolSets, MediaProvider mediaProvider,
+                             GitHubTokenProvider gitHubTokenProvider, ApplicationMcpManager applicationMcpManager) {
         this.toolRegistry = toolRegistry;
         this.apiToolLoader = apiToolLoader;
         this.dynamicToolSets = dynamicToolSets;
         this.mediaProvider = mediaProvider;
         this.gitHubTokenProvider = gitHubTokenProvider;
         this.applicationMcpManager = applicationMcpManager;
+    }
+
+    public void setVideoService(UnderstandVideoTool.VideoUnderstandingService videoService) {
+        this.videoService = videoService;
     }
 
     public List<ToolCall> resolve(List<ToolRef> toolRefs) {
@@ -110,7 +116,7 @@ public class ToolRefResolver {
         if (entry != null) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
-                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider);
+                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService);
                 result.addAll(provider.provide().values());
             }
             return;
@@ -222,7 +228,7 @@ public class ToolRefResolver {
             case MCP -> result.addAll(resolveMcpTools(entry, sessionMgr));
             case BUILTIN -> {
                 var setName = entry.config != null ? entry.config.get("set") : null;
-                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider);
+                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService);
                 result.addAll(provider.provide().values());
             }
             case API -> result.addAll(resolveApiTools(entry));

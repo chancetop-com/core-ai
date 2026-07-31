@@ -21,6 +21,9 @@ public class GatewayModelRequest {
     public Boolean supportsStream;
     public Boolean supportsTools;
     public Boolean supportsVision;
+    public Boolean supportsVideo;
+    public Long maxVideoBytes;
+    public Long maxVideoSeconds;
     public Double inputPricePer1MTokens;
     public Double outputPricePer1MTokens;
 

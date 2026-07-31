@@ -83,6 +83,8 @@ public class CaptionImageTool extends ToolCall {
 
     private String resolveModel(ExecutionContext context, LLMProvider llmProvider) {
         if (context.getMultiModalModel() != null) return context.getMultiModalModel();
+        var captionModel = context.getCustomVariable("media.caption.model");
+        if (captionModel instanceof String value && !value.isBlank()) return value;
         if (context.getModel() != null) return context.getModel();
         return llmProvider.config.getModel();
     }

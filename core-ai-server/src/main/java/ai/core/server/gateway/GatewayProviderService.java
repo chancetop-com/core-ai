@@ -210,6 +210,7 @@ public class GatewayProviderService {
         }
         if (request.vertexProjectId != null) entity.vertexProjectId = trimToNull(request.vertexProjectId);
         if (request.vertexLocation != null) entity.vertexLocation = trimToNull(request.vertexLocation);
+        if (request.vertexGcsBucket != null) entity.vertexGcsBucket = trimToNull(request.vertexGcsBucket);
         if (request.requestExtraBody != null) entity.requestExtraBody = trimToNull(request.requestExtraBody);
         if (request.timeoutSeconds != null) entity.timeoutSeconds = request.timeoutSeconds;
         if (request.connectTimeoutSeconds != null) entity.connectTimeoutSeconds = request.connectTimeoutSeconds;
@@ -259,6 +260,7 @@ public class GatewayProviderService {
         view.hasGoogleCredentials = !isBlank(entity.googleCredentialsEncrypted);
         view.vertexProjectId = entity.vertexProjectId;
         view.vertexLocation = entity.vertexLocation;
+        view.vertexGcsBucket = entity.vertexGcsBucket;
         view.requestExtraBody = entity.requestExtraBody;
         view.timeoutSeconds = entity.timeoutSeconds;
         view.connectTimeoutSeconds = entity.connectTimeoutSeconds;

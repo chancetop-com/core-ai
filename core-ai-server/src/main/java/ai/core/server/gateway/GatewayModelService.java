@@ -243,6 +243,9 @@ public class GatewayModelService {
         if (specified(request, "supportsStream", create)) entity.supportsStream = request.supportsStream;
         if (specified(request, "supportsTools", create)) entity.supportsTools = request.supportsTools;
         if (specified(request, "supportsVision", create)) entity.supportsVision = request.supportsVision;
+        if (specified(request, "supportsVideo", create)) entity.supportsVideo = request.supportsVideo;
+        if (specified(request, "maxVideoBytes", create)) entity.maxVideoBytes = request.maxVideoBytes;
+        if (specified(request, "maxVideoSeconds", create)) entity.maxVideoSeconds = request.maxVideoSeconds;
         if (specified(request, "inputPricePer1MTokens", create)) entity.inputPricePer1MTokens = request.inputPricePer1MTokens;
         if (specified(request, "outputPricePer1MTokens", create)) entity.outputPricePer1MTokens = request.outputPricePer1MTokens;
         if (specified(request, "inputPricePer1MTokens", create) || specified(request, "outputPricePer1MTokens", create)) {
@@ -282,6 +285,8 @@ public class GatewayModelService {
         if (request.endpointTypes != null) normalizeEndpointTypes(request.endpointTypes);
         if (request.priority != null && request.priority < 0) throw new BadRequestException("priority must not be negative");
         if (request.contextWindow != null && request.contextWindow <= 0) throw new BadRequestException("contextWindow must be positive");
+        if (request.maxVideoBytes != null && request.maxVideoBytes <= 0) throw new BadRequestException("maxVideoBytes must be positive");
+        if (request.maxVideoSeconds != null && request.maxVideoSeconds <= 0) throw new BadRequestException("maxVideoSeconds must be positive");
         if (request.inputPricePer1MTokens != null && request.inputPricePer1MTokens < 0) {
             throw new BadRequestException("inputPricePer1MTokens must not be negative");
         }
@@ -342,6 +347,9 @@ public class GatewayModelService {
         view.supportsStream = entity.supportsStream;
         view.supportsTools = entity.supportsTools;
         view.supportsVision = entity.supportsVision;
+        view.supportsVideo = entity.supportsVideo;
+        view.maxVideoBytes = entity.maxVideoBytes;
+        view.maxVideoSeconds = entity.maxVideoSeconds;
         view.inputPricePer1MTokens = entity.inputPricePer1MTokens;
         view.outputPricePer1MTokens = entity.outputPricePer1MTokens;
         view.pricingSource = entity.pricingSource;

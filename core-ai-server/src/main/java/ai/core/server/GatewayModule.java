@@ -19,9 +19,15 @@ import ai.core.server.gateway.GatewayProxyService;
 import ai.core.server.gateway.GatewayResponsesChannelListener;
 import ai.core.server.gateway.GatewayResponsesSseEvent;
 import ai.core.server.gateway.GatewayRoutingEngine;
+import ai.core.server.domain.GeminiFileRepository;
+import ai.core.server.domain.SessionAttachmentRefRepository;
+import ai.core.server.domain.GeminiFileService;
+import ai.core.server.domain.GeminiFilesClient;
+import ai.core.server.domain.GeminiVideoUnderstandingService;
 import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.telemetry.LLMTracer;
+import ai.core.tool.tools.UnderstandVideoTool;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -43,6 +49,15 @@ public class GatewayModule extends Module {
         var gatewayLegacySecret = requiredProperty("sys.mongo.uri");
         var gatewaySecretProtector = bind(gatewaySecretKey == null ? new GatewaySecretProtector(gatewayLegacySecret) : new GatewaySecretProtector(gatewaySecretKey, gatewayLegacySecret));
         var gatewayRoutingEngine = bind(GatewayRoutingEngine.class);
+        bind(GeminiFileRepository.class);
+        bind(SessionAttachmentRefRepository.class);
+        bind(GeminiFileService.class);
+        var videoUnderstandingService = bind(GeminiVideoUnderstandingService.class);
+        bind(UnderstandVideoTool.VideoUnderstandingService.class, videoUnderstandingService);
+        var geminiApiKey = property("gemini.api.key").orElse(null);
+        if (geminiApiKey != null && !geminiApiKey.isBlank()) {
+            bean(GeminiFileService.class).configure(new GeminiFilesClient(null, geminiApiKey));
+        }
         bind(GatewayModelDiscoveryService.class);
         bind(GatewayModelService.class);
         bind(GatewayProviderService.class);

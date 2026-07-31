@@ -6,6 +6,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.channel.ChannelMessage;
 import ai.core.server.channel.ChannelRegistry;
+import ai.core.api.server.run.LLMCallRequest;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
@@ -73,21 +74,25 @@ public class AgentRunner {
     AgentRunBuilder builder;
 
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
-        return run(new RunParams(definition, input, trigger, null, null, null, null));
+        return run(new RunParams(definition, input, trigger, null, null, null, null, null));
+    }
+
+    public String run(AgentDefinition definition, String input, TriggerType trigger, List<LLMCallRequest.Attachment> attachments) {
+        return run(new RunParams(definition, input, trigger, null, null, null, null, attachments));
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId, Map<String, String> runtimeVariables) {
-        return run(new RunParams(definition, input, trigger, scheduleId, runtimeVariables, null, null));
+        return run(new RunParams(definition, input, trigger, scheduleId, runtimeVariables, null, null, null));
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
                       Map<String, String> runtimeVariables, ChannelTarget channel) {
-        return run(new RunParams(definition, input, trigger, scheduleId, runtimeVariables, null, channel));
+        return run(new RunParams(definition, input, trigger, scheduleId, runtimeVariables, null, channel, null));
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
                       Map<String, String> runtimeVariables, WorkflowRunContext workflowContext) {
-        return run(new RunParams(definition, input, trigger, scheduleId, runtimeVariables, workflowContext, null));
+        return run(new RunParams(definition, input, trigger, scheduleId, runtimeVariables, workflowContext, null, null));
     }
 
     private String run(RunParams params) {
@@ -112,7 +117,7 @@ public class AgentRunner {
                 }
             }
             var sandbox = sandboxService.createSandbox(sandboxConfig, runId, params.definition.userId);
-            var execParams = new ExecuteAsyncParams(runEntity, params.definition, sandbox, resolvedVariables, traceContext, params.channel, staged);
+            var execParams = new ExecuteAsyncParams(runEntity, params.definition, sandbox, resolvedVariables, traceContext, params.channel, staged, params.attachments);
             CompletableFuture<Void> future = CompletableFuture.runAsync(
                     () -> executeAsync(execParams),
                     executorService);
@@ -134,7 +139,7 @@ public class AgentRunner {
             if (params.staged && params.sandbox != null) {
                 sandboxService.ensurePendingFilesUploaded(params.runEntity.id);
             }
-            execute(params.runEntity, params.definition, params.sandbox, params.resolvedVariables, params.traceContext);
+            execute(params.runEntity, params.definition, params.sandbox, params.resolvedVariables, params.traceContext, params.attachments);
             if (params.channel != null) {
                 sendToChannelIfConfigured(params.runEntity, params.channel);
             }
@@ -144,20 +149,20 @@ public class AgentRunner {
     }
 
     private void execute(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,
-                         WorkflowTraceContext traceContext) {
+                         WorkflowTraceContext traceContext, List<LLMCallRequest.Attachment> attachments) {
         if (definition.type == DefinitionType.LLM_CALL) {
             executeLLMCall(runEntity, definition, traceContext);
         } else {
-            executeAgent(runEntity, definition, sandbox, variables, traceContext);
+            executeAgent(runEntity, definition, sandbox, variables, traceContext, attachments);
         }
     }
 
     private void executeAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,
-                              WorkflowTraceContext traceContext) {
+                              WorkflowTraceContext traceContext, List<LLMCallRequest.Attachment> attachments) {
         var completed = new AtomicBoolean(false);
         Agent agent = null;
         try {
-            agent = builder.buildAgent(runEntity, definition, sandbox, variables);
+            agent = builder.buildAgent(runEntity, definition, sandbox, variables, attachments);
             var config = definition.publishedConfig;
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                     : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
@@ -330,11 +335,11 @@ public class AgentRunner {
 
     record RunParams(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
                      Map<String, String> runtimeVariables, WorkflowRunContext workflowContext,
-                     ChannelTarget channel) {
+                     ChannelTarget channel, List<LLMCallRequest.Attachment> attachments) {
     }
 
     private record ExecuteAsyncParams(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox,
                                       Map<String, Object> resolvedVariables, WorkflowTraceContext traceContext,
-                                      ChannelTarget channel, boolean staged) {
+                                      ChannelTarget channel, boolean staged, List<LLMCallRequest.Attachment> attachments) {
     }
 }

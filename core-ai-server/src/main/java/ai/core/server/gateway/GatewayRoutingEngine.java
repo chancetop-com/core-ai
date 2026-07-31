@@ -137,6 +137,10 @@ public class GatewayRoutingEngine {
     /**
      * Whether this modelId currently resolves to an enabled model on an enabled provider.
      */
+    public GatewayModelConfig modelConfig(String modelId) {
+        return snapshot().models.stream().filter(model -> modelId.equals(model.modelId)).findFirst().orElse(null);
+    }
+
     public boolean isRoutable(String modelId) {
         if (!hasText(modelId)) return false;
         return registeredModels(snapshot(), null).stream().anyMatch(route -> modelId.equals(route.model.modelId));
@@ -245,6 +249,7 @@ public class GatewayRoutingEngine {
         view.providerName = route.provider.name;
         view.endpointTypes = route.model.endpointTypes;
         view.supportsVision = route.model.supportsVision;
+        view.supportsVideo = route.model.supportsVideo;
         return view;
     }
 

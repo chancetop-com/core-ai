@@ -48,6 +48,15 @@ public class GatewayModelConfig {
     @Field(name = "supports_vision")
     public Boolean supportsVision;
 
+    @Field(name = "supports_video")
+    public Boolean supportsVideo;
+
+    @Field(name = "max_video_bytes")
+    public Long maxVideoBytes;
+
+    @Field(name = "max_video_seconds")
+    public Long maxVideoSeconds;
+
     @Field(name = "input_price_per_1m_tokens")
     public Double inputPricePer1MTokens;
 

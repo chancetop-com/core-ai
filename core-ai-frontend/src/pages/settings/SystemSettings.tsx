@@ -8,6 +8,10 @@ export default function SystemSettings() {
   const [memoryExtractionModel, setMemoryExtractionModel] = useState('');
   const [llmModel, setLlmModel] = useState('');
   const [llmMultiModalModel, setLlmMultiModalModel] = useState('');
+  const [captionImageModel, setCaptionImageModel] = useState('');
+  const [imageGenerationModel, setImageGenerationModel] = useState('');
+  const [videoGenerationModel, setVideoGenerationModel] = useState('');
+  const [videoUnderstandingModel, setVideoUnderstandingModel] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -34,6 +38,10 @@ export default function SystemSettings() {
       setMemoryExtractionModel(settingsResponse.memory_extraction_model || '');
       setLlmModel(settingsResponse.llm_model || '');
       setLlmMultiModalModel(settingsResponse.llm_model_multimodal || '');
+      setCaptionImageModel(settingsResponse.caption_image_model || '');
+      setImageGenerationModel(settingsResponse.image_generation_model || '');
+      setVideoGenerationModel(settingsResponse.video_generation_model || '');
+      setVideoUnderstandingModel(settingsResponse.video_understanding_model || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load system settings');
     } finally {
@@ -54,11 +62,19 @@ export default function SystemSettings() {
         memory_extraction_model: memoryExtractionModel.trim() || null,
         llm_model: llmModel.trim() || null,
         llm_model_multimodal: llmMultiModalModel.trim() || null,
+        caption_image_model: captionImageModel.trim() || null,
+        image_generation_model: imageGenerationModel.trim() || null,
+        video_generation_model: videoGenerationModel.trim() || null,
+        video_understanding_model: videoUnderstandingModel.trim() || null,
       });
       setSettings(response);
       setMemoryExtractionModel(response.memory_extraction_model || '');
       setLlmModel(response.llm_model || '');
       setLlmMultiModalModel(response.llm_model_multimodal || '');
+      setCaptionImageModel(response.caption_image_model || '');
+      setImageGenerationModel(response.image_generation_model || '');
+      setVideoGenerationModel(response.video_generation_model || '');
+      setVideoUnderstandingModel(response.video_understanding_model || '');
       setMessage('System settings saved. Memory extraction will use the new model on the next consolidation run.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save system settings');
@@ -175,6 +191,54 @@ export default function SystemSettings() {
             <div style={{ color: 'var(--color-text-secondary)' }}>Effective model</div>
             <div className="font-mono mt-1">{llmMultiModalModel || settings?.default_llm_model_multimodal || 'Not configured'}</div>
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+          <h2 className="font-semibold">Default Media &amp; Tool Models</h2>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Default models used by caption_image, image generation, video generation and video understanding
+            when no model is specified on the agent. Leave empty to fall back to gateway routing.
+          </p>
+        </div>
+        <div className="p-5 space-y-5">
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Caption image model</span>
+            <ModelSelect
+              value={captionImageModel}
+              models={chatModels}
+              defaultModel={settings?.default_caption_image_model}
+              onChange={setCaptionImageModel}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Image generation model</span>
+            <ModelSelect
+              value={imageGenerationModel}
+              models={chatModels}
+              defaultModel={settings?.default_image_generation_model}
+              onChange={setImageGenerationModel}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Video generation model</span>
+            <ModelSelect
+              value={videoGenerationModel}
+              models={chatModels}
+              defaultModel={settings?.default_video_generation_model}
+              onChange={setVideoGenerationModel}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Video understanding model</span>
+            <ModelSelect
+              value={videoUnderstandingModel}
+              models={chatModels}
+              defaultModel={settings?.default_video_understanding_model}
+              onChange={setVideoUnderstandingModel}
+            />
+          </label>
         </div>
       </section>
 

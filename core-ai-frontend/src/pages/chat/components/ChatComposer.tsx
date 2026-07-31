@@ -22,7 +22,7 @@ type ChatStatus = 'idle' | 'running';
 
 export interface ComposerAttachment {
   url: string;
-  type: 'PDF' | 'IMAGE' | 'FILE';
+  type: 'PDF' | 'IMAGE' | 'FILE' | 'VIDEO';
   file_name?: string;
   content_type?: string;
   category?: string;
@@ -76,6 +76,11 @@ const VALID_ATTACHMENT_TYPES = new Set([
   'image/gif',
   'image/webp',
   'image/svg+xml',
+  // videos
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/x-msvideo',
   // documents
   'application/pdf',
   'application/msword',
@@ -101,6 +106,7 @@ const VALID_ATTACHMENT_TYPES = new Set([
 ]);
 
 const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
+const MAX_VIDEO_ATTACHMENT_SIZE = 2000 * 1024 * 1024;
 const COLLAPSE_THRESHOLD = 8;
 
 function countUniqueIds(...sets: Set<string>[]): number {
@@ -333,12 +339,15 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       onToast(`Unsupported file type: ${file.type}.`);
       return;
     }
-    if (file.size > MAX_ATTACHMENT_SIZE) {
-      onToast(`File too large: ${file.name}. Maximum size is 20MB.`);
+    const isVideo = file.type.startsWith('video/');
+    const maxSize = isVideo ? MAX_VIDEO_ATTACHMENT_SIZE : MAX_ATTACHMENT_SIZE;
+    if (file.size > maxSize) {
+      const limit = isVideo ? '2GB' : '20MB';
+      onToast(`File too large: ${file.name}. Maximum size is ${limit}.`);
       return;
     }
 
-    const isMultimodal = file.type.startsWith('image/') || file.type === 'application/pdf';
+    const isMultimodal = file.type.startsWith('image/') || file.type === 'application/pdf' || isVideo;
     const category = isMultimodal ? 'multimodal' : 'sandbox';
     const id = crypto.randomUUID();
     setPendingAttachments(prev => [...prev, {
@@ -438,7 +447,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
 
     await onSend(text, readyAttachments.map(attachment => ({
       url: attachment.url,
-      type: attachment.contentType === 'application/pdf' ? 'PDF' : attachment.contentType.startsWith('image/') ? 'IMAGE' : 'FILE',
+      type: attachment.contentType === 'application/pdf' ? 'PDF' : attachment.contentType.startsWith('image/') ? 'IMAGE' : attachment.contentType.startsWith('video/') ? 'VIDEO' : 'FILE',
       file_name: attachment.name,
       content_type: attachment.contentType,
       category: attachment.category,
@@ -609,7 +618,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/html,text/css,text/javascript,application/json,application/xml,text/xml,application/zip,application/x-tar,application/gzip"
+        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml,video/mp4,video/webm,video/quicktime,video/x-msvideo,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/html,text/css,text/javascript,application/json,application/xml,text/xml,application/zip,application/x-tar,application/gzip"
         multiple
         onChange={handleFileChange}
         className="hidden"

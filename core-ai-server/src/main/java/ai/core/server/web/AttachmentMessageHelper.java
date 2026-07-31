@@ -59,13 +59,27 @@ public class AttachmentMessageHelper {
 
     public static List<Map<String, String>> collectImageAttachments(SendMessageRequest request) {
         if (request.attachments == null || request.attachments.isEmpty()) return null;
+        var result = collectMultimodalAttachments(request);
+        if (result == null) return null;
+        result.removeIf(attachment -> !"IMAGE".equals(attachment.get("type")));
+        return result.isEmpty() ? null : result;
+    }
+
+    public static List<Map<String, String>> collectMultimodalAttachments(SendMessageRequest request) {
+        if (request.attachments == null || request.attachments.isEmpty()) return null;
         var result = new ArrayList<Map<String, String>>();
         for (var att : request.attachments) {
-            if (!"multimodal".equals(att.category) || !"IMAGE".equals(att.type)
-                    || att.container == null || att.blobName == null || att.contentType == null) continue;
+            if (!"multimodal".equals(att.category) || att.container == null || att.blobName == null) continue;
+            if (!"IMAGE".equals(att.type) && !"VIDEO".equals(att.type)) continue;
+            var contentType = att.contentType;
+            if ((contentType == null || contentType.isBlank()) && "VIDEO".equals(att.type)) {
+                contentType = "video/mp4"; // front-end may omit content type; the processing pod re-verifies via headObject
+            }
+            if (contentType == null) continue;
             result.add(Map.of(
+                    "type", att.type,
                     "fileName", att.fileName != null ? att.fileName : att.blobName,
-                    "contentType", att.contentType,
+                    "contentType", contentType,
                     "container", att.container,
                     "blobName", att.blobName));
         }
@@ -79,6 +93,7 @@ public class AttachmentMessageHelper {
         var sandboxPaths = new ArrayList<String>();
         var urlParts = new ArrayList<String>();
         for (var att : request.attachments) {
+            if ("VIDEO".equals(att.type)) continue; // video is resolved only via understand_video reference; never leak URL or sandbox path
             if ("multimodal".equals(att.category) && att.url != null) {
                 // multimodal images/PDFs: pass blob URL directly so AI can use caption_image/summarize_pdf
                 urlParts.add(att.url);

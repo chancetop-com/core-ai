@@ -263,7 +263,7 @@ export const sessionApi = {
     });
   },
 
-  sendMessage: (sessionId: string, message: string, variables?: Record<string, string>, attachments?: { url: string; type: string; file_name?: string; category?: string; container?: string; blob_name?: string }[]) =>
+  sendMessage: (sessionId: string, message: string, variables?: Record<string, string>, attachments?: { url: string; type: string; file_name?: string; content_type?: string; category?: string; container?: string; blob_name?: string }[]) =>
     request<void>(`/api/sessions/${sessionId}/messages`, {
       method: 'POST',
       body: JSON.stringify({ message, variables, attachments }),
@@ -273,7 +273,7 @@ export const sessionApi = {
     sessionId: string,
     message: string,
     variables: Record<string, string> | undefined,
-    attachments: { url: string; type: string; file_name?: string; category?: string; container?: string; blob_name?: string }[] | undefined,
+    attachments: { url: string; type: string; file_name?: string; content_type?: string; category?: string; container?: string; blob_name?: string }[] | undefined,
     onEvent: (event: SseEvent) => void,
     onError?: (err: unknown) => void,
     onClose?: () => void,

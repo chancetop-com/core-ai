@@ -6,6 +6,7 @@ import ai.core.tool.tools.CaptionImageTool;
 import ai.core.tool.tools.EditFileTool;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GenerateVideoTool;
+import ai.core.tool.tools.UnderstandVideoTool;
 import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
@@ -84,6 +85,11 @@ public final class BuiltinTools {
             SummarizePdfTool.builder().build()
     );
 
+    public static List<ToolCall> multimodal(UnderstandVideoTool.VideoUnderstandingService service) {
+        return List.of(CaptionImageTool.builder().build(), SummarizePdfTool.builder().build(),
+                UnderstandVideoTool.builder(service).build());
+    }
+
     public static final List<ToolCall> WEB = List.of(
             WebFetchTool.builder().build(),
             WebSearchTool.builder().build()
@@ -129,15 +135,27 @@ public final class BuiltinTools {
     );
 
     public static List<ToolCall> all(MediaProvider mediaProvider, GitHubTokenProvider gitHubTokenProvider) {
+        return all(mediaProvider, gitHubTokenProvider, null);
+    }
+
+    public static List<ToolCall> all(MediaProvider mediaProvider, GitHubTokenProvider gitHubTokenProvider,
+                                     UnderstandVideoTool.VideoUnderstandingService videoService) {
         var tools = new java.util.ArrayList<>(ALL);
         tools.removeIf(tool -> tool instanceof RequireGithubInstallationTokenTool || tool instanceof GenerateVideoTool);
         tools.add(RequireGithubInstallationTokenTool.builder(gitHubTokenProvider).build());
         tools.add(GenerateVideoTool.builder(mediaProvider).build());
+        if (videoService != null) tools.add(UnderstandVideoTool.builder(videoService).build());
         return List.copyOf(tools);
     }
 
     public static List<ToolCall> fromSet(String setName, MediaProvider mediaProvider, GitHubTokenProvider gitHubTokenProvider) {
-        if (ToolProvider.BUILTIN_ALL.equals(setName)) return all(mediaProvider, gitHubTokenProvider);
+        return fromSet(setName, mediaProvider, gitHubTokenProvider, null);
+    }
+
+    public static List<ToolCall> fromSet(String setName, MediaProvider mediaProvider, GitHubTokenProvider gitHubTokenProvider,
+                                          UnderstandVideoTool.VideoUnderstandingService videoService) {
+        if (ToolProvider.BUILTIN_ALL.equals(setName)) return all(mediaProvider, gitHubTokenProvider, videoService);
+        if (ToolProvider.BUILTIN_MULTIMODAL.equals(setName) && videoService != null) return multimodal(videoService);
         if (ToolProvider.BUILTIN_GITHUB.equals(setName)) return List.of(RequireGithubInstallationTokenTool.builder(gitHubTokenProvider).build());
         if (ToolProvider.BUILTIN_MEDIA_GENERATION.equals(setName)) {
             return List.of(GenerateImageTool.builder().build(), GenerateVideoTool.builder(mediaProvider).build(), GetVideoStatusTool.builder().build());

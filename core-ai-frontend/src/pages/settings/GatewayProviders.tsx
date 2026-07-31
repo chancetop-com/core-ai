@@ -58,6 +58,7 @@ type ProviderFormState = {
   hasGoogleCredentials: boolean;
   vertexProjectId: string;
   vertexLocation: string;
+  vertexGcsBucket: string;
   requestExtraBody: string;
   timeoutSeconds: string;
   connectTimeoutSeconds: string;
@@ -76,6 +77,9 @@ type ModelFormState = {
   supportsStream: boolean;
   supportsTools: boolean;
   supportsVision: boolean;
+  supportsVideo: boolean;
+  maxVideoBytes: string;
+  maxVideoSeconds: string;
   inputPricePer1MTokens: string;
   outputPricePer1MTokens: string;
 };
@@ -99,6 +103,7 @@ const emptyProviderForm: ProviderFormState = {
   hasGoogleCredentials: false,
   vertexProjectId: '',
   vertexLocation: 'us-central1',
+  vertexGcsBucket: '',
   requestExtraBody: '',
   timeoutSeconds: '30',
   connectTimeoutSeconds: '10',
@@ -116,6 +121,9 @@ const emptyModelForm: ModelFormState = {
   supportsStream: true,
   supportsTools: false,
   supportsVision: false,
+  supportsVideo: false,
+  maxVideoBytes: '',
+  maxVideoSeconds: '',
   inputPricePer1MTokens: '',
   outputPricePer1MTokens: '',
 };
@@ -196,6 +204,7 @@ export default function GatewayProviders() {
        hasGoogleCredentials: provider.hasGoogleCredentials === true,
        vertexProjectId: provider.vertexProjectId || '',
        vertexLocation: provider.vertexLocation || 'us-central1',
+       vertexGcsBucket: provider.vertexGcsBucket || '',
        requestExtraBody: provider.requestExtraBody || '',
       timeoutSeconds: String(provider.timeoutSeconds || 30),
       connectTimeoutSeconds: String(provider.connectTimeoutSeconds || 10),
@@ -235,6 +244,7 @@ export default function GatewayProviders() {
          googleCredentialsJson: providerForm.googleCredentialsJson,
          vertexProjectId: providerForm.vertexProjectId,
          vertexLocation: providerForm.vertexLocation,
+         vertexGcsBucket: providerForm.vertexGcsBucket,
          requestExtraBody: providerForm.requestExtraBody,
         timeoutSeconds: Number(providerForm.timeoutSeconds || 30),
         connectTimeoutSeconds: Number(providerForm.connectTimeoutSeconds || 10),
@@ -304,6 +314,9 @@ export default function GatewayProviders() {
       supportsStream: model.supportsStream === true,
       supportsTools: model.supportsTools === true,
       supportsVision: model.supportsVision === true,
+      supportsVideo: model.supportsVideo === true,
+      maxVideoBytes: model.maxVideoBytes == null ? '' : String(model.maxVideoBytes),
+      maxVideoSeconds: model.maxVideoSeconds == null ? '' : String(model.maxVideoSeconds),
       inputPricePer1MTokens: model.inputPricePer1MTokens == null ? '' : String(model.inputPricePer1MTokens),
       outputPricePer1MTokens: model.outputPricePer1MTokens == null ? '' : String(model.outputPricePer1MTokens),
     });
@@ -330,6 +343,9 @@ export default function GatewayProviders() {
         endpointTypes: modelForm.endpointTypes,
         enabled: modelForm.enabled,
         priority: optionalNumber(modelForm.priority, 'Priority'),
+        supportsVideo: modelForm.supportsVideo,
+        maxVideoBytes: optionalNumber(modelForm.maxVideoBytes, 'Max video bytes'),
+        maxVideoSeconds: optionalNumber(modelForm.maxVideoSeconds, 'Max video seconds'),
       };
       if (modelForm.id) {
         await api.gateway.updateModel(modelForm.id, payload);
@@ -780,14 +796,17 @@ function renderProviderPanel(props: {
 
           {isVertexMediaProtocol(form.mediaProtocol) && (
             <>
-             <div className="grid grid-cols-2 gap-4">
-               <Field label="GCP Project ID">
-                 <input className={inputClass} style={inputStyle} value={form.vertexProjectId} onChange={e => setForm({ ...form, vertexProjectId: e.target.value })} />
-               </Field>
-               <Field label="GCP Location">
-                 <input className={inputClass} style={inputStyle} value={form.vertexLocation} onChange={e => setForm({ ...form, vertexLocation: e.target.value })} />
-               </Field>
-             </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="GCP Project ID">
+                  <input className={inputClass} style={inputStyle} value={form.vertexProjectId} onChange={e => setForm({ ...form, vertexProjectId: e.target.value })} />
+                </Field>
+                <Field label="GCP Location">
+                  <input className={inputClass} style={inputStyle} value={form.vertexLocation} onChange={e => setForm({ ...form, vertexLocation: e.target.value })} />
+                </Field>
+                <Field label="GCS Bucket (video understanding)">
+                  <input className={inputClass} style={inputStyle} value={form.vertexGcsBucket} placeholder="my-gemini-video-bucket" onChange={e => setForm({ ...form, vertexGcsBucket: e.target.value })} />
+                </Field>
+              </div>
              {form.mediaAuthType === 'GOOGLE_SERVICE_ACCOUNT_JSON' && (
                <Field label={form.hasGoogleCredentials ? 'Service Account JSON (leave empty to keep current)' : 'Service Account JSON'}>
                  <textarea className={`${inputClass} min-h-36 font-mono`} style={inputStyle} value={form.googleCredentialsJson} onChange={e => setForm({ ...form, googleCredentialsJson: e.target.value })} />
@@ -905,6 +924,18 @@ function renderModelPanel(props: {
             ))}
           </div>
         </Field>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Video understanding">
+            <Checkbox checked={form.supportsVideo} onChange={checked => setForm({ ...form, supportsVideo: checked })}>Supports video</Checkbox>
+          </Field>
+          <Field label="Video limits">
+            <div className="grid grid-cols-2 gap-2">
+              <input className={inputClass} style={inputStyle} type="number" min={1} placeholder="Max bytes" value={form.maxVideoBytes} onChange={e => setForm({ ...form, maxVideoBytes: e.target.value })} />
+              <input className={inputClass} style={inputStyle} type="number" min={1} placeholder="Max seconds" value={form.maxVideoSeconds} onChange={e => setForm({ ...form, maxVideoSeconds: e.target.value })} />
+            </div>
+          </Field>
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <ReadOnlyField label="Capabilities">
@@ -1158,12 +1189,14 @@ function formatCapabilities(model: {
   supportsStream?: boolean | null;
   supportsTools?: boolean | null;
   supportsVision?: boolean | null;
+  supportsVideo?: boolean | null;
   contextWindow?: number | null;
 }) {
   return [
     model.supportsStream ? 'stream' : null,
     model.supportsTools ? 'tools' : null,
     model.supportsVision ? 'vision' : null,
+    model.supportsVideo ? 'video' : null,
     model.contextWindow ? `${model.contextWindow} ctx` : null,
   ].filter(Boolean).join(', ') || '-';
 }

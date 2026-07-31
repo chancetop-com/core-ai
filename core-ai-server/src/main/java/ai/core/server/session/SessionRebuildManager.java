@@ -26,6 +26,7 @@ import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.sandbox.Sandbox;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
@@ -45,11 +46,14 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-
 /**
  * @author stephen
  */
 public class SessionRebuildManager {
+    private static void putModel(Map<String, Object> variables, String key, String model) {
+        if (model != null) variables.put(key, model);
+    }
+
     private final Logger logger = LoggerFactory.getLogger(SessionRebuildManager.class);
 
     private final ChatMessageService chatMessageService;
@@ -66,6 +70,7 @@ public class SessionRebuildManager {
     private final PublicUrlConfiguration publicUrlConfiguration;
     private final EventPublisher eventPublisher;
     private final SessionOwnershipRegistry ownershipRegistry;
+    private final SystemSettingsService systemSettingsService;
 
     public SessionRebuildManager(Deps deps) {
         this.chatMessageService = deps.chatMessageService;
@@ -82,6 +87,7 @@ public class SessionRebuildManager {
         this.publicUrlConfiguration = deps.publicUrlConfiguration;
         this.eventPublisher = deps.eventPublisher;
         this.ownershipRegistry = deps.ownershipRegistry;
+        this.systemSettingsService = deps.systemSettingsService;
     }
 
     public SessionState buildStateFromDb(String sessionId) {
@@ -198,6 +204,7 @@ public class SessionRebuildManager {
                 .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(userId, fileService,
                                 artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
+                .customVariables(mediaModelVariables())
                 .build() : null;
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
         var sessionRef = new InProcessAgentSession[1];
@@ -206,6 +213,13 @@ public class SessionRebuildManager {
             if (sandbox != null) context.sandbox(sandbox);
         }
         return new SandboxSetup(context, sessionRef, sandboxOn);
+    }
+    private Map<String, Object> mediaModelVariables() {
+        var variables = new HashMap<String, Object>();
+        putModel(variables, "media.caption.model", systemSettingsService.captionImageModel());
+        putModel(variables, "media.image.model", systemSettingsService.imageGenerationModel());
+        putModel(variables, "media.video.model", systemSettingsService.videoGenerationModel());
+        return variables;
     }
     private Sandbox createOrReattachSandbox(String sessionId, String userId, InProcessAgentSession[] sessionRef) {
         var sandbox = reattachExistingSandbox(sessionId, userId, sessionRef);
@@ -429,7 +443,8 @@ public class SessionRebuildManager {
                         DatasetRecordService datasetRecordService,
                         FileService fileService,
                         PublicUrlConfiguration publicUrlConfiguration,
-                        EventPublisher eventPublisher,
-                        SessionOwnershipRegistry ownershipRegistry) {
+                         EventPublisher eventPublisher,
+                         SessionOwnershipRegistry ownershipRegistry,
+                         SystemSettingsService systemSettingsService) {
     }
 }

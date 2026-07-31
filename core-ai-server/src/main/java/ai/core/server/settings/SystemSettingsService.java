@@ -40,12 +40,7 @@ public class SystemSettingsService {
     public SystemSettingsView update(SystemSettingsRequest request, String userId) {
         requireAdmin(userId);
         if (request == null) throw new BadRequestException("request is required");
-        var memoryExtractionModel = normalizeModel(request.memoryExtractionModel);
-        validateMemoryExtractionModel(memoryExtractionModel);
-        var llmModel = normalizeModel(request.llmModel);
-        validateChatModel(llmModel);
-        var llmMultiModalModel = normalizeModel(request.llmMultiModalModel);
-        validateChatModel(llmMultiModalModel);
+        var models = normalizeAndValidate(request);
 
         var now = ZonedDateTime.now();
         var entity = entity();
@@ -54,21 +49,46 @@ public class SystemSettingsService {
             entity.id = SETTINGS_ID;
             entity.createdBy = userId;
             entity.createdAt = now;
-            entity.memoryExtractionModel = memoryExtractionModel;
-            entity.llmModel = llmModel;
-            entity.llmMultiModalModel = llmMultiModalModel;
+            applyModels(entity, models);
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.insert(entity);
         } else {
-            entity.memoryExtractionModel = memoryExtractionModel;
-            entity.llmModel = llmModel;
-            entity.llmMultiModalModel = llmMultiModalModel;
+            applyModels(entity, models);
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.replace(entity);
         }
         return toView(entity);
+    }
+
+    private NormalizedSettings normalizeAndValidate(SystemSettingsRequest request) {
+        var memoryExtractionModel = normalizeModel(request.memoryExtractionModel);
+        validateMemoryExtractionModel(memoryExtractionModel);
+        var llmModel = normalizeModel(request.llmModel);
+        validateChatModel(llmModel);
+        var llmMultiModalModel = normalizeModel(request.llmMultiModalModel);
+        validateChatModel(llmMultiModalModel);
+        var captionImageModel = normalizeModel(request.captionImageModel);
+        validateChatModel(captionImageModel);
+        var imageGenerationModel = normalizeModel(request.imageGenerationModel);
+        validateModelExists(imageGenerationModel, "imageGenerationModel");
+        var videoGenerationModel = normalizeModel(request.videoGenerationModel);
+        validateModelExists(videoGenerationModel, "videoGenerationModel");
+        var videoUnderstandingModel = normalizeModel(request.videoUnderstandingModel);
+        validateModelExists(videoUnderstandingModel, "videoUnderstandingModel");
+        return new NormalizedSettings(memoryExtractionModel, llmModel, llmMultiModalModel, captionImageModel,
+                imageGenerationModel, videoGenerationModel, videoUnderstandingModel);
+    }
+
+    private void applyModels(SystemSettings entity, NormalizedSettings models) {
+        entity.memoryExtractionModel = models.memoryExtractionModel();
+        entity.llmModel = models.llmModel();
+        entity.llmMultiModalModel = models.llmMultiModalModel();
+        entity.captionImageModel = models.captionImageModel();
+        entity.imageGenerationModel = models.imageGenerationModel();
+        entity.videoGenerationModel = models.videoGenerationModel();
+        entity.videoUnderstandingModel = models.videoUnderstandingModel();
     }
 
     public String memoryExtractionModel() {
@@ -87,6 +107,26 @@ public class SystemSettingsService {
         var entity = entity();
         var configured = entity == null ? null : normalizeModel(entity.llmMultiModalModel);
         return configured == null ? defaultLlmMultiModalModel : configured;
+    }
+
+    public String captionImageModel() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.captionImageModel);
+    }
+
+    public String imageGenerationModel() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.imageGenerationModel);
+    }
+
+    public String videoGenerationModel() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.videoGenerationModel);
+    }
+
+    public String videoUnderstandingModel() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
     }
 
     private SystemSettings entity() {
@@ -121,6 +161,19 @@ public class SystemSettingsService {
         }
     }
 
+    private void validateModelExists(String model, String field) {
+        if (model == null) return;
+        var query = new Query();
+        query.filter = Filters.and(
+                Filters.eq("model_id", model),
+                Filters.eq("enabled", Boolean.TRUE)
+        );
+        query.limit = 1;
+        if (gatewayModelCollection.find(query).isEmpty()) {
+            throw new BadRequestException(field + " must be an enabled gateway model: " + model);
+        }
+    }
+
     private SystemSettingsView toView(SystemSettings entity) {
         var view = new SystemSettingsView();
         view.memoryExtractionModel = entity == null ? null : normalizeModel(entity.memoryExtractionModel);
@@ -129,6 +182,10 @@ public class SystemSettingsService {
         view.defaultLlmModel = defaultLlmModel;
         view.llmMultiModalModel = entity == null ? null : normalizeModel(entity.llmMultiModalModel);
         view.defaultLlmMultiModalModel = defaultLlmMultiModalModel;
+        view.captionImageModel = entity == null ? null : normalizeModel(entity.captionImageModel);
+        view.imageGenerationModel = entity == null ? null : normalizeModel(entity.imageGenerationModel);
+        view.videoGenerationModel = entity == null ? null : normalizeModel(entity.videoGenerationModel);
+        view.videoUnderstandingModel = entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
         view.createdBy = entity == null ? null : entity.createdBy;
         view.updatedBy = entity == null ? null : entity.updatedBy;
         view.createdAt = entity == null ? null : entity.createdAt;
@@ -148,4 +205,8 @@ public class SystemSettingsService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    private record NormalizedSettings(String memoryExtractionModel, String llmModel, String llmMultiModalModel,
+                                       String captionImageModel, String imageGenerationModel, String videoGenerationModel,
+                                       String videoUnderstandingModel) {
+    }
 }

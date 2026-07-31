@@ -979,7 +979,7 @@ export default function Chat() {
     sid: string,
     message: string,
     variables: Record<string, string> | undefined,
-    attachments: { url: string; type: string; file_name?: string; category?: string; container?: string; blob_name?: string }[] | undefined,
+    attachments: { url: string; type: string; file_name?: string; content_type?: string; category?: string; container?: string; blob_name?: string }[] | undefined,
   ) => {
     abortSSE();
     const connectionSeq = ++sseConnectionSeqRef.current;
@@ -1147,6 +1147,7 @@ export default function Chat() {
             url: a.url,
             type: a.type,
             file_name: a.file_name,
+            content_type: a.content_type,
             category: a.category,
             container: a.container,
             blob_name: a.blob_name,

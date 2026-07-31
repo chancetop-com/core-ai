@@ -142,11 +142,11 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
         var pendingFiles = AttachmentMessageHelper.collectPendingFiles(sessionId, request);
-        var imageAttachments = AttachmentMessageHelper.collectImageAttachments(request);
+        var multimodalAttachments = AttachmentMessageHelper.collectMultimodalAttachments(request);
         var message = AttachmentMessageHelper.buildMessageWithAttachments(request);
         var command = SessionCommand.sendMessage(sessionId, userId, message,
                 request.variables != null ? new HashMap<>(request.variables) : null,
-                pendingFiles, imageAttachments);
+                pendingFiles, multimodalAttachments);
         commandPublisher.publish(command);
     }
 

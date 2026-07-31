@@ -18,6 +18,7 @@ public class GatewayProviderRequest {
     public String googleCredentialsJson;
     public String vertexProjectId;
     public String vertexLocation;
+    public String vertexGcsBucket;
     public String requestExtraBody;
     public Long timeoutSeconds;
     public Long connectTimeoutSeconds;

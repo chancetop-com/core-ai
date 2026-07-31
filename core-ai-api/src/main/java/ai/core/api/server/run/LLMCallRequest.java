@@ -21,7 +21,9 @@ public class LLMCallRequest {
         @Property(name = "PDF")
         PDF,
         @Property(name = "FILE")
-        FILE
+        FILE,
+        @Property(name = "VIDEO")
+        VIDEO
     }
 
     public static class Attachment {

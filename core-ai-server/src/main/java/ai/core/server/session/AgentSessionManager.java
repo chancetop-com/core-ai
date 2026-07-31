@@ -29,6 +29,7 @@ import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
@@ -60,6 +61,14 @@ import java.util.concurrent.ConcurrentMap;
  * @author stephen
  */
 public class AgentSessionManager {
+    private static List<String> resolveConfigList(List<String> published, List<String> fallback) {
+        return published != null ? published : fallback;
+    }
+
+    private static void putModel(Map<String, Object> variables, String key, String model) {
+        if (model != null) variables.put(key, model);
+    }
+
     private final Logger logger = LoggerFactory.getLogger(AgentSessionManager.class);
     private final ConcurrentMap<String, InProcessAgentSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Long> sessionLastActivity = new ConcurrentHashMap<>();
@@ -107,6 +116,8 @@ public class AgentSessionManager {
     AgentMemoryExperimentService memoryExperimentService;
     @Inject
     MediaProvider mediaProvider;
+    @Inject
+    SystemSettingsService systemSettingsService;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -128,21 +139,18 @@ public class AgentSessionManager {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection,
                     skillManager(), subAgentManager(), sandboxService, artifactSetup,
                     toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService,
-                    publicUrlConfiguration, eventPublisher, ownershipRegistry));
+                    publicUrlConfiguration, eventPublisher, ownershipRegistry, systemSettingsService));
         }
         return rebuildManager;
     }
-
     private SessionDatasetHelper datasetHelper() {
         if (datasetHelper == null) datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
         return datasetHelper;
     }
-
     private PromptInject channelInject(SessionConfig config) {
         if (config == null || config.channelType == null || config.channelType.isBlank()) return null;
         return () -> "You are communicating with the user through the " + config.channelType + " channel.";
     }
-
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
         session.onEvent(chatMessageService.listener(sessionId));
         session.onEvent(new SseEventBridge(sessionId, eventPublisher));
@@ -165,23 +173,12 @@ public class AgentSessionManager {
                 .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(userId, fileService,
                                 artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
+                .customVariables(mediaModelVariables())
                 .build();
         setMediaProvider(context, userId, sessionId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
-        Map<String, Object> extraVars = null;
-        if (effectiveConfig.datasetId != null && !effectiveConfig.datasetId.isBlank()) {
-            var dp = new AgentDatasetConfig();
-            dp.datasetId = effectiveConfig.datasetId;
-            dp.permission = DatasetPermission.READ;
-            var datasetConfig = List.of(dp);
-            effectiveConfig.systemPrompt = datasetHelper().appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
-            extraVars = datasetHelper().buildDatasetSystemVars(datasetConfig);
-        }
-        if (effectiveConfig.channelType != null && !effectiveConfig.channelType.isBlank()) {
-            if (extraVars == null) extraVars = new HashMap<>();
-            extraVars.put("system.channel.type", effectiveConfig.channelType);
-        }
+        var extraVars = buildExtraVars(effectiveConfig, sessionDatasetConfig(effectiveConfig));
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry, context, null, extraVars, null,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
@@ -197,6 +194,36 @@ public class AgentSessionManager {
         claimOwnership(sessionId);
         return sessionId;
     }
+
+    private Map<String, Object> mediaModelVariables() {
+        var variables = new HashMap<String, Object>();
+        putModel(variables, "media.caption.model", systemSettingsService.captionImageModel());
+        putModel(variables, "media.image.model", systemSettingsService.imageGenerationModel());
+        putModel(variables, "media.video.model", systemSettingsService.videoGenerationModel());
+        return variables;
+    }
+
+    private List<AgentDatasetConfig> sessionDatasetConfig(SessionConfig config) {
+        if (config.datasetId == null || config.datasetId.isBlank()) return null;
+        var dp = new AgentDatasetConfig();
+        dp.datasetId = config.datasetId;
+        dp.permission = DatasetPermission.READ;
+        return List.of(dp);
+    }
+
+    private Map<String, Object> buildExtraVars(SessionConfig config, List<AgentDatasetConfig> datasetConfig) {
+        Map<String, Object> extraVars = null;
+        if (datasetConfig != null && !datasetConfig.isEmpty()) {
+            config.systemPrompt = datasetHelper().appendDatasetInstructions(config.systemPrompt, datasetConfig);
+            extraVars = datasetHelper().buildDatasetSystemVars(datasetConfig);
+        }
+        if (config.channelType != null && !config.channelType.isBlank()) {
+            if (extraVars == null) extraVars = new HashMap<>();
+            extraVars.put("system.channel.type", config.channelType);
+        }
+        return extraVars;
+    }
+
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
         return createSessionFromAgent(definition, overrides, userId, "chat");
     }
@@ -223,12 +250,8 @@ public class AgentSessionManager {
         sessions.put(sessionId, session);
         touchActivity(sessionId);
         claimOwnership(sessionId);
-        var loadedSkillIds = definition.publishedConfig != null && definition.publishedConfig.skillIds != null
-                ? definition.publishedConfig.skillIds
-                : definition.skillIds;
-        var loadedSubAgentIds = definition.publishedConfig != null && definition.publishedConfig.subAgentIds != null
-                ? definition.publishedConfig.subAgentIds
-                : definition.subAgentIds;
+        var loadedSkillIds = resolveConfigList(definition.publishedConfig != null ? definition.publishedConfig.skillIds : null, definition.skillIds);
+        var loadedSubAgentIds = resolveConfigList(definition.publishedConfig != null ? definition.publishedConfig.subAgentIds : null, definition.subAgentIds);
         skillManager().loadSkillsFromDefinition(session, definition);
         subAgentManager().loadSubAgentsFromDefinition(session, definition);
         return new SessionCreationResult(sessionId,
@@ -262,22 +285,12 @@ public class AgentSessionManager {
         var sandboxConfig = sandboxService.getEffectiveConfig(definition);
         var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
         var sessionRef = new InProcessAgentSession[1];
-        var sandbox2 = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId,
-                event -> {
-                    if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
-                });
-
+        var sandbox2 = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId, event -> {
+            if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
+        });
         var toolRegistry = subAgentManager().resolveToolsToRegistry(definition, sessionId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
-        Map<String, Object> extraVars = null;
-        if (datasetConfig != null && !datasetConfig.isEmpty()) {
-            config.systemPrompt = datasetHelper().appendDatasetInstructions(config.systemPrompt, datasetConfig);
-            extraVars = datasetHelper().buildDatasetSystemVars(datasetConfig);
-        }
-        if (config.channelType != null && !config.channelType.isBlank()) {
-            if (extraVars == null) extraVars = new HashMap<>();
-            extraVars.put("system.channel.type", config.channelType);
-        }
+        var extraVars = buildExtraVars(config, datasetConfig);
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
@@ -286,6 +299,7 @@ public class AgentSessionManager {
                 .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(userId, fileService,
                                 artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
+                .customVariables(mediaModelVariables())
                 .build();
         if (sandbox2 != null) context.sandbox(sandbox2);
         setMediaProvider(context, userId, sessionId);
@@ -299,9 +313,7 @@ public class AgentSessionManager {
                 memoryInject, channelInject(config)));
 
         var experimentConfig = memoryExperimentService.getConfig(definition.id);
-        if (experimentConfig != null) {
-            memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);
-        }
+        if (experimentConfig != null) memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);
         return new AgentBuildResult(agent, sessionRef);
     }
 
@@ -317,15 +329,11 @@ public class AgentSessionManager {
     }
 
     private void claimOwnership(String sessionId) {
-        if (ownershipRegistry != null) {
-            ownershipRegistry.claim(sessionId);
-        }
+        if (ownershipRegistry != null) ownershipRegistry.claim(sessionId);
     }
 
     private void renewSessionOwnership(String sessionId) {
-        if (ownershipRegistry != null) {
-            ownershipRegistry.claimOrRenew(sessionId);
-        }
+        if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
     }
     public InProcessAgentSession getSession(String sessionId) {
         return getSession(sessionId, null);
@@ -363,9 +371,7 @@ public class AgentSessionManager {
         return built;
     }
     public void touchSession(String sessionId) {
-        if (ownershipRegistry != null) {
-            ownershipRegistry.claimOrRenew(sessionId);
-        }
+        if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
     }
     public void closeSession(String sessionId) {
         var session = sessions.remove(sessionId);
@@ -376,12 +382,8 @@ public class AgentSessionManager {
         sandboxService.releaseSandbox(sessionId);
         chatMessageService.onSessionClosed(sessionId);
         sessionChannelService.close(sessionId);
-        if (channelRegistry != null) {
-            channelRegistry.removeSessionBridge(sessionId);
-        }
-        if (ownershipRegistry != null) {
-            ownershipRegistry.release(sessionId);
-        }
+        if (channelRegistry != null) channelRegistry.removeSessionBridge(sessionId);
+        if (ownershipRegistry != null) ownershipRegistry.release(sessionId);
     }
 
     private void captureSandboxSnapshot(String sessionId) {
@@ -443,8 +445,6 @@ public class AgentSessionManager {
         var session = getSession(sessionId);
         return subAgentManager().loadSubAgents(session, definitions);
     }
-    public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds) {
-    }
-    private record AgentBuildResult(Agent agent, InProcessAgentSession[] sessionRef) {
-    }
+    public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds) { }
+    private record AgentBuildResult(Agent agent, InProcessAgentSession[] sessionRef) { }
 }

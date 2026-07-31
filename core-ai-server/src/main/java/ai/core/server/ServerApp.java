@@ -22,12 +22,14 @@ import ai.core.server.domain.SessionFeedback;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.FileRecord;
+import ai.core.server.domain.GeminiFile;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.Notification;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.MediaJob;
+import ai.core.server.domain.SessionAttachmentRef;
 import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -76,8 +78,8 @@ public class ServerApp extends App {
     private void loadPlatformInfrastructure() {
         load(new ObjectStorageModule());
         load(new SseTransportModule());
-        load(new GatewayModule());
         load(new SettingsModule());
+        load(new GatewayModule());
         load(new PromptModule());
         load(new AnalyticsModule());
         load(new SandboxSnapshotModule());
@@ -172,6 +174,8 @@ public class ServerApp extends App {
         mongo.collection(AgentSchedule.class);
         mongo.collection(AgentRun.class);
         mongo.collection(FileRecord.class);
+        mongo.collection(GeminiFile.class);
+        mongo.collection(SessionAttachmentRef.class);
         mongo.collection(GatewayModelConfig.class);
         mongo.collection(GatewayProviderConfig.class);
         mongo.collection(MediaJob.class);

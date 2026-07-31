@@ -8,4 +8,5 @@ public class GatewayAvailableModelView {
     public String providerName;
     public List<String> endpointTypes;
     public Boolean supportsVision;
+    public Boolean supportsVideo;
 }

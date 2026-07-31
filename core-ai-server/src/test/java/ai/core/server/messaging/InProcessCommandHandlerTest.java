@@ -29,7 +29,7 @@ class InProcessCommandHandlerTest {
         var ownershipRegistry = mock(SessionOwnershipRegistry.class);
         var eventPublisher = mock(EventPublisher.class);
         doThrow(new RuntimeException("session missing")).when(sessionManager).getSession("s-1");
-        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, eventPublisher, null);
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, eventPublisher, null, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
 
@@ -54,7 +54,7 @@ class InProcessCommandHandlerTest {
         storageConfiguration.service = storageService;
         storageConfiguration.multimodalContainer = "uploads";
         var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService, ownershipRegistry,
-                null, null, storageConfiguration);
+                null, null, storageConfiguration, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
         var images = List.of(Map.of(
@@ -77,7 +77,7 @@ class InProcessCommandHandlerTest {
         var eventPublisher = mock(EventPublisher.class);
         var session = mock(InProcessAgentSession.class);
         when(sessionManager.getSession("s-1")).thenReturn(session);
-        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, eventPublisher, null);
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, eventPublisher, null, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
 

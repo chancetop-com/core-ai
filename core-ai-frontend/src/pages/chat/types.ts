@@ -61,7 +61,7 @@ export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | Sand
 
 export interface ChatAttachment {
   url: string;
-  type: 'IMAGE' | 'PDF' | 'FILE';
+  type: 'IMAGE' | 'PDF' | 'FILE' | 'VIDEO';
   file_name?: string;
 }
 

@@ -66,10 +66,10 @@ public class AgentMessageStreamChannelListener implements ChannelListener<SseBas
 
         // Build and publish command — same logic as AgentSessionWebServiceImpl.sendMessage()
         var pendingFiles = AttachmentMessageHelper.collectPendingFiles(sessionId, sendRequest);
-        var imageAttachments = AttachmentMessageHelper.collectImageAttachments(sendRequest);
+        var multimodalAttachments = AttachmentMessageHelper.collectMultimodalAttachments(sendRequest);
         var message = AttachmentMessageHelper.buildMessageWithAttachments(sendRequest);
         var variables = sendRequest.variables != null ? new HashMap<String, Object>(sendRequest.variables) : null;
-        var command = SessionCommand.sendMessage(sessionId, userId, message, variables, pendingFiles, imageAttachments);
+        var command = SessionCommand.sendMessage(sessionId, userId, message, variables, pendingFiles, multimodalAttachments);
         commandPublisher.publish(command);
     }
 

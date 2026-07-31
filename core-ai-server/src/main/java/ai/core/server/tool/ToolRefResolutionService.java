@@ -54,19 +54,22 @@ class ToolRefResolutionService {
     private InternalApiToolLoader internalApiToolLoader;
     private final MediaProvider mediaProvider;
     private final GitHubTokenProvider gitHubTokenProvider;
+    private final ai.core.tool.tools.UnderstandVideoTool.VideoUnderstandingService videoService;
 
     // ── Constructor ──────────────────────────────────────────────────────────────
 
     ToolRefResolutionService(Map<String, ToolRegistryEntry> tools,
                               Map<String, List<ToolCall>> dynamicToolSets,
                               McpResolutionDependencies mcpDependencies, MediaProvider mediaProvider,
-                              GitHubTokenProvider gitHubTokenProvider) {
+                               GitHubTokenProvider gitHubTokenProvider,
+                               ai.core.tool.tools.UnderstandVideoTool.VideoUnderstandingService videoService) {
 
         this.tools = tools;
         this.dynamicToolSets = dynamicToolSets;
         this.mcpDependencies = mcpDependencies;
         this.mediaProvider = mediaProvider;
         this.gitHubTokenProvider = gitHubTokenProvider;
+        this.videoService = videoService;
     }
 
     // ── Dependency injection (called after construction) ─────────────────────────
@@ -107,8 +110,10 @@ class ToolRefResolutionService {
                 sessionMgr = prepareSessionMcpServers(toolRefs, sessionId, sandbox);
             }
         }
-        return new ToolRefResolver(tools, internalApiToolLoader, dynamicToolSets, mediaProvider, gitHubTokenProvider,
-                mcpDependencies.applicationMcpManager()).resolve(toolRefs, sessionMgr);
+        var resolver = new ToolRefResolver(tools, internalApiToolLoader, dynamicToolSets, mediaProvider, gitHubTokenProvider,
+                mcpDependencies.applicationMcpManager());
+        resolver.setVideoService(videoService);
+        return resolver.resolve(toolRefs, sessionMgr);
     }
 
     /**
@@ -204,7 +209,7 @@ class ToolRefResolutionService {
         if (entry != null && entry.type == ToolType.BUILTIN) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
-                registry.registerProvider(BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider));
+                registry.registerProvider(BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService));
                 return;
             }
         }

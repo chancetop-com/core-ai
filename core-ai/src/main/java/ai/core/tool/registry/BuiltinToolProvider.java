@@ -25,6 +25,12 @@ public class BuiltinToolProvider implements ToolProvider {
         return new BuiltinToolProvider(setName, BuiltinTools.fromSet(setName, mediaProvider, gitHubTokenProvider));
     }
 
+    public static BuiltinToolProvider fromSet(String setName, ai.core.media.MediaProvider mediaProvider,
+                                               ai.core.tool.github.GitHubTokenProvider gitHubTokenProvider,
+                                               ai.core.tool.tools.UnderstandVideoTool.VideoUnderstandingService videoService) {
+        return new BuiltinToolProvider(setName, BuiltinTools.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService));
+    }
+
     private final String id;
     private final Map<String, ToolCall> tools;
 

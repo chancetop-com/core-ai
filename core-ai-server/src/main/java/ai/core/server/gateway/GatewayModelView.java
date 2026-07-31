@@ -18,6 +18,9 @@ public class GatewayModelView {
     public Boolean supportsStream;
     public Boolean supportsTools;
     public Boolean supportsVision;
+    public Boolean supportsVideo;
+    public Long maxVideoBytes;
+    public Long maxVideoSeconds;
     public Double inputPricePer1MTokens;
     public Double outputPricePer1MTokens;
     public String pricingSource;

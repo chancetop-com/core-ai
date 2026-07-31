@@ -2,6 +2,7 @@ package ai.core.server.run;
 
 import ai.core.agent.Agent;
 import ai.core.agent.AgentBuilder;
+import ai.core.api.server.run.LLMCallRequest;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProviders;
 import ai.core.media.MediaProvider;
@@ -52,6 +53,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -68,17 +70,17 @@ public class AgentRunBuilder {
         return name.trim().replaceAll("[\\s<|\\\\/>]+", "-");
     }
 
+    private static void putModel(Map<String, Object> variables, String key, String model) {
+        if (model != null) variables.put(key, model);
+    }
+
     static String appendSopPriorityDeclaration(String systemPrompt) {
-        var declaration = """
-
-                ## Behavior Rules
-
-                1. The current Skill SOP is your only behavior specification. Follow the SOP step order
-                   exactly — do NOT skip, merge, or modify any step.
-                2. Historical patterns in Memory are supplementary reference only. Use the search_memory
-                   tool to look them up when helpful, but NEVER substitute them for SOP steps.
-                3. When SOP and Memory conflict, SOP ALWAYS takes priority.
-                """;
+        var declaration = "\n\n## Behavior Rules\n\n"
+                + "1. The current Skill SOP is your only behavior specification. Follow the SOP step order\n"
+                + "   exactly — do NOT skip, merge, or modify any step.\n"
+                + "2. Historical patterns in Memory are supplementary reference only. Use the search_memory\n"
+                + "   tool to look them up when helpful, but NEVER substitute them for SOP steps.\n"
+                + "3. When SOP and Memory conflict, SOP ALWAYS takes priority.\n";
         var text = systemPrompt != null ? systemPrompt : "";
         return declaration + text;
     }
@@ -116,10 +118,14 @@ public class AgentRunBuilder {
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
 
-    Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
+    Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,
+                     List<LLMCallRequest.Attachment> attachments) {
         var config = definition.publishedConfig;
         var registry = resolveToolRegistry(config, definition, runEntity.id);
         var context = buildExecutionContext(runEntity, definition, sandbox, variables);
+        if (attachments != null && !attachments.isEmpty()) {
+            context.setAttachedContents(attachments.stream().map(this::toAttachedContent).toList());
+        }
         var enableMemory = config != null ? config.enableMemory : definition.enableMemory;
         var systemPrompt = resolveSystemPromptWithPriority(config, definition, enableMemory);
         var model = resolveModel(config, definition);
@@ -152,6 +158,17 @@ public class AgentRunBuilder {
         return agent;
     }
 
+    private ExecutionContext.AttachedContent toAttachedContent(LLMCallRequest.Attachment attachment) {
+        var type = ExecutionContext.AttachedContent.AttachedContentType.valueOf(attachment.type.name());
+        if (type == ExecutionContext.AttachedContent.AttachedContentType.VIDEO) {
+            return ExecutionContext.AttachedContent.ofReference(attachment.url, attachment.mediaType, null);
+        }
+        if (attachment.data != null) {
+            return ExecutionContext.AttachedContent.ofBase64(attachment.data, attachment.mediaType, type);
+        }
+        return ExecutionContext.AttachedContent.ofUrl(attachment.url, type);
+    }
+
     private ExecutionContext buildExecutionContext(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         var context = ExecutionContext.builder()
                 .sessionId("run:" + runEntity.id)
@@ -164,6 +181,7 @@ public class AgentRunBuilder {
                 .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(definition.userId, fileService,
                                 new AgentRunArtifactSink(runEntity.id, agentRunCollection), publicUrlConfiguration))
+                .customVariables(mediaModelVariables())
                 .build();
         if (sandbox != null) context.sandbox(sandbox);
         if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
@@ -176,6 +194,14 @@ public class AgentRunBuilder {
             context.setVideoMediaProvider(mediaProvider);
         }
         return context;
+    }
+
+    private Map<String, Object> mediaModelVariables() {
+        var variables = new HashMap<String, Object>();
+        putModel(variables, "media.caption.model", systemSettingsService.captionImageModel());
+        putModel(variables, "media.image.model", systemSettingsService.imageGenerationModel());
+        putModel(variables, "media.video.model", systemSettingsService.videoGenerationModel());
+        return variables;
     }
 
     private String resolveModel(AgentPublishedConfig config, AgentDefinition definition) {

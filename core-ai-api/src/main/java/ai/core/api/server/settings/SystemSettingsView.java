@@ -26,6 +26,30 @@ public class SystemSettingsView {
     @Property(name = "default_llm_model_multimodal")
     public String defaultLlmMultiModalModel;
 
+    @Property(name = "caption_image_model")
+    public String captionImageModel;
+
+    @Property(name = "default_caption_image_model")
+    public String defaultCaptionImageModel;
+
+    @Property(name = "image_generation_model")
+    public String imageGenerationModel;
+
+    @Property(name = "default_image_generation_model")
+    public String defaultImageGenerationModel;
+
+    @Property(name = "video_generation_model")
+    public String videoGenerationModel;
+
+    @Property(name = "default_video_generation_model")
+    public String defaultVideoGenerationModel;
+
+    @Property(name = "video_understanding_model")
+    public String videoUnderstandingModel;
+
+    @Property(name = "default_video_understanding_model")
+    public String defaultVideoUnderstandingModel;
+
     @Property(name = "created_by")
     public String createdBy;
 

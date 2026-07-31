@@ -4,11 +4,13 @@ import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.domain.SessionAttachmentRefRepository;
 
 /**
  * @author stephen
  */
 public record SessionCommandDependencies(AgentSessionManager sessionManager, ChatMessageService chatMessageService,
-                                          SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService,
-                                          EventPublisher eventPublisher, ObjectStorageConfiguration objectStorageConfiguration) {
+                                           SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService,
+                                           EventPublisher eventPublisher, ObjectStorageConfiguration objectStorageConfiguration,
+                                           SessionAttachmentRefRepository attachmentRepository) {
 }

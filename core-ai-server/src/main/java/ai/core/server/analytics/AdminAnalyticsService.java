@@ -43,6 +43,16 @@ public class AdminAnalyticsService {
         return value != null ? value.doubleValue() : 0.0;
     }
 
+    private static String timestampValue(Object value) {
+        if (value instanceof java.util.Date date) return date.toInstant().toString();
+        return value != null ? value.toString() : "";
+    }
+
+    private static String dimensionTimestamp(Document id) {
+        Object date = id.get("date");
+        return timestampValue(date != null ? date : id.get("hour"));
+    }
+
     @Inject
     MongoCollection<AnalyticsDailyStats> analyticsStatsCollection;
     @Inject
@@ -361,18 +371,6 @@ public class AdminAnalyticsService {
             ));
         }
         return points;
-    }
-
-    private static String timestampValue(Object value) {
-        if (value instanceof java.util.Date date) {
-            return date.toInstant().toString();
-        }
-        return value != null ? value.toString() : "";
-    }
-
-    private static String dimensionTimestamp(Document id) {
-        Object date = id.get("date");
-        return timestampValue(date != null ? date : id.get("hour"));
     }
 
     // === Dimension trend ===

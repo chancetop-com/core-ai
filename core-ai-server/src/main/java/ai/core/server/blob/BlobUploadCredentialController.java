@@ -59,6 +59,11 @@ public class BlobUploadCredentialController {
             case "image/gif" -> ".gif";
             case "image/webp" -> ".webp";
             case "image/svg+xml" -> ".svg";
+            // videos
+            case "video/mp4" -> ".mp4";
+            case "video/webm" -> ".webm";
+            case "video/quicktime" -> ".mov";
+            case "video/x-msvideo" -> ".avi";
             // documents
             case "application/pdf" -> ".pdf";
             case "application/msword" -> ".doc";

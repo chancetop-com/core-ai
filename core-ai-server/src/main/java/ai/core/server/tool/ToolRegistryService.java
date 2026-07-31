@@ -62,11 +62,14 @@ public class ToolRegistryService {
 
     private GitHubTokenProvider gitHubTokenProvider;
 
+    @Inject
+    private ai.core.tool.tools.UnderstandVideoTool.VideoUnderstandingService videoUnderstandingService;
+
     private void initializeDependencies() {
         if (mcpConnectionManager != null) return;
         mcpConnectionManager = new McpServerConnectionManager(sandboxService, applicationMcpManager);
         var mcpDependencies = new McpResolutionDependencies(mcpConnectionManager, sandboxService, applicationMcpManager);
-        resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpDependencies, mediaProvider, gitHubTokenProvider);
+        resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpDependencies, mediaProvider, gitHubTokenProvider, videoUnderstandingService);
         mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager, applicationMcpManager);
     }
 

@@ -989,6 +989,7 @@ export interface GatewayProvider {
   googleCredentialsJson?: string;
   vertexProjectId?: string;
   vertexLocation?: string;
+  vertexGcsBucket?: string;
   requestExtraBody?: string;
   timeoutSeconds?: number;
   connectTimeoutSeconds?: number;
@@ -1020,6 +1021,7 @@ export interface GatewayProviderRequest {
   googleCredentialsJson?: string;
   vertexProjectId?: string;
   vertexLocation?: string;
+  vertexGcsBucket?: string;
   requestExtraBody?: string;
   timeoutSeconds?: number;
   connectTimeoutSeconds?: number;
@@ -1051,6 +1053,9 @@ export interface GatewayModel {
   supportsStream?: boolean;
   supportsTools?: boolean;
   supportsVision?: boolean;
+  supportsVideo?: boolean;
+  maxVideoBytes?: number | null;
+  maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
 }
@@ -1067,6 +1072,9 @@ export interface GatewayModelRequest {
   supportsStream?: boolean;
   supportsTools?: boolean;
   supportsVision?: boolean;
+  supportsVideo?: boolean;
+  maxVideoBytes?: number | null;
+  maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
 }
@@ -1095,6 +1103,9 @@ export interface GatewayDiscoveredModel {
   supportsStream?: boolean;
   supportsTools?: boolean;
   supportsVision?: boolean;
+  supportsVideo?: boolean;
+  maxVideoBytes?: number | null;
+  maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
   imported?: boolean;
@@ -1122,6 +1133,14 @@ export interface SystemSettings {
   default_llm_model?: string;
   llm_model_multimodal?: string | null;
   default_llm_model_multimodal?: string;
+  caption_image_model?: string | null;
+  default_caption_image_model?: string;
+  image_generation_model?: string | null;
+  default_image_generation_model?: string;
+  video_generation_model?: string | null;
+  default_video_generation_model?: string;
+  video_understanding_model?: string | null;
+  default_video_understanding_model?: string;
   created_by?: string;
   updated_by?: string;
   created_at?: string;
@@ -1132,6 +1151,10 @@ export interface SystemSettingsRequest {
   memory_extraction_model?: string | null;
   llm_model?: string | null;
   llm_model_multimodal?: string | null;
+  caption_image_model?: string | null;
+  image_generation_model?: string | null;
+  video_generation_model?: string | null;
+  video_understanding_model?: string | null;
 }
 
 export interface NotificationView {

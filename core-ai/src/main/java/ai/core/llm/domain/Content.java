@@ -35,6 +35,13 @@ public class Content {
         return content;
     }
 
+    public static Content ofVideo(String uri, String mediaType, String filename) {
+        var content = new Content();
+        content.type = ContentType.VIDEO;
+        content.video = VideoContent.of(uri, mediaType, filename);
+        return content;
+    }
+
     @NotNull
     @Property(name = "type")
     public ContentType type;
@@ -48,14 +55,18 @@ public class Content {
     @Property(name = "file")
     public FileContent file;
 
+    @Property(name = "video")
+    public VideoContent video;
+
     public enum ContentType {
         @Property(name = "text")
         TEXT,
         @Property(name = "image_url")
         IMAGE_URL,
         @Property(name = "file")
-        FILE
-        // todo: support more content types
+        FILE,
+        @Property(name = "video")
+        VIDEO
 //        VIDEO,
 //        AUDIO
     }
@@ -77,6 +88,25 @@ public class Content {
 
         @Property(name = "detail")
         public String detail;
+    }
+
+    public static class VideoContent {
+        public static VideoContent of(String uri, String mediaType, String filename) {
+            var video = new VideoContent();
+            video.uri = uri;
+            video.mediaType = mediaType;
+            video.filename = filename;
+            return video;
+        }
+
+        @Property(name = "uri")
+        public String uri;
+
+        @Property(name = "media_type")
+        public String mediaType;
+
+        @Property(name = "filename")
+        public String filename;
     }
 
     public static class FileContent {

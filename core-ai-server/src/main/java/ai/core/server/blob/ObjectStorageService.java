@@ -22,8 +22,13 @@ public interface ObjectStorageService {
     /** Server-side streaming download to a local file (snapshot restore path). */
     void downloadObjectToFile(String container, String blobName, java.nio.file.Path target);
 
+    ObjectMetadata headObject(String container, String blobName);
+
     /** Delete an object; missing objects (404) are treated as success. */
     void deleteObject(String container, String blobName);
+
+    record ObjectMetadata(Long sizeBytes, String etag, String contentType, String lastModified) {
+    }
 
     record UploadCredential(String uploadUrl, String blobUrl, String container, String blobName, String expiresAt) {
     }

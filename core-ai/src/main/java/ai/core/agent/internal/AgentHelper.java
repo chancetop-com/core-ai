@@ -91,7 +91,15 @@ public class AgentHelper {
         }
         var contents = new java.util.ArrayList<Content>(attachedContents.size() + 1);
         contents.add(Content.of(query));
-        attachedContents.stream().map(AgentHelper::buildAttachedContent).forEach(contents::add);
+        attachedContents.stream()
+                .filter(attachedContent -> attachedContent.type != ExecutionContext.AttachedContent.AttachedContentType.VIDEO)
+                .map(AgentHelper::buildAttachedContent)
+                .forEach(contents::add);
+        attachedContents.stream()
+                .filter(attachedContent -> attachedContent.type == ExecutionContext.AttachedContent.AttachedContentType.VIDEO)
+                .map(AgentHelper::buildVideoReferenceHint)
+                .map(Content::of)
+                .forEach(contents::add);
         return Message.of(new Message.MessageRecord(
             RoleType.USER,
             contents,
@@ -114,10 +122,19 @@ public class AgentHelper {
             null));
     }
 
+    private static String buildVideoReferenceHint(ExecutionContext.AttachedContent attachedContent) {
+        var name = attachedContent.filename != null ? attachedContent.filename : "video";
+        return "[Video attachment: " + name + "]\n"
+                + "reference: " + attachedContent.url + "\n"
+                + "The video content cannot be read or downloaded directly. To answer any question about this video, "
+                + "you MUST call the understand_video tool with attachment_reference_id=\"" + attachedContent.url + "\".";
+    }
+
     public static Content buildAttachedContent(ExecutionContext.AttachedContent attachedContent) {
         return switch (attachedContent.type) {
             case IMAGE -> buildImageAttachedContent(attachedContent);
             case PDF -> buildPdfAttachedContent(attachedContent);
+            case VIDEO -> throw new IllegalStateException("video references must be resolved by understand_video tool");
         };
     }
 

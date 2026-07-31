@@ -23,6 +23,18 @@ public class SystemSettings {
     @Field(name = "llm_model_multimodal")
     public String llmMultiModalModel;
 
+    @Field(name = "caption_image_model")
+    public String captionImageModel;
+
+    @Field(name = "image_generation_model")
+    public String imageGenerationModel;
+
+    @Field(name = "video_generation_model")
+    public String videoGenerationModel;
+
+    @Field(name = "video_understanding_model")
+    public String videoUnderstandingModel;
+
     @Field(name = "created_by")
     public String createdBy;
 

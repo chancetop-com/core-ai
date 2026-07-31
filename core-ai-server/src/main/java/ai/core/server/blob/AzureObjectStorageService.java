@@ -121,6 +121,32 @@ public class AzureObjectStorageService implements ObjectStorageService {
     }
 
     @Override
+    public ObjectMetadata headObject(String container, String blobName) {
+        var readSas = sasService.generateReadBlobSas(container, blobName, 5);
+        try {
+            var request = HttpRequest.newBuilder()
+                    .uri(URI.create(readSas.uploadUrl()))
+                    .timeout(Duration.ofSeconds(30))
+                    .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                    .build();
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("head failed: status=" + response.statusCode() + ", container=" + container + ", blob=" + blobName);
+            }
+            return new ObjectMetadata(
+                    response.headers().firstValueAsLong("Content-Length").orElse(0L),
+                    response.headers().firstValue("ETag").orElse(null),
+                    response.headers().firstValue("Content-Type").orElse(null),
+                    response.headers().firstValue("Last-Modified").orElse(null));
+        } catch (IOException e) {
+            throw new RuntimeException("failed to inspect blob: container=" + container + ", blob=" + blobName, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted while inspecting blob", e);
+        }
+    }
+
+    @Override
     public void deleteObject(String container, String blobName) {
         var sas = sasService.generateDeleteBlobSas(container, blobName, 5);
         try {
