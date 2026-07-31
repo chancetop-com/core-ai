@@ -8,4 +8,7 @@ public class ListMyArtifactsRequest {
 
     @QueryParam(name = "limit")
     public Integer limit;
+
+    @QueryParam(name = "agent_id")
+    public String agentId;
 }

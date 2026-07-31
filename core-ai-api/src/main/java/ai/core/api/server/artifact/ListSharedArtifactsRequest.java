@@ -14,4 +14,7 @@ public class ListSharedArtifactsRequest {
 
     @QueryParam(name = "user_id")
     public String userId;
+
+    @QueryParam(name = "agent_id")
+    public String agentId;
 }

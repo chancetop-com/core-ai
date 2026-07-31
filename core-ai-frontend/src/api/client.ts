@@ -1636,14 +1636,16 @@ export const api = {
     },
   },
   artifacts: {
-    listMy: (offset = 0, limit = 20) => {
+    listMy: (offset = 0, limit = 20, agentId?: string) => {
       const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (agentId) params.set('agent_id', agentId);
       return request<ListMyArtifactsResponse>(`/api/artifacts/my?${params}`);
     },
-    listShared: (offset = 0, limit = 20, name?: string, userId?: string) => {
+    listShared: (offset = 0, limit = 20, name?: string, userId?: string, agentId?: string) => {
       const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
       if (name) params.set('name', name);
       if (userId) params.set('user_id', userId);
+      if (agentId) params.set('agent_id', agentId);
       return request<ListSharedArtifactsResponse>(`/api/artifacts/shared?${params}`);
     },
   },

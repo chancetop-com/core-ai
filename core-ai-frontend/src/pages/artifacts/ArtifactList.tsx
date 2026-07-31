@@ -11,7 +11,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { api } from '../../api/client';
-import type { MyArtifactView, SharedArtifactView } from '../../api/client';
+import type { AgentDefinition, MyArtifactView, SharedArtifactView } from '../../api/client';
 import type { ArtifactSpec } from '../chat/components/artifactTypes';
 
 const ArtifactDrawer = lazy(() => import('../chat/components/ArtifactDrawer'));
@@ -56,12 +56,14 @@ export default function ArtifactList() {
   const [activeTab, setActiveTab] = useState<Tab>('my');
   const [loading, setLoading] = useState(true);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
+  const [agents, setAgents] = useState<AgentDefinition[]>([]);
 
   // My artifacts state
   const [myArtifacts, setMyArtifacts] = useState<MyArtifactView[]>([]);
   const [myTotal, setMyTotal] = useState(0);
   const [myOffset, setMyOffset] = useState(0);
   const [myLimit, setMyLimit] = useState(PAGE_SIZES[0]);
+  const [myFilterAgentId, setMyFilterAgentId] = useState('');
 
   // Shared artifacts state
   const [sharedArtifacts, setSharedArtifacts] = useState<SharedArtifactView[]>([]);
@@ -70,12 +72,20 @@ export default function ArtifactList() {
   const [sharedLimit, setSharedLimit] = useState(PAGE_SIZES[0]);
   const [searchName, setSearchName] = useState('');
   const [filterUserId, setFilterUserId] = useState('');
+  const [sharedFilterAgentId, setSharedFilterAgentId] = useState('');
+
+  // Agent options for the filter dropdown (shared by both tabs)
+  useEffect(() => {
+    api.agents.list(false, undefined, 200)
+      .then(res => setAgents(res.agents))
+      .catch(() => setAgents([]));
+  }, []);
 
   // Load my artifacts
-  const loadMyArtifacts = useCallback(async (offset: number, limit: number) => {
+  const loadMyArtifacts = useCallback(async (offset: number, limit: number, agentId?: string) => {
     setLoading(true);
     try {
-      const res = await api.artifacts.listMy(offset, limit);
+      const res = await api.artifacts.listMy(offset, limit, agentId || undefined);
       setMyArtifacts(res.artifacts);
       setMyTotal(res.total);
       setMyOffset(offset);
@@ -88,10 +98,10 @@ export default function ArtifactList() {
   }, []);
 
   // Load shared artifacts
-  const loadSharedArtifacts = useCallback(async (offset: number, limit: number, name?: string, userId?: string) => {
+  const loadSharedArtifacts = useCallback(async (offset: number, limit: number, name?: string, userId?: string, agentId?: string) => {
     setLoading(true);
     try {
-      const res = await api.artifacts.listShared(offset, limit, name || undefined, userId || undefined);
+      const res = await api.artifacts.listShared(offset, limit, name || undefined, userId || undefined, agentId || undefined);
       setSharedArtifacts(res.artifacts);
       setSharedTotal(res.total);
       setSharedOffset(offset);
@@ -105,9 +115,9 @@ export default function ArtifactList() {
 
   useEffect(() => {
     if (activeTab === 'my') {
-      loadMyArtifacts(0, myLimit);
+      loadMyArtifacts(0, myLimit, myFilterAgentId);
     } else {
-      loadSharedArtifacts(0, sharedLimit, searchName, filterUserId);
+      loadSharedArtifacts(0, sharedLimit, searchName, filterUserId, sharedFilterAgentId);
     }
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -117,15 +127,25 @@ export default function ArtifactList() {
   };
 
   const handleMyPageChange = (newOffset: number) => {
-    loadMyArtifacts(newOffset, myLimit);
+    loadMyArtifacts(newOffset, myLimit, myFilterAgentId);
   };
 
   const handleSharedPageChange = (newOffset: number) => {
-    loadSharedArtifacts(newOffset, sharedLimit, searchName, filterUserId);
+    loadSharedArtifacts(newOffset, sharedLimit, searchName, filterUserId, sharedFilterAgentId);
   };
 
   const handleSharedSearch = () => {
-    loadSharedArtifacts(0, sharedLimit, searchName, filterUserId);
+    loadSharedArtifacts(0, sharedLimit, searchName, filterUserId, sharedFilterAgentId);
+  };
+
+  const handleMyAgentFilterChange = (agentId: string) => {
+    setMyFilterAgentId(agentId);
+    loadMyArtifacts(0, myLimit, agentId);
+  };
+
+  const handleSharedAgentFilterChange = (agentId: string) => {
+    setSharedFilterAgentId(agentId);
+    loadSharedArtifacts(0, sharedLimit, searchName, filterUserId, agentId);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -173,43 +193,55 @@ export default function ArtifactList() {
           </button>
         </div>
 
-        {/* Search & filter for shared tab */}
-        {activeTab === 'shared' && (
-          <div className="flex items-center gap-2">
-            <div className="relative w-64">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: 'var(--color-text-secondary)' }} />
-              <input
-                type="text"
-                value={searchName}
-                onChange={e => setSearchName(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Search by name..."
-                className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
-                style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-              />
-            </div>
-            <div className="relative w-48">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: 'var(--color-text-secondary)' }} />
-              <input
-                type="text"
-                value={filterUserId}
-                onChange={e => setFilterUserId(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Filter by user ID..."
-                className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
-                style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-              />
-            </div>
-            <button
-              onClick={handleSharedSearch}
-              className="px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-              style={{ background: 'var(--color-primary)' }}>
-              Search
-            </button>
+        {/* Filters */}
+        <div className="flex items-center gap-2">
+          <div className="relative w-56">
+            <select
+              value={activeTab === 'my' ? myFilterAgentId : sharedFilterAgentId}
+              onChange={e => (activeTab === 'my' ? handleMyAgentFilterChange(e.target.value) : handleSharedAgentFilterChange(e.target.value))}
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none cursor-pointer"
+              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+              <option value="">All agents</option>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
           </div>
-        )}
+          {activeTab === 'shared' && (
+            <>
+              <div className="relative w-64">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--color-text-secondary)' }} />
+                <input
+                  type="text"
+                  value={searchName}
+                  onChange={e => setSearchName(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Search by name..."
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
+                  style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </div>
+              <div className="relative w-48">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--color-text-secondary)' }} />
+                <input
+                  type="text"
+                  value={filterUserId}
+                  onChange={e => setFilterUserId(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Filter by user ID..."
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
+                  style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </div>
+              <button
+                onClick={handleSharedSearch}
+                className="px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                style={{ background: 'var(--color-primary)' }}>
+                Search
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -323,7 +355,7 @@ export default function ArtifactList() {
             </span>
             <select
               value={myLimit}
-              onChange={e => { const l = Number(e.target.value); loadMyArtifacts(0, l); }}
+              onChange={e => { const l = Number(e.target.value); loadMyArtifacts(0, l, myFilterAgentId); }}
               className="px-2 py-1 rounded-lg border text-xs"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
               {PAGE_SIZES.map(n => <option key={n} value={n}>{n} / page</option>)}
@@ -359,7 +391,7 @@ export default function ArtifactList() {
             </span>
             <select
               value={sharedLimit}
-              onChange={e => { const l = Number(e.target.value); loadSharedArtifacts(0, l, searchName, filterUserId); }}
+              onChange={e => { const l = Number(e.target.value); loadSharedArtifacts(0, l, searchName, filterUserId, sharedFilterAgentId); }}
               className="px-2 py-1 rounded-lg border text-xs"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
               {PAGE_SIZES.map(n => <option key={n} value={n}>{n} / page</option>)}

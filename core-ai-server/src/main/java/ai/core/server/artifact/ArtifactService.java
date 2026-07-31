@@ -24,14 +24,28 @@ public class ArtifactService {
     @Inject
     MongoCollection<ChatSession> chatSessionCollection;
 
-    public MyArtifactResult listMy(String userId, Integer offset, Integer limit) {
+    public MyArtifactResult listMy(String userId, Integer offset, Integer limit, String agentId) {
         int skip = offset != null && offset >= 0 ? offset : 0;
         int take = limit != null && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT;
 
-        var count = fileRecordCollection.count(Filters.eq("user_id", userId));
+        var filters = new ArrayList<org.bson.conversions.Bson>();
+        filters.add(Filters.eq("user_id", userId));
+        if (agentId != null && !agentId.isBlank()) {
+            var fileIdsByAgent = findFileIdsByAgent(userId, agentId);
+            if (fileIdsByAgent.isEmpty()) {
+                var empty = new MyArtifactResult();
+                empty.total = 0;
+                empty.artifacts = List.of();
+                return empty;
+            }
+            filters.add(Filters.in("_id", fileIdsByAgent.toArray(new String[0])));
+        }
+        var filter = Filters.and(filters);
+
+        var count = fileRecordCollection.count(filter);
 
         var query = new Query();
-        query.filter = Filters.eq("user_id", userId);
+        query.filter = filter;
         query.sort = Sorts.descending("created_at");
         query.skip = skip;
         query.limit = take;
@@ -89,7 +103,28 @@ public class ArtifactService {
         return map;
     }
 
-    public SharedArtifactResult listShared(Integer offset, Integer limit, String name, String userId) {
+    private List<String> findFileIdsByAgent(String userId, String agentId) {
+        var filters = new ArrayList<org.bson.conversions.Bson>();
+        filters.add(Filters.eq("agent_id", agentId));
+        if (userId != null && !userId.isBlank()) {
+            filters.add(Filters.eq("user_id", userId));
+        }
+
+        var query = new Query();
+        query.filter = Filters.and(filters);
+        var sessions = chatSessionCollection.find(query);
+
+        var fileIds = new ArrayList<String>();
+        for (var session : sessions) {
+            if (session.artifacts == null) continue;
+            for (var artifact : session.artifacts) {
+                if (artifact.fileId != null) fileIds.add(artifact.fileId);
+            }
+        }
+        return fileIds;
+    }
+
+    public SharedArtifactResult listShared(Integer offset, Integer limit, String name, String userId, String agentId) {
         int skip = offset != null && offset >= 0 ? offset : 0;
         int take = limit != null && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT;
 
@@ -101,6 +136,16 @@ public class ArtifactService {
         }
         if (userId != null && !userId.isBlank()) {
             filterList.add(Filters.eq("user_id", userId));
+        }
+        if (agentId != null && !agentId.isBlank()) {
+            var fileIdsByAgent = findFileIdsByAgent(userId, agentId);
+            if (fileIdsByAgent.isEmpty()) {
+                var empty = new SharedArtifactResult();
+                empty.total = 0;
+                empty.artifacts = List.of();
+                return empty;
+            }
+            filterList.add(Filters.in("_id", fileIdsByAgent.toArray(new String[0])));
         }
 
         var filter = Filters.and(filterList);

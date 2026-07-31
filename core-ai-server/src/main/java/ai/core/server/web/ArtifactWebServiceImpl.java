@@ -27,7 +27,7 @@ public class ArtifactWebServiceImpl implements ArtifactWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
 
-        var result = artifactService.listMy(userId, request.offset, request.limit);
+        var result = artifactService.listMy(userId, request.offset, request.limit, request.agentId);
         var response = new ListMyArtifactsResponse();
         response.total = result.total;
         response.artifacts = new ArrayList<>(result.artifacts.size());
@@ -47,7 +47,7 @@ public class ArtifactWebServiceImpl implements ArtifactWebService {
 
     @Override
     public ListSharedArtifactsResponse listShared(ListSharedArtifactsRequest request) {
-        var result = artifactService.listShared(request.offset, request.limit, request.name, request.userId);
+        var result = artifactService.listShared(request.offset, request.limit, request.name, request.userId, request.agentId);
         var response = new ListSharedArtifactsResponse();
         response.total = result.total;
         response.artifacts = new ArrayList<>(result.artifacts.size());
