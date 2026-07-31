@@ -148,7 +148,7 @@ public class AdminAnalyticsService {
 
     // === Dimension trend ===
 
-    public List<AnalyticsModels.TrendPoint> dimensionTrend(String dimension, String mode, String range, String from, String to, List<String> keys) {
+    public List<AnalyticsModels.DimensionTrendPoint> dimensionTrend(String dimension, String mode, String range, String from, String to, List<String> keys) {
         var dim = Dimension.valueOf(dimension.toUpperCase(Locale.ENGLISH));
         var bounds = AnalyticsDateUtils.resolveDateRange(mode, range, from, to);
         if ("realtime".equals(mode)) {
@@ -338,15 +338,8 @@ public class AdminAnalyticsService {
     private List<AnalyticsModels.TrendPoint> buildTrendPoints(List<Document> rows) {
         var points = new ArrayList<AnalyticsModels.TrendPoint>();
         for (var row : rows) {
-            Object id = row.get("_id");
-            String timestamp;
-            if (id instanceof String s) {
-                timestamp = s;
-            } else {
-                timestamp = id != null ? id.toString() : "";
-            }
             points.add(new AnalyticsModels.TrendPoint(
-                timestamp,
+                timestampValue(row.get("_id")),
                 getLong(row, "input_tokens"), getLong(row, "output_tokens"),
                 getLong(row, "cached_tokens"), getDouble(row, "cost_usd"),
                 getLong(row, "call_count")
@@ -355,9 +348,36 @@ public class AdminAnalyticsService {
         return points;
     }
 
+    private List<AnalyticsModels.DimensionTrendPoint> buildDimensionTrendPoints(List<Document> rows) {
+        var points = new ArrayList<AnalyticsModels.DimensionTrendPoint>();
+        for (var row : rows) {
+            var id = row.get("_id", Document.class);
+            points.add(new AnalyticsModels.DimensionTrendPoint(
+                id != null ? id.getString("dim") : "",
+                id != null ? dimensionTimestamp(id) : "",
+                getLong(row, "input_tokens"), getLong(row, "output_tokens"),
+                getLong(row, "cached_tokens"), getDouble(row, "cost_usd"),
+                getLong(row, "call_count")
+            ));
+        }
+        return points;
+    }
+
+    private static String timestampValue(Object value) {
+        if (value instanceof java.util.Date date) {
+            return date.toInstant().toString();
+        }
+        return value != null ? value.toString() : "";
+    }
+
+    private static String dimensionTimestamp(Document id) {
+        Object date = id.get("date");
+        return timestampValue(date != null ? date : id.get("hour"));
+    }
+
     // === Dimension trend ===
 
-    private List<AnalyticsModels.TrendPoint> dimensionTrendFromStats(Dimension dim, DateRange bounds, List<String> keys) {
+    private List<AnalyticsModels.DimensionTrendPoint> dimensionTrendFromStats(Dimension dim, DateRange bounds, List<String> keys) {
         var match = Aggregates.match(Filters.and(
             Filters.gte("date", bounds.from()),
             Filters.lt("date", bounds.to()),
@@ -378,10 +398,10 @@ public class AdminAnalyticsService {
         aggregate.resultClass = Document.class;
         aggregate.pipeline = pipeline;
         var rows = analyticsStatsCollection.aggregate(aggregate);
-        return buildTrendPoints(rows);
+        return buildDimensionTrendPoints(rows);
     }
 
-    private List<AnalyticsModels.TrendPoint> dimensionTrendFromTraces(Dimension dim, DateRange bounds, List<String> keys) {
+    private List<AnalyticsModels.DimensionTrendPoint> dimensionTrendFromTraces(Dimension dim, DateRange bounds, List<String> keys) {
         var modelToProvider = mappingService.loadModelToProviderMapping();
         var providerIdToName = mappingService.loadProviderIdToNameMapping();
         var match = Aggregates.match(Filters.and(
@@ -407,7 +427,7 @@ public class AdminAnalyticsService {
         aggregate.resultClass = Document.class;
         aggregate.pipeline = pipeline;
         var rows = traceCollection.aggregate(aggregate);
-        return buildTrendPoints(rows);
+        return buildDimensionTrendPoints(rows);
     }
 
     // === Helpers ===

@@ -1632,7 +1632,7 @@ export const api = {
     },
     dimensionTrend: (dimension: AnalyticsDimension, params: AnalyticsParams & { keys: string }) => {
       const qs = buildAnalyticsParams(params);
-      return request<TrendPoint[]>(`/api/admin/analytics/${dimension}/trend?${qs}&keys=${encodeURIComponent(params.keys)}`);
+      return request<DimensionTrendPoint[]>(`/api/admin/analytics/${dimension}/trend?${qs}&keys=${encodeURIComponent(params.keys)}`);
     },
   },
   artifacts: {
@@ -1882,6 +1882,10 @@ export interface TrendPoint {
   cachedTokens: number;
   costUsd: number;
   callCount: number;
+}
+
+export interface DimensionTrendPoint extends TrendPoint {
+  key: string;
 }
 
 export interface DimensionItem {

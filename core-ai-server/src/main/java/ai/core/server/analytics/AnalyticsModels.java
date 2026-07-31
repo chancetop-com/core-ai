@@ -37,6 +37,17 @@ public final class AnalyticsModels {
     ) {
     }
 
+    public record DimensionTrendPoint(
+        String key,
+        String timestamp,
+        long inputTokens,
+        long outputTokens,
+        long cachedTokens,
+        double costUsd,
+        long callCount
+    ) {
+    }
+
     public record DimensionItem(
         String key,
         String label,

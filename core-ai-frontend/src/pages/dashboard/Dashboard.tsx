@@ -72,12 +72,7 @@ export default function Dashboard() {
         ]);
         if (cancelled) return;
 
-        // fetch sparklines for top-5
         const topKeys = dimData.items.slice(0, 5).map(i => i.key);
-        const sparklineMap = await fetchSparklines(activeTab, params, topKeys);
-        if (cancelled) return;
-
-        // fetch dimension trend for top-5
         const trendMap = await fetchSparklines(activeTab, params, topKeys);
         if (cancelled) return;
 
@@ -85,7 +80,7 @@ export default function Dashboard() {
           globalSummary: globalData,
           globalTrend: trendData,
           dimensionData: dimData,
-          sparklines: sparklineMap,
+          sparklines: trendMap,
           dimensionTrend: trendMap,
           loading: false,
           error: null,
@@ -234,10 +229,12 @@ async function fetchSparklines(dim: AnalyticsDimension, params: AnalyticsParams,
   if (keys.length === 0) return new Map();
   try {
     const data = await api.adminAnalytics.dimensionTrend(dim, { ...params, keys: keys.join(',') });
-    // group by key — the backend returns flat trend points, we need to split by dimension key
-    // For now, return all as single series if the API returns flat
     const map = new Map<string, TrendPoint[]>();
-    keys.forEach(k => map.set(k, data));
+    for (const point of data) {
+      const points = map.get(point.key) || [];
+      points.push(point);
+      map.set(point.key, points);
+    }
     return map;
   } catch {
     return new Map();
