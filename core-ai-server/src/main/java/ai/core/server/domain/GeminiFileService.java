@@ -4,15 +4,20 @@ import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.tool.tools.UnderstandVideoTool;
 import core.framework.inject.Inject;
 
+import java.io.IOException;
 import java.time.ZonedDateTime;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.UUID;
 
 /**
  * @author stephen
  */
 public class GeminiFileService {
+    // Vertex generateContent inline payload is capped at 100MB (base64 encoded); 64MB raw keeps the base64 payload safely below it.
+    private static final long MAX_INLINE_VIDEO_BYTES = 64L * 1024 * 1024;
+
     @Inject
     GeminiFileRepository repository;
 
@@ -47,6 +52,35 @@ public class GeminiFileService {
         }
         if (client == null) throw new IllegalStateException("Gemini Files client is not configured");
         return uploadAndActivate(owner, providerId, upstreamModel, reference, client);
+    }
+
+    /**
+     * Downloads the video attachment and returns it as a base64 inline payload for Vertex generateContent.
+     */
+    public InlineVideo loadInlineVideo(UnderstandVideoTool.AttachmentOwner owner, String referenceId) {
+        var reference = attachmentRepository.findOwned(referenceId, owner.sessionId(), owner.userId());
+        if (reference == null) throw new IllegalArgumentException("video attachment not found");
+        if (reference.sourceETag == null) throw new IllegalArgumentException("video attachment has no source version");
+        if (reference.sourceSizeBytes != null && reference.sourceSizeBytes > MAX_INLINE_VIDEO_BYTES) {
+            throw new IllegalArgumentException("video is too large for inline video understanding: " + reference.sourceSizeBytes + " bytes; configure a GCS bucket for larger videos");
+        }
+        if (objectStorageConfiguration == null || objectStorageConfiguration.service == null) {
+            throw new IllegalStateException("object storage is not configured");
+        }
+        var id = "gemini_" + UUID.randomUUID();
+        var temp = Path.of(System.getProperty("java.io.tmpdir"), id + ".video");
+        try {
+            objectStorageConfiguration.service.downloadObjectToFile(reference.container, reference.blobName, temp);
+            var bytes = Files.readAllBytes(temp);
+            if (bytes.length > MAX_INLINE_VIDEO_BYTES) {
+                throw new IllegalArgumentException("video is too large for inline video understanding: " + bytes.length + " bytes; configure a GCS bucket for larger videos");
+            }
+            return new InlineVideo(Base64.getEncoder().encodeToString(bytes), reference.contentType);
+        } catch (IOException e) {
+            throw new RuntimeException("failed to load video for inline understanding", e);
+        } finally {
+            deleteTempFile(temp);
+        }
     }
 
     private ResolvedFile uploadAndActivate(UnderstandVideoTool.AttachmentOwner owner, String providerId,
@@ -112,4 +146,6 @@ public class GeminiFileService {
     }
 
     public record ResolvedFile(String name, String uri, boolean cacheHit, String contentType) { }
+
+    public record InlineVideo(String base64Data, String contentType) { }
 }

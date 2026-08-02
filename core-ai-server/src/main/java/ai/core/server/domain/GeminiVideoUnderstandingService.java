@@ -61,8 +61,15 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
         }
         var provider = route.provider();
         var apiKey = secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);
+        if (apiKey != null && !apiKey.isBlank() && isVertexProvider(provider)) {
+            return understandWithVertexApiKey(owner, referenceId, route.upstreamModel(), apiKey, provider, question);
+        }
         if (apiKey != null && !apiKey.isBlank()) return understandWithDeveloperApi(owner, referenceId, route.upstreamModel(), apiKey, provider, question);
         return understandWithVertex(owner, referenceId, route.upstreamModel(), provider, question);
+    }
+
+    private boolean isVertexProvider(GatewayProviderConfig provider) {
+        return provider.mediaProtocol != null && provider.mediaProtocol.startsWith("VERTEX_");
     }
 
     private UnderstandVideoTool.VideoUnderstandingResult understandWithDeveloperApi(UnderstandVideoTool.AttachmentOwner owner,
@@ -75,8 +82,10 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
         }
         var files = new GeminiFilesClient(baseUrl, apiKey);
         var resolved = fileService.ensureActive(owner, referenceId, provider.id, upstreamModel, files);
+        var mediaPart = Map.<String, Object>of("fileData", Map.of("fileUri", resolved.uri(), "mimeType",
+                resolved.contentType() == null || resolved.contentType().isBlank() ? "video/mp4" : resolved.contentType()));
         var generated = generate(strip(baseUrl) + "/v1beta/models/" + upstreamModel + ":generateContent",
-                "x-goog-api-key", apiKey, resolved.uri(), resolved.contentType(), question);
+                "x-goog-api-key", apiKey, mediaPart, question);
         return new UnderstandVideoTool.VideoUnderstandingResult(generated.answer(), upstreamModel,
                 resolved.cacheHit() ? "hit" : "miss", generated.promptTokens(), generated.completionTokens(), generated.totalTokens());
     }
@@ -101,9 +110,25 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
         var resolved = fileService.ensureActive(owner, referenceId, provider.id, upstreamModel, files);
         var url = strip(provider.baseUrl) + "/projects/" + provider.vertexProjectId + "/locations/" + provider.vertexLocation
                 + "/publishers/google/models/" + upstreamModel + ":generateContent";
-        var generated = generate(url, "Authorization", "Bearer " + token, resolved.uri(), resolved.contentType(), question);
+        var mediaPart = Map.<String, Object>of("fileData", Map.of("fileUri", resolved.uri(), "mimeType",
+                resolved.contentType() == null || resolved.contentType().isBlank() ? "video/mp4" : resolved.contentType()));
+        var generated = generate(url, "Authorization", "Bearer " + token, mediaPart, question);
         return new UnderstandVideoTool.VideoUnderstandingResult(generated.answer(), upstreamModel,
                 resolved.cacheHit() ? "hit" : "miss", generated.promptTokens(), generated.completionTokens(), generated.totalTokens());
+    }
+
+    private UnderstandVideoTool.VideoUnderstandingResult understandWithVertexApiKey(UnderstandVideoTool.AttachmentOwner owner,
+                                                                                      String referenceId, String upstreamModel,
+                                                                                      String apiKey, GatewayProviderConfig provider,
+                                                                                      String question) {
+        var video = fileService.loadInlineVideo(owner, referenceId);
+        var mediaPart = Map.<String, Object>of("inlineData", Map.of("mimeType",
+                video.contentType() == null || video.contentType().isBlank() ? "video/mp4" : video.contentType(),
+                "data", video.base64Data()));
+        var url = strip(provider.baseUrl) + "/publishers/google/models/" + upstreamModel + ":generateContent";
+        var generated = generate(url, "x-goog-api-key", apiKey, mediaPart, question);
+        return new UnderstandVideoTool.VideoUnderstandingResult(generated.answer(), upstreamModel,
+                "miss", generated.promptTokens(), generated.completionTokens(), generated.totalTokens());
     }
 
     private String resolveVideoModel(String effectiveModel) {
@@ -129,9 +154,9 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
     }
 
     @SuppressWarnings("unchecked")
-    private GeneratedAnswer generate(String url, String authHeader, String authValue, String fileUri, String contentType, String question) {
+    private GeneratedAnswer generate(String url, String authHeader, String authValue, Map<String, Object> mediaPart, String question) {
         var body = Map.of("contents", List.of(Map.of("role", "user", "parts", List.of(
-                Map.of("fileData", Map.of("fileUri", fileUri, "mimeType", contentType == null || contentType.isBlank() ? "video/mp4" : contentType)),
+                mediaPart,
                 Map.of("text", question)))));
         try {
             var request = HttpRequest.newBuilder(URI.create(url))
