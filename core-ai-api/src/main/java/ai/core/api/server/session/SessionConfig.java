@@ -17,6 +17,9 @@ public class SessionConfig {
     @Property(name = "temperature")
     public Double temperature;
 
+    @Property(name = "reasoningEffort")
+    public String reasoningEffort;
+
     @Property(name = "systemPrompt")
     public String systemPrompt;
 

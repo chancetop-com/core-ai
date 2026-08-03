@@ -74,6 +74,7 @@ public class SessionCreateHelper {
         snapshot.systemPromptId = published != null && published.systemPromptId != null ? published.systemPromptId : agent.systemPromptId;
         snapshot.model = published != null && published.model != null ? published.model : agent.model;
         snapshot.temperature = published != null && published.temperature != null ? published.temperature : agent.temperature;
+        snapshot.thinkingEffort = published != null && published.thinkingEffort != null ? published.thinkingEffort : agent.thinkingEffort;
         snapshot.maxTurns = published != null && published.maxTurns != null ? published.maxTurns : agent.maxTurns;
         snapshot.inputTemplate = published != null && published.inputTemplate != null ? published.inputTemplate : agent.inputTemplate;
         snapshot.variables = published != null && published.variables != null ? published.variables : agent.variables;

@@ -3,6 +3,7 @@ package ai.core.server.session;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.artifact.ChatArtifactSetup;
@@ -52,6 +53,11 @@ import java.util.Map;
 public class SessionRebuildManager {
     private static void putModel(Map<String, Object> variables, String key, String model) {
         if (model != null) variables.put(key, model);
+    }
+
+    private static String normalizeThinkingEffort(String value) {
+        var effort = ReasoningEffort.fromString(value);
+        return effort != null ? effort.name().toLowerCase(java.util.Locale.ROOT) : null;
     }
 
     private final Logger logger = LoggerFactory.getLogger(SessionRebuildManager.class);
@@ -145,6 +151,7 @@ public class SessionRebuildManager {
         snapshot.model = pub != null && pub.model != null ? pub.model : def.model;
         snapshot.multiModalModel = pub != null && pub.multiModalModel != null ? pub.multiModalModel : def.multiModalModel;
         snapshot.temperature = pub != null && pub.temperature != null ? pub.temperature : def.temperature;
+        snapshot.thinkingEffort = pub != null && pub.thinkingEffort != null ? pub.thinkingEffort : def.thinkingEffort;
         snapshot.maxTurns = pub != null && pub.maxTurns != null ? pub.maxTurns : def.maxTurns;
         snapshot.inputTemplate = pub != null && pub.inputTemplate != null ? pub.inputTemplate : def.inputTemplate;
         snapshot.variables = pub != null && pub.variables != null ? pub.variables : def.variables;
@@ -171,6 +178,7 @@ public class SessionRebuildManager {
         config.model = snapshot.model;
         config.multiModalModel = snapshot.multiModalModel;
         config.temperature = snapshot.temperature;
+        config.reasoningEffort = normalizeThinkingEffort(snapshot.thinkingEffort);
         config.maxTurns = snapshot.maxTurns;
         List<AgentDatasetConfig> datasetConfig;
         if (state != null && state.config != null && state.config.datasetConfigs != null && !state.config.datasetConfigs.isEmpty()) {

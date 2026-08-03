@@ -37,7 +37,7 @@ public final class SlashCommandRegistry {
             new SlashCommand("/resume", "Switch to a previous session"),
             new SlashCommand("/thinking", "Show or set reasoning effort (interactive picker)"),
             new SlashCommand("/thinking low", "Set reasoning effort to low"),
-            new SlashCommand("/thinking medium", "Set reasoning effort to medium"),
+            new SlashCommand("/thinking none", "Set reasoning effort to none"),
             new SlashCommand("/thinking high", "Set reasoning effort to high"),
             new SlashCommand("/thinking off", "Disable reasoning effort (use provider default)"),
             new SlashCommand("/debug", "Toggle debug mode"),

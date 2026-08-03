@@ -7,6 +7,7 @@ import ai.core.api.server.run.LLMCallRequest;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.AgentDefinition;
@@ -55,6 +56,7 @@ public class LLMCallExecutor {
         var model = resolveModel(config, definition.model);
         var multiModalModel = resolveMultiModalModel(config, definition.multiModalModel);
         var temperature = resolveTemperature(config, definition.temperature);
+        var reasoningEffort = resolveThinkingEffort(config, definition);
         var timeoutSeconds = resolveTimeout(config, definition);
         var responseSchemaJson = config != null ? config.responseSchema : definition.responseSchema;
 
@@ -71,7 +73,7 @@ public class LLMCallExecutor {
 
         var effectiveModel = multiModalModel != null && hasAttachments(attachments) ? multiModalModel : model;
         var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
-            messages, null, temperature, effectiveModel, null, Boolean.FALSE, responseFormat, null
+            messages, null, temperature, effectiveModel, null, Boolean.FALSE, responseFormat, reasoningEffort
         ));
         request.setTimeoutSeconds(timeoutSeconds);
 
@@ -129,6 +131,11 @@ public class LLMCallExecutor {
 
     private Double resolveTemperature(AgentPublishedConfig config, Double fallback) {
         return config != null ? config.temperature : fallback;
+    }
+
+    private ReasoningEffort resolveThinkingEffort(AgentPublishedConfig config, AgentDefinition definition) {
+        var value = config != null ? config.thinkingEffort : definition.thinkingEffort;
+        return ReasoningEffort.fromString(value);
     }
 
     private int resolveTimeout(AgentPublishedConfig config, AgentDefinition definition) {

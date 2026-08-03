@@ -219,8 +219,8 @@ final class LiteLLMResponsesRequestMapper {
 
     private static String reasoningEffortValue(ReasoningEffort effort) {
         return switch (effort) {
+            case NONE -> "none";
             case LOW -> "low";
-            case MEDIUM -> "medium";
             case HIGH -> "high";
             case MAX -> "max";
         };

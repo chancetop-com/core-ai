@@ -11,7 +11,7 @@ import StatusBadge from '../../components/StatusBadge';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
   id: '', name: '', description: '', system_prompt: '', system_prompt_id: '',
-  model: '', multi_modal_model: '', temperature: 0.7, max_turns: 100, timeout_seconds: 600,
+  model: '', multi_modal_model: '', temperature: 0.7, thinking_effort: null, max_turns: 100, timeout_seconds: 600,
   tools: [], input_template: '', variables: {},
   system_default: false, type: 'AGENT', response_schema: null,
   created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',
@@ -431,6 +431,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           model: agent.model,
           multi_modal_model: agent.multi_modal_model,
           temperature: agent.temperature,
+          thinking_effort: agent.thinking_effort,
           max_turns: agent.max_turns,
           timeout_seconds: agent.timeout_seconds,
           tools: agent.tools,
@@ -457,6 +458,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
         model: agent.model,
         multi_modal_model: agent.multi_modal_model,
         temperature: agent.temperature,
+        thinking_effort: agent.thinking_effort,
         max_turns: agent.max_turns,
         timeout_seconds: agent.timeout_seconds,
         tools: agent.tools,
@@ -571,6 +573,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
       const config: Record<string, unknown> = { systemPrompt };
       if (agent.model) config.model = agent.model;
       if (agent.temperature != null) config.temperature = agent.temperature;
+      if (agent.thinking_effort) config.reasoningEffort = agent.thinking_effort;
       if (agent.max_turns) config.maxTurns = agent.max_turns;
       const tools = agent.tools && agent.tools.length > 0 ? agent.tools : undefined;
 
@@ -667,7 +670,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
     }
   };
 
-  const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'multi_modal_model', 'temperature',
+  const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'multi_modal_model', 'temperature', 'thinking_effort',
     'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema', 'subagent_ids', 'skill_ids', 'enable_memory'] as const;
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -709,7 +712,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
   const handleExport = (a: AgentDefinition) => {
     const exportData = {
       name: a.name, description: a.description, type: a.type,
-      system_prompt: a.system_prompt, model: a.model, multi_modal_model: a.multi_modal_model, temperature: a.temperature,
+      system_prompt: a.system_prompt, model: a.model, multi_modal_model: a.multi_modal_model, temperature: a.temperature, thinking_effort: a.thinking_effort,
       max_turns: a.max_turns, timeout_seconds: a.timeout_seconds,         tools: a.tools,
       input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
       subagent_ids: a.subagent_ids,
@@ -973,6 +976,23 @@ The system prompt should define how this agent behaves, its capabilities, and it
                       className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
                       style={inputStyle}
                       placeholder="0.7" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Thinking Effort</label>
+                    <select
+                      value={agent.thinking_effort ?? ''}
+                      onChange={e => update('thinking_effort', e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                      style={inputStyle}>
+                      <option value="">Default</option>
+                      <option value="none">none</option>
+                      <option value="low">low</option>
+                      <option value="high">high</option>
+                      <option value="max">max</option>
+                    </select>
+                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                      Controls model reasoning depth. Default uses the provider setting; values like medium/xhigh are accepted and normalized.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Max Turns</label>

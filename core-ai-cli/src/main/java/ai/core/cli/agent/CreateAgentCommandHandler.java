@@ -195,7 +195,7 @@ class CreateAgentCommandHandler {
                 + "# model: sonnet%n"
                 + "# temperature: 0.8%n"
                 + "# maxTurnNumber: 200%n"
-                + "# reasoningEffort: low | medium | high | max%n"
+                + "# reasoningEffort: none | low | high | max (accepts medium/xhigh etc.)%n"
                 + "# tools:%n"
                 + "#   - Read%n"
                 + "#   - Bash%n"

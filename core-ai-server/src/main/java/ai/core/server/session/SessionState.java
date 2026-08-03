@@ -44,6 +44,7 @@ public class SessionState {
         public String model;
         public String multiModalModel;
         public Double temperature;
+        public String thinkingEffort;
         public Integer maxTurns;
         public String inputTemplate;
         public Map<String, String> variables;

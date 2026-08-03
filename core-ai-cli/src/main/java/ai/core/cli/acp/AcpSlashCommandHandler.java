@@ -52,7 +52,7 @@ class AcpSlashCommandHandler {
                       /help           Show this help
                       /models         List available models
                       /model <name>   Switch to model
-                      /thinking [lvl] Show or set reasoning effort (low/medium/high/off)
+                      /thinking [lvl] Show or set reasoning effort (none/low/high/max/off)
                       /debug          Toggle debug mode
                       /init           Create .core-ai/instructions.md
                       /tools          List available tools
@@ -126,7 +126,7 @@ class AcpSlashCommandHandler {
         if (parts.length < 2 || parts[1].isBlank()) {
             var current = AgentSessionRunnerHelper.loadReasoningEffortFromExtraBody();
             String level = current != null ? current.name().toLowerCase(Locale.ROOT) : "off (provider default)";
-            return "Reasoning effort: " + level + "\nUsage: /thinking [low|medium|high|off]";
+            return "Reasoning effort: " + level + "\nUsage: /thinking [none|low|high|max|off]";
         }
         var arg = parts[1].trim().toLowerCase(Locale.ROOT);
         var level = AgentSessionRunnerHelper.parseLevel(arg);
@@ -136,7 +136,7 @@ class AcpSlashCommandHandler {
             String label = level != null ? level.name().toLowerCase(Locale.ROOT) : "off (provider default)";
             return "Reasoning effort set to " + label;
         }
-        return "Invalid level: " + arg + ". Use low, medium, high, or off.";
+        return "Invalid level: " + arg + ". Use none, low, high, max, or off.";
     }
 
     private String handleInit() {
@@ -370,7 +370,7 @@ class AcpSlashCommandHandler {
                 new CommandInfo("/help", "Show this help"),
                 new CommandInfo("/models", "List available models"),
                 new CommandInfo("/model <name>", "Switch to model"),
-                new CommandInfo("/thinking [level]", "Show or set reasoning effort (low/medium/high/off)"),
+                new CommandInfo("/thinking [level]", "Show or set reasoning effort (none/low/high/max/off)"),
                 new CommandInfo("/debug", "Toggle debug mode"),
                 new CommandInfo("/init", "Create .core-ai/instructions.md"),
                 new CommandInfo("/tools", "List available tools"),

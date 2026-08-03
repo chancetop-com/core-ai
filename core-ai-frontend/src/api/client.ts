@@ -322,6 +322,7 @@ export interface AgentDefinition {
   model: string;
   multi_modal_model?: string;
   temperature: number;
+  thinking_effort?: string | null;
   max_turns: number;
   timeout_seconds: number;
   tools: ToolRef[];

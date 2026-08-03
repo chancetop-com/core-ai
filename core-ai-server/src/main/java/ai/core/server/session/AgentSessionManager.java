@@ -233,6 +233,7 @@ public class AgentSessionManager {
             if (overrides.model != null) config.model = overrides.model;
             if (overrides.multiModalModel != null) config.multiModalModel = overrides.multiModalModel;
             if (overrides.temperature != null) config.temperature = overrides.temperature;
+            if (overrides.reasoningEffort != null) config.reasoningEffort = overrides.reasoningEffort;
             if (overrides.systemPrompt != null) config.systemPrompt = overrides.systemPrompt;
             if (overrides.maxTurns != null) config.maxTurns = overrides.maxTurns;
             if (overrides.channelType != null) config.channelType = overrides.channelType;

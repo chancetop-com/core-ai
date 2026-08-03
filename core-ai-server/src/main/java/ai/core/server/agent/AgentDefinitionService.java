@@ -71,6 +71,7 @@ public class AgentDefinitionService {
         entity.model = request.model;
         entity.multiModalModel = Strings.isBlank(request.multiModalModel) ? null : request.multiModalModel;
         entity.temperature = request.temperature;
+        entity.thinkingEffort = AgentViewHelper.normalizeThinkingEffort(request.thinkingEffort);
         var isLLMCall = "LLM_CALL".equals(request.type);
         if (!isLLMCall) {
             entity.maxTurns = request.maxTurns != null ? request.maxTurns : 200;
@@ -242,6 +243,7 @@ public class AgentDefinitionService {
         if (request.model != null) entity.model = request.model;
         if (request.multiModalModel != null) entity.multiModalModel = Strings.isBlank(request.multiModalModel) ? null : request.multiModalModel;
         if (request.temperature != null) entity.temperature = request.temperature;
+        if (request.thinkingEffort != null) entity.thinkingEffort = AgentViewHelper.normalizeThinkingEffort(request.thinkingEffort);
         if (request.maxTurns != null) entity.maxTurns = request.maxTurns;
         if (request.timeoutSeconds != null) entity.timeoutSeconds = request.timeoutSeconds;
         if (request.tools != null) entity.tools = AgentViewHelper.toToolRefs(request.tools);
@@ -281,6 +283,7 @@ public class AgentDefinitionService {
         config.model = entity.model;
         config.multiModalModel = entity.multiModalModel;
         config.temperature = entity.temperature;
+        config.thinkingEffort = entity.thinkingEffort;
         config.maxTurns = entity.maxTurns;
         config.timeoutSeconds = entity.timeoutSeconds;
         config.tools = entity.tools;

@@ -142,12 +142,6 @@ public class AgentSessionRunnerHelper {
     }
 
     public static ReasoningEffort parseLevel(String level) {
-        return switch (level) {
-            case "low" -> ReasoningEffort.LOW;
-            case "medium" -> ReasoningEffort.MEDIUM;
-            case "high" -> ReasoningEffort.HIGH;
-            case "max" -> ReasoningEffort.MAX;
-            default -> null;
-        };
+        return ReasoningEffort.fromString(level);
     }
 }

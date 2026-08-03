@@ -71,7 +71,7 @@ class AgentSessionRunnerCommandHandler {
             var arg = parts[1].trim().toLowerCase(Locale.ROOT);
             var level = AgentSessionRunnerHelper.parseLevel(arg);
             if (level == null && !"off".equals(arg) && !"none".equals(arg) && !"default".equals(arg)) {
-                ui.printStreamingChunk(AnsiTheme.ERROR + "  Invalid level: " + arg + ". Use low, medium, high, max, or off.\n" + AnsiTheme.RESET);
+                ui.printStreamingChunk(AnsiTheme.ERROR + "  Invalid level: " + arg + ". Use none, low, high, max, or off.\n" + AnsiTheme.RESET);
                 return;
             }
             String error = AgentSessionRunnerHelper.persistReasoningEffortToExtraBody(level);
@@ -85,7 +85,7 @@ class AgentSessionRunnerCommandHandler {
             return;
         }
         var current = AgentSessionRunnerHelper.loadReasoningEffortFromExtraBody();
-        String[] levels = {"low", "medium", "high", "max", "off (provider default)"};
+        String[] levels = {"none", "low", "high", "max", "off (provider default)"};
         var labels = new java.util.ArrayList<String>(5);
         for (String l : levels) {
             boolean isCurrent = l.startsWith("off") && current == null
@@ -97,8 +97,8 @@ class AgentSessionRunnerCommandHandler {
         int choice = ui.pickIndex(labels);
         if (choice < 0) return;
         var newLevel = switch (choice) {
-            case 0 -> ReasoningEffort.LOW;
-            case 1 -> ReasoningEffort.MEDIUM;
+            case 0 -> ReasoningEffort.NONE;
+            case 1 -> ReasoningEffort.LOW;
             case 2 -> ReasoningEffort.HIGH;
             case 3 -> ReasoningEffort.MAX;
             default -> null;

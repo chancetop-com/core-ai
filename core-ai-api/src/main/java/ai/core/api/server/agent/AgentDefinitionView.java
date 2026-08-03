@@ -39,6 +39,9 @@ public class AgentDefinitionView {
     @Property(name = "temperature")
     public Double temperature;
 
+    @Property(name = "thinking_effort")
+    public String thinkingEffort;
+
     @Property(name = "max_turns")
     public Integer maxTurns;
 

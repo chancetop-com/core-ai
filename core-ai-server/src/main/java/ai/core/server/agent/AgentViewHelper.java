@@ -5,6 +5,7 @@ import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.SandboxConfigView;
 import ai.core.api.server.session.IdName;
 import ai.core.api.server.tool.ToolRefView;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentSandboxConfig;
@@ -15,6 +16,7 @@ import ai.core.server.domain.ToolSourceType;
 import ai.core.server.util.IdLists;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -35,6 +37,7 @@ final class AgentViewHelper {
         view.model = entity.model;
         view.multiModalModel = entity.multiModalModel;
         view.temperature = entity.temperature;
+        view.thinkingEffort = normalizeThinkingEffort(entity.thinkingEffort);
         view.maxTurns = entity.maxTurns;
         view.timeoutSeconds = entity.timeoutSeconds;
         view.tools = toToolRefViews(entity.tools);
@@ -69,6 +72,11 @@ final class AgentViewHelper {
         view.sandboxConfig = toSandboxConfigView(entity.sandboxConfig);
         view.datasetConfig = toDatasetConfigViews(entity.datasetConfig);
         return view;
+    }
+
+    static String normalizeThinkingEffort(String value) {
+        var effort = ReasoningEffort.fromString(value);
+        return effort != null ? effort.name().toLowerCase(Locale.ROOT) : null;
     }
 
     static List<ToolRef> toToolRefs(List<ToolRefView> views) {

@@ -20,7 +20,6 @@ import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ToolRegistry;
 
 import java.util.ArrayList;
-import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -236,7 +235,8 @@ public class TaskTool extends ToolCall {
                         || s.type() == PromptInject.SectionType.MEMORY)
                 .toList());
         if (profile.reasoningEffort() != null) {
-            builder.reasoningEffort(ReasoningEffort.valueOf(profile.reasoningEffort().toUpperCase(Locale.ROOT)));
+            var effort = ReasoningEffort.fromString(profile.reasoningEffort());
+            if (effort != null) builder.reasoningEffort(effort);
         }
         if (profile.temperature() != null) {
             builder.temperature(profile.temperature());

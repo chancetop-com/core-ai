@@ -7,6 +7,7 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviders;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.telemetry.AgentTracer;
 import ai.core.server.domain.AgentDefinition;
@@ -26,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -106,6 +108,11 @@ public class SubAgentAssembler {
         return List.of();
     }
 
+    private static String normalizeThinkingEffort(String value) {
+        var effort = ReasoningEffort.fromString(value);
+        return effort != null ? effort.name().toLowerCase(Locale.ROOT) : null;
+    }
+
     public SessionConfig toSessionConfig(AgentDefinition definition) {
         var config = new SessionConfig();
         var source = definition.publishedConfig;
@@ -116,6 +123,7 @@ public class SubAgentAssembler {
         config.model = hasSource && source.model != null ? source.model : definition.model;
         config.multiModalModel = hasSource && source.multiModalModel != null ? source.multiModalModel : definition.multiModalModel;
         config.temperature = hasSource && source.temperature != null ? source.temperature : definition.temperature;
+        config.reasoningEffort = normalizeThinkingEffort(hasSource && source.thinkingEffort != null ? source.thinkingEffort : definition.thinkingEffort);
         config.maxTurns = hasSource && source.maxTurns != null ? source.maxTurns : definition.maxTurns;
         return config;
     }
@@ -139,6 +147,7 @@ public class SubAgentAssembler {
             }
             if (c.config.model != null) builder.model(c.config.model);
             configureMultiModalModel(builder, c.config, llmProvider);
+            if (c.config.reasoningEffort != null) builder.reasoningEffort(ReasoningEffort.fromString(c.config.reasoningEffort));
             if (c.config.maxTurns != null) builder.maxTurn(c.config.maxTurns);
         } else {
             builder.systemPrompt("You are a helpful AI assistant.");

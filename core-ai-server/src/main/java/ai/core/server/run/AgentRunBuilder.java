@@ -5,6 +5,7 @@ import ai.core.agent.AgentBuilder;
 import ai.core.api.server.run.LLMCallRequest;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProviders;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.media.MediaProvider;
 import ai.core.server.gateway.ContextualMediaProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
@@ -131,6 +132,7 @@ public class AgentRunBuilder {
         var model = resolveModel(config, definition);
         var multiModalModel = resolveMultiModalModel(config, definition);
         var temperature = config != null ? config.temperature : definition.temperature;
+        var thinkingEffort = resolveThinkingEffort(config, definition);
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
         attachSkillsAndSubAgents(config, definition, registry, runEntity.id);
         attachMemorySearch(registry, enableMemory, definition.id);
@@ -144,6 +146,7 @@ public class AgentRunBuilder {
             if (mmModel != null) builder.multiModalModel(mmModel);
         }
         if (temperature != null) builder.temperature(temperature);
+        if (thinkingEffort != null) builder.reasoningEffort(thinkingEffort);
         if (maxTurns != null) builder.maxTurn(maxTurns);
         injectDatasetSystemVars(builder, definition);
         if (AgentMemoryService.memoryEnabled(enableMemory)) {
@@ -214,6 +217,11 @@ public class AgentRunBuilder {
         var mmm = config != null ? config.multiModalModel : definition.multiModalModel;
         if (mmm == null) mmm = systemSettingsService.llmMultiModalModel();
         return mmm;
+    }
+
+    private ReasoningEffort resolveThinkingEffort(AgentPublishedConfig config, AgentDefinition definition) {
+        var value = config != null ? config.thinkingEffort : definition.thinkingEffort;
+        return ReasoningEffort.fromString(value);
     }
 
     private void attachSkillsAndSubAgents(AgentPublishedConfig config, AgentDefinition definition, ToolRegistry registry, String runId) {

@@ -24,6 +24,9 @@ public class AgentPublishedConfig {
     @Field(name = "temperature")
     public Double temperature;
 
+    @Field(name = "thinking_effort")
+    public String thinkingEffort;
+
     @Field(name = "max_turns")
     public Integer maxTurns;
 
