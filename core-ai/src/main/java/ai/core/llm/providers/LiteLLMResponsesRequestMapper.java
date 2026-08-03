@@ -34,7 +34,7 @@ final class LiteLLMResponsesRequestMapper {
         LiteLLMResponsesUtil.putIfNotNull(body, "tool_choice", request.toolChoice);
         LiteLLMResponsesUtil.putIfNotNull(body, "tools", mapTools(request.tools));
         LiteLLMResponsesUtil.putIfNotNull(body, "text", mapText(request.responseFormat));
-        LiteLLMResponsesUtil.putIfNotNull(body, "reasoning", mapReasoning(request.reasoningEffort));
+        LiteLLMResponsesUtil.putIfNotNull(body, "reasoning", mapReasoning(request));
         return body;
     }
 
@@ -212,9 +212,11 @@ final class LiteLLMResponsesRequestMapper {
         LiteLLMResponsesUtil.putIfNotNull(format, "schema", responseFormat.jsonSchema.schema);
     }
 
-    private static Map<String, Object> mapReasoning(ReasoningEffort reasoningEffort) {
-        if (reasoningEffort == null) return null;
-        return LiteLLMResponsesUtil.mapOf("effort", reasoningEffortValue(reasoningEffort));
+    private static Map<String, Object> mapReasoning(CompletionRequest request) {
+        var effort = request.getReasoningEffortValue();
+        if (effort == null && request.reasoningEffort != null) effort = reasoningEffortValue(request.reasoningEffort);
+        if (effort == null) return null;
+        return LiteLLMResponsesUtil.mapOf("effort", effort);
     }
 
     private static String reasoningEffortValue(ReasoningEffort effort) {
@@ -222,7 +224,7 @@ final class LiteLLMResponsesRequestMapper {
             case NONE -> "none";
             case LOW -> "low";
             case HIGH -> "high";
-            case MAX -> "max";
+            case MAX -> "xhigh";
         };
     }
 

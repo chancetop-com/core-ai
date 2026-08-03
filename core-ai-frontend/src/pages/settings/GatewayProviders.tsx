@@ -78,6 +78,7 @@ type ModelFormState = {
   supportsTools: boolean;
   supportsVision: boolean;
   supportsVideo: boolean;
+  reasoningEfforts: string;
   maxVideoBytes: string;
   maxVideoSeconds: string;
   inputPricePer1MTokens: string;
@@ -122,6 +123,7 @@ const emptyModelForm: ModelFormState = {
   supportsTools: false,
   supportsVision: false,
   supportsVideo: false,
+  reasoningEfforts: '',
   maxVideoBytes: '',
   maxVideoSeconds: '',
   inputPricePer1MTokens: '',
@@ -315,6 +317,7 @@ export default function GatewayProviders() {
       supportsTools: model.supportsTools === true,
       supportsVision: model.supportsVision === true,
       supportsVideo: model.supportsVideo === true,
+      reasoningEfforts: model.reasoningEfforts?.join(', ') || '',
       maxVideoBytes: model.maxVideoBytes == null ? '' : String(model.maxVideoBytes),
       maxVideoSeconds: model.maxVideoSeconds == null ? '' : String(model.maxVideoSeconds),
       inputPricePer1MTokens: model.inputPricePer1MTokens == null ? '' : String(model.inputPricePer1MTokens),
@@ -347,6 +350,9 @@ export default function GatewayProviders() {
         maxVideoBytes: optionalNumber(modelForm.maxVideoBytes, 'Max video bytes'),
         maxVideoSeconds: optionalNumber(modelForm.maxVideoSeconds, 'Max video seconds'),
       };
+      const reasoningEfforts = modelForm.reasoningEfforts.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+      if (reasoningEfforts.length) payload.reasoningEfforts = reasoningEfforts;
+      else if (modelForm.id) payload.reasoningEfforts = [];
       if (modelForm.id) {
         await api.gateway.updateModel(modelForm.id, payload);
       } else {
@@ -937,6 +943,20 @@ function renderModelPanel(props: {
           </Field>
         </div>
 
+        <Field label="Reasoning Efforts">
+          <input
+            className={inputClass}
+            style={inputStyle}
+            value={form.reasoningEfforts}
+            onChange={e => setForm({ ...form, reasoningEfforts: e.target.value })}
+            placeholder="e.g. low, medium, high, xhigh"
+          />
+          <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+            reasoning_effort values this model accepts. The agent's thinking effort is mapped to the closest level here; leave empty to never send the parameter.
+          </p>
+          <ReasoningEffortMappingPreview values={form.reasoningEfforts.split(',').map(v => v.trim().toLowerCase()).filter(Boolean)} />
+        </Field>
+
         <div className="grid grid-cols-2 gap-4">
           <ReadOnlyField label="Capabilities">
             {formatCapabilities({
@@ -1148,6 +1168,43 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
       {children}
     </label>
+  );
+}
+
+// mirrors the backend mapping in GatewayLLMProvider: internal levels (none/low/high/max)
+// are mapped to the closest level the model declares in reasoningEfforts
+const EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+function effortRank(value: string): number {
+  const index = EFFORT_ORDER.indexOf(value);
+  return index < 0 ? EFFORT_ORDER.length : index;
+}
+
+function resolveMappedEffort(effort: string, supported: string[]): string | null {
+  if (!supported.length) return null;
+  const ranked = [...supported].sort((a, b) => effortRank(a) - effortRank(b));
+  if (effort === 'max') return ranked[ranked.length - 1];
+  const target = effortRank(effort);
+  return ranked.find(v => effortRank(v) >= target) ?? ranked[ranked.length - 1];
+}
+
+function ReasoningEffortMappingPreview({ values }: { values: string[] }) {
+  const rows = [
+    { level: 'none', value: null },
+    { level: 'low', value: resolveMappedEffort('low', values) },
+    { level: 'high', value: resolveMappedEffort('high', values) },
+    { level: 'max', value: resolveMappedEffort('max', values) },
+  ] as { level: string; value: string | null }[];
+  return (
+    <div className="mt-2 space-y-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+      {rows.map(row => (
+        <div key={row.level} className="flex items-center gap-2">
+          <span className="font-medium w-10" style={{ color: 'var(--color-text)' }}>{row.level}</span>
+          <span>→</span>
+          <span>{row.value ?? 'not sent'}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 

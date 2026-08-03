@@ -30,6 +30,16 @@ public class GatewayModelService {
     static final String ENDPOINT_IMAGE_EDIT = "image.edits";
     static final String ENDPOINT_VIDEO_GENERATION = "video.generations";
 
+    static List<String> normalizeReasoningEfforts(List<String> reasoningEfforts) {
+        if (reasoningEfforts == null || reasoningEfforts.isEmpty()) return null;
+        var values = reasoningEfforts.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> value.trim().toLowerCase(Locale.ROOT))
+                .distinct()
+                .toList();
+        return values.isEmpty() ? null : values;
+    }
+
     static List<String> normalizeEndpointTypes(List<String> endpointTypes) {
         var values = endpointTypes.stream()
                 .filter(endpointType -> endpointType != null && !endpointType.isBlank())
@@ -244,6 +254,7 @@ public class GatewayModelService {
         if (specified(request, "supportsTools", create)) entity.supportsTools = request.supportsTools;
         if (specified(request, "supportsVision", create)) entity.supportsVision = request.supportsVision;
         if (specified(request, "supportsVideo", create)) entity.supportsVideo = request.supportsVideo;
+        if (specified(request, "reasoningEfforts", create)) entity.reasoningEfforts = normalizeReasoningEfforts(request.reasoningEfforts);
         if (specified(request, "maxVideoBytes", create)) entity.maxVideoBytes = request.maxVideoBytes;
         if (specified(request, "maxVideoSeconds", create)) entity.maxVideoSeconds = request.maxVideoSeconds;
         if (specified(request, "inputPricePer1MTokens", create)) entity.inputPricePer1MTokens = request.inputPricePer1MTokens;
@@ -348,6 +359,7 @@ public class GatewayModelService {
         view.supportsTools = entity.supportsTools;
         view.supportsVision = entity.supportsVision;
         view.supportsVideo = entity.supportsVideo;
+        view.reasoningEfforts = entity.reasoningEfforts;
         view.maxVideoBytes = entity.maxVideoBytes;
         view.maxVideoSeconds = entity.maxVideoSeconds;
         view.inputPricePer1MTokens = entity.inputPricePer1MTokens;

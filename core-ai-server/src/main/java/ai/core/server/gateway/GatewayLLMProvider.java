@@ -8,16 +8,20 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.llm.streaming.DefaultStreamingCallback;
 import ai.core.llm.streaming.StreamingCallback;
+import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import core.framework.web.exception.BadRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -37,6 +41,30 @@ public class GatewayLLMProvider extends LLMProvider {
     private static final int MAX_CACHED_UPSTREAM_PROVIDERS = 32;
     // model prefix that makes LiteLLMProvider pick the /responses transport; stripped before sending upstream
     private static final String RESPONSES_MODEL_PREFIX = "responses/";
+    private static final List<String> REASONING_EFFORT_ORDER = List.of("minimal", "low", "medium", "high", "xhigh", "max");
+
+    private static String resolveReasoningEffort(ReasoningEffort effort, List<String> supported) {
+        if (effort == null || effort == ReasoningEffort.NONE) return null;
+        if (supported == null || supported.isEmpty()) return null;
+        var ranked = supported.stream().sorted(Comparator.comparingInt(GatewayLLMProvider::rank)).toList();
+        if (effort == ReasoningEffort.MAX) return ranked.getLast();
+        var target = rank(effort);
+        return ranked.stream().filter(value -> rank(value) >= target).findFirst().orElse(ranked.getLast());
+    }
+
+    private static int rank(ReasoningEffort effort) {
+        return switch (effort) {
+            case NONE -> -1;
+            case LOW -> REASONING_EFFORT_ORDER.indexOf("low");
+            case HIGH -> REASONING_EFFORT_ORDER.indexOf("high");
+            case MAX -> REASONING_EFFORT_ORDER.size();
+        };
+    }
+
+    private static int rank(String value) {
+        var index = REASONING_EFFORT_ORDER.indexOf(value);
+        return index < 0 ? REASONING_EFFORT_ORDER.size() : index;
+    }
 
     private final GatewayRoutingEngine routingEngine;
     private final GatewaySecretProtector secretProtector;
@@ -77,6 +105,7 @@ public class GatewayLLMProvider extends LLMProvider {
         var upstream = upstreamProvider(provider, upstreamModel);
         var originalModel = request.model;
         request.model = upstreamModel;
+        applyReasoningEffort(request, routingEngine.modelConfig(originalModel));
         applyPreprocess(request);
         try {
             return upstream.delegateCompletionStream(request, callback);
@@ -110,6 +139,16 @@ public class GatewayLLMProvider extends LLMProvider {
 
     private void applyPreprocess(CompletionRequest request) {
         super.preprocess(request);
+    }
+
+    // reasoning effort is model-specific: internal levels (none/low/high/max) are mapped to the
+    // closest level the routed model declares in reasoningEfforts; an empty list means the model
+    // does not support reasoning effort, so the field is omitted entirely
+    private void applyReasoningEffort(CompletionRequest request, GatewayModelConfig modelConfig) {
+        if (modelConfig == null || modelConfig.reasoningEfforts == null) return;
+        var effort = request.reasoningEffort;
+        request.reasoningEffort = null;
+        request.setReasoningEffortValue(resolveReasoningEffort(effort, modelConfig.reasoningEfforts));
     }
 
     private ResolvedRoute resolveRoute(String model) {

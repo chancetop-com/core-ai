@@ -51,6 +51,9 @@ public class GatewayModelConfig {
     @Field(name = "supports_video")
     public Boolean supportsVideo;
 
+    @Field(name = "reasoning_efforts")
+    public List<String> reasoningEfforts;
+
     @Field(name = "max_video_bytes")
     public Long maxVideoBytes;
 

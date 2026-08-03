@@ -211,6 +211,9 @@ public class LiteLLMProvider extends LLMProvider {
         }
 
         var bodyMap = (Map<String, Object>) JsonUtil.toMap(request);
+        if (request.getReasoningEffortValue() != null) {
+            bodyMap.put("reasoning_effort", request.getReasoningEffortValue());
+        }
         if (extraBody instanceof Map<?, ?> extraMap) {
             bodyMap.putAll((Map<String, Object>) extraMap);
         }

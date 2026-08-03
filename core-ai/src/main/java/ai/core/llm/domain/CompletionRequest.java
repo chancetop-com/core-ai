@@ -26,7 +26,8 @@ public class CompletionRequest {
         request.tools = options.tools;
         request.stream = options.stream;
         request.responseFormat = options.responseFormat;
-        request.reasoningEffort = options.reasoningEffort;
+        // NONE means "no reasoning effort" — omit the field so providers that do not accept "none" fall back to their default
+        request.reasoningEffort = options.reasoningEffort == ReasoningEffort.NONE ? null : options.reasoningEffort;
         return request;
     }
 
@@ -58,6 +59,9 @@ public class CompletionRequest {
     private String name;
     private Object extraBody;
     private Integer timeoutSeconds;
+    // resolved per-model reasoning effort value (e.g. "xhigh" mapped from internal MAX),
+    // takes precedence over the reasoningEffort enum when serializing to upstream
+    private String reasoningEffortValue;
 
     public String getName() {
         return name;
@@ -73,6 +77,12 @@ public class CompletionRequest {
     }
     public void setTimeoutSeconds(Integer timeoutSeconds) {
         this.timeoutSeconds = timeoutSeconds;
+    }
+    public String getReasoningEffortValue() {
+        return reasoningEffortValue;
+    }
+    public void setReasoningEffortValue(String reasoningEffortValue) {
+        this.reasoningEffortValue = reasoningEffortValue;
     }
 
     public record CompletionRequestOptions(List<Message> messages,
