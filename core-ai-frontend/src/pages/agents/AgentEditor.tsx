@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal, Brain } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal, Brain, HelpCircle } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo, AgentDatasetConfig, GatewayAvailableModel } from '../../api/client';
 import { sessionApi } from '../../api/session';
@@ -945,7 +945,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
             </button>
             {modelConfigOpen && (
               <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                <div className="grid grid-cols-4 gap-4 pt-3">
+                <div className="grid grid-cols-5 gap-4 pt-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">Model</label>
                     {chatModels.length > 0 ? (
@@ -970,7 +970,13 @@ The system prompt should define how this agent behaves, its capabilities, and it
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Temperature</label>
+                    <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                      Temperature
+                      <span className="cursor-help flex items-center"
+                        title="Controls output randomness. Lower values are more deterministic; higher values are more creative.">
+                        <HelpCircle size={12} style={{ color: 'var(--color-text-tertiary)' }} />
+                      </span>
+                    </label>
                     <input type="number" step="0.1" min="0" max="2"
                       value={agent.temperature ?? ''} onChange={e => update('temperature', e.target.value ? parseFloat(e.target.value) : null)}
                       className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
@@ -978,7 +984,13 @@ The system prompt should define how this agent behaves, its capabilities, and it
                       placeholder="0.7" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Thinking Effort</label>
+                    <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                      Thinking Effort
+                      <span className="cursor-help flex items-center"
+                        title="Controls model reasoning depth. Default uses the provider setting; values like medium/xhigh are accepted and normalized.">
+                        <HelpCircle size={12} style={{ color: 'var(--color-text-tertiary)' }} />
+                      </span>
+                    </label>
                     <select
                       value={agent.thinking_effort ?? ''}
                       onChange={e => update('thinking_effort', e.target.value)}
@@ -990,12 +1002,15 @@ The system prompt should define how this agent behaves, its capabilities, and it
                       <option value="high">high</option>
                       <option value="max">max</option>
                     </select>
-                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
-                      Controls model reasoning depth. Default uses the provider setting; values like medium/xhigh are accepted and normalized.
-                    </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Max Turns</label>
+                    <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                      Max Turns
+                      <span className="cursor-help flex items-center"
+                        title="Maximum number of turns (model calls) the agent can make before the run stops.">
+                        <HelpCircle size={12} style={{ color: 'var(--color-text-tertiary)' }} />
+                      </span>
+                    </label>
                     <input type="number" min="1"
                       value={agent.max_turns ?? ''} onChange={e => update('max_turns', e.target.value ? parseInt(e.target.value) : null)}
                       className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
@@ -1003,7 +1018,13 @@ The system prompt should define how this agent behaves, its capabilities, and it
                       placeholder="20" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Timeout (s)</label>
+                    <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                      Timeout (s)
+                      <span className="cursor-help flex items-center"
+                        title="Maximum time in seconds for one run before it is aborted.">
+                        <HelpCircle size={12} style={{ color: 'var(--color-text-tertiary)' }} />
+                      </span>
+                    </label>
                     <input type="number" min="1"
                       value={agent.timeout_seconds ?? ''} onChange={e => update('timeout_seconds', e.target.value ? parseInt(e.target.value) : null)}
                       className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
