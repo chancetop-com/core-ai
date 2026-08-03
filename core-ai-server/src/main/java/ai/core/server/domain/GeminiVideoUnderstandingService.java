@@ -94,8 +94,8 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
                                                                               String referenceId, String upstreamModel,
                                                                               GatewayProviderConfig provider,
                                                                               String question) {
-        if (provider.vertexProjectId == null || provider.vertexProjectId.isBlank()
-                || provider.vertexLocation == null || provider.vertexLocation.isBlank()) {
+        if (provider.vertexProjectId == null || provider.vertexLocation == null
+                || provider.vertexProjectId.isBlank() || provider.vertexLocation.isBlank()) {
             throw new IllegalArgumentException("Vertex video understanding requires vertexProjectId and vertexLocation on provider: " + provider.name);
         }
         if (provider.vertexGcsBucket == null || provider.vertexGcsBucket.isBlank()) {

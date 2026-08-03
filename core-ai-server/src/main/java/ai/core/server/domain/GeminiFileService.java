@@ -131,7 +131,7 @@ public class GeminiFileService {
     private void deleteTempFile(Path temp) {
         try {
             Files.deleteIfExists(temp);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             throw new IllegalStateException("failed to delete temporary video file", e);
         }
     }
