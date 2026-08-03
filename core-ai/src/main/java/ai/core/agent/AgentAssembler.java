@@ -36,6 +36,7 @@ final class AgentAssembler {
         agent.temperature = builder.temperature;
         agent.model = builder.model;
         agent.multiModalModel = builder.multiModalModel;
+        agent.preferCaptionPath = builder.preferCaptionPath;
         agent.llmProvider = builder.llmProvider;
         if (agent.llmProvider == null) {
             throw new Error("llmProvider is required for agent, please set it with llmProvider() method");

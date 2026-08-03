@@ -98,24 +98,23 @@ public class AgentHelper {
 
     // text-model path: persist the image and hand the model a reference it can inspect via caption_image
     private static String buildImageReference(FunctionCall tool, ToolCallResult result, ExecutionContext context) {
-        var url = persistImage(result, context);
+        var url = persistImage(result.getImageBase64(), result.getImageFormat(), context);
         if (url != null) {
             return Strings.format("[Image result: {}] The current model cannot view images directly. Call caption_image with this url to inspect it.", url);
         }
         return Strings.format("[Image result from tool {}] The current model cannot view images directly. Call caption_image with the original image path or url to inspect it.", tool.function.name);
     }
 
-    private static String persistImage(ToolCallResult result, ExecutionContext context) {
+    private static String persistImage(String base64, String format, ExecutionContext context) {
         var sink = context.getCustomVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, GenerateImageTool.ImageOutputSink.class);
         if (sink == null) return null;
         try {
-            var format = result.getImageFormat();
             var extension = format != null && format.contains("/") ? format.substring(format.indexOf('/') + 1) : "png";
             var contentType = format != null && format.contains("/") ? format : "image/" + extension;
-            var bytes = Base64.getDecoder().decode(result.getImageBase64());
+            var bytes = Base64.getDecoder().decode(base64);
             return sink.save("tool-image-" + UUID.randomUUID() + "." + extension, contentType, bytes);
         } catch (Exception e) {
-            LOGGER.warn("failed to persist tool image, falling back to reference without url", e);
+            LOGGER.warn("failed to persist image, falling back to reference without url", e);
             return null;
         }
     }
@@ -145,7 +144,7 @@ public class AgentHelper {
         contents.add(Content.of(query));
         attachedContents.stream()
                 .filter(attachedContent -> attachedContent.type != ExecutionContext.AttachedContent.AttachedContentType.VIDEO)
-                .map(AgentHelper::buildAttachedContent)
+                .map(attachedContent -> buildAttachedContent(attachedContent, context))
                 .forEach(contents::add);
         attachedContents.stream()
                 .filter(attachedContent -> attachedContent.type == ExecutionContext.AttachedContent.AttachedContentType.VIDEO)
@@ -183,19 +182,30 @@ public class AgentHelper {
     }
 
     public static Content buildAttachedContent(ExecutionContext.AttachedContent attachedContent) {
+        return buildAttachedContent(attachedContent, null);
+    }
+
+    private static Content buildAttachedContent(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
         return switch (attachedContent.type) {
-            case IMAGE -> buildImageAttachedContent(attachedContent);
+            case IMAGE -> buildImageAttachedContent(attachedContent, context);
             case PDF -> buildPdfAttachedContent(attachedContent);
             case VIDEO -> throw new IllegalStateException("video references must be resolved by understand_video tool");
         };
     }
 
-    private static Content buildImageAttachedContent(ExecutionContext.AttachedContent attachedContent) {
-        if (attachedContent.isBase64()) {
-            var dataUri = Strings.format("data:{};base64,{}", attachedContent.mediaType, attachedContent.data);
-            return Content.of(Content.ImageUrl.of(dataUri, attachedContent.mediaType));
+    private static Content buildImageAttachedContent(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
+        if (!attachedContent.isBase64()) return Content.of(Content.ImageUrl.of(attachedContent.url, null));
+        var referenceUrl = captionPathUrl(attachedContent, context);
+        if (referenceUrl != null) {
+            return Content.of(Strings.format("[Image attachment: {}] The current model cannot view images directly. Call caption_image with this url to inspect it.", referenceUrl));
         }
-        return Content.of(Content.ImageUrl.of(attachedContent.url, null));
+        var dataUri = Strings.format("data:{};base64,{}", attachedContent.mediaType, attachedContent.data);
+        return Content.of(Content.ImageUrl.of(dataUri, attachedContent.mediaType));
+    }
+
+    private static String captionPathUrl(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
+        if (context == null || context.isVisionNative()) return null;
+        return persistImage(attachedContent.data, attachedContent.mediaType, context);
     }
 
     private static Content buildPdfAttachedContent(ExecutionContext.AttachedContent attachedContent) {

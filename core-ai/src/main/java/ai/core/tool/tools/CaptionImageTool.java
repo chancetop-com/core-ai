@@ -53,6 +53,8 @@ public class CaptionImageTool extends ToolCall {
             read_file can only display image bytes but cannot actually understand image content. Only caption_image sends the image to a vision model that can see and interpret what's in it.
             The query parameter specifies what you want to know about the image (e.g., "what does this image say?", "describe the chart", "extract the text").
             The url parameter supports HTTP/HTTPS URLs, data URIs, and local file paths.
+            Pass urls (array) instead of url to inspect several images in one call, e.g. to compare them.
+            Pass context with a short task background when the question depends on the wider conversation.
             """;
 
     public static Builder builder() {
@@ -63,10 +65,13 @@ public class CaptionImageTool extends ToolCall {
     public ToolCallResult execute(String text, ExecutionContext context) {
         var params = JsonUtil.fromJson(CaptionImageToolParams.class, text);
         var llmProvider = context.getLlmProvider();
-        var imageUrl = resolveImageUrl(params.url(), context);
+        var urls = resolveUrls(params);
+        var contents = new java.util.ArrayList<Content>(urls.size() + 1);
+        contents.add(Content.of(buildQueryText(params)));
+        urls.stream().map(url -> Content.of(resolveImageUrl(url, context))).forEach(contents::add);
         var messages = List.of(Message.of(new Message.MessageRecord(
                 RoleType.USER,
-                List.of(Content.of(params.query()), Content.of(imageUrl)),
+                List.copyOf(contents),
                 null, null, null, null)));
         var effectiveModel = resolveModel(context);
         LOGGER.info("caption_image using model=[{}], context.multiModalModel=[{}], context.model=[{}]",
@@ -78,6 +83,17 @@ public class CaptionImageTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments) {
         throw new AgentRuntimeException("CAPTION_IMAGE_TOOL_FAILED", "CaptionImageTool requires ExecutionContext");
+    }
+
+    private List<String> resolveUrls(CaptionImageToolParams params) {
+        if (params.urls() != null && !params.urls().isEmpty()) return params.urls();
+        if (params.url() != null && !params.url().isBlank()) return List.of(params.url());
+        throw new AgentRuntimeException("CAPTION_IMAGE_TOOL_FAILED", "url or urls is required");
+    }
+
+    private String buildQueryText(CaptionImageToolParams params) {
+        if (params.context() == null || params.context().isBlank()) return params.query();
+        return params.query() + "\nTask context: " + params.context();
     }
 
     private String resolveModel(ExecutionContext context) {
@@ -156,7 +172,9 @@ public class CaptionImageTool extends ToolCall {
             this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "query", "query").required(),
-                    ToolCallParameters.ParamSpec.of(String.class, "url", "url of the image").required()
+                    ToolCallParameters.ParamSpec.of(String.class, "url", "url of the image"),
+                    ToolCallParameters.ParamSpec.of(List.class, "urls", "urls of multiple images to inspect together (e.g. for comparison); use either url or urls"),
+                    ToolCallParameters.ParamSpec.of(String.class, "context", "optional task background so the vision model answers in context")
             ));
             var tool = new CaptionImageTool();
             build(tool);
@@ -164,6 +182,6 @@ public class CaptionImageTool extends ToolCall {
         }
     }
 
-    public record CaptionImageToolParams(String query, String url) {
+    public record CaptionImageToolParams(String query, String url, List<String> urls, String context) {
     }
 }

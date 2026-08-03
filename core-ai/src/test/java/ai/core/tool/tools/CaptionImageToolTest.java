@@ -25,6 +25,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author Xander
@@ -64,6 +65,41 @@ class CaptionImageToolTest {
         tool.execute(PARAMS, context);
 
         assertEquals("caption-model", llmProvider.lastRequest.model);
+    }
+
+    @Test
+    void multipleUrlsProduceMultipleImageParts() {
+        var context = contextWithProvider();
+        context.setMultiModalModel("vision-model");
+        var params = "{\"query\": \"compare these\", \"urls\": [\"data:image/png;base64,QUJD\", \"data:image/png;base64,REVG\"]}";
+
+        tool.execute(params, context);
+
+        var content = llmProvider.lastRequest.messages.getFirst().content;
+        var imageParts = content.stream().filter(c -> c.type == ai.core.llm.domain.Content.ContentType.IMAGE_URL).count();
+        assertEquals(2, imageParts);
+    }
+
+    @Test
+    void contextParamIsIncludedInQueryText() {
+        var context = contextWithProvider();
+        context.setMultiModalModel("vision-model");
+        var params = "{\"query\": \"read the chart\", \"url\": \"data:image/png;base64,QUJD\", \"context\": \"user is comparing Q3 sales\"}";
+
+        tool.execute(params, context);
+
+        var text = llmProvider.lastRequest.messages.getFirst().content.getFirst().text;
+        assertTrue(text.contains("user is comparing Q3 sales"));
+    }
+
+    @Test
+    void throwWhenNoUrlProvided() {
+        var context = contextWithProvider();
+        context.setMultiModalModel("vision-model");
+
+        var exception = assertThrows(AgentRuntimeException.class, () -> tool.execute("{\"query\": \"describe\"}", context));
+
+        assertEquals("CAPTION_IMAGE_TOOL_FAILED", exception.errorCode());
     }
 
     @Test

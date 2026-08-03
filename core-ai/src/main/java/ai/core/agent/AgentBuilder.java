@@ -46,6 +46,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     Double temperature;
     String model;
     String multiModalModel;
+    boolean preferCaptionPath;
     ReflectionConfig reflectionConfig;
     ReflectionListener reflectionListener;
     Boolean useGroupContext = Boolean.FALSE;
@@ -159,6 +160,12 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder multiModalModel(String multiModalModel) {
         this.multiModalModel = multiModalModel;
+        return this;
+    }
+
+    // force the caption-tool path even for vision-capable models, e.g. to keep a cheap main model in charge
+    public AgentBuilder preferCaptionPath(boolean preferCaptionPath) {
+        this.preferCaptionPath = preferCaptionPath;
         return this;
     }
 
