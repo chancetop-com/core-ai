@@ -2,7 +2,6 @@ package ai.core.tool.tools;
 
 import ai.core.AgentRuntimeException;
 import ai.core.agent.ExecutionContext;
-import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Content;
 import ai.core.llm.domain.Message;
@@ -69,7 +68,7 @@ public class CaptionImageTool extends ToolCall {
                 RoleType.USER,
                 List.of(Content.of(params.query()), Content.of(imageUrl)),
                 null, null, null, null)));
-        var effectiveModel = resolveModel(context, llmProvider);
+        var effectiveModel = resolveModel(context);
         LOGGER.info("caption_image using model=[{}], context.multiModalModel=[{}], context.model=[{}]",
                 effectiveModel, context.getMultiModalModel(), context.getModel());
         var rsp = llmProvider.completion(CompletionRequest.of(messages, List.of(), null, effectiveModel, null));
@@ -81,12 +80,13 @@ public class CaptionImageTool extends ToolCall {
         throw new AgentRuntimeException("CAPTION_IMAGE_TOOL_FAILED", "CaptionImageTool requires ExecutionContext");
     }
 
-    private String resolveModel(ExecutionContext context, LLMProvider llmProvider) {
+    private String resolveModel(ExecutionContext context) {
         if (context.getMultiModalModel() != null) return context.getMultiModalModel();
         var captionModel = context.getCustomVariable("media.caption.model");
         if (captionModel instanceof String value && !value.isBlank()) return value;
-        if (context.getModel() != null) return context.getModel();
-        return llmProvider.config.getModel();
+        // never fall back to the main/provider model: it may be text-only and would fail on image input
+        throw new AgentRuntimeException("CAPTION_IMAGE_NO_VISION_MODEL",
+                "no vision-capable model configured: set agent multiModalModel or media.caption.model");
     }
 
     private Content.ImageUrl resolveImageUrl(String url, ExecutionContext context) {
