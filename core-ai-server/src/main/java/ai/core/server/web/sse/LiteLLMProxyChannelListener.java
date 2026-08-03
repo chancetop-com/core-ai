@@ -35,6 +35,8 @@ public class LiteLLMProxyChannelListener implements ChannelListener<Object> {
     public void onConnect(Request request, Channel<Object> channel, String lastEventId) {
         var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
         var completionRequest = parseRequest(body);
+        // OpenAI-compatible proxy surface: forward the client's payload verbatim, upstream errors included
+        completionRequest.setPassthrough(true);
         var model = completionRequest.model;
         if (model == null || model.isBlank()) throw new BadRequestException("model is required");
 

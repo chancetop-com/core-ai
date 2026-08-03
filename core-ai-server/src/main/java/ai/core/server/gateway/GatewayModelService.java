@@ -202,7 +202,7 @@ public class GatewayModelService {
                 throw new BadRequestException("gateway model is not available from provider discovery: " + upstreamModel);
             }
             if (metadata == null) {
-                metadata = GatewayModelCatalog.enrich(new GatewayModelMetadata(upstreamModel, null, null, null, null, null, null, null, null));
+                metadata = GatewayModelCatalog.enrich(new GatewayModelMetadata(upstreamModel, null, null, null, null, null, null, null, null, null));
             }
             if (metadata.endpointTypes() == null || metadata.endpointTypes().isEmpty()) {
                 throw new BadRequestException("gateway does not support model endpoint type: " + upstreamModel);
@@ -254,6 +254,7 @@ public class GatewayModelService {
         if (specified(request, "supportsTools", create)) entity.supportsTools = request.supportsTools;
         if (specified(request, "supportsVision", create)) entity.supportsVision = request.supportsVision;
         if (specified(request, "supportsVideo", create)) entity.supportsVideo = request.supportsVideo;
+        if (specified(request, "supportsFile", create)) entity.supportsFile = request.supportsFile;
         if (specified(request, "reasoningEfforts", create)) entity.reasoningEfforts = normalizeReasoningEfforts(request.reasoningEfforts);
         if (specified(request, "maxVideoBytes", create)) entity.maxVideoBytes = request.maxVideoBytes;
         if (specified(request, "maxVideoSeconds", create)) entity.maxVideoSeconds = request.maxVideoSeconds;
@@ -272,6 +273,7 @@ public class GatewayModelService {
         if (metadata.supportsStream() != null) entity.supportsStream = metadata.supportsStream();
         if (metadata.supportsTools() != null) entity.supportsTools = metadata.supportsTools();
         if (metadata.supportsVision() != null) entity.supportsVision = metadata.supportsVision();
+        if (metadata.supportsFile() != null) entity.supportsFile = metadata.supportsFile();
         if (metadata.inputPricePer1MTokens() != null) entity.inputPricePer1MTokens = metadata.inputPricePer1MTokens();
         if (metadata.outputPricePer1MTokens() != null) entity.outputPricePer1MTokens = metadata.outputPricePer1MTokens();
         if (metadata.inputPricePer1MTokens() != null || metadata.outputPricePer1MTokens() != null) {
@@ -359,6 +361,7 @@ public class GatewayModelService {
         view.supportsTools = entity.supportsTools;
         view.supportsVision = entity.supportsVision;
         view.supportsVideo = entity.supportsVideo;
+        view.supportsFile = entity.supportsFile;
         view.reasoningEfforts = entity.reasoningEfforts;
         view.maxVideoBytes = entity.maxVideoBytes;
         view.maxVideoSeconds = entity.maxVideoSeconds;

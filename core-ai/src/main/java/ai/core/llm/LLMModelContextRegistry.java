@@ -18,6 +18,7 @@ public final class LLMModelContextRegistry {
     private static final int DEFAULT_MAX_INPUT_TOKENS = 128000;
     private static final int DEFAULT_MAX_OUTPUT_TOKENS = 4096;
     private static final String[] MODEL_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/"};
+    private static final String[] STRIP_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/", "deepseek/", "gemini/", "vertex_ai/", "openrouter/", "litellm/"};
 
     private static volatile LLMModelContextRegistry instance;
 
@@ -66,9 +67,13 @@ public final class LLMModelContextRegistry {
                 var outputCostPerToken = getDoubleOrDefault(modelNode, "output_cost_per_token", 0.0);
                 var cacheReadInputTokenCost = getDoubleOrDefault(modelNode, "cache_read_input_token_cost",
                     getDoubleOrDefault(modelNode, "input_cost_per_token_cache_hit", inputCostPerToken));
+                var supportsVision = getBooleanOrNull(modelNode, "supports_vision");
+                var supportsPdfInput = getBooleanOrNull(modelNode, "supports_pdf_input");
+                var supportsVideoInput = getBooleanOrNull(modelNode, "supports_video_input");
 
                 modelInfoMap.put(modelName, new ModelInfo(maxInputTokens, maxOutputTokens, provider, mode,
-                    inputCostPerToken, outputCostPerToken, cacheReadInputTokenCost));
+                    inputCostPerToken, outputCostPerToken, cacheReadInputTokenCost,
+                    supportsVision, supportsPdfInput, supportsVideoInput));
             }
 
             LOGGER.debug("Loaded {} model entries from context registry", modelInfoMap.size());
@@ -93,6 +98,14 @@ public final class LLMModelContextRegistry {
         return defaultValue;
     }
 
+    private Boolean getBooleanOrNull(JsonNode node, String field) {
+        var fieldNode = node.get(field);
+        if (fieldNode != null && fieldNode.isBoolean()) {
+            return fieldNode.asBoolean();
+        }
+        return null;
+    }
+
     private String getTextOrNull(JsonNode node, String field) {
         var fieldNode = node.get(field);
         if (fieldNode != null && fieldNode.isTextual()) {
@@ -111,6 +124,25 @@ public final class LLMModelContextRegistry {
         var info = modelInfoMap.get(modelName);
         if (info != null) {
             return info;
+        }
+
+        // routing-convention names (e.g. azure/responses/gpt-5-mini) are not litellm keys; drop the marker segment
+        if (modelName.contains("responses/")) {
+            info = getModelInfo(modelName.replaceFirst("responses/", ""));
+            if (info != null) {
+                return info;
+            }
+        }
+
+        // Try stripping a known provider prefix (litellm also keys many models without it)
+        for (var prefix : STRIP_PREFIXES) {
+            if (modelName.startsWith(prefix)) {
+                info = modelInfoMap.get(modelName.substring(prefix.length()));
+                if (info != null) {
+                    return info;
+                }
+                break;
+            }
         }
 
         // Try with common prefixes for Azure/other providers
@@ -171,7 +203,10 @@ public final class LLMModelContextRegistry {
             String mode,
             double inputCostPerToken,
             double outputCostPerToken,
-            double cacheReadInputTokenCost) {
+            double cacheReadInputTokenCost,
+            Boolean supportsVision,
+            Boolean supportsPdfInput,
+            Boolean supportsVideoInput) {
         public int contextWindow() {
             return maxInputTokens;
         }

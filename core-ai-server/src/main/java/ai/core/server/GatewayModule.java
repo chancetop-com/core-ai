@@ -8,6 +8,7 @@ import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
 import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
 import ai.core.server.gateway.GatewayLLMProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
+import ai.core.server.gateway.GatewayModalityRegistry;
 import ai.core.server.gateway.MediaJobService;
 import ai.core.server.gateway.GatewayModelController;
 import ai.core.server.gateway.GatewayModelDiscoveryService;
@@ -68,6 +69,7 @@ public class GatewayModule extends Module {
         var fallbackLLMProvider = llmProviders.getProviderTypes().isEmpty() ? null : llmProviders.getProvider();
         var gatewayLLMConfig = fallbackLLMProvider == null ? new LLMProviderConfig(null, null, null) : new LLMProviderConfig(fallbackLLMProvider.config);
         var gatewayLLMProvider = new GatewayLLMProvider(gatewayLLMConfig, gatewayRoutingEngine, gatewaySecretProtector, fallbackLLMProvider);
+        gatewayLLMProvider.setModalityRegistry(new GatewayModalityRegistry(gatewayRoutingEngine));
         if (fallbackLLMProvider != null) {
             gatewayLLMProvider.setTracer(fallbackLLMProvider.getTracer());
         } else {

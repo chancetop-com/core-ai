@@ -9,4 +9,5 @@ public class GatewayAvailableModelView {
     public List<String> endpointTypes;
     public Boolean supportsVision;
     public Boolean supportsVideo;
+    public Boolean supportsFile;
 }

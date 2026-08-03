@@ -250,6 +250,7 @@ public class GatewayRoutingEngine {
         view.endpointTypes = route.model.endpointTypes;
         view.supportsVision = route.model.supportsVision;
         view.supportsVideo = route.model.supportsVideo;
+        view.supportsFile = route.model.supportsFile;
         return view;
     }
 

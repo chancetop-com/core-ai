@@ -10,6 +10,7 @@ public class GatewayDiscoveredModelView {
     public Boolean supportsStream;
     public Boolean supportsTools;
     public Boolean supportsVision;
+    public Boolean supportsFile;
     public Double inputPricePer1MTokens;
     public Double outputPricePer1MTokens;
     public Boolean imported;

@@ -22,6 +22,7 @@ public class GatewayModelRequest {
     public Boolean supportsTools;
     public Boolean supportsVision;
     public Boolean supportsVideo;
+    public Boolean supportsFile;
     public List<String> reasoningEfforts;
     public Long maxVideoBytes;
     public Long maxVideoSeconds;

@@ -159,6 +159,7 @@ public class GatewayModelDiscoveryService {
                 firstBoolean(source, "supports_stream", "stream"),
                 firstBoolean(source, "supports_tools", "supports_function_calling", "supports_parallel_function_calling"),
                 firstBoolean(source, "supports_vision", "vision"),
+                firstBoolean(source, "supports_pdf_input", "supports_file"),
                 inputPrice,
                 outputPrice
         );
@@ -188,6 +189,7 @@ public class GatewayModelDiscoveryService {
         view.supportsStream = model.supportsStream();
         view.supportsTools = model.supportsTools();
         view.supportsVision = model.supportsVision();
+        view.supportsFile = model.supportsFile();
         view.inputPricePer1MTokens = model.inputPricePer1MTokens();
         view.outputPricePer1MTokens = model.outputPricePer1MTokens();
         view.imported = imported;

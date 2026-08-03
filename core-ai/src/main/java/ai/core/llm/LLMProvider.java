@@ -10,6 +10,7 @@ import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.Content;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
@@ -28,17 +29,25 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 /**
  * @author stephen
  */
 public abstract class LLMProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(LLMProvider.class);
+    private static final Pattern IMAGE_REJECTION_PATTERN = Pattern.compile(
+            "unknown variant .{0,2}image_url|image[ _a-z]{0,24}not supported|does not support image", Pattern.CASE_INSENSITIVE);
     protected LLMTracer tracer;
+    protected ModelModalityRegistry modalityRegistry = SeedModelModalityRegistry.INSTANCE;
     public LLMProviderConfig config;
 
     public LLMProvider(LLMProviderConfig config) {
         this.config = config;
+    }
+
+    public void setModalityRegistry(ModelModalityRegistry modalityRegistry) {
+        this.modalityRegistry = modalityRegistry;
     }
 
     public void setConfig(LLMProviderConfig config) {
@@ -117,6 +126,7 @@ public abstract class LLMProvider {
 
     public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
         request.model = getModel(request);
+        enforceModalities(request);
         preprocess(request);
         request.stream = Boolean.TRUE;
         request.streamOptions = new StreamOptions();
@@ -125,13 +135,42 @@ public abstract class LLMProvider {
         }
         var wrappedCallback = wrapCallback(callback);
         CompletionResponse response;
-        if (tracer != null && withTracing) {
-            response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, wrappedCallback), llmSpanContextSink, wrappedCallback::isCancelled);
-        } else {
-            response = doCompletionStream(request, wrappedCallback);
+        try {
+            response = invokeCompletionStream(request, wrappedCallback, llmSpanContextSink, withTracing);
+        } catch (RuntimeException e) {
+            if (request.isPassthrough() || !shouldRetryWithoutImages(request, e)) throw e;
+            LOGGER.warn("upstream rejected image input, marking model={} as text-only and retrying downgraded, error={}", request.model, e.getMessage());
+            ModalityRuntimeOverrides.markUnsupported(request.model, InputModality.IMAGE);
+            enforceModalities(request);
+            response = invokeCompletionStream(request, wrappedCallback, llmSpanContextSink, withTracing);
         }
         postprocess(request, response);
         return response;
+    }
+
+    private CompletionResponse invokeCompletionStream(CompletionRequest request, StreamingCallback wrappedCallback, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
+        if (tracer != null && withTracing) {
+            return tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, wrappedCallback), llmSpanContextSink, wrappedCallback::isCancelled);
+        }
+        return doCompletionStream(request, wrappedCallback);
+    }
+
+    private void enforceModalities(CompletionRequest request) {
+        if (request.isPassthrough()) return;
+        var result = ModalityEnforcer.enforce(request.messages, request.model, modalityRegistry);
+        if (result.downgradedCount() > 0) {
+            LOGGER.warn("downgraded {} content part(s) not supported by model={}", result.downgradedCount(), request.model);
+        }
+        if (result.unknownModalityPresent()) {
+            LOGGER.warn("model modality unknown, passing non-text content through, model={}", request.model);
+        }
+        request.messages = result.messages();
+    }
+
+    private boolean shouldRetryWithoutImages(CompletionRequest request, RuntimeException e) {
+        if (e.getMessage() == null || !IMAGE_REJECTION_PATTERN.matcher(e.getMessage()).find()) return false;
+        return request.messages != null && request.messages.stream().anyMatch(message -> message.content != null
+                && message.content.stream().anyMatch(part -> part.type == Content.ContentType.IMAGE_URL));
     }
 
     private StreamingCallback wrapCallback(StreamingCallback callback) {

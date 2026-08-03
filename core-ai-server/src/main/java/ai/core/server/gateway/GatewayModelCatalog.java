@@ -17,6 +17,7 @@ final class GatewayModelCatalog {
                 stream,
                 source.supportsTools(),
                 source.supportsVision(),
+                source.supportsFile(),
                 source.inputPricePer1MTokens(),
                 source.outputPricePer1MTokens()
         );

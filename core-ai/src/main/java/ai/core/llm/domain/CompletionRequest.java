@@ -59,6 +59,8 @@ public class CompletionRequest {
     private String name;
     private Object extraBody;
     private Integer timeoutSeconds;
+    // set for OpenAI-compatible proxy traffic: the request is forwarded verbatim, no modality enforcement
+    private boolean passthrough;
     // resolved per-model reasoning effort value (e.g. "xhigh" mapped from internal MAX),
     // takes precedence over the reasoningEffort enum when serializing to upstream
     private String reasoningEffortValue;
@@ -77,6 +79,14 @@ public class CompletionRequest {
     }
     public void setTimeoutSeconds(Integer timeoutSeconds) {
         this.timeoutSeconds = timeoutSeconds;
+    }
+
+    public boolean isPassthrough() {
+        return passthrough;
+    }
+
+    public void setPassthrough(boolean passthrough) {
+        this.passthrough = passthrough;
     }
     public String getReasoningEffortValue() {
         return reasoningEffortValue;

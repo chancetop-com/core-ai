@@ -51,6 +51,9 @@ public class GatewayModelConfig {
     @Field(name = "supports_video")
     public Boolean supportsVideo;
 
+    @Field(name = "supports_file")
+    public Boolean supportsFile;
+
     @Field(name = "reasoning_efforts")
     public List<String> reasoningEfforts;
 

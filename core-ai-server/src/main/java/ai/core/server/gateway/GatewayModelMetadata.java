@@ -9,6 +9,7 @@ record GatewayModelMetadata(String id,
                             Boolean supportsStream,
                             Boolean supportsTools,
                             Boolean supportsVision,
+                            Boolean supportsFile,
                             Double inputPricePer1MTokens,
                             Double outputPricePer1MTokens) {
 }
