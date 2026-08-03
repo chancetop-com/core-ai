@@ -38,6 +38,11 @@ import java.util.Map;
  * @author Xander
  */
 public class SubAgentAssembler {
+    private static String normalizeThinkingEffort(String value) {
+        var effort = ReasoningEffort.fromString(value);
+        return effort != null ? effort.name().toLowerCase(Locale.ROOT) : null;
+    }
+
     private final Logger logger = LoggerFactory.getLogger(SubAgentAssembler.class);
 
     @Inject
@@ -106,11 +111,6 @@ public class SubAgentAssembler {
             return toolRegistryService.resolveToolRefs(definition.tools, sessionId);
         }
         return List.of();
-    }
-
-    private static String normalizeThinkingEffort(String value) {
-        var effort = ReasoningEffort.fromString(value);
-        return effort != null ? effort.name().toLowerCase(Locale.ROOT) : null;
     }
 
     public SessionConfig toSessionConfig(AgentDefinition definition) {

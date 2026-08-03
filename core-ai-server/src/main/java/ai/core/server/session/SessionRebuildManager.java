@@ -8,7 +8,6 @@ import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
-import ai.core.server.artifact.ServerImageOutputSink;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetAccessRegistry;
@@ -16,7 +15,6 @@ import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
 import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
 import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
-import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
@@ -35,9 +33,6 @@ import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.ToolCall;
-import ai.core.tool.tools.GenerateImageTool;
-import ai.core.tool.tools.GetVideoStatusTool;
-import ai.core.tool.tools.InternalUrlResolver;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,10 +46,6 @@ import java.util.Map;
  * @author stephen
  */
 public class SessionRebuildManager {
-    private static void putModel(Map<String, Object> variables, String key, String model) {
-        if (model != null) variables.put(key, model);
-    }
-
     private static String normalizeThinkingEffort(String value) {
         var effort = ReasoningEffort.fromString(value);
         return effort != null ? effort.name().toLowerCase(java.util.Locale.ROOT) : null;
@@ -204,16 +195,7 @@ public class SessionRebuildManager {
         return doRebuild(new RebuildParams(sessionId, config, null, userId, null, state, "default", null, null));
     }
     private SandboxSetup setupSandboxContext(String sessionId, String userId) {
-        var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId)
-                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
-                .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
-                        new ServerImageOutputSink(userId, fileService,
-                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
-                .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
-                        new ServerImageOutputSink(userId, fileService,
-                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
-                .customVariables(mediaModelVariables())
-                .build() : null;
+        var context = userId != null ? SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService) : null;
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
         var sessionRef = new InProcessAgentSession[1];
         if (context != null) {
@@ -221,13 +203,6 @@ public class SessionRebuildManager {
             if (sandbox != null) context.sandbox(sandbox);
         }
         return new SandboxSetup(context, sessionRef, sandboxOn);
-    }
-    private Map<String, Object> mediaModelVariables() {
-        var variables = new HashMap<String, Object>();
-        putModel(variables, "media.caption.model", systemSettingsService.captionImageModel());
-        putModel(variables, "media.image.model", systemSettingsService.imageGenerationModel());
-        putModel(variables, "media.video.model", systemSettingsService.videoGenerationModel());
-        return variables;
     }
     private Sandbox createOrReattachSandbox(String sessionId, String userId, InProcessAgentSession[] sessionRef) {
         var sandbox = reattachExistingSandbox(sessionId, userId, sessionRef);

@@ -9,10 +9,8 @@ import ai.core.server.gateway.GatewayMediaProvider;
 import ai.core.server.gateway.MediaJobOwner;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
-import ai.core.server.artifact.ServerImageOutputSink;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
-import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.SubAgentAssembler;
@@ -35,9 +33,6 @@ import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.web.sse.SessionChannelService;
-import ai.core.tool.tools.GenerateImageTool;
-import ai.core.tool.tools.GetVideoStatusTool;
-import ai.core.tool.tools.InternalUrlResolver;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.web.sse.SseEventBridge;
 import ai.core.prompt.PromptInject;
@@ -63,10 +58,6 @@ import java.util.concurrent.ConcurrentMap;
 public class AgentSessionManager {
     private static List<String> resolveConfigList(List<String> published, List<String> fallback) {
         return published != null ? published : fallback;
-    }
-
-    private static void putModel(Map<String, Object> variables, String key, String model) {
-        if (model != null) variables.put(key, model);
     }
 
     private final Logger logger = LoggerFactory.getLogger(AgentSessionManager.class);
@@ -165,16 +156,7 @@ public class AgentSessionManager {
     public String createSession(SessionConfig config, String userId, String source) {
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
-        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
-                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
-                .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
-                        new ServerImageOutputSink(userId, fileService,
-                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
-                .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
-                        new ServerImageOutputSink(userId, fileService,
-                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
-                .customVariables(mediaModelVariables())
-                .build();
+        var context = SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService);
         setMediaProvider(context, userId, sessionId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
@@ -193,14 +175,6 @@ public class AgentSessionManager {
         touchActivity(sessionId);
         claimOwnership(sessionId);
         return sessionId;
-    }
-
-    private Map<String, Object> mediaModelVariables() {
-        var variables = new HashMap<String, Object>();
-        putModel(variables, "media.caption.model", systemSettingsService.captionImageModel());
-        putModel(variables, "media.image.model", systemSettingsService.imageGenerationModel());
-        putModel(variables, "media.video.model", systemSettingsService.videoGenerationModel());
-        return variables;
     }
 
     private List<AgentDatasetConfig> sessionDatasetConfig(SessionConfig config) {
@@ -292,16 +266,7 @@ public class AgentSessionManager {
         var toolRegistry = subAgentManager().resolveToolsToRegistry(definition, sessionId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
         var extraVars = buildExtraVars(config, datasetConfig);
-        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
-                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
-                .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
-                        new ServerImageOutputSink(userId, fileService,
-                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
-                .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
-                        new ServerImageOutputSink(userId, fileService,
-                                artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
-                .customVariables(mediaModelVariables())
-                .build();
+        var context = SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService);
         if (sandbox2 != null) context.sandbox(sandbox2);
         setMediaProvider(context, userId, sessionId);
 
