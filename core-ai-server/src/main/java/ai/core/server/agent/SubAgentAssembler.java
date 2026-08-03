@@ -11,6 +11,7 @@ import ai.core.llm.domain.ReasoningEffort;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.telemetry.AgentTracer;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
@@ -57,6 +58,8 @@ public class SubAgentAssembler {
     PersistenceProviders persistenceProviders;
     @Inject
     SkillToolAssembler skillToolAssembler;
+    @Inject
+    SystemSettingsService systemSettingsService;
     @Inject
     AgentTracer agentTracer;
 
@@ -151,7 +154,7 @@ public class SubAgentAssembler {
             if (c.config.maxTurns != null) builder.maxTurn(c.config.maxTurns);
         } else {
             builder.systemPrompt("You are a helpful AI assistant.");
-            var mmModel = llmProvider.config.getMultiModalModel();
+            var mmModel = resolveMultiModalModel(null, llmProvider);
             if (mmModel != null) builder.multiModalModel(mmModel);
         }
         if (c.context != null) builder.executionContext(c.context);
@@ -173,13 +176,16 @@ public class SubAgentAssembler {
     }
 
     private void configureMultiModalModel(AgentBuilder builder, SessionConfig config, LLMProvider llmProvider) {
-        if (config.multiModalModel != null) {
-            builder.multiModalModel(config.multiModalModel);
-            return;
-        }
-        if (config.model != null) return;
-        var mmModel = llmProvider.config.getMultiModalModel();
+        var mmModel = resolveMultiModalModel(config, llmProvider);
         if (mmModel != null) builder.multiModalModel(mmModel);
+    }
+
+    // mirrors AgentRunBuilder: a pinned text-only model still needs a vision fallback when images appear,
+    // otherwise the upstream rejects the request with 400
+    private String resolveMultiModalModel(SessionConfig config, LLMProvider llmProvider) {
+        if (config != null && config.multiModalModel != null) return config.multiModalModel;
+        var mmModel = systemSettingsService.llmMultiModalModel();
+        return mmModel != null ? mmModel : llmProvider.config.getMultiModalModel();
     }
 
     public record BuildAgentConfig(SessionConfig config, ToolRegistry toolRegistry, ExecutionContext context,
