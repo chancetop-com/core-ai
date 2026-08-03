@@ -37,6 +37,9 @@ public class AgentDefinition {
     @Field(name = "multi_modal_model")
     public String multiModalModel;
 
+    @Field(name = "prefer_caption_path")
+    public Boolean preferCaptionPath;
+
     @Field(name = "temperature")
     public Double temperature;
 

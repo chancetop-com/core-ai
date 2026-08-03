@@ -36,6 +36,7 @@ final class AgentViewHelper {
         view.systemPromptId = entity.systemPromptId;
         view.model = entity.model;
         view.multiModalModel = entity.multiModalModel;
+        view.preferCaptionPath = entity.preferCaptionPath;
         view.temperature = entity.temperature;
         view.thinkingEffort = normalizeThinkingEffort(entity.thinkingEffort);
         view.maxTurns = entity.maxTurns;

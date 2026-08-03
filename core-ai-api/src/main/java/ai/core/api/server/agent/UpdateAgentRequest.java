@@ -28,6 +28,9 @@ public class UpdateAgentRequest {
     @Property(name = "multi_modal_model")
     public String multiModalModel;
 
+    @Property(name = "prefer_caption_path")
+    public Boolean preferCaptionPath;
+
     @Property(name = "temperature")
     public Double temperature;
 

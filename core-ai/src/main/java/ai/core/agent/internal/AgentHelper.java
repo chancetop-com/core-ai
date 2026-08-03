@@ -188,7 +188,7 @@ public class AgentHelper {
     private static Content buildAttachedContent(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
         return switch (attachedContent.type) {
             case IMAGE -> buildImageAttachedContent(attachedContent, context);
-            case PDF -> buildPdfAttachedContent(attachedContent);
+            case PDF -> buildPdfAttachedContent(attachedContent, context);
             case VIDEO -> throw new IllegalStateException("video references must be resolved by understand_video tool");
         };
     }
@@ -208,11 +208,13 @@ public class AgentHelper {
         return persistImage(attachedContent.data, attachedContent.mediaType, context);
     }
 
-    private static Content buildPdfAttachedContent(ExecutionContext.AttachedContent attachedContent) {
-        if (attachedContent.isBase64()) {
-            var filename = attachedContent.filename != null ? attachedContent.filename : "document.pdf";
-            return Content.ofFileBase64(attachedContent.data, attachedContent.mediaType, filename);
+    private static Content buildPdfAttachedContent(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
+        if (!attachedContent.isBase64()) return Content.ofFileUrl(attachedContent.url);
+        var referenceUrl = captionPathUrl(attachedContent, context);
+        if (referenceUrl != null) {
+            return Content.of(Strings.format("[File attachment: {}] The current model cannot read files directly. Call summarize_pdf with this url to inspect it.", referenceUrl));
         }
-        return Content.ofFileUrl(attachedContent.url);
+        var filename = attachedContent.filename != null ? attachedContent.filename : "document.pdf";
+        return Content.ofFileBase64(attachedContent.data, attachedContent.mediaType, filename);
     }
 }

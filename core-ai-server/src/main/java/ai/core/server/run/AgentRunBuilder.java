@@ -145,6 +145,8 @@ public class AgentRunBuilder {
             var mmModel = llmProviders.getProvider().config.getMultiModalModel();
             if (mmModel != null) builder.multiModalModel(mmModel);
         }
+        var preferCaptionPath = config != null && config.preferCaptionPath != null ? config.preferCaptionPath : definition.preferCaptionPath;
+        if (Boolean.TRUE.equals(preferCaptionPath)) builder.preferCaptionPath(true);
         if (temperature != null) builder.temperature(temperature);
         if (thinkingEffort != null) builder.reasoningEffort(thinkingEffort);
         if (maxTurns != null) builder.maxTurn(maxTurns);

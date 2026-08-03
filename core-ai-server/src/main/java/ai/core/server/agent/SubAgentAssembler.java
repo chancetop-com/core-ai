@@ -125,6 +125,7 @@ public class SubAgentAssembler {
         config.systemPrompt = systemPromptId != null ? systemPromptService.resolveContent(systemPromptId) : inlineSystemPrompt;
         config.model = hasSource && source.model != null ? source.model : definition.model;
         config.multiModalModel = hasSource && source.multiModalModel != null ? source.multiModalModel : definition.multiModalModel;
+        config.preferCaptionPath = hasSource && source.preferCaptionPath != null ? source.preferCaptionPath : definition.preferCaptionPath;
         config.temperature = hasSource && source.temperature != null ? source.temperature : definition.temperature;
         config.reasoningEffort = normalizeThinkingEffort(hasSource && source.thinkingEffort != null ? source.thinkingEffort : definition.thinkingEffort);
         config.maxTurns = hasSource && source.maxTurns != null ? source.maxTurns : definition.maxTurns;
@@ -150,6 +151,7 @@ public class SubAgentAssembler {
             }
             if (c.config.model != null) builder.model(c.config.model);
             configureMultiModalModel(builder, c.config, llmProvider);
+            if (Boolean.TRUE.equals(c.config.preferCaptionPath)) builder.preferCaptionPath(true);
             if (c.config.reasoningEffort != null) builder.reasoningEffort(ReasoningEffort.fromString(c.config.reasoningEffort));
             if (c.config.maxTurns != null) builder.maxTurn(c.config.maxTurns);
         } else {

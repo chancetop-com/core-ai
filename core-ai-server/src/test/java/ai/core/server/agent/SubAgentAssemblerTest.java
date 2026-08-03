@@ -67,6 +67,18 @@ class SubAgentAssemblerTest {
     }
 
     @Test
+    void preferCaptionPathForcesCaptionRouting() {
+        when(systemSettingsService.llmMultiModalModel()).thenReturn("system-mm-model");
+        var config = new SessionConfig();
+        config.model = "azure/gpt-5-mini";
+        config.preferCaptionPath = Boolean.TRUE;
+
+        var agent = assembler.buildAgent(buildConfig(config));
+
+        org.junit.jupiter.api.Assertions.assertFalse(agent.getExecutionContext().isVisionNative());
+    }
+
+    @Test
     void nullConfigFallsBackToSystemSetting() {
         when(systemSettingsService.llmMultiModalModel()).thenReturn("system-mm-model");
 

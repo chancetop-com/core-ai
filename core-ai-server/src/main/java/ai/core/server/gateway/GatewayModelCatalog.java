@@ -1,5 +1,7 @@
 package ai.core.server.gateway;
 
+import ai.core.llm.LLMModelContextRegistry;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -9,6 +11,10 @@ final class GatewayModelCatalog {
         var endpoints = source.endpointTypes();
         if (endpoints == null || endpoints.isEmpty()) endpoints = inferEndpoints(source.id());
         var stream = source.supportsStream() != null ? source.supportsStream() : Boolean.TRUE;
+        // provider-declared capabilities win; the bundled litellm seed only fills the gaps
+        var seed = LLMModelContextRegistry.getInstance().getModelInfo(source.id());
+        var supportsVision = source.supportsVision() != null ? source.supportsVision() : seed == null ? null : seed.supportsVision();
+        var supportsFile = source.supportsFile() != null ? source.supportsFile() : seed == null ? null : seed.supportsPdfInput();
         return new GatewayModelMetadata(
                 source.id(),
                 source.displayName(),
@@ -16,8 +22,8 @@ final class GatewayModelCatalog {
                 source.contextWindow(),
                 stream,
                 source.supportsTools(),
-                source.supportsVision(),
-                source.supportsFile(),
+                supportsVision,
+                supportsFile,
                 source.inputPricePer1MTokens(),
                 source.outputPricePer1MTokens()
         );

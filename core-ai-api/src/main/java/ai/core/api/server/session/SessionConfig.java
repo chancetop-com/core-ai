@@ -14,6 +14,9 @@ public class SessionConfig {
     @Property(name = "multiModalModel")
     public String multiModalModel;
 
+    @Property(name = "preferCaptionPath")
+    public Boolean preferCaptionPath;
+
     @Property(name = "temperature")
     public Double temperature;
 

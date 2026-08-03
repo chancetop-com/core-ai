@@ -53,6 +53,44 @@ class AgentHelperAttachmentTest {
         assertTrue(hasImagePart(message.content));
     }
 
+    @Test
+    void base64PdfAttachmentBecomesReferenceTextOnCaptionPath() {
+        var context = contextWithPdfAttachment((fileName, contentType, bytes) -> "https://blob/doc.pdf");
+        context.setVisionNative(false);
+
+        var message = AgentHelper.buildUserMessage("summarize this", context);
+
+        assertFalse(hasFilePart(message.content));
+        var referenceText = message.content.stream()
+                .filter(c -> c.type == Content.ContentType.TEXT)
+                .map(c -> c.text)
+                .reduce("", (a, b) -> a + "\n" + b);
+        assertTrue(referenceText.contains("https://blob/doc.pdf"));
+        assertTrue(referenceText.contains("summarize_pdf"));
+    }
+
+    @Test
+    void base64PdfAttachmentStaysNativeWhenVisionNative() {
+        var context = contextWithPdfAttachment(null);
+
+        var message = AgentHelper.buildUserMessage("summarize this", context);
+
+        assertTrue(hasFilePart(message.content));
+    }
+
+    private ExecutionContext contextWithPdfAttachment(GenerateImageTool.ImageOutputSink sink) {
+        var builder = ExecutionContext.builder().sessionId("test");
+        if (sink != null) builder.customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, sink);
+        var context = builder.build();
+        context.setAttachedContents(List.of(ExecutionContext.AttachedContent.ofBase64(
+                "QUJD", "application/pdf", ExecutionContext.AttachedContent.AttachedContentType.PDF, "doc.pdf")));
+        return context;
+    }
+
+    private boolean hasFilePart(List<Content> content) {
+        return content != null && content.stream().anyMatch(c -> c.type == Content.ContentType.FILE);
+    }
+
     private ExecutionContext contextWithAttachment(GenerateImageTool.ImageOutputSink sink) {
         var builder = ExecutionContext.builder().sessionId("test");
         if (sink != null) builder.customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, sink);

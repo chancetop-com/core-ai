@@ -70,6 +70,7 @@ public class AgentDefinitionService {
         entity.systemPromptId = Strings.isBlank(request.systemPromptId) ? null : request.systemPromptId;
         entity.model = request.model;
         entity.multiModalModel = Strings.isBlank(request.multiModalModel) ? null : request.multiModalModel;
+        entity.preferCaptionPath = request.preferCaptionPath;
         entity.temperature = request.temperature;
         entity.thinkingEffort = AgentViewHelper.normalizeThinkingEffort(request.thinkingEffort);
         var isLLMCall = "LLM_CALL".equals(request.type);
@@ -242,6 +243,7 @@ public class AgentDefinitionService {
         if (request.systemPromptId != null) entity.systemPromptId = request.systemPromptId;
         if (request.model != null) entity.model = request.model;
         if (request.multiModalModel != null) entity.multiModalModel = Strings.isBlank(request.multiModalModel) ? null : request.multiModalModel;
+        if (request.preferCaptionPath != null) entity.preferCaptionPath = request.preferCaptionPath;
         if (request.temperature != null) entity.temperature = request.temperature;
         if (request.thinkingEffort != null) entity.thinkingEffort = AgentViewHelper.normalizeThinkingEffort(request.thinkingEffort);
         if (request.maxTurns != null) entity.maxTurns = request.maxTurns;
@@ -282,6 +284,7 @@ public class AgentDefinitionService {
         config.systemPromptId = entity.systemPromptId;
         config.model = entity.model;
         config.multiModalModel = entity.multiModalModel;
+        config.preferCaptionPath = entity.preferCaptionPath;
         config.temperature = entity.temperature;
         config.thinkingEffort = entity.thinkingEffort;
         config.maxTurns = entity.maxTurns;
