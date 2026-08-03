@@ -6,6 +6,7 @@ import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import ai.core.media.GoogleAccessTokenProvider;
+import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
@@ -124,11 +125,16 @@ public class GatewayProviderService {
         }
         try {
             if (isVertexMediaProvider(entity)) {
-                var credentials = secretProtector.unprotect(entity.googleCredentialsEncrypted);
-                new GoogleAccessTokenProvider("GOOGLE_SERVICE_ACCOUNT_JSON".equals(entity.mediaAuthType) ? credentials : null).accessToken();
-                result.ok = true;
-                result.status = "ok";
-                result.message = "Google credentials verified; video generation is not started by provider test";
+                var apiKey = secret(entity);
+                if (!isBlank(apiKey) && "VERTEX_GEMINI_GENERATE_CONTENT".equals(entity.mediaProtocol)) {
+                    testVertexApiKey(entity, apiKey, result);
+                } else {
+                    var credentials = secretProtector.unprotect(entity.googleCredentialsEncrypted);
+                    new GoogleAccessTokenProvider("GOOGLE_SERVICE_ACCOUNT_JSON".equals(entity.mediaAuthType) ? credentials : null).accessToken();
+                    result.ok = true;
+                    result.status = "ok";
+                    result.message = "Google credentials verified; video generation is not started by provider test";
+                }
             } else {
                 GatewayNetworkGuard.validateOutboundUrl(testUrl(entity), Boolean.TRUE.equals(entity.allowPrivateNetwork));
                 var request = new HTTPRequest(HTTPMethod.GET, testUrl(entity));
@@ -151,6 +157,33 @@ public class GatewayProviderService {
             result.durationMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
         }
         return result;
+    }
+
+    // Vertex Express Mode authenticates with an API key (x-goog-api-key) instead of a service account
+    private void testVertexApiKey(GatewayProviderConfig entity, String apiKey, TestGatewayProviderResponse result) {
+        var url = stripTrailingSlash(entity.baseUrl) + "/publishers/google/models/" + probeModel(entity) + ":generateContent";
+        GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(entity.allowPrivateNetwork));
+        var request = new HTTPRequest(HTTPMethod.POST, url);
+        request.headers.put("Content-Type", "application/json");
+        request.headers.put("x-goog-api-key", apiKey);
+        request.body("{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"ping\"}]}]}", ContentType.APPLICATION_JSON);
+        request.connectTimeout = Duration.ofSeconds(valueOrDefault(entity.connectTimeoutSeconds, 10));
+        request.timeout = Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, 30));
+        var response = CLIENT.execute(request);
+        result.ok = response.statusCode >= 200 && response.statusCode < 300;
+        result.status = result.ok ? "ok" : "failed";
+        result.message = result.ok ? "Connected" : truncate("HTTP " + response.statusCode + ": " + response.text(), 300);
+    }
+
+    private String probeModel(GatewayProviderConfig entity) {
+        if (gatewayModelCollection != null) {
+            var query = new Query();
+            query.filter = Filters.eq("provider_id", entity.id);
+            for (var model : gatewayModelCollection.find(query)) {
+                if (Boolean.TRUE.equals(model.enabled) && !isBlank(model.upstreamModel)) return model.upstreamModel;
+            }
+        }
+        return "gemini-3.6-flash";
     }
 
     private boolean isVertexMediaProvider(GatewayProviderConfig provider) {
