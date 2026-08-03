@@ -25,15 +25,11 @@ import java.util.function.Consumer;
  * @author stephen
  */
 public final class ExecutionContext {
-    // Custom variables whose key starts with this prefix carry internal runtime objects (e.g. the URL resolver),
-    // not user-facing tool arguments. They are injected for in-process consumption only and must never be
-    // serialized into tool argument payloads.
+    // custom variables with this prefix carry internal runtime objects, never serialized into tool argument payloads
     public static final String INTERNAL_VARIABLE_PREFIX = "__";
-
     public static Builder builder() {
         return new Builder();
     }
-
     public static ExecutionContext empty() {
         return new Builder().build();
     }
@@ -58,6 +54,7 @@ public final class ExecutionContext {
     private MediaProvider videoMediaProvider;
     private String model;
     private String multiModalModel;
+    private boolean visionNative = true;
     private StreamingCallback streamingCallback;
     private final ThreadLocal<String> currentToolCallId = new ThreadLocal<>();
     private List<AbstractLifecycle> lifecycles;
@@ -227,6 +224,14 @@ public final class ExecutionContext {
 
     public void setMultiModalModel(String multiModalModel) {
         this.multiModalModel = multiModalModel;
+    }
+
+    public boolean isVisionNative() {
+        return visionNative;
+    }
+
+    public void setVisionNative(boolean visionNative) {
+        this.visionNative = visionNative;
     }
 
     public StreamingCallback getStreamingCallback() {

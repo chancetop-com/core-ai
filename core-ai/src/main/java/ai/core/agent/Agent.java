@@ -389,9 +389,18 @@ public class Agent extends Node<Agent> {
         context.setLlmProvider(llmProvider);
         context.setModel(model);
         context.setMultiModalModel(multiModalModel);
+        context.setVisionNative(resolveContextVisionNative());
         context.setStreamingCallback(getStreamingCallback());
         context.setLifecycles(agentLifecycles);
         context.setToolRegistry(toolRegistry);
         return context;
+    }
+
+    // null registry/config only happens with hand-built providers (e.g. mocks); default to legacy native behavior
+    private boolean resolveContextVisionNative() {
+        var registry = llmProvider == null ? null : llmProvider.getModalityRegistry();
+        if (registry == null) return true;
+        var effectiveModel = model != null ? model : llmProvider.config == null ? null : llmProvider.config.getModel();
+        return AgentHelper.resolveVisionNative(effectiveModel, multiModalModel, registry);
     }
 }

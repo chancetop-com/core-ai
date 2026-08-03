@@ -1,6 +1,9 @@
 package ai.core.agent.internal;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.llm.InputModality;
+import ai.core.llm.ModalitySupport;
+import ai.core.llm.ModelModalityRegistry;
 import ai.core.llm.streaming.DefaultStreamingCallback;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.domain.Content;
@@ -13,8 +16,13 @@ import ai.core.reflection.ReflectionConfig;
 import ai.core.reflection.ReflectionEvaluation;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.tools.CaptionImageTool;
+import ai.core.tool.tools.GenerateImageTool;
 import core.framework.util.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,6 +30,7 @@ import java.util.UUID;
  * @author stephen
  */
 public class AgentHelper {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentHelper.class);
 
     public static List<Tool> toReqTools(List<ToolCall> toolCalls) {
         return toolCalls.stream().filter(ToolCall::isLlmVisible).map(ToolCall::toTool).toList();
@@ -58,14 +67,57 @@ public class AgentHelper {
     }
 
     public static Message buildToolMessage(FunctionCall tool, ToolCallResult result) {
-        return buildToolMessage(tool, result, false);
+        return buildToolMessage(tool, result, false, null);
     }
 
     public static Message buildToolMessage(FunctionCall tool, ToolCallResult result, boolean isDirectReturn) {
+        return buildToolMessage(tool, result, isDirectReturn, null);
+    }
+
+    public static Message buildToolMessage(FunctionCall tool, ToolCallResult result, boolean isDirectReturn, ExecutionContext context) {
         return switch (result.getType()) {
             case TEXT -> Message.of(RoleType.TOOL, buildTextContent(result, isDirectReturn), tool.function.name, tool.id, null);
-            case IMAGE -> Message.of(new Message.MessageRecord(RoleType.TOOL, buildImageContent(result), "", tool.function.name, tool.id, null));
+            case IMAGE -> context != null && !context.isVisionNative()
+                    ? Message.of(RoleType.TOOL, buildImageReference(tool, result, context), tool.function.name, tool.id, null)
+                    : Message.of(new Message.MessageRecord(RoleType.TOOL, buildImageContent(result), "", tool.function.name, tool.id, null));
         };
+    }
+
+    public static boolean resolveVisionNative(String model, String multiModalModel, ModelModalityRegistry registry) {
+        if (registry.supports(model, InputModality.IMAGE) != ModalitySupport.UNSUPPORTED) return true;
+        return multiModalModel != null && registry.supports(multiModalModel, InputModality.IMAGE) != ModalitySupport.UNSUPPORTED;
+    }
+
+    // a natively-seeing model misuses a redundant caption tool; hide it and let images flow inline
+    public static List<Tool> filterRedundantVisionTools(List<Tool> tools, boolean visionNative) {
+        if (!visionNative || tools == null) return tools;
+        return tools.stream()
+                .filter(tool -> tool.function == null || !CaptionImageTool.TOOL_NAME.equals(tool.function.name))
+                .toList();
+    }
+
+    // text-model path: persist the image and hand the model a reference it can inspect via caption_image
+    private static String buildImageReference(FunctionCall tool, ToolCallResult result, ExecutionContext context) {
+        var url = persistImage(result, context);
+        if (url != null) {
+            return Strings.format("[Image result: {}] The current model cannot view images directly. Call caption_image with this url to inspect it.", url);
+        }
+        return Strings.format("[Image result from tool {}] The current model cannot view images directly. Call caption_image with the original image path or url to inspect it.", tool.function.name);
+    }
+
+    private static String persistImage(ToolCallResult result, ExecutionContext context) {
+        var sink = context.getCustomVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, GenerateImageTool.ImageOutputSink.class);
+        if (sink == null) return null;
+        try {
+            var format = result.getImageFormat();
+            var extension = format != null && format.contains("/") ? format.substring(format.indexOf('/') + 1) : "png";
+            var contentType = format != null && format.contains("/") ? format : "image/" + extension;
+            var bytes = Base64.getDecoder().decode(result.getImageBase64());
+            return sink.save("tool-image-" + UUID.randomUUID() + "." + extension, contentType, bytes);
+        } catch (Exception e) {
+            LOGGER.warn("failed to persist tool image, falling back to reference without url", e);
+            return null;
+        }
     }
 
     private static String buildTextContent(ToolCallResult result, boolean isDirectReturn) {

@@ -20,7 +20,8 @@ final class ModelGateway {
         var effectiveModel = resolveEffectiveModel(agent, messages);
         // multimodal models (vision/file) usually do not accept reasoning_effort, so drop it when routed to the multi-modal model
         var reasoningEffort = effectiveModel != null && effectiveModel.equals(agent.multiModalModel) ? null : agent.reasoningEffort;
-        var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, tools, agent.llmProvider.config == null ? 0.0 : agent.llmProvider.config.getTemperature(), effectiveModel, agent.getName(), null, null, reasoningEffort));
+        var reqTools = AgentHelper.filterRedundantVisionTools(tools, agent.getExecutionContext().isVisionNative());
+        var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, reqTools, agent.llmProvider.config == null ? 0.0 : agent.llmProvider.config.getTemperature(), effectiveModel, agent.getName(), null, null, reasoningEffort));
         agent.lastLLMSpanContext = null;
         return aroundLLM(agent, r -> agent.llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(agent.getStreamingCallback()), sc -> agent.lastLLMSpanContext = sc), req);
     }

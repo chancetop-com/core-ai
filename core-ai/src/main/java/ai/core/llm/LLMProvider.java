@@ -50,6 +50,10 @@ public abstract class LLMProvider {
         this.modalityRegistry = modalityRegistry;
     }
 
+    public ModelModalityRegistry getModalityRegistry() {
+        return modalityRegistry;
+    }
+
     public void setConfig(LLMProviderConfig config) {
         this.config = config;
     }

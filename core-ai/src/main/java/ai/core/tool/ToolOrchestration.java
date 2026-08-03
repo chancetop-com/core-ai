@@ -208,10 +208,10 @@ public class ToolOrchestration {
         }
         var result = toolExecutor.execute(tool, tc, context);
         if (result.isDirectReturn()) {
-            msgs.add(AgentHelper.buildToolMessage(tc, result, true));
+            msgs.add(AgentHelper.buildToolMessage(tc, result, true, context));
             msgs.add(Message.of(RoleType.ASSISTANT, result.toResultForLLM()));
         } else {
-            msgs.add(AgentHelper.buildToolMessage(tc, result));
+            msgs.add(AgentHelper.buildToolMessage(tc, result, false, context));
         }
         return msgs;
     }
@@ -219,10 +219,10 @@ public class ToolOrchestration {
     private List<Message> buildMessages(FunctionCall tc, ToolCallResult result) {
         var msgs = new ArrayList<Message>();
         if (result.isDirectReturn()) {
-            msgs.add(AgentHelper.buildToolMessage(tc, result, true));
+            msgs.add(AgentHelper.buildToolMessage(tc, result, true, context));
             msgs.add(Message.of(RoleType.ASSISTANT, result.toResultForLLM()));
         } else {
-            msgs.add(AgentHelper.buildToolMessage(tc, result));
+            msgs.add(AgentHelper.buildToolMessage(tc, result, false, context));
         }
         return msgs;
     }

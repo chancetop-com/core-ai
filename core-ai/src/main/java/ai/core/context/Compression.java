@@ -323,7 +323,8 @@ public class Compression {
                 sb.append("Assistant: [Called tools: ").append(toolNames).append("]\n");
             }
 
-            String content = msg.content != null ? msg.getTextContent() : "";
+            String joined = msg.getJoinedTextContent();
+            String content = joined != null ? joined : "";
             if (!content.isBlank()) {
                 String role = switch (msg.role) {
                     case USER -> "User";

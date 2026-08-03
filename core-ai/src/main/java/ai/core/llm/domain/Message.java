@@ -83,7 +83,19 @@ public class Message {
 
     public String getTextContent() {
         if (content == null || content.isEmpty()) return null;
-        return content.getFirst().text;
+        for (var part : content) {
+            if (part.type == Content.ContentType.TEXT) return part.text;
+        }
+        return null;
+    }
+
+    public String getJoinedTextContent() {
+        if (content == null || content.isEmpty()) return null;
+        var joined = content.stream()
+                .filter(part -> part.type == Content.ContentType.TEXT && part.text != null)
+                .map(part -> part.text)
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return joined.isEmpty() ? null : joined;
     }
 
     @Override
