@@ -76,9 +76,9 @@ public class ServerApp extends App {
     }
 
     private void loadPlatformInfrastructure() {
+        load(new SettingsModule());
         load(new ObjectStorageModule());
         load(new SseTransportModule());
-        load(new SettingsModule());
         load(new GatewayModule());
         load(new PromptModule());
         load(new AnalyticsModule());

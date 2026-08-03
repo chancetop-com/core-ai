@@ -5,6 +5,7 @@ import ai.core.api.server.settings.SystemSettingsView;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.User;
+import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.memory.AgentMemoryConsolidationJob;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
@@ -12,13 +13,17 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
+import java.util.Base64;
 
 /**
  * @author stephen
  */
 public class SystemSettingsService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(SystemSettingsService.class);
     private static final String SETTINGS_ID = "default";
 
     public String defaultMemoryExtractionModel = AgentMemoryConsolidationJob.DEFAULT_EXTRACTION_MODEL;
@@ -31,6 +36,14 @@ public class SystemSettingsService {
     MongoCollection<GatewayModelConfig> gatewayModelCollection;
     @Inject
     MongoCollection<User> userCollection;
+    @Inject
+    GatewaySecretProtector secretProtector;
+
+    private final java.util.List<Runnable> settingsChangeListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public void onSettingsChanged(Runnable listener) {
+        settingsChangeListeners.add(listener);
+    }
 
     public SystemSettingsView get(String userId) {
         requireAdmin(userId);
@@ -41,6 +54,7 @@ public class SystemSettingsService {
         requireAdmin(userId);
         if (request == null) throw new BadRequestException("request is required");
         var models = normalizeAndValidate(request);
+        validateIntegrations(request);
 
         var now = ZonedDateTime.now();
         var entity = entity();
@@ -50,16 +64,29 @@ public class SystemSettingsService {
             entity.createdBy = userId;
             entity.createdAt = now;
             applyModels(entity, models);
+            applyIntegrations(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.insert(entity);
         } else {
             applyModels(entity, models);
+            applyIntegrations(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.replace(entity);
         }
+        notifySettingsChanged();
         return toView(entity);
+    }
+
+    private void notifySettingsChanged() {
+        for (Runnable listener : settingsChangeListeners) {
+            try {
+                listener.run();
+            } catch (Exception e) {
+                LOGGER.warn("failed to apply system settings change", e);
+            }
+        }
     }
 
     private NormalizedSettings normalizeAndValidate(SystemSettingsRequest request) {
@@ -89,6 +116,50 @@ public class SystemSettingsService {
         entity.imageGenerationModel = models.imageGenerationModel();
         entity.videoGenerationModel = models.videoGenerationModel();
         entity.videoUnderstandingModel = models.videoUnderstandingModel();
+    }
+
+    private void applyIntegrations(SystemSettings entity, SystemSettingsRequest request) {
+        entity.azureBlobAccountName = normalizeModel(request.azureBlobAccountName);
+        if (request.azureBlobAccountKey != null && !request.azureBlobAccountKey.isBlank()) {
+            entity.azureBlobAccountKey = secretProtector.protect(request.azureBlobAccountKey.trim());
+        }
+        entity.azureBlobMultimodalContainer = normalizeModel(request.azureBlobMultimodalContainer);
+        entity.azureBlobPublicBaseUrl = normalizeModel(request.azureBlobPublicBaseUrl);
+        if (request.azureSpeechKey != null && !request.azureSpeechKey.isBlank()) {
+            entity.azureSpeechKey = secretProtector.protect(request.azureSpeechKey.trim());
+        }
+        entity.azureSpeechRegion = normalizeModel(request.azureSpeechRegion);
+        entity.azureSpeechEndpoint = normalizeModel(request.azureSpeechEndpoint);
+        entity.githubAppId = normalizeModel(request.githubAppId);
+        entity.githubAppInstallationId = normalizeModel(request.githubAppInstallationId);
+        if (request.githubAppPrivateKey != null && !request.githubAppPrivateKey.isBlank()) {
+            entity.githubAppPrivateKey = secretProtector.protect(request.githubAppPrivateKey.trim());
+        }
+    }
+
+    private void validateIntegrations(SystemSettingsRequest request) {
+        if (request.azureBlobAccountKey != null && !request.azureBlobAccountKey.isBlank()) {
+            try {
+                Base64.getDecoder().decode(request.azureBlobAccountKey.trim());
+            } catch (IllegalArgumentException e) {
+                throw new BadRequestException("azure blob account key must be valid base64", "INVALID_BASE64", e);
+            }
+        }
+        if (request.githubAppPrivateKey != null && !request.githubAppPrivateKey.isBlank()
+                && !request.githubAppPrivateKey.contains("BEGIN")) {
+            throw new BadRequestException("github app private key must be a PEM key");
+        }
+        validateNumeric(request.githubAppId, "githubAppId");
+        validateNumeric(request.githubAppInstallationId, "githubAppInstallationId");
+    }
+
+    private void validateNumeric(String value, String field) {
+        if (value == null || value.isBlank()) return;
+        try {
+            Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            throw new BadRequestException(field + " must be a number", "INVALID_NUMBER", e);
+        }
     }
 
     public String memoryExtractionModel() {
@@ -127,6 +198,61 @@ public class SystemSettingsService {
     public String videoUnderstandingModel() {
         var entity = entity();
         return entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
+    }
+
+    public String azureBlobAccountName() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.azureBlobAccountName);
+    }
+
+    public String azureBlobAccountKey() {
+        var entity = entity();
+        return entity == null ? null : unprotect(entity.azureBlobAccountKey);
+    }
+
+    public String azureBlobMultimodalContainer() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.azureBlobMultimodalContainer);
+    }
+
+    public String azureBlobPublicBaseUrl() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.azureBlobPublicBaseUrl);
+    }
+
+    public String azureSpeechKey() {
+        var entity = entity();
+        return entity == null ? null : unprotect(entity.azureSpeechKey);
+    }
+
+    public String azureSpeechRegion() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.azureSpeechRegion);
+    }
+
+    public String azureSpeechEndpoint() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.azureSpeechEndpoint);
+    }
+
+    public String githubAppId() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.githubAppId);
+    }
+
+    public String githubAppInstallationId() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.githubAppInstallationId);
+    }
+
+    public String githubAppPrivateKey() {
+        var entity = entity();
+        return entity == null ? null : unprotect(entity.githubAppPrivateKey);
+    }
+
+    private String unprotect(String value) {
+        if (value == null) return null;
+        return secretProtector.unprotect(value);
     }
 
     private SystemSettings entity() {
@@ -186,6 +312,16 @@ public class SystemSettingsService {
         view.imageGenerationModel = entity == null ? null : normalizeModel(entity.imageGenerationModel);
         view.videoGenerationModel = entity == null ? null : normalizeModel(entity.videoGenerationModel);
         view.videoUnderstandingModel = entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
+        view.azureBlobAccountName = entity == null ? null : normalizeModel(entity.azureBlobAccountName);
+        view.hasAzureBlobAccountKey = entity != null && entity.azureBlobAccountKey != null;
+        view.azureBlobMultimodalContainer = entity == null ? null : normalizeModel(entity.azureBlobMultimodalContainer);
+        view.azureBlobPublicBaseUrl = entity == null ? null : normalizeModel(entity.azureBlobPublicBaseUrl);
+        view.hasAzureSpeechKey = entity != null && entity.azureSpeechKey != null;
+        view.azureSpeechRegion = entity == null ? null : normalizeModel(entity.azureSpeechRegion);
+        view.azureSpeechEndpoint = entity == null ? null : normalizeModel(entity.azureSpeechEndpoint);
+        view.githubAppId = entity == null ? null : normalizeModel(entity.githubAppId);
+        view.githubAppInstallationId = entity == null ? null : normalizeModel(entity.githubAppInstallationId);
+        view.hasGithubAppPrivateKey = entity != null && entity.githubAppPrivateKey != null;
         view.createdBy = entity == null ? null : entity.createdBy;
         view.updatedBy = entity == null ? null : entity.updatedBy;
         view.createdAt = entity == null ? null : entity.createdAt;

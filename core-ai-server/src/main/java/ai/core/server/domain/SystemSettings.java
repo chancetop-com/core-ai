@@ -35,6 +35,36 @@ public class SystemSettings {
     @Field(name = "video_understanding_model")
     public String videoUnderstandingModel;
 
+    @Field(name = "azure_blob_account_name")
+    public String azureBlobAccountName;
+
+    @Field(name = "azure_blob_account_key")
+    public String azureBlobAccountKey;
+
+    @Field(name = "azure_blob_multimodal_container")
+    public String azureBlobMultimodalContainer;
+
+    @Field(name = "azure_blob_public_base_url")
+    public String azureBlobPublicBaseUrl;
+
+    @Field(name = "azure_speech_key")
+    public String azureSpeechKey;
+
+    @Field(name = "azure_speech_region")
+    public String azureSpeechRegion;
+
+    @Field(name = "azure_speech_endpoint")
+    public String azureSpeechEndpoint;
+
+    @Field(name = "github_app_id")
+    public String githubAppId;
+
+    @Field(name = "github_app_installation_id")
+    public String githubAppInstallationId;
+
+    @Field(name = "github_app_private_key")
+    public String githubAppPrivateKey;
+
     @Field(name = "created_by")
     public String createdBy;
 

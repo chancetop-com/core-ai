@@ -45,9 +45,7 @@ public class GatewayModule extends Module {
     }
 
     private void configureGateway() {
-        var gatewaySecretKey = property("gateway.secret.key").map(String::trim).filter(key -> !key.isBlank()).orElse(null);
-        var gatewayLegacySecret = requiredProperty("sys.mongo.uri");
-        var gatewaySecretProtector = bind(gatewaySecretKey == null ? new GatewaySecretProtector(gatewayLegacySecret) : new GatewaySecretProtector(gatewaySecretKey, gatewayLegacySecret));
+        var gatewaySecretProtector = bean(GatewaySecretProtector.class);
         var gatewayRoutingEngine = bind(GatewayRoutingEngine.class);
         bind(GeminiFileRepository.class);
         bind(SessionAttachmentRefRepository.class);

@@ -50,6 +50,36 @@ public class SystemSettingsView {
     @Property(name = "default_video_understanding_model")
     public String defaultVideoUnderstandingModel;
 
+    @Property(name = "azure_blob_account_name")
+    public String azureBlobAccountName;
+
+    @Property(name = "has_azure_blob_account_key")
+    public Boolean hasAzureBlobAccountKey;
+
+    @Property(name = "azure_blob_multimodal_container")
+    public String azureBlobMultimodalContainer;
+
+    @Property(name = "azure_blob_public_base_url")
+    public String azureBlobPublicBaseUrl;
+
+    @Property(name = "has_azure_speech_key")
+    public Boolean hasAzureSpeechKey;
+
+    @Property(name = "azure_speech_region")
+    public String azureSpeechRegion;
+
+    @Property(name = "azure_speech_endpoint")
+    public String azureSpeechEndpoint;
+
+    @Property(name = "github_app_id")
+    public String githubAppId;
+
+    @Property(name = "github_app_installation_id")
+    public String githubAppInstallationId;
+
+    @Property(name = "has_github_app_private_key")
+    public Boolean hasGithubAppPrivateKey;
+
     @Property(name = "created_by")
     public String createdBy;
 

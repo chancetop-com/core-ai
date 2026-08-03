@@ -16,11 +16,8 @@ public class PlatformApiModule extends Module {
     }
 
     private void configureSpeechToken() {
-        var speechController = bind(SpeechController.class);
-        speechController.speechKey = property("azure.speech.key").orElse(null);
-        speechController.speechRegion = property("azure.speech.region").orElse("eastus");
-        speechController.speechEndpoint = property("azure.speech.endpoint").orElse(null);
-        http().route(HTTPMethod.GET, "/api/speech/token", speechController::getToken);
+        bind(SpeechController.class);
+        http().route(HTTPMethod.GET, "/api/speech/token", bean(SpeechController.class)::getToken);
     }
 
     private void registerCapabilities() {

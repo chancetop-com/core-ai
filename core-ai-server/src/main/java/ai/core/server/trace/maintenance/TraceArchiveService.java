@@ -1,5 +1,6 @@
 package ai.core.server.trace.maintenance;
 
+import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
@@ -58,15 +59,25 @@ public class TraceArchiveService {
     @Inject
     MongoCollection<Span> spanCollection;
 
-    private final ObjectStorageService storageService;
-    private final String archiveContainer;
+    private final ObjectStorageConfiguration objectStorageConfig;
+    private final String configuredContainer;
     private final String archivePrefix;
     int retentionDays = 30;
 
-    public TraceArchiveService(ObjectStorageService storageService, String archiveContainer, String archivePrefix) {
-        this.storageService = storageService;
-        this.archiveContainer = archiveContainer;
+    public TraceArchiveService(ObjectStorageConfiguration objectStorageConfig, String configuredContainer, String archivePrefix) {
+        this.objectStorageConfig = objectStorageConfig;
+        this.configuredContainer = configuredContainer;
         this.archivePrefix = archivePrefix;
+    }
+
+    private ObjectStorageService storageService() {
+        return objectStorageConfig.service;
+    }
+
+    private String archiveContainer() {
+        if (configuredContainer != null && !configuredContainer.isBlank()) return configuredContainer;
+        var container = objectStorageConfig.multimodalContainer;
+        return container == null || container.isBlank() ? "traces-archive" : container;
     }
 
     public int uploadArchive(ZonedDateTime cutoff) {
@@ -81,7 +92,7 @@ public class TraceArchiveService {
     }
 
     private int checkArchivePrerequisites(ZonedDateTime cutoff) {
-        if (storageService == null || archiveContainer == null) {
+        if (storageService() == null) {
             LOGGER.warn("archive skipped: object storage not configured, cutoff={}", cutoff);
             return -1;
         }
@@ -229,7 +240,7 @@ public class TraceArchiveService {
                         part, MAX_PART_SIZE_BYTES, fileSize);
             }
             String blobName = String.format("%s/part-%04d.json.gz", blobPrefix, part);
-            storageService.uploadObject(archiveContainer, blobName, tempFile);
+            storageService().uploadObject(archiveContainer(), blobName, tempFile);
             return spanCount;
         } finally {
             deleteTempFileQuietly(tempFile);
@@ -243,7 +254,7 @@ public class TraceArchiveService {
             tempFile = Files.createTempFile("traces-archive-part-", ".json.gz");
             writePartToTempFile(tempFile, trace, spanChunk);
             String blobName = String.format("%s/part-%04d.json.gz", blobPrefix, part);
-            storageService.uploadObject(archiveContainer, blobName, tempFile);
+            storageService().uploadObject(archiveContainer(), blobName, tempFile);
             return spanChunk.size();
         } finally {
             deleteTempFileQuietly(tempFile);

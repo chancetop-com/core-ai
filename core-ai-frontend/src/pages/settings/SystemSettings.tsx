@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, RefreshCw, Save, Settings } from 'lucide-react';
+import { CheckCircle2, ChevronDown, CircleAlert, RefreshCw, Save, Settings } from 'lucide-react';
 import { api, type GatewayModel, type SystemSettings as SystemSettingsData } from '../../api/client';
 
 export default function SystemSettings() {
@@ -12,10 +12,22 @@ export default function SystemSettings() {
   const [imageGenerationModel, setImageGenerationModel] = useState('');
   const [videoGenerationModel, setVideoGenerationModel] = useState('');
   const [videoUnderstandingModel, setVideoUnderstandingModel] = useState('');
+  const [azureBlobAccountName, setAzureBlobAccountName] = useState('');
+  const [azureBlobAccountKey, setAzureBlobAccountKey] = useState('');
+  const [azureBlobMultimodalContainer, setAzureBlobMultimodalContainer] = useState('');
+  const [azureBlobPublicBaseUrl, setAzureBlobPublicBaseUrl] = useState('');
+  const [azureSpeechKey, setAzureSpeechKey] = useState('');
+  const [azureSpeechRegion, setAzureSpeechRegion] = useState('');
+  const [azureSpeechEndpoint, setAzureSpeechEndpoint] = useState('');
+  const [githubAppId, setGithubAppId] = useState('');
+  const [githubAppInstallationId, setGithubAppInstallationId] = useState('');
+  const [githubAppPrivateKey, setGithubAppPrivateKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const savedTimer = useRef<number | null>(null);
 
   const chatModels = useMemo(
     () => models.filter(model => model.enabled !== false && (model.endpointTypes || []).includes('chat.completions')),
@@ -42,6 +54,16 @@ export default function SystemSettings() {
       setImageGenerationModel(settingsResponse.image_generation_model || '');
       setVideoGenerationModel(settingsResponse.video_generation_model || '');
       setVideoUnderstandingModel(settingsResponse.video_understanding_model || '');
+      setAzureBlobAccountName(settingsResponse.azure_blob_account_name || '');
+      setAzureBlobAccountKey('');
+      setAzureBlobMultimodalContainer(settingsResponse.azure_blob_multimodal_container || '');
+      setAzureBlobPublicBaseUrl(settingsResponse.azure_blob_public_base_url || '');
+      setAzureSpeechKey('');
+      setAzureSpeechRegion(settingsResponse.azure_speech_region || '');
+      setAzureSpeechEndpoint(settingsResponse.azure_speech_endpoint || '');
+      setGithubAppId(settingsResponse.github_app_id || '');
+      setGithubAppInstallationId(settingsResponse.github_app_installation_id || '');
+      setGithubAppPrivateKey('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load system settings');
     } finally {
@@ -66,6 +88,16 @@ export default function SystemSettings() {
         image_generation_model: imageGenerationModel.trim() || null,
         video_generation_model: videoGenerationModel.trim() || null,
         video_understanding_model: videoUnderstandingModel.trim() || null,
+        azure_blob_account_name: azureBlobAccountName.trim() || null,
+        azure_blob_account_key: azureBlobAccountKey.trim() || null,
+        azure_blob_multimodal_container: azureBlobMultimodalContainer.trim() || null,
+        azure_blob_public_base_url: azureBlobPublicBaseUrl.trim() || null,
+        azure_speech_key: azureSpeechKey.trim() || null,
+        azure_speech_region: azureSpeechRegion.trim() || null,
+        azure_speech_endpoint: azureSpeechEndpoint.trim() || null,
+        github_app_id: githubAppId.trim() || null,
+        github_app_installation_id: githubAppInstallationId.trim() || null,
+        github_app_private_key: githubAppPrivateKey.trim() || null,
       });
       setSettings(response);
       setMemoryExtractionModel(response.memory_extraction_model || '');
@@ -75,7 +107,20 @@ export default function SystemSettings() {
       setImageGenerationModel(response.image_generation_model || '');
       setVideoGenerationModel(response.video_generation_model || '');
       setVideoUnderstandingModel(response.video_understanding_model || '');
-      setMessage('System settings saved. Memory extraction will use the new model on the next consolidation run.');
+      setAzureBlobAccountName(response.azure_blob_account_name || '');
+      setAzureBlobAccountKey('');
+      setAzureBlobMultimodalContainer(response.azure_blob_multimodal_container || '');
+      setAzureBlobPublicBaseUrl(response.azure_blob_public_base_url || '');
+      setAzureSpeechKey('');
+      setAzureSpeechRegion(response.azure_speech_region || '');
+      setAzureSpeechEndpoint(response.azure_speech_endpoint || '');
+      setGithubAppId(response.github_app_id || '');
+      setGithubAppInstallationId(response.github_app_installation_id || '');
+      setGithubAppPrivateKey('');
+      setMessage('System settings saved. Changes take effect immediately.');
+      setSaved(true);
+      if (savedTimer.current) window.clearTimeout(savedTimer.current);
+      savedTimer.current = window.setTimeout(() => setSaved(false), 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save system settings');
     } finally {
@@ -99,19 +144,25 @@ export default function SystemSettings() {
             Configure server-level behavior for background jobs and system services.
           </p>
         </div>
-        <button onClick={load} className="btn-secondary flex items-center gap-2" disabled={saving}>
+        <button
+          onClick={load}
+          disabled={saving}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
           <RefreshCw size={16} />
           Refresh
         </button>
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border px-4 py-3 text-sm" style={{ borderColor: '#ef4444', color: '#ef4444' }}>
+        <div className="mb-4 rounded-lg border px-4 py-3 text-sm flex items-center gap-2" style={{ borderColor: '#ef4444', background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
+          <CircleAlert size={16} className="shrink-0" />
           {error}
         </div>
       )}
       {message && (
-        <div className="mb-4 rounded-lg border px-4 py-3 text-sm" style={{ borderColor: '#22c55e', color: '#22c55e' }}>
+        <div className="mb-4 rounded-lg border px-4 py-3 text-sm flex items-start gap-2" style={{ borderColor: '#22c55e', background: 'rgba(34,197,94,0.08)', color: '#22c55e' }}>
+          <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
           {message}
         </div>
       )}
@@ -248,10 +299,160 @@ export default function SystemSettings() {
         </div>
       )}
 
+      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+          <h2 className="font-semibold">Azure Blob Storage</h2>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Credentials for user file uploads. Leave the account key blank to keep the existing value.
+            Changes take effect immediately.
+          </p>
+        </div>
+        <div className="p-5 space-y-4">
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Account name</span>
+            <input
+              type="text"
+              value={azureBlobAccountName}
+              onChange={e => setAzureBlobAccountName(e.target.value)}
+              placeholder="e.g. fbrdevbostorage"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Account key</span>
+            <input
+              type="password"
+              value={azureBlobAccountKey}
+              onChange={e => setAzureBlobAccountKey(e.target.value)}
+              placeholder={settings?.has_azure_blob_account_key ? 'Already configured (leave blank to keep)' : 'Not configured'}
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Multimodal container</span>
+            <input
+              type="text"
+              value={azureBlobMultimodalContainer}
+              onChange={e => setAzureBlobMultimodalContainer(e.target.value)}
+              placeholder="uploads"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Public base URL</span>
+            <input
+              type="text"
+              value={azureBlobPublicBaseUrl}
+              onChange={e => setAzureBlobPublicBaseUrl(e.target.value)}
+              placeholder="https://<account>.blob.core.windows.net"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+          <h2 className="font-semibold">Azure Speech</h2>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Credentials for speech token issuance. Leave the key blank to keep the existing value.
+            Changes take effect immediately.
+          </p>
+        </div>
+        <div className="p-5 space-y-4">
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Endpoint</span>
+            <input
+              type="text"
+              value={azureSpeechEndpoint}
+              onChange={e => setAzureSpeechEndpoint(e.target.value)}
+              placeholder="https://xxx.cognitiveservices.azure.com/"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Key</span>
+            <input
+              type="password"
+              value={azureSpeechKey}
+              onChange={e => setAzureSpeechKey(e.target.value)}
+              placeholder={settings?.has_azure_speech_key ? 'Already configured (leave blank to keep)' : 'Not configured'}
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Region</span>
+            <input
+              type="text"
+              value={azureSpeechRegion}
+              onChange={e => setAzureSpeechRegion(e.target.value)}
+              placeholder="eastus"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+          <h2 className="font-semibold">GitHub App</h2>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Credentials for GitHub installation token generation. Leave the private key blank to keep the existing value.
+            Changes take effect immediately.
+          </p>
+        </div>
+        <div className="p-5 space-y-4">
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">App ID</span>
+            <input
+              type="text"
+              value={githubAppId}
+              onChange={e => setGithubAppId(e.target.value)}
+              placeholder="GitHub App ID"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Installation ID</span>
+            <input
+              type="text"
+              value={githubAppInstallationId}
+              onChange={e => setGithubAppInstallationId(e.target.value)}
+              placeholder="GitHub App Installation ID"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Private key</span>
+            <textarea
+              value={githubAppPrivateKey}
+              onChange={e => setGithubAppPrivateKey(e.target.value)}
+              placeholder={settings?.has_github_app_private_key ? 'Already configured (leave blank to keep)' : '-----BEGIN RSA PRIVATE KEY-----'}
+              rows={6}
+              className="w-full px-3 py-2 rounded-lg text-sm border outline-none font-mono"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+        </div>
+      </section>
+
       <div className="flex justify-end mt-6">
-        <button onClick={save} className="btn-primary flex items-center gap-2" disabled={saving}>
-          <Save size={16} />
-          {saving ? 'Saving...' : 'Save Settings'}
+        <button
+          onClick={save}
+          disabled={saving}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50 transition-colors"
+          style={{ background: saved ? '#22c55e' : 'var(--color-primary)' }}>
+          {saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
+          {saving ? 'Saving...' : saved ? 'Saved' : 'Save Settings'}
         </button>
       </div>
     </div>

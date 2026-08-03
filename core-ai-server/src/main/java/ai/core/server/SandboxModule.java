@@ -17,6 +17,7 @@ import ai.core.server.sandbox.docker.DockerSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
+import ai.core.server.settings.SystemSettingsService;
 import core.framework.module.Module;
 import redis.clients.jedis.JedisPool;
 
@@ -32,14 +33,21 @@ class SandboxModule extends Module {
     private static final String KUBERNETES_SERVER_HOST = "core-ai-server";
 
     SandboxService sandboxService;
+    private boolean snapshotEnabled;
+    private String snapshotContainer;
+    private String minioSnapshotBucket;
 
     @Override
     protected void initialize() {
+        snapshotEnabled = "true".equalsIgnoreCase(property("sys.sandbox.snapshot.enabled").orElse("false"));
+        snapshotContainer = property("azure.blob.snapshot.container").orElse("sandbox-snapshots");
+        minioSnapshotBucket = property("storage.minio.snapshot.bucket").orElse("sandbox-snapshots");
         var providerName = property("sys.sandbox.provider").orElse(null);
         if (providerName == null || providerName.isBlank()) {
             sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                     bean(ObjectStorageConfiguration.class).service, bean(FileService.class));
             bind(sandboxService);
+            registerObjectStorageRefresh();
             return;
         }
 
@@ -60,28 +68,37 @@ class SandboxModule extends Module {
             sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                     bean(ObjectStorageConfiguration.class).service, bean(FileService.class));
             bind(sandboxService);
+            registerObjectStorageRefresh();
             return;
         }
-        var objectStorage = bean(ObjectStorageConfiguration.class).service;
-        var snapshotService = configureSandboxSnapshot(objectStorage);
+        var snapshotService = configureSandboxSnapshot(bean(ObjectStorageConfiguration.class).service);
         sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox,
-                new SandboxServiceDependencies(bean(JedisPool.class), snapshotService, objectStorage, bean(FileService.class)));
+                new SandboxServiceDependencies(bean(JedisPool.class), snapshotService, bean(ObjectStorageConfiguration.class).service, bean(FileService.class)));
         bind(sandboxService);
+        registerObjectStorageRefresh();
 
         onShutdown(sandboxService::shutdown);
     }
 
+    // object storage config comes from Mongo system settings, available only after startup hooks initialize;
+    // sandbox services are constructed during module init, so refresh the reference once Mongo is reachable
+    private void registerObjectStorageRefresh() {
+        onStartup(() -> {
+            refreshObjectStorage();
+            bean(SystemSettingsService.class).onSettingsChanged(this::refreshObjectStorage);
+        });
+    }
+
+    private void refreshObjectStorage() {
+        var storage = bean(ObjectStorageConfiguration.class).service;
+        if (sandboxService != null) sandboxService.setStorageService(storage);
+        if (storage != null) configureSandboxSnapshot(storage);
+    }
+
     private SandboxSnapshotService configureSandboxSnapshot(ObjectStorageService objectStorage) {
-
-        var snapshotEnabled = "true".equalsIgnoreCase(property("sys.sandbox.snapshot.enabled").orElse("false"));
-        var snapshotContainer = property("azure.blob.snapshot.container").orElse("sandbox-snapshots");
-
-        if (objectStorage instanceof MinioObjectStorageService) {
-            var minioSnapshotBucket = property("storage.minio.snapshot.bucket").orElse("sandbox-snapshots");
-            snapshotContainer = minioSnapshotBucket;
-        }
+        var container = objectStorage instanceof MinioObjectStorageService ? minioSnapshotBucket : snapshotContainer;
         var snapshotService = bean(SandboxSnapshotService.class);
-        snapshotService.configure(objectStorage, snapshotContainer, snapshotEnabled && objectStorage != null);
+        snapshotService.configure(objectStorage, container, snapshotEnabled && objectStorage != null);
         return snapshotService;
     }
 

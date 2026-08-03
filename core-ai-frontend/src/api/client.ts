@@ -1055,6 +1055,7 @@ export interface GatewayModel {
   supportsTools?: boolean;
   supportsVision?: boolean;
   supportsVideo?: boolean;
+  reasoningEfforts?: string[] | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;
@@ -1074,6 +1075,7 @@ export interface GatewayModelRequest {
   supportsTools?: boolean;
   supportsVision?: boolean;
   supportsVideo?: boolean;
+  reasoningEfforts?: string[] | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;
@@ -1142,6 +1144,16 @@ export interface SystemSettings {
   default_video_generation_model?: string;
   video_understanding_model?: string | null;
   default_video_understanding_model?: string;
+  azure_blob_account_name?: string | null;
+  has_azure_blob_account_key?: boolean;
+  azure_blob_multimodal_container?: string | null;
+  azure_blob_public_base_url?: string | null;
+  has_azure_speech_key?: boolean;
+  azure_speech_region?: string | null;
+  azure_speech_endpoint?: string | null;
+  github_app_id?: string | null;
+  github_app_installation_id?: string | null;
+  has_github_app_private_key?: boolean;
   created_by?: string;
   updated_by?: string;
   created_at?: string;
@@ -1156,6 +1168,16 @@ export interface SystemSettingsRequest {
   image_generation_model?: string | null;
   video_generation_model?: string | null;
   video_understanding_model?: string | null;
+  azure_blob_account_name?: string | null;
+  azure_blob_account_key?: string | null;
+  azure_blob_multimodal_container?: string | null;
+  azure_blob_public_base_url?: string | null;
+  azure_speech_key?: string | null;
+  azure_speech_region?: string | null;
+  azure_speech_endpoint?: string | null;
+  github_app_id?: string | null;
+  github_app_installation_id?: string | null;
+  github_app_private_key?: string | null;
 }
 
 export interface NotificationView {

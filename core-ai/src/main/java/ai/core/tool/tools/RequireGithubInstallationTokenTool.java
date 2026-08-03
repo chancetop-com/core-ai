@@ -58,7 +58,7 @@ public final class RequireGithubInstallationTokenTool extends ToolCall {
             var provider = tokenProvider != null ? tokenProvider : GitHubTokenProviderRegistry.getProvider();
             if (provider == null) {
                 return ToolCallResult.failed("GitHub token provider is not configured on this server. "
-                        + "Please configure github.app.id and github.app.private_key in agent.properties.");
+                        + "Please configure GitHub App settings in Admin UI (Settings -> System Configuration).");
             }
             String token = provider.getInstallationToken(repo);
             LOGGER.info("GitHub installation token generated for repo: {}", repo);

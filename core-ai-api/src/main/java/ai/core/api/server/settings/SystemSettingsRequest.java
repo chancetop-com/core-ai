@@ -26,4 +26,34 @@ public class SystemSettingsRequest {
 
     @Property(name = "video_understanding_model")
     public String videoUnderstandingModel;
+
+    @Property(name = "azure_blob_account_name")
+    public String azureBlobAccountName;
+
+    @Property(name = "azure_blob_account_key")
+    public String azureBlobAccountKey;
+
+    @Property(name = "azure_blob_multimodal_container")
+    public String azureBlobMultimodalContainer;
+
+    @Property(name = "azure_blob_public_base_url")
+    public String azureBlobPublicBaseUrl;
+
+    @Property(name = "azure_speech_key")
+    public String azureSpeechKey;
+
+    @Property(name = "azure_speech_region")
+    public String azureSpeechRegion;
+
+    @Property(name = "azure_speech_endpoint")
+    public String azureSpeechEndpoint;
+
+    @Property(name = "github_app_id")
+    public String githubAppId;
+
+    @Property(name = "github_app_installation_id")
+    public String githubAppInstallationId;
+
+    @Property(name = "github_app_private_key")
+    public String githubAppPrivateKey;
 }

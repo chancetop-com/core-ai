@@ -66,7 +66,7 @@ public class SandboxService {
 
     @SuppressFBWarnings("PME_POOR_MANS_ENUM")
     private final boolean enabled;
-    final ObjectStorageService storageService;
+    ObjectStorageService storageService;
     final FileService fileService;
     private final SandboxSnapshotService snapshotService;
     private SandboxRedisStore redisStore;
@@ -119,6 +119,10 @@ public class SandboxService {
         cleanupScheduler.scheduleAtFixedRate(new SandboxCleanupJob(sandboxManager, provider), 5, 5, TimeUnit.MINUTES);
     }
 
+    public void setStorageService(ObjectStorageService storageService) {
+        this.storageService = storageService;
+    }
+
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
         return createSandbox(config, sessionId, userId, null);
     }
@@ -131,9 +135,6 @@ public class SandboxService {
         return sandbox;
     }
 
-    // Reuse the session's sandbox if one already exists, else create it — atomically, so concurrent callers (e.g.
-    // parallel CODE nodes in one workflow run sharing a single per-run sandbox) don't race to create duplicates.
-    // The caller owns the lifecycle: it must releaseSandbox(sessionId) when done.
     public Sandbox getOrCreateSandbox(SandboxConfig config, String sessionId, String userId) {
         if (!enabled) return null;
         var effectiveConfig = config != null ? config : defaultConfig;
@@ -147,7 +148,6 @@ public class SandboxService {
         });
     }
 
-    /** Chat-session sandboxes only: adds snapshot capture/restore. Run/workflow/OCG sandboxes never snapshot. */
     public Sandbox createSessionSandbox(SandboxConfig config, String sessionId, String userId, Consumer<SandboxEvent> eventDispatcher) {
         return create(config, sessionId, userId, eventDispatcher, snapshotService);
     }
@@ -166,9 +166,6 @@ public class SandboxService {
         return lazySandbox;
     }
 
-    public void addPendingFile(String sessionId, String fileName, String container, String blobName) {
-        sandboxFileService.addPendingFile(sessionId, fileName, container, blobName);
-    }
     public void addStagedFile(String sessionId, StagedFile file) {
         sandboxFileService.addStagedFile(sessionId, file);
     }
@@ -189,10 +186,6 @@ public class SandboxService {
         return serverUrlFromSandbox;
     }
 
-    public Sandbox attachSandbox(String sandboxId, SandboxConfig config, String sessionId, String userId) {
-        return attachSandbox(sandboxId, config, sessionId, userId, false);
-    }
-
     public Sandbox attachSandbox(String sandboxId, SandboxConfig config, String sessionId, String userId, boolean persistent) {
         if (!enabled) return null;
         var attached = sandboxManager.attach(sandboxId, config, sessionId, userId);
@@ -203,11 +196,6 @@ public class SandboxService {
         return attached.get();
     }
 
-    public void markPersistentSandbox(String sessionId) {
-        persistentSessionIds.add(sessionId);
-    }
-
-    /** Force a LazySandbox for the session to materialize. No-op when there is no sandbox or it's already ready. */
     public void ensureSandboxReady(String sessionId) {
         var sandbox = sessionSandboxes.get(sessionId);
         if (sandbox instanceof LazySandbox lazy) lazy.ensureReady();
@@ -227,15 +215,10 @@ public class SandboxService {
         var sandbox = sessionSandboxes.remove(sessionId);
         persistentSessionIds.remove(sessionId);
         sandboxFileService.clear(sessionId);
-        // Stop the MCP processes started in this session's sandbox (best-effort — the
-        // sandbox close that follows will reap them anyway, but explicit stop keeps the
-        // runtime's process map tidy when sandboxes are pooled/reused).
         var startedIds = sessionMcpServerIds.remove(sessionId);
         if (sandbox != null && startedIds != null && !startedIds.isEmpty()) {
             stopSessionMcpProcesses(sessionId, sandbox, startedIds);
         }
-        // Close the per-session McpClientManager — releases Java-side HTTP transports
-        // and stops the heartbeat monitor for this session's servers.
         var sessionMgr = sessionMcpManagers.remove(sessionId);
         if (sessionMgr != null) {
             try {
@@ -254,8 +237,6 @@ public class SandboxService {
             LOGGER.info("sandbox released for session: {}", sessionId);
         }
     }
-
-    // ---- Per-session MCP manager ----
 
     /** Returns the McpClientManager scoped to this session, creating it if needed. */
     public McpClientManager getOrCreateSessionMcpManager(String sessionId) {
