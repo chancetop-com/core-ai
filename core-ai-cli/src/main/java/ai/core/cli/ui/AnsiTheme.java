@@ -5,69 +5,79 @@ package ai.core.cli.ui;
  */
 public final class AnsiTheme {
 
-    public static final String RESET = "\u001B[0m";
+    private static final boolean COLOR_ENABLED = System.getenv("NO_COLOR") == null;
+
+    public static final String RESET = sgr("\u001B[0m");
 
     // Prompt "User >"
-    public static final String PROMPT = "\u001B[38;5;114m";
+    public static final String PROMPT = sgr("\u001B[38;5;114m");
 
     // Separator / Thinking
-    public static final String SEPARATOR = "\u001B[38;5;67m";
+    public static final String SEPARATOR = sgr("\u001B[38;5;67m");
 
     // Error
-    public static final String ERROR = "\u001B[38;5;203m";
+    public static final String ERROR = sgr("\u001B[38;5;203m");
 
     // Tool Approval / Warning
-    public static final String WARNING = "\u001B[38;5;214m";
+    public static final String WARNING = sgr("\u001B[38;5;214m");
 
     // Muted (version info, secondary text)
-    public static final String MUTED = "\u001B[38;5;245m";
+    public static final String MUTED = sgr("\u001B[38;5;245m");
 
     // Command name (/help etc)
-    public static final String CMD_NAME = "\u001B[1;38;5;75m";
+    public static final String CMD_NAME = sgr("\u001B[1;38;5;75m");
 
     // Command description
-    public static final String CMD_DESC = "\u001B[38;5;252m";
+    public static final String CMD_DESC = sgr("\u001B[38;5;252m");
 
     // Markdown header (bold + blue)
-    public static final String MD_HEADER = "\u001B[1;38;5;75m";
-    public static final String MD_H1 = "\u001B[1;38;5;75m";
-    public static final String MD_H2 = "\u001B[1;38;5;114m";
-    public static final String MD_H3 = "\u001B[1;38;5;216m";
-    public static final String MD_H4 = "\u001B[1m";
+    public static final String MD_HEADER = sgr("\u001B[1;38;5;75m");
+    public static final String MD_H1 = sgr("\u001B[1;38;5;75m");
+    public static final String MD_H2 = sgr("\u001B[1;38;5;114m");
+    public static final String MD_H3 = sgr("\u001B[1;38;5;216m");
+    public static final String MD_H4 = sgr("\u001B[1m");
 
     // Inline code
-    public static final String MD_INLINE_CODE = "\u001B[38;5;216m";
+    public static final String MD_INLINE_CODE = sgr("\u001B[38;5;216m");
 
     // Code block content
-    public static final String MD_CODE_BLOCK = "\u001B[38;5;251m";
+    public static final String MD_CODE_BLOCK = sgr("\u001B[38;5;251m");
 
     // Bold
-    public static final String MD_BOLD = "\u001B[1m";
+    public static final String MD_BOLD = sgr("\u001B[1m");
 
     // Italic
-    public static final String MD_ITALIC = "\u001B[3m";
+    public static final String MD_ITALIC = sgr("\u001B[3m");
 
     // List bullet
-    public static final String MD_BULLET = "\u001B[38;5;67m";
+    public static final String MD_BULLET = sgr("\u001B[38;5;67m");
 
     // Table border (box-drawing chars)
-    public static final String MD_TABLE_BORDER = "\u001B[38;5;240m";
+    public static final String MD_TABLE_BORDER = sgr("\u001B[38;5;240m");
 
     // Reasoning (dim)
-    public static final String REASONING = "\u001B[2m";
+    public static final String REASONING = sgr("\u001B[2m");
 
     // Success
-    public static final String SUCCESS = "\u001B[38;5;114m";
+    public static final String SUCCESS = sgr("\u001B[38;5;114m");
 
     // Syntax highlighting
-    public static final String SYN_KEYWORD = "\u001B[38;5;177m";
-    public static final String SYN_STRING = "\u001B[38;5;149m";
-    public static final String SYN_COMMENT = "\u001B[38;5;244m";
-    public static final String SYN_NUMBER = "\u001B[38;5;216m";
-    public static final String SYN_TYPE = "\u001B[38;5;81m";
-    public static final String SYN_ANNOTATION = "\u001B[38;5;214m";
-    public static final String SYN_DIFF_ADD = "\u001B[38;5;114m";
-    public static final String SYN_DIFF_DEL = "\u001B[38;5;203m";
+    public static final String SYN_KEYWORD = sgr("\u001B[38;5;177m");
+    public static final String SYN_STRING = sgr("\u001B[38;5;149m");
+    public static final String SYN_COMMENT = sgr("\u001B[38;5;244m");
+    public static final String SYN_NUMBER = sgr("\u001B[38;5;216m");
+    public static final String SYN_TYPE = sgr("\u001B[38;5;81m");
+    public static final String SYN_ANNOTATION = sgr("\u001B[38;5;214m");
+    public static final String SYN_DIFF_ADD = sgr("\u001B[38;5;114m");
+    public static final String SYN_DIFF_DEL = sgr("\u001B[38;5;203m");
+
+    public static boolean isColorEnabled() {
+        return COLOR_ENABLED;
+    }
+
+    private static String sgr(String code) {
+        return COLOR_ENABLED ? code : "";
+    }
 
     public static String prompt(String text) {
         return PROMPT + text + RESET;

@@ -249,7 +249,7 @@ public class RemoteSessionCommandHandler {
             var category = (String) tool.get("category");
             var desc = (String) tool.get("description");
             var sb = new StringBuilder(name != null ? name : id);
-            if (loadedToolIds.contains(id)) sb.append(AnsiTheme.SUCCESS + " (loaded)" + AnsiTheme.RESET);
+            if (loadedToolIds.contains(id)) sb.append(AnsiTheme.SUCCESS).append(" (loaded)").append(AnsiTheme.RESET);
             if (type != null) sb.append(" [").append(type).append(']');
             if (category != null) sb.append(" (").append(category).append(')');
             if (desc != null && !desc.isBlank()) sb.append(" - ").append(truncate(desc, 40));
