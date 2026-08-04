@@ -140,11 +140,21 @@ public class InProcessAgentSession implements AgentSession {
             }
             debug("agent run failed: " + e);
             logger.warn("agent session run failed, sessionId={}", sessionId, e);
+            persistOnFailure();
             dispatch(ErrorEvent.of(sessionId, e.getMessage(), ""));
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
         } finally {
             threadUnbind.run();
             turnToken.disconnect();
+        }
+    }
+
+    private void persistOnFailure() {
+        if (!agent.hasPersistenceProvider()) return;
+        try {
+            agent.save(sessionId);
+        } catch (RuntimeException e) {
+            logger.warn("failed to persist session after run failure, sessionId={}", sessionId, e);
         }
     }
 

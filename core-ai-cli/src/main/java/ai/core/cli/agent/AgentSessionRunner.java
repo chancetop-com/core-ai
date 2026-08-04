@@ -107,6 +107,7 @@ public class AgentSessionRunner {
         startSenderThread(messageQueue, listener, session, readyForInput);
         readInputLoop(messageQueue, readyForInput);
         listener.getPanel().stopSpinnerIfActive();
+        saveSessionIfPersistable();
         ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Organizing memories..." + AnsiTheme.RESET + "\n");
         SessionCloseExtractor.onSessionClose(agent, workspace, memoryEnabled, dailyLogsEnabled, switchSessionId);
         session.close();
@@ -137,8 +138,18 @@ public class AgentSessionRunner {
             MemoryTriggerService.getInstance().runIncrementalExtractionAndWait();
         }
         listener.getPanel().stopSpinnerIfActive();
+        saveSessionIfPersistable();
         session.close();
         ScriptHookLifecycle.fireSessionStopHooks(workspace);
+    }
+
+    private void saveSessionIfPersistable() {
+        if (!agent.hasPersistenceProvider()) return;
+        try {
+            agent.save(sessionId);
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to save session, sessionId={}", sessionId, e);
+        }
     }
 
     @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
