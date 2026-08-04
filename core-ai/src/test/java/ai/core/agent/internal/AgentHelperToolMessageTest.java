@@ -87,7 +87,7 @@ class AgentHelperToolMessageTest {
     void captionToolHiddenForVisionNativeAgent() {
         var tools = java.util.List.of(tool("caption_image"), tool("read_file"));
 
-        var filtered = AgentHelper.filterRedundantVisionTools(tools, true);
+        var filtered = AgentHelper.filterRedundantVisionTools(tools, true, "vision-model");
 
         assertEquals(java.util.List.of("read_file"), filtered.stream().map(t -> t.function.name).toList());
     }
@@ -96,7 +96,19 @@ class AgentHelperToolMessageTest {
     void captionToolKeptForTextPathAgent() {
         var tools = java.util.List.of(tool("caption_image"), tool("read_file"));
 
-        assertEquals(2, AgentHelper.filterRedundantVisionTools(tools, false).size());
+        assertEquals(2, AgentHelper.filterRedundantVisionTools(tools, false, "text-model").size());
+    }
+
+    @Test
+    void captionToolReappearsAfterRuntimeOverrideMarksModelTextOnly() {
+        ai.core.llm.ModalityRuntimeOverrides.markUnsupported("healed-model", InputModality.IMAGE);
+        try {
+            var tools = java.util.List.of(tool("caption_image"), tool("read_file"));
+
+            assertEquals(2, AgentHelper.filterRedundantVisionTools(tools, true, "healed-model").size());
+        } finally {
+            ai.core.llm.ModalityRuntimeOverrides.clear();
+        }
     }
 
     private ai.core.llm.domain.Tool tool(String name) {

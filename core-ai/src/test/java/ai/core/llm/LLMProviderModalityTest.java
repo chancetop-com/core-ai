@@ -94,6 +94,14 @@ class LLMProviderModalityTest {
     }
 
     @Test
+    void incidentModelDowngradesThroughDefaultSeedRegistry() {
+        // no setModalityRegistry call: exercises SeedModelModalityRegistry.INSTANCE end to end
+        provider.completion(imageRequest("deepseek/deepseek-v4-flash"));
+
+        assertTrue(hasNoImagePart(provider.seenMessages.getFirst()));
+    }
+
+    @Test
     void unrelated400IsNotRetried() {
         provider.setModalityRegistry(ALL_UNKNOWN);
         provider.failuresRemaining = 1;

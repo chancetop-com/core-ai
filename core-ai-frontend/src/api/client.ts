@@ -321,6 +321,7 @@ export interface AgentDefinition {
   system_prompt_id: string;
   model: string;
   multi_modal_model?: string;
+  prefer_caption_path?: boolean;
   temperature: number;
   thinking_effort?: string | null;
   max_turns: number;
@@ -1055,6 +1056,7 @@ export interface GatewayModel {
   supportsTools?: boolean;
   supportsVision?: boolean;
   supportsVideo?: boolean;
+  supportsFile?: boolean;
   reasoningEfforts?: string[] | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
@@ -1073,8 +1075,9 @@ export interface GatewayModelRequest {
   contextWindow?: number | null;
   supportsStream?: boolean;
   supportsTools?: boolean;
-  supportsVision?: boolean;
+  supportsVision?: boolean | null;
   supportsVideo?: boolean;
+  supportsFile?: boolean | null;
   reasoningEfforts?: string[] | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
@@ -1092,6 +1095,7 @@ export interface GatewayAvailableModel {
   providerName?: string | null;
   endpointTypes?: string[] | null;
   supportsVision?: boolean | null;
+  supportsFile?: boolean | null;
 }
 
 export interface ListGatewayAvailableModelsResponse {
@@ -1107,6 +1111,7 @@ export interface GatewayDiscoveredModel {
   supportsTools?: boolean;
   supportsVision?: boolean;
   supportsVideo?: boolean;
+  supportsFile?: boolean;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;

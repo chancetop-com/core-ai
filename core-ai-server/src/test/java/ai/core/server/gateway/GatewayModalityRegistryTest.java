@@ -66,6 +66,11 @@ class GatewayModalityRegistryTest {
     }
 
     @Test
+    void nullModelIsUnknownWithoutTouchingRoutingEngine() {
+        assertEquals(ModalitySupport.UNKNOWN, registry.supports(null, InputModality.IMAGE));
+    }
+
+    @Test
     void declaredFileSupportWins() {
         var config = new GatewayModelConfig();
         config.supportsFile = Boolean.TRUE;

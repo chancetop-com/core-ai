@@ -76,8 +76,9 @@ type ModelFormState = {
   contextWindow: string;
   supportsStream: boolean;
   supportsTools: boolean;
-  supportsVision: boolean;
+  supportsVision: string;  // '' = unknown (seed/auto), 'true' / 'false' = admin declaration
   supportsVideo: boolean;
+  supportsFile: string;
   reasoningEfforts: string;
   maxVideoBytes: string;
   maxVideoSeconds: string;
@@ -121,8 +122,9 @@ const emptyModelForm: ModelFormState = {
   contextWindow: '',
   supportsStream: true,
   supportsTools: false,
-  supportsVision: false,
+  supportsVision: '',
   supportsVideo: false,
+  supportsFile: '',
   reasoningEfforts: '',
   maxVideoBytes: '',
   maxVideoSeconds: '',
@@ -147,6 +149,7 @@ export default function GatewayProviders() {
   const [selectedDiscoveredModels, setSelectedDiscoveredModels] = useState<Set<string>>(new Set());
   const [providerForm, setProviderForm] = useState<ProviderFormState>(emptyProviderForm);
   const [modelForm, setModelForm] = useState<ModelFormState>(emptyModelForm);
+  const [modalityBaseline, setModalityBaseline] = useState<{ supportsVision: string; supportsFile: string } | null>(null);
 
   const selectedType = useMemo(
     () => PROVIDER_TYPES.find(type => type.value === providerForm.type) || PROVIDER_TYPES[0],
@@ -315,13 +318,18 @@ export default function GatewayProviders() {
       contextWindow: model.contextWindow ? String(model.contextWindow) : '',
       supportsStream: model.supportsStream === true,
       supportsTools: model.supportsTools === true,
-      supportsVision: model.supportsVision === true,
+      supportsVision: model.supportsVision == null ? '' : String(model.supportsVision),
       supportsVideo: model.supportsVideo === true,
+      supportsFile: model.supportsFile == null ? '' : String(model.supportsFile),
       reasoningEfforts: model.reasoningEfforts?.join(', ') || '',
       maxVideoBytes: model.maxVideoBytes == null ? '' : String(model.maxVideoBytes),
       maxVideoSeconds: model.maxVideoSeconds == null ? '' : String(model.maxVideoSeconds),
       inputPricePer1MTokens: model.inputPricePer1MTokens == null ? '' : String(model.inputPricePer1MTokens),
       outputPricePer1MTokens: model.outputPricePer1MTokens == null ? '' : String(model.outputPricePer1MTokens),
+    });
+    setModalityBaseline({
+      supportsVision: model.supportsVision == null ? '' : String(model.supportsVision),
+      supportsFile: model.supportsFile == null ? '' : String(model.supportsFile),
     });
     setModelPanelOpen(true);
   };
@@ -331,6 +339,7 @@ export default function GatewayProviders() {
       ...emptyModelForm,
       providerId: providers[0]?.id || '',
     });
+    setModalityBaseline({ supportsVision: '', supportsFile: '' });
     setModelPanelOpen(true);
   };
 
@@ -350,6 +359,14 @@ export default function GatewayProviders() {
         maxVideoBytes: optionalNumber(modelForm.maxVideoBytes, 'Max video bytes'),
         maxVideoSeconds: optionalNumber(modelForm.maxVideoSeconds, 'Max video seconds'),
       };
+      // modality declarations drive routing; only send fields the admin actually touched,
+      // otherwise a null (unknown, resolved via seed) would be silently rewritten on every save
+      if (!modalityBaseline || modelForm.supportsVision !== modalityBaseline.supportsVision) {
+        payload.supportsVision = modelForm.supportsVision === '' ? null : modelForm.supportsVision === 'true';
+      }
+      if (!modalityBaseline || modelForm.supportsFile !== modalityBaseline.supportsFile) {
+        payload.supportsFile = modelForm.supportsFile === '' ? null : modelForm.supportsFile === 'true';
+      }
       const reasoningEfforts = modelForm.reasoningEfforts.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
       if (reasoningEfforts.length) payload.reasoningEfforts = reasoningEfforts;
       else if (modelForm.id) payload.reasoningEfforts = [];
@@ -702,6 +719,8 @@ function renderModelsTable(props: {
                     model.supportsStream ? 'stream' : null,
                     model.supportsTools ? 'tools' : null,
                     model.supportsVision ? 'vision' : null,
+                    model.supportsVideo ? 'video' : null,
+                    model.supportsFile ? 'file' : null,
                     model.contextWindow ? `${model.contextWindow} ctx` : null,
                   ].filter(Boolean).join(', ') || '-'}
                 </td>
@@ -932,8 +951,14 @@ function renderModelPanel(props: {
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Video understanding">
-            <Checkbox checked={form.supportsVideo} onChange={checked => setForm({ ...form, supportsVideo: checked })}>Supports video</Checkbox>
+          <Field label="Input modalities">
+            <div className="flex flex-col gap-2">
+              <ModalityDeclarationSelect label="Image input (vision)" value={form.supportsVision}
+                onChange={value => setForm({ ...form, supportsVision: value })} />
+              <ModalityDeclarationSelect label="File / PDF input" value={form.supportsFile}
+                onChange={value => setForm({ ...form, supportsFile: value })} />
+              <Checkbox checked={form.supportsVideo} onChange={checked => setForm({ ...form, supportsVideo: checked })}>Supports video</Checkbox>
+            </div>
           </Field>
           <Field label="Video limits">
             <div className="grid grid-cols-2 gap-2">
@@ -962,7 +987,9 @@ function renderModelPanel(props: {
             {formatCapabilities({
               supportsStream: form.supportsStream,
               supportsTools: form.supportsTools,
-              supportsVision: form.supportsVision,
+              supportsVision: form.supportsVision === 'true',
+              supportsVideo: form.supportsVideo,
+              supportsFile: form.supportsFile === 'true',
               contextWindow: optionalDisplayNumber(form.contextWindow),
             })}
           </ReadOnlyField>
@@ -1242,11 +1269,25 @@ function optionalDisplayNumber(value: string) {
   return Number.isFinite(number) ? number : null;
 }
 
+function ModalityDeclarationSelect({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <select className={inputClass + ' !w-44 !h-8 py-0'} style={inputStyle} value={value} onChange={e => onChange(e.target.value)}>
+        <option value="">Unknown (auto)</option>
+        <option value="true">Supported</option>
+        <option value="false">Not supported</option>
+      </select>
+      <span>{label}</span>
+    </label>
+  );
+}
+
 function formatCapabilities(model: {
   supportsStream?: boolean | null;
   supportsTools?: boolean | null;
   supportsVision?: boolean | null;
   supportsVideo?: boolean | null;
+  supportsFile?: boolean | null;
   contextWindow?: number | null;
 }) {
   return [
@@ -1254,6 +1295,7 @@ function formatCapabilities(model: {
     model.supportsTools ? 'tools' : null,
     model.supportsVision ? 'vision' : null,
     model.supportsVideo ? 'video' : null,
+    model.supportsFile ? 'file' : null,
     model.contextWindow ? `${model.contextWindow} ctx` : null,
   ].filter(Boolean).join(', ') || '-';
 }

@@ -28,6 +28,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -38,6 +40,7 @@ public abstract class LLMProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(LLMProvider.class);
     private static final Pattern IMAGE_REJECTION_PATTERN = Pattern.compile(
             "unknown variant .{0,2}image_url|image[ _a-z]{0,24}not supported|does not support image", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> UNKNOWN_MODALITY_WARNED = ConcurrentHashMap.newKeySet();
     protected LLMTracer tracer;
     protected ModelModalityRegistry modalityRegistry = SeedModelModalityRegistry.INSTANCE;
     public LLMProviderConfig config;
@@ -143,6 +146,8 @@ public abstract class LLMProvider {
             response = invokeCompletionStream(request, wrappedCallback, llmSpanContextSink, withTracing);
         } catch (RuntimeException e) {
             if (request.isPassthrough() || !shouldRetryWithoutImages(request, e)) throw e;
+            // safe to reuse the wrapped callback: image-rejection 400s fail at connection time,
+            // before any SSE data reaches the callback; mid-stream failures never match the pattern check above
             LOGGER.warn("upstream rejected image input, marking model={} as text-only and retrying downgraded, error={}", request.model, e.getMessage());
             ModalityRuntimeOverrides.markUnsupported(request.model, InputModality.IMAGE);
             enforceModalities(request);
@@ -165,7 +170,7 @@ public abstract class LLMProvider {
         if (result.downgradedCount() > 0) {
             LOGGER.warn("downgraded {} content part(s) not supported by model={}", result.downgradedCount(), request.model);
         }
-        if (result.unknownModalityPresent()) {
+        if (result.unknownModalityPresent() && UNKNOWN_MODALITY_WARNED.add(request.model)) {
             LOGGER.warn("model modality unknown, passing non-text content through, model={}", request.model);
         }
         request.messages = result.messages();

@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -66,7 +67,7 @@ public class CaptionImageTool extends ToolCall {
         var params = JsonUtil.fromJson(CaptionImageToolParams.class, text);
         var llmProvider = context.getLlmProvider();
         var urls = resolveUrls(params);
-        var contents = new java.util.ArrayList<Content>(urls.size() + 1);
+        var contents = new ArrayList<Content>(urls.size() + 1);
         contents.add(Content.of(buildQueryText(params)));
         urls.stream().map(url -> Content.of(resolveImageUrl(url, context))).forEach(contents::add);
         var messages = List.of(Message.of(new Message.MessageRecord(

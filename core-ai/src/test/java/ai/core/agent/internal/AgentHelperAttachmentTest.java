@@ -54,6 +54,24 @@ class AgentHelperAttachmentTest {
     }
 
     @Test
+    void urlImageAttachmentBecomesReferenceTextOnCaptionPath() {
+        var context = ExecutionContext.builder().sessionId("test").build();
+        context.setAttachedContents(List.of(ExecutionContext.AttachedContent.ofUrl(
+                "https://blob/photo.png", ExecutionContext.AttachedContent.AttachedContentType.IMAGE)));
+        context.setVisionNative(false);
+
+        var message = AgentHelper.buildUserMessage("look at this", context);
+
+        assertFalse(hasImagePart(message.content));
+        var referenceText = message.content.stream()
+                .filter(c -> c.type == Content.ContentType.TEXT)
+                .map(c -> c.text)
+                .reduce("", (a, b) -> a + "\n" + b);
+        assertTrue(referenceText.contains("https://blob/photo.png"));
+        assertTrue(referenceText.contains("caption_image"));
+    }
+
+    @Test
     void base64PdfAttachmentBecomesReferenceTextOnCaptionPath() {
         var context = contextWithPdfAttachment((fileName, contentType, bytes) -> "https://blob/doc.pdf");
         context.setVisionNative(false);

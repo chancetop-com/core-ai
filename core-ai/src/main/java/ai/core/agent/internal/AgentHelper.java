@@ -2,6 +2,7 @@ package ai.core.agent.internal;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.InputModality;
+import ai.core.llm.ModalityRuntimeOverrides;
 import ai.core.llm.ModalitySupport;
 import ai.core.llm.ModelModalityRegistry;
 import ai.core.llm.streaming.DefaultStreamingCallback;
@@ -88,9 +89,12 @@ public class AgentHelper {
         return multiModalModel != null && registry.supports(multiModalModel, InputModality.IMAGE) != ModalitySupport.UNSUPPORTED;
     }
 
-    // a natively-seeing model misuses a redundant caption tool; hide it and let images flow inline
-    public static List<Tool> filterRedundantVisionTools(List<Tool> tools, boolean visionNative) {
+    // a natively-seeing model misuses a redundant caption tool; hide it and let images flow inline.
+    // once 400 auto-heal marks the effective model text-only, the tool must reappear or the
+    // downgraded placeholders would point at a tool the model cannot call
+    public static List<Tool> filterRedundantVisionTools(List<Tool> tools, boolean visionNative, String effectiveModel) {
         if (!visionNative || tools == null) return tools;
+        if (ModalityRuntimeOverrides.isMarkedUnsupported(effectiveModel, InputModality.IMAGE)) return tools;
         return tools.stream()
                 .filter(tool -> tool.function == null || !CaptionImageTool.TOOL_NAME.equals(tool.function.name))
                 .toList();
@@ -194,13 +198,21 @@ public class AgentHelper {
     }
 
     private static Content buildImageAttachedContent(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
-        if (!attachedContent.isBase64()) return Content.of(Content.ImageUrl.of(attachedContent.url, null));
+        if (!attachedContent.isBase64()) {
+            var captionPath = context != null && !context.isVisionNative();
+            if (captionPath) return Content.of(imageReferenceText(attachedContent.url));
+            return Content.of(Content.ImageUrl.of(attachedContent.url, null));
+        }
         var referenceUrl = captionPathUrl(attachedContent, context);
         if (referenceUrl != null) {
-            return Content.of(Strings.format("[Image attachment: {}] The current model cannot view images directly. Call caption_image with this url to inspect it.", referenceUrl));
+            return Content.of(imageReferenceText(referenceUrl));
         }
         var dataUri = Strings.format("data:{};base64,{}", attachedContent.mediaType, attachedContent.data);
         return Content.of(Content.ImageUrl.of(dataUri, attachedContent.mediaType));
+    }
+
+    private static String imageReferenceText(String url) {
+        return Strings.format("[Image attachment: {}] The current model cannot view images directly. Call caption_image with this url to inspect it.", url);
     }
 
     private static String captionPathUrl(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {

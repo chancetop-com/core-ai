@@ -11,7 +11,7 @@ import StatusBadge from '../../components/StatusBadge';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
   id: '', name: '', description: '', system_prompt: '', system_prompt_id: '',
-  model: '', multi_modal_model: '', temperature: 0.7, thinking_effort: null, max_turns: 100, timeout_seconds: 600,
+  model: '', multi_modal_model: '', prefer_caption_path: false, temperature: 0.7, thinking_effort: null, max_turns: 100, timeout_seconds: 600,
   tools: [], input_template: '', variables: {},
   system_default: false, type: 'AGENT', response_schema: null,
   created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',
@@ -430,6 +430,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           system_prompt_id: agent.system_prompt_id,
           model: agent.model,
           multi_modal_model: agent.multi_modal_model,
+          prefer_caption_path: agent.prefer_caption_path,
           temperature: agent.temperature,
           thinking_effort: agent.thinking_effort,
           max_turns: agent.max_turns,
@@ -457,6 +458,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
         system_prompt_id: agent.system_prompt_id,
         model: agent.model,
         multi_modal_model: agent.multi_modal_model,
+        prefer_caption_path: agent.prefer_caption_path,
         temperature: agent.temperature,
         thinking_effort: agent.thinking_effort,
         max_turns: agent.max_turns,
@@ -670,7 +672,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
     }
   };
 
-  const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'multi_modal_model', 'temperature', 'thinking_effort',
+  const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'multi_modal_model', 'prefer_caption_path', 'temperature', 'thinking_effort',
     'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema', 'subagent_ids', 'skill_ids', 'enable_memory'] as const;
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -712,7 +714,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
   const handleExport = (a: AgentDefinition) => {
     const exportData = {
       name: a.name, description: a.description, type: a.type,
-      system_prompt: a.system_prompt, model: a.model, multi_modal_model: a.multi_modal_model, temperature: a.temperature, thinking_effort: a.thinking_effort,
+      system_prompt: a.system_prompt, model: a.model, multi_modal_model: a.multi_modal_model, prefer_caption_path: a.prefer_caption_path, temperature: a.temperature, thinking_effort: a.thinking_effort,
       max_turns: a.max_turns, timeout_seconds: a.timeout_seconds,         tools: a.tools,
       input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
       subagent_ids: a.subagent_ids,
@@ -1072,6 +1074,20 @@ The system prompt should define how this agent behaves, its capabilities, and it
                       )}
                     </div>
                   )}
+                </div>
+
+                <div className="mt-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox"
+                      checked={agent.prefer_caption_path === true}
+                      onChange={e => update('prefer_caption_path', e.target.checked)}
+                      className="w-4 h-4 rounded accent-[var(--color-accent)]" />
+                    <span className="text-sm font-medium">Prefer caption tool path</span>
+                  </label>
+                  <p className="text-xs mt-1 ml-6" style={{ color: 'var(--color-text-tertiary)' }}>
+                    Images stay out of the chat history as tool-readable references and are inspected via caption_image on demand,
+                    even when the main model supports vision. Keeps a cheap main model in charge for image-heavy workloads.
+                  </p>
                 </div>
 
                 <div className="mt-4">

@@ -206,7 +206,7 @@ public interface ModelModalityRegistry {
 agent 装配时(`SubAgentAssembler` / `AgentRunBuilder` / workflow `AgentExecutor`)计算:
 
 ```
-mainVision   = supports(model, IMAGE) == SUPPORTED
+mainVision   = supports(model, IMAGE) != UNSUPPORTED
 hybridVision = multiModalModel != null && supports(multiModalModel, IMAGE) != UNSUPPORTED
 visionNative = mainVision || hybridVision
 ```
@@ -227,7 +227,9 @@ visionNative = mainVision || hybridVision
 
 - `visionNative == true`:默认**不注册** `caption_image`——模型自己能看图,冗余工具只会被误用;
 - `visionNative == false` 或 `preferCaptionPath == true`:注册 `caption_image`(及 `summarize_pdf`);
-- 不写死"多模态必不注册":agent 定义可显式配置保留(主模型贵、用便宜视觉模型跑批量 OCR 的场景合理);
+- 不写死"多模态必不注册":当前的显式保留手段是 `preferCaptionPath`(强制 caption 路径即保留工具);
+  另外 400 自愈把模型标记为 text-only 后,裁剪逻辑感知 runtime override,caption_image 会在 TTL 内重新出现,
+  避免降级占位文本指向一个模型调不到的工具;
 - **CLI / 裸 SDK 侧**(v1 遗漏):`BuiltinTools` 集合装配同样按 visionNative 裁剪,能力来源为 SDK 种子实现,P2 一并落地。
 
 ### 5.3 tool result 渲染分叉
@@ -342,20 +344,24 @@ public final class ModalityEnforcer {
 UNKNOWN 放行策略的收敛闭环,与 enforcer 同期落地:
 
 1. `GatewayLLMProvider` / `LiteLLMProvider` 捕获上游 400 且 body 匹配图片拒绝模式
-   (`unknown variant .?image_url` / `image.*not.*support` / `invalid content type` 等,模式表可配置);
-2. 对该模型写入 runtime 能力覆盖(内存缓存,TTL 级,不直接改配置):IMAGE → UNSUPPORTED;
+   (`unknown variant .?image_url` / `image.*not.*support` 等);
+2. 对该模型写入 runtime 能力覆盖(内存缓存,TTL 30 分钟,不直接改配置):IMAGE → UNSUPPORTED;
 3. 用 ModalityEnforcer 降级后的消息**重试一次**;
-4. WARN 日志 + trace 标记;P3 在管理端展示"能力声明疑似不符"待人工确认。
+4. WARN 日志;P3 在管理端展示"能力声明疑似不符"待人工确认。
 
-效果:未知的纯文本模型至多产生一次被自动重试兜住的 400,之后 TTL 期内直接降级;误判可由管理员声明纠正(优先级高于自愈缓存)。
+效果:未知的纯文本模型至多产生一次被自动重试兜住的 400,之后 TTL 期内直接降级。
+**优先级说明(与 4.4 一致)**:runtime override 在 TTL 内优先于一切声明——若模式误伤,
+管理员声明 SUPPORTED 需等 TTL 过期(至多 30 分钟)或进程重启后生效;选择这个语义是因为
+声明短路 override 会让种子数据错标的模型永远无法自愈。
 
 ### 6.5 可观测性
 
 降级与放行都不允许静默:
 
-- UNSUPPORTED 降级:WARN 日志(model、message index、块类型、降级方式)+ trace 属性 `modality.downgraded=true/count`;
-- UNKNOWN 放行:首次(按 model 去重)WARN + trace 属性 `modality.unknown_model=true`——这是能力标注缺口的暴露面;
-- 自愈触发:独立 WARN + 计数指标,降级率/自愈率异常即装配层或标注有 bug。
+- UNSUPPORTED 降级:WARN 日志(model、降级数量);
+- UNKNOWN 放行:按 model 去重的一次性 WARN(进程内)——这是能力标注缺口的暴露面;
+- 自愈触发:独立 WARN;
+- trace 属性(`modality.downgraded` / `modality.unknown_model`)与降级率/自愈率面板归入 P3 监控项。
 
 ## 7. CaptionImageTool 改造
 

@@ -21,6 +21,7 @@ public class GatewayModalityRegistry implements ModelModalityRegistry {
     @Override
     public ModalitySupport supports(String model, InputModality modality) {
         if (modality == InputModality.TEXT) return ModalitySupport.SUPPORTED;
+        if (model == null || model.isBlank()) return ModalitySupport.UNKNOWN;
         var config = routingEngine.modelConfig(model);
         if (config == null) return SeedModelModalityRegistry.INSTANCE.supports(model, modality);
         var declared = switch (modality) {
