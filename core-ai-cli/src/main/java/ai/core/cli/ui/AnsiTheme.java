@@ -1,11 +1,32 @@
 package ai.core.cli.ui;
 
+import java.util.Locale;
+import java.util.Map;
+
 /**
  * @author xander
  */
 public final class AnsiTheme {
 
     private static final boolean COLOR_ENABLED = System.getenv("NO_COLOR") == null;
+
+    private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+
+    private static final Map<String, String> WINDOWS_16_COLOR = Map.ofEntries(
+            Map.entry("\u001B[38;5;114m", "\u001B[92m"),  // green -> bright green
+            Map.entry("\u001B[38;5;67m", "\u001B[94m"),   // blue -> bright blue
+            Map.entry("\u001B[38;5;203m", "\u001B[91m"),  // red -> bright red
+            Map.entry("\u001B[38;5;214m", "\u001B[93m"),  // orange -> bright yellow
+            Map.entry("\u001B[38;5;245m", "\u001B[90m"),  // gray -> bright black
+            Map.entry("\u001B[1;38;5;75m", "\u001B[1;94m"),
+            Map.entry("\u001B[38;5;252m", "\u001B[97m"),  // bright white
+            Map.entry("\u001B[38;5;216m", "\u001B[93m"),  // light orange -> bright yellow
+            Map.entry("\u001B[38;5;251m", "\u001B[97m"),  // light gray -> bright white
+            Map.entry("\u001B[38;5;240m", "\u001B[90m"),  // dark gray -> bright black
+            Map.entry("\u001B[38;5;177m", "\u001B[95m"),  // purple -> bright magenta
+            Map.entry("\u001B[38;5;149m", "\u001B[92m"),  // light green -> bright green
+            Map.entry("\u001B[38;5;244m", "\u001B[90m"),  // gray -> bright black
+            Map.entry("\u001B[38;5;81m", "\u001B[96m"));  // light blue -> bright cyan
 
     public static final String RESET = sgr("\u001B[0m");
 
@@ -76,7 +97,9 @@ public final class AnsiTheme {
     }
 
     private static String sgr(String code) {
-        return COLOR_ENABLED ? code : "";
+        if (!COLOR_ENABLED) return "";
+        if (WINDOWS) return WINDOWS_16_COLOR.getOrDefault(code, code);
+        return code;
     }
 
     public static String prompt(String text) {
