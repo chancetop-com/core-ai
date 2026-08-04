@@ -180,10 +180,12 @@ public class InProcessCommandHandler {
                     throw new IllegalArgumentException("invalid image attachment");
                 }
                 var bytes = objectStorageConfiguration.service.downloadObject(container, blobName);
-                contents.add(ExecutionContext.AttachedContent.ofBase64(
+                var content = ExecutionContext.AttachedContent.ofBase64(
                         Base64.getEncoder().encodeToString(bytes), contentType,
                         ExecutionContext.AttachedContent.AttachedContentType.IMAGE,
-                        (String) attachment.get("fileName")));
+                        (String) attachment.get("fileName"));
+                content.url = (String) attachment.get("url");
+                contents.add(content);
             }
         }
         return contents;

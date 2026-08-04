@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -76,12 +77,14 @@ public class AttachmentMessageHelper {
                 contentType = "video/mp4"; // front-end may omit content type; the processing pod re-verifies via headObject
             }
             if (contentType == null) continue;
-            result.add(Map.of(
-                    "type", att.type,
-                    "fileName", att.fileName != null ? att.fileName : att.blobName,
-                    "contentType", contentType,
-                    "container", att.container,
-                    "blobName", att.blobName));
+            var attachment = new HashMap<String, String>();
+            attachment.put("type", att.type);
+            attachment.put("fileName", att.fileName != null ? att.fileName : att.blobName);
+            attachment.put("contentType", contentType);
+            attachment.put("container", att.container);
+            attachment.put("blobName", att.blobName);
+            if (att.url != null && !att.url.isBlank()) attachment.put("url", att.url);
+            result.add(attachment);
         }
         return result.isEmpty() ? null : result;
     }

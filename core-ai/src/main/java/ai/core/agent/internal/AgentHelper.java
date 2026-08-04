@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -144,7 +145,7 @@ public class AgentHelper {
             return Message.of(RoleType.USER, query, buildRequestName(false), null, null);
         }
         var contents = new java.util.ArrayList<Content>(attachedContents.size() + 1);
-        contents.add(Content.of(query));
+        contents.add(Content.of(withoutDuplicateAttachmentUrls(query, attachedContents)));
         attachedContents.stream()
                 .filter(attachedContent -> attachedContent.type != ExecutionContext.AttachedContent.AttachedContentType.VIDEO)
                 .map(attachedContent -> buildAttachedContent(attachedContent, context))
@@ -216,7 +217,21 @@ public class AgentHelper {
 
     private static String captionPathUrl(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
         if (context == null || context.isVisionNative()) return null;
+        if (attachedContent.url != null && !attachedContent.url.isBlank()) return attachedContent.url;
         return persistImage(attachedContent.data, attachedContent.mediaType, context);
+    }
+
+    private static String withoutDuplicateAttachmentUrls(String query, List<ExecutionContext.AttachedContent> attachedContents) {
+        if (query == null || query.isBlank()) return query;
+        var urls = attachedContents.stream()
+                .map(content -> content.url)
+                .filter(url -> url != null && !url.isBlank())
+                .collect(Collectors.toSet());
+        if (urls.isEmpty()) return query;
+        return query.lines()
+                .filter(line -> !urls.contains(line.strip()))
+                .collect(Collectors.joining("\n"))
+                .stripTrailing();
     }
 
     private static Content buildPdfAttachedContent(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {

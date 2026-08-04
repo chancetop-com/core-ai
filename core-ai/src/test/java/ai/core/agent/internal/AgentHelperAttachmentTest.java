@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -41,6 +42,22 @@ class AgentHelperAttachmentTest {
                 .reduce("", (a, b) -> a + "\n" + b);
         assertTrue(referenceText.contains("https://blob/attachment.png"));
         assertTrue(referenceText.contains("caption_image"));
+    }
+
+    @Test
+    void sourceBackedImageUsesOriginalUrlOnceOnCaptionPath() {
+        var context = contextWithAttachment((fileName, contentType, bytes) -> "https://server/artifact.png");
+        context.getAttachedContent().url = "https://blob/photo.png";
+        context.setVisionNative(false);
+
+        var message = AgentHelper.buildUserMessage("look at this\n\nhttps://blob/photo.png", context);
+
+        var text = message.content.stream()
+                .filter(c -> c.type == Content.ContentType.TEXT)
+                .map(c -> c.text)
+                .reduce("", (a, b) -> a + "\n" + b);
+        assertEquals(1, occurrences(text, "https://blob/photo.png"));
+        assertFalse(text.contains("https://server/artifact.png"));
     }
 
     @Test
@@ -120,5 +137,9 @@ class AgentHelperAttachmentTest {
 
     private boolean hasImagePart(List<Content> content) {
         return content != null && content.stream().anyMatch(c -> c.type == Content.ContentType.IMAGE_URL);
+    }
+
+    private int occurrences(String value, String target) {
+        return (value.length() - value.replace(target, "").length()) / target.length();
     }
 }
