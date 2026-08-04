@@ -3,8 +3,8 @@ package ai.core.server.messaging;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
-import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.session.InProcessAgentSession;
@@ -50,11 +50,11 @@ class InProcessCommandHandlerTest {
         when(sessionManager.getSession("s-1")).thenReturn(session);
         var storageService = mock(ObjectStorageService.class);
         when(storageService.downloadObject("uploads", "ai/image.jpg")).thenReturn("image".getBytes(StandardCharsets.UTF_8));
-        var storageConfiguration = new ObjectStorageConfiguration();
-        storageConfiguration.service = storageService;
-        storageConfiguration.multimodalContainer = "uploads";
+        var storageResolver = mock(ObjectStorageServiceResolver.class);
+        when(storageResolver.resolve()).thenReturn(storageService);
+        when(storageResolver.multimodalContainer()).thenReturn("uploads");
         var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService, ownershipRegistry,
-                null, null, storageConfiguration, null);
+                null, null, storageResolver, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
         var images = List.of(Map.of(

@@ -7,7 +7,7 @@ import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
 import ai.core.agent.ExecutionContext;
-import ai.core.server.blob.ObjectStorageConfiguration;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
@@ -45,7 +45,7 @@ public class InProcessCommandHandler {
     private final SandboxService sandboxService;
     private final EventPublisher eventPublisher;
     private final ToolRegistryService toolRegistryService;
-    private final ObjectStorageConfiguration objectStorageConfiguration;
+    private final ObjectStorageServiceResolver objectStorageResolver;
     private final ai.core.server.domain.SessionAttachmentRefRepository attachmentRepository;
 
     public InProcessCommandHandler(SessionCommandDependencies sessionDependencies, CommandRpcDependencies rpcDependencies) {
@@ -58,7 +58,7 @@ public class InProcessCommandHandler {
         this.jedisPool = rpcDependencies.jedisPool();
         this.sandboxService = sessionDependencies.sandboxService();
         this.eventPublisher = sessionDependencies.eventPublisher();
-        this.objectStorageConfiguration = sessionDependencies.objectStorageConfiguration();
+        this.objectStorageResolver = sessionDependencies.objectStorageResolver();
         this.attachmentRepository = sessionDependencies.attachmentRepository();
         this.toolRegistryService = rpcDependencies.toolRegistryService();
     }
@@ -147,7 +147,8 @@ public class InProcessCommandHandler {
             attachments = (List<Map<String, Object>>) payload.get("imageAttachments");
         }
         if (attachments == null || attachments.isEmpty()) return null;
-        if (objectStorageConfiguration == null || objectStorageConfiguration.service == null) {
+        var storageService = objectStorageResolver.resolve();
+        if (storageService == null) {
             throw new IllegalStateException("object storage is not configured");
         }
         var contents = new ArrayList<ExecutionContext.AttachedContent>(attachments.size());
@@ -166,7 +167,7 @@ public class InProcessCommandHandler {
                 reference.userId = userId;
                 reference.container = container;
                 reference.blobName = blobName;
-                var metadata = objectStorageConfiguration.service.headObject(container, blobName);
+                var metadata = storageService.headObject(container, blobName);
                 reference.sourceETag = metadata.etag();
                 reference.sourceSizeBytes = metadata.sizeBytes();
                 reference.contentType = resolveVideoContentType(metadata.contentType(), contentType);
@@ -179,7 +180,7 @@ public class InProcessCommandHandler {
                 if (!validImageAttachment(container, blobName, contentType)) {
                     throw new IllegalArgumentException("invalid image attachment");
                 }
-                var bytes = objectStorageConfiguration.service.downloadObject(container, blobName);
+                var bytes = storageService.downloadObject(container, blobName);
                 var content = ExecutionContext.AttachedContent.ofBase64(
                         Base64.getEncoder().encodeToString(bytes), contentType,
                         ExecutionContext.AttachedContent.AttachedContentType.IMAGE,
@@ -216,13 +217,13 @@ public class InProcessCommandHandler {
 
     private boolean validVideoAttachment(String container, String blobName) {
         return container != null && blobName != null
-                && container.equals(objectStorageConfiguration.multimodalContainer)
+                && container.equals(objectStorageResolver.multimodalContainer())
                 && blobName.startsWith("ai/");
     }
 
     private boolean validObjectAttachment(String container, String blobName, String contentType) {
         return container != null && blobName != null && contentType != null
-                && container.equals(objectStorageConfiguration.multimodalContainer)
+                && container.equals(objectStorageResolver.multimodalContainer())
                 && blobName.startsWith("ai/");
     }
 

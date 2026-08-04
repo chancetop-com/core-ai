@@ -2,6 +2,7 @@ package ai.core.server.blob;
 
 import ai.core.api.server.blob.BlobUploadCredentialView;
 import core.framework.api.http.HTTPStatus;
+import core.framework.inject.Inject;
 import core.framework.web.Request;
 import core.framework.web.Response;
 
@@ -13,17 +14,16 @@ import java.util.UUID;
  * Issues upload credentials (pre-signed URL + container/blob info) for direct browser-to-storage uploads.
  * <p>
  * The storage provider (Azure, MinIO, etc.) is abstracted behind {@link ObjectStorageService}.
- * To switch providers, change the binding in {@code ObjectStorageModule}.
  *
  * @author stephen
  */
 public class BlobUploadCredentialController {
 
-    public ObjectStorageService storageService;
-    public String multimodalContainer = "uploads";
-    public String sandboxContainer = "sandbox-uploads";
+    @Inject
+    ObjectStorageServiceResolver resolver;
 
     public Response getCredential(Request request) {
+        var storageService = resolver.resolve();
         if (storageService == null) {
             return Response.text("Object storage is not configured")
                     .status(HTTPStatus.INTERNAL_SERVER_ERROR);
@@ -33,7 +33,7 @@ public class BlobUploadCredentialController {
         var contentType = params.get("content_type");
         if (contentType == null) contentType = "application/octet-stream";
         var category = params.get("category");
-        var container = "sandbox".equals(category) ? sandboxContainer : multimodalContainer;
+        var container = "sandbox".equals(category) ? resolver.sandboxContainer() : resolver.multimodalContainer();
         var ext = inferExtension(contentType);
         var prefix = "sandbox".equals(category) ? "uploads" : "ai";
         var blobName = prefix + "/" + UUID.randomUUID() + ext;

@@ -2,12 +2,10 @@ package ai.core.server;
 
 import ai.core.api.server.FileWebService;
 import ai.core.api.server.blob.BlobUploadCredentialView;
-import ai.core.server.blob.AzureBlobSasService;
-import ai.core.server.blob.AzureObjectStorageService;
 import ai.core.server.blob.BlobUploadCredentialController;
-import ai.core.server.blob.MinioObjectStorageService;
 import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
@@ -33,22 +31,34 @@ public class ObjectStorageModule extends Module {
     private String minioMultimodalBucket;
     private String minioSandboxBucket;
     private String minioPublicBaseUrl;
-    private String azureSandboxContainer;
     private boolean objectStorageBound;
 
     @Override
     protected void initialize() {
         readProperties();
         registerFile();
+        bindObjectStorageResolver();
         bind(ObjectStorageConfiguration.class);
-        var blobController = bind(BlobUploadCredentialController.class);
+        bind(BlobUploadCredentialController.class);
         http().bean(BlobUploadCredentialView.class);
-        http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
+        http().route(HTTPMethod.GET, "/api/blob/upload-credential", bean(BlobUploadCredentialController.class)::getCredential);
         // azure config now comes from Mongo system settings, which is only available after startup hooks initialize
         onStartup(() -> {
-            configureObjectStorage(blobController);
-            bean(SystemSettingsService.class).onSettingsChanged(() -> configureObjectStorage(blobController));
+            configureObjectStorage();
+            bean(SystemSettingsService.class).onSettingsChanged(this::configureObjectStorage);
         });
+    }
+
+    private void bindObjectStorageResolver() {
+        var resolver = bind(ObjectStorageServiceResolver.class);
+        resolver.provider = provider;
+        resolver.minioEndpoint = minioEndpoint;
+        resolver.minioAccessKey = minioAccessKey;
+        resolver.minioSecretKey = minioSecretKey;
+        resolver.minioRegion = minioRegion;
+        resolver.minioMultimodalBucket = minioMultimodalBucket;
+        resolver.minioSandboxBucket = minioSandboxBucket;
+        resolver.minioPublicBaseUrl = minioPublicBaseUrl;
     }
 
     private void readProperties() {
@@ -60,7 +70,6 @@ public class ObjectStorageModule extends Module {
         minioMultimodalBucket = property("storage.minio.multimodal.bucket").orElse("uploads");
         minioSandboxBucket = property("storage.minio.sandbox.bucket").orElse("sandbox-uploads");
         minioPublicBaseUrl = property("storage.minio.public.base.url").orElse(null);
-        azureSandboxContainer = property("azure.blob.sandbox.container").orElse("sandbox");
     }
 
     private void registerFile() {
@@ -71,54 +80,23 @@ public class ObjectStorageModule extends Module {
         http().route(HTTPMethod.GET, "/api/public/artifacts/:token/content", bind(SharedFileDownloadController.class));
     }
 
-    private void configureObjectStorage(BlobUploadCredentialController blobController) {
-        ObjectStorageService objectStorage = null;
+    private void configureObjectStorage() {
+        var resolver = bean(ObjectStorageServiceResolver.class);
+        var objectStorage = resolver.resolve();
+        var multimodalContainer = resolver.multimodalContainer();
 
-        if (provider.isEmpty() || "azure".equals(provider)) {
-            var settings = bean(SystemSettingsService.class);
-            var azureAccountName = readSetting(settings::azureBlobAccountName);
-            var azureAccountKey = readSetting(settings::azureBlobAccountKey);
-            var sasService = AzureBlobSasService.tryCreate(azureAccountName, azureAccountKey);
-            if (sasService != null) {
-                var azureMultimodalContainer = firstNonBlank(readSetting(settings::azureBlobMultimodalContainer), "uploads");
-                var azurePublicBaseUrl = readSetting(settings::azureBlobPublicBaseUrl);
-                blobController.multimodalContainer = azureMultimodalContainer;
-                blobController.sandboxContainer = azureSandboxContainer;
-                objectStorage = new AzureObjectStorageService(sasService, azurePublicBaseUrl);
-                LOGGER.info("Object storage configured: provider=azure, multimodal={}, sandbox={}",
-                        azureMultimodalContainer, azureSandboxContainer);
-            }
-        }
-        if (objectStorage == null && minioEndpoint != null && minioAccessKey != null && (provider.isEmpty() || "minio".equals(provider)) && !minioEndpoint.isBlank() && !minioAccessKey.isBlank()) {
-            blobController.multimodalContainer = minioMultimodalBucket;
-            blobController.sandboxContainer = minioSandboxBucket;
-            objectStorage = new MinioObjectStorageService(minioEndpoint, minioRegion, minioAccessKey, minioSecretKey, minioPublicBaseUrl);
-            LOGGER.info("Object storage configured: provider=minio, endpoint={}, multimodal={}, sandbox={}", minioEndpoint, minioMultimodalBucket, minioSandboxBucket);
-        }
-
-        if (objectStorage != null) {
-            blobController.storageService = objectStorage;
-            if (!objectStorageBound) {
-                bind(ObjectStorageService.class, objectStorage);
-                objectStorageBound = true;
-            }
-        } else {
-            blobController.storageService = null;
+        if (objectStorage != null && !objectStorageBound) {
+            bind(ObjectStorageService.class, objectStorage);
+            objectStorageBound = true;
         }
         bean(ObjectStorageConfiguration.class).service = objectStorage;
-        bean(ObjectStorageConfiguration.class).multimodalContainer = blobController.multimodalContainer;
-    }
-
-    private String readSetting(java.util.function.Supplier<String> getter) {
-        try {
-            return getter.get();
-        } catch (Exception e) {
-            LOGGER.warn("failed to read system settings, object storage may be disabled", e);
-            return null;
+        bean(ObjectStorageConfiguration.class).multimodalContainer = multimodalContainer;
+        if (objectStorage != null) {
+            var sandboxContainer = resolver.sandboxContainer();
+            LOGGER.info("Object storage configured: provider={}, multimodal={}, sandbox={}",
+                    provider, multimodalContainer, sandboxContainer);
+        } else {
+            LOGGER.warn("Object storage not configured: provider={}", provider);
         }
-    }
-
-    private String firstNonBlank(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
     }
 }
