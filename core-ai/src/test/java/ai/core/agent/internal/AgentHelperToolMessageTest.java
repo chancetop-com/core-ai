@@ -23,6 +23,10 @@ class AgentHelperToolMessageTest {
             modality == InputModality.TEXT ? ModalitySupport.SUPPORTED : ModalitySupport.UNSUPPORTED;
     private static final ModelModalityRegistry ALL_UNKNOWN = (model, modality) ->
             modality == InputModality.TEXT ? ModalitySupport.SUPPORTED : ModalitySupport.UNKNOWN;
+    private static final ModelModalityRegistry TEXT_MAIN = (model, modality) -> {
+        if (modality == InputModality.TEXT) return ModalitySupport.SUPPORTED;
+        return "deepseek-model".equals(model) ? ModalitySupport.UNSUPPORTED : ModalitySupport.SUPPORTED;
+    };
 
     @Test
     void imageResultKeepsNativeImageWhenVisionNative() {
@@ -70,17 +74,17 @@ class AgentHelperToolMessageTest {
 
     @Test
     void textOnlyModelWithoutFallbackIsNotVisionNative() {
-        assertFalse(AgentHelper.resolveVisionNative("deepseek-model", null, IMAGE_UNSUPPORTED));
+        assertFalse(AgentHelper.resolveVisionNative("deepseek-model", IMAGE_UNSUPPORTED));
     }
 
     @Test
-    void textOnlyModelWithMultiModalFallbackIsVisionNative() {
-        assertTrue(AgentHelper.resolveVisionNative("deepseek-model", "vision-model", ALL_UNKNOWN));
+    void textOnlyMainModelUsesCaptionPath() {
+        assertFalse(AgentHelper.resolveVisionNative("deepseek-model", TEXT_MAIN));
     }
 
     @Test
     void unknownModelIsTreatedAsVisionNative() {
-        assertTrue(AgentHelper.resolveVisionNative("mystery-model", null, ALL_UNKNOWN));
+        assertTrue(AgentHelper.resolveVisionNative("mystery-model", ALL_UNKNOWN));
     }
 
     @Test

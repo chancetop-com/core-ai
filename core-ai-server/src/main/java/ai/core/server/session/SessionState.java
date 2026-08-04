@@ -43,6 +43,7 @@ public class SessionState {
         public String systemPromptId;
         public String model;
         public String multiModalModel;
+        public Boolean preferCaptionPath;
         public Double temperature;
         public String thinkingEffort;
         public Integer maxTurns;

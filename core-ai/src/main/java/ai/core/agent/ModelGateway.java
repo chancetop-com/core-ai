@@ -4,7 +4,6 @@ import ai.core.agent.internal.AgentHelper;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.domain.Content;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.Tool;
 
@@ -17,8 +16,8 @@ import java.util.function.Function;
 final class ModelGateway {
 
     static Choice handLLM(Agent agent, List<Message> messages, List<Tool> tools) {
-        var effectiveModel = resolveEffectiveModel(agent, messages);
-        // multimodal models (vision/file) usually do not accept reasoning_effort, so drop it when routed to the multi-modal model
+        var effectiveModel = resolveEffectiveModel(agent);
+        // Some explicitly configured multimodal main models do not accept reasoning_effort.
         var reasoningEffort = effectiveModel != null && effectiveModel.equals(agent.multiModalModel) ? null : agent.reasoningEffort;
         var reqTools = AgentHelper.filterRedundantVisionTools(tools, agent.getExecutionContext().isVisionNative(), effectiveModel);
         var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, reqTools, agent.llmProvider.config == null ? 0.0 : agent.llmProvider.config.getTemperature(), effectiveModel, agent.getName(), null, null, reasoningEffort));
@@ -26,16 +25,9 @@ final class ModelGateway {
         return aroundLLM(agent, r -> agent.llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(agent.getStreamingCallback()), sc -> agent.lastLLMSpanContext = sc), req);
     }
 
-    static String resolveEffectiveModel(Agent agent, List<Message> messages) {
-        if (agent.multiModalModel == null) return agent.model;
-        for (var message : messages) {
-            if (message.content == null) continue;
-            for (var content : message.content) {
-                if (content.type == Content.ContentType.IMAGE_URL || content.type == Content.ContentType.FILE) {
-                    return agent.multiModalModel;
-                }
-            }
-        }
+    static String resolveEffectiveModel(Agent agent) {
+        // Image understanding is delegated through caption_image when the main model is text-only.
+        // The main agent loop must never be silently transferred to multiModalModel by message history.
         return agent.model;
     }
 

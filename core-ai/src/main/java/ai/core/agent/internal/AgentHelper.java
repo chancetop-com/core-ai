@@ -84,9 +84,8 @@ public class AgentHelper {
         };
     }
 
-    public static boolean resolveVisionNative(String model, String multiModalModel, ModelModalityRegistry registry) {
-        if (registry.supports(model, InputModality.IMAGE) != ModalitySupport.UNSUPPORTED) return true;
-        return multiModalModel != null && registry.supports(multiModalModel, InputModality.IMAGE) != ModalitySupport.UNSUPPORTED;
+    public static boolean resolveVisionNative(String model, ModelModalityRegistry registry) {
+        return registry.supports(model, InputModality.IMAGE) != ModalitySupport.UNSUPPORTED;
     }
 
     // a natively-seeing model misuses a redundant caption tool; hide it and let images flow inline.

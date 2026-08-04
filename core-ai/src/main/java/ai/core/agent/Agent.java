@@ -403,6 +403,6 @@ public class Agent extends Node<Agent> {
         var registry = llmProvider == null ? null : llmProvider.getModalityRegistry();
         if (registry == null) return true;
         var effectiveModel = model != null ? model : llmProvider.config == null ? null : llmProvider.config.getModel();
-        return AgentHelper.resolveVisionNative(effectiveModel, multiModalModel, registry);
+        return AgentHelper.resolveVisionNative(effectiveModel, registry);
     }
 }

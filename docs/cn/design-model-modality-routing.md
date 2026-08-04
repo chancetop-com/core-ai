@@ -1,8 +1,13 @@
 # 模型模态感知与图片处理路由设计
 
-> 状态: Draft v2
-> 日期: 2026-08-03
+> 状态: Draft v3
+> 日期: 2026-08-04
 > 相关事故: dev 环境 `invalid sse response, statusCode=400, unknown variant image_url, expected text`
+>
+> v3 修订要点(相对 v2):
+> 1. 明确**主循环模型稳定**: `multiModalModel` 只供 `caption_image` 等专用工具调用,图片不得触发 `ModelGateway` 替换主模型;
+> 2. `visionNative` 只按主模型能力判定;主模型已知不支持图片且已配置视觉工具模型时,自动注册 `caption_image` / `summarize_pdf` 并走引用路径;
+> 3. `preferCaptionPath` 写入会话快照,跨 Pod 重建后不得丢失路由语义。
 >
 > v2 修订要点(相对 v1):
 > 1. 能力判定从"集合 + 未知默认纯文本"改为**三值语义**——未知模型放行而非剥图,避免静默打断现有视觉链路(已验证反例:`azure/responses/gpt-5-mini` 无法被 litellm 种子解析);
@@ -30,7 +35,7 @@ dev 环境一个长会话(38+ 条消息)中,历史里混入了一个 `image_url`
 | 4 | `CaptionImageTool.resolveModel` 兜底链最后两级会掉回纯文本主模型,同样触发 400 | `CaptionImageTool.resolveModel` |
 | 5 | 发送前没有任何按模型能力的内容校验 | `LiteLLMProvider` / `GatewayLLMProvider` |
 | 6 | `gateway_model` 已有 `supports_vision` / `supports_video` 字段,但只用于管理端展示,不参与任何路由决策 | `GatewayModelConfig` / `GatewayRoutingEngine` |
-| 7 | 图片一旦进历史,`ModelGateway.resolveEffectiveModel` 扫全历史,会话永久钉在 multiModalModel 上(image-in-history 方案的固有代价,目前无缓解手段) | `ModelGateway` |
+| 7 | 图片一旦进历史,`ModelGateway.resolveEffectiveModel` 扫全历史,会话永久钉在 multiModalModel 上;这会改变主模型、reasoning 与工具事件语义(v3 已移除此切换) | `ModelGateway` |
 | 8 | 压缩摘要只取每条消息第一个内容块的文本(`getTextContent`),多部件消息的图片与后续文本块静默丢弃;`[image, text]` 顺序的消息直接返回 null | `Compression.formatMessages` / `Message.getTextContent` |
 
 ### 1.3 已具备的基础设施
@@ -50,7 +55,7 @@ dev 环境一个长会话(38+ 条消息)中,历史里混入了一个 `image_url`
 
 1. **已知不支持**某模态的模型永远收不到该模态内容——事故类 400 从机制上消除;
 2. **未知能力**的模型不被静默降级——现有正常工作的视觉链路不因本设计上线而悄悄失效;
-3. 多模态模型保留原生看图能力,不被降级到 caption 中转;
+3. 多模态**主模型**保留原生看图能力;辅助 `multiModalModel` 只作为 caption 工具的执行模型,不接管主循环;
 4. 模型能力成为 Gateway 的一等配置,路由与工具装配按声明执行;
 5. 图片/PDF/视频三类媒体的处理架构统一为:**能力允许则原生,否则引用 + 专用工具**。
 
@@ -60,7 +65,7 @@ dev 环境一个长会话(38+ 条消息)中,历史里混入了一个 `image_url`
 ### 非目标
 
 - 输出模态路由(图片生成、TTS 等)——已由 media provider 体系覆盖;
-- 历史中原生图片的窗口化/滚动淘汰(缓解问题 #7 的成本面)——记为后续优化;
+- 视觉主模型历史中原生图片的窗口化/滚动淘汰——记为后续优化;
 - 音频输入支持——枚举预留,不实现。
 
 ## 3. 总体设计:能力声明 + 双层执行
@@ -201,33 +206,31 @@ public interface ModelModalityRegistry {
 
 ## 5. 组装期路由(体验层)
 
-### 5.1 visionNative 判定与 hybrid 模式
+### 5.1 visionNative 判定与主模型稳定性
 
 agent 装配时(`SubAgentAssembler` / `AgentRunBuilder` / workflow `AgentExecutor`)计算:
 
 ```
 mainVision   = supports(model, IMAGE) != UNSUPPORTED
-hybridVision = multiModalModel != null && supports(multiModalModel, IMAGE) != UNSUPPORTED
-visionNative = mainVision || hybridVision
+visionNative = !preferCaptionPath && mainVision
+captionModel = multiModalModel ?? media.caption.model
 ```
 
 注意 UNKNOWN 在装配期按"可用"处理(与请求期放行一致),避免未打标模型的工具集被错误裁剪。
 
-**hybrid 模式(纯文本主模型 + multiModalModel 兜底)的归宿是一个显式权衡**,v1 未讨论,此处列明:
+`multiModalModel` 是专用视觉工具的执行模型,不是主循环的候选模型。无论当前轮还是历史消息是否含图,
+`ModelGateway` 都保持 `model` 不变。主模型已知不支持图片时,附件以引用文本进入历史,主模型调用
+`caption_image`;该工具再使用 `captionModel` 看图并把文字结果返回主模型。
 
-| 选项 | 行为 | 代价 |
-|------|------|------|
-| (a) 归入原生路径(默认,维持现状语义) | 图片原生进历史,`ModelGateway` 切换到 multiModalModel | 一张图进历史后,会话所有后续轮次永久钉在 multiModalModel 上(问题 #7),成本上升 |
-| (b) 归入 caption 路径 | 图片以引用进历史,会话始终留在便宜的主模型 | 视觉保真度下降;multiModalModel 配置形同虚设 |
-
-默认取 (a) 以保持行为兼容;提供 agent 级配置 `preferCaptionPath`(默认 false)允许选 (b),
-成本敏感的 agent 可显式切换。该配置同时覆盖原"强制 caption 省成本"诉求。
+`preferCaptionPath=true` 仍可强制一个本来支持视觉的主模型走 caption 路径,用于成本控制或统一审计;
+默认 false 仅表示“视觉主模型可原生看图”,不再表示“允许 fallback 接管主循环”。
 
 ### 5.2 工具装配:caption_image 按需注册
 
-- `visionNative == true`:默认**不注册** `caption_image`——模型自己能看图,冗余工具只会被误用;
-- `visionNative == false` 或 `preferCaptionPath == true`:注册 `caption_image`(及 `summarize_pdf`);
-- 不写死"多模态必不注册":当前的显式保留手段是 `preferCaptionPath`(强制 caption 路径即保留工具);
+- 配置了 `multiModalModel` 或显式 `preferCaptionPath` 的 Agent,dispatch registry 始终保留 `caption_image`(及 `summarize_pdf`),不要求 Agent 定义手工勾选;
+- `visionNative == true`:在发送给模型的工具定义中过滤 `caption_image`——模型自己能看图,冗余工具只会被误用;
+- `visionNative == false` 或 `preferCaptionPath == true`:向模型暴露 `caption_image`(及 `summarize_pdf`);
+- 不写死"多模态必不暴露":当前的显式保留手段是 `preferCaptionPath`(强制 caption 路径即保留工具);
   另外 400 自愈把模型标记为 text-only 后,裁剪逻辑感知 runtime override,caption_image 会在 TTL 内重新出现,
   避免降级占位文本指向一个模型调不到的工具;
 - **CLI / 裸 SDK 侧**(v1 遗漏):`BuiltinTools` 集合装配同样按 visionNative 裁剪,能力来源为 SDK 种子实现,P2 一并落地。
@@ -289,7 +292,8 @@ P2 任务:按主力上游逐一验证;若确认不兼容,原生路径改为业�
 **决策:对齐 AgentRunBuilder 语义**——`toSessionConfig` / `configureMultiModalModel` 最终回退到
 `systemSettingsService.llmMultiModalModel()`。理由:两条装配路径行为不一致本身就是缺陷;且"钉了纯文本模型 + 收到图片"
 在旧语义下的结局是 400,不存在"更省钱"的第三种结果。
-**成本语义变化需在发布说明中写明**:钉了纯文本模型的 agent,出现图片时会开始调用系统级多模态模型并产生相应费用。
+**成本语义变化需在发布说明中写明**:钉了纯文本模型的 agent,出现图片时会通过 `caption_image`
+调用系统级多模态模型并产生一次工具调用费用,但主循环后续轮次仍保持在原主模型。
 (被否选项:反向对齐,让 AgentRunBuilder 也改为钉模型即不兜底——会让图片场景无解,否决。)
 
 **P0-2 · CaptionImageTool 模型链修正**(v1 曾引用 P1 才存在的能力查询,已修正范围):
@@ -404,8 +408,9 @@ UNKNOWN 放行策略的收敛闭环,与 enforcer 同期落地:
 - **gateway_model**:新增字段 nullable,无需 schema migration(若后续新增按能力查询的索引需求,按惯例走新版本 migration,勿改已应用的);
 - **行为变化点**:
   - 纯文本 agent 的工具图片结果从"base64 进历史然后 400"变为"引用文本 + caption 工具"——修复;
-  - 钉了纯文本模型的 agent 出现图片时开始产生多模态模型费用(P0-1 决策,见 5.6)——需发布说明;
+  - 钉了纯文本模型的 agent 出现图片时只由 `caption_image` 使用多模态模型;主循环模型、reasoning 参数与后续轮次不切换;
   - 多模态 agent 默认不再看到 caption_image 工具,prompt 显式依赖该工具名的需排查(预计极少);
+  - `preferCaptionPath` 随会话快照持久化,跨 Pod 重建保持一致;
   - proxy 透传客户的错误行为**不变**(仍收到上游 400)——豁免是有意的。
 
 ## 10. 分期计划
@@ -414,15 +419,16 @@ UNKNOWN 放行策略的收敛闭环,与 enforcer 同期落地:
 |------|------|------|
 | P0 | 5.6 两项:SubAgentAssembler 兜底对齐(决策已记录)+ CaptionImageTool 模型链收缩 | 止血,单独可发 |
 | P1 | 三值能力模型(枚举/接口/种子解析/**归一化**)+ ModalityEnforcer + 两个 provider 接入 + **400 自愈** + `supports_file` 全同步面 + proxy 豁免标记 | 正确性保证 |
-| P2 | 组装期路由:visionNative 判定、工具裁剪(含 CLI)、tool result / 附件渲染分叉(前置:sink `__` 前缀 bug)、原生分支上游兼容性验证、caption 多图与 context、压缩取值修复、`preferCaptionPath` | 体验层 |
+| P2 | 组装期路由:按主模型判定 visionNative、主循环模型稳定、caption 工具自动注册(含 CLI)、tool result / 附件渲染分叉(前置:sink `__` 前缀 bug)、原生分支上游兼容性验证、caption 多图与 context、压缩取值修复、`preferCaptionPath` 快照持久化 | 体验层 |
 | P3 | 管理端徽章与"疑似不符"标记、发现回填、降级/自愈监控面板 | 运营 |
 
-P1 验收标准(必须包含):
+P1/P2 验收标准(必须包含):
 
 1. `deepseek/deepseek-v4-flash` + 含图历史 → 图片被降级为引用文本,请求成功——事故场景回归用例;
 2. `azure/responses/gpt-5-mini` + 含图历史 → 图片原样放行(UNKNOWN 或声明 SUPPORTED)——防静默降级回归用例;
 3. proxy 透传含图请求发纯文本模型 → 收到上游 400 原文——豁免用例;
 4. 未知纯文本模型首个含图请求 → 一次 400 后自愈降级重试成功,TTL 内后续请求直接降级——收敛用例。
+5. 已知纯文本主模型 + `multiModalModel` + 图片 → 主请求仍使用原模型并保留 reasoning 配置,图片由 `caption_image` 的多模态调用处理。
 
 ## 11. 风险与权衡
 
@@ -434,7 +440,7 @@ P1 验收标准(必须包含):
 | 能力数据漂移 | 上游能力变更、litellm 种子过期 | 管理员声明优先级最高;种子随版本更新;自愈纠偏 |
 | 归一化误匹配 | 名称剥离规则把不同模型映射到同一种子条目 | 规则保守(全 miss 即 UNKNOWN 而非猜测);P1 验收用例覆盖关键模型 |
 | 请求期降级掩盖装配 bug | enforcer 兜底后组装期错误不再以故障暴露 | 降级率/自愈率作为告警信号,异常即装配层有 bug |
-| hybrid 会话钉死在贵模型 | 选项 (a) 的固有代价(问题 #7) | `preferCaptionPath` 可选 (b);图片窗口化列为后续优化 |
+| caption 工具未装配或偏好在重建时丢失 | 引用文本会提示一个不可调用的工具,表现为模型看不到图片 | caption 路径自动注册专用工具;`preferCaptionPath` 写入 `AgentConfigSnapshot` 并做重建回归测试 |
 
 ## 12. 待决问题
 

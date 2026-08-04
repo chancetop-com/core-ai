@@ -141,6 +141,7 @@ public class SessionRebuildManager {
         snapshot.systemPromptId = pub != null && pub.systemPromptId != null ? pub.systemPromptId : def.systemPromptId;
         snapshot.model = pub != null && pub.model != null ? pub.model : def.model;
         snapshot.multiModalModel = pub != null && pub.multiModalModel != null ? pub.multiModalModel : def.multiModalModel;
+        snapshot.preferCaptionPath = pub != null && pub.preferCaptionPath != null ? pub.preferCaptionPath : def.preferCaptionPath;
         snapshot.temperature = pub != null && pub.temperature != null ? pub.temperature : def.temperature;
         snapshot.thinkingEffort = pub != null && pub.thinkingEffort != null ? pub.thinkingEffort : def.thinkingEffort;
         snapshot.maxTurns = pub != null && pub.maxTurns != null ? pub.maxTurns : def.maxTurns;
@@ -168,6 +169,7 @@ public class SessionRebuildManager {
         config.systemPrompt = snapshot.systemPromptId != null ? systemPromptService.resolveContent(snapshot.systemPromptId) : snapshot.systemPrompt;
         config.model = snapshot.model;
         config.multiModalModel = snapshot.multiModalModel;
+        config.preferCaptionPath = snapshot.preferCaptionPath;
         config.temperature = snapshot.temperature;
         config.reasoningEffort = normalizeThinkingEffort(snapshot.thinkingEffort);
         config.maxTurns = snapshot.maxTurns;

@@ -18,9 +18,12 @@ import ai.core.reflection.ReflectionListener;
 import ai.core.skill.SkillRegistry;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
+import ai.core.tool.registry.BuiltinToolProvider;
 import ai.core.tool.registry.ListToolProvider;
+import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
+import ai.core.tool.tools.CaptionImageTool;
 import ai.core.tool.tools.SkillTool;
 import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.util.Lists;
@@ -345,6 +348,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         AgentAssembler.configureToolDiscovery(this);
         configureSystemPrompt();
         configureToolRegistry();
+        configureModalityTools();
 
         AgentAssembler.assemble(this, agent);
 
@@ -366,6 +370,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         for (var tc : toolCalls) {
             toolRegistry.registerProvider(ListToolProvider.of(tc.getName(), List.of(tc)));
         }
+    }
+
+    private void configureModalityTools() {
+        if (multiModalModel == null && !preferCaptionPath) {
+            return;
+        }
+        if (toolRegistry.getToolCalls().stream().anyMatch(tool -> CaptionImageTool.TOOL_NAME.equals(tool.getName()))) {
+            return;
+        }
+        toolRegistry.registerProvider(BuiltinToolProvider.fromSet(ToolProvider.BUILTIN_MULTIMODAL));
     }
 
     private void beforeAgentBuildLifecycle() {
