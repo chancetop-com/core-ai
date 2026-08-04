@@ -85,11 +85,6 @@ public final class BuiltinTools {
             SummarizePdfTool.builder().build()
     );
 
-    public static List<ToolCall> multimodal(UnderstandVideoTool.VideoUnderstandingService service) {
-        return List.of(CaptionImageTool.builder().build(), SummarizePdfTool.builder().build(),
-                UnderstandVideoTool.builder(service).build());
-    }
-
     public static final List<ToolCall> WEB = List.of(
             WebFetchTool.builder().build(),
             WebSearchTool.builder().build()
@@ -134,6 +129,11 @@ public final class BuiltinTools {
             Map.entry(ToolProvider.BUILTIN_MEDIA_GENERATION, MEDIA_GENERATION)
     );
 
+    public static List<ToolCall> multimodal(UnderstandVideoTool.VideoUnderstandingService service) {
+        return List.of(CaptionImageTool.builder().build(), SummarizePdfTool.builder().build(),
+                UnderstandVideoTool.builder(service).build());
+    }
+
     public static List<ToolCall> all(MediaProvider mediaProvider, GitHubTokenProvider gitHubTokenProvider) {
         return all(mediaProvider, gitHubTokenProvider, null);
     }
@@ -155,7 +155,7 @@ public final class BuiltinTools {
     public static List<ToolCall> fromSet(String setName, MediaProvider mediaProvider, GitHubTokenProvider gitHubTokenProvider,
                                           UnderstandVideoTool.VideoUnderstandingService videoService) {
         if (ToolProvider.BUILTIN_ALL.equals(setName)) return all(mediaProvider, gitHubTokenProvider, videoService);
-        if (ToolProvider.BUILTIN_MULTIMODAL.equals(setName) && videoService != null) return multimodal(videoService);
+        if (videoService != null && ToolProvider.BUILTIN_MULTIMODAL.equals(setName)) return multimodal(videoService);
         if (ToolProvider.BUILTIN_GITHUB.equals(setName)) return List.of(RequireGithubInstallationTokenTool.builder(gitHubTokenProvider).build());
         if (ToolProvider.BUILTIN_MEDIA_GENERATION.equals(setName)) {
             return List.of(GenerateImageTool.builder().build(), GenerateVideoTool.builder(mediaProvider).build(), GetVideoStatusTool.builder().build());

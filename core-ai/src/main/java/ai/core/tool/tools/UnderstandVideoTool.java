@@ -26,14 +26,14 @@ public final class UnderstandVideoTool extends ToolCall {
               actually requires understanding the video content.
             """;
 
+    public static Builder builder(VideoUnderstandingService service) {
+        return new Builder().service(service);
+    }
+
     private final VideoUnderstandingService service;
 
     private UnderstandVideoTool(VideoUnderstandingService service) {
         this.service = service;
-    }
-
-    public static Builder builder(VideoUnderstandingService service) {
-        return new Builder().service(service);
     }
 
     @Override
