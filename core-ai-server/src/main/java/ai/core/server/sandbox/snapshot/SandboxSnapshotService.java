@@ -1,6 +1,8 @@
 package ai.core.server.sandbox.snapshot;
 
+import ai.core.server.blob.MinioObjectStorageService;
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import com.mongodb.MongoException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
@@ -46,22 +48,32 @@ public class SandboxSnapshotService {
     MongoCollection<SandboxSnapshotDoc> snapshotCollection;
     @Inject
     MongoCollection<SandboxEpochDoc> epochCollection;
+    @Inject
+    ObjectStorageServiceResolver storageResolver;
 
     SandboxSnapshotClient client = new SandboxSnapshotClient();
 
-    private ObjectStorageService storage;
-    private String container;
-    private boolean enabled;
+    private String snapshotContainer = "sandbox-snapshots";
+    private String minioSnapshotBucket = "sandbox-snapshots";
+    private boolean snapshotEnabled;
 
-    public void configure(ObjectStorageService storage, String container, boolean enabled) {
-        this.storage = storage;
-        this.container = container;
-        this.enabled = enabled;
-        LOGGER.info("sandbox snapshot configured: enabled={}, container={}", enabled(), container);
+    public void configure(String snapshotContainer, String minioSnapshotBucket, boolean snapshotEnabled) {
+        this.snapshotContainer = snapshotContainer;
+        this.minioSnapshotBucket = minioSnapshotBucket;
+        this.snapshotEnabled = snapshotEnabled;
+        LOGGER.info("sandbox snapshot configured: enabled={}, container={}", snapshotEnabled, snapshotContainer);
     }
 
     public boolean enabled() {
-        return enabled && storage != null;
+        return snapshotEnabled && storage() != null;
+    }
+
+    private ObjectStorageService storage() {
+        return storageResolver == null ? null : storageResolver.resolve();
+    }
+
+    private String container() {
+        return storage() instanceof MinioObjectStorageService ? minioSnapshotBucket : snapshotContainer;
     }
 
     /**
@@ -146,7 +158,7 @@ public class SandboxSnapshotService {
             doc.createdAt = ZonedDateTime.now();
             doc.expiresAt = doc.createdAt.plusDays(EXPIRES_DAYS);
             snapshotCollection.insert(doc);
-            storage.uploadObject(container, doc.blobKey, tmp);
+            storage().uploadObject(container(), doc.blobKey, tmp);
 
             long currentEpoch = epochCollection.get(sessionId).map(d -> d.epoch).orElse(-1L);
             if (currentEpoch != epoch) {
@@ -180,7 +192,7 @@ public class SandboxSnapshotService {
         int cleaned = 0;
         for (var doc : expired) {
             try {
-                storage.deleteObject(container, doc.blobKey);
+                storage().deleteObject(container(), doc.blobKey);
                 snapshotCollection.delete(doc.id);
                 cleaned++;
             } catch (Exception e) {
@@ -218,7 +230,7 @@ public class SandboxSnapshotService {
     private void downloadVerifyAndRestore(SandboxSnapshotDoc doc, String ip, int port) throws Exception {
         var tmp = Files.createTempFile("sandbox-restore-", ".tar.gz");
         try {
-            storage.downloadObjectToFile(container, doc.blobKey, tmp);
+            storage().downloadObjectToFile(container(), doc.blobKey, tmp);
             var actual = sha256Hex(tmp);
             if (!actual.equalsIgnoreCase(doc.sha256)) {
                 throw new IllegalStateException("snapshot sha256 mismatch: snapshot=" + doc.id);
@@ -244,7 +256,7 @@ public class SandboxSnapshotService {
     @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private void deleteOrTombstone(SandboxSnapshotDoc doc) {
         try {
-            storage.deleteObject(container, doc.blobKey);
+            storage().deleteObject(container(), doc.blobKey);
             snapshotCollection.delete(doc.id);
         } catch (Exception e) {
             tombstone(doc.id);

@@ -4,7 +4,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.github.GitHubTokenProvider;
-import ai.core.tool.github.GitHubTokenProviderRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +54,7 @@ public final class RequireGithubInstallationTokenTool extends ToolCall {
             if (repo == null || repo.isBlank()) {
                 return ToolCallResult.failed("'repo' is required (e.g. 'owner/repo')");
             }
-            var provider = tokenProvider != null ? tokenProvider : GitHubTokenProviderRegistry.getProvider();
+            var provider = tokenProvider;
             if (provider == null) {
                 return ToolCallResult.failed("GitHub token provider is not configured on this server. "
                         + "Please configure GitHub App settings in Admin UI (Settings -> System Configuration).");

@@ -3,12 +3,14 @@ package ai.core.server.blob;
 import ai.core.server.settings.SystemSettingsService;
 import core.framework.inject.Inject;
 
+import java.util.Objects;
+
 /**
  * Resolves the active object storage service from current system settings.
  * <p>
- * Unlike {@link ObjectStorageConfiguration} (a startup-time holder), this resolver reads
- * settings on every call, so multi-replica deployments stay consistent without restart:
- * azure credentials come from Mongo system settings, minio config is injected from properties.
+ * Reads settings on every call and caches the built service by configuration fingerprint,
+ * so multi-replica deployments stay consistent without restart: azure credentials come
+ * from Mongo system settings, minio config is injected from properties.
  *
  * @author stephen
  */
@@ -25,7 +27,25 @@ public class ObjectStorageServiceResolver {
     public String minioSandboxBucket = "sandbox-uploads";
     public String minioPublicBaseUrl;
 
+    private volatile String cachedFingerprint;
+    private volatile ObjectStorageService cached;
+
     public ObjectStorageService resolve() {
+        var fingerprint = fingerprint();
+        if (!Objects.equals(fingerprint, cachedFingerprint)) {
+            cached = build();
+            cachedFingerprint = fingerprint;
+        }
+        return cached;
+    }
+
+    private String fingerprint() {
+        return provider + "|" + settings.azureBlobAccountName() + "|" + settings.azureBlobAccountKey()
+                + "|" + settings.azureBlobPublicBaseUrl() + "|" + minioEndpoint + "|" + minioAccessKey
+                + "|" + minioSecretKey + "|" + minioPublicBaseUrl;
+    }
+
+    private ObjectStorageService build() {
         if (provider.isEmpty() || "azure".equals(provider)) {
             var sas = AzureBlobSasService.tryCreate(settings.azureBlobAccountName(), settings.azureBlobAccountKey());
             if (sas != null) {

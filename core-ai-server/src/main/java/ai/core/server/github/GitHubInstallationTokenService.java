@@ -1,7 +1,6 @@
 package ai.core.server.github;
 
 import ai.core.tool.github.GitHubTokenProvider;
-import ai.core.tool.github.GitHubTokenProviderRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -141,11 +140,6 @@ public class GitHubInstallationTokenService implements GitHubTokenProvider {
     }
 
     // ==================== Instance methods ====================
-
-    public void register() {
-        GitHubTokenProviderRegistry.setProvider(this);
-        LOGGER.info("GitHub installation token service registered (appId={}, installationId={})", appId, installationId);
-    }
 
     @Override
     public String getInstallationToken(String repoFullName) {

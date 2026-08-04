@@ -1,6 +1,6 @@
 package ai.core.server;
 
-import ai.core.server.blob.ObjectStorageConfiguration;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.task.TaskRunner;
 import ai.core.server.trace.maintenance.TraceArchiveService;
 import ai.core.server.trace.maintenance.TraceArchivingJob;
@@ -38,7 +38,7 @@ public class TraceModule extends Module {
     protected void initialize() {
         bind(TraceDailyMaintenanceService.class);
         var configuredContainer = property("trace.archive.container").orElse(null);
-        var archiveService = new TraceArchiveService(bean(ObjectStorageConfiguration.class), configuredContainer, resolveArchivePrefix());
+        var archiveService = new TraceArchiveService(bean(ObjectStorageServiceResolver.class), configuredContainer, resolveArchivePrefix());
         bind(archiveService);
         var traceDailyMaintenanceTask = bind(TraceDailyMaintenanceTask.class);
         var taskRunner = bean(TaskRunner.class);

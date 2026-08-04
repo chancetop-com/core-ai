@@ -1,7 +1,7 @@
 package ai.core.server.trace.maintenance;
 
-import ai.core.server.blob.ObjectStorageConfiguration;
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
@@ -59,24 +59,24 @@ public class TraceArchiveService {
     @Inject
     MongoCollection<Span> spanCollection;
 
-    private final ObjectStorageConfiguration objectStorageConfig;
+    private final ObjectStorageServiceResolver objectStorageResolver;
     private final String configuredContainer;
     private final String archivePrefix;
     int retentionDays = 30;
 
-    public TraceArchiveService(ObjectStorageConfiguration objectStorageConfig, String configuredContainer, String archivePrefix) {
-        this.objectStorageConfig = objectStorageConfig;
+    public TraceArchiveService(ObjectStorageServiceResolver objectStorageResolver, String configuredContainer, String archivePrefix) {
+        this.objectStorageResolver = objectStorageResolver;
         this.configuredContainer = configuredContainer;
         this.archivePrefix = archivePrefix;
     }
 
     private ObjectStorageService storageService() {
-        return objectStorageConfig.service;
+        return objectStorageResolver.resolve();
     }
 
     private String archiveContainer() {
         if (configuredContainer != null && !configuredContainer.isBlank()) return configuredContainer;
-        var container = objectStorageConfig.multimodalContainer;
+        var container = objectStorageResolver.multimodalContainer();
         return container == null || container.isBlank() ? "traces-archive" : container;
     }
 

@@ -13,8 +13,6 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.Base64;
@@ -23,7 +21,6 @@ import java.util.Base64;
  * @author stephen
  */
 public class SystemSettingsService {
-    private static final Logger LOGGER = LoggerFactory.getLogger(SystemSettingsService.class);
     private static final String SETTINGS_ID = "default";
 
     public String defaultMemoryExtractionModel = AgentMemoryConsolidationJob.DEFAULT_EXTRACTION_MODEL;
@@ -38,12 +35,6 @@ public class SystemSettingsService {
     MongoCollection<User> userCollection;
     @Inject
     GatewaySecretProtector secretProtector;
-
-    private final java.util.List<Runnable> settingsChangeListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
-
-    public void onSettingsChanged(Runnable listener) {
-        settingsChangeListeners.add(listener);
-    }
 
     public SystemSettingsView get(String userId) {
         requireAdmin(userId);
@@ -75,18 +66,7 @@ public class SystemSettingsService {
             entity.updatedAt = now;
             systemSettingsCollection.replace(entity);
         }
-        notifySettingsChanged();
         return toView(entity);
-    }
-
-    private void notifySettingsChanged() {
-        for (Runnable listener : settingsChangeListeners) {
-            try {
-                listener.run();
-            } catch (Exception e) {
-                LOGGER.warn("failed to apply system settings change", e);
-            }
-        }
     }
 
     private NormalizedSettings normalizeAndValidate(SystemSettingsRequest request) {
@@ -255,7 +235,12 @@ public class SystemSettingsService {
         return secretProtector.unprotect(value);
     }
 
-    private SystemSettings entity() {
+    /**
+     * Current settings document, read from Mongo on every call.
+     * Consumers use this (via {@link SystemSettingsProvider}) so configuration changes
+     * take effect immediately on all replicas without restart.
+     */
+    SystemSettings entity() {
         return systemSettingsCollection.get(SETTINGS_ID).orElse(null);
     }
 

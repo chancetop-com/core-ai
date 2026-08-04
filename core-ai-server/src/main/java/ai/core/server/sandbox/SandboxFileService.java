@@ -122,7 +122,9 @@ class SandboxFileService {
     }
 
     private boolean uploadBlobFile(Sandbox sandbox, String sessionId, PendingFile file) {
-        var storageService = sandboxService.storageService;
+        var resolver = sandboxService.storageResolver;
+        if (resolver == null) return false;
+        var storageService = resolver.resolve();
         if (storageService == null) {
             LOGGER.warn("storageService not configured, cannot upload pending files for session {}", sessionId);
             return false;

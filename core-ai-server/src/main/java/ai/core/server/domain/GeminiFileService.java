@@ -1,6 +1,6 @@
 package ai.core.server.domain;
 
-import ai.core.server.blob.ObjectStorageConfiguration;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.tool.tools.UnderstandVideoTool;
 import core.framework.inject.Inject;
 
@@ -25,7 +25,7 @@ public class GeminiFileService {
     SessionAttachmentRefRepository attachmentRepository;
 
     @Inject
-    ObjectStorageConfiguration objectStorageConfiguration;
+    ObjectStorageServiceResolver objectStorageResolver;
 
     private GeminiFilesClient filesClient;
 
@@ -64,13 +64,14 @@ public class GeminiFileService {
         if (reference.sourceSizeBytes != null && reference.sourceSizeBytes > MAX_INLINE_VIDEO_BYTES) {
             throw new IllegalArgumentException("video is too large for inline video understanding: " + reference.sourceSizeBytes + " bytes; configure a GCS bucket for larger videos");
         }
-        if (objectStorageConfiguration == null || objectStorageConfiguration.service == null) {
+        var storage = objectStorageResolver.resolve();
+        if (storage == null) {
             throw new IllegalStateException("object storage is not configured");
         }
         var id = "gemini_" + UUID.randomUUID();
         var temp = Path.of(System.getProperty("java.io.tmpdir"), id + ".video");
         try {
-            objectStorageConfiguration.service.downloadObjectToFile(reference.container, reference.blobName, temp);
+            storage.downloadObjectToFile(reference.container, reference.blobName, temp);
             var bytes = Files.readAllBytes(temp);
             if (bytes.length > MAX_INLINE_VIDEO_BYTES) {
                 throw new IllegalArgumentException("video is too large for inline video understanding: " + bytes.length + " bytes; configure a GCS bucket for larger videos");
@@ -88,10 +89,11 @@ public class GeminiFileService {
         var id = "gemini_" + UUID.randomUUID();
         var temp = Path.of(System.getProperty("java.io.tmpdir"), id + ".video");
         try {
-            if (objectStorageConfiguration == null || objectStorageConfiguration.service == null) {
+            var storage = objectStorageResolver.resolve();
+            if (storage == null) {
                 throw new IllegalStateException("object storage is not configured");
             }
-            objectStorageConfiguration.service.downloadObjectToFile(reference.container, reference.blobName, temp);
+            storage.downloadObjectToFile(reference.container, reference.blobName, temp);
             var uploaded = client.upload(temp, reference.contentType, reference.fileName);
             var state = uploaded.state();
             var deadline = System.nanoTime() + java.time.Duration.ofMinutes(10).toNanos();

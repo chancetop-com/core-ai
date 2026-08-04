@@ -6,7 +6,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxProvider;
-import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
@@ -66,7 +66,7 @@ public class SandboxService {
 
     @SuppressFBWarnings("PME_POOR_MANS_ENUM")
     private final boolean enabled;
-    ObjectStorageService storageService;
+    ObjectStorageServiceResolver storageResolver;
     final FileService fileService;
     private final SandboxSnapshotService snapshotService;
     private SandboxRedisStore redisStore;
@@ -76,14 +76,14 @@ public class SandboxService {
     }
 
     public SandboxService(JedisPool jedisPool, SandboxSnapshotService snapshotService,
-                          ObjectStorageService storageService, FileService fileService) {
+                          ObjectStorageServiceResolver storageResolver, FileService fileService) {
         this.sandboxManager = null;
         this.defaultConfig = new SandboxConfig();
         this.defaultConfig.enabled = Boolean.FALSE;
         this.cleanupScheduler = null;
         this.serverUrlFromSandbox = null;
         this.enabled = false;
-        this.storageService = storageService;
+        this.storageResolver = storageResolver;
         this.fileService = fileService;
         this.snapshotService = snapshotService;
         this.redisStore = new SandboxRedisStore(jedisPool);
@@ -111,16 +111,12 @@ public class SandboxService {
         this.defaultConfig = defaultConfig != null ? defaultConfig : createDefaultConfig();
         this.serverUrlFromSandbox = serverUrlFromSandbox;
         this.enabled = true;
-        this.storageService = dependencies.storageService();
+        this.storageResolver = dependencies.storageResolver();
         this.fileService = dependencies.fileService();
         this.snapshotService = dependencies.snapshotService();
         this.redisStore = new SandboxRedisStore(dependencies.jedisPool());
         this.cleanupScheduler = cleanupScheduler;
         cleanupScheduler.scheduleAtFixedRate(new SandboxCleanupJob(sandboxManager, provider), 5, 5, TimeUnit.MINUTES);
-    }
-
-    public void setStorageService(ObjectStorageService storageService) {
-        this.storageService = storageService;
     }
 
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {

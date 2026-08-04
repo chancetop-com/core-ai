@@ -1,6 +1,7 @@
 package ai.core.server.sandbox.snapshot;
 
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import org.bson.conversions.Bson;
@@ -48,7 +49,10 @@ class SandboxSnapshotServiceTest {
         service.snapshotCollection = snapshots;
         service.epochCollection = epochs;
         service.client = client;
-        service.configure(storage, "sandbox-snapshots", true);
+        var resolver = mock(ObjectStorageServiceResolver.class);
+        when(resolver.resolve()).thenReturn(storage);
+        service.storageResolver = resolver;
+        service.configure("sandbox-snapshots", "sandbox-snapshots", true);
     }
 
     private SandboxEpochDoc epochDoc(long epoch) {
@@ -146,7 +150,7 @@ class SandboxSnapshotServiceTest {
 
     @Test
     void captureSkipsWhenDisabled() {
-        service.configure(storage, "sandbox-snapshots", false);
+        service.configure("sandbox-snapshots", "sandbox-snapshots", false);
 
         service.captureBeforeRelease("s1", "u1", 5, "10.0.0.1", 8080, "img:latest");
 
