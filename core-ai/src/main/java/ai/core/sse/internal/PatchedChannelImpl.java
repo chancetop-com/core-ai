@@ -1,7 +1,6 @@
 package ai.core.sse.internal;
 
 import ai.core.sse.RawSseChannel;
-import core.framework.internal.log.filter.BytesLogParam;
 import core.framework.internal.web.request.RequestImpl;
 import core.framework.log.ActionLogContext;
 import core.framework.util.Sets;
@@ -91,7 +90,7 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
         } finally {
             long elapsed = watch.elapsed();
             ActionLogContext.track("sse", elapsed, 0, 1, 0, event.length);
-            LOGGER.debug("send sse message, channel={}, message={}, elapsed={}", id, new BytesLogParam(event), elapsed); // message is not in json format, not masked, assume sse won't send any sensitive event
+//            LOGGER.debug("send sse message, channel={}, message={}, elapsed={}", id, new BytesLogParam(event), elapsed); // message is not in json format, not masked, assume sse won't send any sensitive event
         }
     }
 
