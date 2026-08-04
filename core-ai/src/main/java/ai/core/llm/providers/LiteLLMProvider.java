@@ -243,8 +243,11 @@ public class LiteLLMProvider extends LLMProvider {
             }
             return response;
         }
-        if (response == null && lastError != null) {
-            throw (RuntimeException) lastError;
+        if (response == null) {
+            if (lastError != null) {
+                throw (RuntimeException) lastError;
+            }
+            throw new RuntimeException("LLM stream returned no data");
         }
         if (!Objects.requireNonNull(response).choices.getFirst().message.reasoningContent.isEmpty()) {
             callback.onReasoningComplete(response.choices.getFirst().message.reasoningContent);
