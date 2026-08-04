@@ -40,7 +40,7 @@ class ReadFileToolTest {
         logger.info("ToolCall name: {}", tool.getName());
         assertNotNull(tool, "ToolCall should not be null");
         assertNotNull(tool.getName(), "ToolCall name should not be null");
-        assertTrue(tool.getName().equals("read_file"), "ToolCall name should be 'read_file'");
+        assertTrue("read_file".equals(tool.getName()), "ToolCall name should be 'read_file'");
     }
 
     @Test

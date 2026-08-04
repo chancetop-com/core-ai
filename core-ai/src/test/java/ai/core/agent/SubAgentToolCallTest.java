@@ -14,6 +14,7 @@ import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.RecordingSpanProcessor;
 import ai.core.tool.tools.SubAgentToolCall;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
@@ -38,6 +39,7 @@ import static org.mockito.Mockito.when;
 /**
  * @author stephen
  */
+@SuppressFBWarnings("NM_CONFUSING")
 class SubAgentToolCallTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(SubAgentToolCallTest.class);
 
@@ -105,8 +107,8 @@ class SubAgentToolCallTest {
         assertEquals(2, coordinator.getToolCalls().size());
 
         // Sub-agents should not have parent set (isolation: no message bubbling)
-        assertEquals(null, researcher.getSubAgent().getParentNode());
-        assertEquals(null, writer.getSubAgent().getParentNode());
+        assertNull(researcher.getSubAgent().getParentNode());
+        assertNull(writer.getSubAgent().getParentNode());
     }
 
     @Test

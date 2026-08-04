@@ -1,6 +1,5 @@
 package ai.core.vender;
 
-import ai.core.utils.SystemUtil;
 import ai.core.vender.vendors.RipgrepVendor;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -21,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 class VendorManagementTest {
-    private final Logger logger = LoggerFactory.getLogger(SystemUtil.class);
+    private final Logger logger = LoggerFactory.getLogger(VendorManagementTest.class);
 
     @Test
     void testRipgrepVendorInitialization() {

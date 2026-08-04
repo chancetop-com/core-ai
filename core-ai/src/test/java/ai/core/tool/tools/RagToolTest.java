@@ -78,7 +78,7 @@ class RagToolTest {
     @Test
     void testRagToolCreationFromRagConfig() {
         RagConfig ragConfig = RagConfig.builder()
-            .useRag(true)
+            .useRag(Boolean.TRUE)
             .vectorStore(mockVectorStore)
             .llmProvider(testLLMProvider)
             .topK(10)

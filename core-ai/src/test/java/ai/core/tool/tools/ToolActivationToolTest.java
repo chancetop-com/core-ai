@@ -92,7 +92,7 @@ class ToolActivationToolTest {
     @Test
     void catalogModeShouldListDiscoverableToolsInDescription() {
         for (var tool : allToolCalls) {
-            if (tool.isDiscoverable()) tool.setLlmVisible(false);
+            if (tool.isDiscoverable()) tool.setLlmVisible(Boolean.FALSE);
         }
         var activationTool = ToolActivationTool.builder().allToolCalls(allToolCalls).build();
         var desc = activationTool.getDescription();
@@ -117,7 +117,7 @@ class ToolActivationToolTest {
     @Test
     void catalogModeShouldExcludeAlreadyActivatedTools() {
         for (var tool : allToolCalls) {
-            if (tool.isDiscoverable()) tool.setLlmVisible(false);
+            if (tool.isDiscoverable()) tool.setLlmVisible(Boolean.FALSE);
         }
         var activationTool = ToolActivationTool.builder().allToolCalls(allToolCalls).build();
 
@@ -148,7 +148,7 @@ class ToolActivationToolTest {
     void searchShouldMatchByName() {
         var tools = buildLargeToolList(ToolActivationTool.CATALOG_MODE_THRESHOLD + 10);
         for (var tool : tools) {
-            if (tool.isDiscoverable()) tool.setLlmVisible(false);
+            if (tool.isDiscoverable()) tool.setLlmVisible(Boolean.FALSE);
         }
         var activationTool = ToolActivationTool.builder().allToolCalls(tools).build();
 
@@ -162,7 +162,7 @@ class ToolActivationToolTest {
     void searchShouldMatchByDescription() {
         var tools = buildLargeToolList(ToolActivationTool.CATALOG_MODE_THRESHOLD + 10);
         for (var tool : tools) {
-            if (tool.isDiscoverable()) tool.setLlmVisible(false);
+            if (tool.isDiscoverable()) tool.setLlmVisible(Boolean.FALSE);
         }
         var activationTool = ToolActivationTool.builder().allToolCalls(tools).build();
 
@@ -176,7 +176,7 @@ class ToolActivationToolTest {
     void searchThenActivateShouldWork() {
         var tools = buildLargeToolList(ToolActivationTool.CATALOG_MODE_THRESHOLD + 10);
         for (var tool : tools) {
-            if (tool.isDiscoverable()) tool.setLlmVisible(false);
+            if (tool.isDiscoverable()) tool.setLlmVisible(Boolean.FALSE);
         }
         var activationTool = ToolActivationTool.builder().allToolCalls(tools).build();
         tools.add(activationTool);
@@ -189,7 +189,7 @@ class ToolActivationToolTest {
         assertTrue(activateResult.getResult().contains("Activated tools: order_service_list"));
 
         var visible = AgentHelper.toReqTools(tools);
-        assertTrue(visible.stream().anyMatch(t -> t.function.name.equals("order_service_list")));
+        assertTrue(visible.stream().anyMatch(t -> "order_service_list".equals(t.function.name)));
     }
 
     @Test
@@ -206,7 +206,7 @@ class ToolActivationToolTest {
     @Test
     void activateShouldMakeDiscoverableToolVisible() {
         for (var tool : allToolCalls) {
-            if (tool.isDiscoverable()) tool.setLlmVisible(false);
+            if (tool.isDiscoverable()) tool.setLlmVisible(Boolean.FALSE);
         }
         var activationTool = ToolActivationTool.builder().allToolCalls(allToolCalls).build();
         allToolCalls.add(activationTool);
@@ -227,7 +227,7 @@ class ToolActivationToolTest {
     @Test
     void activateIdempotent() {
         for (var tool : allToolCalls) {
-            if (tool.isDiscoverable()) tool.setLlmVisible(false);
+            if (tool.isDiscoverable()) tool.setLlmVisible(Boolean.FALSE);
         }
         var activationTool = ToolActivationTool.builder().allToolCalls(allToolCalls).build();
 
@@ -246,7 +246,7 @@ class ToolActivationToolTest {
     @Test
     void coreToolsShouldNeverBeAffected() {
         for (var tool : allToolCalls) {
-            if (tool.isDiscoverable()) tool.setLlmVisible(false);
+            if (tool.isDiscoverable()) tool.setLlmVisible(Boolean.FALSE);
         }
         var activationTool = ToolActivationTool.builder().allToolCalls(allToolCalls).build();
 

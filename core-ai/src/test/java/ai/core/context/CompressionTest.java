@@ -49,7 +49,7 @@ class CompressionTest {
     @Test
     void testDefaultConstructor() {
         Compression defaultCompression = new Compression(createMockProvider(), "test-model");
-        assertEquals(0.8, defaultCompression.getTriggerThreshold());
+        assertEquals(0.8, defaultCompression.getTriggerThreshold(), 0.0001);
         assertEquals(5, defaultCompression.getKeepRecentTurns());
         LOGGER.info("Default constructor test passed");
     }
@@ -57,7 +57,7 @@ class CompressionTest {
     @Test
     void testCustomConstructor() {
         Compression customCompression = new Compression(0.8, 3, createMockProvider(), "test-model", "test-model");
-        assertEquals(0.8, customCompression.getTriggerThreshold());
+        assertEquals(0.8, customCompression.getTriggerThreshold(), 0.0001);
         assertEquals(3, customCompression.getKeepRecentTurns());
         LOGGER.info("Custom constructor test passed");
     }
@@ -131,7 +131,7 @@ class CompressionTest {
         Compression testCompression = new Compression(0.0001, 2,
             createMockProviderWithSummary("Test summary"), "test-model", "test-model");
 
-        List<Message> messages = new ArrayList<>();
+        List<Message> messages = new ArrayList<>(22);
         messages.add(Message.of(RoleType.SYSTEM, "You are helpful"));
         for (int i = 0; i < 10; i++) {
             messages.add(Message.of(RoleType.USER, "User message " + i));
@@ -164,7 +164,7 @@ class CompressionTest {
         Compression testCompression = new Compression(0.0001, 1,
             createMockProviderWithSummary("Summary"), "test-model", "test-model");
 
-        List<Message> messages = new ArrayList<>();
+        List<Message> messages = new ArrayList<>(12);
         messages.add(Message.of(RoleType.SYSTEM, "System prompt"));
         for (int i = 0; i < 5; i++) {
             messages.add(Message.of(RoleType.USER, "User " + i));
@@ -188,7 +188,7 @@ class CompressionTest {
         Compression testCompression = new Compression(0.0001, 1, 100,
             createMockProviderWithSummary("Summary"), "test-model", "test-model");
 
-        List<Message> messages = new ArrayList<>();
+        List<Message> messages = new ArrayList<>(14);
         messages.add(Message.of(RoleType.SYSTEM, "System prompt"));
 
         // add some early messages that will be compressed
@@ -273,7 +273,7 @@ class CompressionTest {
     }
 
     private List<Message> createTestMessages(int turns) {
-        List<Message> messages = new ArrayList<>();
+        List<Message> messages = new ArrayList<>(turns * 2 + 1);
         messages.add(Message.of(RoleType.SYSTEM, "You are a helpful assistant"));
         for (int i = 0; i < turns; i++) {
             messages.add(Message.of(RoleType.USER, "Hello " + i));

@@ -8,6 +8,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -21,6 +22,7 @@ import java.util.List;
  * description:
  */
 @Disabled
+@SuppressFBWarnings("UTAO_JUNIT_ASSERTION_ODDITIES_NO_ASSERT")
 class LLMCallCaseTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(LLMCallCaseTest.class);
     @Inject

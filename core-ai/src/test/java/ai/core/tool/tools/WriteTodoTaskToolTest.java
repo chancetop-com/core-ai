@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.tool.function.Functions;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -222,7 +223,7 @@ class WriteTodoTaskToolTest {
     @Test
     void listTasksShouldFilterInternalTasks() {
         var internal = makeTask("1", "pending", "Internal task");
-        internal.metadata = Map.of("_internal", true);
+        internal.metadata = Map.of("_internal", Boolean.TRUE);
         store.setup(internal);
         store.setup(makeTask("2", "pending", "Visible task"));
 
@@ -230,7 +231,7 @@ class WriteTodoTaskToolTest {
 
         assertTrue(result.contains("\"id\":\"2\""));
         assertTrue(result.contains("Visible task"));
-        assertTrue(!result.contains("\"id\":\"1\"") || !result.contains("Internal task"));
+        assertFalse(result.contains("\"id\":\"1\"") && result.contains("Internal task"));
     }
 
     @Test
@@ -364,6 +365,7 @@ class WriteTodoTaskToolTest {
         }
 
         @Override
+        @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
         public WriteTodoTaskTool.TaskEntity create(WriteTodoTaskTool.TaskEntity task) {
             task.id = String.valueOf(nextId.getAndIncrement());
             tasks.put(task.id, task);

@@ -6,6 +6,7 @@ import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -153,10 +154,13 @@ class SkillPlacementExperimentTest {
         return "Use a skill to accomplish specialized tasks.\nWhen a skill matches the user's request, call this tool.\n\nAvailable skills:\n" + buildSkillLines(SKILLS);
     }
 
+    // group definitions are intentional wrappers for experiment symmetry
+    @SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
     static String buildSystemPromptGroupA() {
         return "You are a helpful assistant with access to tools.";
     }
 
+    @SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
     static String buildToolDescGroupB() {
         return "Use a skill to accomplish specialized tasks. Call this tool with the skill name when appropriate.";
     }
@@ -199,10 +203,12 @@ class SkillPlacementExperimentTest {
                 + lines + "\nSkill reference (repeated for clarity):\n" + lines;
     }
 
+    @SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
     static String buildSystemPromptGroupE() {
         return "You are a helpful assistant with access to tools.";
     }
 
+    @SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
     static String buildToolDescGroupF() {
         return "Use a skill to accomplish specialized tasks. Call this tool with the skill name when appropriate.";
     }
@@ -290,7 +296,7 @@ class SkillPlacementExperimentTest {
     private Metrics runGroup(String model, String toolDesc, String systemPrompt) {
         int[] counters = new int[7]; // tp, fp, fn, tn, ambiguousCorrect, ambiguousTotal, totalCalls
         for (var testCase : TEST_CASES) {
-            List<String> responses = new ArrayList<>();
+            List<String> responses = new ArrayList<>(RUNS_PER_CASE);
             for (int run = 0; run < RUNS_PER_CASE; run++) {
                 responses.add(callAndExtractSkill(model, toolDesc, systemPrompt, testCase.query));
             }
@@ -385,7 +391,7 @@ class SkillPlacementExperimentTest {
         bodyMap.put("messages", messages);
         bodyMap.put("tools", List.of(toolSchema));
         bodyMap.put("temperature", 0.0);
-        bodyMap.put("stream", false);
+        bodyMap.put("stream", Boolean.FALSE);
 
         var req = new HTTPRequest(HTTPMethod.POST, apiBase + "/chat/completions");
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
@@ -433,7 +439,7 @@ class SkillPlacementExperimentTest {
                                         )
                                 ),
                                 "required", List.of("name"),
-                                "additionalProperties", false
+                                "additionalProperties", Boolean.FALSE
                         )
                 )
         );

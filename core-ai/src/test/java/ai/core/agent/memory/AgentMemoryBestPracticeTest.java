@@ -58,7 +58,7 @@ class AgentMemoryBestPracticeTest {
     }
 
     private List<Double> generateTestEmbedding() {
-        List<Double> embedding = new ArrayList<>();
+        List<Double> embedding = new ArrayList<>(8);
         for (int i = 0; i < 8; i++) {
             embedding.add(Math.random());
         }
@@ -391,7 +391,7 @@ class AgentMemoryBestPracticeTest {
 
         @Override
         public EmbeddingResponse embeddings(EmbeddingRequest request) {
-            List<EmbeddingResponse.EmbeddingData> embeddings = new ArrayList<>();
+            List<EmbeddingResponse.EmbeddingData> embeddings = new ArrayList<>(request.query().size());
             for (String text : request.query()) {
                 float[] vec = new float[EMBEDDING_DIM];
                 for (int i = 0; i < EMBEDDING_DIM; i++) {

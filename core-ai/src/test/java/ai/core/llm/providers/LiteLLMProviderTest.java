@@ -232,7 +232,7 @@ class LiteLLMProviderTest {
     private Choice createChunkChoiceMultiple(ToolCallDelta... deltas) {
         var choice = new Choice();
         choice.delta = new AssistantMessage();
-        choice.delta.toolCalls = new ArrayList<>();
+        choice.delta.toolCalls = new ArrayList<>(deltas.length);
 
         for (var d : deltas) {
             var tc = new FunctionCall();

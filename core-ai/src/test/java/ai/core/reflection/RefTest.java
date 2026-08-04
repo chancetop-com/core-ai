@@ -397,6 +397,9 @@ class RefTest {
         String task = "What is 2+2?";
         agent.run(task, ExecutionContext.builder().build());
 
+        assertFalse(listener.errorCalled);
+        assertTrue(listener.scoreAchievedCalled || listener.noImprovementCalled || listener.maxRoundsReachedCalled);
+
         LOGGER.info("Termination reason:");
         if (listener.scoreAchievedCalled) {
             LOGGER.info("  - Score achieved (score >= 8 and pass)");
@@ -419,7 +422,7 @@ class RefTest {
                 .name("simple-agent")
                 .llmProvider(mockLLMProvider)
                 .systemPrompt("You are a helpful assistant.")
-                .enableReflection(true)
+                .enableReflection(Boolean.TRUE)
                 .build();
 
         String task = "Explain what a hash table is";

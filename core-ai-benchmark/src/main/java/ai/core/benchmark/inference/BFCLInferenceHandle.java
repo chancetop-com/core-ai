@@ -12,6 +12,7 @@ import core.framework.util.Strings;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -78,20 +79,32 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
         return JsonUtil.toJson(obj);
     }
 
+    private static final Map<String, String> TYPE_MAPPINGS = Map.ofEntries(
+            Map.entry("dict", "object"),
+            Map.entry("hashmap", "object"),
+            Map.entry("hashtable", "object"),
+            Map.entry("double", "number"),
+            Map.entry("float", "number"),
+            Map.entry("arraylist", "array"),
+            Map.entry("list", "array"),
+            Map.entry("tuple", "array"),
+            Map.entry("queue", "array"),
+            Map.entry("stack", "array"),
+            Map.entry("bool", "boolean"),
+            Map.entry("long", "integer"),
+            Map.entry("byte", "integer"),
+            Map.entry("short", "integer"),
+            Map.entry("bigint", "integer"),
+            Map.entry("char", "string"),
+            Map.entry("any", "string")
+    );
+
     private String convertType(String type) {
         var tempType = type.toLowerCase(Locale.ROOT);
         if (Strings.isBlank(tempType)) {
             return "object";
         }
-        return switch (tempType) {
-            case "dict", "hashmap", "hashtable" -> "object";
-            case "double", "float" -> "number";
-            case "arraylist", "list", "tuple", "queue", "stack" -> "array";
-            case "bool" -> "boolean";
-            case "long", "byte", "short", "bigint" -> "integer";
-            case "char", "any" -> "string";
-            default -> tempType;
-        };
+        return TYPE_MAPPINGS.getOrDefault(tempType, tempType);
     }
 
     private void convertParameters(BFCLItem.Parameters parameters, String itemId) {
@@ -169,7 +182,7 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
             propertyInfo.items = null;
         }
 
-        if (Objects.equals(type, "dict") && propertyInfo.properties != null && !propertyInfo.properties.isEmpty()) {
+        if (propertyInfo.properties != null && !propertyInfo.properties.isEmpty() && Objects.equals(type, "dict")) {
             desc.append("The dictionary entries have the following schema; they are not in string representation. %s".formatted(toJson(propertyInfo.properties)));
             propertyInfo.properties = null;
         }

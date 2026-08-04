@@ -41,7 +41,7 @@ class EditFileToolTest {
         logger.info("ToolCall name: {}", tool.getName());
         assertNotNull(tool, "ToolCall should not be null");
         assertNotNull(tool.getName(), "ToolCall name should not be null");
-        assertTrue(tool.getName().equals("edit_file"), "ToolCall name should be 'edit_file'");
+        assertTrue("edit_file".equals(tool.getName()), "ToolCall name should be 'edit_file'");
     }
 
     @Test
@@ -96,7 +96,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "foo");
         args.put("new_string", "qux");
-        args.put("replace_all", true);
+        args.put("replace_all", Boolean.TRUE);
         String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Replace all result: {}", result);
@@ -118,7 +118,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "foo");
         args.put("new_string", "qux");
-        args.put("replace_all", false);
+        args.put("replace_all", Boolean.FALSE);
         String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Multiple occurrences result: {}", result);

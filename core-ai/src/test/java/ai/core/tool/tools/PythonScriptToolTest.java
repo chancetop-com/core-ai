@@ -58,7 +58,7 @@ class PythonScriptToolTest {
             var process = new ProcessBuilder("python", "--version").start();
             var exitCode = process.waitFor();
             return exitCode == 0;
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             return false;
         }
     }

@@ -115,14 +115,14 @@ class MemoryTest {
 
         when(mockProvider.embeddings(any(EmbeddingRequest.class))).thenAnswer(invocation -> {
             EmbeddingRequest request = invocation.getArgument(0);
-            List<EmbeddingResponse.EmbeddingData> embeddings = new ArrayList<>();
+            List<EmbeddingResponse.EmbeddingData> embeddings = new ArrayList<>(request.query().size());
 
-            for (int i = 0; i < request.query().size(); i++) {
+            for (var query : request.query()) {
                 float[] vec = new float[EMBEDDING_DIM];
                 for (int j = 0; j < EMBEDDING_DIM; j++) {
                     vec[j] = (float) Math.random();
                 }
-                embeddings.add(EmbeddingResponse.EmbeddingData.of(request.query().get(i), Embedding.of(vec)));
+                embeddings.add(EmbeddingResponse.EmbeddingData.of(query, Embedding.of(vec)));
             }
 
             return EmbeddingResponse.of(embeddings, null);
@@ -132,7 +132,7 @@ class MemoryTest {
     }
 
     private List<Double> randomEmbedding() {
-        List<Double> embedding = new ArrayList<>();
+        List<Double> embedding = new ArrayList<>(EMBEDDING_DIM);
         double norm = 0;
         double[] values = new double[EMBEDDING_DIM];
         for (int i = 0; i < EMBEDDING_DIM; i++) {

@@ -51,7 +51,7 @@ public class BatchProcessor<T, R> {
 
         // Create tasks for concurrent execution
         AtomicInteger processedCount = new AtomicInteger(0);
-        List<Runnable> tasks = new ArrayList<>();
+        List<Runnable> tasks = new ArrayList<>(batches.size());
 
         for (int i = 0; i < batches.size(); i++) {
             final int batchIndex = i;
@@ -71,7 +71,8 @@ public class BatchProcessor<T, R> {
     }
 
     private List<List<T>> splitIntoBatches(List<T> items) {
-        List<List<T>> batches = new ArrayList<>();
+        int batchCount = (items.size() + batchSize - 1) / batchSize;
+        List<List<T>> batches = new ArrayList<>(batchCount);
         for (int i = 0; i < items.size(); i += batchSize) {
             int end = Math.min(i + batchSize, items.size());
             batches.add(items.subList(i, end));

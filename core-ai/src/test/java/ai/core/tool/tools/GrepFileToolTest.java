@@ -117,7 +117,10 @@ class GrepFileToolTest {
 
     private void write(String relativePath, String content) throws IOException {
         var file = dir.resolve(relativePath);
-        Files.createDirectories(file.getParent());
+        Path parent = file.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
         Files.writeString(file, content);
     }
 }

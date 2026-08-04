@@ -27,8 +27,8 @@ class FileRuleBasedPermissionStoreTest {
     @Test
     void allowToolOnly() {
         store.allow("read_file");
-        assertTrue(store.checkPermission("read_file", Map.of()).orElse(false));
-        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/any/path")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of()).orElse(Boolean.FALSE));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/any/path")).orElse(Boolean.FALSE));
         assertTrue(store.checkPermission("write_file", Map.of()).isEmpty());
     }
 
@@ -36,7 +36,7 @@ class FileRuleBasedPermissionStoreTest {
     void allowWithExactPath() {
         store.allow("read_file(/home/user/a.txt)");
 
-        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/a.txt")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/a.txt")).orElse(Boolean.FALSE));
         assertTrue(store.checkPermission("read_file", Map.of("file_path", "/etc/passwd")).isEmpty());
     }
 
@@ -44,7 +44,7 @@ class FileRuleBasedPermissionStoreTest {
     void allowWithWildcard() {
         store.allow("read_file(/home/user/**)");
 
-        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/deep/file.txt")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/deep/file.txt")).orElse(Boolean.FALSE));
         assertTrue(store.checkPermission("read_file", Map.of("file_path", "/etc/passwd")).isEmpty());
     }
 
@@ -52,7 +52,7 @@ class FileRuleBasedPermissionStoreTest {
     void allowCommandWildcard() {
         store.allow("run_bash_command(echo *)");
 
-        assertTrue(store.checkPermission("run_bash_command", Map.of("command", "echo hello")).orElse(false));
+        assertTrue(store.checkPermission("run_bash_command", Map.of("command", "echo hello")).orElse(Boolean.FALSE));
         assertTrue(store.checkPermission("run_bash_command", Map.of("command", "rm -rf /")).isEmpty());
     }
 
@@ -69,7 +69,7 @@ class FileRuleBasedPermissionStoreTest {
         store.allow("read_file");
         store.deny("read_file(/etc/passwd)");
 
-        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/a.txt")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/a.txt")).orElse(Boolean.FALSE));
 
         var denyResult = store.checkPermission("read_file", Map.of("file_path", "/etc/passwd"));
         assertTrue(denyResult.isPresent());
@@ -79,20 +79,20 @@ class FileRuleBasedPermissionStoreTest {
     @Test
     void allowRemovesPreviousDeny() {
         store.deny("read_file");
-        assertFalse(store.checkPermission("read_file", Map.of()).orElse(true));
+        assertFalse(store.checkPermission("read_file", Map.of()).orElse(Boolean.TRUE));
 
         store.allow("read_file");
-        assertTrue(store.checkPermission("read_file", Map.of()).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of()).orElse(Boolean.FALSE));
         assertTrue(store.getDenyPatterns().isEmpty());
     }
 
     @Test
     void denyRemovesPreviousAllow() {
         store.allow("read_file");
-        assertTrue(store.checkPermission("read_file", Map.of()).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of()).orElse(Boolean.FALSE));
 
         store.deny("read_file");
-        assertFalse(store.checkPermission("read_file", Map.of()).orElse(true));
+        assertFalse(store.checkPermission("read_file", Map.of()).orElse(Boolean.TRUE));
         assertTrue(store.getAllowPatterns().isEmpty());
     }
 
@@ -107,8 +107,8 @@ class FileRuleBasedPermissionStoreTest {
     void allowDirMatchesFilesInDirectory() {
         store.allowDir("read_file", "/home/user/project");
 
-        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/src/Main.java")).orElse(false));
-        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/README.md")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/src/Main.java")).orElse(Boolean.FALSE));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/README.md")).orElse(Boolean.FALSE));
         assertTrue(store.checkPermission("read_file", Map.of("file_path", "/etc/passwd")).isEmpty());
         assertTrue(store.checkPermission("write_file", Map.of("file_path", "/home/user/project/a.txt")).isEmpty());
     }
@@ -125,9 +125,9 @@ class FileRuleBasedPermissionStoreTest {
     void allowDirsMultipleTools() {
         store.allowDirs(List.of("read_file", "write_file", "edit_file"), "/home/user/project");
 
-        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/a.txt")).orElse(false));
-        assertTrue(store.checkPermission("write_file", Map.of("file_path", "/home/user/project/b.txt")).orElse(false));
-        assertTrue(store.checkPermission("edit_file", Map.of("file_path", "/home/user/project/c.txt")).orElse(false));
-        assertTrue(store.checkPermission("run_bash_command", Map.of("command", "ls /home/user/project")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/a.txt")).orElse(Boolean.FALSE));
+        assertTrue(store.checkPermission("write_file", Map.of("file_path", "/home/user/project/b.txt")).orElse(Boolean.FALSE));
+        assertTrue(store.checkPermission("edit_file", Map.of("file_path", "/home/user/project/c.txt")).orElse(Boolean.FALSE));
+        assertTrue(store.checkPermission("run_bash_command", Map.of("command", "ls /home/user/project")).orElse(Boolean.FALSE));
     }
 }

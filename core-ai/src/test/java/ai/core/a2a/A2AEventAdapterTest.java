@@ -72,16 +72,16 @@ class A2AEventAdapterTest {
         assertEquals(1, events.size());
         var first = JsonUtil.fromJson(StreamResponse.class, events.getFirst());
         assertEquals("hello ", first.artifactUpdate.artifact.parts.getFirst().text);
-        assertEquals(false, first.artifactUpdate.append);
-        assertEquals(false, first.artifactUpdate.lastChunk);
+        assertFalse(first.artifactUpdate.append);
+        assertFalse(first.artifactUpdate.lastChunk);
 
         adapter.onTurnComplete(TurnCompleteEvent.of("ctx-1", "hello world"));
 
         assertEquals(3, events.size());
         var second = JsonUtil.fromJson(StreamResponse.class, events.get(1));
         assertEquals("world", second.artifactUpdate.artifact.parts.getFirst().text);
-        assertEquals(true, second.artifactUpdate.append);
-        assertEquals(true, second.artifactUpdate.lastChunk);
+        assertTrue(second.artifactUpdate.append);
+        assertTrue(second.artifactUpdate.lastChunk);
         assertTrue(events.get(2).contains("\"statusUpdate\""));
         assertTrue(events.get(2).contains("\"TASK_STATE_COMPLETED\""));
     }

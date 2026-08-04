@@ -92,7 +92,8 @@ class ShellCommandToolTest {
             scriptFile.toFile().setExecutable(true);
         }
 
-        var result = shell(Map.of("command", "./" + scriptFile.getFileName().toString()));
+        Path scriptFileName = scriptFile.getFileName();
+        var result = shell(Map.of("command", "./" + (scriptFileName != null ? scriptFileName.toString() : scriptFile.toString())));
 
         assertTrue(result.contains("HelloFromScriptFile"));
     }
@@ -120,7 +121,10 @@ class ShellCommandToolTest {
 
     private void write(String relativePath, String content) throws IOException {
         var file = dir.resolve(relativePath);
-        Files.createDirectories(file.getParent());
+        Path parent = file.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
         Files.writeString(file, content);
     }
 

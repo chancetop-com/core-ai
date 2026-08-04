@@ -96,7 +96,8 @@ public class BFCLDatasetLoader implements
         var completedIds = new ArrayList<String>();
         try (Stream<Path> files = Files.list(resultDir)) {
             for (Path file : files.toList()) {
-                if (file.getFileName().toString().endsWith("_result.json")) {
+                Path fileName = file.getFileName();
+                if (fileName != null && fileName.toString().endsWith("_result.json")) {
                     completedIds.addAll(readCompletedIdsFromFile(file));
                 }
             }
@@ -146,7 +147,7 @@ public class BFCLDatasetLoader implements
 
     @Override
     public void writeResultToFile(Path filePath, BFCLItemEvalResult result) {
-        LOGGER.debug("Writing result to file: {}", filePath.toString());
+        LOGGER.debug("Writing result to file: {}", filePath);
         try (FileChannel channel = FileChannel.open(
                 filePath,
                 StandardOpenOption.CREATE,
@@ -193,8 +194,9 @@ public class BFCLDatasetLoader implements
         var files = new HashMap<String, Path>();
         try (Stream<Path> stream = Files.list(Paths.get(workDir).resolve("data"))) {
             for (Path path : stream.toList()) {
-                if (path.getFileName().toString().startsWith("BFCL_v4_")) {
-                    files.put(path.getFileName().toString(), path);
+                Path fileName = path.getFileName();
+                if (fileName != null && fileName.toString().startsWith("BFCL_v4_")) {
+                    files.put(fileName.toString(), path);
                 }
             }
         } catch (IOException e) {

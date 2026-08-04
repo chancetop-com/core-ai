@@ -262,7 +262,7 @@ class ToolRegistryTest {
                             .name("msg")
                             .description("Message to echo")
                             .type(ToolCallParameterType.STRING)
-                            .required(true)
+                            .required(Boolean.TRUE)
                             .build()
             ));
         }

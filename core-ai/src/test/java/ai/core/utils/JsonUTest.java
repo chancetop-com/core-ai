@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
 /**
  * author: lim chen
  * date: 2026/2/6
@@ -16,7 +18,7 @@ class JsonUTest {
         var js = JsonUtil.toJson(List.of(new Person("li", "18"), new Person("chen", "19")));
         List<Person> personList = JsonUtil.fromJson(new TypeReference<>() {
         }, js);
-        assert !personList.isEmpty();
+        assertFalse(personList.isEmpty());
 
     }
 

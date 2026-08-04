@@ -79,6 +79,7 @@ project(":core-ai") {
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
+        testCompileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         api("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
         implementation("com.github.spullara.mustache.java:compiler:${Versions.MUSTACHE_JAVA_VERSION}")
@@ -260,6 +261,8 @@ project(":core-ai-benchmark") {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
+        testCompileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<Test> {

@@ -170,7 +170,7 @@ class A2ARemoteAgentToolCallTest {
 
         assertTrue(result.isCompleted());
         assertEquals("1234\n[truncated]", result.getResult());
-        assertEquals(true, result.getStats().get("remote_output_truncated"));
+        assertEquals(Boolean.TRUE, result.getStats().get("remote_output_truncated"));
     }
 
     @Test

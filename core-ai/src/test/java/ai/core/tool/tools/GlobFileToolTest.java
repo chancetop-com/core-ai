@@ -131,7 +131,10 @@ class GlobFileToolTest {
     private void touch(String... relativePaths) throws IOException {
         for (var path : relativePaths) {
             var file = dir.resolve(path);
-            Files.createDirectories(file.getParent());
+            Path parent = file.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             Files.writeString(file, path);
         }
     }

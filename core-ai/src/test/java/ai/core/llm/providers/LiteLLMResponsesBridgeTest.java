@@ -41,7 +41,7 @@ class LiteLLMResponsesBridgeTest {
                 "test");
         request.topP = 0.9;
         request.maxCompletionTokens = 128;
-        request.parallelToolCalls = false;
+        request.parallelToolCalls = Boolean.FALSE;
         request.toolChoice = "auto";
         request.responseFormat = responseFormat();
         request.reasoningEffort = ReasoningEffort.LOW;
@@ -50,11 +50,11 @@ class LiteLLMResponsesBridgeTest {
         var body = LiteLLMResponsesBridge.toResponsesBody(request);
 
         assertEquals("azure/gpt-5-mini", body.get("model"));
-        assertEquals(true, body.get("stream"));
+        assertEquals(Boolean.TRUE, body.get("stream"));
         assertEquals("Be concise.", body.get("instructions"));
         assertEquals(0.9, body.get("top_p"));
         assertEquals(128, body.get("max_output_tokens"));
-        assertEquals(false, body.get("parallel_tool_calls"));
+        assertEquals(Boolean.FALSE, body.get("parallel_tool_calls"));
         assertEquals("auto", body.get("tool_choice"));
 
         var input = (List<Map<String, Object>>) body.get("input");
@@ -69,13 +69,13 @@ class LiteLLMResponsesBridgeTest {
 
         var tools = (List<Map<String, Object>>) body.get("tools");
         assertEquals("lookup", tools.getFirst().get("name"));
-        assertEquals(true, tools.getFirst().get("strict"));
+        assertEquals(Boolean.TRUE, tools.getFirst().get("strict"));
 
         var text = (Map<String, Object>) body.get("text");
         var format = (Map<String, Object>) text.get("format");
         assertEquals("json_schema", format.get("type"));
         assertEquals("LookupResult", format.get("name"));
-        assertEquals(true, format.get("strict"));
+        assertEquals(Boolean.TRUE, format.get("strict"));
 
         var reasoning = (Map<String, Object>) body.get("reasoning");
         assertEquals("low", reasoning.get("effort"));
@@ -187,7 +187,7 @@ class LiteLLMResponsesBridgeTest {
         tool.function.name = "lookup";
         tool.function.description = "Look up a record.";
         tool.function.parameters = objectSchema();
-        tool.function.strict = true;
+        tool.function.strict = Boolean.TRUE;
         return tool;
     }
 
@@ -202,7 +202,7 @@ class LiteLLMResponsesBridgeTest {
         var responseFormat = new ResponseFormat();
         var schema = new ResponseFormat.JsonSchemaDefinition();
         schema.name = "LookupResult";
-        schema.strict = true;
+        schema.strict = Boolean.TRUE;
         schema.schema = objectSchema();
         responseFormat.jsonSchema = schema;
         return responseFormat;

@@ -3,6 +3,7 @@ package ai.core.tool.function;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -62,7 +63,7 @@ class ExecutionContextInjectionTest {
                 .build();
 
         // Test context as first parameter
-        var funcFirst = functions.stream().filter(f -> f.getName().equals("processWithContextFirst")).findFirst().orElseThrow();
+        var funcFirst = functions.stream().filter(f -> "processWithContextFirst".equals(f.getName())).findFirst().orElseThrow();
         assertEquals(2, funcFirst.getParameters().size());
         var resultFirst = funcFirst.execute("{\"arg1\":\"hello\",\"arg2\":\"world\"}", context);
         assertTrue(resultFirst.isCompleted());
@@ -71,7 +72,7 @@ class ExecutionContextInjectionTest {
         assertTrue(resultFirst.getResult().contains("world"));
 
         // Test context in middle
-        var funcMiddle = functions.stream().filter(f -> f.getName().equals("processWithContextMiddle")).findFirst().orElseThrow();
+        var funcMiddle = functions.stream().filter(f -> "processWithContextMiddle".equals(f.getName())).findFirst().orElseThrow();
         assertEquals(2, funcMiddle.getParameters().size());
         var resultMiddle = funcMiddle.execute("{\"arg1\":\"foo\",\"arg2\":\"bar\"}", context);
         assertTrue(resultMiddle.isCompleted());
@@ -80,7 +81,7 @@ class ExecutionContextInjectionTest {
         assertTrue(resultMiddle.getResult().contains("bar"));
 
         // Test context as last parameter
-        var funcLast = functions.stream().filter(f -> f.getName().equals("processWithContextLast")).findFirst().orElseThrow();
+        var funcLast = functions.stream().filter(f -> "processWithContextLast".equals(f.getName())).findFirst().orElseThrow();
         assertEquals(2, funcLast.getParameters().size());
         var resultLast = funcLast.execute("{\"arg1\":\"aaa\",\"arg2\":\"bbb\"}", context);
         assertTrue(resultLast.isCompleted());
@@ -119,6 +120,7 @@ class ExecutionContextInjectionTest {
     }
 
     @Test
+    @SuppressFBWarnings("ISC_INSTANTIATE_STATIC_CLASS")
     void testInternalCustomVariableNotSerializedIntoDynamicArguments() throws Exception {
         // dynamic-arguments tools serialize the whole argsMap; internal "__"-prefixed objects must be excluded
         var method = ContextAwareService.class.getMethod("echoDynamicArgs", String.class, String.class);
@@ -127,7 +129,7 @@ class ExecutionContextInjectionTest {
                 .description("echo dynamic args json")
                 .object(service)
                 .method(method)
-                .dynamicArguments(true)
+                .dynamicArguments(Boolean.TRUE)
                 .build();
 
         var context = ExecutionContext.builder()
@@ -152,7 +154,7 @@ class ExecutionContextInjectionTest {
                 .description("echo dynamic args json")
                 .object(service)
                 .method(method)
-                .dynamicArguments(true)
+                .dynamicArguments(Boolean.TRUE)
                 .build();
 
         var context = ExecutionContext.builder()

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.condition.EnabledIf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -46,7 +47,7 @@ class ToolCallParametersIntegrationTest {
         try {
             var process = new ProcessBuilder("python", "--version").start();
             return process.waitFor() == 0;
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             return false;
         }
     }

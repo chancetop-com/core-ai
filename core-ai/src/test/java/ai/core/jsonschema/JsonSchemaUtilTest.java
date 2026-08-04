@@ -20,7 +20,7 @@ class JsonSchemaUtilTest {
     @Test
     void test() {
         var fmt = ResponseFormat.of(MenuPerformanceAnalysisEvent.class);
-        assert fmt.jsonSchema != null;
+        assertNotNull(fmt.jsonSchema);
     }
 
     @Test
@@ -50,17 +50,17 @@ class JsonSchemaUtilTest {
         // Simulates how ApiDefinitionTypeSchemaBuilder builds nested objects
         // by setting classType=Map.class but using items for nested fields
         var nestedParams = List.of(
-            ToolCallParameter.builder().name("nestedField").classType(String.class).required(true).build()
+            ToolCallParameter.builder().name("nestedField").classType(String.class).required(Boolean.TRUE).build()
         );
 
         var rootParam = ToolCallParameter.builder()
             .name("nestedObject")
             .classType(Map.class)  // Simulates ApiDefinitionTypeSchemaBuilder behavior
-            .required(true)
+            .required(Boolean.TRUE)
             .items(nestedParams)
             .build();
 
-        var schema = JsonSchemaUtil.toJsonSchema(java.util.Arrays.asList(rootParam));
+        var schema = JsonSchemaUtil.toJsonSchema(java.util.Collections.singletonList(rootParam));
 
         assertNotNull(schema.properties);
         var nestedObjectProperty = schema.properties.get("nestedObject");
@@ -80,8 +80,8 @@ class JsonSchemaUtilTest {
     @Test
     void duplicateRequiredParameterNamesShouldBeDeduplicated() {
         var params = List.of(
-            ToolCallParameter.builder().name("id").classType(String.class).required(true).build(),
-            ToolCallParameter.builder().name("id").classType(String.class).required(true).build()
+            ToolCallParameter.builder().name("id").classType(String.class).required(Boolean.TRUE).build(),
+            ToolCallParameter.builder().name("id").classType(String.class).required(Boolean.TRUE).build()
         );
 
         var schema = JsonSchemaUtil.toJsonSchema(params);
@@ -96,18 +96,18 @@ class JsonSchemaUtilTest {
         // Simulates how ApiDefinitionTypeSchemaBuilder builds List<SomeObject>
         // by setting classType=List.class and using items for nested fields
         var nestedParams = List.of(
-            ToolCallParameter.builder().name("name").classType(String.class).required(true).build(),
-            ToolCallParameter.builder().name("value").classType(Integer.class).required(false).build()
+            ToolCallParameter.builder().name("name").classType(String.class).required(Boolean.TRUE).build(),
+            ToolCallParameter.builder().name("value").classType(Integer.class).required(Boolean.FALSE).build()
         );
 
         var rootParam = ToolCallParameter.builder()
             .name("items")
             .classType(List.class)
-            .required(true)
+            .required(Boolean.TRUE)
             .items(nestedParams)
             .build();
 
-        var schema = JsonSchemaUtil.toJsonSchema(java.util.Arrays.asList(rootParam));
+        var schema = JsonSchemaUtil.toJsonSchema(java.util.Collections.singletonList(rootParam));
 
         assertNotNull(schema.properties);
         var itemsProperty = schema.properties.get("items");

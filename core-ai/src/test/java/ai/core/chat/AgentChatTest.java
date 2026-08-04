@@ -15,6 +15,7 @@ import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.tool.function.Functions;
 import ai.core.utils.JsonUtil;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -47,6 +49,7 @@ class AgentChatTest {
 
     @Test
     @Disabled
+    @SuppressFBWarnings("UTAO_JUNIT_ASSERTION_ODDITIES_NO_ASSERT")
     void testStreamChat() {
         var agent = Agent.builder()
                 .llmProvider(llmProvider)
@@ -81,7 +84,7 @@ class AgentChatTest {
                 .build();
         when(llmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any())).thenReturn(crs);
         String out = agent.run("Hello", ExecutionContext.builder().build());
-        assert out != null;
+        assertNotNull(out);
     }
 
     @Test

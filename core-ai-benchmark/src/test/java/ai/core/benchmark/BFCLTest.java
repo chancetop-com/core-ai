@@ -6,10 +6,9 @@ import ai.core.benchmark.inference.BFCLInferenceFCHandle;
 import ai.core.benchmark.inference.BFCLInferencePlanHandle;
 import ai.core.llm.LLMProviders;
 import core.framework.inject.Inject;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -19,8 +18,8 @@ import java.util.List;
  * description:
  */
 @Disabled
+@SuppressFBWarnings("UTAO_JUNIT_ASSERTION_ODDITIES_NO_ASSERT")
 class BFCLTest extends IntegrationTest {
-    private final Logger logger = LoggerFactory.getLogger(BFCLTest.class);
     @Inject
     LLMProviders llmProviders;
 

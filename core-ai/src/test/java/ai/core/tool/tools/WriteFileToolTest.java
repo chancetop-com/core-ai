@@ -41,7 +41,7 @@ class WriteFileToolTest {
         logger.info("ToolCall name: {}", tool.getName());
         assertNotNull(tool, "ToolCall should not be null");
         assertNotNull(tool.getName(), "ToolCall name should not be null");
-        assertTrue(tool.getName().equals("write_file"), "ToolCall name should be 'write_file'");
+        assertTrue("write_file".equals(tool.getName()), "ToolCall name should be 'write_file'");
     }
 
     @Test

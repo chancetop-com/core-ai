@@ -13,6 +13,10 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 /**
  * @author stephen
  */
@@ -45,7 +49,7 @@ class FlowPersistenceTest {
     void serialization() {
         var flow = setup();
         var payload = flow.serialization();
-        assert !payload.isEmpty();
+        assertFalse(payload.isEmpty());
     }
 
     @Test
@@ -55,14 +59,14 @@ class FlowPersistenceTest {
         var flow = new Flow();
         flow.setPersistence(new FlowPersistence());
         flow.deserialization(payload);
-        assert flow.getNodes().size() == 6;
-        assert flow.getEdges().size() == 5;
+        assertEquals(6, flow.getNodes().size());
+        assertEquals(5, flow.getEdges().size());
     }
 
     @Test
     void testEmptyFlow() {
         var flow = new Flow();
         var text = flow.serialization();
-        assert text != null;
+        assertNotNull(text);
     }
 }

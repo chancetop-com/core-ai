@@ -104,12 +104,10 @@ public class BFCLInferencePlanHandle extends BFCLInferenceFCHandle {
 
     private List<Message> wrapSystemMsg(List<Message> messages) {
 
-        var systemPrompt = """
-                you are helpful assistant,
-                # Task Management
-                Use the `write_todos` tool to plan your tasks step by step.
-                %s
-                """.formatted(Prompts.WRITE_TODOS_SYSTEM_PROMPT);
+        var systemPrompt = "you are helpful assistant,%n"
+                + "# Task Management%n"
+                + "Use the `write_todos` tool to plan your tasks step by step.%n"
+                + "%s".formatted(Prompts.WRITE_TODOS_SYSTEM_PROMPT);
 
         return List.of(Message.of(RoleType.SYSTEM, systemPrompt), messages.getFirst());
     }

@@ -17,7 +17,7 @@ class ShellUtilTest {
         assumeTrue(SystemUtil.detectPlatform().isLinux() || SystemUtil.detectPlatform().isMac(),
                 "which command is required for Unix shell detection");
         var shell = ShellUtil.getPreferredShell(Platform.LINUX_X64);
-        assertTrue(shell.equals("bash") || shell.equals("zsh") || shell.equals("sh"),
+        assertTrue(java.util.Set.of("bash", "zsh", "sh").contains(shell),
                 "Unix preferred shell must be one of bash/zsh/sh, but got: " + shell);
     }
 
@@ -26,7 +26,7 @@ class ShellUtilTest {
         assumeTrue(SystemUtil.detectPlatform().isLinux() || SystemUtil.detectPlatform().isMac(),
                 "which command is required for Unix shell detection");
         var shell = ShellUtil.getPreferredShell(Platform.MACOS_X64);
-        assertTrue(shell.equals("bash") || shell.equals("zsh") || shell.equals("sh"),
+        assertTrue(java.util.Set.of("bash", "zsh", "sh").contains(shell),
                 "Mac preferred shell must be one of bash/zsh/sh, but got: " + shell);
     }
 

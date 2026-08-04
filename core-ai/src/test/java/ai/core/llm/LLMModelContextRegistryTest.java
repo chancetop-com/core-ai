@@ -78,9 +78,9 @@ class LLMModelContextRegistryTest {
         assertEquals(16384, info.maxOutputTokens());
         assertEquals("openai", info.provider());
         assertEquals("chat", info.mode());
-        assertEquals(2.5e-06, info.inputCostPerToken());
-        assertEquals(1e-05, info.outputCostPerToken());
-        assertEquals(1.25e-06, info.cacheReadInputTokenCost());
+        assertEquals(2.5e-06, info.inputCostPerToken(), 1e-12);
+        assertEquals(1e-05, info.outputCostPerToken(), 1e-12);
+        assertEquals(1.25e-06, info.cacheReadInputTokenCost(), 1e-12);
     }
 
     @Test

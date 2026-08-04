@@ -183,7 +183,7 @@ class OpenRouterVsAzureBenchmarkTest {
                 Map.of("role", "user", "content", TEST_PROMPT)
         ));
         bodyMap.put("temperature", DEFAULT_TEMPERATURE);
-        bodyMap.put("stream", false);
+        bodyMap.put("stream", Boolean.FALSE);
 
         var req = new HTTPRequest(HTTPMethod.POST, url);
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());

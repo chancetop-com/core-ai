@@ -51,10 +51,10 @@ public class BFCLEvaluator {
     }
 
     private BFCLFileInfo filterFileInfoByIds(BFCLFileInfo fileInfo, List<String> filterIds) {
-        fileInfo.items = fileInfo.items.stream()
+        var filteredItems = fileInfo.items.stream()
                 .filter(item -> filterIds.contains(item.id))
                 .toList();
-        return fileInfo;
+        return BFCLFileInfo.of(fileInfo.name, fileInfo.category, fileInfo.path, filteredItems);
     }
 
     public void eval(BFCLCategory category, List<String> filterIds) {

@@ -14,14 +14,14 @@ public class MenuPerformanceAnalysisEvent extends BaseEvent {
         var tableConfig = new TableConfig();
         tableConfig.title = "Menu Performance";
         tableConfig.description = "Menu performance analysis table.";
-        tableConfig.editable = false;
+        tableConfig.editable = Boolean.FALSE;
         tableConfig.columns = List.of(
-                ColumnConfig.of("item_id", "Item ID", "string", false, true),
-                ColumnConfig.of("item_name", "Item Name", "string", false, false),
-                ColumnConfig.of("profit_margin", "Profit Margin", "string", false, false),
-                ColumnConfig.of("popularity", "Popularity", "string", false, false),
-                ColumnConfig.of("quadrant", "Quadrant", "string", false, false),
-                ColumnConfig.of("strategy_tag", "Strategy Tag", "string", false, false)
+                ColumnConfig.of("item_id", "Item ID", "string", Boolean.FALSE, Boolean.TRUE),
+                ColumnConfig.of("item_name", "Item Name", "string", Boolean.FALSE, Boolean.FALSE),
+                ColumnConfig.of("profit_margin", "Profit Margin", "string", Boolean.FALSE, Boolean.FALSE),
+                ColumnConfig.of("popularity", "Popularity", "string", Boolean.FALSE, Boolean.FALSE),
+                ColumnConfig.of("quadrant", "Quadrant", "string", Boolean.FALSE, Boolean.FALSE),
+                ColumnConfig.of("strategy_tag", "Strategy Tag", "string", Boolean.FALSE, Boolean.FALSE)
         );
         event.tableConfig = tableConfig;
         event.keySummary = result.keySummary;

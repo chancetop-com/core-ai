@@ -12,6 +12,7 @@ import ai.core.llm.domain.RoleType;
 import ai.core.tool.function.Functions;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import java.util.List;
  * description:
  */
 @Disabled
+@SuppressFBWarnings("UTAO_JUNIT_ASSERTION_ODDITIES_NO_ASSERT")
 class AgentEndToTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentEndToTest.class);
     @Inject

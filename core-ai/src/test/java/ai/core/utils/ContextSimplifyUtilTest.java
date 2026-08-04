@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -112,10 +113,12 @@ class ContextSimplifyUtilTest {
 
     @Test
     void emptyListNoError() {
-        var ctx = ContextSimplifyUtil.of(List.<Item>of())
-                .simplifyIds(i -> i.id, (i, v) -> i.id = v)
-                .nullify(i -> i.imageUrl, (i, v) -> i.imageUrl = v);
-        ctx.restore();
+        assertDoesNotThrow(() -> {
+            var ctx = ContextSimplifyUtil.of(List.<Item>of())
+                    .simplifyIds(i -> i.id, (i, v) -> i.id = v)
+                    .nullify(i -> i.imageUrl, (i, v) -> i.imageUrl = v);
+            ctx.restore();
+        });
     }
 
     static class Item {

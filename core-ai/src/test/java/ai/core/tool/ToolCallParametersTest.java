@@ -1,10 +1,12 @@
 package ai.core.tool;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -129,19 +131,19 @@ class ToolCallParametersTest {
         assertEquals("username", usernameParam.getName());
         assertEquals("User name", usernameParam.getDescription());
         assertEquals(String.class, usernameParam.getClassType());
-        assertEquals(true, usernameParam.isRequired());
+        assertTrue(usernameParam.isRequired());
 
         var ageParam = parameters.get(1);
         assertEquals("age", ageParam.getName());
         assertEquals("User age", ageParam.getDescription());
         assertEquals(Integer.class, ageParam.getClassType());
-        assertEquals(false, ageParam.isRequired());
+        assertFalse(ageParam.isRequired());
 
         var bioParam = parameters.get(2);
         assertEquals("bio", bioParam.getName());
         assertEquals("User bio", bioParam.getDescription());
         assertEquals(String.class, bioParam.getClassType());
-        assertEquals(false, bioParam.isRequired());  // default is false
+        assertFalse(bioParam.isRequired());  // default is false
     }
 
     @Test
@@ -162,7 +164,7 @@ class ToolCallParametersTest {
         assertEquals("status", statusParam.getName());
         assertEquals("User status", statusParam.getDescription());
         assertEquals(String.class, statusParam.getClassType());
-        assertEquals(true, statusParam.isRequired());
+        assertTrue(statusParam.isRequired());
         assertNotNull(statusParam.getEnums());
         assertEquals(3, statusParam.getEnums().size());
         assertTrue(statusParam.getEnums().contains("active"));
@@ -190,18 +192,22 @@ class ToolCallParametersTest {
         ACTIVE, INACTIVE
     }
 
+    // fixture classes are inspected by ToolCallParameters.of via reflection
+    @SuppressFBWarnings("UUF_UNUSED_FIELD")
     static class TestClass1 {
         String name;
         Integer age;
         Boolean active;
     }
 
+    @SuppressFBWarnings("UUF_UNUSED_FIELD")
     static class TestClass2 {
         String email;
         Double score;
         Status status;
     }
 
+    @SuppressFBWarnings("UUF_UNUSED_FIELD")
     static class ComplexClass {
         String id;
         List<TestClass1> items;

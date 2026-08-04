@@ -1,6 +1,7 @@
 package ai.core.benchmark.domain;
 
 import core.framework.api.json.Property;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,8 @@ public class BFCLItem {
         public Map<String, JsonPropertyInfo> properties;
     }
 
+    // properties/items are JSON-deserialized by core-ng reflection; null writes are intentional schema cleanup
+    @SuppressFBWarnings("UWF_NULL_FIELD")
     public static class JsonPropertyInfo {
         @Property(name = "type")
         public String type;

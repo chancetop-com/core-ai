@@ -55,7 +55,7 @@ public class BFCLDownloader {
     private void cloneRepository(Path tempDir) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder("git", "clone", "--depth", "1", GORILLA_REPO_URL, tempDir.toString());
         pb.redirectErrorStream(true);
-        LOGGER.info("process: {}", pb.command().toString());
+        LOGGER.info("process: {}", pb.command());
         Process process = pb.start();
 
         int exitCode = process.waitFor();
