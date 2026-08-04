@@ -38,13 +38,26 @@ final class AgentInterruptionHandler {
         }
     }
 
+    /**
+     * Marks the interrupted turn without cancelling the root token: injects the interruption
+     * marker with the given reason and persists immediately, so the cancelled turn's user
+     * message survives even if the process dies before the next save point (e.g. CLI ESC).
+     */
+    static void persistInterruption(Agent agent, CancelReason reason) {
+        if (!shouldInjectMarker(reason)) return;
+        injectInterruptionMarker(agent, reason);
+        persistInterruptionMarkerIfExists(agent);
+    }
+
     static void throwIfCancelled(Agent agent) {
         agent.getExecutionContext().throwIfCancelled();
     }
 
     static void injectInterruptionMarker(Agent agent) {
-        var token = getCancellationToken(agent);
-        var reason = token.getReason();
+        injectInterruptionMarker(agent, getCancellationToken(agent).getReason());
+    }
+
+    static void injectInterruptionMarker(Agent agent, CancelReason reason) {
         if (!shouldInjectMarker(reason)) return;
 
         var marker = reason == CancelReason.USER_CANCELLED

@@ -101,14 +101,19 @@ public final class CancellationToken {
         return parent != null && parent.isCancelled();
     }
 
-    public void cancel() {
-        cancel(CancelReason.USER_CANCELLED);
+    /**
+     * Cancels this token and all descendants.
+     *
+     * @return true if this call performed the cancellation, false if it was already cancelled
+     */
+    public boolean cancel() {
+        return cancel(CancelReason.USER_CANCELLED);
     }
 
-    public void cancel(CancelReason reason) {
+    public boolean cancel(CancelReason reason) {
         if (!cancelled.compareAndSet(false, true)) {
             LOGGER.debug("cancel skipped (already cancelled), reason={}", getReason());
-            return;
+            return false;
         }
         this.reason = reason;
 
@@ -140,6 +145,7 @@ public final class CancellationToken {
         for (var child : children) {
             child.cancel(reason);
         }
+        return true;
     }
 
     public CancelReason getReason() {

@@ -16,9 +16,17 @@ public class TurnCompleteEvent implements AgentEvent {
     }
 
     public static TurnCompleteEvent cancelled(String sessionId) {
+        return cancelled(sessionId, "");
+    }
+
+    /**
+     * Cancelled turn that may still carry partial output (e.g. text produced before ESC),
+     * so persistence listeners can record what was produced before the interruption.
+     */
+    public static TurnCompleteEvent cancelled(String sessionId, String output) {
         var event = new TurnCompleteEvent();
         event.sessionId = sessionId;
-        event.output = "";
+        event.output = output != null ? output : "";
         event.cancelled = Boolean.TRUE;
         return event;
     }

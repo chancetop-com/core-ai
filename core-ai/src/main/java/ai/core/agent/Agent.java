@@ -365,6 +365,15 @@ public class Agent extends Node<Agent> {
         AgentInterruptionHandler.cancel(this);
     }
 
+    /**
+     * Injects the interruption marker with the given reason and persists the session,
+     * without cancelling the root token. Used when a turn is cancelled via its turn
+     * token (e.g. CLI ESC) so the interrupted turn survives process death.
+     */
+    public void persistInterruption(CancelReason reason) {
+        AgentInterruptionHandler.persistInterruption(this, reason);
+    }
+
     public CancellationToken getCancellationToken() {
         return AgentInterruptionHandler.getCancellationToken(this);
     }

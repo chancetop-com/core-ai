@@ -158,6 +158,17 @@ public class InProcessAgentSession implements AgentSession {
         }
     }
 
+    private void persistCancelledTurn() {
+        // runTurnsLoop may have added partial assistant messages (incl. reasoning) before
+        // unwinding — persist them so the cancelled turn is not lost.
+        if (!agent.hasPersistenceProvider()) return;
+        try {
+            agent.save(sessionId);
+        } catch (RuntimeException e) {
+            logger.warn("failed to persist session after cancelled turn, sessionId={}", sessionId, e);
+        }
+    }
+
     private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore) {
         var combined = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("agent run starting");
@@ -187,7 +198,9 @@ public class InProcessAgentSession implements AgentSession {
         }
         if (agent.isCancelled()) {
             debug("agent run cancelled");
-            dispatch(TurnCompleteEvent.cancelled(sessionId));
+            persistCancelledTurn();
+            // carry partial output so server chat history records what was produced before ESC
+            dispatch(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()));
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             commandQueue.drainTaskNotifications();
             return;
@@ -223,7 +236,9 @@ public class InProcessAgentSession implements AgentSession {
         }
         if (agent.isCancelled()) {
             debug("agent run cancelled");
-            dispatch(TurnCompleteEvent.cancelled(sessionId));
+            persistCancelledTurn();
+            // carry partial output so server chat history records what was produced before ESC
+            dispatch(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()));
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             commandQueue.drainTaskNotifications();
             return;
@@ -249,7 +264,12 @@ public class InProcessAgentSession implements AgentSession {
         debug("cancelling current turn");
         var token = agent.getExecutionContext().getCancellationToken();
         if (token != null) {
-            token.cancel();
+            boolean cancelled = token.cancel();
+            // Persist the interrupted turn immediately (interruption marker + user message)
+            // so it survives process death (e.g. CLI ESC, time limit) before the next save point.
+            if (cancelled) {
+                agent.persistInterruption(token.getReason());
+            }
         } else {
             agent.cancel();
         }

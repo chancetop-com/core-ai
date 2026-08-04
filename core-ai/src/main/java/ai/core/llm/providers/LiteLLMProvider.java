@@ -1,5 +1,7 @@
 package ai.core.llm.providers;
 
+import ai.core.agent.CancelReason;
+import ai.core.agent.CancellationException;
 import ai.core.llm.streaming.DefaultStreamingCallback;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.document.Embedding;
@@ -236,11 +238,21 @@ public class LiteLLMProvider extends LLMProvider {
                 if (attempt < MAX_RETRIES && !retrySleep()) break;
             }
         }
+        if (callback.isCancelled() && !hasPartialContent(response)) {
+            // cancelled before any content arrived — signal cancellation instead of a null response
+            throw new CancellationException(CancelReason.USER_CANCELLED);
+        }
         if (callback.isCancelled()) {
-            if (hasPartialContent(response)) {
-                response.choices.getFirst().message.content += "\n\n[interrupted]";
-                response.choices.getFirst().finishReason = FinishReason.STOP;
+            var choice = response.choices.getFirst();
+            choice.message.content += "\n\n[interrupted]";
+            choice.finishReason = FinishReason.STOP;
+            // flush partial reasoning to listeners (e.g. server chat history) before the
+            // turn unwinds; onComplete drains the async wrapper so the buffer write lands
+            // before TurnCompleteEvent is dispatched
+            if (!Strings.isBlank(choice.message.reasoningContent)) {
+                callback.onReasoningComplete(choice.message.reasoningContent);
             }
+            callback.onComplete();
             return response;
         }
         if (response == null) {
