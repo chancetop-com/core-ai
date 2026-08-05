@@ -127,9 +127,9 @@ class DatasetRecordServiceTest {
         verify(collection).findOne(captor.capture());
         var doc = captor.getValue().toBsonDocument(BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
         assertTrue(doc.containsKey("$and"));
-        var rendered = doc.getArray("$and").toString();
-        assertTrue(rendered.contains("dataset_id"));
-        assertTrue(rendered.contains("session_id"));
+        var filters = doc.getArray("$and");
+        assertTrue(filters.stream().anyMatch(value -> value.asDocument().containsKey("dataset_id")));
+        assertTrue(filters.stream().anyMatch(value -> value.asDocument().containsKey("session_id")));
     }
 
     @Test
@@ -168,14 +168,14 @@ class DatasetRecordServiceTest {
 
     @Test
     void mergeNullDeletesField() {
-        var current = Map.<String, Object>of("menu_source", "ONLINE", "keep", true);
+        var current = Map.<String, Object>of("menu_source", "ONLINE", "keep", "value");
         var patch = new java.util.HashMap<String, Object>();
         patch.put("menu_source", null);
 
         var merged = DatasetRecordService.merge(current, patch);
 
         assertEquals(1, merged.size());
-        assertEquals(Boolean.TRUE, merged.get("keep"));
+        assertEquals("value", merged.get("keep"));
     }
 
     @Test

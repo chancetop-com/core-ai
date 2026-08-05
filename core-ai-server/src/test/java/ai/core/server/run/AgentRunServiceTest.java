@@ -21,6 +21,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -141,7 +142,7 @@ class AgentRunServiceTest {
         assertNotSame(definition.publishedConfig, executable.publishedConfig);
         assertEquals("caller-1", executable.userId);
         assertEquals("published-model", executable.publishedConfig.model);
-        assertEquals(null, executable.model);
+        assertNull(executable.model);
         assertNotSame(definition.publishedConfig.sandboxConfig, executable.sandboxConfig);
         assertEquals(Boolean.TRUE, executable.sandboxConfig.enabled);
         verify(service.skillService, never()).resolveAccessibleSkills(any(), eq("caller-1"));

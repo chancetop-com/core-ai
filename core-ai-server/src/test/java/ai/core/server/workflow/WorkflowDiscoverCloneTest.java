@@ -209,7 +209,7 @@ class WorkflowDiscoverCloneTest {
         assertTrue(copy.draftGraph.contains("[redacted]"));
         assertTrue(copy.draftGraph.contains(privateAgent.id));
         assertTrue(publishService.validate(copy).stream()
-            .anyMatch(message -> message.equals("node n1: Private embedded agent is not available — choose a replacement")));
+            .anyMatch("node n1: Private embedded agent is not available — choose a replacement"::equals));
     }
 
     @Test

@@ -94,9 +94,8 @@ class ChannelSyncControllerTest {
 
     private Request request(String channelId, String message) {
         var request = mock(Request.class);
-        var body = """
-                {"user":"shared-conversation","messages":[{"role":"user","content":"%s"}]}
-                """.formatted(message);
+        var body = "{\"user\":\"shared-conversation\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}]}"
+            .formatted(message);
         when(request.body()).thenReturn(Optional.of(body.getBytes(StandardCharsets.UTF_8)));
         when(request.pathParam("channelId")).thenReturn(channelId);
         when(request.header("X-OCG-Callback")).thenReturn(Optional.of("https://callback.example/reply"));
