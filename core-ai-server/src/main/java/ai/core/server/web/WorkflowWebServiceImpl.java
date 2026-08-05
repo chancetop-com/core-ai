@@ -10,6 +10,8 @@ import ai.core.api.server.workflow.ExportWorkflowResponse;
 import ai.core.api.server.workflow.ImportWorkflowRequest;
 import ai.core.api.server.workflow.ImportWorkflowResponse;
 import ai.core.api.server.workflow.ListNodeRunsResponse;
+import ai.core.api.server.workflow.ListWorkflowAgentOptionsRequest;
+import ai.core.api.server.workflow.ListWorkflowAgentOptionsResponse;
 import ai.core.api.server.workflow.ListWorkflowRunsResponse;
 import ai.core.api.server.workflow.ListWorkflowVersionsResponse;
 import ai.core.api.server.workflow.ListWorkflowsRequest;
@@ -34,6 +36,7 @@ import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.workflow.WorkflowAgentOptionService;
 import ai.core.server.workflow.WorkflowDefinitionService;
 import ai.core.server.workflow.WorkflowPortService;
 import ai.core.server.workflow.WorkflowPublishService;
@@ -65,6 +68,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
 
     @Inject
     WorkflowDefinitionService definitionService;
+
+    @Inject
+    WorkflowAgentOptionService agentOptionService;
 
     @Inject
     MongoCollection<User> userCollection;
@@ -116,6 +122,11 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         response.offset = offset;
         response.limit = limit;
         return response;
+    }
+
+    @Override
+    public ListWorkflowAgentOptionsResponse agentOptions(ListWorkflowAgentOptionsRequest request) {
+        return agentOptionService.list(AuthContext.userId(webContext), request);
     }
 
     @Override

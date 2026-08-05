@@ -18,6 +18,10 @@ public interface WorkflowWebService {
     ListWorkflowsResponse list(ListWorkflowsRequest request);
 
     @GET
+    @Path("/api/workflows/agent-options")
+    ListWorkflowAgentOptionsResponse agentOptions(ListWorkflowAgentOptionsRequest request);
+
+    @GET
     @Path("/api/explore/workflows")
     ExploreWorkflowsResponse explore(ExploreWorkflowsRequest request);
 

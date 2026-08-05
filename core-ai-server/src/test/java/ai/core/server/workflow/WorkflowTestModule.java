@@ -41,6 +41,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(Notification.class);            // injected by NotificationService (bound below)
 
         bind(WorkflowDefinitionService.class);
+        bind(WorkflowAgentOptionService.class);
         bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
         bind(WorkflowPublishService.class);
         // bind the graph-loader seam before WorkflowRunService: the framework injects eagerly at bind() time, so a
@@ -89,6 +90,13 @@ public class WorkflowTestModule extends AbstractTestModule {
             mongoBean.createIndex("workflow_node_runs", Indexes.compoundIndex(
                 Indexes.ascending("run_id"), Indexes.ascending("node_id"), Indexes.ascending("scope_path_key")));
             mongoBean.createIndex("workflow_node_runs", Indexes.ascending("child_run_id"));
+            // agents
+            mongoBean.createIndex("agents", Indexes.compoundIndex(
+                Indexes.ascending("user_id"), Indexes.ascending("type"),
+                Indexes.ascending("name_key"), Indexes.ascending("_id")));
+            mongoBean.createIndex("agents", Indexes.compoundIndex(
+                Indexes.ascending("status"), Indexes.ascending("type"),
+                Indexes.ascending("name_key"), Indexes.ascending("_id")));
         });
     }
 }
