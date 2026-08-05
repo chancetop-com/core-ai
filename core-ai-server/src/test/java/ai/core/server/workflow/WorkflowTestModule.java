@@ -40,31 +40,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(ToolRegistryEntry.class);      // injected by WorkflowPortService for MCP reference resolution
         mongo.collection(Notification.class);            // injected by NotificationService (bound below)
 
-        bind(WorkflowDefinitionService.class);
-        bind(WorkflowAgentOptionService.class);
-        bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
-        bind(WorkflowAgentSnapshotService.class);
-        bind(WorkflowPrivateAgentSafetyValidator.class);
-        bind(WorkflowPublishService.class);
-        // bind the graph-loader seam before WorkflowRunService: the framework injects eagerly at bind() time, so a
-        // dependency must already be registered when its dependent is bound.
-        var graphLoader = bind(MongoWorkflowGraphLoader.class);
-        bind(WorkflowGraphLoader.class, graphLoader);
-        bind(WorkflowRunService.class);
-        // bind the sub-workflow gateway before the executor/runner that depend on it because injection is eager
-        var workflowRunGateway = bind(MongoWorkflowRunGateway.class);
-        bind(WorkflowRunGateway.class, workflowRunGateway);
-        var registry = new NodeExecutorRegistry(Map.of(
-            NodeType.START, new StartExecutor(),
-            NodeType.END, new EndExecutor(),
-            NodeType.HUMAN_INPUT, new HumanInputExecutor(),
-            NodeType.WORKFLOW, new WorkflowExecutor(workflowRunGateway, 5)));
-        bind(NodeExecutor.class, registry);
-        bind(new SandboxService());   // disabled (enabled=false) — releaseSandbox no-ops; START -> END runs no CODE node
-        bind(new NotificationEventPublisher());
-        bind(NotificationService.class);
-        bind(WorkflowRunner.class);
-        bind(WorkflowRunnerJob.class);   // claim sweep + stranded-PAUSED recovery, exercised by the resume tests
+        bindWorkflowServices();
 
         // The test connects to a real Mongo (localhost:27017) which has notablescan=1,
         // so every query must be covered by an index. These indexes are normally created
@@ -100,5 +76,33 @@ public class WorkflowTestModule extends AbstractTestModule {
                 Indexes.ascending("status"), Indexes.ascending("type"),
                 Indexes.ascending("name_key"), Indexes.ascending("_id")));
         });
+    }
+
+    private void bindWorkflowServices() {
+        bind(WorkflowDefinitionService.class);
+        bind(WorkflowAgentOptionService.class);
+        bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
+        bind(WorkflowAgentSnapshotService.class);
+        bind(WorkflowPrivateAgentSafetyValidator.class);
+        bind(WorkflowPublishService.class);
+        // bind the graph-loader seam before WorkflowRunService: the framework injects eagerly at bind() time, so a
+        // dependency must already be registered when its dependent is bound.
+        var graphLoader = bind(MongoWorkflowGraphLoader.class);
+        bind(WorkflowGraphLoader.class, graphLoader);
+        bind(WorkflowRunService.class);
+        // bind the sub-workflow gateway before the executor/runner that depend on it because injection is eager
+        var workflowRunGateway = bind(MongoWorkflowRunGateway.class);
+        bind(WorkflowRunGateway.class, workflowRunGateway);
+        var registry = new NodeExecutorRegistry(Map.of(
+            NodeType.START, new StartExecutor(),
+            NodeType.END, new EndExecutor(),
+            NodeType.HUMAN_INPUT, new HumanInputExecutor(),
+            NodeType.WORKFLOW, new WorkflowExecutor(workflowRunGateway, 5)));
+        bind(NodeExecutor.class, registry);
+        bind(new SandboxService());   // disabled (enabled=false) — releaseSandbox no-ops; START -> END runs no CODE node
+        bind(new NotificationEventPublisher());
+        bind(NotificationService.class);
+        bind(WorkflowRunner.class);
+        bind(WorkflowRunnerJob.class);   // claim sweep + stranded-PAUSED recovery, exercised by the resume tests
     }
 }

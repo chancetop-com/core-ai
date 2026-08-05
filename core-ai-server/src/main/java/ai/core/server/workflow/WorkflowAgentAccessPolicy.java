@@ -8,10 +8,10 @@ import ai.core.server.domain.AgentStatus;
  */
 public final class WorkflowAgentAccessPolicy {
     public static boolean isOwnedEditable(AgentDefinition agent, String userId) {
-        return agent != null
-               && !Boolean.TRUE.equals(agent.systemDefault)
-               && userId != null
-               && userId.equals(agent.userId);
+        return userId != null
+               && agent != null
+               && userId.equals(agent.userId)
+               && !Boolean.TRUE.equals(agent.systemDefault);
     }
 
     static boolean hasUsablePublishedConfig(AgentDefinition agent) {

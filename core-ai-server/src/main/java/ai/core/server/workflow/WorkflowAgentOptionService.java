@@ -15,7 +15,6 @@ import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import org.bson.conversions.Bson;
 
-import java.util.List;
 import java.util.regex.Pattern;
 
 /**
@@ -25,12 +24,46 @@ public class WorkflowAgentOptionService {
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 50;
 
+    static Bson filter(String scope, DefinitionType type, String query, String userId) {
+        Bson scopeFilter = switch (scope) {
+            case "mine" -> Filters.and(
+                Filters.eq("user_id", userId),
+                Filters.ne("system_default", Boolean.TRUE),
+                Filters.eq("type", type));
+            case "shared" -> Filters.and(
+                Filters.eq("status", AgentStatus.PUBLISHED),
+                Filters.exists("published_config", true),
+                Filters.ne("published_config", null),
+                Filters.eq("type", type),
+                Filters.or(Filters.eq("system_default", Boolean.TRUE), Filters.ne("user_id", userId)));
+            default -> throw new BadRequestException("invalid scope: " + scope);
+        };
+        var prefix = AgentNameKey.normalize(query);
+        if (prefix.isEmpty()) return scopeFilter;
+        return Filters.and(scopeFilter,
+            Filters.regex("name_key", Pattern.compile("^" + Pattern.quote(prefix))));
+    }
+
+    static WorkflowAgentOptionView toView(AgentDefinition agent, String userId) {
+        var view = new WorkflowAgentOptionView();
+        view.id = agent.id;
+        view.name = agent.name;
+        view.type = agent.type.name();
+        view.status = agent.status.name();
+        view.ownership = Boolean.TRUE.equals(agent.systemDefault)
+            ? "SYSTEM"
+            : userId.equals(agent.userId) ? "MINE" : "SHARED";
+        view.updatedAt = agent.updatedAt;
+        return view;
+    }
+
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
 
     public ListWorkflowAgentOptionsResponse list(String userId, ListWorkflowAgentOptionsRequest request) {
-        var scope = scope(request == null ? null : request.scope);
-        var type = type(request == null ? null : request.type);
+        if (request == null) throw new BadRequestException("invalid scope: null");
+        var scope = scope(request.scope);
+        var type = type(request.type);
         int page = request.page == null ? 1 : Math.max(1, request.page);
         int limit = request.limit == null ? DEFAULT_LIMIT : Math.min(MAX_LIMIT, Math.max(1, request.limit));
         var filter = filter(scope, type, request.query, userId);
@@ -76,39 +109,6 @@ public class WorkflowAgentOptionService {
             .orElse(null);
     }
 
-    static Bson filter(String scope, DefinitionType type, String query, String userId) {
-        Bson scopeFilter = switch (scope) {
-            case "mine" -> Filters.and(
-                Filters.eq("user_id", userId),
-                Filters.ne("system_default", true),
-                Filters.eq("type", type));
-            case "shared" -> Filters.and(
-                Filters.eq("status", AgentStatus.PUBLISHED),
-                Filters.exists("published_config", true),
-                Filters.ne("published_config", null),
-                Filters.eq("type", type),
-                Filters.or(Filters.eq("system_default", true), Filters.ne("user_id", userId)));
-            default -> throw new BadRequestException("invalid scope: " + scope);
-        };
-        var prefix = AgentNameKey.normalize(query);
-        if (prefix.isEmpty()) return scopeFilter;
-        return Filters.and(scopeFilter,
-            Filters.regex("name_key", Pattern.compile("^" + Pattern.quote(prefix))));
-    }
-
-    static WorkflowAgentOptionView toView(AgentDefinition agent, String userId) {
-        var view = new WorkflowAgentOptionView();
-        view.id = agent.id;
-        view.name = agent.name;
-        view.type = agent.type.name();
-        view.status = agent.status.name();
-        view.ownership = Boolean.TRUE.equals(agent.systemDefault)
-            ? "SYSTEM"
-            : userId.equals(agent.userId) ? "MINE" : "SHARED";
-        view.updatedAt = agent.updatedAt;
-        return view;
-    }
-
     private String scope(String scope) {
         if ("mine".equals(scope) || "shared".equals(scope)) return scope;
         throw new BadRequestException("invalid scope: " + scope);
@@ -119,7 +119,7 @@ public class WorkflowAgentOptionService {
         try {
             return DefinitionType.valueOf(type);
         } catch (IllegalArgumentException e) {
-            throw new BadRequestException("invalid type: " + type);
+            throw new BadRequestException("invalid type: " + type, "BAD_REQUEST", e);
         }
     }
 }

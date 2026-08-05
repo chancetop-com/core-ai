@@ -12,6 +12,7 @@ import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import org.bson.BsonDocument;
 import org.bson.BsonValue;
+import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -38,7 +39,7 @@ class WorkflowAgentOptionServiceTest {
 
         assertEquals(USER_ID, field(filter, "user_id").getString("user_id").getValue());
         assertEquals("AGENT", field(filter, "type").getString("type").getValue());
-        assertEquals(true, field(filter, "system_default").getDocument("system_default").getBoolean("$ne").getValue());
+        assertTrue(field(filter, "system_default").getDocument("system_default").getBoolean("$ne").getValue());
         assertEquals("^\\Qrev\\E", field(filter, "name_key").getRegularExpression("name_key").getPattern());
         assertFalse(filter.toJson().contains("\"status\""));
         assertFalse(filter.toJson().contains("\"published_config\""));
@@ -199,7 +200,7 @@ class WorkflowAgentOptionServiceTest {
         var service = service();
         var item = agent("a1", USER_ID, DefinitionType.AGENT, AgentStatus.DRAFT, false, false);
         when(service.agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of(item));
-        when(service.agentDefinitionCollection.count(any(org.bson.conversions.Bson.class))).thenReturn(7L);
+        when(service.agentDefinitionCollection.count(any(Bson.class))).thenReturn(7L);
 
         var response = service.list(USER_ID, request("mine", "AGENT"));
 
@@ -291,7 +292,7 @@ class WorkflowAgentOptionServiceTest {
         var service = new WorkflowAgentOptionService();
         service.agentDefinitionCollection = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         when(service.agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of());
-        when(service.agentDefinitionCollection.count(any(org.bson.conversions.Bson.class))).thenReturn(0L);
+        when(service.agentDefinitionCollection.count(any(Bson.class))).thenReturn(0L);
         return service;
     }
 
@@ -317,10 +318,12 @@ class WorkflowAgentOptionServiceTest {
         return agent;
     }
 
-    private BsonDocument bson(org.bson.conversions.Bson value) {
+    @SuppressWarnings("PMD.LooseCoupling")
+    private BsonDocument bson(Bson value) {
         return value.toBsonDocument(BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
     }
 
+    @SuppressWarnings("PMD.LooseCoupling")
     private BsonDocument field(BsonDocument document, String name) {
         if (document.containsKey(name)) return document;
         for (BsonValue value : document.values()) {
@@ -338,6 +341,7 @@ class WorkflowAgentOptionServiceTest {
         throw new AssertionError("missing BSON field: " + name + " in " + document.toJson());
     }
 
+    @SuppressWarnings("PMD.LooseCoupling")
     private BsonDocument nullableField(BsonDocument document, String name) {
         try {
             return field(document, name);

@@ -22,6 +22,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class AgentExecutableConfigFactoryTest {
     @Test
     void editableFactoryCopiesEveryExecutableFieldWithoutAliasing() {
+        var source = fullyConfiguredEditableDefinition();
+        AgentPublishedConfig config = AgentExecutableConfigFactory.fromEditableDefinition(source);
+
+        mutateEditableDefinition(source);
+
+        assertEditableCopy(source, config);
+    }
+
+    private AgentDefinition fullyConfiguredEditableDefinition() {
         var sandbox = new AgentSandboxConfig();
         sandbox.environmentVariables = new HashMap<>(Map.of("TOKEN", "original"));
         var dataset = new AgentDatasetConfig();
@@ -47,13 +56,17 @@ class AgentExecutableConfigFactoryTest {
         source.enableMemory = Boolean.FALSE;
         source.sandboxConfig = sandbox;
         source.datasetConfig = new ArrayList<>(List.of(dataset));
+        return source;
+    }
 
-        AgentPublishedConfig config = AgentExecutableConfigFactory.fromEditableDefinition(source);
+    private void mutateEditableDefinition(AgentDefinition source) {
         source.tools.getFirst().id = "changed-tool";
         source.variables.put("locale", "changed");
         source.sandboxConfig.environmentVariables.put("TOKEN", "changed");
         source.datasetConfig.getFirst().isOutput = Boolean.TRUE;
+    }
 
+    private void assertEditableCopy(AgentDefinition source, AgentPublishedConfig config) {
         assertEquals("review changes", config.systemPrompt);
         assertEquals("prompt-1", config.systemPromptId);
         assertEquals("model-1", config.model);

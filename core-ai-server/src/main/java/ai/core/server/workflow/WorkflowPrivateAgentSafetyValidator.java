@@ -75,15 +75,18 @@ public class WorkflowPrivateAgentSafetyValidator {
             errors.add("node " + nodeId + " has a malformed private agent snapshot");
             return;
         }
+        AgentPublishedConfig config;
         try {
-            AgentPublishedConfig config = JSON.fromJSON(AgentPublishedConfig.class, snapshotJson);
-            if (config == null) {
-                throw new IllegalArgumentException("null private agent snapshot");
-            }
-            validateConfig(nodeId, config, errors);
+            config = JSON.fromJSON(AgentPublishedConfig.class, snapshotJson);
         } catch (RuntimeException e) {
             errors.add("node " + nodeId + " has a malformed private agent snapshot");
+            return;
         }
+        if (config == null) {
+            errors.add("node " + nodeId + " has a malformed private agent snapshot");
+            return;
+        }
+        validateConfig(nodeId, config, errors);
     }
 
     private void validateConfig(String nodeId, AgentPublishedConfig config, List<String> errors) {

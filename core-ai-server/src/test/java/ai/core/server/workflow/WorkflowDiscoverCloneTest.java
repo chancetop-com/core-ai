@@ -32,6 +32,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -138,8 +139,8 @@ class WorkflowDiscoverCloneTest {
         assertTrue(publishService.validate(workflow).isEmpty());
         WorkflowPublishedVersion preview = publishService.createPreviewVersion(workflow.id, "owner");
         WorkflowPublishedVersion saved = publishService.saveVersion(workflow.id, "owner");
-        assertTrue(Boolean.TRUE.equals(preview.preview));
-        assertFalse(Boolean.TRUE.equals(saved.preview));
+        assertEquals(Boolean.TRUE, preview.preview);
+        assertNotEquals(Boolean.TRUE, saved.preview);
 
         WorkflowValidationException error = assertThrows(WorkflowValidationException.class,
             () -> publishService.publishVersion(workflow.id, saved.id, "owner"));
