@@ -531,6 +531,7 @@ export default function WorkflowEditor() {
             if (!(await saveDraft())) throw new Error('Save failed');
             const validation = await api.workflows.validate(id);
             if (!validation.valid) {
+              setShowRun(false);
               applyNodeErrors(validation.errors);
               throw new Error(`Cannot run: ${validation.errors.join('; ')}`);
             }
