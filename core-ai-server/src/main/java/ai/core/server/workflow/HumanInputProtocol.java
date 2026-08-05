@@ -8,6 +8,7 @@ import core.framework.json.JSON;
 import core.framework.web.exception.BadRequestException;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -54,12 +55,12 @@ public final class HumanInputProtocol {
                 throw new BadRequestException("required field missing: " + name);
             }
             if (value != null && field.get("type") instanceof String type) {
-                checkType(name, type, value);
+                checkType(name, type, value, field);
             }
         }
     }
 
-    private static void checkType(String name, String type, Object value) {
+    private static void checkType(String name, String type, Object value, Map<String, Object> field) {
         boolean ok = switch (type) {
             case "number" -> value instanceof Number;
             case "boolean" -> value instanceof Boolean;
@@ -67,6 +68,17 @@ public final class HumanInputProtocol {
             default -> true;
         };
         if (!ok) throw new BadRequestException("field '" + name + "' must be of type " + type);
+        if ("select".equals(type) && value instanceof String selected && !options(field).contains(selected)) {
+            throw new BadRequestException("field '" + name + "' must be one of the configured options");
+        }
+    }
+
+    private static List<String> options(Map<String, Object> field) {
+        if (!(field.get("options") instanceof String options)) return List.of();
+        return Arrays.stream(options.split(","))
+            .map(String::trim)
+            .filter(option -> !option.isEmpty())
+            .toList();
     }
 
     @SuppressWarnings("unchecked")
@@ -97,6 +109,7 @@ public final class HumanInputProtocol {
             view.type = field.get("type") instanceof String type ? type : null;
             view.label = field.get("label") instanceof String label ? label : null;
             view.required = field.get("required") instanceof Boolean required ? required : Boolean.FALSE;
+            view.options = field.get("options") instanceof String options ? options : null;
             views.add(view);
         }
         return views;

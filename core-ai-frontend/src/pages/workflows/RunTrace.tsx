@@ -397,6 +397,11 @@ function ResumeForm({ node, ask, busy, onSubmit }: {
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text)' }}>
                   <input type="checkbox" checked={!!form[f.name]} disabled={busy} onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.checked }))} /> {f.name}
                 </label>
+              ) : f.type === 'select' ? (
+                <select value={String(form[f.name] ?? '')} disabled={busy} onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))} style={resumeInput}>
+                  <option value="">— select —</option>
+                  {(f.options ?? '').split(',').map((option) => option.trim()).filter(Boolean).map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
               ) : f.type === 'paragraph' ? (
                 <textarea value={String(form[f.name] ?? '')} disabled={busy} onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))} rows={3} style={{ ...resumeInput, resize: 'vertical' }} />
               ) : (

@@ -67,6 +67,9 @@ export default function HumanInputConfig({ node, nodes, edges, onChange }: Props
                 <button onClick={() => set({ fields: fields.filter((_, j) => j !== i) })} style={iconBtnSmall} title="Remove"><X size={12} /></button>
               </div>
               <input placeholder="label (optional)" value={f.label ?? ''} onChange={(e) => patchField(i, { label: e.target.value })} style={{ ...widgetInput, width: '100%', boxSizing: 'border-box', marginTop: 5 }} />
+              {f.type === 'select' && (
+                <input placeholder="options, comma-separated" value={f.options ?? ''} onChange={(e) => patchField(i, { options: e.target.value })} style={{ ...widgetInput, width: '100%', boxSizing: 'border-box', marginTop: 5 }} />
+              )}
               <label style={checkRow}>
                 <input type="checkbox" checked={!!f.required} onChange={(e) => patchField(i, { required: e.target.checked })} /> required
               </label>

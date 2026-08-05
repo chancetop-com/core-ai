@@ -20,4 +20,7 @@ public class PendingInputFieldView {
 
     @Property(name = "required")
     public Boolean required;
+
+    @Property(name = "options")
+    public String options;
 }

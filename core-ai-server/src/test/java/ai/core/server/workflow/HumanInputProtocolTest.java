@@ -31,8 +31,10 @@ class HumanInputProtocolTest {
         assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, null, null));                       // required missing
         assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, null, "{\"reason\":\"  \"}"));      // required blank
         assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, null, "{\"reason\":\"ok\",\"count\":\"3\"}"));   // wrong type
+        assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, null, "{\"reason\":\"ok\",\"decision\":\"later\"}"));
         assertThrows(BadRequestException.class, () -> HumanInputProtocol.validate(node, null, "not json"));
         assertDoesNotThrow(() -> HumanInputProtocol.validate(node, null, "{\"reason\":\"ok\",\"count\":3}"));
+        assertDoesNotThrow(() -> HumanInputProtocol.validate(node, null, "{\"reason\":\"ok\",\"decision\":\"approve\"}"));
         assertDoesNotThrow(() -> HumanInputProtocol.validate(node, null, "{\"reason\":\"ok\"}"));   // optional field omitted
     }
 
@@ -44,10 +46,11 @@ class HumanInputProtocolTest {
         assertEquals("n1", view.nodeId);
         assertEquals("input", view.mode);
         assertEquals("please review", view.prompt);
-        assertEquals(2, view.fields.size());
+        assertEquals(3, view.fields.size());
         assertEquals("reason", view.fields.getFirst().name);
         assertTrue(view.fields.getFirst().required);
         assertEquals("number", view.fields.get(1).type);
+        assertEquals("approve, reject", view.fields.get(2).options);
     }
 
     @Test
@@ -77,6 +80,7 @@ class HumanInputProtocolTest {
             "mode", "input", "prompt", "please review",
             "fields", List.of(
                 Map.of("name", "reason", "type", "text", "label", "Reason", "required", Boolean.TRUE),
-                Map.of("name", "count", "type", "number", "required", Boolean.FALSE))));
+                Map.of("name", "count", "type", "number", "required", Boolean.FALSE),
+                Map.of("name", "decision", "type", "select", "options", "approve, reject", "required", Boolean.FALSE))));
     }
 }

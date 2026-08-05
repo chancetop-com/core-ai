@@ -175,4 +175,22 @@ class WorkflowValidatorTest {
         assertTrue(has(WorkflowValidator.validate(graph),
             "node wf (WORKFLOW) is missing required config: version_id"));
     }
+
+    @Test
+    void humanInputSelectFieldWithoutOptionsRejected() {
+        WorkflowGraph graph = WorkflowGraphParser.parse("""
+            {"nodes": [
+               {"id": "start", "type": "START"},
+               {"id": "human", "type": "HUMAN_INPUT", "config": {
+                  "mode": "input",
+                  "fields": [{"name": "decision", "type": "select", "options": " , "}]}},
+               {"id": "end", "type": "END"}],
+             "edges": [
+               {"id": "e0", "source": "start", "target": "human"},
+               {"id": "e1", "source": "human", "target": "end"}]}
+            """);
+
+        assertTrue(has(WorkflowValidator.validate(graph),
+            "node human (HUMAN_INPUT) select field decision needs at least one option"));
+    }
 }

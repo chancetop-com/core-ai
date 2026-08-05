@@ -1,7 +1,7 @@
 import type { Edge } from '@xyflow/react';
 import type { WorkflowRFNode } from './graph';
 
-interface InputVar { name?: string }
+interface InputVar { name?: string; type?: string; options?: string }
 interface Case { edge_id?: string; conditions?: { selector?: string }[] }
 
 /**
@@ -88,6 +88,9 @@ function humanInputIssues(cfg: Record<string, unknown>, nodeId: string, edges: E
     const fields = Array.isArray(cfg.fields) ? (cfg.fields as InputVar[]) : [];
     if (fields.length === 0) issues.push('Add at least one form field.');
     if (fields.some((f) => !String(f.name ?? '').trim())) issues.push('Every form field needs a name.');
+    fields
+      .filter((f) => f.type === 'select' && !String(f.options ?? '').split(',').some((option) => option.trim()))
+      .forEach((f) => issues.push(`Select field "${String(f.name ?? '').trim()}" needs at least one option.`));
   } else {
     const approve = String(cfg.approve_edge_id ?? '');
     const reject = String(cfg.reject_edge_id ?? '');

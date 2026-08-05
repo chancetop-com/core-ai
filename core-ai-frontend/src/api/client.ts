@@ -888,6 +888,7 @@ export interface PendingInputFieldView {
   type?: string;
   label?: string;
   required?: boolean;
+  options?: string;
 }
 
 // present on single-run reads when status is PAUSED: the human waits blocking the run and how to resume each

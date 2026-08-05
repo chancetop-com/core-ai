@@ -6,8 +6,10 @@ import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -89,7 +91,22 @@ public final class WorkflowValidator {
                 requireConfig(node, "source_workflow_id", errors);
                 requireConfig(node, "version_id", errors);
             }
+            case HUMAN_INPUT -> validateHumanInputConfig(node, errors);
             default -> { /* other types carry no publish-time required config here */ }
+        }
+    }
+
+    private static void validateHumanInputConfig(WorkflowNode node, List<String> errors) {
+        if (!"input".equals(node.config().get("mode")) || !(node.config().get("fields") instanceof List<?> fields)) {
+            return;
+        }
+        for (Object item : fields) {
+            if (!(item instanceof Map<?, ?> field) || !"select".equals(field.get("type"))) continue;
+            String options = field.get("options") instanceof String value ? value : "";
+            if (Arrays.stream(options.split(",")).noneMatch(option -> !option.isBlank())) {
+                errors.add("node " + node.id() + " (HUMAN_INPUT) select field " + field.get("name")
+                    + " needs at least one option");
+            }
         }
     }
 
