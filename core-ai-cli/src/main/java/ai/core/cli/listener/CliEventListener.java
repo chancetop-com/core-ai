@@ -104,7 +104,8 @@ public class CliEventListener extends BaseEventListener {
         Long outputTokens = event != null ? event.outputTokens : null;
         var details = agent.getCurrentTokenUsage().getPromptTokensDetails();
         Long cachedTokens = details != null ? (long) details.cachedTokens : null;
-        panel.turnSummary(elapsed, inputTokens, outputTokens, cachedTokens);
+        Double costUsd = event != null ? event.costUsd : null;
+        panel.turnSummary(elapsed, inputTokens, outputTokens, cachedTokens, costUsd);
     }
 
     @Override

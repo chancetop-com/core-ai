@@ -252,9 +252,9 @@ public class BaseEventListener implements AgentEventListener {
         long elapsed = panel.getSpinner().getElapsedMs();
         var event = lastTurnComplete.get();
         if (event != null && event.inputTokens != null && event.outputTokens != null) {
-            panel.turnSummary(elapsed, event.inputTokens, event.outputTokens, null);
+            panel.turnSummary(elapsed, event.inputTokens, event.outputTokens, null, event.costUsd);
         } else {
-            panel.turnSummary(elapsed, null, null, null);
+            panel.turnSummary(elapsed, null, null, null, null);
         }
     }
 

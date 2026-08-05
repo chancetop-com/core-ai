@@ -55,7 +55,8 @@ public class SummarizePdfTool extends ToolCall {
                 null, null, null, null)));
         var targetModel = resolveModel(context);
         var rsp = llmProvider.completion(CompletionRequest.of(messages, List.of(), null, targetModel, null));
-        return ToolCallResult.completed(rsp.choices.getFirst().message.content);
+        return ToolCallResult.completed(rsp.choices.getFirst().message.content)
+                .withLlmUsage(targetModel, rsp.usage);
     }
 
     @Override

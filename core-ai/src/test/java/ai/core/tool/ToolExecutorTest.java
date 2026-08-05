@@ -3,6 +3,7 @@ package ai.core.tool;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.llm.domain.FunctionCall;
+import ai.core.llm.domain.Usage;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.SessionStreamingCallback;
 import ai.core.sandbox.SandboxFile;
@@ -141,6 +142,45 @@ class ToolExecutorTest {
         } finally {
             tracerProvider.shutdown();
         }
+    }
+
+    @Test
+    void forwardsLlmUsageOfToolToConsumer() {
+        var capturedModel = new AtomicReference<String>();
+        var capturedUsage = new AtomicReference<Usage>();
+        var executor = new ToolExecutor(List.of(), null, status -> { },
+                (model, usage) -> {
+                    capturedModel.set(model);
+                    capturedUsage.set(usage);
+                }, () -> null);
+        var tool = new FakeToolCall("caption_image", false) {
+            @Override
+            public ToolCallResult execute(String arguments) {
+                return ToolCallResult.completed("a caption")
+                        .withLlmUsage("gpt-4o", new Usage(120, 30, 150));
+            }
+        };
+        var functionCall = FunctionCall.of("call_1", "function", "caption_image", "{}");
+
+        var result = executor.execute(tool, functionCall, ExecutionContext.empty());
+
+        assertEquals("gpt-4o", capturedModel.get());
+        assertEquals(120, capturedUsage.get().getPromptTokens());
+        assertEquals(30, capturedUsage.get().getCompletionTokens());
+        assertEquals("gpt-4o", result.getLlmModel());
+        assertTrue(result.getLlmCostUsd() > 0);
+    }
+
+    @Test
+    void doesNotForwardLlmUsageWhenToolHasNone() {
+        var capturedModel = new AtomicReference<String>();
+        var executor = new ToolExecutor(List.of(), null, status -> { },
+                (model, usage) -> capturedModel.set(model), () -> null);
+        var functionCall = FunctionCall.of("call_1", "function", "read_file", "{}");
+
+        executor.execute(tool("read_file", false), functionCall, ExecutionContext.empty());
+
+        assertNull(capturedModel.get());
     }
 
     // Sandbox-intercepted tools run through a separate traceToolSpan() call site than the

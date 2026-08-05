@@ -4,6 +4,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.agent.NodeStatus;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.domain.FunctionCall;
+import ai.core.llm.domain.Usage;
 import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.tools.WriteFileTool;
@@ -29,6 +30,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -54,6 +56,9 @@ public class ToolExecutor {
     private final List<AbstractLifecycle> lifecycles;
     private final AgentTracer tracer;
     private final Consumer<NodeStatus> statusUpdater;
+    // Receives the token usage of an LLM call made inside a tool (e.g. caption_image),
+    // so the agent can accumulate it into session usage/cost.
+    private final BiConsumer<String, Usage> llmUsageConsumer;
     // Supplies the span context of the LLM call that triggered the current tool batch, scoped to the owning agent.
     // Provided by the agent so a sub-agent's tool spans nest under the sub-agent's own LLM span.
     private final Supplier<SpanContext> llmSpanContextSupplier;
@@ -61,9 +66,15 @@ public class ToolExecutor {
 
     public ToolExecutor(List<AbstractLifecycle> lifecycles, AgentTracer tracer, Consumer<NodeStatus> statusUpdater,
                         Supplier<SpanContext> llmSpanContextSupplier) {
+        this(lifecycles, tracer, statusUpdater, null, llmSpanContextSupplier);
+    }
+
+    public ToolExecutor(List<AbstractLifecycle> lifecycles, AgentTracer tracer, Consumer<NodeStatus> statusUpdater,
+                        BiConsumer<String, Usage> llmUsageConsumer, Supplier<SpanContext> llmSpanContextSupplier) {
         this.lifecycles = lifecycles;
         this.tracer = tracer;
         this.statusUpdater = statusUpdater;
+        this.llmUsageConsumer = llmUsageConsumer;
         this.llmSpanContextSupplier = llmSpanContextSupplier;
     }
 
@@ -145,6 +156,7 @@ public class ToolExecutor {
         }
 
         result.withToolName(tool.getName()).withDuration(System.currentTimeMillis() - startTime);
+        consumeLlmUsage(result);
         handleAsyncResult(result, tool, functionCall, context);
 
         if (saveToFile != null && result.isCompleted()) {
@@ -268,6 +280,11 @@ public class ToolExecutor {
         }
         var llmSpanContext = llmSpanContextSupplier != null ? llmSpanContextSupplier.get() : null;
         return tracer.traceToolCall(functionCall.function.name, functionCall.function.arguments, llmSpanContext, isSubAgent, action);
+    }
+
+    private void consumeLlmUsage(ToolCallResult result) {
+        if (result.getLlmUsage() == null || llmUsageConsumer == null) return;
+        llmUsageConsumer.accept(result.getLlmModel(), result.getLlmUsage());
     }
 
     private void handleAsyncResult(ToolCallResult result, ToolCall tool, FunctionCall functionCall, ExecutionContext context) {

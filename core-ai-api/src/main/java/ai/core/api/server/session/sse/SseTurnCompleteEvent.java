@@ -20,4 +20,7 @@ public class SseTurnCompleteEvent extends SseBaseEvent {
 
     @Property(name = "output_tokens")
     public Long outputTokens;
+
+    @Property(name = "cost_usd")
+    public Double costUsd;
 }

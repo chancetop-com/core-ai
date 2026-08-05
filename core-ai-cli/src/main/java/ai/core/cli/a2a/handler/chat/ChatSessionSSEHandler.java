@@ -296,6 +296,9 @@ public class ChatSessionSSEHandler implements HttpHandler {
                 data.put("input_tokens", event.inputTokens);
                 data.put("output_tokens", event.outputTokens);
             }
+            if (event.costUsd != null) {
+                data.put("cost_usd", event.costUsd);
+            }
             enqueueSseEvent("turn_complete", data);
             // Close SSE connection after turn complete to ensure all tool events are sent
             // This is the proper time to close - after all events for this turn have been dispatched

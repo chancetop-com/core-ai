@@ -115,6 +115,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.maxTurnsReached = event.maxTurnsReached;
         sse.inputTokens = event.inputTokens;
         sse.outputTokens = event.outputTokens;
+        sse.costUsd = event.costUsd;
         eventPublisher.publish(sessionId, sse);
     }
 

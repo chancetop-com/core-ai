@@ -40,6 +40,10 @@ public class ThinkingSpinner {
         return minutes + "m " + secs + "s";
     }
 
+    public static String formatCostUsd(double costUsd) {
+        return "$" + String.format("%.6f", costUsd).replaceAll("0+$", "").replaceAll("\\.$", "");
+    }
+
     private final PrintWriter writer;
     private final IntSupplier widthSupplier;
     private volatile Thread thread;

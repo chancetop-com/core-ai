@@ -3,6 +3,7 @@ package ai.core.agent;
 import ai.core.agent.formatter.Formatter;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.listener.MessageUpdatedEventListener;
+import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.document.Tokenizer;
 import ai.core.llm.domain.Message;
@@ -54,6 +55,7 @@ public abstract class Node<T extends Node<T>> {
     private final List<Termination> terminations;
     private final List<Message> messages;
     private final Usage currentTokenUsage = new Usage();
+    private double currentCostUsd;
     private final Map<String, Object> systemVariables = Maps.newHashMap();
     private final Pattern compiledPattern = Pattern.compile(NAME_REGEX_PATTERN);
     List<AbstractLifecycle> agentLifecycles = Lists.newArrayList();
@@ -130,6 +132,10 @@ public abstract class Node<T extends Node<T>> {
 
     public Usage getCurrentTokenUsage() {
         return this.currentTokenUsage;
+    }
+
+    public double getCurrentCostUsd() {
+        return this.currentCostUsd;
     }
 
     public Node<?> getParentNode() {
@@ -358,6 +364,23 @@ public abstract class Node<T extends Node<T>> {
         if (this.parent != null) this.parent.addTokenCost(cost);
         var ctx = this.executionContext;
         if (ctx != null && ctx.getTokenCostCallback() != null) ctx.getTokenCostCallback().accept(cost);
+    }
+
+    /**
+     * Accumulates the token usage and estimated cost of an LLM call made inside a tool
+     * (e.g. caption_image), mirroring addTokenCost plus the session cost tally.
+     */
+    public void addLlmUsage(String model, Usage usage) {
+        if (usage == null) return;
+        this.currentTokenUsage.add(usage);
+        if (this.parent != null) this.parent.addLlmUsage(model, usage);
+        var ctx = this.executionContext;
+        if (ctx != null && ctx.getTokenCostCallback() != null) ctx.getTokenCostCallback().accept(usage);
+        var cachedTokens = usage.getPromptTokensDetails() != null
+                ? usage.getPromptTokensDetails().cachedTokens : 0;
+        var cost = LLMModelContextRegistry.getInstance().estimateCostUsd(
+                model, usage.getPromptTokens(), usage.getCompletionTokens(), cachedTokens);
+        if (cost != null) this.currentCostUsd += cost;
     }
 
     public void setParentNode(Node<?> parent) {

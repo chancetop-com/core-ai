@@ -1,6 +1,7 @@
 package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.llm.domain.Usage;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -62,7 +63,8 @@ public final class UnderstandVideoTool extends ToolCall {
                     .withStats("file_cache", result.fileCache())
                     .withStats("prompt_tokens", result.promptTokens())
                     .withStats("completion_tokens", result.completionTokens())
-                    .withStats("total_tokens", result.totalTokens());
+                    .withStats("total_tokens", result.totalTokens())
+                    .withLlmUsage(model, new Usage((int) result.promptTokens(), (int) result.completionTokens(), (int) result.totalTokens()));
         } catch (Exception e) {
             return ToolCallResult.failed("Video understanding failed: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         }

@@ -1,5 +1,7 @@
 package ai.core.tool;
 
+import ai.core.llm.LLMModelContextRegistry;
+import ai.core.llm.domain.Usage;
 import core.framework.util.Strings;
 
 import java.util.HashMap;
@@ -67,6 +69,10 @@ public final class ToolCallResult {
     private Boolean directReturn;
     private RuntimeException runtimeException;
 
+    private String llmModel;
+    private Usage llmUsage;
+    private Double llmCostUsd;
+
     private ContentType type = ContentType.TEXT;
     private String imageBase64;
     private String imageFormat;
@@ -78,8 +84,8 @@ public final class ToolCallResult {
     @Override
     public String toString() {
         return Strings.format(
-                "ToolCallResult{status={}, toolName='{}', durationMs={}, result='{}', stats={}, taskId='{}'}",
-                status, toolName, durationMs, result, stats, taskId
+                "ToolCallResult{status={}, toolName='{}', durationMs={}, result='{}', stats={}, taskId='{}', llmModel='{}', llmCostUsd={}}",
+                status, toolName, durationMs, result, stats, taskId, llmModel, llmCostUsd
         );
     }
 
@@ -172,6 +178,34 @@ public final class ToolCallResult {
     public ToolCallResult withRuntimeException(RuntimeException runtimeException) {
         this.runtimeException = runtimeException;
         return this;
+    }
+
+    /**
+     * Attaches the token usage and estimated cost of an LLM call made inside this tool
+     * (e.g. caption_image), so the agent can accumulate them into session usage/cost.
+     */
+    public ToolCallResult withLlmUsage(String model, Usage usage) {
+        this.llmModel = model;
+        this.llmUsage = usage;
+        if (usage != null) {
+            var cachedTokens = usage.getPromptTokensDetails() != null
+                    ? usage.getPromptTokensDetails().cachedTokens : 0;
+            this.llmCostUsd = LLMModelContextRegistry.getInstance().estimateCostUsd(
+                    model, usage.getPromptTokens(), usage.getCompletionTokens(), cachedTokens);
+        }
+        return this;
+    }
+
+    public String getLlmModel() {
+        return llmModel;
+    }
+
+    public Usage getLlmUsage() {
+        return llmUsage;
+    }
+
+    public Double getLlmCostUsd() {
+        return llmCostUsd;
     }
 
     public ContentType getType() {

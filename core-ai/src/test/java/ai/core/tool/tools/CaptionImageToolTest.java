@@ -93,6 +93,19 @@ class CaptionImageToolTest {
     }
 
     @Test
+    void attachLlmUsageAndCostToResult() {
+        var context = contextWithProvider();
+        context.setMultiModalModel("gpt-4o");
+
+        var result = tool.execute(PARAMS, context);
+
+        assertEquals("gpt-4o", result.getLlmModel());
+        assertEquals(120, result.getLlmUsage().getPromptTokens());
+        assertEquals(30, result.getLlmUsage().getCompletionTokens());
+        assertTrue(result.getLlmCostUsd() > 0);
+    }
+
+    @Test
     void throwWhenNoUrlProvided() {
         var context = contextWithProvider();
         context.setMultiModalModel("vision-model");
@@ -130,7 +143,7 @@ class CaptionImageToolTest {
             lastRequest = request;
             var response = new CompletionResponse();
             response.choices = List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "a caption")));
-            response.usage = new Usage();
+            response.usage = new Usage(120, 30, 150);
             return response;
         }
 

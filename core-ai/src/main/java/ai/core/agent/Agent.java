@@ -207,7 +207,8 @@ public class Agent extends Node<Agent> {
 
     private ToolExecutor getToolExecutor() {
         if (toolExecutor == null) {
-            toolExecutor = new ToolExecutor(agentLifecycles, getTracer(), this::updateNodeStatus, () -> this.lastLLMSpanContext);
+            toolExecutor = new ToolExecutor(agentLifecycles, getTracer(), this::updateNodeStatus,
+                    this::addLlmUsage, () -> this.lastLLMSpanContext);
         }
         toolExecutor.setAuthenticated(authenticated);
         return toolExecutor;

@@ -118,12 +118,13 @@ public class InProcessAgentSession implements AgentSession {
         var usageBefore = agent.getCurrentTokenUsage();
         long inputBefore = usageBefore.getPromptTokens();
         long outputBefore = usageBefore.getCompletionTokens();
+        double costBefore = agent.getCurrentCostUsd();
 
         try {
             if (batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT) {
-                executeUserInput(batch.values(), inputBefore, outputBefore);
+                executeUserInput(batch.values(), inputBefore, outputBefore, costBefore);
             } else if (batch.mode() == SessionCommandQueue.CommandMode.TASK_NOTIFICATION) {
-                executeTaskNotifications(batch.values(), inputBefore, outputBefore);
+                executeTaskNotifications(batch.values(), inputBefore, outputBefore, costBefore);
             }
         } catch (ToolCallDeniedException e) {
             debug("tool call denied: " + e.getMessage());
@@ -169,7 +170,7 @@ public class InProcessAgentSession implements AgentSession {
         }
     }
 
-    private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore) {
+    private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore) {
         var combined = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("agent run starting");
         String result;
@@ -188,7 +189,7 @@ public class InProcessAgentSession implements AgentSession {
                 agent.save(sessionId);
             }
             var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
-            populateTokenUsage(turnComplete, inputBefore, outputBefore);
+            populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
             turnComplete.maxTurnsReached = Boolean.TRUE;
             dispatch(turnComplete);
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
@@ -210,12 +211,12 @@ public class InProcessAgentSession implements AgentSession {
         }
         debug("agent run completed");
         var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
-        populateTokenUsage(turnComplete, inputBefore, outputBefore);
+        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
         dispatch(turnComplete);
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
     }
 
-    private void executeTaskNotifications(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore) {
+    private void executeTaskNotifications(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore) {
         var xml = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("injecting task notifications");
         String result;
@@ -228,7 +229,7 @@ public class InProcessAgentSession implements AgentSession {
                 agent.save(sessionId);
             }
             var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
-            populateTokenUsage(turnComplete, inputBefore, outputBefore);
+            populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
             turnComplete.maxTurnsReached = Boolean.TRUE;
             dispatch(turnComplete);
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
@@ -248,15 +249,17 @@ public class InProcessAgentSession implements AgentSession {
         }
         debug("task notifications processed");
         var turnComplete = TurnCompleteEvent.of(sessionId, result);
-        populateTokenUsage(turnComplete, inputBefore, outputBefore);
+        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
         dispatch(turnComplete);
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
     }
 
-    private void populateTokenUsage(TurnCompleteEvent event, long inputBefore, long outputBefore) {
+    private void populateTokenUsage(TurnCompleteEvent event, long inputBefore, long outputBefore, double costBefore) {
         var usageAfter = agent.getCurrentTokenUsage();
         event.inputTokens = usageAfter.getPromptTokens() - inputBefore;
         event.outputTokens = usageAfter.getCompletionTokens() - outputBefore;
+        var costAfter = agent.getCurrentCostUsd();
+        event.costUsd = costAfter - costBefore;
     }
 
     @Override

@@ -52,6 +52,9 @@ public class TurnCompleteEvent implements AgentEvent {
     @Property(name = "output_tokens")
     public Long outputTokens;
 
+    @Property(name = "cost_usd")
+    public Double costUsd;
+
     @Override
     public String sessionId() {
         return sessionId;
