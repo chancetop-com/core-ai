@@ -374,6 +374,23 @@ export interface ListAgentsResponse {
   limit?: number;
 }
 
+export interface WorkflowAgentOption {
+  id: string;
+  name: string;
+  type: 'AGENT' | 'LLM_CALL';
+  status: 'DRAFT' | 'PUBLISHED';
+  ownership: 'MINE' | 'SHARED' | 'SYSTEM';
+  updated_at?: string;
+}
+
+export interface ListWorkflowAgentOptionsResponse {
+  items: WorkflowAgentOption[];
+  selected?: WorkflowAgentOption;
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface TriggerRunResponse {
   run_id: string;
 }
@@ -1331,6 +1348,19 @@ export const api = {
       request<void>(`/api/agents/${agentId}/memories`, { method: 'DELETE' }),
   },
   workflows: {
+    agentOptions: (
+      scope: 'mine' | 'shared',
+      type: 'AGENT' | 'LLM_CALL',
+      query = '',
+      page = 1,
+      limit = 20,
+      selectedId?: string,
+    ) => {
+      const params = new URLSearchParams({ scope, type, page: String(page), limit: String(limit) });
+      if (query.trim()) params.set('query', query.trim());
+      if (selectedId) params.set('selected_id', selectedId);
+      return request<ListWorkflowAgentOptionsResponse>(`/api/workflows/agent-options?${params}`);
+    },
     list: (my?: boolean, keyword?: string, offset?: number, limit?: number, archived?: boolean) => {
       const params = new URLSearchParams();
       if (my !== undefined) params.set('my', String(my));
