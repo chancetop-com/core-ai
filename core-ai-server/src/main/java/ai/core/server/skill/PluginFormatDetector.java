@@ -37,7 +37,8 @@ public class PluginFormatDetector {
      */
     public boolean hasPluginFormat(Path repoDir) {
         return Files.exists(repoDir.resolve(".claude-plugin"))
-            || Files.isDirectory(repoDir.resolve(".agents").resolve("plugins"));
+            || Files.isDirectory(repoDir.resolve(".agents").resolve("plugins"))
+            || Files.isRegularFile(repoDir.resolve("SKILL.md"));
     }
 
     /**
@@ -49,6 +50,7 @@ public class PluginFormatDetector {
      *   <li>Claude Code {@code .claude-plugin/marketplace.json} → plugin sources → skill dirs</li>
      *   <li>Codex CLI {@code .agents/plugins/marketplace.json} → plugin sources</li>
      *   <li>Common conventions: {@code .claude/skills/}</li>
+     *   <li>Single-skill repo: {@code SKILL.md} at repository root (skills.sh convention)</li>
      * </ol>
      * <p>
      * Each returned path is relative to {@code repoDir} and can be passed to
@@ -84,6 +86,12 @@ public class PluginFormatDetector {
         if (Files.isDirectory(claudeSkills)) {
             LOGGER.info("Detected .claude/skills/ convention in {}", repoDir);
             return List.of(".claude/skills");
+        }
+
+        // 5. Single-skill repo: SKILL.md at repository root (skills.sh convention)
+        if (Files.isRegularFile(repoDir.resolve("SKILL.md"))) {
+            LOGGER.info("Detected root-level SKILL.md format in {}", repoDir);
+            return List.of(".");
         }
 
         return List.of();

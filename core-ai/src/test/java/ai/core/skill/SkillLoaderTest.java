@@ -82,6 +82,64 @@ class SkillLoaderTest {
     }
 
     @Test
+    void loadFromSourceLoadsRootLevelSkill(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("SKILL.md"), """
+                ---
+                name: pretty-mermaid
+                description: Render mermaid diagrams as SVG or ASCII
+                ---
+                # Pretty Mermaid
+                """);
+        var scriptsDir = tempDir.resolve("scripts");
+        Files.createDirectories(scriptsDir);
+        Files.writeString(scriptsDir.resolve("render.mjs"), "// render");
+
+        var skills = loader.loadFromSource(tempDir.toString());
+
+        assertEquals(1, skills.size());
+        var skill = skills.getFirst();
+        assertEquals("pretty-mermaid", skill.getName());
+        assertEquals("Render mermaid diagrams as SVG or ASCII", skill.getDescription());
+        assertEquals("scripts/render.mjs", skill.getResources().getFirst());
+        assertNotNull(skill.getSkillDir());
+    }
+
+    @Test
+    void loadFromSourceLoadsRootAndNestedSkills(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("SKILL.md"), """
+                ---
+                name: root-skill
+                description: Root level skill
+                ---
+                # Root skill
+                """);
+        var nestedSkillDir = tempDir.resolve("nested-skill");
+        Files.createDirectories(nestedSkillDir);
+        Files.writeString(nestedSkillDir.resolve("SKILL.md"), """
+                ---
+                name: nested-skill
+                description: Nested skill
+                ---
+                # Nested skill
+                """);
+
+        var skills = loader.loadFromSource(tempDir.toString());
+
+        assertEquals(2, skills.size());
+        assertTrue(skills.stream().anyMatch(s -> "root-skill".equals(s.getName())));
+        assertTrue(skills.stream().anyMatch(s -> "nested-skill".equals(s.getName())));
+    }
+
+    @Test
+    void loadFromSourceSkipsInvalidRootLevelSkill(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("SKILL.md"), "no frontmatter here");
+
+        var skills = loader.loadFromSource(tempDir.toString());
+
+        assertTrue(skills.isEmpty());
+    }
+
+    @Test
     void loadAllMergesWithPriorityOverride(@TempDir Path tempDir) throws IOException {
         var source1 = tempDir.resolve("source1/web-research");
         Files.createDirectories(source1);

@@ -59,6 +59,9 @@ public class SkillLoader {
         if (realDir == null) return Collections.emptyList();
 
         List<SkillMetadata> skills = new ArrayList<>();
+        // A source directory itself can be a single skill (SKILL.md at root, e.g. skills.sh repos)
+        loadRootSkillIfPresent(realDir, skills);
+
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(realDir)) {
             for (var entry : stream) {
                 if (!Files.isDirectory(entry)) continue;
@@ -82,6 +85,17 @@ public class SkillLoader {
             LOGGER.warn("Failed to scan skill source directory: {}", sourcePath, e);
         }
         return skills;
+    }
+
+    private void loadRootSkillIfPresent(Path sourceDir, List<SkillMetadata> skills) {
+        Path skillFile = sourceDir.resolve(SKILL_FILE_NAME);
+        if (!Files.isRegularFile(skillFile) || !isWithinDirectory(skillFile, sourceDir)) return;
+        var dirName = sourceDir.getFileName();
+        if (dirName == null) return;
+        var skill = loadSkillFile(skillFile, dirName.toString(), null);
+        if (skill != null) {
+            skills.add(skill);
+        }
     }
 
     private List<SkillMetadata> loadNamespaceDirectory(Path namespaceDir, Path rootDir) {
