@@ -14,5 +14,7 @@ public enum ToolSourceType {
     @MongoEnumValue("API")
     API,
     @MongoEnumValue("AGENT")
-    AGENT
+    AGENT,
+    @MongoEnumValue("LLM_CALL")
+    LLM_CALL
 }

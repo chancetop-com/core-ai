@@ -79,6 +79,7 @@ type ModelFormState = {
   supportsVision: string;  // '' = unknown (seed/auto), 'true' / 'false' = admin declaration
   supportsVideo: boolean;
   supportsFile: string;
+  responseFormat: string;  // '' = JSON Schema (default), 'json_object' = JSON mode only
   reasoningEfforts: string;
   maxVideoBytes: string;
   maxVideoSeconds: string;
@@ -125,6 +126,7 @@ const emptyModelForm: ModelFormState = {
   supportsVision: '',
   supportsVideo: false,
   supportsFile: '',
+  responseFormat: '',
   reasoningEfforts: '',
   maxVideoBytes: '',
   maxVideoSeconds: '',
@@ -321,6 +323,7 @@ export default function GatewayProviders() {
       supportsVision: model.supportsVision == null ? '' : String(model.supportsVision),
       supportsVideo: model.supportsVideo === true,
       supportsFile: model.supportsFile == null ? '' : String(model.supportsFile),
+      responseFormat: model.responseFormat || '',
       reasoningEfforts: model.reasoningEfforts?.join(', ') || '',
       maxVideoBytes: model.maxVideoBytes == null ? '' : String(model.maxVideoBytes),
       maxVideoSeconds: model.maxVideoSeconds == null ? '' : String(model.maxVideoSeconds),
@@ -370,6 +373,8 @@ export default function GatewayProviders() {
       const reasoningEfforts = modelForm.reasoningEfforts.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
       if (reasoningEfforts.length) payload.reasoningEfforts = reasoningEfforts;
       else if (modelForm.id) payload.reasoningEfforts = [];
+      if (modelForm.responseFormat) payload.responseFormat = modelForm.responseFormat;
+      else if (modelForm.id) payload.responseFormat = null;
       if (modelForm.id) {
         await api.gateway.updateModel(modelForm.id, payload);
       } else {
@@ -980,6 +985,20 @@ function renderModelPanel(props: {
             reasoning_effort values this model accepts. The agent's thinking effort is mapped to the closest level here; leave empty to never send the parameter.
           </p>
           <ReasoningEffortMappingPreview values={form.reasoningEfforts.split(',').map(v => v.trim().toLowerCase()).filter(Boolean)} />
+        </Field>
+
+        <Field label="Response Format">
+          <select
+            className={inputClass}
+            style={inputStyle}
+            value={form.responseFormat}
+            onChange={e => setForm({ ...form, responseFormat: e.target.value })}>
+            <option value="">JSON Schema (structured output)</option>
+            <option value="json_object">JSON Object (JSON mode only)</option>
+          </select>
+          <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+            JSON-mode models (e.g. DeepSeek) cannot validate a response schema; the schema is injected into the prompt instead. Leave as JSON Schema for OpenAI-style structured outputs.
+          </p>
         </Field>
 
         <div className="grid grid-cols-2 gap-4">

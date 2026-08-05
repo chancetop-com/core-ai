@@ -29,6 +29,17 @@ public class GatewayModelService {
     static final String ENDPOINT_IMAGE_GENERATION = "image.generations";
     static final String ENDPOINT_IMAGE_EDIT = "image.edits";
     static final String ENDPOINT_VIDEO_GENERATION = "video.generations";
+    static final String RESPONSE_FORMAT_JSON_SCHEMA = "json_schema";
+    static final String RESPONSE_FORMAT_JSON_OBJECT = "json_object";
+
+    static String normalizeResponseFormat(String responseFormat) {
+        if (isBlank(responseFormat)) return null;
+        var normalized = responseFormat.trim().toLowerCase(Locale.ROOT);
+        if (!RESPONSE_FORMAT_JSON_SCHEMA.equals(normalized) && !RESPONSE_FORMAT_JSON_OBJECT.equals(normalized)) {
+            throw new BadRequestException("unsupported response format: " + responseFormat);
+        }
+        return normalized;
+    }
 
     static List<String> normalizeReasoningEfforts(List<String> reasoningEfforts) {
         if (reasoningEfforts == null || reasoningEfforts.isEmpty()) return null;
@@ -255,6 +266,7 @@ public class GatewayModelService {
         if (specified(request, "supportsVision", create)) entity.supportsVision = request.supportsVision;
         if (specified(request, "supportsVideo", create)) entity.supportsVideo = request.supportsVideo;
         if (specified(request, "supportsFile", create)) entity.supportsFile = request.supportsFile;
+        if (specified(request, "responseFormat", create)) entity.responseFormat = normalizeResponseFormat(request.responseFormat);
         if (specified(request, "reasoningEfforts", create)) entity.reasoningEfforts = normalizeReasoningEfforts(request.reasoningEfforts);
         if (specified(request, "maxVideoBytes", create)) entity.maxVideoBytes = request.maxVideoBytes;
         if (specified(request, "maxVideoSeconds", create)) entity.maxVideoSeconds = request.maxVideoSeconds;
@@ -296,6 +308,7 @@ public class GatewayModelService {
         if (request.hasField("providerId") && isBlank(request.providerId)) throw new BadRequestException("providerId is required");
         if (request.hasField("upstreamModel") && isBlank(request.upstreamModel)) throw new BadRequestException("upstreamModel is required");
         if (request.endpointTypes != null) normalizeEndpointTypes(request.endpointTypes);
+        if (request.responseFormat != null) normalizeResponseFormat(request.responseFormat);
         if (request.priority != null && request.priority < 0) throw new BadRequestException("priority must not be negative");
         if (request.contextWindow != null && request.contextWindow <= 0) throw new BadRequestException("contextWindow must be positive");
         if (request.maxVideoBytes != null && request.maxVideoBytes <= 0) throw new BadRequestException("maxVideoBytes must be positive");
@@ -362,6 +375,7 @@ public class GatewayModelService {
         view.supportsVision = entity.supportsVision;
         view.supportsVideo = entity.supportsVideo;
         view.supportsFile = entity.supportsFile;
+        view.responseFormat = entity.responseFormat;
         view.reasoningEfforts = entity.reasoningEfforts;
         view.maxVideoBytes = entity.maxVideoBytes;
         view.maxVideoSeconds = entity.maxVideoSeconds;

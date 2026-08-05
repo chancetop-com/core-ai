@@ -12,6 +12,7 @@ import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.server.run.ResponseSchemaConverter;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
@@ -21,12 +22,17 @@ import java.time.ZonedDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class GatewayLLMProviderTest {
+    private static final String SCHEMA_JSON = """
+            {"type":"object","title":"DataRecord","properties":{"data":{"type":"string"}}}""";
+
     private static CompletionResponse response(String content) {
         return CompletionResponse.of(
                 List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, content))),
@@ -114,6 +120,52 @@ class GatewayLLMProviderTest {
         assertEquals("https://example.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2024-10-21", gateway.upstreamBaseUrl);
     }
 
+    @Test
+    void downgradesJsonSchemaToJsonObjectForJsonModeOnlyModel() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var deepseek = model("deepseek-chat", provider.id, "deepseek/deepseek-chat");
+        deepseek.responseFormat = "json_object";
+        var gateway = gateway(List.of(provider), List.of(deepseek), null);
+
+        var request = request("deepseek-chat");
+        request.responseFormat = ResponseSchemaConverter.fromJsonSchema(SCHEMA_JSON);
+        gateway.completion(request);
+
+        assertEquals("json_object", gateway.upstream.capturedRequest.responseFormat.type);
+        assertNull(gateway.upstream.capturedRequest.responseFormat.jsonSchema);
+        var systemContent = gateway.upstream.capturedRequest.messages.stream()
+                .filter(message -> message.role == RoleType.SYSTEM)
+                .findFirst().orElseThrow().content;
+        assertTrue(systemContent.stream().anyMatch(content -> content.text != null && content.text.contains("\"title\":\"DataRecord\"")));
+    }
+
+    @Test
+    void keepsJsonSchemaForDefaultModelConfig() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var gateway = gateway(List.of(provider), List.of(model("fast-chat", provider.id, "gpt-4o")), null);
+
+        var request = request("fast-chat");
+        request.responseFormat = ResponseSchemaConverter.fromJsonSchema(SCHEMA_JSON);
+        gateway.completion(request);
+
+        assertEquals("json_schema", gateway.upstream.capturedRequest.responseFormat.type);
+        assertEquals("DataRecord", gateway.upstream.capturedRequest.responseFormat.jsonSchema.name);
+        assertEquals(1, gateway.upstream.capturedRequest.messages.size());
+    }
+
+    @Test
+    void doesNotTouchRequestWithoutResponseFormat() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var deepseek = model("deepseek-chat", provider.id, "deepseek/deepseek-chat");
+        deepseek.responseFormat = "json_object";
+        var gateway = gateway(List.of(provider), List.of(deepseek), null);
+
+        gateway.completion(request("deepseek-chat"));
+
+        assertNull(gateway.upstream.capturedRequest.responseFormat);
+        assertEquals(1, gateway.upstream.capturedRequest.messages.size());
+    }
+
     private CompletionRequest request(String model) {
         return CompletionRequest.of(List.of(Message.of(RoleType.USER, "hi")), null, null, model, null);
     }
@@ -174,6 +226,7 @@ class GatewayLLMProviderTest {
     private static final class CapturingLiteLLMProvider extends LiteLLMProvider {
         final String content;
         String capturedModel;
+        CompletionRequest capturedRequest;
 
         CapturingLiteLLMProvider(LLMProviderConfig config, String url, String content) {
             super(config, url, "sk-test");
@@ -183,6 +236,7 @@ class GatewayLLMProviderTest {
         @Override
         public CompletionResponse delegateCompletionStream(CompletionRequest dto, StreamingCallback callback) {
             capturedModel = dto.model;
+            capturedRequest = dto;
             return response(content);
         }
     }

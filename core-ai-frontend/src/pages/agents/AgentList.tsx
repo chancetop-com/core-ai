@@ -21,13 +21,14 @@ function toExportData(a: AgentDefinition): Record<string, unknown> {
 }
 
 type AgentTab = 'my' | 'other';
+type AgentTypeFilter = 'ALL' | 'AGENT' | 'LLM_CALL';
 
 function pageFor(offset: number, limit: number) {
   return Math.floor(offset / limit) + 1;
 }
 
-function agentPageKey(tab: AgentTab, query: string, offset: number, limit: number, sortBy: string) {
-  return `${tab}\u0000${query}\u0000${offset}\u0000${limit}\u0000${sortBy}`;
+function agentPageKey(tab: AgentTab, query: string, offset: number, limit: number, sortBy: string, type: AgentTypeFilter) {
+  return `${tab}\u0000${query}\u0000${offset}\u0000${limit}\u0000${sortBy}\u0000${type}`;
 }
 
 export default function AgentList() {
@@ -46,6 +47,7 @@ export default function AgentList() {
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [query, setQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated_at' | 'created_at'>(DEFAULT_SORT_BY);
+  const [typeFilter, setTypeFilter] = useState<AgentTypeFilter>('ALL');
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -58,13 +60,13 @@ export default function AgentList() {
 
   const loadAgents = useCallback(async (tab: AgentTab, offset: number, search: string) => {
     const trimmed = search.trim();
-    const key = agentPageKey(tab, trimmed, offset, limit, sortBy);
+    const key = agentPageKey(tab, trimmed, offset, limit, sortBy, typeFilter);
     if (loadedKeysRef.current[tab] === key || loadingKeysRef.current[tab] === key) return;
     const requestId = ++reqIdRef.current[tab];
     loadingKeysRef.current[tab] = key;
     setPageLoading(true);
     try {
-      const res = await api.agents.list(tab === 'my', trimmed || undefined, limit, pageFor(offset, limit), sortBy, tab === 'my' && !isAdmin ? false : undefined);
+      const res = await api.agents.list(tab === 'my', trimmed || undefined, limit, pageFor(offset, limit), sortBy, tab === 'my' && !isAdmin ? false : undefined, typeFilter === 'ALL' ? undefined : typeFilter);
       if (requestId !== reqIdRef.current[tab]) return;
       if (tab === 'my') {
         setMyAgents(res.agents || []);
@@ -80,7 +82,7 @@ export default function AgentList() {
       if (loadingKeysRef.current[tab] === key) loadingKeysRef.current[tab] = null;
       if (requestId === reqIdRef.current[tab]) setPageLoading(false);
     }
-  }, [limit, sortBy, isAdmin]);
+  }, [limit, sortBy, isAdmin, typeFilter]);
 
   const loadMyAgents = () => {
     loadedKeysRef.current.my = null;
@@ -89,8 +91,8 @@ export default function AgentList() {
 
   useEffect(() => {
     setLoading(true);
-    const myKey = agentPageKey('my', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY);
-    const otherKey = agentPageKey('other', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY);
+    const myKey = agentPageKey('my', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY, 'ALL');
+    const otherKey = agentPageKey('other', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY, 'ALL');
     Promise.all([
       api.agents.list(true, undefined, DEFAULT_LIMIT, 1, DEFAULT_SORT_BY, isAdmin ? undefined : false),
       api.agents.list(false, undefined, DEFAULT_LIMIT, 1, DEFAULT_SORT_BY),
@@ -109,16 +111,16 @@ export default function AgentList() {
     if (loading) return;
     const offset = activeTab === 'my' ? myOffset : otherOffset;
     const trimmed = query.trim();
-    const key = agentPageKey(activeTab, trimmed, offset, limit, sortBy);
+    const key = agentPageKey(activeTab, trimmed, offset, limit, sortBy, typeFilter);
     if (loadedKeysRef.current[activeTab] === key || loadingKeysRef.current[activeTab] === key) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { void loadAgents(activeTab, offset, query); }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [activeTab, myOffset, otherOffset, query, limit, sortBy, loading, loadAgents]);
+  }, [activeTab, myOffset, otherOffset, query, limit, sortBy, typeFilter, loading, loadAgents]);
 
   useEffect(() => {
     setSelected(new Set());
-  }, [activeTab, myOffset, otherOffset, query, limit, sortBy]);
+  }, [activeTab, myOffset, otherOffset, query, limit, sortBy, typeFilter]);
 
   const currentAgents = activeTab === 'my' ? myAgents : otherAgents;
   const currentOffset = activeTab === 'my' ? myOffset : otherOffset;
@@ -218,6 +220,13 @@ export default function AgentList() {
     setSelectMode(false);
     setSelected(new Set());
     setQuery('');
+    setTypeFilter('ALL');
+    setMyOffset(0);
+    setOtherOffset(0);
+  };
+
+  const handleTypeFilterChange = (type: AgentTypeFilter) => {
+    setTypeFilter(type);
     setMyOffset(0);
     setOtherOffset(0);
   };
@@ -283,33 +292,64 @@ export default function AgentList() {
       </div>
 
       <div className="mb-4 flex items-center justify-between">
-        <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
-          <button
-            onClick={() => handleTabChange('my')}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-            style={{
-              background: activeTab === 'my' ? 'var(--color-bg-tertiary)' : 'transparent',
-              color: activeTab === 'my' ? 'var(--color-text)' : 'var(--color-text-secondary)',
-            }}>
-            <Bot size={14} />
-            My Agents
-            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
-              {myTotal}
-            </span>
-          </button>
-          <button
-            onClick={() => handleTabChange('other')}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-            style={{
-              background: activeTab === 'other' ? 'var(--color-bg-tertiary)' : 'transparent',
-              color: activeTab === 'other' ? 'var(--color-text)' : 'var(--color-text-secondary)',
-            }}>
-            <Star size={14} />
-            Shared Agents
-            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
-              {otherTotal}
-            </span>
-          </button>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
+            <button
+              onClick={() => handleTabChange('my')}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              style={{
+                background: activeTab === 'my' ? 'var(--color-bg-tertiary)' : 'transparent',
+                color: activeTab === 'my' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              }}>
+              <Bot size={14} />
+              My Agents
+              <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
+                {myTotal}
+              </span>
+            </button>
+            <button
+              onClick={() => handleTabChange('other')}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              style={{
+                background: activeTab === 'other' ? 'var(--color-bg-tertiary)' : 'transparent',
+                color: activeTab === 'other' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              }}>
+              <Star size={14} />
+              Shared Agents
+              <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
+                {otherTotal}
+              </span>
+            </button>
+          </div>
+          <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
+            <button
+              onClick={() => handleTypeFilterChange('ALL')}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+              style={{
+                background: typeFilter === 'ALL' ? 'var(--color-bg-tertiary)' : 'transparent',
+                color: typeFilter === 'ALL' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              }}>
+              All
+            </button>
+            <button
+              onClick={() => handleTypeFilterChange('AGENT')}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+              style={{
+                background: typeFilter === 'AGENT' ? 'var(--color-bg-tertiary)' : 'transparent',
+                color: typeFilter === 'AGENT' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              }}>
+              Agents
+            </button>
+            <button
+              onClick={() => handleTypeFilterChange('LLM_CALL')}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+              style={{
+                background: typeFilter === 'LLM_CALL' ? '#ec4899' : 'transparent',
+                color: typeFilter === 'LLM_CALL' ? 'white' : 'var(--color-text-secondary)',
+              }}>
+              LLM Calls
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative w-64">

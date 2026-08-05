@@ -1058,6 +1058,7 @@ export interface GatewayModel {
   supportsVision?: boolean;
   supportsVideo?: boolean;
   supportsFile?: boolean;
+  responseFormat?: string | null;
   reasoningEfforts?: string[] | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
@@ -1079,6 +1080,7 @@ export interface GatewayModelRequest {
   supportsVision?: boolean | null;
   supportsVideo?: boolean;
   supportsFile?: boolean | null;
+  responseFormat?: string | null;
   reasoningEfforts?: string[] | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
@@ -1292,7 +1294,7 @@ export const api = {
       request<ListGatewayModelsResponse>(`/api/gateway/providers/${providerId}/models/import`, { method: 'POST', body: JSON.stringify(data) }),
   },
   agents: {
-    list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean) => {
+    list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean, type?: string) => {
       const params = new URLSearchParams();
       if (my !== undefined) params.set('my', String(my));
       if (query) params.set('query', query);
@@ -1300,6 +1302,7 @@ export const api = {
       if (page) params.set('page', String(page));
       if (sort) params.set('sort', sort);
       if (includeSystemDefault !== undefined) params.set('include_system_default', String(includeSystemDefault));
+      if (type) params.set('type', type);
       const qs = params.toString();
       return request<ListAgentsResponse>(`/api/agents${qs ? `?${qs}` : ''}`);
     },

@@ -9,6 +9,7 @@ import ai.core.llm.domain.ReasoningEffort;
 import ai.core.media.MediaProvider;
 import ai.core.server.gateway.ContextualMediaProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
+import ai.core.server.gateway.GatewayRoutingEngine;
 import ai.core.server.gateway.MediaJobOwner;
 import ai.core.sandbox.Sandbox;
 import ai.core.telemetry.AgentTracer;
@@ -113,6 +114,8 @@ public class AgentRunBuilder {
     @Inject
     SystemSettingsService systemSettingsService;
     @Inject
+    GatewayRoutingEngine gatewayRoutingEngine;
+    @Inject
     LLMCallExecutor llmCallExecutor;
     @Inject
     AgentTracer agentTracer;
@@ -211,13 +214,16 @@ public class AgentRunBuilder {
 
     private String resolveModel(AgentPublishedConfig config, AgentDefinition definition) {
         var model = config != null ? config.model : definition.model;
-        if (model == null) model = systemSettingsService.llmModel();
+        // gateway default wins over legacy config when the definition has no model of its own;
+        // treat blank as unset since the UI clears the field to an empty string
+        if (model == null || model.isBlank()) model = gatewayRoutingEngine.defaultChatModelId();
+        if (model == null || model.isBlank()) model = systemSettingsService.llmModel();
         return model;
     }
 
     private String resolveMultiModalModel(AgentPublishedConfig config, AgentDefinition definition) {
         var mmm = config != null ? config.multiModalModel : definition.multiModalModel;
-        if (mmm == null) mmm = systemSettingsService.llmMultiModalModel();
+        if (mmm == null || mmm.isBlank()) mmm = systemSettingsService.llmMultiModalModel();
         return mmm;
     }
 

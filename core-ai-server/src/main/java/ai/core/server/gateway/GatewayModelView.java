@@ -20,6 +20,7 @@ public class GatewayModelView {
     public Boolean supportsVision;
     public Boolean supportsVideo;
     public Boolean supportsFile;
+    public String responseFormat;
     public List<String> reasoningEfforts;
     public Long maxVideoBytes;
     public Long maxVideoSeconds;

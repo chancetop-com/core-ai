@@ -2,7 +2,6 @@ package ai.core.server;
 
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.agent.SubAgentAssembler;
-import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.session.AgentSessionManager;
@@ -38,7 +37,6 @@ public class SessionModule extends Module {
     }
 
     private void bindSessionRuntime() {
-        bind(LLMCallExecutor.class);
         bind(SubAgentAssembler.class);
         bind(ChatMessageService.class);
         bind(AgentSessionManager.class);

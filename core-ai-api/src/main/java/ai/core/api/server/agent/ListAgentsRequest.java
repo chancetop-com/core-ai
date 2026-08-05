@@ -23,4 +23,7 @@ public class ListAgentsRequest {
 
     @QueryParam(name = "include_system_default")
     public Boolean includeSystemDefault;
+
+    @QueryParam(name = "type")
+    public String type;
 }

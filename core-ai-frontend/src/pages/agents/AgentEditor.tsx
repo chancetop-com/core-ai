@@ -48,6 +48,9 @@ export default function AgentEditor() {
   const [subAgentSearch, setSubAgentSearch] = useState('');
   const [subAgentFocused, setSubAgentFocused] = useState(false);
 
+  // LLM_CALL definitions, selectable as tools (llm-call:{id})
+  const [llmCallAgents, setLlmCallAgents] = useState<AgentDefinition[]>([]);
+
   // skills
   const [allSkills, setAllSkills] = useState<SkillDefinition[]>([]);
   const [skillSearch, setSkillSearch] = useState('');
@@ -122,10 +125,10 @@ export default function AgentEditor() {
     api.agents.list().then(res => {
       const published = (res.agents || []).filter(a =>
         a.id !== id &&
-        (a.status === 'PUBLISHED' || a.status === 'DRAFT') &&
-        (a.type === 'AGENT' || a.type === 'local')
+        (a.status === 'PUBLISHED' || a.status === 'DRAFT')
       );
-      setAllAgents(published);
+      setAllAgents(published.filter(a => a.type === 'AGENT' || a.type === 'local'));
+      setLlmCallAgents(published.filter(a => a.type === 'LLM_CALL'));
     }).catch(console.error);
     api.skills.list().then(res => setAllSkills(res.skills || [])).catch(console.error);
     api.gateway.listAvailableModels().then(res => setGatewayModels(res.models || [])).catch(console.error);
@@ -1308,11 +1311,13 @@ The system prompt should define how this agent behaves, its capabilities, and it
                 {agent.tools.map((toolRef: ToolRef) => {
                   const isApiTool = toolRef.id.startsWith('api-app:') || toolRef.id.startsWith('api-service:') || toolRef.id.startsWith('api-operation:');
                   const isMcpTool = toolRef.id.startsWith('mcp-tool:');
-                  const tool = (isApiTool || isMcpTool) ? null : allTools.find(t => t.id === toolRef.id);
+                  const isLlmCall = toolRef.id.startsWith('llm-call:');
+                  const tool = (isApiTool || isMcpTool || isLlmCall) ? null : allTools.find(t => t.id === toolRef.id);
                   const displayName = isApiTool ? getApiToolDisplayName(toolRef)
                     : isMcpTool ? getMcpToolDisplayName(toolRef)
+                    : isLlmCall ? (llmCallAgents.find(a => a.id === toolRef.id.substring('llm-call:'.length))?.name || toolRef.id)
                     : (tool?.name || toolRef.id);
-                  const color = isApiTool ? '#10b981' : (toolRef.type || tool?.type) === 'MCP' ? '#8b5cf6' : '#f59e0b';
+                  const color = isLlmCall ? '#ec4899' : isApiTool ? '#10b981' : (toolRef.type || tool?.type) === 'MCP' ? '#8b5cf6' : '#f59e0b';
                   return (
                     <span key={`${toolRef.id}:${toolRef.source || ''}`}
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px]"
@@ -1362,6 +1367,29 @@ The system prompt should define how this agent behaves, its capabilities, and it
                 } else {
                   const tool = allTools.find(t => t.id === id);
                   update('tools', [...(agent.tools || []), { id, type: 'BUILTIN', source: tool?.category }]);
+                }
+              }}
+            />
+
+            {/* LLM Call Tools */}
+            <ToolSection
+              title="LLM Call"
+              color="#ec4899"
+              items={llmCallAgents.map(a => ({
+                id: `llm-call:${a.id}`,
+                name: a.name,
+                description: a.description,
+                type: 'LLM_CALL',
+                category: 'LLM Call',
+                config: {},
+                enabled: true,
+              }))}
+              selectedIds={agent.tools?.map((t: ToolRef) => t.id) || []}
+              onToggle={(id, selected) => {
+                if (selected) {
+                  update('tools', agent.tools.filter((t: ToolRef) => t.id !== id));
+                } else {
+                  update('tools', [...(agent.tools || []), { id, type: 'LLM_CALL' }]);
                 }
               }}
             />
