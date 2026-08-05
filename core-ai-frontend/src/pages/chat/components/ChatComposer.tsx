@@ -90,6 +90,7 @@ const VALID_ATTACHMENT_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   // text / code / data
   'text/plain',
+  'text/markdown',
   'text/csv',
   'text/html',
   'text/css',
@@ -98,12 +99,64 @@ const VALID_ATTACHMENT_TYPES = new Set([
   'application/json',
   'application/xml',
   'text/xml',
+  'text/yaml',
+  'application/x-yaml',
   // archives
   'application/zip',
   'application/x-tar',
   'application/gzip',
   'application/x-gzip',
 ]);
+
+const EXTENSION_MIME_TYPES: Record<string, string> = {
+  // images
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  // videos
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  avi: 'video/x-msvideo',
+  // documents
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  // text / code / data
+  txt: 'text/plain',
+  md: 'text/markdown',
+  markdown: 'text/markdown',
+  csv: 'text/csv',
+  html: 'text/html',
+  htm: 'text/html',
+  css: 'text/css',
+  js: 'text/javascript',
+  mjs: 'text/javascript',
+  json: 'application/json',
+  xml: 'text/xml',
+  yaml: 'text/yaml',
+  yml: 'text/yaml',
+  // archives
+  zip: 'application/zip',
+  tar: 'application/x-tar',
+  gz: 'application/gzip',
+};
+
+function resolveFileType(file: File): string {
+  // Browsers on Windows report unknown extensions (e.g. .md, .yaml) as application/octet-stream or empty
+  if (!file.type || file.type === 'application/octet-stream') {
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+    const inferred = EXTENSION_MIME_TYPES[extension];
+    if (inferred) return inferred;
+  }
+  return file.type;
+}
 
 const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
 const MAX_VIDEO_ATTACHMENT_SIZE = 2000 * 1024 * 1024;
@@ -335,11 +388,12 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
   }, []);
 
   const uploadFile = useCallback(async (file: File) => {
-    if (!VALID_ATTACHMENT_TYPES.has(file.type)) {
-      onToast(`Unsupported file type: ${file.type}.`);
+    const contentType = resolveFileType(file);
+    if (!VALID_ATTACHMENT_TYPES.has(contentType)) {
+      onToast(`Unsupported file type: ${contentType}.`);
       return;
     }
-    const isVideo = file.type.startsWith('video/');
+    const isVideo = contentType.startsWith('video/');
     const maxSize = isVideo ? MAX_VIDEO_ATTACHMENT_SIZE : MAX_ATTACHMENT_SIZE;
     if (file.size > maxSize) {
       const limit = isVideo ? '2GB' : '20MB';
@@ -347,20 +401,20 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       return;
     }
 
-    const isMultimodal = file.type.startsWith('image/') || file.type === 'application/pdf' || isVideo;
+    const isMultimodal = contentType.startsWith('image/') || contentType === 'application/pdf' || isVideo;
     const category = isMultimodal ? 'multimodal' : 'sandbox';
     const id = crypto.randomUUID();
     setPendingAttachments(prev => [...prev, {
       id,
       name: file.name,
       url: '',
-      contentType: file.type,
+      contentType,
       category,
       uploading: true,
     }]);
 
     try {
-      const credentialResponse = await fetch(`/api/blob/upload-credential?content_type=${encodeURIComponent(file.type)}&category=${category}`, {
+      const credentialResponse = await fetch(`/api/blob/upload-credential?content_type=${encodeURIComponent(contentType)}&category=${category}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('apiKey')}` },
       });
       if (!credentialResponse.ok) throw new Error(`Credential request failed: ${credentialResponse.status}`);
@@ -370,7 +424,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
         method: 'PUT',
         headers: {
           'x-ms-blob-type': 'BlockBlob',
-          'x-ms-blob-content-type': file.type,
+          'x-ms-blob-content-type': contentType,
         },
         body: file,
       });
@@ -381,7 +435,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
           ? {
               ...attachment,
               url: credential.blob_url,
-              contentType: file.type,
+              contentType,
               container: credential.container,
               blobName: credential.blob_name,
               uploading: false,
@@ -618,7 +672,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml,video/mp4,video/webm,video/quicktime,video/x-msvideo,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/html,text/css,text/javascript,application/json,application/xml,text/xml,application/zip,application/x-tar,application/gzip"
+        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml,video/mp4,video/webm,video/quicktime,video/x-msvideo,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/csv,text/html,text/css,text/javascript,application/json,application/xml,text/xml,text/yaml,application/x-yaml,application/zip,application/x-tar,application/gzip"
         multiple
         onChange={handleFileChange}
         className="hidden"

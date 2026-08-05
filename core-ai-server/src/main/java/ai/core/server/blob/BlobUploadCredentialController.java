@@ -72,7 +72,8 @@ public class BlobUploadCredentialController {
             case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> ".xlsx";
             case "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> ".pptx";
             // text / code / data
-            case "text/plain", "text/markdown" -> ".txt";
+            case "text/plain" -> ".txt";
+            case "text/markdown" -> ".md";
             case "text/csv" -> ".csv";
             case "text/html" -> ".html";
             case "text/css" -> ".css";
