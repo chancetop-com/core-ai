@@ -122,14 +122,14 @@ export default function AgentPicker({ value, selectedName, type, onChange }: Age
       <button
         type="button"
         aria-expanded={open}
-        aria-haspopup="listbox"
+        aria-haspopup="dialog"
         onClick={() => setOpen((current) => !current)}
         style={triggerStyle}
       >
         {triggerName}
       </button>
       {open && (
-        <div style={popupStyle}>
+        <div role="dialog" aria-label="Agent picker" style={popupStyle}>
           <div role="group" aria-label="Agent scope" style={tabsStyle}>
             <button
               type="button"
@@ -166,11 +166,16 @@ export default function AgentPicker({ value, selectedName, type, onChange }: Age
             <p style={messageStyle}>Unavailable — replace this agent</p>
           )}
           <div
-            role="listbox"
+            role="group"
             aria-label="Agent results"
             onScroll={onResultsScroll}
             style={resultsStyle}
           >
+            {!error && selectedChecked && !selected && displayedItems.length === 0 && (
+              <p style={emptyStyle}>
+                {scope === 'mine' ? 'No agents found in My agents.' : 'No shared agents found.'}
+              </p>
+            )}
             {selected && (
               <div style={pinnedStyle}>
                 <OptionButton option={selected} onSelect={selectOption} />
@@ -192,14 +197,26 @@ function OptionButton({ option, onSelect }: {
   option: WorkflowAgentOption;
   onSelect: (option: WorkflowAgentOption) => void;
 }) {
+  const typeLabel = option.type === 'LLM_CALL' ? 'LLM call' : 'Agent';
+  const ownershipLabel = option.ownership === 'MINE'
+    ? 'Mine'
+    : option.ownership === 'SHARED' ? 'Shared' : 'System';
+
   return (
     <button
       type="button"
-      aria-label={`${option.name} — ${option.status.toLowerCase()}`}
+      aria-label={`${option.name} — ${option.status.toLowerCase()} — ${typeLabel} — ${ownershipLabel}`}
       onClick={() => onSelect(option)}
       style={optionStyle}
     >
-      <span>{option.name}</span>
+      <span>
+        <span style={optionNameStyle}>{option.name}</span>
+        <span style={metadataStyle}>
+          <span>{typeLabel}</span>
+          <span aria-hidden="true"> · </span>
+          <span>{ownershipLabel}</span>
+        </span>
+      </span>
       <span style={statusStyle}>{option.status}</span>
     </button>
   );
@@ -248,6 +265,7 @@ const searchStyle: CSSProperties = {
 };
 const messageStyle: CSSProperties = { margin: '8px 0', fontSize: 12, color: 'var(--color-text-secondary)' };
 const resultsStyle: CSSProperties = { maxHeight: 240, marginTop: 8, overflowY: 'auto' };
+const emptyStyle: CSSProperties = { margin: 0, padding: '10px 8px', fontSize: 12, color: 'var(--color-text-secondary)' };
 const pinnedStyle: CSSProperties = { borderBottom: '1px solid var(--color-border)', marginBottom: 4, paddingBottom: 4 };
 const optionStyle: CSSProperties = {
   width: '100%',
@@ -263,4 +281,6 @@ const optionStyle: CSSProperties = {
   textAlign: 'left',
   cursor: 'pointer',
 };
+const optionNameStyle: CSSProperties = { display: 'block' };
+const metadataStyle: CSSProperties = { display: 'block', marginTop: 2, fontSize: 10, color: 'var(--color-text-secondary)' };
 const statusStyle: CSSProperties = { fontSize: 10, color: 'var(--color-text-secondary)' };

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { api, type ListWorkflowAgentOptionsResponse, type WorkflowAgentOption } from '../../api/client';
@@ -43,10 +43,78 @@ describe('AgentPicker', () => {
 
     render(<AgentPicker value="" type="AGENT" onChange={onChange} />);
     await userEvent.click(screen.getByRole('button', { name: /select agent/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /alpha reviewer.*draft/i }));
+    const row = await screen.findByRole('button', { name: /alpha reviewer.*draft/i });
+    expect(within(row).getByText('Agent')).toBeTruthy();
+    expect(within(row).getByText('Mine')).toBeTruthy();
+    await userEvent.click(row);
 
     expect(onChange).toHaveBeenCalledWith(draft);
-    expect(screen.queryByRole('listbox', { name: /agent results/i })).toBeNull();
+    expect(screen.queryByRole('group', { name: /agent results/i })).toBeNull();
+  });
+
+  it('shows human-readable type and ownership for shared and system agents', async () => {
+    const shared = option('shared-1', 'Shared Writer', {
+      type: 'LLM_CALL', status: 'PUBLISHED', ownership: 'SHARED',
+    });
+    const system = option('system-1', 'System Writer', {
+      type: 'LLM_CALL', status: 'PUBLISHED', ownership: 'SYSTEM',
+    });
+    vi.spyOn(api.workflows, 'agentOptions')
+      .mockResolvedValueOnce(emptyPage())
+      .mockResolvedValueOnce(page(shared, system));
+
+    render(<AgentPicker value="" type="LLM_CALL" onChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: /select agent/i }));
+    await screen.findByText(/no agents found in my agents/i);
+    await userEvent.click(screen.getByRole('button', { name: /shared agents/i }));
+    const sharedRow = await screen.findByRole('button', { name: /shared writer.*published/i });
+    const systemRow = screen.getByRole('button', { name: /system writer.*published/i });
+
+    expect(within(sharedRow).getByText('LLM call')).toBeTruthy();
+    expect(within(sharedRow).getByText('Shared')).toBeTruthy();
+    expect(within(systemRow).getByText('LLM call')).toBeTruthy();
+    expect(within(systemRow).getByText('System')).toBeTruthy();
+  });
+
+  it('shows the My agents empty state only after a successful response', async () => {
+    const request = deferred<ListWorkflowAgentOptionsResponse>();
+    vi.spyOn(api.workflows, 'agentOptions').mockReturnValue(request.promise);
+
+    render(<AgentPicker value="" type="AGENT" onChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: /select agent/i }));
+    expect(screen.queryByText(/no agents found in my agents/i)).toBeNull();
+
+    await act(async () => {
+      request.resolve(emptyPage());
+      await Promise.resolve();
+    });
+    expect(await screen.findByText(/no agents found in my agents/i)).toBeTruthy();
+  });
+
+  it('shows the Shared agents empty state after a successful shared response', async () => {
+    vi.spyOn(api.workflows, 'agentOptions').mockResolvedValue(emptyPage());
+
+    render(<AgentPicker value="" type="AGENT" onChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: /select agent/i }));
+    await screen.findByText(/no agents found in my agents/i);
+    await userEvent.click(screen.getByRole('button', { name: /shared agents/i }));
+
+    expect(await screen.findByText(/no shared agents found/i)).toBeTruthy();
+    expect(screen.queryByText(/no agents found in my agents/i)).toBeNull();
+  });
+
+  it('uses dialog and group semantics for independently actionable result buttons', async () => {
+    vi.spyOn(api.workflows, 'agentOptions').mockResolvedValue(page(option('agent-1', 'Agent One')));
+
+    render(<AgentPicker value="" type="AGENT" onChange={vi.fn()} />);
+    const trigger = screen.getByRole('button', { name: /select agent/i });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('dialog');
+    await userEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: /agent picker/i });
+    const results = await within(dialog).findByRole('group', { name: /agent results/i });
+
+    expect(within(results).queryAllByRole('option')).toHaveLength(0);
+    expect(within(results).getByRole('button', { name: /agent one.*draft/i })).toBeTruthy();
   });
 
   it('switches to shared and clears the current search before requesting it', async () => {
@@ -119,7 +187,7 @@ describe('AgentPicker', () => {
 
     render(<AgentPicker value="" type="AGENT" onChange={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /select agent/i }));
-    const list = await screen.findByRole('listbox', { name: /agent results/i });
+    const list = await screen.findByRole('group', { name: /agent results/i });
     Object.defineProperties(list, {
       scrollTop: { value: 180, configurable: true },
       clientHeight: { value: 100, configurable: true },
@@ -175,6 +243,7 @@ describe('AgentPicker', () => {
     await userEvent.click(screen.getByRole('button', { name: /old agent/i }));
     expect(await screen.findByText('network down')).toBeTruthy();
     expect(screen.queryByText(/unavailable.*replace this agent/i)).toBeNull();
+    expect(screen.queryByText(/no .*agents found/i)).toBeNull();
 
     await userEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(await screen.findByText(/unavailable.*replace this agent/i)).toBeTruthy();
@@ -193,10 +262,10 @@ describe('AgentPicker', () => {
       </div>,
     );
     await userEvent.click(screen.getByRole('button', { name: /saved agent/i }));
-    expect(await screen.findByRole('listbox', { name: /agent results/i })).toBeTruthy();
+    expect(await screen.findByRole('group', { name: /agent results/i })).toBeTruthy();
     fireEvent.pointerDown(screen.getByRole('button', { name: /outside/i }));
 
-    expect(screen.queryByRole('listbox', { name: /agent results/i })).toBeNull();
+    expect(screen.queryByRole('group', { name: /agent results/i })).toBeNull();
     expect(screen.getByRole('button', { name: /saved agent/i })).toBeTruthy();
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -209,7 +278,7 @@ describe('AgentPicker', () => {
     const { rerender } = render(<AgentPicker value="agent-1" selectedName="Agent One" type="AGENT" onChange={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /agent one/i }));
     await waitFor(() => expect(request).toHaveBeenLastCalledWith('mine', 'AGENT', '', 1, 20, 'agent-1'));
-    const list = screen.getByRole('listbox', { name: /agent results/i });
+    const list = screen.getByRole('group', { name: /agent results/i });
     Object.defineProperties(list, {
       scrollTop: { value: 180, configurable: true },
       clientHeight: { value: 100, configurable: true },
