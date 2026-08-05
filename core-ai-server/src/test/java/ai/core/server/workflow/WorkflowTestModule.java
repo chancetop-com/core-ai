@@ -2,6 +2,7 @@ package ai.core.server.workflow;
 
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.Notification;
+import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
@@ -10,6 +11,7 @@ import ai.core.server.domain.WorkflowRun;
 import ai.core.server.notification.NotificationEventPublisher;
 import ai.core.server.notification.NotificationService;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.skill.SkillService;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.HumanInputExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
@@ -37,6 +39,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(WorkflowRun.class);
         mongo.collection(WorkflowNodeRun.class);
         mongo.collection(AgentDefinition.class);   // injected by Workflow Agent services; unused for START -> END
+        mongo.collection(SkillDefinition.class);   // validates owner-editable Agent skill dependencies during capture
         mongo.collection(ToolRegistryEntry.class);      // injected by WorkflowPortService for MCP reference resolution
         mongo.collection(Notification.class);            // injected by NotificationService (bound below)
 
@@ -82,6 +85,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(WorkflowDefinitionService.class);
         bind(WorkflowAgentOptionService.class);
         bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
+        bind(SkillService.class);
         bind(WorkflowAgentSnapshotService.class);
         bind(WorkflowPrivateAgentSafetyValidator.class);
         bind(WorkflowPublishService.class);

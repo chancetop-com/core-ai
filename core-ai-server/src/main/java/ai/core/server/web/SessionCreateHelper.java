@@ -42,7 +42,9 @@ public class SessionCreateHelper {
         var agent = agentDefinitionService.getEntity(agentId);
         var result = sessionManager.createSessionFromAgent(agent, state.config, userId);
         state.fromAgent = true;
-        state.agentConfig = buildAgentConfigSnapshot(agent);
+        state.agentConfig = buildAgentConfigSnapshot(result.executableDefinition());
+        state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;
+        state.sandboxBindingSecurityVersion = SessionState.CURRENT_SANDBOX_BINDING_SECURITY_VERSION;
         if (result.loadedSubAgentIds() != null && !result.loadedSubAgentIds().isEmpty()) {
             for (var id : result.loadedSubAgentIds()) {
                 String name = resolveAgentName(id);
@@ -66,24 +68,25 @@ public class SessionCreateHelper {
 
     SessionState.AgentConfigSnapshot buildAgentConfigSnapshot(ai.core.server.domain.AgentDefinition agent) {
         var published = agent.publishedConfig;
-        var toolRefs = published != null ? published.tools : agent.tools;
         var snapshot = new SessionState.AgentConfigSnapshot();
         snapshot.agentId = agent.id;
         snapshot.agentName = agent.name;
-        snapshot.systemPrompt = published != null && published.systemPrompt != null ? published.systemPrompt : agent.systemPrompt;
-        snapshot.systemPromptId = published != null && published.systemPromptId != null ? published.systemPromptId : agent.systemPromptId;
-        snapshot.model = published != null && published.model != null ? published.model : agent.model;
-        snapshot.temperature = published != null && published.temperature != null ? published.temperature : agent.temperature;
-        snapshot.thinkingEffort = published != null && published.thinkingEffort != null ? published.thinkingEffort : agent.thinkingEffort;
-        snapshot.maxTurns = published != null && published.maxTurns != null ? published.maxTurns : agent.maxTurns;
-        snapshot.inputTemplate = published != null && published.inputTemplate != null ? published.inputTemplate : agent.inputTemplate;
-        snapshot.variables = published != null && published.variables != null ? published.variables : agent.variables;
-        snapshot.tools = toolRefs;
-        snapshot.datasetConfig = published != null && published.datasetConfig != null ? published.datasetConfig : agent.datasetConfig;
+        snapshot.systemPrompt = published != null ? published.systemPrompt : agent.systemPrompt;
+        snapshot.systemPromptId = published != null ? published.systemPromptId : agent.systemPromptId;
+        snapshot.model = published != null ? published.model : agent.model;
+        snapshot.temperature = published != null ? published.temperature : agent.temperature;
+        snapshot.thinkingEffort = published != null ? published.thinkingEffort : agent.thinkingEffort;
+        snapshot.maxTurns = published != null ? published.maxTurns : agent.maxTurns;
+        snapshot.inputTemplate = published != null ? published.inputTemplate : agent.inputTemplate;
+        snapshot.variables = published != null ? published.variables : agent.variables;
+        snapshot.tools = published != null ? published.tools : agent.tools;
+        snapshot.skillIds = published != null ? published.skillIds : agent.skillIds;
+        snapshot.datasetConfig = published != null ? published.datasetConfig : agent.datasetConfig;
+        snapshot.sandboxConfig = published != null ? published.sandboxConfig : agent.sandboxConfig;
         return snapshot;
     }
 
-    List<IdName> loadToolsOnSessionCreate(String sessionId, CreateSessionRequest request) {
+    List<IdName> loadToolsOnSessionCreate(String sessionId, CreateSessionRequest request, String callerUserId) {
         if (request.tools == null || request.tools.isEmpty()) return null;
 
         var toolRefs = request.tools.stream()
@@ -99,14 +102,15 @@ public class SessionCreateHelper {
 
         if (toolRefs.isEmpty()) return null;
 
-        var loadedRefs = sessionManager.loadToolRefs(sessionId, toolRefs);
+        var loadedRefs = sessionManager.loadToolRefs(sessionId, toolRefs, callerUserId);
         return LoadedToolRefNames.toIdNames(loadedRefs, toolRegistryService);
     }
 
-    List<IdName> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request) {
+    List<IdName> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request,
+                                           String callerUserId) {
         var cleanSkillIds = IdLists.clean(request.skillIds);
         if (cleanSkillIds.isEmpty()) return null;
-        var names = sessionManager.loadSkills(sessionId, cleanSkillIds);
+        var names = sessionManager.loadSkills(sessionId, cleanSkillIds, callerUserId);
         var result = new ArrayList<IdName>(cleanSkillIds.size());
         for (int i = 0; i < cleanSkillIds.size() && i < names.size(); i++) {
             var v = new IdName();
@@ -117,7 +121,8 @@ public class SessionCreateHelper {
         return result;
     }
 
-    void loadExtraSubAgentsOnSessionCreate(String sessionId, CreateSessionRequest request, List<IdName> loadedSubAgents) {
+    void loadExtraSubAgentsOnSessionCreate(String sessionId, CreateSessionRequest request,
+                                           List<IdName> loadedSubAgents, String callerUserId) {
         var cleanSubAgentIds = IdLists.clean(request.subAgentIds);
         if (cleanSubAgentIds.isEmpty()) return;
         var definitions = cleanSubAgentIds.stream()
@@ -132,7 +137,7 @@ public class SessionCreateHelper {
                 .filter(def -> def != null)
                 .toList();
         if (definitions.isEmpty()) return;
-        var names = sessionManager.loadSubAgents(sessionId, definitions);
+        var names = sessionManager.loadSubAgents(sessionId, definitions, callerUserId);
         for (int i = 0; i < definitions.size() && i < names.size(); i++) {
             var v = new IdName();
             v.id = definitions.get(i).id;

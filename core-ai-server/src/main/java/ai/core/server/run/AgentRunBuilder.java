@@ -125,7 +125,7 @@ public class AgentRunBuilder {
     Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,
                      List<LLMCallRequest.Attachment> attachments) {
         var config = definition.publishedConfig;
-        var registry = resolveToolRegistry(config, definition, runEntity.id);
+        var registry = resolveToolRegistry(config, definition, runEntity);
         var context = buildExecutionContext(runEntity, definition, sandbox, variables);
         if (attachments != null && !attachments.isEmpty()) {
             context.setAttachedContents(attachments.stream().map(this::toAttachedContent).toList());
@@ -137,7 +137,7 @@ public class AgentRunBuilder {
         var temperature = config != null ? config.temperature : definition.temperature;
         var thinkingEffort = resolveThinkingEffort(config, definition);
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
-        attachSkillsAndSubAgents(config, definition, registry, runEntity.id);
+        attachSkillsAndSubAgents(config, definition, registry, runEntity);
         attachMemorySearch(registry, enableMemory, definition.id);
         var builder = createBaseBuilder(definition, registry, context);
         if (systemPrompt != null) builder.systemPrompt(systemPrompt);
@@ -232,9 +232,11 @@ public class AgentRunBuilder {
         return ReasoningEffort.fromString(value);
     }
 
-    private void attachSkillsAndSubAgents(AgentPublishedConfig config, AgentDefinition definition, ToolRegistry registry, String runId) {
+    private void attachSkillsAndSubAgents(AgentPublishedConfig config, AgentDefinition definition,
+                                          ToolRegistry registry, AgentRun runEntity) {
         skillToolAssembler.attach(config != null ? config.skillIds : definition.skillIds, registry);
-        var subAgents = subAgentAssembler.assemble(config != null ? config.subAgentIds : definition.subAgentIds, runId);
+        var subAgents = subAgentAssembler.assemble(
+            config != null ? config.subAgentIds : definition.subAgentIds, runEntity.id, runEntity.userId);
         if (!subAgents.isEmpty()) {
             registry.registerProvider(ListToolProvider.of("sub-agents", new ArrayList<>(subAgents)));
         }
@@ -386,17 +388,17 @@ public class AgentRunBuilder {
         builder.extraSystemVariable(SystemVariables.AGENT_DATASET_DESC, desc.toString());
     }
 
-    private ToolRegistry resolveToolRegistry(AgentPublishedConfig config, AgentDefinition definition, String runId) {
+    ToolRegistry resolveToolRegistry(AgentPublishedConfig config, AgentDefinition definition, AgentRun runEntity) {
         List<ToolRef> toolRefs;
-        if (config != null && config.tools != null && !config.tools.isEmpty()) {
-            toolRefs = config.tools;
+        if (config != null) {
+            toolRefs = config.tools != null ? config.tools : List.of();
         } else if (definition.tools != null && !definition.tools.isEmpty()) {
             toolRefs = definition.tools;
         } else {
             toolRefs = List.of();
         }
-        var registry = toolRegistryService.resolveToToolRegistry(toolRefs, runId);
-        addDatasetTools(registry, definition, runId);
+        var registry = toolRegistryService.resolveToToolRegistry(toolRefs, runEntity.id, runEntity.userId);
+        addDatasetTools(registry, definition, runEntity.id);
         return registry;
     }
 

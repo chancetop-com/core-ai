@@ -5,9 +5,14 @@ import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentSnapshotSource;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
+import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.ToolSourceType;
+import ai.core.server.skill.SkillService;
 import ai.core.server.workflow.engine.WorkflowGraph;
+import ai.core.skill.SkillMetadata;
 import core.framework.json.JSON;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.ForbiddenException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,29 +30,49 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class WorkflowAgentSnapshotServiceTest {
     @SuppressWarnings("unchecked")
     private final MongoCollection<AgentDefinition> collection = mock(MongoCollection.class);
+    private final SkillService skillService = mock(SkillService.class);
     private final WorkflowAgentSnapshotService service = new WorkflowAgentSnapshotService();
 
     @BeforeEach
     void setUp() {
         service.agentDefinitionCollection = collection;
+        service.skillService = skillService;
     }
 
     @Test
     void ownedDraftCapturesCurrentEditableConfig() {
         AgentDefinition agent = agent("a1", "owner", AgentStatus.DRAFT, DefinitionType.AGENT);
         agent.systemPrompt = "current editable";
+        agent.skillIds = List.of("owner-skill");
         when(collection.get("a1")).thenReturn(Optional.of(agent));
+        when(skillService.resolveAccessibleSkills(List.of("owner-skill"), "owner"))
+            .thenReturn(List.of(SkillMetadata.builder("Owner skill", "", "owner/skill").build()));
 
         Capture capture = capture(graph("n1", "AGENT", "a1"), "owner");
 
         assertTrue(capture.errors.isEmpty());
         assertEquals("current editable", snapshot(capture, "n1").systemPrompt);
+        assertEquals(List.of("owner-skill"), snapshot(capture, "n1").skillIds);
+        assertEquals(1, snapshot(capture, "n1").skillValidationVersion);
         assertEquals("OWNED_EDITABLE", source(capture, "n1").sourceKind);
+        verify(skillService).resolveAccessibleSkills(List.of("owner-skill"), "owner");
+    }
+
+    @Test
+    void previewCaptureRejectsForeignSkillInOwnedEditableAgent() {
+        assertUnavailableOwnedEditableSkill("foreign-skill");
+    }
+
+    @Test
+    void previewCaptureRejectsUnknownSkillInOwnedEditableAgent() {
+        assertUnavailableOwnedEditableSkill("unknown-skill");
     }
 
     @Test
@@ -68,14 +93,34 @@ class WorkflowAgentSnapshotServiceTest {
     void otherUsersPublishedLlmCapturesPublishedConfig() {
         AgentDefinition agent = agent("a3", "other", AgentStatus.PUBLISHED, DefinitionType.LLM_CALL);
         agent.systemPrompt = "unpublished edit";
+        agent.skillIds = List.of("editable-private-skill");
         agent.publishedConfig = config("published value");
+        agent.publishedConfig.skillIds = List.of("frozen-published-skill");
+        agent.publishedConfig.skillValidationVersion = 1;
         when(collection.get("a3")).thenReturn(Optional.of(agent));
 
         Capture capture = capture(graph("n3", "LLM", "a3"), "owner");
 
         assertTrue(capture.errors.isEmpty());
         assertEquals("published value", snapshot(capture, "n3").systemPrompt);
+        assertEquals(List.of("frozen-published-skill"), snapshot(capture, "n3").skillIds);
         assertEquals("PUBLISHED", source(capture, "n3").sourceKind);
+        verifyNoInteractions(skillService);
+    }
+
+    @Test
+    void rejectsLegacyPublishedSnapshotWithUnvalidatedSkills() {
+        AgentDefinition agent = agent("legacy", "other", AgentStatus.PUBLISHED, DefinitionType.AGENT);
+        agent.publishedConfig = config("legacy published value");
+        agent.publishedConfig.skillIds = List.of("historical-skill");
+        when(collection.get(agent.id)).thenReturn(Optional.of(agent));
+
+        Capture capture = capture(graph("n1", "AGENT", agent.id), "owner");
+
+        assertEquals(List.of("node n1 references an agent/LLM definition you cannot access: legacy"),
+            capture.errors);
+        assertTrue(capture.snapshots.isEmpty());
+        verifyNoInteractions(skillService);
     }
 
     @Test
@@ -197,6 +242,91 @@ class WorkflowAgentSnapshotServiceTest {
     }
 
     @Test
+    void ownedAgentRejectsCallerOwnedLlmCallToolWithoutSnapshotOrProvenance() {
+        AgentDefinition top = agent("top", "owner", AgentStatus.DRAFT, DefinitionType.AGENT);
+        top.tools = List.of(ToolRef.fromLegacyToolId("llm-call:own-llm"));
+        AgentDefinition target = agent("own-llm", "owner", AgentStatus.DRAFT, DefinitionType.LLM_CALL);
+        when(collection.get("top")).thenReturn(Optional.of(top));
+        when(collection.get("own-llm")).thenReturn(Optional.of(target));
+
+        assertLlmCallToolRejected(capture(graph("n1", "AGENT", "top"), "owner"));
+    }
+
+    @Test
+    void ownedAgentRejectsPublishedLlmCallToolWithoutSnapshotOrProvenance() {
+        AgentDefinition top = agent("top", "owner", AgentStatus.DRAFT, DefinitionType.AGENT);
+        top.tools = List.of(ToolRef.fromLegacyToolId("llm-call:published-llm"));
+        AgentDefinition target = agent("published-llm", "other", AgentStatus.PUBLISHED, DefinitionType.LLM_CALL);
+        target.publishedConfig = config("public target");
+        when(collection.get("top")).thenReturn(Optional.of(top));
+        when(collection.get("published-llm")).thenReturn(Optional.of(target));
+
+        assertLlmCallToolRejected(capture(graph("n1", "AGENT", "top"), "owner"));
+    }
+
+    @Test
+    void publishedAgentSnapshotSourceRejectsLlmCallToolWithoutSnapshotOrProvenance() {
+        AgentDefinition top = agent("shared-top", "other", AgentStatus.PUBLISHED, DefinitionType.AGENT);
+        top.publishedConfig = config("public top");
+        top.publishedConfig.tools = List.of(ToolRef.of("llm-call:other-private", ToolSourceType.LLM_CALL));
+        when(collection.get("shared-top")).thenReturn(Optional.of(top));
+
+        assertLlmCallToolRejected(capture(graph("n1", "AGENT", "shared-top"), "owner"));
+    }
+
+    @Test
+    void publishedAgentSnapshotSourceRejectsDraftSubAgentDependency() {
+        AgentDefinition top = agent("shared-top", "other", AgentStatus.PUBLISHED, DefinitionType.AGENT);
+        top.publishedConfig = config("public top");
+        top.publishedConfig.subAgentIds = List.of("draft-sub");
+        AgentDefinition sub = agent("draft-sub", "other", AgentStatus.DRAFT, DefinitionType.AGENT);
+        when(collection.get("shared-top")).thenReturn(Optional.of(top));
+        when(collection.get("draft-sub")).thenReturn(Optional.of(sub));
+
+        Capture capture = capture(graph("n1", "AGENT", "shared-top"), "owner");
+
+        assertEquals(List.of("node n1 references sub-agent without a usable published config: draft-sub"),
+            capture.errors);
+        assertTrue(capture.snapshots.isEmpty());
+        assertTrue(capture.sources.isEmpty());
+    }
+
+    @Test
+    void publishedAgentSnapshotSourceRejectsPublishedLlmCallAsSubAgent() {
+        AgentDefinition top = agent("shared-top", "other", AgentStatus.PUBLISHED, DefinitionType.AGENT);
+        top.publishedConfig = config("public top");
+        top.publishedConfig.subAgentIds = List.of("published-llm");
+        AgentDefinition sub = agent("published-llm", "other", AgentStatus.PUBLISHED, DefinitionType.LLM_CALL);
+        sub.publishedConfig = config("public llm");
+        when(collection.get("shared-top")).thenReturn(Optional.of(top));
+        when(collection.get("published-llm")).thenReturn(Optional.of(sub));
+
+        Capture capture = capture(graph("n1", "AGENT", "shared-top"), "owner");
+
+        assertEquals(List.of("node n1 references sub-agent without a usable published config: published-llm"),
+            capture.errors);
+        assertTrue(capture.snapshots.isEmpty());
+        assertTrue(capture.sources.isEmpty());
+    }
+
+    @Test
+    void ownedEditableAgentRejectsPublishedLlmCallDefinitionAsSubAgent() {
+        AgentDefinition top = agent("top", "owner", AgentStatus.DRAFT, DefinitionType.AGENT);
+        top.subAgentIds = List.of("published-llm");
+        AgentDefinition sub = agent("published-llm", "other", AgentStatus.PUBLISHED, DefinitionType.LLM_CALL);
+        sub.publishedConfig = config("public llm config");
+        when(collection.get("top")).thenReturn(Optional.of(top));
+        when(collection.get("published-llm")).thenReturn(Optional.of(sub));
+
+        Capture capture = capture(graph("n1", "AGENT", "top"), "owner");
+
+        assertEquals(List.of("node n1 references sub-agent without a usable published config: published-llm"),
+            capture.errors);
+        assertTrue(capture.snapshots.isEmpty());
+        assertTrue(capture.sources.isEmpty());
+    }
+
+    @Test
     void captureDeepCopiesEditableConfigWithoutMutatingSourceDefinition() {
         AgentDefinition agent = agent("copy", "owner", AgentStatus.DRAFT, DefinitionType.AGENT);
         var sourceVariables = new LinkedHashMap<>(Map.of("locale", "en"));
@@ -204,6 +334,8 @@ class WorkflowAgentSnapshotServiceTest {
         agent.variables = sourceVariables;
         agent.skillIds = sourceSkills;
         when(collection.get("copy")).thenReturn(Optional.of(agent));
+        when(skillService.resolveAccessibleSkills(List.of("skill-1"), "owner"))
+            .thenReturn(List.of(SkillMetadata.builder("Skill one", "", "owner/skill-1").build()));
 
         Capture capture = capture(graph("n1", "AGENT", "copy"), "owner");
         AgentPublishedConfig frozen = snapshot(capture, "n1");
@@ -279,6 +411,20 @@ class WorkflowAgentSnapshotServiceTest {
         return new Capture(errors, snapshots, sources);
     }
 
+    private void assertUnavailableOwnedEditableSkill(String skillId) {
+        AgentDefinition agent = agent("private", "owner", AgentStatus.DRAFT, DefinitionType.AGENT);
+        agent.skillIds = List.of(skillId);
+        when(collection.get(agent.id)).thenReturn(Optional.of(agent));
+        when(skillService.resolveAccessibleSkills(List.of(skillId), "owner"))
+            .thenThrow(new ForbiddenException("skill is unavailable"));
+
+        Capture capture = capture(graph("n1", "AGENT", agent.id), "owner");
+
+        assertEquals(List.of("node n1 references an unavailable skill dependency"), capture.errors);
+        assertTrue(capture.snapshots.isEmpty());
+        assertTrue(capture.sources.isEmpty());
+    }
+
     private WorkflowGraph graph(String nodeId, String nodeType, String agentId) {
         return WorkflowGraphParser.parse("{\"nodes\":[{\"id\":\"" + nodeId + "\",\"type\":\"" + nodeType
             + "\",\"config\":{\"agent_id\":\"" + agentId + "\"}}],\"edges\":[]}");
@@ -303,6 +449,13 @@ class WorkflowAgentSnapshotServiceTest {
 
     private AgentPublishedConfig snapshot(Capture capture, String nodeId) {
         return JSON.fromJSON(AgentPublishedConfig.class, capture.snapshots.get(nodeId));
+    }
+
+    private void assertLlmCallToolRejected(Capture capture) {
+        assertEquals(List.of("node n1 agent snapshot contains an unsupported LLM call tool dependency"),
+            capture.errors);
+        assertTrue(capture.snapshots.isEmpty());
+        assertTrue(capture.sources.isEmpty());
     }
 
     private AgentSnapshotSource source(Capture capture, String nodeId) {

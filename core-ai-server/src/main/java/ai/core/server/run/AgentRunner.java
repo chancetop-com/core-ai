@@ -6,6 +6,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.channel.ChannelMessage;
 import ai.core.server.channel.ChannelRegistry;
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.api.server.run.LLMCallRequest;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
@@ -14,6 +15,8 @@ import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.StagedFile;
+import ai.core.server.skill.SkillService;
+import ai.core.server.util.IdLists;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -57,6 +60,9 @@ public class AgentRunner {
     SandboxService sandboxService;
 
     @Inject
+    SkillService skillService;
+
+    @Inject
     ChannelConfigStore channelConfigStore;
 
     @Inject
@@ -73,34 +79,48 @@ public class AgentRunner {
     @Inject
     AgentRunBuilder builder;
 
+    void requireTrustedDefinitionSkills(AgentDefinition definition) {
+        if (definition == null) return;
+        if (definition.publishedConfig != null) {
+            if (!AgentDependencyAccessPolicy.hasValidatedPublishedSkills(definition.publishedConfig)) {
+                throw new IllegalArgumentException("agent is unavailable");
+            }
+            return;
+        }
+        var skillIds = IdLists.clean(definition.skillIds);
+        if (!skillIds.isEmpty()) skillService.resolveAccessibleSkills(skillIds, definition.userId);
+    }
+
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
-        return run(new RunParams(definition, input, trigger, null, null, null, null, null));
+        return run(new RunParams(definition, input, trigger, null, null, null, null, null, null));
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, List<LLMCallRequest.Attachment> attachments) {
-        return run(new RunParams(definition, input, trigger, null, null, null, null, attachments));
+        return run(new RunParams(definition, input, trigger, null, null, null, null, null, attachments));
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId, Map<String, String> runtimeVariables) {
-        return run(new RunParams(definition, input, trigger, scheduleId, runtimeVariables, null, null, null));
+        return run(new RunParams(definition, input, trigger, null, scheduleId, runtimeVariables, null, null, null));
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
                       Map<String, String> runtimeVariables, ChannelTarget channel) {
-        return run(new RunParams(definition, input, trigger, scheduleId, runtimeVariables, null, channel, null));
+        return run(new RunParams(definition, input, trigger, null, scheduleId, runtimeVariables, null, channel, null));
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
                       Map<String, String> runtimeVariables, WorkflowRunContext workflowContext) {
-        return run(new RunParams(definition, input, trigger, scheduleId, runtimeVariables, workflowContext, null, null));
+        return run(new RunParams(definition, input, trigger, null, scheduleId, runtimeVariables, workflowContext, null, null));
     }
 
     private String run(RunParams params) {
+        requireTrustedDefinitionSkills(params.definition);
         var resolvedVariables = new HashMap<String, Object>();
         if (params.runtimeVariables != null) {
             resolvedVariables.putAll(params.runtimeVariables);
         }
-        var runEntity = createRunRecord(params.definition, params.input, params.trigger, params.scheduleId);
+        var runEntity = createRunRecord(
+            params.definition, params.input, params.trigger, params.scheduleId, params.callerUserId);
         agentRunCollection.insert(runEntity);
 
         var runId = runEntity.id;
@@ -132,6 +152,13 @@ public class AgentRunner {
         }
 
         return runId;
+    }
+
+    public String runAs(AgentDefinition definition, String input, TriggerType trigger, String callerUserId) {
+        if (callerUserId == null || callerUserId.isBlank()) {
+            throw new IllegalArgumentException("caller user id is required");
+        }
+        return run(new RunParams(definition, input, trigger, callerUserId, null, null, null, null, null));
     }
 
     private void executeAsync(ExecuteAsyncParams params) {
@@ -294,11 +321,12 @@ public class AgentRunner {
         }, timeoutSeconds, TimeUnit.SECONDS);
     }
 
-    private AgentRun createRunRecord(AgentDefinition definition, String input, TriggerType trigger, String scheduleId) {
+    AgentRun createRunRecord(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
+                             String callerUserId) {
         var entity = new AgentRun();
         entity.id = UUID.randomUUID().toString();
         entity.agentId = definition.id;
-        entity.userId = definition.userId;
+        entity.userId = callerUserId != null && !callerUserId.isBlank() ? callerUserId : definition.userId;
         entity.triggeredBy = trigger;
         entity.status = RunStatus.RUNNING;
         entity.input = input;
@@ -333,7 +361,8 @@ public class AgentRunner {
     public record ChannelTarget(String id, String recipientId) {
     }
 
-    record RunParams(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
+    record RunParams(AgentDefinition definition, String input, TriggerType trigger, String callerUserId,
+                     String scheduleId,
                      Map<String, String> runtimeVariables, WorkflowRunContext workflowContext,
                      ChannelTarget channel, List<LLMCallRequest.Attachment> attachments) {
     }

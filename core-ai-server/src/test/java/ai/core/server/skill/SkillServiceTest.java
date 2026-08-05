@@ -4,6 +4,7 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillSourceType;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
@@ -138,6 +139,41 @@ class SkillServiceTest {
         when(service.skillCollection.get("missing")).thenReturn(Optional.empty());
 
         assertThrows(NotFoundException.class, () -> service.get("missing"));
+    }
+
+    @Test
+    void resolveAccessibleSkillsAllowsTheOwner() {
+        var service = new SkillService();
+        service.skillCollection = skillCollection();
+        var owned = skill("skill-1", "Admin", "seo-audit", null);
+        owned.userId = "caller-1";
+        when(service.skillCollection.get("skill-1")).thenReturn(Optional.of(owned));
+
+        var result = service.resolveAccessibleSkills(List.of("skill-1"), "caller-1");
+
+        assertEquals(List.of("Admin/seo-audit"),
+                result.stream().map(ai.core.skill.SkillMetadata::getQualifiedName).toList());
+    }
+
+    @Test
+    void resolveAccessibleSkillsUniformlyRejectsForeignUnknownAndMissingCaller() {
+        var service = new SkillService();
+        service.skillCollection = skillCollection();
+        var foreign = skill("foreign", "Admin", "seo-audit", null);
+        foreign.userId = "owner-1";
+        when(service.skillCollection.get("foreign")).thenReturn(Optional.of(foreign));
+        when(service.skillCollection.get("missing")).thenReturn(Optional.empty());
+
+        var foreignError = assertThrows(ForbiddenException.class,
+                () -> service.resolveAccessibleSkills(List.of("foreign"), "caller-1"));
+        var missingError = assertThrows(ForbiddenException.class,
+                () -> service.resolveAccessibleSkills(List.of("missing"), "caller-1"));
+        var noCallerError = assertThrows(ForbiddenException.class,
+                () -> service.resolveAccessibleSkills(List.of("foreign"), null));
+
+        assertEquals("skill is unavailable", foreignError.getMessage());
+        assertEquals(foreignError.getMessage(), missingError.getMessage());
+        assertEquals(foreignError.getMessage(), noCallerError.getMessage());
     }
 
     @SuppressWarnings("unchecked")

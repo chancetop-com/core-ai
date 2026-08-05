@@ -1,10 +1,13 @@
 package ai.core.server.trigger.action;
 
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.run.AgentRunner;
+import ai.core.server.skill.SkillService;
 import ai.core.server.trigger.domain.Trigger;
 import ai.core.server.trigger.filter.EventFilter;
+import ai.core.server.util.IdLists;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
@@ -25,6 +28,9 @@ public class RunAgentAction implements TriggerAction {
     @Inject
     AgentRunner agentRunner;
 
+    @Inject
+    SkillService skillService;
+
     @Override
     public String type() {
         return "RUN_AGENT";
@@ -38,11 +44,17 @@ public class RunAgentAction implements TriggerAction {
             return TriggerActionResult.skipped();
         }
 
-        var definition = agentDefinitionCollection.get(agentId)
+        var storedDefinition = agentDefinitionCollection.get(agentId)
                 .orElse(null);
-        if (definition == null) {
+        if (storedDefinition == null) {
             LOGGER.warn("agent not found for trigger {}, agentId={}", trigger.id, agentId);
             return TriggerActionResult.skipped();
+        }
+
+        var definition = AgentDependencyAccessPolicy.executableTopLevelAgent(storedDefinition, trigger.userId);
+        if (definition.publishedConfig == null) {
+            var skillIds = IdLists.clean(definition.skillIds);
+            if (!skillIds.isEmpty()) skillService.resolveAccessibleSkills(skillIds, trigger.userId);
         }
 
         // Apply event filter before running agent to avoid wasting tokens

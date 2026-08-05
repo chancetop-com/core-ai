@@ -13,6 +13,7 @@ import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
@@ -40,6 +41,7 @@ import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,10 +58,6 @@ import java.util.concurrent.ConcurrentMap;
  * @author stephen
  */
 public class AgentSessionManager {
-    private static List<String> resolveConfigList(List<String> published, List<String> fallback) {
-        return published != null ? published : fallback;
-    }
-
     private final Logger logger = LoggerFactory.getLogger(AgentSessionManager.class);
     private final ConcurrentMap<String, InProcessAgentSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Long> sessionLastActivity = new ConcurrentHashMap<>();
@@ -202,7 +200,10 @@ public class AgentSessionManager {
         return createSessionFromAgent(definition, overrides, userId, "chat");
     }
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId, String source) {
-        var config = subAgentManager().toSessionConfig(definition);
+        var ownedEditable = AgentDependencyAccessPolicy.isOwnedEditable(definition, userId);
+        var executableDefinition = AgentDependencyAccessPolicy.executableSessionAgent(definition, userId);
+        var resolvedDefinitionSkills = skillManager().resolveDefinitionSkills(executableDefinition, userId, ownedEditable);
+        var config = subAgentManager().toSessionConfig(executableDefinition);
         if (overrides != null) {
             if (overrides.model != null) config.model = overrides.model;
             if (overrides.multiModalModel != null) config.multiModalModel = overrides.multiModalModel;
@@ -213,25 +214,27 @@ public class AgentSessionManager {
             if (overrides.channelType != null) config.channelType = overrides.channelType;
         }
         var sessionId = UUID.randomUUID().toString();
-        var datasetConfig = resolveDatasetConfig(definition, config, overrides);
-        var buildResult = buildAgentForDefinition(definition, sessionId, userId, config, datasetConfig);
+        var datasetConfig = resolveDatasetConfig(executableDefinition, config, overrides);
+        var buildResult = buildAgentForDefinition(executableDefinition, sessionId, userId, config, datasetConfig);
         var agent = buildResult.agent;
-
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         buildResult.sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
-        chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, definition.id, source));
+        chatMessageService.registerSession(sessionId,
+            ChatMessageService.SessionMeta.of(userId, executableDefinition.id, source));
         sessions.put(sessionId, session);
         touchActivity(sessionId);
         claimOwnership(sessionId);
-        var loadedSkillIds = resolveConfigList(definition.publishedConfig != null ? definition.publishedConfig.skillIds : null, definition.skillIds);
-        var loadedSubAgentIds = resolveConfigList(definition.publishedConfig != null ? definition.publishedConfig.subAgentIds : null, definition.subAgentIds);
-        skillManager().loadSkillsFromDefinition(session, definition);
-        subAgentManager().loadSubAgentsFromDefinition(session, definition);
+        var executableConfig = executableDefinition.publishedConfig;
+        var loadedSkillIds = executableConfig != null ? executableConfig.skillIds : executableDefinition.skillIds;
+        var loadedSubAgentIds = executableConfig != null ? executableConfig.subAgentIds : executableDefinition.subAgentIds;
+        skillManager().loadDefinitionSkills(session, executableDefinition, resolvedDefinitionSkills);
+        subAgentManager().loadSubAgentsFromDefinition(session, executableDefinition, userId);
         return new SessionCreationResult(sessionId,
                 IdLists.clean(loadedSubAgentIds),
-                IdLists.clean(loadedSkillIds));
+                IdLists.clean(loadedSkillIds),
+                executableDefinition);
     }
 
     private List<AgentDatasetConfig> resolveDatasetConfig(AgentDefinition definition, SessionConfig config, SessionConfig overrides) {
@@ -263,7 +266,7 @@ public class AgentSessionManager {
         var sandbox2 = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId, event -> {
             if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
         });
-        var toolRegistry = subAgentManager().resolveToolsToRegistry(definition, sessionId);
+        var toolRegistry = subAgentManager().resolveTopLevelToolsToRegistry(definition, sessionId, userId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
         var extraVars = buildExtraVars(config, datasetConfig);
         var context = SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService);
@@ -297,7 +300,6 @@ public class AgentSessionManager {
     private void claimOwnership(String sessionId) {
         if (ownershipRegistry != null) ownershipRegistry.claim(sessionId);
     }
-
     private void renewSessionOwnership(String sessionId) {
         if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
     }
@@ -305,8 +307,12 @@ public class AgentSessionManager {
         return getSession(sessionId, null);
     }
     public InProcessAgentSession getSession(String sessionId, SessionState state) {
+        return getSession(sessionId, state, null);
+    }
+    public InProcessAgentSession getSession(String sessionId, SessionState state, String callerUserId) {
         var session = sessions.get(sessionId);
         if (session != null) {
+            if (callerUserId != null && !callerUserId.isBlank()) requireSessionCaller(sessionId, callerUserId);
             touchActivity(sessionId);
             return session;
         }
@@ -323,7 +329,7 @@ public class AgentSessionManager {
         }
         var built = sessions.computeIfAbsent(sessionId, id -> {
             logger.info("session not found locally, attempting to rebuild, sessionId={}", id);
-            var rebuilt = rebuildManager().rebuildSession(id, effectiveState);
+            var rebuilt = rebuildManager().rebuildSession(id, effectiveState, callerUserId);
             if (rebuilt != null) {
                 claimOwnership(id);
                 logger.info("session rebuilt successfully, sessionId={}", id);
@@ -333,8 +339,24 @@ public class AgentSessionManager {
         if (built == null) {
             throw new NotFoundException("session not found, sessionId=" + sessionId);
         }
+        if (callerUserId != null && !callerUserId.isBlank()) requireSessionCaller(sessionId, callerUserId);
         touchActivity(sessionId);
         return built;
+    }
+    public InProcessAgentSession getSessionForAgentCaller(String sessionId, String agentId, String callerUserId) {
+        requireSessionOwner(sessionId, callerUserId);
+        String sessionAgentId = chatMessageService.findSessionAgentId(sessionId);
+        if (agentId == null || agentId.isBlank() || !agentId.equals(sessionAgentId)) {
+            throw new ForbiddenException("session is unavailable");
+        }
+        return getSession(sessionId);
+    }
+
+    public void requireSessionOwner(String sessionId, String callerUserId) {
+        String ownerUserId = chatMessageService.findSessionUserId(sessionId);
+        if (callerUserId == null || callerUserId.isBlank() || !callerUserId.equals(ownerUserId)) {
+            throw new ForbiddenException("session is unavailable");
+        }
     }
     public void touchSession(String sessionId) {
         if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
@@ -390,9 +412,10 @@ public class AgentSessionManager {
         }
         return closed;
     }
-    public List<ToolRef> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {
+    public List<ToolRef> loadToolRefs(String sessionId, List<ToolRef> toolRefs, String callerUserId) {
+        requireSessionCaller(sessionId, callerUserId);
         var session = getSession(sessionId);
-        var tools = toolRegistryService.resolveToolRefs(toolRefs, sessionId);
+        var tools = toolRegistryService.resolveToolRefs(toolRefs, sessionId, callerUserId);
         if (tools.isEmpty()) {
             throw new NotFoundException("no tools found for refs: " + toolRefs);
         }
@@ -400,17 +423,28 @@ public class AgentSessionManager {
         chatMessageService.addLoadedTools(sessionId, toolRefs);
         return toolRefs;
     }
-    public List<String> unloadSkills(String sessionId, List<String> skillIds) {
-        return skillManager().unloadSkills(sessionId, skillIds);
+    public List<String> unloadSkills(String sessionId, List<String> skillIds, String callerUserId) {
+        requireSessionCaller(sessionId, callerUserId);
+        return skillManager().unloadSkills(sessionId, skillIds, callerUserId);
     }
-    public List<String> loadSkills(String sessionId, List<String> skillIds) {
+    public List<String> loadSkills(String sessionId, List<String> skillIds, String callerUserId) {
+        requireSessionCaller(sessionId, callerUserId);
         var session = getSession(sessionId);
-        return skillManager().loadSkills(session, skillIds);
+        return skillManager().loadSkills(session, skillIds, callerUserId);
     }
-    public List<String> loadSubAgents(String sessionId, List<AgentDefinition> definitions) {
+    public List<String> loadSubAgents(String sessionId, List<AgentDefinition> definitions, String callerUserId) {
+        requireSessionCaller(sessionId, callerUserId);
         var session = getSession(sessionId);
-        return subAgentManager().loadSubAgents(session, definitions);
+        return subAgentManager().loadSubAgents(session, definitions, callerUserId);
     }
-    public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds) { }
+
+    void requireSessionCaller(String sessionId, String callerUserId) {
+        String ownerUserId = chatMessageService.findSessionUserId(sessionId);
+        if (callerUserId == null || callerUserId.isBlank() || !callerUserId.equals(ownerUserId)) {
+            throw new ForbiddenException("session is unavailable");
+        }
+    }
+    public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds,
+                                        List<String> loadedSkillIds, AgentDefinition executableDefinition) { }
     private record AgentBuildResult(Agent agent, InProcessAgentSession[] sessionRef) { }
 }

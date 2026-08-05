@@ -161,6 +161,29 @@ class WorkflowPortServiceTest {
         assertFalse(result.unresolved().getFirst().message().contains("private prompt value"));
     }
 
+    @Test
+    void importUsesExactGenericReplacementWarningForAgentAndLlmTypeMismatches() {
+        AgentDefinition llm = insertAgent("import-llm", "user-1", AgentStatus.DRAFT, null);
+        llm.type = DefinitionType.LLM_CALL;
+        agentCollection.replace(llm);
+        AgentDefinition agent = insertAgent("import-agent", "user-1", AgentStatus.DRAFT, null);
+        String graph = "{\"nodes\":["
+            + "{\"id\":\"agent-node\",\"type\":\"AGENT\",\"config\":{\"agent_id\":\"" + llm.id + "\"}},"
+            + "{\"id\":\"llm-node\",\"type\":\"LLM\",\"config\":{\"agent_id\":\"" + agent.id + "\"}}"
+            + "],\"edges\":[]}";
+
+        WorkflowPortService.WorkflowImportResult result = portService.importWorkflow(
+            JSON.toJSON(makeEnvelope("wrong-types", graph)), null, "user-1");
+
+        assertEquals(2, result.unresolved().size());
+        assertEquals("agent-node", result.unresolved().get(0).nodeId());
+        assertEquals(WorkflowPortService.PRIVATE_AGENT_REPLACEMENT_MESSAGE,
+            result.unresolved().get(0).message());
+        assertEquals("llm-node", result.unresolved().get(1).nodeId());
+        assertEquals(WorkflowPortService.PRIVATE_AGENT_REPLACEMENT_MESSAGE,
+            result.unresolved().get(1).message());
+    }
+
     private AgentDefinition insertAgent(String namePrefix, String userId, AgentStatus status,
                                         AgentPublishedConfig publishedConfig) {
         var agent = new AgentDefinition();

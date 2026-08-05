@@ -2,6 +2,7 @@ package ai.core.server.session;
 
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.domain.AgentDatasetConfig;
+import ai.core.server.domain.AgentSandboxConfig;
 import ai.core.server.domain.ToolRef;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
@@ -13,6 +14,8 @@ import java.util.Map;
  * @author stephen
  */
 public class SessionState {
+    public static final int CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION = 2;
+    public static final int CURRENT_SANDBOX_BINDING_SECURITY_VERSION = 1;
 
     public static SessionState fromJson(String json) {
         if (Strings.isBlank(json)) return null;
@@ -22,6 +25,13 @@ public class SessionState {
     public String sessionId;
     public String userId;
     public boolean fromAgent;
+    /**
+     * Marks agent snapshots that were created after caller-aware dependency validation.
+     * Deliberately nullable so persisted legacy JSON remains distinguishable from trusted state.
+     */
+    public Integer agentSnapshotSecurityVersion;
+    /** Positive provenance marker required before a persisted sandbox binding may be reattached. */
+    public Integer sandboxBindingSecurityVersion;
     /** Full agent config snapshot — avoids needing AgentDefinitionService during rebuild. */
     public AgentConfigSnapshot agentConfig;
     public SessionConfig config;
@@ -50,6 +60,8 @@ public class SessionState {
         public String inputTemplate;
         public Map<String, String> variables;
         public List<ToolRef> tools;
+        public List<String> skillIds;
         public List<AgentDatasetConfig> datasetConfig;
+        public AgentSandboxConfig sandboxConfig;
     }
 }

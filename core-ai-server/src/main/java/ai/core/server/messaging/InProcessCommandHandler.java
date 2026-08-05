@@ -256,7 +256,7 @@ public class InProcessCommandHandler {
             respondOk(command, JsonUtil.toJson(Map.of("loadedTools", List.of())));
             return;
         }
-        var loadedTools = sessionManager.loadToolRefs(command.sessionId(), toolRefs);
+        var loadedTools = sessionManager.loadToolRefs(command.sessionId(), toolRefs, command.userId());
         var idNames = LoadedToolRefNames.toIdNames(loadedTools, toolRegistryService);
         var result = JsonUtil.toJson(Map.of("loadedTools", idNames));
         respondOk(command, result);
@@ -294,11 +294,7 @@ public class InProcessCommandHandler {
     private void handleLoadSkills(SessionCommand command) {
         var payload = JsonUtil.fromJson(LoadSkillsPayload.class, command.payload());
         var skillIds = IdLists.clean(payload != null ? payload.skillIds : null);
-        if (skillIds.isEmpty()) {
-            respondOk(command, JsonUtil.toJson(Map.of("loadedSkills", List.of())));
-            return;
-        }
-        var names = sessionManager.loadSkills(command.sessionId(), skillIds);
+        var names = sessionManager.loadSkills(command.sessionId(), skillIds, command.userId());
         var idNames = new ArrayList<IdName>(skillIds.size());
         for (int i = 0; i < skillIds.size() && i < names.size(); i++) {
             var v = new IdName();
@@ -314,11 +310,11 @@ public class InProcessCommandHandler {
         var payload = JsonUtil.fromJson(UnloadSkillsPayload.class, command.payload());
         var skillIds = IdLists.clean(payload != null ? payload.skillIds : null);
         if (skillIds.isEmpty()) {
-            var remaining = sessionManager.unloadSkills(command.sessionId(), List.of());
+            var remaining = sessionManager.unloadSkills(command.sessionId(), List.of(), command.userId());
             respondOk(command, JsonUtil.toJson(Map.of("remainingSkills", remaining)));
             return;
         }
-        var remaining = sessionManager.unloadSkills(command.sessionId(), skillIds);
+        var remaining = sessionManager.unloadSkills(command.sessionId(), skillIds, command.userId());
         var result = JsonUtil.toJson(Map.of("remainingSkills", remaining));
         respondOk(command, result);
     }
@@ -333,7 +329,7 @@ public class InProcessCommandHandler {
         var definitions = agentIds.stream()
                 .map(agentDefinitionService::getEntity)
                 .toList();
-        var names = sessionManager.loadSubAgents(command.sessionId(), definitions);
+        var names = sessionManager.loadSubAgents(command.sessionId(), definitions, command.userId());
         var idNames = new ArrayList<IdName>(definitions.size());
         for (int i = 0; i < definitions.size() && i < names.size(); i++) {
             var v = new IdName();
@@ -367,7 +363,7 @@ public class InProcessCommandHandler {
 
     private void handleA2AResumeTask(SessionCommand command) {
         var message = JsonUtil.fromJson(Message.class, command.payload());
-        var task = serverA2AService.resumeTaskOnOwner(message);
+        var task = serverA2AService.resumeTaskOnOwner(message, command.userId());
         respondOk(command, JsonUtil.toJson(task));
     }
 

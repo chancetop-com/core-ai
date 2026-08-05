@@ -5,6 +5,15 @@ interface InputVar { name?: string; type?: string; options?: string }
 interface Case { edge_id?: string; conditions?: { selector?: string }[] }
 
 const NODE_ERROR_PREFIX = /^node\s+([^\s]+)\b/;
+const WORKFLOW_VALIDATION_PREFIX = 'workflow validation failed: ';
+
+export function parseWorkflowValidationErrors(message: string): string[] {
+  if (!message.startsWith(WORKFLOW_VALIDATION_PREFIX)) return [];
+  return message.slice(WORKFLOW_VALIDATION_PREFIX.length)
+    .split(';')
+    .map((error) => error.trim())
+    .filter(Boolean);
+}
 
 export function groupNodeErrors(errors: string[]): Record<string, string[]> {
   const grouped: Record<string, string[]> = {};

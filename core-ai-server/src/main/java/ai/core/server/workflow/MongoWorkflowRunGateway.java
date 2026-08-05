@@ -34,6 +34,9 @@ public class MongoWorkflowRunGateway implements WorkflowRunGateway {
     @Inject
     MongoCollection<WorkflowPublishedVersion> versionCollection;
 
+    @Inject
+    WorkflowPrivateAgentSafetyValidator privateAgentSafetyValidator;
+
     @Override
     public String submitChildRun(WorkflowRun parent, WorkflowNode node, String input, int childDepth) {
         String versionId = String.valueOf(node.config().get("version_id"));
@@ -46,6 +49,7 @@ public class MongoWorkflowRunGateway implements WorkflowRunGateway {
         if (!version.workflowId.equals(sourceWorkflowId)) {
             throw new IllegalStateException("workflow node version " + versionId + " does not belong to workflow " + sourceWorkflowId);
         }
+        privateAgentSafetyValidator.requireSafe(version);
         var now = ZonedDateTime.now();
         var run = new WorkflowRun();
         run.id = UUID.randomUUID().toString();

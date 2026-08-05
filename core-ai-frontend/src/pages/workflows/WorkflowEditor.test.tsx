@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../api/client';
 import WorkflowEditor from './WorkflowEditor';
 
@@ -30,19 +30,38 @@ const graph = JSON.stringify({
   ],
 });
 
+function setupEditorApi() {
+  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
+  vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn() });
+  vi.spyOn(api.workflows, 'get').mockResolvedValue({
+    id: 'workflow-1', name: 'Validation workflow', status: 'PRIVATE', visibility: 'PRIVATE', editable: true,
+    draft_graph: graph,
+  });
+  vi.spyOn(api.workflows, 'versions').mockResolvedValue({ versions: [] });
+  vi.spyOn(api.workflows, 'update').mockResolvedValue({
+    id: 'workflow-1', name: 'Validation workflow', status: 'PRIVATE', visibility: 'PRIVATE', editable: true,
+    draft_graph: graph,
+  });
+}
+
+function renderEditor() {
+  render(
+    <MemoryRouter initialEntries={['/workflows/workflow-1']}>
+      <Routes>
+        <Route path="/workflows/:id" element={<WorkflowEditor />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
 describe('WorkflowEditor validation focus', () => {
   it('closes the Test panel and shows the first failed node issues', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
-    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn() });
-    vi.spyOn(api.workflows, 'get').mockResolvedValue({
-      id: 'workflow-1', name: 'Validation workflow', status: 'PRIVATE', visibility: 'PRIVATE', editable: true,
-      draft_graph: graph,
-    });
-    vi.spyOn(api.workflows, 'versions').mockResolvedValue({ versions: [] });
-    vi.spyOn(api.workflows, 'update').mockResolvedValue({
-      id: 'workflow-1', name: 'Validation workflow', status: 'PRIVATE', visibility: 'PRIVATE', editable: true,
-      draft_graph: graph,
-    });
+    setupEditorApi();
     vi.spyOn(api.workflows, 'validate').mockResolvedValue({
       valid: false,
       errors: [
@@ -51,13 +70,7 @@ describe('WorkflowEditor validation focus', () => {
       ],
     });
 
-    render(
-      <MemoryRouter initialEntries={['/workflows/workflow-1']}>
-        <Routes>
-          <Route path="/workflows/:id" element={<WorkflowEditor />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderEditor();
 
     await screen.findByDisplayValue('Validation workflow');
     await userEvent.click(screen.getByRole('button', { name: 'Test' }));
@@ -66,5 +79,81 @@ describe('WorkflowEditor validation focus', () => {
     expect(await screen.findByDisplayValue('Second Agent')).toBeTruthy();
     expect(screen.getByText('node agent_2 references an unavailable agent')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Test draft' })).toBeNull();
+  });
+
+  it('focuses the first failed node when Save races with server validation', async () => {
+    setupEditorApi();
+    vi.spyOn(api.workflows, 'validate').mockResolvedValue({ valid: true, errors: [] });
+    vi.spyOn(api.workflows, 'saveVersion').mockRejectedValue(new Error(
+      'workflow validation failed: node agent_2 changed during save; node agent_1 is also invalid',
+    ));
+    renderEditor();
+
+    await screen.findByDisplayValue('Validation workflow');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByDisplayValue('Second Agent')).toBeTruthy();
+    expect(screen.getByText('node agent_2 changed during save')).toBeTruthy();
+    expect(screen.getByText(/Save failed: workflow validation failed:/)).toBeTruthy();
+  });
+
+  it('focuses the first referenced node that still exists on the canvas', async () => {
+    setupEditorApi();
+    vi.spyOn(api.workflows, 'validate').mockResolvedValue({ valid: true, errors: [] });
+    vi.spyOn(api.workflows, 'saveVersion').mockRejectedValue(new Error(
+      'workflow validation failed: node deleted_node changed during save; node agent_2 is invalid',
+    ));
+    renderEditor();
+
+    await screen.findByDisplayValue('Validation workflow');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByDisplayValue('Second Agent')).toBeTruthy();
+    expect(screen.getByText('node agent_2 is invalid')).toBeTruthy();
+  });
+
+  it('focuses the first failed node and closes Test when Preview races with server validation', async () => {
+    setupEditorApi();
+    vi.spyOn(api.workflows, 'validate').mockResolvedValue({ valid: true, errors: [] });
+    vi.spyOn(api.workflows, 'previewRun').mockRejectedValue(new Error(
+      'workflow validation failed: node agent_2 changed during preview; node agent_1 is also invalid',
+    ));
+    renderEditor();
+
+    await screen.findByDisplayValue('Validation workflow');
+    await userEvent.click(screen.getByRole('button', { name: 'Test' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Test draft' }));
+
+    expect(await screen.findByDisplayValue('Second Agent')).toBeTruthy();
+    expect(screen.getByText('node agent_2 changed during preview')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Test draft' })).toBeNull();
+  });
+
+  it('keeps generic Save failures generic without focusing a node', async () => {
+    setupEditorApi();
+    vi.spyOn(api.workflows, 'validate').mockResolvedValue({ valid: true, errors: [] });
+    vi.spyOn(api.workflows, 'saveVersion').mockRejectedValue(new Error('database offline'));
+    renderEditor();
+
+    await screen.findByDisplayValue('Validation workflow');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Save failed: database offline')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Second Agent')).toBeNull();
+  });
+
+  it('keeps generic Preview failures in the Test panel without focusing a node', async () => {
+    setupEditorApi();
+    vi.spyOn(api.workflows, 'validate').mockResolvedValue({ valid: true, errors: [] });
+    vi.spyOn(api.workflows, 'previewRun').mockRejectedValue(new Error('runner unavailable'));
+    renderEditor();
+
+    await screen.findByDisplayValue('Validation workflow');
+    await userEvent.click(screen.getByRole('button', { name: 'Test' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Test draft' }));
+
+    expect(await screen.findByText('Run failed: runner unavailable')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Test draft' })).toBeTruthy();
+    expect(screen.queryByDisplayValue('Second Agent')).toBeNull();
   });
 });

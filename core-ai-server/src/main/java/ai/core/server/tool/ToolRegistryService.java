@@ -290,8 +290,16 @@ public class ToolRegistryService {
         return resolutionService.resolveToolRefs(toolRefs, sessionId);
     }
 
+    public List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs, String sessionId, String callerUserId) {
+        return resolutionService.resolveToolRefs(toolRefs, sessionId, callerUserId);
+    }
+
     public ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId) {
         return resolutionService.resolveToToolRegistry(toolRefs, sessionId);
+    }
+
+    public ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId, String callerUserId) {
+        return resolutionService.resolveToToolRegistry(toolRefs, sessionId, callerUserId);
     }
 
     public List<String> extractAgentIds(List<ToolRef> toolRefs) {

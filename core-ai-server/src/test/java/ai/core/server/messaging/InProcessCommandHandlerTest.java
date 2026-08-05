@@ -1,17 +1,21 @@
 package ai.core.server.messaging;
 
 import ai.core.api.server.session.SessionStatus;
+import ai.core.api.a2a.Message;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
+import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.session.InProcessAgentSession;
+import ai.core.utils.JsonUtil;
 import redis.clients.jedis.JedisPool;
 import org.junit.jupiter.api.Test;
 
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -86,5 +90,60 @@ class InProcessCommandHandlerTest {
         verify(session).cancelTurn();
         verify(eventPublisher).publish(eq("s-1"),
                 argThat(event -> event instanceof SseStatusChangeEvent status && status.status == SessionStatus.IDLE));
+    }
+
+    @Test
+    void a2aResumeRpcPreservesCallerIdentity() {
+        var sessionManager = mock(AgentSessionManager.class);
+        var ownershipRegistry = mock(SessionOwnershipRegistry.class);
+        var a2aService = mock(ServerA2AService.class);
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry,
+                null, null, null, null);
+        var rpcDependencies = new CommandRpcDependencies(null, null, a2aService, mock(JedisPool.class), null);
+        var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
+        when(a2aService.resumeTaskOnOwner(any(Message.class), eq("caller-1")))
+                .thenReturn(new ai.core.api.a2a.Task());
+        var message = Message.user("approve");
+        message.taskId = "task-1";
+        var command = new SessionCommand(CommandType.A2A_RESUME_TASK, "session-1", "caller-1",
+                JsonUtil.toJson(message), null);
+
+        handler.handle(command);
+
+        verify(a2aService).resumeTaskOnOwner(argThat(value -> "task-1".equals(value.taskId)), eq("caller-1"));
+    }
+
+    @Test
+    void dynamicSkillRpcPreservesCallerIdentity() {
+        var sessionManager = mock(AgentSessionManager.class);
+        when(sessionManager.loadSkills("session-1", List.of("skill-1"), "caller-1"))
+                .thenReturn(List.of("Admin/skill-1"));
+        when(sessionManager.unloadSkills("session-1", List.of("skill-1"), "caller-1"))
+                .thenReturn(List.of());
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, null,
+                mock(SessionOwnershipRegistry.class), null, null, null, null);
+        var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null);
+        var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
+        var payload = JsonUtil.toJson(Map.of("skillIds", List.of("skill-1")));
+
+        handler.handle(SessionCommand.loadSkills("session-1", "caller-1", payload, null));
+        handler.handle(SessionCommand.unloadSkills("session-1", "caller-1", payload, null));
+
+        verify(sessionManager).loadSkills("session-1", List.of("skill-1"), "caller-1");
+        verify(sessionManager).unloadSkills("session-1", List.of("skill-1"), "caller-1");
+    }
+
+    @Test
+    void emptyDynamicSkillLoadRpcStillPreservesCallerForSessionAuthorization() {
+        var sessionManager = mock(AgentSessionManager.class);
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, null,
+                mock(SessionOwnershipRegistry.class), null, null, null, null);
+        var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null);
+        var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
+        var payload = JsonUtil.toJson(Map.of("skillIds", List.of()));
+
+        handler.handle(SessionCommand.loadSkills("session-1", "caller-1", payload, null));
+
+        verify(sessionManager).loadSkills("session-1", List.of(), "caller-1");
     }
 }

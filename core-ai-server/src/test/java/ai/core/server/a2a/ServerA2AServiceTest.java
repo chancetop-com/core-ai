@@ -26,6 +26,7 @@ import ai.core.server.session.AgentSessionManager;
 import ai.core.session.InProcessAgentSession;
 import ai.core.utils.JsonUtil;
 import core.framework.web.Request;
+import core.framework.web.exception.ForbiddenException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -39,12 +40,14 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -214,6 +217,74 @@ class ServerA2AServiceTest {
         }), same(Task.class), any(Duration.class));
     }
 
+    @Test
+    void suppliedContextRequiresMatchingSessionCallerAndAgent() {
+        var service = new ServerA2AService();
+        var manager = mock(AgentSessionManager.class);
+        when(manager.getSessionForAgentCaller("victim-context", "agent-1", "attacker"))
+                .thenThrow(new ForbiddenException("session is unavailable"));
+        service.sessionManager = manager;
+        var request = request("hello");
+        request.message.contextId = "victim-context";
+
+        assertThrows(ForbiddenException.class,
+                () -> service.stream("agent-1", request, "attacker", event -> { }, () -> { }));
+
+        verify(manager, never()).getSession("victim-context");
+    }
+
+    @Test
+    void taskResumeRequiresMatchingSessionCaller() {
+        var service = new ServerA2AService();
+        service.agentDefinitionService = new FakeAgentDefinitionService(definition());
+        var session = mockSession(service);
+        var state = service.stream("agent-1", request("hello"), "user-1", event -> { }, () -> { });
+        fire(session.listeners, listener -> listener.onToolApprovalRequest(
+                ToolApprovalRequestEvent.of("context-1", "call-1", "shell", "{}", null)));
+        doThrow(new ForbiddenException("session is unavailable"))
+                .when(service.sessionManager).requireSessionOwner("context-1", "attacker");
+        var resume = request("approve");
+        resume.message.taskId = state.taskId;
+        resume.message.parts = List.of(Part.data(Map.of("decision", "approve")));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.stream("agent-1", resume, "attacker", event -> { }, () -> { }));
+
+        verify(session.session, never()).approveToolCall("call-1", ApprovalDecision.APPROVE);
+    }
+
+    @Test
+    void remoteTaskResumeDefersCallerAuthorizationToOwnerPod() {
+        var service = new ServerA2AService();
+        var registry = new FakeTaskRegistry();
+        registry.snapshots.put("task-1", snapshot(
+                "task-1", "context-1", "owner-pod", TaskState.INPUT_REQUIRED, null));
+        var manager = mock(AgentSessionManager.class);
+        doThrow(new ForbiddenException("session is unavailable"))
+                .when(manager).requireSessionOwner("context-1", "user-1");
+        var rpcClient = mock(RpcClient.class);
+        when(rpcClient.newRequestId()).thenReturn("req-1");
+        var remoteTask = new Task();
+        remoteTask.id = "task-1";
+        remoteTask.contextId = "context-1";
+        remoteTask.status = ai.core.api.a2a.TaskStatus.of(TaskState.WORKING);
+        when(rpcClient.callToPod(eq("owner-pod"), any(SessionCommand.class), same(Task.class), any(Duration.class)))
+                .thenReturn(remoteTask);
+        service.sessionManager = manager;
+        service.taskRegistry = registry;
+        service.rpcClient = rpcClient;
+        var request = request("approve");
+        request.message.taskId = "task-1";
+
+        var result = service.send("agent-1", request, "user-1");
+
+        assertSame(remoteTask, result.task);
+        verify(rpcClient).callToPod(eq("owner-pod"), argThat(command ->
+                        command.type() == CommandType.A2A_RESUME_TASK
+                                && "user-1".equals(command.userId())),
+                same(Task.class), any(Duration.class));
+    }
+
     private SendMessageRequest request(String text) {
         var request = new SendMessageRequest();
         request.message = ai.core.api.a2a.Message.user(text);
@@ -234,7 +305,8 @@ class ServerA2AServiceTest {
             return null;
         }).when(session).removeEvent(any());
         when(manager.createSessionFromAgent(any(AgentDefinition.class), isNull(), eq("user-1"), eq("a2a")))
-                .thenReturn(new AgentSessionManager.SessionCreationResult("context-1", List.of(), List.of()));
+                .thenReturn(new AgentSessionManager.SessionCreationResult(
+                    "context-1", List.of(), List.of(), definition()));
         when(manager.getSession("context-1")).thenReturn(session);
         service.sessionManager = manager;
         return new MockSession(session, listeners);

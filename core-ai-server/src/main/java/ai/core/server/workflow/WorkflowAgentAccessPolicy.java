@@ -1,21 +1,22 @@
 package ai.core.server.workflow;
 
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.AgentStatus;
 
 /**
  * @author Xander
  */
 public final class WorkflowAgentAccessPolicy {
     public static boolean isOwnedEditable(AgentDefinition agent, String userId) {
-        return userId != null
-               && agent != null
-               && userId.equals(agent.userId)
-               && !Boolean.TRUE.equals(agent.systemDefault);
+        return AgentDependencyAccessPolicy.isOwnedEditable(agent, userId);
     }
 
     static boolean hasUsablePublishedConfig(AgentDefinition agent) {
-        return agent != null && agent.status == AgentStatus.PUBLISHED && agent.publishedConfig != null;
+        return AgentDependencyAccessPolicy.hasUsablePublishedConfig(agent);
+    }
+
+    static boolean hasUsablePublishedSubAgent(AgentDefinition agent) {
+        return AgentDependencyAccessPolicy.hasUsablePublishedSubAgent(agent);
     }
 
     public static boolean canReference(AgentDefinition agent, String userId) {

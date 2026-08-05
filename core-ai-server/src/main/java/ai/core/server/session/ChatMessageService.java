@@ -83,6 +83,24 @@ public class ChatMessageService {
         return chatSessionCollection.get(sessionId).orElse(null);
     }
 
+    public String findSessionUserId(String sessionId) {
+        SessionMeta registered = metaBySession.get(sessionId);
+        if (registered != null && registered.userId != null && !registered.userId.isBlank()) {
+            return registered.userId;
+        }
+        ChatSession persisted = chatSessionCollection.get(sessionId).orElse(null);
+        return persisted != null ? persisted.userId : null;
+    }
+
+    public String findSessionAgentId(String sessionId) {
+        SessionMeta registered = metaBySession.get(sessionId);
+        if (registered != null && registered.agentId != null && !registered.agentId.isBlank()) {
+            return registered.agentId;
+        }
+        ChatSession persisted = chatSessionCollection.get(sessionId).orElse(null);
+        return persisted != null ? persisted.agentId : null;
+    }
+
     public List<ai.core.server.domain.AgentRunArtifact> artifacts(String sessionId) {
         return chatSessionCollection.get(sessionId).map(s -> s.artifacts).orElse(null);
     }

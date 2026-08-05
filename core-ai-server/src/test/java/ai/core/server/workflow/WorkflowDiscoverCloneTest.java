@@ -6,6 +6,8 @@ import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
+import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillSourceType;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowDefinitionStatus;
@@ -80,6 +82,9 @@ class WorkflowDiscoverCloneTest {
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
 
+    @Inject
+    MongoCollection<SkillDefinition> skillCollection;
+
     @Test
     void publishedWorkflowIsDiscoverableByOtherUsersButDraftIsNot() {
         WorkflowDefinition published = definitionService.create("owner-published", "WORKFLOW", GRAPH, "owner-1");
@@ -130,6 +135,7 @@ class WorkflowDiscoverCloneTest {
 
     @Test
     void privateOwnerSnapshotIsAllowedForPrivateFlowsButRejectedOnlyWhenMadePublic() {
+        upsertSkill("secret-skill-id", "owner");
         AgentDefinition privateAgent = insertDraftAgent("unsafe-private-agent", "owner", "private prompt value");
         privateAgent.skillIds = List.of("secret-skill-id");
         agentCollection.replace(privateAgent);
@@ -482,6 +488,24 @@ class WorkflowDiscoverCloneTest {
     private void publishOwned(String userId, String name) {
         var wf = definitionService.create(name, "WORKFLOW", GRAPH, userId);
         publishService.publish(wf.id, userId);
+    }
+
+    private void upsertSkill(String id, String userId) {
+        var skill = new SkillDefinition();
+        skill.id = id;
+        skill.namespace = userId;
+        skill.name = id;
+        skill.qualifiedName = userId + "/" + id;
+        skill.sourceType = SkillSourceType.UPLOAD;
+        skill.content = "---\nname: " + id + "\ndescription: test\n---\n";
+        skill.userId = userId;
+        skill.createdAt = ZonedDateTime.now();
+        skill.updatedAt = skill.createdAt;
+        if (skillCollection.get(id).isPresent()) {
+            skillCollection.replace(skill);
+        } else {
+            skillCollection.insert(skill);
+        }
     }
 
     @Test

@@ -43,7 +43,7 @@ public class ChannelSyncController implements Controller {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChannelSyncController.class);
     private static final long POLL_TIMEOUT_MS = 30 * 60 * 1000;
     private static final long POLL_INTERVAL_MS = 500;
-    private final ConcurrentMap<String, String> sessionCache = new ConcurrentHashMap<>();
+    private final ConcurrentMap<SessionCacheKey, String> sessionCache = new ConcurrentHashMap<>();
 
     @Inject
     ChannelConfigStore channelConfigStore;
@@ -77,12 +77,14 @@ public class ChannelSyncController implements Controller {
         var agent = agentDefinitionService.getEntity(channel.agentId);
         if (agent == null) throw new NotFoundException("agent not found: " + channel.agentId);
 
-        var userId = channel.userId != null ? channel.userId : channelId + ":" + UUID.randomUUID().toString().substring(0, 8);
         var userField = (String) payload.get("user");
+        var userId = resolveUserId(channel, channelId, userField);
+        var cacheKey = sessionCacheKey(channelId, channel.agentId, userId, userField);
         var asyncOcg = callbackUrl != null && !callbackUrl.isBlank();
-        var isNewConversation = !asyncOcg && countUserMessages(payload) == 1 && (userField == null || !sessionCache.containsKey(userField));
+        var isNewConversation = !asyncOcg && countUserMessages(payload) == 1
+                && (cacheKey == null || !sessionCache.containsKey(cacheKey));
 
-        var sessionId = resolveSession(userField, isNewConversation, userId, channel, agent, channelId);
+        var sessionId = resolveSession(cacheKey, userField, isNewConversation, userId, channel, agent);
         chatMessageService.writeUserMessage(sessionId, userText);
         var command = SessionCommand.sendMessage(sessionId, userId, userText, null);
         commandPublisher.publish(command);
@@ -100,30 +102,43 @@ public class ChannelSyncController implements Controller {
         return buildOpenAIResponse(sessionId, response);
     }
 
-    private String resolveSession(String userField, boolean isNewConversation, String userId,
-                                   ChannelConfigView channel, AgentDefinition agent, String channelId) {
-        if (userField != null && !isNewConversation && sessionCache.containsKey(userField)) {
-            var sessionId = sessionCache.get(userField);
+    private String resolveSession(SessionCacheKey cacheKey, String userField, boolean isNewConversation, String userId,
+                                   ChannelConfigView channel, AgentDefinition agent) {
+        if (cacheKey != null && !isNewConversation && sessionCache.containsKey(cacheKey)) {
+            var sessionId = sessionCache.get(cacheKey);
             try {
                 sessionManager.getSession(sessionId);
-                LOGGER.info("sync dispatch (reused), channelId={}, sessionId={}, agentId={}, userField={}", channelId, sessionId, channel.agentId, userField);
+                LOGGER.info("sync dispatch (reused), channelId={}, sessionId={}, agentId={}, userField={}",
+                        channel.channelId, sessionId, channel.agentId, userField);
                 return sessionId;
             } catch (NotFoundException e) {
-                sessionCache.remove(userField, sessionId);
+                sessionCache.remove(cacheKey, sessionId);
             }
         }
-        if (userField != null && isNewConversation) {
-            sessionCache.remove(userField);
+        if (cacheKey != null && isNewConversation) {
+            sessionCache.remove(cacheKey);
         }
         var config = new SessionConfig();
         config.channelType = resolveEffectiveChannelType(channel, userField);
         var result = sessionManager.createSessionFromAgent(agent, config, userId, "channel");
         var sessionId = result.sessionId();
-        if (userField != null) {
-            sessionCache.put(userField, sessionId);
+        if (cacheKey != null) {
+            sessionCache.put(cacheKey, sessionId);
         }
-        LOGGER.info("sync dispatch (new), channelId={}, sessionId={}, agentId={}, user={}", channelId, sessionId, channel.agentId, userField);
+        LOGGER.info("sync dispatch (new), channelId={}, sessionId={}, agentId={}, user={}",
+                channel.channelId, sessionId, channel.agentId, userField);
         return sessionId;
+    }
+
+    private SessionCacheKey sessionCacheKey(String channelId, String agentId, String userId, String userField) {
+        return userField == null ? null : new SessionCacheKey(channelId, agentId, userId, userField);
+    }
+
+    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
+    private String resolveUserId(ChannelConfigView channel, String channelId, String userField) {
+        if (channel.userId != null) return channel.userId;
+        if (userField != null && !userField.isBlank()) return "channel:" + channelId + ":" + userField;
+        return channelId + ":" + UUID.randomUUID().toString().substring(0, 8);
     }
 
     @SuppressWarnings("unchecked")
@@ -236,4 +251,6 @@ public class ChannelSyncController implements Controller {
         openAIResponse.put("choices", choices);
         return Response.text(JsonUtil.toJson(openAIResponse));
     }
+
+    private record SessionCacheKey(String channelId, String agentId, String userId, String userField) { }
 }

@@ -331,6 +331,11 @@ public class SandboxService {
         if (redisStore != null) redisStore.deleteBinding(sessionId);
     }
 
+    /** Strictly removes a durable sandbox binding without releasing a live local sandbox. */
+    public void invalidateSandboxBinding(String sessionId) {
+        if (redisStore != null) redisStore.deleteBindingStrict(sessionId);
+    }
+
     /**
      * Reattach to an existing sandbox for the session during rebuild.
      * Returns a LazySandbox wrapping the reattached delegate, or null if the sandbox no longer exists.

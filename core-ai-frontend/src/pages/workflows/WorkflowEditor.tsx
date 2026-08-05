@@ -20,7 +20,7 @@ import {
   branchLabel, edgeArrow, RUN_STATUS_COLOR, TERMINAL_RUN_STATUS,
   type WorkflowGraph, type WorkflowNodeData, type WorkflowRFNode,
 } from './graph';
-import { firstNodeErrorId, groupNodeErrors, nodeIssues } from './validation';
+import { firstNodeErrorId, groupNodeErrors, nodeIssues, parseWorkflowValidationErrors } from './validation';
 
 const nodeTypes = { workflowNode: WorkflowNode };
 const DRAFT_VERSION_VALUE = 'draft';
@@ -174,8 +174,13 @@ export default function WorkflowEditor() {
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) ?? null, [nodes, selectedId]);
   const applyNodeErrors = useCallback((errors: string[]) => {
     setServerNodeErrors(groupNodeErrors(errors));
-    const first = firstNodeErrorId(errors);
-    if (first && nodesRef.current.some((node) => node.id === first)) setSelectedId(first);
+    for (const error of errors) {
+      const nodeId = firstNodeErrorId([error]);
+      if (nodeId && nodesRef.current.some((node) => node.id === nodeId)) {
+        setSelectedId(nodeId);
+        break;
+      }
+    }
   }, []);
   const viewingVersion = selectedVersionId !== DRAFT_VERSION_VALUE;
   const selectedVersion = useMemo(
@@ -410,7 +415,10 @@ export default function WorkflowEditor() {
       setVersionDirty(false);
       setMsg('Saved');
     } catch (e) {
-      setMsg(`Save failed: ${(e as Error).message}`);
+      const error = (e as Error).message;
+      const validationErrors = parseWorkflowValidationErrors(error);
+      if (validationErrors.length > 0) applyNodeErrors(validationErrors);
+      setMsg(`Save failed: ${error}`);
     } finally { setBusy(false); }
   };
 
@@ -431,10 +439,8 @@ export default function WorkflowEditor() {
       setMsg('Published');
     } catch (e) {
       const error = (e as Error).message;
-      const validationPrefix = 'workflow validation failed: ';
-      if (error.startsWith(validationPrefix)) {
-        applyNodeErrors(error.slice(validationPrefix.length).split(';').map((item) => item.trim()).filter(Boolean));
-      }
+      const validationErrors = parseWorkflowValidationErrors(error);
+      if (validationErrors.length > 0) applyNodeErrors(validationErrors);
       setMsg(`Publish failed: ${error}`);
     } finally { setBusy(false); }
   };
@@ -544,7 +550,13 @@ export default function WorkflowEditor() {
       setRunStatus(res.status || 'PENDING');
       setRunId(res.run_id);
     } catch (e) {
-      setRunError(`Run failed: ${(e as Error).message}`);
+      const error = (e as Error).message;
+      const validationErrors = parseWorkflowValidationErrors(error);
+      if (validationErrors.length > 0) {
+        setShowRun(false);
+        applyNodeErrors(validationErrors);
+      }
+      setRunError(`Run failed: ${error}`);
     } finally { setBusy(false); }
   };
 

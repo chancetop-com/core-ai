@@ -30,7 +30,7 @@ public class AgentRunWebServiceImpl implements AgentRunWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("agent_id", agentId);
-        return agentRunService.trigger(agentId, request);
+        return agentRunService.trigger(agentId, request, userId);
     }
 
     @Override
@@ -45,8 +45,10 @@ public class AgentRunWebServiceImpl implements AgentRunWebService {
 
     @Override
     public LLMCallResponse llmCall(String id, LLMCallRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
         ActionLogContext.put("llm_call_id", id);
-        return agentRunService.llmCall(id, request);
+        return agentRunService.llmCall(id, request, userId);
     }
 
     @Override
@@ -54,7 +56,7 @@ public class AgentRunWebServiceImpl implements AgentRunWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("agent_id", agentId);
-        return agentRunService.call(agentId, request);
+        return agentRunService.call(agentId, request, userId);
     }
 
     @Override

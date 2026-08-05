@@ -43,6 +43,28 @@ class ChatMessageServiceTest {
     }
 
     @Test
+    void registeredSessionOwnerIsAvailableBeforeFirstPersistedMessage() {
+        var service = new ChatMessageService();
+        service.chatSessionCollection = mock();
+        service.registerSession("fresh-session", ChatMessageService.SessionMeta.of("caller-1", null, "chat"));
+
+        assertEquals("caller-1", service.findSessionUserId("fresh-session"));
+
+        verify(service.chatSessionCollection, never()).get("fresh-session");
+    }
+
+    @Test
+    void registeredSessionAgentIsAvailableBeforeFirstPersistedMessage() {
+        var service = new ChatMessageService();
+        service.chatSessionCollection = mock();
+        service.registerSession("fresh-session", ChatMessageService.SessionMeta.of("caller-1", "agent-1", "a2a"));
+
+        assertEquals("agent-1", service.findSessionAgentId("fresh-session"));
+
+        verify(service.chatSessionCollection, never()).get("fresh-session");
+    }
+
+    @Test
     void updateSessionTitleReturnsFalseWhenMissing() {
         var service = new ChatMessageService();
         service.chatSessionCollection = mock();

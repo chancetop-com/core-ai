@@ -6,6 +6,7 @@ import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentSandboxConfig;
 import ai.core.server.domain.AgentSnapshotSource;
 import ai.core.server.domain.AgentStatus;
+import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.WorkflowPublishedVersion;
@@ -102,9 +103,10 @@ class WorkflowPrivateAgentSafetyValidatorTest {
     }
 
     @Test
-    void skipsPublishedAndLegacySnapshots() {
+    void acceptsValidatedPublishedAndLegacySnapshots() {
         var config = new AgentPublishedConfig();
         config.skillIds = List.of("historical-skill");
+        config.skillValidationVersion = 1;
         WorkflowPublishedVersion published = ownedVersion("n1", config);
         AgentSnapshotSource source = JSON.fromJSON(AgentSnapshotSource.class, published.agentSnapshotSources.get("n1"));
         source.sourceKind = "PUBLISHED";
@@ -114,6 +116,24 @@ class WorkflowPrivateAgentSafetyValidatorTest {
         var legacy = new WorkflowPublishedVersion();
         legacy.agentSnapshots = Map.of("n1", JSON.toJSON(config));
         assertTrue(validator.validate(legacy).isEmpty());
+    }
+
+    @Test
+    void rejectsPublishedAndLegacySnapshotsWithUnvalidatedSkills() {
+        var config = new AgentPublishedConfig();
+        config.skillIds = List.of("historical-skill");
+        WorkflowPublishedVersion published = ownedVersion("n1", config);
+        AgentSnapshotSource source = JSON.fromJSON(AgentSnapshotSource.class,
+            published.agentSnapshotSources.get("n1"));
+        source.sourceKind = "PUBLISHED";
+        published.agentSnapshotSources = Map.of("n1", JSON.toJSON(source));
+        assertEquals(List.of("node n1 agent snapshot contains unvalidated skills"),
+            validator.validate(published));
+
+        var legacy = new WorkflowPublishedVersion();
+        legacy.agentSnapshots = Map.of("n1", JSON.toJSON(config));
+        assertEquals(List.of("node n1 agent snapshot contains unvalidated skills"),
+            validator.validate(legacy));
     }
 
     @Test
@@ -225,11 +245,90 @@ class WorkflowPrivateAgentSafetyValidatorTest {
 
         var published = new AgentDefinition();
         published.id = "published-sub";
+        published.type = DefinitionType.AGENT;
         published.status = AgentStatus.PUBLISHED;
         published.publishedConfig = new AgentPublishedConfig();
         when(agentCollection.get("published-sub")).thenReturn(Optional.of(published));
         config.subAgentIds = List.of("published-sub");
         assertTrue(validator.validate(ownedVersion("n1", config)).isEmpty());
+    }
+
+    @Test
+    void ownedSnapshotRejectsPublishedLlmCallDefinitionAsSubAgent() {
+        var publishedLlm = new AgentDefinition();
+        publishedLlm.id = "published-llm";
+        publishedLlm.type = DefinitionType.LLM_CALL;
+        publishedLlm.status = AgentStatus.PUBLISHED;
+        publishedLlm.publishedConfig = new AgentPublishedConfig();
+        when(agentCollection.get("published-llm")).thenReturn(Optional.of(publishedLlm));
+        var config = new AgentPublishedConfig();
+        config.subAgentIds = List.of("published-llm");
+
+        assertSubAgentError(config);
+    }
+
+    @Test
+    void publishedSnapshotSourceStillRejectsLlmCallTool() {
+        var config = new AgentPublishedConfig();
+        config.tools = List.of(ToolRef.fromLegacyToolId("llm-call:target"));
+        WorkflowPublishedVersion version = ownedVersion("n1", config);
+        AgentSnapshotSource source = JSON.fromJSON(
+            AgentSnapshotSource.class, version.agentSnapshotSources.get("n1"));
+        source.sourceKind = "PUBLISHED";
+        version.agentSnapshotSources = Map.of("n1", JSON.toJSON(source));
+
+        assertEquals(List.of("node n1 agent snapshot contains an unsupported LLM call tool dependency"),
+            validator.validate(version));
+    }
+
+    @Test
+    void publishedSnapshotSourceStillRejectsUnavailableSubAgent() {
+        var draft = new AgentDefinition();
+        draft.id = "draft-sub";
+        draft.type = DefinitionType.AGENT;
+        draft.status = AgentStatus.DRAFT;
+        when(agentCollection.get("draft-sub")).thenReturn(Optional.of(draft));
+        var config = new AgentPublishedConfig();
+        config.subAgentIds = List.of("draft-sub");
+        WorkflowPublishedVersion version = publishedVersion("n1", config);
+
+        assertEquals(List.of("node n1 private agent snapshot requires unavailable sub-agents"),
+            validator.validate(version));
+    }
+
+    @Test
+    void publishedSnapshotSourceRejectsMutableSystemPromptReference() {
+        var config = new AgentPublishedConfig();
+        config.systemPromptId = "mutable-prompt-id";
+
+        List<String> errors = validator.validate(publishedVersion("n1", config));
+
+        assertEquals(List.of("node n1 agent snapshot contains a mutable system prompt reference"), errors);
+        assertFalse(errors.getFirst().contains(config.systemPromptId));
+    }
+
+    @Test
+    void legacySnapshotWithoutProvenanceStillRejectsLlmCallTool() {
+        var config = new AgentPublishedConfig();
+        config.tools = List.of(ToolRef.fromLegacyToolId("llm-call:target"));
+        var legacy = new WorkflowPublishedVersion();
+        legacy.agentSnapshots = Map.of("n1", JSON.toJSON(config));
+
+        assertEquals(List.of("node n1 agent snapshot contains an unsupported LLM call tool dependency"),
+            validator.validate(legacy));
+    }
+
+    @Test
+    void legacySnapshotWithoutProvenanceRejectsMutableSystemPromptReference() {
+        var config = new AgentPublishedConfig();
+        config.systemPromptId = "legacy-mutable-prompt-id";
+        var legacy = new WorkflowPublishedVersion();
+        legacy.agentSnapshots = Map.of("n1", JSON.toJSON(config));
+
+        List<String> errors = validator.validate(legacy);
+
+        assertEquals(List.of("node n1 agent snapshot contains a mutable system prompt reference"), errors);
+        assertFalse(errors.getFirst().contains(config.systemPromptId));
     }
 
     private void assertSubAgentError(AgentPublishedConfig config) {
@@ -284,6 +383,15 @@ class WorkflowPrivateAgentSafetyValidatorTest {
         source.capturedAt = ZonedDateTime.now();
         var version = new WorkflowPublishedVersion();
         version.agentSnapshots = Map.of(nodeId, JSON.toJSON(config));
+        version.agentSnapshotSources = Map.of(nodeId, JSON.toJSON(source));
+        return version;
+    }
+
+    private WorkflowPublishedVersion publishedVersion(String nodeId, AgentPublishedConfig config) {
+        WorkflowPublishedVersion version = ownedVersion(nodeId, config);
+        AgentSnapshotSource source = JSON.fromJSON(
+            AgentSnapshotSource.class, version.agentSnapshotSources.get(nodeId));
+        source.sourceKind = "PUBLISHED";
         version.agentSnapshotSources = Map.of(nodeId, JSON.toJSON(source));
         return version;
     }

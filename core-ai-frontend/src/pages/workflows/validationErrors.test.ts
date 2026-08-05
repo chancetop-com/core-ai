@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { api, type WorkflowAgentOption } from '../../api/client';
 import type { WorkflowRFNode } from './graph';
 import NodeConfigPanel from './NodeConfigPanel';
-import { firstNodeErrorId, groupNodeErrors } from './validation';
+import { firstNodeErrorId, groupNodeErrors, parseWorkflowValidationErrors } from './validation';
 
 function agentNode(nodeType: 'AGENT' | 'LLM', config: Record<string, unknown> = {}): WorkflowRFNode {
   return {
@@ -25,6 +25,19 @@ function pickerOption(
 }
 
 describe('workflow node validation errors', () => {
+  it('parses trimmed semicolon-delimited workflow validation errors', () => {
+    expect(parseWorkflowValidationErrors(
+      'workflow validation failed: node agent_2 is invalid; node agent_1 is invalid; ',
+    )).toEqual([
+      'node agent_2 is invalid',
+      'node agent_1 is invalid',
+    ]);
+  });
+
+  it('does not reinterpret a generic failure as workflow validation', () => {
+    expect(parseWorkflowValidationErrors('database offline')).toEqual([]);
+  });
+
   it('groups multiple node-prefixed errors and returns the first node', () => {
     const errors = [
       'node agent_1 references an unavailable agent',

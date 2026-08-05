@@ -1,5 +1,6 @@
 package ai.core.server.workflow;
 
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentSnapshotSource;
@@ -23,7 +24,7 @@ public class WorkflowPrivateAgentSafetyValidator {
 
     public List<String> validate(WorkflowPublishedVersion version) {
         if (version.agentSnapshotSources == null) {
-            return List.of();
+            return validateLegacySnapshots(version);
         }
         var errors = new ArrayList<String>();
         if (version.agentSnapshots != null) {
@@ -35,6 +36,24 @@ public class WorkflowPrivateAgentSafetyValidator {
         }
         for (var entry : version.agentSnapshotSources.entrySet()) {
             validateSnapshot(version, entry.getKey(), entry.getValue(), errors);
+        }
+        return errors;
+    }
+
+    public void requireSafe(WorkflowPublishedVersion version) {
+        List<String> errors = validate(version);
+        if (!errors.isEmpty()) throw new WorkflowValidationException(errors);
+    }
+
+    private List<String> validateLegacySnapshots(WorkflowPublishedVersion version) {
+        if (version.agentSnapshots == null || version.agentSnapshots.isEmpty()) return List.of();
+        var errors = new ArrayList<String>();
+        for (var entry : version.agentSnapshots.entrySet()) {
+            if (isMissingJsonValue(entry.getValue())) {
+                errors.add("node " + entry.getKey() + " has a malformed agent snapshot");
+            } else {
+                validatePublishedSnapshot(entry.getKey(), entry.getValue(), errors);
+            }
         }
         return errors;
     }
@@ -68,7 +87,9 @@ public class WorkflowPrivateAgentSafetyValidator {
         if ("PUBLISHED".equals(source.sourceKind)) {
             if (isMissingJsonValue(snapshotJson)) {
                 errors.add("node " + nodeId + " has a malformed agent snapshot");
+                return;
             }
+            validatePublishedSnapshot(nodeId, snapshotJson, errors);
             return;
         }
         if (isMissingJsonValue(snapshotJson)) {
@@ -105,8 +126,10 @@ public class WorkflowPrivateAgentSafetyValidator {
         if (hasUnavailableSubAgent(config)) {
             errors.add("node " + nodeId + " private agent snapshot requires unavailable sub-agents");
         }
-        if (config.tools != null && config.tools.stream().anyMatch(tool -> tool == null
-            || tool.type != ToolSourceType.BUILTIN && tool.type != ToolSourceType.API)) {
+        if (config.tools != null && config.tools.stream().anyMatch(AgentDependencyAccessPolicy::isLlmCallRef)) {
+            errors.add("node " + nodeId + " agent snapshot contains an unsupported LLM call tool dependency");
+        } else if (config.tools != null && config.tools.stream().anyMatch(tool -> tool == null
+                   || tool.type != ToolSourceType.BUILTIN && tool.type != ToolSourceType.API)) {
             errors.add("node " + nodeId + " private agent snapshot contains a disallowed tool type");
         }
         if (config.sandboxConfig != null
@@ -131,7 +154,7 @@ public class WorkflowPrivateAgentSafetyValidator {
             }
             try {
                 AgentDefinition subAgent = agentDefinitionCollection.get(subAgentId).orElse(null);
-                if (!WorkflowAgentAccessPolicy.hasUsablePublishedConfig(subAgent)) {
+                if (!WorkflowAgentAccessPolicy.hasUsablePublishedSubAgent(subAgent)) {
                     return true;
                 }
             } catch (RuntimeException e) {
@@ -139,5 +162,28 @@ public class WorkflowPrivateAgentSafetyValidator {
             }
         }
         return false;
+    }
+
+    private void validatePublishedSnapshot(String nodeId, String snapshotJson, List<String> errors) {
+        AgentPublishedConfig config;
+        try {
+            config = JSON.fromJSON(AgentPublishedConfig.class, snapshotJson);
+        } catch (RuntimeException e) {
+            errors.add("node " + nodeId + " has a malformed agent snapshot");
+            return;
+        }
+        if (config == null) {
+            errors.add("node " + nodeId + " has a malformed agent snapshot");
+        } else if (!AgentDependencyAccessPolicy.hasValidatedPublishedSkills(config)) {
+            errors.add("node " + nodeId + " agent snapshot contains unvalidated skills");
+        } else if (config.systemPromptId != null && !config.systemPromptId.isBlank()) {
+            errors.add("node " + nodeId + " agent snapshot contains a mutable system prompt reference");
+        } else if (hasUnavailableSubAgent(config)) {
+            errors.add("node " + nodeId + " private agent snapshot requires unavailable sub-agents");
+        } else if (config.tools != null
+                   && config.tools.stream().anyMatch(AgentDependencyAccessPolicy::isLlmCallRef)) {
+            errors.add("node " + nodeId
+                + " agent snapshot contains an unsupported LLM call tool dependency");
+        }
     }
 }

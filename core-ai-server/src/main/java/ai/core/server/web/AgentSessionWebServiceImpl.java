@@ -98,6 +98,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
         String sessionId;
         var state = new SessionState();
+        state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;
+        state.sandboxBindingSecurityVersion = SessionState.CURRENT_SANDBOX_BINDING_SECURITY_VERSION;
         state.userId = userId;
         state.config = request.config;
         if (state.config == null) {
@@ -117,14 +119,14 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         }
         state.sessionId = sessionId;
 
-        var loadedTools = createHelper.loadToolsOnSessionCreate(sessionId, request);
-        var extraLoadedSkills = createHelper.loadSkillsOnSessionCreate(sessionId, request);
+        var loadedTools = createHelper.loadToolsOnSessionCreate(sessionId, request, userId);
+        var extraLoadedSkills = createHelper.loadSkillsOnSessionCreate(sessionId, request, userId);
         if (extraLoadedSkills != null) {
             for (var skill : extraLoadedSkills) {
                 if (loadedSkills.stream().noneMatch(s -> s.id.equals(skill.id))) loadedSkills.add(skill);
             }
         }
-        createHelper.loadExtraSubAgentsOnSessionCreate(sessionId, request, loadedSubAgents);
+        createHelper.loadExtraSubAgentsOnSessionCreate(sessionId, request, loadedSubAgents, userId);
 
         createHelper.saveSessionState(sessionId, state);
 
@@ -276,7 +278,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("session_id", sessionId);
 
         if (isLocalOwner(sessionId)) {
-            var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
+            var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId), userId);
             return agentDraftGenerator.generate(session);
         } else {
             var command = SessionCommand.generateAgentDraft(sessionId, userId, rpcClient.newRequestId());
@@ -291,7 +293,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("session_id", sessionId);
 
         if (isLocalOwner(sessionId)) {
-            List<IdName> loadedTools = loadToolsForLocalOwner(sessionId, request);
+            List<IdName> loadedTools = loadToolsForLocalOwner(sessionId, request, userId);
             var response = new LoadToolsResponse();
             response.loadedTools = loadedTools;
             return response;
@@ -311,7 +313,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         }
     }
 
-    private List<IdName> loadToolsForLocalOwner(String sessionId, LoadToolsRequest request) {
+    private List<IdName> loadToolsForLocalOwner(String sessionId, LoadToolsRequest request, String callerUserId) {
         if (request.tools == null || request.tools.isEmpty()) return List.of();
         var toolRefs = request.tools.stream()
                 .map(v -> {
@@ -322,7 +324,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                     if (ref.type == null) ref.inferTypeFromId();
                     return ref;
                 }).toList();
-        var loadedRefs = sessionManager.loadToolRefs(sessionId, toolRefs);
+        var loadedRefs = sessionManager.loadToolRefs(sessionId, toolRefs, callerUserId);
         return LoadedToolRefNames.toIdNames(loadedRefs, toolRegistryService);
     }
 
@@ -334,7 +336,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
         var cleanSkillIds = IdLists.clean(request.skillIds);
         if (isLocalOwner(sessionId)) {
-            var names = sessionManager.loadSkills(sessionId, cleanSkillIds);
+            var names = sessionManager.loadSkills(sessionId, cleanSkillIds, userId);
             var loadedSkills = new ArrayList<IdName>(cleanSkillIds.size());
             for (int i = 0; i < cleanSkillIds.size() && i < names.size(); i++) {
                 var v = new IdName();
@@ -360,7 +362,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
         var cleanSkillIds = IdLists.clean(request.skillIds);
         if (isLocalOwner(sessionId)) {
-            var remainingSkills = sessionManager.unloadSkills(sessionId, cleanSkillIds);
+            var remainingSkills = sessionManager.unloadSkills(sessionId, cleanSkillIds, userId);
             var response = new UnloadSkillsResponse();
             response.remainingSkills = remainingSkills;
             return response;
@@ -382,7 +384,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
             var definitions = cleanAgentIds.stream()
                     .map(agentDefinitionService::getEntity)
                     .toList();
-            var names = sessionManager.loadSubAgents(sessionId, definitions);
+            var names = sessionManager.loadSubAgents(sessionId, definitions, userId);
             var loadedSubAgents = new ArrayList<IdName>(definitions.size());
             for (int i = 0; i < definitions.size() && i < names.size(); i++) {
                 var v = new IdName();

@@ -40,9 +40,12 @@ public class SessionSkillManager {
         this.chatMessageService = chatMessageService;
     }
 
-    public List<String> unloadSkills(String sessionId, List<String> skillIds) {
-        var state = sessionSkillStates.get(sessionId);
+    public List<String> unloadSkills(String sessionId, List<String> skillIds, String callerUserId) {
         var cleanSkillIds = IdLists.clean(skillIds);
+        if (!cleanSkillIds.isEmpty()) {
+            skillService.resolveAccessibleSkills(cleanSkillIds, callerUserId);
+        }
+        var state = sessionSkillStates.get(sessionId);
         if (state == null || cleanSkillIds.isEmpty()) {
             return state == null ? List.of() : List.copyOf(state.allowedIds);
         }
@@ -52,19 +55,35 @@ public class SessionSkillManager {
         return List.copyOf(state.allowedIds);
     }
 
-    public List<String> loadSkills(InProcessAgentSession session, List<String> skillIds) {
+    public List<String> loadSkills(InProcessAgentSession session, List<String> skillIds, String callerUserId) {
         var cleanSkillIds = IdLists.clean(skillIds);
         if (cleanSkillIds.isEmpty()) return List.of();
-        var qualifiedNames = applySkillsToSession(session, cleanSkillIds);
+        var qualifiedNames = applyCallerSkillsToSession(session, cleanSkillIds, callerUserId);
         chatMessageService.addLoadedSkillIds(session.id(), cleanSkillIds);
         return qualifiedNames;
     }
 
-    public List<String> loadSkillsFromDefinition(InProcessAgentSession session, AgentDefinition definition) {
-        var skillIds = definition.publishedConfig != null && definition.publishedConfig.skillIds != null
-                ? definition.publishedConfig.skillIds
-                : definition.skillIds;
-        var cleanSkillIds = IdLists.clean(skillIds);
+    ResolvedDefinitionSkills resolveAccessibleDefinitionSkills(AgentDefinition definition, String callerUserId) {
+        var cleanSkillIds = definitionSkillIds(definition);
+        if (cleanSkillIds.isEmpty()) return new ResolvedDefinitionSkills(List.of(), List.of());
+        var skills = skillService.resolveAccessibleSkills(cleanSkillIds, callerUserId);
+        return new ResolvedDefinitionSkills(cleanSkillIds, skills);
+    }
+
+    ResolvedDefinitionSkills resolveDefinitionSkills(AgentDefinition definition, String callerUserId,
+                                                      boolean ownedEditable) {
+        return ownedEditable ? resolveAccessibleDefinitionSkills(definition, callerUserId) : null;
+    }
+
+    List<String> loadResolvedDefinitionSkills(InProcessAgentSession session, ResolvedDefinitionSkills resolved) {
+        if (resolved.skillIds.isEmpty()) return List.of();
+        var qualifiedNames = applyResolvedSkillsToSession(session, resolved.skillIds, resolved.skills);
+        chatMessageService.addLoadedSkillIds(session.id(), resolved.skillIds);
+        return qualifiedNames;
+    }
+
+    public List<String> loadFrozenSkillsFromDefinition(InProcessAgentSession session, AgentDefinition definition) {
+        var cleanSkillIds = definitionSkillIds(definition);
         if (cleanSkillIds.isEmpty()) return List.of();
         try {
             var qualifiedNames = applySkillsToSession(session, cleanSkillIds);
@@ -76,6 +95,19 @@ public class SessionSkillManager {
         }
     }
 
+    List<String> loadDefinitionSkills(InProcessAgentSession session, AgentDefinition definition,
+                                      ResolvedDefinitionSkills resolved) {
+        return resolved != null
+                ? loadResolvedDefinitionSkills(session, resolved)
+                : loadFrozenSkillsFromDefinition(session, definition);
+    }
+
+    private List<String> definitionSkillIds(AgentDefinition definition) {
+        var skillIds = definition.publishedConfig != null
+                ? definition.publishedConfig.skillIds : definition.skillIds;
+        return IdLists.clean(skillIds);
+    }
+
     List<String> applySkillsToSession(InProcessAgentSession session, List<String> skillIds) {
         var cleanSkillIds = IdLists.clean(skillIds);
         if (cleanSkillIds.isEmpty()) return List.of();
@@ -83,6 +115,30 @@ public class SessionSkillManager {
         if (skills.isEmpty()) {
             throw new NotFoundException("no skills found for ids: " + cleanSkillIds);
         }
+        return applyResolvedSkillsToSession(session, cleanSkillIds, skills);
+    }
+
+    List<String> applyCallerSkillsToSession(InProcessAgentSession session, List<String> skillIds,
+                                            String callerUserId) {
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (cleanSkillIds.isEmpty()) return List.of();
+        var skills = skillService.resolveAccessibleSkills(cleanSkillIds, callerUserId);
+        return applyResolvedSkillsToSession(session, cleanSkillIds, skills);
+    }
+
+    void restoreDefinitionSkills(InProcessAgentSession session, List<String> skillIds) {
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (cleanSkillIds.isEmpty()) return;
+        try {
+            applySkillsToSession(session, cleanSkillIds);
+            logger.info("restored {} definition skill(s) for session {}", cleanSkillIds.size(), session.id());
+        } catch (Exception e) {
+            logger.warn("failed to restore definition skills, sessionId={}", session.id(), e);
+        }
+    }
+
+    private List<String> applyResolvedSkillsToSession(InProcessAgentSession session, List<String> cleanSkillIds,
+                                                       List<SkillMetadata> skills) {
         var state = sessionSkillStates.computeIfAbsent(session.id(), k -> initSkillState(session));
         state.allowedIds.addAll(cleanSkillIds);
         state.registry.invalidateCache();
@@ -109,5 +165,8 @@ public class SessionSkillManager {
     static final class SessionSkillState {
         final Set<String> allowedIds = ConcurrentHashMap.newKeySet();
         final SkillRegistry registry = new SkillRegistry();
+    }
+
+    record ResolvedDefinitionSkills(List<String> skillIds, List<SkillMetadata> skills) {
     }
 }

@@ -4,6 +4,7 @@ import ai.core.mcp.client.McpClientManager;
 import ai.core.media.MediaProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConstants;
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -94,7 +95,7 @@ class ToolRefResolutionService {
     // ── Public API ───────────────────────────────────────────────────────────────
 
     List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs) {
-        return resolveToolRefs(toolRefs, null);
+        return resolveToolRefs(toolRefs, null, null);
     }
 
     /**
@@ -115,7 +116,12 @@ class ToolRefResolutionService {
      *                  (LLMCallBuilderTools, AgentBuilderTools, etc.).
      */
     List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs, String sessionId) {
+        return resolveToolRefs(toolRefs, sessionId, null);
+    }
+
+    List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs, String sessionId, String callerUserId) {
         if (toolRefs == null) return List.of();
+        validateDeclaredTypes(toolRefs);
         McpClientManager sessionMgr = null;
         if (sessionId != null && mcpDependencies.sandboxService() != null && !toolRefs.isEmpty()) {
             var sandbox = mcpDependencies.sandboxService().getSandbox(sessionId);
@@ -128,7 +134,7 @@ class ToolRefResolutionService {
         resolver.setVideoService(videoService);
         resolver.setAgentDefinitionService(agentDefinitionService);
         resolver.setLlmCallExecutor(llmCallExecutor);
-        return resolver.resolve(toolRefs, sessionMgr);
+        return resolver.resolve(toolRefs, sessionMgr, callerUserId);
     }
 
     /**
@@ -146,8 +152,13 @@ class ToolRefResolutionService {
      * @return a core ToolRegistry with providers registered for each resolved tool source
      */
     ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId) {
+        return resolveToToolRegistry(toolRefs, sessionId, null);
+    }
+
+    ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId, String callerUserId) {
         var registry = ToolRegistryFactory.createEmpty();
         if (toolRefs == null || toolRefs.isEmpty()) return registry;
+        validateDeclaredTypes(toolRefs);
 
         McpClientManager sessionMgr = null;
         if (sessionId != null && mcpDependencies.sandboxService() != null) {
@@ -158,7 +169,12 @@ class ToolRefResolutionService {
         }
 
         for (var ref : toolRefs) {
-            if (ref == null || ref.id == null) continue;
+            if (ref == null) continue;
+            if (AgentDependencyAccessPolicy.isLlmCallRef(ref)) {
+                registerLLMCallProvider(registry, ref, callerUserId);
+                continue;
+            }
+            if (ref.id == null) continue;
             var type = effectiveType(ref);
             if (type != null) {
                 switch (type) {
@@ -166,7 +182,7 @@ class ToolRefResolutionService {
                     case MCP -> registerMcpProvider(registry, ref, sessionMgr);
                     case API -> registerApiProvider(registry, ref);
                     case AGENT -> LOGGER.debug("skipping AGENT tool ref at registry level, id={}", ref.id);
-                    case LLM_CALL -> registerLLMCallProvider(registry, ref);
+                    case LLM_CALL -> registerLLMCallProvider(registry, ref, callerUserId);
                     default -> LOGGER.warn("unknown tool source type, id={}, type={}", ref.id, type);
                 }
             } else {
@@ -211,7 +227,15 @@ class ToolRefResolutionService {
 
     private ToolSourceType effectiveType(ToolRef ref) {
         var entry = lookupToolEntry(ref.id);
-        return entry != null ? entryType(entry) : ref.type;
+        return ToolRefResolver.requireCompatibleType(ref, entry != null ? entryType(entry) : null);
+    }
+
+    private void validateDeclaredTypes(List<ToolRef> toolRefs) {
+        for (var ref : toolRefs) {
+            if (ref == null || ref.id == null || AgentDependencyAccessPolicy.isLlmCallRef(ref)) continue;
+            var entry = lookupToolEntry(ref.id);
+            ToolRefResolver.requireCompatibleType(ref, entry != null ? entryType(entry) : null);
+        }
     }
 
     private ToolRegistryEntry lookupToolEntry(String id) {
@@ -302,13 +326,16 @@ class ToolRefResolutionService {
      * A missing or invalid definition fails fast — an agent that references a deleted llm-call tool
      * cannot degrade gracefully anyway.
      */
-    private void registerLLMCallProvider(ToolRegistry registry, ToolRef ref) {
-        if (agentDefinitionService == null || llmCallExecutor == null) {
-            throw new IllegalStateException("LLM_CALL tool resolution requires AgentDefinitionService and LLMCallExecutor");
+    private void registerLLMCallProvider(ToolRegistry registry, ToolRef ref, String callerUserId) {
+        var definitionId = AgentDependencyAccessPolicy.requireLlmCallDefinitionId(ref);
+        AgentDependencyAccessPolicy.requireLlmCallCaller(callerUserId);
+        if (agentDefinitionService == null) {
+            throw new IllegalStateException("LLM_CALL tool resolution requires AgentDefinitionService");
         }
-        var definitionId = ref.id.substring(ToolRef.LLM_CALL_PREFIX.length());
-        if (definitionId.isEmpty()) return;
-        var definition = agentDefinitionService.getEntity(definitionId);
+        var definition = agentDefinitionService.resolveLlmCallToolDefinition(definitionId, callerUserId);
+        if (llmCallExecutor == null) {
+            throw new IllegalStateException("LLM_CALL tool resolution requires LLMCallExecutor");
+        }
         var tool = LLMCallTool.create(definition, llmCallExecutor);
         registry.registerProvider(new ListToolProvider("llm-call:" + definitionId, List.of(tool)));
     }

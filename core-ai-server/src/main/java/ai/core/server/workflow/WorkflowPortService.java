@@ -2,6 +2,7 @@ package ai.core.server.workflow;
 
 import ai.core.api.server.workflow.ExportWorkflowResponse;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.workflow.engine.WorkflowGraph;
@@ -119,10 +120,17 @@ public class WorkflowPortService {
         AgentDefinition agent = agentDefinitionCollection.get(String.valueOf(agentId)).orElse(null);
         if (agent == null) {
             unresolved.add(new UnresolvedReference(node.id(), node.type(), "AGENT", String.valueOf(agentId), "references an unknown agent"));
+        } else if (agent.type != expectedDefinitionType(node)) {
+            unresolved.add(new UnresolvedReference(node.id(), node.type(), "AGENT", String.valueOf(agentId),
+                PRIVATE_AGENT_REPLACEMENT_MESSAGE));
         } else if (!WorkflowAgentAccessPolicy.canReference(agent, userId)) {
             unresolved.add(new UnresolvedReference(node.id(), node.type(), "AGENT", String.valueOf(agentId),
                 PRIVATE_AGENT_REPLACEMENT_MESSAGE));
         }
+    }
+
+    private DefinitionType expectedDefinitionType(WorkflowNode node) {
+        return "LLM".equals(node.type()) ? DefinitionType.LLM_CALL : DefinitionType.AGENT;
     }
 
     private void checkMcpTool(WorkflowNode node, List<UnresolvedReference> unresolved) {

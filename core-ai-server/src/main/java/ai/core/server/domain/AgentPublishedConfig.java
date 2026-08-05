@@ -42,6 +42,13 @@ public class AgentPublishedConfig {
     @Field(name = "skill_ids")
     public List<String> skillIds;
 
+    /**
+     * Positive provenance that every {@link #skillIds} entry was authorized for the publisher.
+     * Nullable by design so pre-validation published records and workflow snapshots fail closed.
+     */
+    @Field(name = "skill_validation_version")
+    public Integer skillValidationVersion;
+
     @Field(name = "subagent_ids")
     public List<String> subAgentIds;
 

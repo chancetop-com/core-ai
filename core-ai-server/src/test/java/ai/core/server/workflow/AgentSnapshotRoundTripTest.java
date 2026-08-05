@@ -58,6 +58,7 @@ class AgentSnapshotRoundTripTest {
         config.responseSchema = "{\"type\":\"object\"}";
         config.variables = Map.of("locale", "en");
         config.skillIds = List.of("skill-a", "skill-b");
+        config.skillValidationVersion = 1;
         config.subAgentIds = List.of("sub-1");
         config.tools = List.of(toolRef("builtin-all", ToolSourceType.BUILTIN, null), toolRef("create_issue", ToolSourceType.MCP, "jira"));
         config.sandboxConfig = sandbox();
@@ -72,6 +73,7 @@ class AgentSnapshotRoundTripTest {
         assertEquals(120, back.timeoutSeconds);
         assertEquals(Map.of("locale", "en"), back.variables);
         assertEquals(List.of("skill-a", "skill-b"), back.skillIds);
+        assertEquals(1, back.skillValidationVersion);
         assertEquals(List.of("sub-1"), back.subAgentIds);
 
         assertEquals(2, back.tools.size());

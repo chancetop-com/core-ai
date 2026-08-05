@@ -44,18 +44,27 @@ public class SessionSubAgentManager {
     }
 
     public List<String> loadSubAgents(InProcessAgentSession session, List<AgentDefinition> definitions) {
-        var names = applySubAgentsToSession(session, definitions);
+        return loadSubAgents(session, definitions, null);
+    }
+
+    public List<String> loadSubAgents(InProcessAgentSession session, List<AgentDefinition> definitions,
+                                      String callerUserId) {
+        var names = applySubAgentsToSession(session, definitions, callerUserId);
         var ids = definitions.stream().map(d -> d.id).toList();
         chatMessageService.addLoadedSubAgentIds(session.id(), ids);
         return names;
     }
 
     public List<String> loadSubAgentsFromDefinition(InProcessAgentSession session, AgentDefinition definition) {
-        var subAgentIds = definition.publishedConfig != null && definition.publishedConfig.subAgentIds != null
-                ? definition.publishedConfig.subAgentIds
-                : definition.subAgentIds;
+        return loadSubAgentsFromDefinition(session, definition, null);
+    }
+
+    public List<String> loadSubAgentsFromDefinition(InProcessAgentSession session, AgentDefinition definition,
+                                                    String callerUserId) {
+        var subAgentIds = definition.publishedConfig != null
+                ? definition.publishedConfig.subAgentIds : definition.subAgentIds;
         var cleanSubAgentIds = IdLists.clean(subAgentIds);
-        var subAgents = subAgentAssembler.assemble(cleanSubAgentIds, session.id());
+        var subAgents = subAgentAssembler.assemble(cleanSubAgentIds, session.id(), callerUserId);
         var names = new ArrayList<String>();
         for (var subAgent : subAgents) {
             session.loadTools(List.of(subAgent));
@@ -66,9 +75,14 @@ public class SessionSubAgentManager {
     }
 
     List<String> applySubAgentsToSession(InProcessAgentSession session, List<AgentDefinition> definitions) {
+        return applySubAgentsToSession(session, definitions, null);
+    }
+
+    List<String> applySubAgentsToSession(InProcessAgentSession session, List<AgentDefinition> definitions,
+                                         String callerUserId) {
         var names = new ArrayList<String>();
         for (var definition : definitions) {
-            var subAgent = subAgentAssembler.buildSubAgent(definition, session.id());
+            var subAgent = subAgentAssembler.buildSubAgent(definition, session.id(), callerUserId);
             var subAgentToolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
             session.loadTools(List.of(subAgentToolCall));
             names.add(definition.name);
@@ -85,7 +99,16 @@ public class SessionSubAgentManager {
     }
 
     public ToolRegistry resolveToolsToRegistry(AgentDefinition definition, String sessionId) {
-        return subAgentAssembler.resolveToolsToRegistry(definition, sessionId);
+        return resolveToolsToRegistry(definition, sessionId, null);
+    }
+
+    public ToolRegistry resolveToolsToRegistry(AgentDefinition definition, String sessionId, String callerUserId) {
+        return subAgentAssembler.resolveToolsToRegistry(definition, sessionId, callerUserId);
+    }
+
+    public ToolRegistry resolveTopLevelToolsToRegistry(AgentDefinition definition, String sessionId,
+                                                       String callerUserId) {
+        return subAgentAssembler.resolveTopLevelToolsToRegistry(definition, sessionId, callerUserId);
     }
 
     public SessionConfig toSessionConfig(AgentDefinition definition) {

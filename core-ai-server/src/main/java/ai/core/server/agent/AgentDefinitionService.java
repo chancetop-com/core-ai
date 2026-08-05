@@ -11,6 +11,7 @@ import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.User;
 import ai.core.server.skill.SkillService;
+import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.util.IdLists;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
@@ -18,6 +19,8 @@ import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.util.Strings;
+import core.framework.web.exception.BadRequestException;
+import core.framework.web.exception.ForbiddenException;
 import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
@@ -52,6 +55,8 @@ public class AgentDefinitionService {
     MongoCollection<User> userCollection;
     @Inject
     SkillService skillService;
+    @Inject
+    SystemPromptService systemPromptService;
 
     public AgentDefinitionView create(CreateAgentRequest request, String userId) {
         var existing = agentDefinitionCollection.findOne(Filters.and(
@@ -90,7 +95,7 @@ public class AgentDefinitionService {
         entity.enableMemory = Boolean.TRUE.equals(request.enableMemory);
         if (Boolean.TRUE.equals(request.systemDefault)) {
             if (!isAdmin(userId)) {
-                throw new core.framework.web.exception.ForbiddenException("only admin can create system default agents");
+                throw new ForbiddenException("only admin can create system default agents");
             }
             entity.systemDefault = Boolean.TRUE;
         }
@@ -98,6 +103,7 @@ public class AgentDefinitionService {
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
 
+        requireAccessibleSkills(entity.skillIds, userId);
         agentDefinitionCollection.insert(entity);
         return toView(entity);
     }
@@ -233,11 +239,20 @@ public class AgentDefinitionService {
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
     }
 
+    public AgentDefinition resolveLlmCallToolDefinition(String id, String callerUserId) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("LLM call tool is unavailable");
+        }
+        AgentDefinition definition = agentDefinitionCollection.get(id).orElse(null);
+        return AgentDependencyAccessPolicy.executableLlmCall(definition, callerUserId);
+    }
+
     public AgentDefinitionView update(String id, UpdateAgentRequest request, String userId) {
         var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         requireAdminForSystemDefault(entity, userId);
+        requireAccessibleSkills(request.skillIds != null ? request.skillIds : entity.skillIds, userId);
 
         if (request.name != null) {
             entity.name = request.name;
@@ -265,7 +280,7 @@ public class AgentDefinitionService {
         if (request.enableMemory != null) entity.enableMemory = request.enableMemory;
         if (request.systemDefault != null) {
             if (Boolean.TRUE.equals(request.systemDefault) && !isAdmin(userId)) {
-                throw new core.framework.web.exception.ForbiddenException("only admin can set agents as system default");
+                throw new ForbiddenException("only admin can set agents as system default");
             }
             entity.systemDefault = request.systemDefault;
         }
@@ -280,17 +295,58 @@ public class AgentDefinitionService {
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         requireAdminForSystemDefault(entity, userId);
+        var publishedSkillIds = requireAccessibleSkills(entity.skillIds, userId);
+        requirePublishedLlmCallDependencies(entity);
+        requirePublishedSubAgentDependencies(entity);
 
         entity.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
-        entity.skillIds = IdLists.cleanOrNull(entity.skillIds);
+        entity.skillIds = publishedSkillIds;
 
         entity.publishedConfig = AgentExecutableConfigFactory.fromEditableDefinition(entity);
+        AgentDependencyAccessPolicy.markPublishedSkillsValidated(entity.publishedConfig);
+        if (!Strings.isBlank(entity.publishedConfig.systemPromptId)) {
+            entity.publishedConfig.systemPrompt = systemPromptService.resolveContent(entity.publishedConfig.systemPromptId);
+            entity.publishedConfig.systemPromptId = null;
+        }
         entity.status = AgentStatus.PUBLISHED;
         entity.publishedAt = ZonedDateTime.now();
         entity.updatedAt = entity.publishedAt;
 
         agentDefinitionCollection.replace(entity);
         return toView(entity);
+    }
+
+    private void requirePublishedLlmCallDependencies(AgentDefinition entity) {
+        if (entity.type != DefinitionType.AGENT || entity.tools == null) return;
+        for (var tool : entity.tools) {
+            if (!AgentDependencyAccessPolicy.isLlmCallRef(tool)) continue;
+            String definitionId;
+            try {
+                definitionId = AgentDependencyAccessPolicy.requireLlmCallDefinitionId(tool);
+            } catch (IllegalArgumentException e) {
+                throw new BadRequestException("agent has an unavailable LLM call dependency", "BAD_REQUEST", e);
+            }
+            AgentDefinition dependency = agentDefinitionCollection.get(definitionId).orElse(null);
+            if (!AgentDependencyAccessPolicy.hasUsablePublishedLlmCall(dependency)) {
+                throw new BadRequestException("agent has an unavailable LLM call dependency");
+            }
+        }
+    }
+
+    private void requirePublishedSubAgentDependencies(AgentDefinition entity) {
+        if (entity.type != DefinitionType.AGENT) return;
+        for (String subAgentId : IdLists.clean(entity.subAgentIds)) {
+            AgentDefinition dependency = agentDefinitionCollection.get(subAgentId).orElse(null);
+            if (!AgentDependencyAccessPolicy.hasUsablePublishedSubAgent(dependency)) {
+                throw new BadRequestException("agent has an unavailable sub-agent dependency");
+            }
+        }
+    }
+
+    private List<String> requireAccessibleSkills(List<String> skillIds, String userId) {
+        var cleanSkillIds = IdLists.cleanOrNull(skillIds);
+        if (cleanSkillIds != null) skillService.resolveAccessibleSkills(cleanSkillIds, userId);
+        return cleanSkillIds;
     }
 
 //    public AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request, String userId) {
@@ -376,9 +432,14 @@ public class AgentDefinitionService {
     }
 
     private void requireAdminForSystemDefault(AgentDefinition entity, String userId) {
-        if (!Boolean.TRUE.equals(entity.systemDefault)) return;
-        if (userId == null || !isAdmin(userId)) {
-            throw new core.framework.web.exception.ForbiddenException("only admin can modify built-in agents");
+        if (Boolean.TRUE.equals(entity.systemDefault)) {
+            if (userId == null || !isAdmin(userId)) {
+                throw new ForbiddenException("only admin can modify built-in agents");
+            }
+            return;
+        }
+        if (userId == null || !userId.equals(entity.userId)) {
+            throw new ForbiddenException("agent does not belong to the current user");
         }
     }
 

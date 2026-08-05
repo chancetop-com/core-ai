@@ -87,6 +87,9 @@ public class WorkflowRunService {
     @Inject
     WorkflowGraphLoader graphLoader;
 
+    @Inject
+    WorkflowPrivateAgentSafetyValidator privateAgentSafetyValidator;
+
     public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
         return createRun(workflowId, input, triggeredBy, userId, null);
     }
@@ -107,6 +110,7 @@ public class WorkflowRunService {
         if (version.status == WorkflowVersionStatus.DISABLED) {
             throw new ForbiddenException("workflow version is disabled: " + version.id);
         }
+        privateAgentSafetyValidator.requireSafe(version);
         // null = the caller made no choice: inherit the workflow's visibility, so runs on a public workflow are
         // visible to everyone who can see the workflow instead of silently defaulting to private
         var effective = visibility != null ? visibility : WorkflowDefinitionService.visibilityOf(definition);

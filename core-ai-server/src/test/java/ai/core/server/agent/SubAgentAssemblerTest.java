@@ -15,13 +15,28 @@ import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.persistence.PersistenceProviders;
+import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentPublishedConfig;
+import ai.core.server.domain.AgentStatus;
+import ai.core.server.domain.DefinitionType;
+import ai.core.server.domain.ToolRef;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.registry.ToolRegistryFactory;
+import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -85,6 +100,91 @@ class SubAgentAssemblerTest {
         var agent = assembler.buildAgent(buildConfig(null));
 
         assertEquals("system-mm-model", agent.getMultiModalModel());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void runtimeAssemblerRejectsDraftAgentDependency() {
+        MongoCollection<AgentDefinition> collection = mock(MongoCollection.class);
+        var draft = definition("draft-sub", DefinitionType.AGENT, AgentStatus.DRAFT);
+        when(collection.get(draft.id)).thenReturn(Optional.of(draft));
+        assembler.agentDefinitionCollection = collection;
+        assembler.toolRegistryService = mock(ToolRegistryService.class);
+
+        var tools = assembler.assemble(List.of(draft.id), "run-1", "caller-1");
+
+        assertTrue(tools.isEmpty());
+        verifyNoInteractions(assembler.toolRegistryService);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void runtimeAssemblerRejectsPublishedLlmCallInSubAgentSlot() {
+        MongoCollection<AgentDefinition> collection = mock(MongoCollection.class);
+        var llm = definition("llm-sub", DefinitionType.LLM_CALL, AgentStatus.PUBLISHED);
+        llm.publishedConfig = new AgentPublishedConfig();
+        when(collection.get(llm.id)).thenReturn(Optional.of(llm));
+        assembler.agentDefinitionCollection = collection;
+        assembler.toolRegistryService = mock(ToolRegistryService.class);
+
+        var tools = assembler.assemble(List.of(llm.id), "run-1", "caller-1");
+
+        assertTrue(tools.isEmpty());
+        verifyNoInteractions(assembler.toolRegistryService);
+    }
+
+    @Test
+    void subAgentToolResolutionReceivesAuthenticatedCaller() {
+        var definition = definition("published-sub", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        definition.publishedConfig = new AgentPublishedConfig();
+        definition.publishedConfig.tools = List.of(ToolRef.fromLegacyToolId("llm-call:target"));
+        var expected = ToolRegistryFactory.createEmpty();
+        var registryService = mock(ToolRegistryService.class);
+        when(registryService.resolveToToolRegistry(
+            definition.publishedConfig.tools, "run-1", "caller-1")).thenReturn(expected);
+        assembler.toolRegistryService = registryService;
+
+        var actual = assembler.resolveToolsToRegistry(definition, "run-1", "caller-1");
+
+        assertSame(expected, actual);
+        verify(registryService).resolveToToolRegistry(
+            definition.publishedConfig.tools, "run-1", "caller-1");
+    }
+
+    @Test
+    void topLevelDraftAgentWithoutToolsResolvesAnEmptyRegistry() {
+        var definition = definition("draft-top-level", DefinitionType.AGENT, AgentStatus.DRAFT);
+        definition.publishedConfig = new AgentPublishedConfig();
+        assembler.toolRegistryService = mock(ToolRegistryService.class);
+
+        var actual = assembler.resolveTopLevelToolsToRegistry(definition, "session-1", "owner-1");
+
+        assertNotNull(actual);
+        verifyNoInteractions(assembler.toolRegistryService);
+    }
+
+    @Test
+    void topLevelDraftAgentResolvesConfiguredToolsWithoutSubAgentEligibilityCheck() {
+        var definition = definition("draft-top-level", DefinitionType.AGENT, AgentStatus.DRAFT);
+        definition.publishedConfig = new AgentPublishedConfig();
+        definition.publishedConfig.tools = List.of(ToolRef.fromLegacyToolId("builtin-service"));
+        var expected = ToolRegistryFactory.createEmpty();
+        var registryService = mock(ToolRegistryService.class);
+        when(registryService.resolveToToolRegistry(
+            definition.publishedConfig.tools, "session-1", "owner-1")).thenReturn(expected);
+        assembler.toolRegistryService = registryService;
+
+        var actual = assembler.resolveTopLevelToolsToRegistry(definition, "session-1", "owner-1");
+
+        assertSame(expected, actual);
+    }
+
+    private AgentDefinition definition(String id, DefinitionType type, AgentStatus status) {
+        var definition = new AgentDefinition();
+        definition.id = id;
+        definition.type = type;
+        definition.status = status;
+        return definition;
     }
 
     private SubAgentAssembler.BuildAgentConfig buildConfig(SessionConfig config) {

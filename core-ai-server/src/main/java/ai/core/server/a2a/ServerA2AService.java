@@ -213,7 +213,7 @@ public class ServerA2AService {
 
     private ai.core.api.server.session.AgentSession session(String contextId, String agentId, String userId) {
         if (contextId != null && !contextId.isBlank()) {
-            return sessionManager.getSession(contextId);
+            return sessionManager.getSessionForAgentCaller(contextId, agentId, userId);
         }
         var definition = agentDefinitionService.getEntity(agentId);
         var result = sessionManager.createSessionFromAgent(definition, null, userId, "a2a");
@@ -223,6 +223,7 @@ public class ServerA2AService {
     private Task resumeTask(Message message, String userId) {
         var state = tasks.get(message.taskId);
         if (state != null) {
+            sessionManager.requireSessionOwner(state.contextId, userId);
             return resumeLocalTask(state, message, null, null).toTask();
         }
         var snapshot = snapshot(message.taskId);
@@ -234,6 +235,7 @@ public class ServerA2AService {
                                     Consumer<StreamResponse> streamSender, Runnable closeStream) {
         var state = tasks.get(message.taskId);
         if (state != null) {
+            sessionManager.requireSessionOwner(state.contextId, userId);
             return resumeLocalTask(state, message, streamSender, closeStream);
         }
         var snapshot = snapshot(message.taskId);
@@ -285,9 +287,10 @@ public class ServerA2AService {
         return cancelLocalTask(state);
     }
 
-    public Task resumeTaskOnOwner(Message message) {
+    public Task resumeTaskOnOwner(Message message, String userId) {
         var state = tasks.get(message.taskId);
         if (state == null) throw new NotFoundException("task not found");
+        sessionManager.requireSessionOwner(state.contextId, userId);
         return resumeLocalTask(state, message, null, null).toTask();
     }
 

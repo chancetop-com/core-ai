@@ -44,12 +44,18 @@ class SandboxRedisStore {
     }
 
     void deleteBinding(String sessionId) {
+        try {
+            deleteBindingStrict(sessionId);
+        } catch (Exception e) {
+            LOGGER.warn("failed to delete sandbox binding from Redis, sessionId={}", sessionId, e);
+        }
+    }
+
+    void deleteBindingStrict(String sessionId) {
         if (jedisPool == null) return;
         try (var jedis = jedisPool.getResource()) {
             jedis.del(key(sessionId));
             LOGGER.debug("sandbox binding deleted from Redis, sessionId={}", sessionId);
-        } catch (Exception e) {
-            LOGGER.warn("failed to delete sandbox binding from Redis, sessionId={}", sessionId, e);
         }
     }
 }

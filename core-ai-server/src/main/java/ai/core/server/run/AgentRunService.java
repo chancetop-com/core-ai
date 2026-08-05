@@ -11,12 +11,15 @@ import ai.core.api.server.run.ListRunsResponse;
 import ai.core.api.server.run.TriggerRunRequest;
 import ai.core.api.server.run.TriggerRunResponse;
 import ai.core.server.artifact.PublicUrlConfiguration;
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.file.FileService;
+import ai.core.server.skill.SkillService;
+import ai.core.server.util.IdLists;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -41,13 +44,17 @@ public class AgentRunService {
     FileService fileService;
     @Inject
     PublicUrlConfiguration publicUrlConfiguration;
+    @Inject
+    SkillService skillService;
 
-    public TriggerRunResponse trigger(String agentId, TriggerRunRequest request) {
-        var definition = agentDefinitionCollection.get(agentId)
-            .orElseThrow(() -> new RuntimeException("agent not found, id=" + agentId));
+    public TriggerRunResponse trigger(String agentId, TriggerRunRequest request, String callerUserId) {
+        var source = agentDefinitionCollection.get(agentId).orElse(null);
+        var definition = AgentDependencyAccessPolicy.executableTopLevelAgent(
+            source, callerUserId);
+        requireAccessibleEditableSkills(source, definition, callerUserId);
 
-        var input = request.input != null ? request.input : definition.inputTemplate;
-        var runId = agentRunner.run(definition, input, TriggerType.MANUAL);
+        var input = request.input != null ? request.input : resolveInputTemplate(definition);
+        var runId = agentRunner.runAs(definition, input, TriggerType.MANUAL, callerUserId);
 
         var response = new TriggerRunResponse();
         response.runId = runId;
@@ -81,15 +88,9 @@ public class AgentRunService {
         return toDetailView(entity);
     }
 
-    public LLMCallResponse llmCall(String id, LLMCallRequest request) {
-        var definition = agentDefinitionCollection.get(id)
-            .orElseThrow(() -> new RuntimeException("llm call not found, id=" + id));
-        if (definition.type != DefinitionType.LLM_CALL) {
-            throw new RuntimeException("definition is not LLM_CALL type, id=" + id);
-        }
-        if (definition.publishedConfig == null) {
-            throw new RuntimeException("llm call not published, id=" + id);
-        }
+    public LLMCallResponse llmCall(String id, LLMCallRequest request, String callerUserId) {
+        var definition = AgentDependencyAccessPolicy.executablePublishedLlmCall(
+            agentDefinitionCollection.get(id).orElse(null), callerUserId);
 
         var result = llmCallExecutor.execute(definition, request.input, request.attachments);
 
@@ -102,9 +103,11 @@ public class AgentRunService {
         return response;
     }
 
-    public AgentCallResponse call(String agentId, AgentCallRequest request) {
-        var definition = agentDefinitionCollection.get(agentId)
-            .orElseThrow(() -> new RuntimeException("agent not found, id=" + agentId));
+    public AgentCallResponse call(String agentId, AgentCallRequest request, String callerUserId) {
+        var source = agentDefinitionCollection.get(agentId).orElse(null);
+        var definition = AgentDependencyAccessPolicy.executableTopLevelCallable(
+            source, callerUserId);
+        requireAccessibleEditableSkills(source, definition, callerUserId);
 
         var input = request.input;
 
@@ -117,7 +120,7 @@ public class AgentRunService {
         }
 
         // Sync agent execution: create run record, execute, return result
-        var runId = agentRunner.run(definition, input, TriggerType.MANUAL);
+        var runId = agentRunner.runAs(definition, input, TriggerType.MANUAL, callerUserId);
         // Wait for completion
         var maxWait = 600;
         for (int i = 0; i < maxWait; i++) {
@@ -142,6 +145,21 @@ public class AgentRunService {
             }
         }
         throw new RuntimeException("agent call timed out after " + maxWait + "s, runId=" + runId);
+    }
+
+    private void requireAccessibleEditableSkills(AgentDefinition source, AgentDefinition executable,
+                                                   String callerUserId) {
+        if (executable.type != DefinitionType.AGENT
+                || !AgentDependencyAccessPolicy.isOwnedEditable(source, callerUserId)
+                || executable.publishedConfig != null) return;
+        var skillIds = IdLists.clean(executable.skillIds);
+        if (!skillIds.isEmpty()) skillService.resolveAccessibleSkills(skillIds, callerUserId);
+    }
+
+    private String resolveInputTemplate(AgentDefinition definition) {
+        return definition.publishedConfig != null
+            ? definition.publishedConfig.inputTemplate
+            : definition.inputTemplate;
     }
 
     public void cancel(String id) {

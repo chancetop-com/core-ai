@@ -2,6 +2,7 @@ package ai.core.server.tool;
 
 import ai.core.mcp.client.McpClientManager;
 import ai.core.media.MediaProvider;
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -32,6 +33,13 @@ public class ToolRefResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRefResolver.class);
     private static final String CONFIG_PREFIX = "config:";
     private static final String API_TOOL_ID = "builtin-service-api";
+
+    static ToolSourceType requireCompatibleType(ToolRef toolRef, ToolSourceType authoritativeType) {
+        if (authoritativeType != null && toolRef.type != null && authoritativeType != toolRef.type) {
+            throw new IllegalArgumentException("tool reference is unavailable");
+        }
+        return authoritativeType != null ? authoritativeType : toolRef.type;
+    }
 
     private final Map<String, ToolRegistryEntry> toolRegistry;
     private final InternalApiToolLoader apiToolLoader;
@@ -73,7 +81,7 @@ public class ToolRefResolver {
     }
 
     public List<ToolCall> resolve(List<ToolRef> toolRefs) {
-        return resolve(toolRefs, null);
+        return resolve(toolRefs, null, null);
     }
 
     /**
@@ -86,11 +94,21 @@ public class ToolRefResolver {
      * session's sandbox bridge, isolating concurrent sessions from each other.
      */
     public List<ToolCall> resolve(List<ToolRef> toolRefs, McpClientManager sessionMcpManager) {
+        return resolve(toolRefs, sessionMcpManager, null);
+    }
+
+    public List<ToolCall> resolve(List<ToolRef> toolRefs, McpClientManager sessionMcpManager,
+                                  String callerUserId) {
         if (toolRefs == null || toolRefs.isEmpty()) return List.of();
 
         var result = new ArrayList<ToolCall>();
         for (var toolRef : toolRefs) {
-            if (toolRef == null || toolRef.id == null) continue;
+            if (toolRef == null) continue;
+            if (AgentDependencyAccessPolicy.isLlmCallRef(toolRef)) {
+                resolveLLMCallRef(toolRef, result, callerUserId);
+                continue;
+            }
+            if (toolRef.id == null) continue;
 
             var type = effectiveType(toolRef);
             if (type != null) {
@@ -99,7 +117,7 @@ public class ToolRefResolver {
                     case MCP -> resolveMcpRef(toolRef, result, sessionMcpManager);
                     case API -> resolveApiRef(toolRef, result);
                     case AGENT -> LOGGER.debug("skipping AGENT tool ref at registry level, id={}", toolRef.id);
-                    case LLM_CALL -> resolveLLMCallRef(toolRef, result);
+                    case LLM_CALL -> resolveLLMCallRef(toolRef, result, callerUserId);
                     default -> LOGGER.warn("unknown tool type, id={}, type={}", toolRef.id, type);
                 }
             } else {
@@ -111,7 +129,7 @@ public class ToolRefResolver {
 
     private ToolSourceType effectiveType(ToolRef toolRef) {
         var entryType = registryType(toolRef.id);
-        return entryType != null ? entryType : toolRef.type;
+        return requireCompatibleType(toolRef, entryType);
     }
 
     private ToolSourceType registryType(String id) {
@@ -236,16 +254,16 @@ public class ToolRefResolver {
      * LLM_CALL definition fails fast — an agent that references a deleted llm-call tool
      * cannot degrade gracefully anyway.
      */
-    private void resolveLLMCallRef(ToolRef toolRef, List<ToolCall> result) {
-        if (agentDefinitionService == null || llmCallExecutor == null) {
-            throw new IllegalStateException("LLM_CALL tool resolution requires AgentDefinitionService and LLMCallExecutor");
+    private void resolveLLMCallRef(ToolRef toolRef, List<ToolCall> result, String callerUserId) {
+        var definitionId = AgentDependencyAccessPolicy.requireLlmCallDefinitionId(toolRef);
+        AgentDependencyAccessPolicy.requireLlmCallCaller(callerUserId);
+        if (agentDefinitionService == null) {
+            throw new IllegalStateException("LLM_CALL tool resolution requires AgentDefinitionService");
         }
-        var definitionId = toolRef.id.substring(ToolRef.LLM_CALL_PREFIX.length());
-        if (definitionId.isEmpty()) {
-            LOGGER.warn("invalid llm call ref, id={}", toolRef.id);
-            return;
+        var definition = agentDefinitionService.resolveLlmCallToolDefinition(definitionId, callerUserId);
+        if (llmCallExecutor == null) {
+            throw new IllegalStateException("LLM_CALL tool resolution requires LLMCallExecutor");
         }
-        var definition = agentDefinitionService.getEntity(definitionId);
         result.add(LLMCallTool.create(definition, llmCallExecutor));
     }
 

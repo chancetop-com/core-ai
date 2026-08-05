@@ -11,6 +11,7 @@ import ai.core.llm.domain.ReasoningEffort;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.telemetry.AgentTracer;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.ToolRef;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
@@ -68,6 +69,10 @@ public class SubAgentAssembler {
      * A missing or broken sub-agent is logged and skipped so it never blocks the parent agent from starting.
      */
     public List<SubAgentToolCall> assemble(List<String> subAgentIds, String sessionId) {
+        return assemble(subAgentIds, sessionId, null);
+    }
+
+    public List<SubAgentToolCall> assemble(List<String> subAgentIds, String sessionId, String callerUserId) {
         var ids = IdLists.clean(subAgentIds);
         if (ids.isEmpty()) return List.of();
         var tools = new ArrayList<SubAgentToolCall>();
@@ -75,7 +80,7 @@ public class SubAgentAssembler {
             try {
                 var definition = agentDefinitionCollection.get(id)
                         .orElseThrow(() -> new RuntimeException("subagent not found, id=" + id));
-                var subAgent = buildSubAgent(definition, sessionId);
+                var subAgent = buildSubAgent(definition, sessionId, callerUserId);
                 tools.add(SubAgentToolCall.builder().subAgent(subAgent).build());
                 logger.info("assembled subagent {} (id={})", definition.name, id);
             } catch (Exception e) {
@@ -86,8 +91,13 @@ public class SubAgentAssembler {
     }
 
     public Agent buildSubAgent(AgentDefinition definition, String sessionId) {
+        return buildSubAgent(definition, sessionId, null);
+    }
+
+    public Agent buildSubAgent(AgentDefinition definition, String sessionId, String callerUserId) {
+        requireUsablePublishedSubAgent(definition);
         var config = toSessionConfig(definition);
-        var toolRegistry = resolveToolsToRegistry(definition, sessionId);
+        var toolRegistry = resolveToolsToRegistry(definition, sessionId, callerUserId);
         skillToolAssembler.attach(resolveSkillIds(definition), toolRegistry);
         var bc = new BuildAgentConfig(config, toolRegistry, null, definition.name, null, definition.id, null, null, null);
         return buildAgent(bc);
@@ -95,41 +105,64 @@ public class SubAgentAssembler {
 
     private List<String> resolveSkillIds(AgentDefinition definition) {
         var source = definition.publishedConfig;
-        return source != null && source.skillIds != null ? source.skillIds : definition.skillIds;
+        return source != null ? source.skillIds : definition.skillIds;
     }
 
     public ToolRegistry resolveToolsToRegistry(AgentDefinition definition, String sessionId) {
-        if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
-            return toolRegistryService.resolveToToolRegistry(definition.publishedConfig.tools, sessionId);
-        } else if (definition.tools != null && !definition.tools.isEmpty()) {
-            return toolRegistryService.resolveToToolRegistry(definition.tools, sessionId);
-        }
-        return ToolRegistryFactory.createEmpty();
+        return resolveToolsToRegistry(definition, sessionId, null);
+    }
+
+    public ToolRegistry resolveToolsToRegistry(AgentDefinition definition, String sessionId, String callerUserId) {
+        requireUsablePublishedSubAgent(definition);
+        return resolveConfiguredToolsToRegistry(definition.publishedConfig.tools, sessionId, callerUserId);
+    }
+
+    public ToolRegistry resolveTopLevelToolsToRegistry(AgentDefinition definition, String sessionId,
+                                                       String callerUserId) {
+        var source = definition.publishedConfig;
+        var tools = source != null ? source.tools : definition.tools;
+        return resolveConfiguredToolsToRegistry(tools, sessionId, callerUserId);
+    }
+
+    private ToolRegistry resolveConfiguredToolsToRegistry(List<ToolRef> tools,
+                                                          String sessionId, String callerUserId) {
+        return tools != null && !tools.isEmpty()
+            ? toolRegistryService.resolveToToolRegistry(tools, sessionId, callerUserId)
+            : ToolRegistryFactory.createEmpty();
     }
 
     public List<ToolCall> resolveTools(AgentDefinition definition, String sessionId) {
-        if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
-            return toolRegistryService.resolveToolRefs(definition.publishedConfig.tools, sessionId);
-        } else if (definition.tools != null && !definition.tools.isEmpty()) {
-            return toolRegistryService.resolveToolRefs(definition.tools, sessionId);
-        }
-        return List.of();
+        return resolveTools(definition, sessionId, null);
+    }
+
+    public List<ToolCall> resolveTools(AgentDefinition definition, String sessionId, String callerUserId) {
+        requireUsablePublishedSubAgent(definition);
+        var tools = definition.publishedConfig.tools;
+        return tools != null && !tools.isEmpty()
+            ? toolRegistryService.resolveToolRefs(tools, sessionId, callerUserId)
+            : List.of();
     }
 
     public SessionConfig toSessionConfig(AgentDefinition definition) {
         var config = new SessionConfig();
         var source = definition.publishedConfig;
         var hasSource = source != null;
-        var systemPromptId = hasSource && source.systemPromptId != null ? source.systemPromptId : definition.systemPromptId;
-        var inlineSystemPrompt = hasSource && source.systemPrompt != null ? source.systemPrompt : definition.systemPrompt;
+        var systemPromptId = hasSource ? source.systemPromptId : definition.systemPromptId;
+        var inlineSystemPrompt = hasSource ? source.systemPrompt : definition.systemPrompt;
         config.systemPrompt = systemPromptId != null ? systemPromptService.resolveContent(systemPromptId) : inlineSystemPrompt;
-        config.model = hasSource && source.model != null ? source.model : definition.model;
-        config.multiModalModel = hasSource && source.multiModalModel != null ? source.multiModalModel : definition.multiModalModel;
-        config.preferCaptionPath = hasSource && source.preferCaptionPath != null ? source.preferCaptionPath : definition.preferCaptionPath;
-        config.temperature = hasSource && source.temperature != null ? source.temperature : definition.temperature;
-        config.reasoningEffort = normalizeThinkingEffort(hasSource && source.thinkingEffort != null ? source.thinkingEffort : definition.thinkingEffort);
-        config.maxTurns = hasSource && source.maxTurns != null ? source.maxTurns : definition.maxTurns;
+        config.model = hasSource ? source.model : definition.model;
+        config.multiModalModel = hasSource ? source.multiModalModel : definition.multiModalModel;
+        config.preferCaptionPath = hasSource ? source.preferCaptionPath : definition.preferCaptionPath;
+        config.temperature = hasSource ? source.temperature : definition.temperature;
+        config.reasoningEffort = normalizeThinkingEffort(hasSource ? source.thinkingEffort : definition.thinkingEffort);
+        config.maxTurns = hasSource ? source.maxTurns : definition.maxTurns;
         return config;
+    }
+
+    private void requireUsablePublishedSubAgent(AgentDefinition definition) {
+        if (!AgentDependencyAccessPolicy.hasUsablePublishedSubAgent(definition)) {
+            throw new IllegalArgumentException("sub-agent is unavailable");
+        }
     }
 
     public Agent buildAgent(BuildAgentConfig c) {

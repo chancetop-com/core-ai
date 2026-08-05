@@ -1,15 +1,19 @@
 package ai.core.server.workflow;
 
 import ai.core.server.agent.AgentExecutableConfigFactory;
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentSnapshotSource;
 import ai.core.server.domain.DefinitionType;
+import ai.core.server.skill.SkillService;
+import ai.core.server.util.IdLists;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.ForbiddenException;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -23,6 +27,9 @@ import java.util.Map;
 public class WorkflowAgentSnapshotService {
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
+
+    @Inject
+    SkillService skillService;
 
     public void capture(WorkflowGraph graph, String ownerUserId, List<String> errors,
                         Map<String, String> snapshots, Map<String, String> sources) {
@@ -46,39 +53,67 @@ public class WorkflowAgentSnapshotService {
                 continue;
             }
 
-            AgentPublishedConfig config;
-            String sourceKind;
-            if (WorkflowAgentAccessPolicy.isOwnedEditable(agent, ownerUserId)) {
-                if (!hasUsablePublishedSubAgents(node, agent, errors)) {
-                    continue;
-                }
-                config = AgentExecutableConfigFactory.fromEditableDefinition(agent);
-                sourceKind = "OWNED_EDITABLE";
-            } else if (WorkflowAgentAccessPolicy.hasUsablePublishedConfig(agent)) {
-                config = AgentExecutableConfigFactory.fromPublishedConfig(agent.publishedConfig);
-                sourceKind = "PUBLISHED";
-            } else {
-                errors.add("node " + node.id() + " references an agent/LLM definition you cannot access: " + agent.id);
+            SnapshotCandidate candidate = snapshotCandidate(node, agent, ownerUserId, errors);
+            if (candidate == null) continue;
+            AgentPublishedConfig config = candidate.config;
+
+            if (config.tools != null
+                && config.tools.stream().anyMatch(AgentDependencyAccessPolicy::isLlmCallRef)) {
+                errors.add("node " + node.id()
+                    + " agent snapshot contains an unsupported LLM call tool dependency");
+                continue;
+            }
+            if (!hasUsablePublishedSubAgents(node, config, errors)) {
                 continue;
             }
 
             snapshots.put(node.id(), JSON.toJSON(config));
             var source = new AgentSnapshotSource();
             source.agentId = agent.id;
-            source.sourceKind = sourceKind;
+            source.sourceKind = candidate.sourceKind;
             source.sourceUpdatedAt = agent.updatedAt;
             source.capturedAt = ZonedDateTime.now();
             sources.put(node.id(), JSON.toJSON(source));
         }
     }
 
-    private boolean hasUsablePublishedSubAgents(WorkflowNode node, AgentDefinition agent, List<String> errors) {
-        if (agent.subAgentIds == null) {
+    private SnapshotCandidate snapshotCandidate(WorkflowNode node, AgentDefinition agent,
+                                                String ownerUserId, List<String> errors) {
+        if (WorkflowAgentAccessPolicy.isOwnedEditable(agent, ownerUserId)) {
+            var config = AgentExecutableConfigFactory.fromEditableDefinition(agent);
+            if (!hasAccessibleSkills(node, config, ownerUserId, errors)) return null;
+            AgentDependencyAccessPolicy.markPublishedSkillsValidated(config);
+            return new SnapshotCandidate(config, "OWNED_EDITABLE");
+        }
+        if (WorkflowAgentAccessPolicy.hasUsablePublishedConfig(agent)) {
+            return new SnapshotCandidate(
+                AgentExecutableConfigFactory.fromPublishedConfig(agent.publishedConfig), "PUBLISHED");
+        }
+        errors.add("node " + node.id() + " references an agent/LLM definition you cannot access: " + agent.id);
+        return null;
+    }
+
+    private boolean hasAccessibleSkills(WorkflowNode node, AgentPublishedConfig config,
+                                        String ownerUserId, List<String> errors) {
+        var skillIds = IdLists.clean(config.skillIds);
+        if (skillIds.isEmpty()) return true;
+        try {
+            skillService.resolveAccessibleSkills(skillIds, ownerUserId);
+            return true;
+        } catch (ForbiddenException e) {
+            errors.add("node " + node.id() + " references an unavailable skill dependency");
+            return false;
+        }
+    }
+
+    private boolean hasUsablePublishedSubAgents(WorkflowNode node, AgentPublishedConfig config,
+                                                List<String> errors) {
+        if (config.subAgentIds == null) {
             return true;
         }
-        for (String subAgentId : agent.subAgentIds) {
+        for (String subAgentId : config.subAgentIds) {
             AgentDefinition subAgent = agentDefinitionCollection.get(subAgentId).orElse(null);
-            if (!WorkflowAgentAccessPolicy.hasUsablePublishedConfig(subAgent)) {
+            if (!WorkflowAgentAccessPolicy.hasUsablePublishedSubAgent(subAgent)) {
                 errors.add("node " + node.id() + " references sub-agent without a usable published config: " + subAgentId);
                 return false;
             }
@@ -93,5 +128,8 @@ public class WorkflowAgentSnapshotService {
         }
         String value = String.valueOf(raw);
         return value.isBlank() || "null".equals(value) ? null : value;
+    }
+
+    private record SnapshotCandidate(AgentPublishedConfig config, String sourceKind) {
     }
 }

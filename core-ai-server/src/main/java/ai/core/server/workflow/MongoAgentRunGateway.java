@@ -1,6 +1,7 @@
 package ai.core.server.workflow;
 
 import ai.core.server.artifact.PublicUrlConfiguration;
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
@@ -81,13 +82,16 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     MongoCollection<WorkflowPublishedVersion> versionCollection;
 
     @Inject
+    WorkflowPrivateAgentSafetyValidator privateAgentSafetyValidator;
+
+    @Inject
     FileService fileService;
     @Inject
     PublicUrlConfiguration publicUrlConfiguration;
 
     @Override
     public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<StagedFile> stagedFiles) {
-        AgentPublishedConfig snapshot = loadSnapshot(run.versionId, node.id());
+        AgentPublishedConfig snapshot = loadSnapshot(run.versionId, node.id(), !Boolean.TRUE.equals(run.preview));
         AgentDefinition definition = transientDefinition(node, run.userId, snapshot);
         var traceContext = new WorkflowTraceContext(run.workflowId, run.id, node.id(), node.type());
         String runId = agentRunner.run(definition, input, TriggerType.WORKFLOW, null, null, new WorkflowRunContext(traceContext, stagedFiles));
@@ -136,13 +140,18 @@ public class MongoAgentRunGateway implements AgentRunGateway {
         return refs;
     }
 
-    private AgentPublishedConfig loadSnapshot(String versionId, String nodeId) {
+    private AgentPublishedConfig loadSnapshot(String versionId, String nodeId, boolean requirePublicSafety) {
         WorkflowPublishedVersion version = versionCollection.get(versionId)
             .orElseThrow(() -> new IllegalStateException("published workflow version not found: " + versionId));
+        if (requirePublicSafety) privateAgentSafetyValidator.requireSafe(version);
         String snapshotJson = version.agentSnapshots != null ? version.agentSnapshots.get(nodeId) : null;
         if (snapshotJson == null) {
             throw new IllegalStateException("no embedded agent snapshot for node " + nodeId);
         }
-        return JSON.fromJSON(AgentPublishedConfig.class, snapshotJson);
+        AgentPublishedConfig snapshot = JSON.fromJSON(AgentPublishedConfig.class, snapshotJson);
+        if (!AgentDependencyAccessPolicy.hasValidatedPublishedSkills(snapshot)) {
+            throw new IllegalStateException("agent snapshot contains unvalidated skills");
+        }
+        return snapshot;
     }
 }

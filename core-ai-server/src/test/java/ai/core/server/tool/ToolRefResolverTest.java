@@ -18,10 +18,14 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class ToolRefResolverTest {
     @Test
-    void registryTypeOverridesIncorrectRequestType() {
+    void declaredTypeMismatchWithRegistryFailsClosed() {
         var registry = new ToolRegistryEntry();
         registry.id = "custom-builtin";
         registry.type = ToolType.BUILTIN;
@@ -33,25 +37,19 @@ class ToolRefResolverTest {
 
         var resolver = new ToolRefResolver(Map.of(registry.id, registry), null, Map.of());
 
-        var resolved = resolver.resolve(List.of(ref));
-
-        assertEquals(ai.core.tool.BuiltinTools.GROUPED_SETS.get("builtin-planning").size(), resolved.size());
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve(List.of(ref)));
     }
 
     @Test
-    void resolvesLlmCallRefIntoCallableTool() {
+    void resolvesLlmCallRefIntoCallableToolForAuthenticatedCaller() {
         var definition = new AgentDefinition();
         definition.id = "def1";
         definition.name = "image_recognition";
         definition.description = "Recognize menu from image";
         definition.type = DefinitionType.LLM_CALL;
 
-        var service = new AgentDefinitionService() {
-            @Override
-            public AgentDefinition getEntity(String id) {
-                return definition;
-            }
-        };
+        var service = mock(AgentDefinitionService.class);
+        when(service.resolveLlmCallToolDefinition("def1", "caller-1")).thenReturn(definition);
         var executor = new LLMCallExecutor() {
             @Override
             public Result execute(AgentDefinition d, String input, List<LLMCallRequest.Attachment> attachments) {
@@ -62,24 +60,85 @@ class ToolRefResolverTest {
         resolver.setAgentDefinitionService(service);
         resolver.setLlmCallExecutor(executor);
 
-        var resolved = resolver.resolve(List.of(ToolRef.fromLegacyToolId("llm-call:def1")));
+        var resolved = resolver.resolve(List.of(ToolRef.fromLegacyToolId("llm-call:def1")), null, "caller-1");
 
         assertEquals(1, resolved.size());
         assertTrue(resolved.getFirst() instanceof LLMCallTool);
+        verify(service).resolveLlmCallToolDefinition("def1", "caller-1");
     }
 
     @Test
-    void missingLlmCallDefinitionFailsFast() {
-        var service = new AgentDefinitionService() {
-            @Override
-            public AgentDefinition getEntity(String id) {
-                throw new RuntimeException("agent not found, id=" + id);
-            }
-        };
+    void llmCallRefWithoutCallerFailsClosed() {
+        var service = mock(AgentDefinitionService.class);
         var resolver = new ToolRefResolver(Map.of(), null, Map.of(), null, null, null);
         resolver.setAgentDefinitionService(service);
 
-        assertThrows(RuntimeException.class,
+        assertThrows(IllegalArgumentException.class,
                 () -> resolver.resolve(List.of(ToolRef.fromLegacyToolId("llm-call:missing"))));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void malformedLlmCallRefFailsClosedWithoutDefinitionLookup() {
+        var service = mock(AgentDefinitionService.class);
+        var resolver = new ToolRefResolver(Map.of(), null, Map.of(), null, null, null);
+        resolver.setAgentDefinitionService(service);
+
+        var malformed = ToolRef.of("forged-id", ToolSourceType.LLM_CALL);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> resolver.resolve(List.of(malformed), null, "caller-1"));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void rawUntypedLlmCallRefWithoutCallerFailsClosed() {
+        var service = mock(AgentDefinitionService.class);
+        var resolver = new ToolRefResolver(Map.of(), null, Map.of(), null, null, null);
+        resolver.setAgentDefinitionService(service);
+        var raw = new ToolRef();
+        raw.id = "llm-call:target";
+
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve(List.of(raw)));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void reservedLlmCallPrefixOverridesContradictoryDeclaredType() {
+        var service = mock(AgentDefinitionService.class);
+        var resolver = new ToolRefResolver(Map.of(), null, Map.of(), null, null, null);
+        resolver.setAgentDefinitionService(service);
+        var contradictory = ToolRef.of("llm-call:target", ToolSourceType.BUILTIN);
+
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve(List.of(contradictory)));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void typedLlmCallRefWithoutIdFailsClosed() {
+        var service = mock(AgentDefinitionService.class);
+        var resolver = new ToolRefResolver(Map.of(), null, Map.of(), null, null, null);
+        resolver.setAgentDefinitionService(service);
+        var malformed = new ToolRef();
+        malformed.type = ToolSourceType.LLM_CALL;
+
+        assertThrows(IllegalArgumentException.class,
+            () -> resolver.resolve(List.of(malformed), null, "caller-1"));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void registryEntryCannotOverrideExplicitLlmCallClassification() {
+        var collision = new ToolRegistryEntry();
+        collision.id = "llm-call:target";
+        collision.type = ToolType.BUILTIN;
+        collision.config = Map.of("set", "builtin-planning");
+        var service = mock(AgentDefinitionService.class);
+        var resolver = new ToolRefResolver(Map.of(collision.id, collision), null, Map.of(), null, null, null);
+        resolver.setAgentDefinitionService(service);
+        var ref = ToolRef.of(collision.id, ToolSourceType.LLM_CALL);
+
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve(List.of(ref)));
+        verifyNoInteractions(service);
     }
 }

@@ -173,8 +173,8 @@ final class AgentViewHelper {
 
     static List<AgentDatasetConfig> resolveDatasetConfig(AgentDefinition definition) {
         var config = definition.publishedConfig;
-        if (config != null && config.datasetConfig != null && !config.datasetConfig.isEmpty()) {
-            return config.datasetConfig;
+        if (config != null) {
+            return config.datasetConfig == null || config.datasetConfig.isEmpty() ? null : config.datasetConfig;
         }
         if (definition.datasetConfig != null && !definition.datasetConfig.isEmpty()) {
             return definition.datasetConfig;

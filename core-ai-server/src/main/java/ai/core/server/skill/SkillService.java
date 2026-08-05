@@ -11,6 +11,7 @@ import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
@@ -40,6 +41,10 @@ public class SkillService {
     private static final String SEARCH_IN_NAME = "name";
     private static final String SEARCH_IN_METADATA = "metadata";
     private static final String SEARCH_IN_CONTENT = "content";
+
+    private static ForbiddenException unavailableSkill() {
+        return new ForbiddenException("skill is unavailable");
+    }
 
     @Inject
     MongoCollection<SkillDefinition> skillCollection;
@@ -392,6 +397,19 @@ public class SkillService {
         var result = new ArrayList<SkillMetadata>();
         for (var id : cleanSkillIds) {
             skillCollection.get(id).ifPresent(def -> result.add(toMetadata(def)));
+        }
+        return result;
+    }
+
+    public List<SkillMetadata> resolveAccessibleSkills(List<String> skillIds, String callerUserId) {
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (cleanSkillIds.isEmpty()) return List.of();
+        if (callerUserId == null || callerUserId.isBlank()) throw unavailableSkill();
+        var result = new ArrayList<SkillMetadata>(cleanSkillIds.size());
+        for (var id : cleanSkillIds) {
+            var definition = skillCollection.get(id).orElseThrow(SkillService::unavailableSkill);
+            if (!callerUserId.equals(definition.userId)) throw unavailableSkill();
+            result.add(toMetadata(definition));
         }
         return result;
     }

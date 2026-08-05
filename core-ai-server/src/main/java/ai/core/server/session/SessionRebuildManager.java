@@ -16,6 +16,7 @@ import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
 import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.file.FileService;
+import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
@@ -25,6 +26,7 @@ import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.sandbox.Sandbox;
+import ai.core.sandbox.SandboxConfig;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
@@ -91,6 +93,7 @@ public class SessionRebuildManager {
         var meta = chatMessageService.getSessionMeta(sessionId);
         if (meta == null) return null;
         var state = new SessionState();
+        state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;
         state.sessionId = sessionId;
         state.userId = meta.userId;
         if (meta.agentId == null) {
@@ -100,16 +103,15 @@ public class SessionRebuildManager {
         }
         var definition = agentDefinitionCollection.get(meta.agentId).orElse(null);
         if (definition == null) {
-            logger.warn("agent definition not found for DB rebuild, sessionId={}, agentId={}", sessionId, meta.agentId);
-            state.fromAgent = false;
-            populateDynamicLoads(state, meta);
-            return state;
+            throw new IllegalArgumentException("agent is unavailable");
         }
+        var ownedEditable = AgentDependencyAccessPolicy.isOwnedEditable(definition, meta.userId);
+        definition = AgentDependencyAccessPolicy.executableSessionAgent(definition, meta.userId);
+        if (ownedEditable) skillManager.resolveAccessibleDefinitionSkills(definition, meta.userId);
         state.fromAgent = true;
-        state.agentConfig = buildSnapshotFromDefinition(definition);
-        var defaultSubAgentIds = definition.publishedConfig != null && definition.publishedConfig.subAgentIds != null
-                ? definition.publishedConfig.subAgentIds
-                : definition.subAgentIds;
+        state.agentConfig = SessionAgentSnapshotSecurity.buildSnapshot(definition);
+        var defaultSubAgentIds = definition.publishedConfig != null
+                ? definition.publishedConfig.subAgentIds : definition.subAgentIds;
         state.subAgentIds = IdLists.clean(defaultSubAgentIds);
         populateDynamicLoads(state, meta);
         return state;
@@ -120,7 +122,11 @@ public class SessionRebuildManager {
             logger.info("loaded {} tool ref(s) from DB for session {}, refs={}", meta.loadedTools.size(), meta.id, meta.loadedTools);
         }
         if (meta.loadedSkillIds != null && !meta.loadedSkillIds.isEmpty()) {
-            state.skillIds = IdLists.clean(meta.loadedSkillIds);
+            var definitionSkillIds = new LinkedHashSet<>(IdLists.clean(
+                    state.agentConfig != null ? state.agentConfig.skillIds : null));
+            state.skillIds = IdLists.clean(meta.loadedSkillIds).stream()
+                    .filter(id -> !definitionSkillIds.contains(id))
+                    .toList();
         }
         if (meta.loadedSubAgentIds != null && !meta.loadedSubAgentIds.isEmpty()) {
             state.subAgentIds = mergeIds(state.subAgentIds, meta.loadedSubAgentIds);
@@ -132,39 +138,35 @@ public class SessionRebuildManager {
         merged.addAll(IdLists.clean(second));
         return new ArrayList<>(merged);
     }
-    private SessionState.AgentConfigSnapshot buildSnapshotFromDefinition(AgentDefinition def) {
-        var pub = def.publishedConfig;
-        var snapshot = new SessionState.AgentConfigSnapshot();
-        snapshot.agentId = def.id;
-        snapshot.agentName = def.name;
-        snapshot.systemPrompt = pub != null && pub.systemPrompt != null ? pub.systemPrompt : def.systemPrompt;
-        snapshot.systemPromptId = pub != null && pub.systemPromptId != null ? pub.systemPromptId : def.systemPromptId;
-        snapshot.model = pub != null && pub.model != null ? pub.model : def.model;
-        snapshot.multiModalModel = pub != null && pub.multiModalModel != null ? pub.multiModalModel : def.multiModalModel;
-        snapshot.preferCaptionPath = pub != null && pub.preferCaptionPath != null ? pub.preferCaptionPath : def.preferCaptionPath;
-        snapshot.temperature = pub != null && pub.temperature != null ? pub.temperature : def.temperature;
-        snapshot.thinkingEffort = pub != null && pub.thinkingEffort != null ? pub.thinkingEffort : def.thinkingEffort;
-        snapshot.maxTurns = pub != null && pub.maxTurns != null ? pub.maxTurns : def.maxTurns;
-        snapshot.inputTemplate = pub != null && pub.inputTemplate != null ? pub.inputTemplate : def.inputTemplate;
-        snapshot.variables = pub != null && pub.variables != null ? pub.variables : def.variables;
-        snapshot.tools = pub != null && pub.tools != null && !pub.tools.isEmpty() ? pub.tools : def.tools;
-        snapshot.datasetConfig = pub != null && pub.datasetConfig != null ? pub.datasetConfig : def.datasetConfig;
-        return snapshot;
-    }
-
     public InProcessAgentSession rebuildSession(String sessionId, SessionState state) {
+        return rebuildSession(sessionId, state, null);
+    }
+    public InProcessAgentSession rebuildSession(String sessionId, SessionState state, String callerUserId) {
+        if (state.fromAgent && state.agentConfig == null) return null;
         try {
-            if (state.fromAgent && state.agentConfig != null) {
-                return rebuildFromSnapshot(sessionId, state.agentConfig, state.userId, state);
-            } else {
-                return rebuildFromConfig(sessionId, state.config, state.userId, state);
+            if (state.fromAgent && state.agentConfig != null && SessionAgentSnapshotSecurity.isTrusted(state)) {
+                var trustedUserId = SessionAgentSnapshotSecurity.trustedUserId(state, callerUserId);
+                var allowReattach = SessionAgentSnapshotSecurity.isSandboxBindingTrusted(state);
+                if (!allowReattach) sandboxService.invalidateSandboxBinding(sessionId);
+                return rebuildFromSnapshot(sessionId, state.agentConfig, trustedUserId, state, allowReattach);
             }
+            if (state.fromAgent && state.agentConfig != null) {
+                var identity = SessionAgentSnapshotSecurity.authorizeLegacyIdentity(sessionId, state,
+                        callerUserId, chatMessageService);
+                sandboxService.invalidateSandboxBinding(sessionId);
+                var safeState = SessionAgentSnapshotSecurity.rederiveLegacyState(sessionId, identity,
+                        agentDefinitionCollection, skillManager);
+                return rebuildFromSnapshot(sessionId, safeState.agentConfig, safeState.userId, safeState, false);
+            }
+            return rebuildFromConfig(sessionId, state.config, state.userId, state);
         } catch (Exception e) {
             logger.warn("failed to rebuild session, sessionId={}, error={}", sessionId, e.getMessage());
             return null;
         }
     }
-    private InProcessAgentSession rebuildFromSnapshot(String sessionId, SessionState.AgentConfigSnapshot snapshot, String userId, SessionState state) {
+    private InProcessAgentSession rebuildFromSnapshot(String sessionId, SessionState.AgentConfigSnapshot snapshot,
+                                                      String userId, SessionState state,
+                                                      boolean allowSandboxReattach) {
         var config = new SessionConfig();
         config.systemPrompt = snapshot.systemPromptId != null ? systemPromptService.resolveContent(snapshot.systemPromptId) : snapshot.systemPrompt;
         config.model = snapshot.model;
@@ -190,36 +192,45 @@ public class SessionRebuildManager {
             config.datasetId = findOutputDatasetId(snapshot.datasetConfig);
             datasetConfig = snapshot.datasetConfig;
         }
-        var params = new RebuildParams(sessionId, config, snapshot.tools, userId, snapshot.agentName, state, snapshot.agentId, datasetConfig, snapshot.variables);
+        var sandboxConfig = snapshot.sandboxConfig != null ? snapshot.sandboxConfig.toConfig() : null;
+        var params = new RebuildParams(sessionId, config, snapshot.tools, userId, snapshot.agentName, state,
+                snapshot.agentId, datasetConfig, snapshot.variables, sandboxConfig, allowSandboxReattach);
         return doRebuild(params);
     }
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId, SessionState state) {
-        return doRebuild(new RebuildParams(sessionId, config, null, userId, null, state, "default", null, null));
+        return doRebuild(new RebuildParams(sessionId, config, null, userId, null, state,
+                "default", null, null, null, true));
     }
-    private SandboxSetup setupSandboxContext(String sessionId, String userId) {
+    private SandboxSetup setupSandboxContext(String sessionId, String userId, SandboxConfig sandboxConfig,
+                                             boolean allowSandboxReattach) {
         var context = userId != null ? SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService) : null;
-        var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
+        var sandboxOn = context != null && sandboxService.isSandboxEnabled(sandboxConfig);
         var sessionRef = new InProcessAgentSession[1];
         if (context != null) {
-            var sandbox = createOrReattachSandbox(sessionId, userId, sessionRef);
+            var sandbox = createOrReattachSandbox(sessionId, userId, sandboxConfig, sessionRef,
+                    allowSandboxReattach);
             if (sandbox != null) context.sandbox(sandbox);
         }
         return new SandboxSetup(context, sessionRef, sandboxOn);
     }
-    private Sandbox createOrReattachSandbox(String sessionId, String userId, InProcessAgentSession[] sessionRef) {
-        var sandbox = reattachExistingSandbox(sessionId, userId, sessionRef);
+    private Sandbox createOrReattachSandbox(String sessionId, String userId, SandboxConfig sandboxConfig,
+                                            InProcessAgentSession[] sessionRef,
+                                            boolean allowSandboxReattach) {
+        var sandbox = allowSandboxReattach
+                ? reattachExistingSandbox(sessionId, userId, sandboxConfig, sessionRef) : null;
         if (sandbox == null) {
-            sandbox = sandboxService.createSessionSandbox(null, sessionId, userId,
+            sandbox = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId,
                     event -> {
                         if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
                     });
         }
         return sandbox;
     }
-    private Sandbox reattachExistingSandbox(String sessionId, String userId, InProcessAgentSession[] sessionRef) {
+    private Sandbox reattachExistingSandbox(String sessionId, String userId, SandboxConfig sandboxConfig,
+                                            InProcessAgentSession[] sessionRef) {
         var existingSandboxId = sandboxService.getSandboxId(sessionId);
         if (existingSandboxId == null) return null;
-        var sandbox = sandboxService.reattachOrCreateSandbox(existingSandboxId, null, sessionId, userId,
+        var sandbox = sandboxService.reattachOrCreateSandbox(existingSandboxId, sandboxConfig, sessionId, userId,
                 event -> {
                     if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
                 });
@@ -240,10 +251,10 @@ public class SessionRebuildManager {
         var start = System.currentTimeMillis();
         var agentId = params.state != null && params.state.fromAgent && params.state.agentConfig != null ? params.state.agentConfig.agentId : null;
         var effectiveConfig = params.config != null ? params.config : new SessionConfig();
-        var sandbox = setupSandboxContext(params.sessionId, params.userId);
-
+        var sandbox = setupSandboxContext(params.sessionId, params.userId, params.sandboxConfig,
+                params.allowSandboxReattach);
         List<ToolCall> tools = (params.toolRefs != null && !params.toolRefs.isEmpty())
-                ? toolRegistryService.resolveToolRefs(params.toolRefs, params.sessionId)
+                ? toolRegistryService.resolveToolRefs(params.toolRefs, params.sessionId, params.userId)
                 : new ArrayList<>();
         tools = addDatasetTools(tools, params.datasetConfig, agentId, params.sessionId);
         Map<String, Object> extraVars = null;
@@ -267,7 +278,9 @@ public class SessionRebuildManager {
         }
         registerSessionFromDb(params.sessionId, params.userId);
         restoreAgentHistory(agent, params.sessionId);
-        restoreDynamicallyLoaded(params.state, params.sessionId, session);
+        skillManager.restoreDefinitionSkills(session, params.state != null && params.state.agentConfig != null
+                ? params.state.agentConfig.skillIds : null);
+        restoreDynamicallyLoaded(params.state, params.sessionId, session, params.userId);
         logger.info("doRebuild done, sessionId={}, elapsedMs={}", params.sessionId, System.currentTimeMillis() - start);
         return session;
     }
@@ -284,12 +297,13 @@ public class SessionRebuildManager {
             ownershipRegistry.claimOrRenew(sessionId);
         }
     }
-    private void restoreDynamicallyLoaded(SessionState state, String sessionId, InProcessAgentSession session) {
+    void restoreDynamicallyLoaded(SessionState state, String sessionId, InProcessAgentSession session,
+                                  String callerUserId) {
         if (state == null) return;
         if (state.tools != null && !state.tools.isEmpty()) {
             try {
                 logger.info("restore tools: {} ref(s) to resolve for session {}, refs={}", state.tools.size(), sessionId, state.tools);
-                var resolved = toolRegistryService.resolveToolRefs(state.tools, sessionId);
+                var resolved = toolRegistryService.resolveToolRefs(state.tools, sessionId, callerUserId);
                 if (!resolved.isEmpty()) {
                     session.loadTools(resolved);
                     logger.info("restored {} dynamically loaded tools for session {}", resolved.size(), sessionId);
@@ -302,7 +316,7 @@ public class SessionRebuildManager {
         }
         if (state.skillIds != null && !state.skillIds.isEmpty()) {
             try {
-                skillManager.applySkillsToSession(session, state.skillIds);
+                skillManager.applyCallerSkillsToSession(session, state.skillIds, callerUserId);
                 logger.info("restored {} dynamically loaded skills for session {}", state.skillIds.size(), sessionId);
             } catch (Exception e) {
                 logger.warn("failed to restore dynamically loaded skills, sessionId={}", sessionId, e);
@@ -315,7 +329,7 @@ public class SessionRebuildManager {
                         .filter(def -> def != null)
                         .toList();
                 if (!definitions.isEmpty()) {
-                    subAgentManager.applySubAgentsToSession(session, definitions);
+                    subAgentManager.applySubAgentsToSession(session, definitions, callerUserId);
                     logger.info("restored {} dynamically loaded sub-agents for session {}", definitions.size(), sessionId);
                 }
             } catch (Exception e) {
@@ -408,10 +422,10 @@ public class SessionRebuildManager {
                 .map(c -> c.datasetId)
                 .orElse(null);
     }
-
     record RebuildParams(String sessionId, SessionConfig config, List<ToolRef> toolRefs, String userId,
                          String agentName, SessionState state, String datasetAgentId,
-                         List<AgentDatasetConfig> datasetConfig, Map<String, String> configVars) {
+                         List<AgentDatasetConfig> datasetConfig, Map<String, String> configVars,
+                         SandboxConfig sandboxConfig, boolean allowSandboxReattach) {
     }
     private record SandboxSetup(ExecutionContext context, InProcessAgentSession[] sessionRef, boolean sandboxOn) {
     }
