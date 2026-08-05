@@ -125,14 +125,51 @@ class WorkflowPrivateAgentSafetyValidatorTest {
     }
 
     @Test
-    void rejectsNullBlankMalformedAndMissingOwnedSnapshotsWithoutEchoingThem() {
+    void rejectsSemanticallyMalformedSourceMetadata() {
+        assertMalformedSource("{}");
+        assertMalformedSource("null");
+        assertMalformedSource("{\"source_kind\":null}");
+        assertMalformedSource("{\"source_kind\":\"UNKNOWN_PRIVATE_KIND\"}");
+    }
+
+    @Test
+    void requiresMetadataCoverageForEverySnapshotWhenMetadataMapIsPresent() {
+        var emptyMetadata = new WorkflowPublishedVersion();
+        emptyMetadata.agentSnapshots = Map.of("secret-node", JSON.toJSON(new AgentPublishedConfig()));
+        emptyMetadata.agentSnapshotSources = Map.of();
+        assertEquals(List.of("node secret-node is missing agent snapshot source metadata"),
+            validator.validate(emptyMetadata));
+
+        var publishedSource = new AgentSnapshotSource();
+        publishedSource.sourceKind = "PUBLISHED";
+        var partialMetadata = new WorkflowPublishedVersion();
+        partialMetadata.agentSnapshots = Map.of(
+            "covered", JSON.toJSON(new AgentPublishedConfig()),
+            "uncovered", JSON.toJSON(new AgentPublishedConfig()));
+        partialMetadata.agentSnapshotSources = Map.of("covered", JSON.toJSON(publishedSource));
+        assertEquals(List.of("node uncovered is missing agent snapshot source metadata"),
+            validator.validate(partialMetadata));
+    }
+
+    @Test
+    void rejectsPublishedOrOwnedSourceWithoutMatchingSnapshot() {
+        var publishedSource = new AgentSnapshotSource();
+        publishedSource.sourceKind = "PUBLISHED";
+        var published = new WorkflowPublishedVersion();
+        published.agentSnapshots = Map.of();
+        published.agentSnapshotSources = Map.of("published-node", JSON.toJSON(publishedSource));
+        assertEquals(List.of("node published-node is missing an agent snapshot"), validator.validate(published));
+
+        WorkflowPublishedVersion owned = ownedVersion("owned-node", new AgentPublishedConfig());
+        owned.agentSnapshots = Map.of();
+        assertEquals(List.of("node owned-node is missing an agent snapshot"), validator.validate(owned));
+    }
+
+    @Test
+    void rejectsNullBlankAndMalformedOwnedSnapshotValuesWithoutEchoingThem() {
         assertMalformedSnapshot(snapshotVersionWithValue(null));
         assertMalformedSnapshot(snapshotVersionWithValue("  "));
         assertMalformedSnapshot(snapshotVersionWithValue("{malformed-private-snapshot"));
-
-        WorkflowPublishedVersion missing = ownedVersion("n1", new AgentPublishedConfig());
-        missing.agentSnapshots = Map.of();
-        assertMalformedSnapshot(missing);
     }
 
     @Test
@@ -176,6 +213,15 @@ class WorkflowPrivateAgentSafetyValidatorTest {
         List<String> errors = validator.validate(version);
         assertEquals(List.of("node n1 has a malformed private agent snapshot"), errors);
         assertFalse(errors.getFirst().contains("malformed-private-snapshot"));
+    }
+
+    private void assertMalformedSource(String sourceJson) {
+        var version = new WorkflowPublishedVersion();
+        version.agentSnapshots = Map.of("n1", JSON.toJSON(new AgentPublishedConfig()));
+        version.agentSnapshotSources = Map.of("n1", sourceJson);
+        List<String> errors = validator.validate(version);
+        assertEquals(List.of("node n1 has malformed agent snapshot source metadata"), errors);
+        assertFalse(errors.getFirst().contains("UNKNOWN_PRIVATE_KIND"));
     }
 
     private WorkflowPublishedVersion snapshotVersionWithValue(String value) {

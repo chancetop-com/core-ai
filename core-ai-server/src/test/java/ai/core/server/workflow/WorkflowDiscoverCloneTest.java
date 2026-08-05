@@ -184,6 +184,50 @@ class WorkflowDiscoverCloneTest {
         assertFalse(exported.contains("private prompt value"));
     }
 
+    @Test
+    void cloneSanitizesSecretLikePublishedGraphFieldsAndKeepsAgentReference() {
+        AgentDefinition privateAgent = insertDraftAgent("clone-secret-agent", "owner", "private prompt value");
+        String graph = agentAndSecretHttpGraph(privateAgent.id);
+        WorkflowDefinition source = definitionService.create(
+            "clone-secret-source-" + UUID.randomUUID(), "WORKFLOW", graph, "owner");
+        publishService.publish(source.id, "owner");
+
+        WorkflowDefinition copy = definitionService.clone(source.id, "viewer");
+        String response = JSON.toJSON(copy);
+
+        assertFalse(copy.draftGraph.contains("Bearer clone-secret-token"));
+        assertFalse(copy.draftGraph.contains("clone-secret-api-key"));
+        assertFalse(response.contains("Bearer clone-secret-token"));
+        assertFalse(response.contains("clone-secret-api-key"));
+        assertTrue(copy.draftGraph.contains("[redacted]"));
+        assertTrue(copy.draftGraph.contains(privateAgent.id));
+        assertTrue(publishService.validate(copy).stream()
+            .anyMatch(message -> message.equals("node n1: Private embedded agent is not available — choose a replacement")));
+    }
+
+    @Test
+    void markerTextInUnknownAgentIdIsNotMisclassifiedAsInaccessible() {
+        String agentId = "missing references an agent/LLM definition you cannot access: injected";
+        WorkflowDefinition workflow = definitionService.create(
+            "marker-agent-id-" + UUID.randomUUID(), "WORKFLOW", agentGraph(agentId), "owner");
+
+        assertEquals(List.of("node n1 references an unknown agent/LLM definition: " + agentId),
+            publishService.validate(workflow));
+    }
+
+    @Test
+    void markerTextInNodeIdIsNotMisclassifiedAsInaccessible() {
+        String nodeId = "n1 references an agent/LLM definition you cannot access: injected";
+        WorkflowDefinition workflow = definitionService.create(
+            "marker-node-id-" + UUID.randomUUID(), "WORKFLOW", agentGraph(nodeId, "missing-agent"), "owner");
+
+        List<String> warnings = publishService.validate(workflow);
+        assertTrue(warnings.stream().anyMatch(message -> message.equals("invalid node id: " + nodeId)));
+        assertTrue(warnings.stream().anyMatch(message -> message.equals(
+            "node " + nodeId + " references an unknown agent/LLM definition: missing-agent")));
+        assertTrue(warnings.stream().noneMatch(message -> message.contains("choose a replacement")));
+    }
+
     private AgentDefinition insertDraftAgent(String namePrefix, String userId, String systemPrompt) {
         var agent = new AgentDefinition();
         agent.id = namePrefix + "-" + UUID.randomUUID();
@@ -200,14 +244,34 @@ class WorkflowDiscoverCloneTest {
     }
 
     private String agentGraph(String agentId) {
+        return agentGraph("n1", agentId);
+    }
+
+    private String agentGraph(String nodeId, String agentId) {
+        return """
+            {"nodes":[
+              {"id":"start","type":"START"},
+              {"id":"NODE_ID","type":"AGENT","config":{"agent_id":"AGENT_ID"}},
+              {"id":"end","type":"END"}],
+             "edges":[
+              {"id":"e1","source":"start","target":"NODE_ID"},
+              {"id":"e2","source":"NODE_ID","target":"end"}]}
+            """.replace("NODE_ID", nodeId).replace("AGENT_ID", agentId);
+    }
+
+    private String agentAndSecretHttpGraph(String agentId) {
         return """
             {"nodes":[
               {"id":"start","type":"START"},
               {"id":"n1","type":"AGENT","config":{"agent_id":"AGENT_ID"}},
+              {"id":"http","type":"HTTP","config":{
+                "url":"https://api.example.com",
+                "headers":{"Authorization":"Bearer clone-secret-token","X-Api-Key":"clone-secret-api-key"}}},
               {"id":"end","type":"END"}],
              "edges":[
               {"id":"e1","source":"start","target":"n1"},
-              {"id":"e2","source":"n1","target":"end"}]}
+              {"id":"e2","source":"n1","target":"http"},
+              {"id":"e3","source":"http","target":"end"}]}
             """.replace("AGENT_ID", agentId);
     }
 

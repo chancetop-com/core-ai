@@ -31,8 +31,6 @@ import java.util.UUID;
  * @author Xander
  */
 public class WorkflowPublishService {
-    private static final String INACCESSIBLE_AGENT_ERROR = " references an agent/LLM definition you cannot access:";
-
     // Read a node config value as a non-blank String, treating null/blank/"null" as absent.
     private static String configValue(WorkflowNode node, String key) {
         Object raw = node.config().get(key);
@@ -213,16 +211,32 @@ public class WorkflowPublishService {
     /** Validate a draft without publishing (the editor's Validate button). Returns all errors, empty if valid. */
     public List<String> validate(WorkflowDefinition definition) {
         List<String> errors = collectErrors(definition, new LinkedHashMap<>(), new LinkedHashMap<>());
+        WorkflowGraph graph = WorkflowGraphParser.parse(definition.draftGraph);
+        Map<String, String> privateAgentWarnings = privateAgentWarnings(graph);
         var safeWarnings = new ArrayList<String>(errors.size());
         for (String error : errors) {
-            int marker = error.indexOf(INACCESSIBLE_AGENT_ERROR);
-            if (marker < 0) {
-                safeWarnings.add(error);
-            } else {
-                safeWarnings.add(error.substring(0, marker) + ": " + WorkflowPortService.PRIVATE_AGENT_REPLACEMENT_MESSAGE);
-            }
+            safeWarnings.add(privateAgentWarnings.getOrDefault(error, error));
         }
         return safeWarnings;
+    }
+
+    private Map<String, String> privateAgentWarnings(WorkflowGraph graph) {
+        var warnings = new LinkedHashMap<String, String>();
+        for (WorkflowNode node : graph.nodes()) {
+            if (!"AGENT".equals(node.type()) && !"LLM".equals(node.type())) {
+                continue;
+            }
+            String agentId = configValue(node, "agent_id");
+            if (agentId == null) {
+                continue;
+            }
+            String inaccessibleError = "node " + node.id()
+                + " references an agent/LLM definition you cannot access: " + agentId;
+            String replacementWarning = "node " + node.id() + ": "
+                + WorkflowPortService.PRIVATE_AGENT_REPLACEMENT_MESSAGE;
+            warnings.put(inaccessibleError, replacementWarning);
+        }
+        return warnings;
     }
 
     // Parse + structural/type/dominator validation + agent-snapshot validation; fills snapshots as a side effect.

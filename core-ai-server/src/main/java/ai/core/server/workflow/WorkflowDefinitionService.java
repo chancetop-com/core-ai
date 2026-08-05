@@ -248,7 +248,7 @@ public class WorkflowDefinitionService {
         definition.name = source.name;
         definition.description = source.description;
         definition.mode = source.mode;
-        definition.draftGraph = published.graph;
+        definition.draftGraph = WorkflowGraphSanitizer.sanitize(published.graph);
         definition.createdAt = now;
         definition.updatedAt = now;
         definitionCollection.insert(definition);

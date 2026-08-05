@@ -26,12 +26,19 @@ public class WorkflowPrivateAgentSafetyValidator {
             return List.of();
         }
         var errors = new ArrayList<String>();
+        if (version.agentSnapshots != null) {
+            for (String nodeId : version.agentSnapshots.keySet()) {
+                if (!version.agentSnapshotSources.containsKey(nodeId)) {
+                    errors.add("node " + nodeId + " is missing agent snapshot source metadata");
+                }
+            }
+        }
         for (var entry : version.agentSnapshotSources.entrySet()) {
             String nodeId = entry.getKey();
             AgentSnapshotSource source;
             try {
                 source = JSON.fromJSON(AgentSnapshotSource.class, entry.getValue());
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | Error e) {
                 errors.add("node " + nodeId + " has malformed agent snapshot source metadata");
                 continue;
             }
@@ -39,10 +46,21 @@ public class WorkflowPrivateAgentSafetyValidator {
                 errors.add("node " + nodeId + " has malformed agent snapshot source metadata");
                 continue;
             }
-            if (!"OWNED_EDITABLE".equals(source.sourceKind)) {
+            if (!"OWNED_EDITABLE".equals(source.sourceKind) && !"PUBLISHED".equals(source.sourceKind)) {
+                errors.add("node " + nodeId + " has malformed agent snapshot source metadata");
                 continue;
             }
-            String snapshotJson = version.agentSnapshots == null ? null : version.agentSnapshots.get(nodeId);
+            if (version.agentSnapshots == null || !version.agentSnapshots.containsKey(nodeId)) {
+                errors.add("node " + nodeId + " is missing an agent snapshot");
+                continue;
+            }
+            String snapshotJson = version.agentSnapshots.get(nodeId);
+            if ("PUBLISHED".equals(source.sourceKind)) {
+                if (snapshotJson == null || snapshotJson.isBlank()) {
+                    errors.add("node " + nodeId + " has a malformed agent snapshot");
+                }
+                continue;
+            }
             try {
                 if (snapshotJson == null || snapshotJson.isBlank()) {
                     throw new IllegalArgumentException("missing private agent snapshot");
@@ -52,7 +70,7 @@ public class WorkflowPrivateAgentSafetyValidator {
                     throw new IllegalArgumentException("null private agent snapshot");
                 }
                 validateConfig(nodeId, config, errors);
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | Error e) {
                 errors.add("node " + nodeId + " has a malformed private agent snapshot");
             }
         }
