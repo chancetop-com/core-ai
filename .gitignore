@@ -70,3 +70,4 @@ core-ai-benchmark/harbor/.harbor-jobs/
 # superpowers (local only: specs, plans, SDD scratch — never pushed to git)
 .superpowers/
 docs/superpowers/
+.worktrees/
