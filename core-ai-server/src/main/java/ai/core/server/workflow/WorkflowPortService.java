@@ -23,6 +23,8 @@ import java.util.List;
  */
 public class WorkflowPortService {
     public static final String EXPORT_FORMAT = "core-ai-workflow-export/v1";
+    public static final String PRIVATE_AGENT_REPLACEMENT_MESSAGE =
+        "Private embedded agent is not available — choose a replacement";
 
     // Parse + validate the envelope without touching Mongo, so it is unit-testable. A bad envelope is a client
     // error (400) and no draft is created.
@@ -43,11 +45,6 @@ public class WorkflowPortService {
             throw new BadRequestException("workflow export has an invalid mode: " + envelope.mode);
         }
         return envelope;
-    }
-
-    // Same own-OR-system_default rule WorkflowPublishService uses.
-    private static boolean isAccessible(AgentDefinition agent, String userId) {
-        return Boolean.TRUE.equals(agent.systemDefault) || agent.userId != null && agent.userId.equals(userId);
     }
 
     @Inject
@@ -122,10 +119,9 @@ public class WorkflowPortService {
         AgentDefinition agent = agentDefinitionCollection.get(String.valueOf(agentId)).orElse(null);
         if (agent == null) {
             unresolved.add(new UnresolvedReference(node.id(), node.type(), "AGENT", String.valueOf(agentId), "references an unknown agent"));
-        } else if (!isAccessible(agent, userId)) {
-            unresolved.add(new UnresolvedReference(node.id(), node.type(), "AGENT", String.valueOf(agentId), "references an agent you cannot access"));
-        } else if (agent.publishedConfig == null) {
-            unresolved.add(new UnresolvedReference(node.id(), node.type(), "AGENT", String.valueOf(agentId), "references an unpublished agent"));
+        } else if (!WorkflowAgentAccessPolicy.canReference(agent, userId)) {
+            unresolved.add(new UnresolvedReference(node.id(), node.type(), "AGENT", String.valueOf(agentId),
+                PRIVATE_AGENT_REPLACEMENT_MESSAGE));
         }
     }
 

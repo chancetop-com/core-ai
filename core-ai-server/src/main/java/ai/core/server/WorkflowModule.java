@@ -17,6 +17,7 @@ import ai.core.server.workflow.WorkflowAgentSnapshotService;
 import ai.core.server.workflow.WorkflowDefinitionService;
 import ai.core.server.workflow.WorkflowGraphLoader;
 import ai.core.server.workflow.WorkflowPortService;
+import ai.core.server.workflow.WorkflowPrivateAgentSafetyValidator;
 import ai.core.server.workflow.WorkflowPublishService;
 import ai.core.server.workflow.WorkflowRunGateway;
 import ai.core.server.workflow.WorkflowRunService;
@@ -86,6 +87,7 @@ public class WorkflowModule extends Module {
         bind(WorkflowAgentOptionService.class);
         bind(WorkflowDefinitionService.class);
         bind(WorkflowAgentSnapshotService.class);
+        bind(WorkflowPrivateAgentSafetyValidator.class);
         bind(WorkflowPublishService.class);
         bind(WorkflowPortService.class);
         bind(WorkflowRunner.class);

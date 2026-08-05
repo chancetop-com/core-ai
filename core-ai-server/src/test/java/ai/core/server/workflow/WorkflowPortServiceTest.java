@@ -1,9 +1,15 @@
 package ai.core.server.workflow;
 
 import ai.core.api.server.workflow.ExportWorkflowResponse;
+import ai.core.server.agent.AgentNameKey;
+import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentPublishedConfig;
+import ai.core.server.domain.AgentStatus;
+import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.WorkflowDefinition;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
+import core.framework.mongo.MongoCollection;
 import core.framework.test.Context;
 import core.framework.test.IntegrationExtension;
 import org.junit.jupiter.api.Test;
@@ -13,8 +19,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.time.ZonedDateTime;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +45,9 @@ class WorkflowPortServiceTest {
 
     @Inject
     WorkflowPortService portService;
+
+    @Inject
+    MongoCollection<AgentDefinition> agentCollection;
 
     @Test
     void exportProducesEnvelopeFromDraft() {
@@ -118,6 +130,63 @@ class WorkflowPortServiceTest {
         WorkflowPortService.WorkflowImportResult result = portService.importWorkflow(file, null, "user-1");
 
         assertEquals("a portable workflow", result.definition().description);
+    }
+
+    @Test
+    void importResolvesCallerDraftAndOtherUsersUsablePublishedAgent() {
+        AgentDefinition ownDraft = insertAgent("import-own-draft", "user-1", AgentStatus.DRAFT, null);
+        var publishedConfig = new AgentPublishedConfig();
+        publishedConfig.systemPrompt = "public config";
+        AgentDefinition sharedPublished = insertAgent("import-shared", "user-2", AgentStatus.PUBLISHED, publishedConfig);
+        String graph = agentGraph("a1", ownDraft.id, "a2", sharedPublished.id);
+
+        WorkflowPortService.WorkflowImportResult result = portService.importWorkflow(
+            JSON.toJSON(makeEnvelope("resolvable-agents", graph)), null, "user-1");
+
+        assertTrue(result.unresolved().isEmpty());
+    }
+
+    @Test
+    void importUsesSecretFreeReplacementWarningForInaccessibleDraftAgent() {
+        AgentDefinition privateAgent = insertAgent("import-private", "other-user", AgentStatus.DRAFT, null);
+        privateAgent.systemPrompt = "private prompt value";
+        agentCollection.replace(privateAgent);
+        String graph = agentGraph("n1", privateAgent.id);
+
+        WorkflowPortService.WorkflowImportResult result = portService.importWorkflow(
+            JSON.toJSON(makeEnvelope("private-agent", graph)), null, "user-1");
+
+        assertEquals(1, result.unresolved().size());
+        assertEquals("Private embedded agent is not available — choose a replacement", result.unresolved().getFirst().message());
+        assertFalse(result.unresolved().getFirst().message().contains("private prompt value"));
+    }
+
+    private AgentDefinition insertAgent(String namePrefix, String userId, AgentStatus status,
+                                        AgentPublishedConfig publishedConfig) {
+        var agent = new AgentDefinition();
+        agent.id = namePrefix + "-" + UUID.randomUUID();
+        agent.userId = userId;
+        agent.name = namePrefix;
+        agent.nameKey = AgentNameKey.normalize(agent.name);
+        agent.type = DefinitionType.AGENT;
+        agent.status = status;
+        agent.publishedConfig = publishedConfig;
+        agent.createdAt = ZonedDateTime.now();
+        agent.updatedAt = agent.createdAt;
+        agentCollection.insert(agent);
+        return agent;
+    }
+
+    private String agentGraph(String nodeId, String agentId) {
+        return agentGraph(nodeId, agentId, null, null);
+    }
+
+    private String agentGraph(String firstNodeId, String firstAgentId, String secondNodeId, String secondAgentId) {
+        String secondNode = secondNodeId == null ? "" : ", {\"id\":\"" + secondNodeId
+            + "\",\"type\":\"AGENT\",\"config\":{\"agent_id\":\"" + secondAgentId + "\"}}";
+        return "{\"nodes\":[{\"id\":\"" + firstNodeId
+            + "\",\"type\":\"AGENT\",\"config\":{\"agent_id\":\"" + firstAgentId + "\"}}"
+            + secondNode + "],\"edges\":[]}";
     }
 
     private ExportWorkflowResponse makeEnvelope(String name, String graph) {

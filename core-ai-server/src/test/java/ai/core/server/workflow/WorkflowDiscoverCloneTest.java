@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -68,6 +69,9 @@ class WorkflowDiscoverCloneTest {
 
     @Inject
     WorkflowPublishService publishService;
+
+    @Inject
+    WorkflowPortService portService;
 
     @Inject
     WorkflowRunService runService;
@@ -121,6 +125,90 @@ class WorkflowDiscoverCloneTest {
         WorkflowDefinition copy = definitionService.clone(source.id, "viewer-2");
         // The web layer surfaces publishService.validate(copy) as clone warnings; a clean START->END clone has none
         assertTrue(publishService.validate(copy).isEmpty(), "an agentless clone must not produce false publish warnings");
+    }
+
+    @Test
+    void privateOwnerSnapshotIsAllowedForPrivateFlowsButRejectedOnlyWhenMadePublic() {
+        AgentDefinition privateAgent = insertDraftAgent("unsafe-private-agent", "owner", "private prompt value");
+        privateAgent.skillIds = List.of("secret-skill-id");
+        agentCollection.replace(privateAgent);
+        WorkflowDefinition workflow = definitionService.create(
+            "unsafe-private-workflow-" + UUID.randomUUID(), "WORKFLOW", agentGraph(privateAgent.id), "owner");
+
+        assertTrue(publishService.validate(workflow).isEmpty());
+        WorkflowPublishedVersion preview = publishService.createPreviewVersion(workflow.id, "owner");
+        WorkflowPublishedVersion saved = publishService.saveVersion(workflow.id, "owner");
+        assertTrue(Boolean.TRUE.equals(preview.preview));
+        assertFalse(Boolean.TRUE.equals(saved.preview));
+
+        WorkflowValidationException error = assertThrows(WorkflowValidationException.class,
+            () -> publishService.publishVersion(workflow.id, saved.id, "owner"));
+        assertTrue(error.errors().stream().anyMatch(message -> message.contains("node n1")));
+        assertTrue(error.errors().stream().anyMatch(message -> message.contains("skills")));
+        assertTrue(error.errors().stream().noneMatch(message -> message.contains("secret-skill-id")));
+    }
+
+    @Test
+    void directPublishUsesPrivateSnapshotSafetyGateAndDoesNotPublishSourceAgent() {
+        AgentDefinition privateAgent = insertDraftAgent("direct-unsafe-agent", "owner", "private prompt value");
+        privateAgent.enableMemory = Boolean.TRUE;
+        agentCollection.replace(privateAgent);
+        WorkflowDefinition workflow = definitionService.create(
+            "direct-unsafe-workflow-" + UUID.randomUUID(), "WORKFLOW", agentGraph(privateAgent.id), "owner");
+
+        WorkflowValidationException error = assertThrows(WorkflowValidationException.class,
+            () -> publishService.publish(workflow.id, "owner"));
+
+        assertTrue(error.errors().stream().anyMatch(message -> message.contains("memory")));
+        assertNull(definitionService.get(workflow.id, "owner").publishedVersionId);
+        assertEquals(AgentStatus.DRAFT, agentCollection.get(privateAgent.id).orElseThrow().status);
+    }
+
+    @Test
+    void cloneAndExportNeverReuseOrExposePrivateAgentSnapshot() {
+        AgentDefinition privateAgent = insertDraftAgent("clone-private-agent", "owner", "private prompt value");
+        WorkflowDefinition source = definitionService.create(
+            "clone-private-source-" + UUID.randomUUID(), "WORKFLOW", agentGraph(privateAgent.id), "owner");
+        publishService.publish(source.id, "owner");
+
+        assertEquals(AgentStatus.DRAFT, agentCollection.get(privateAgent.id).orElseThrow().status);
+        WorkflowDefinition copy = definitionService.clone(source.id, "viewer");
+        List<String> warnings = publishService.validate(copy);
+        assertTrue(warnings.stream().anyMatch(message -> message.contains("node n1")));
+        assertTrue(warnings.stream().anyMatch(message -> message.contains("choose a replacement")));
+        assertTrue(warnings.stream().noneMatch(message -> message.contains("private prompt value")));
+
+        String exported = JSON.toJSON(portService.export(source.id, "owner"));
+        assertFalse(exported.contains("agent_snapshots"));
+        assertFalse(exported.contains("agent_snapshot_sources"));
+        assertFalse(exported.contains("private prompt value"));
+    }
+
+    private AgentDefinition insertDraftAgent(String namePrefix, String userId, String systemPrompt) {
+        var agent = new AgentDefinition();
+        agent.id = namePrefix + "-" + UUID.randomUUID();
+        agent.userId = userId;
+        agent.name = namePrefix;
+        agent.nameKey = AgentNameKey.normalize(agent.name);
+        agent.type = DefinitionType.AGENT;
+        agent.status = AgentStatus.DRAFT;
+        agent.systemPrompt = systemPrompt;
+        agent.createdAt = ZonedDateTime.now();
+        agent.updatedAt = agent.createdAt;
+        agentCollection.insert(agent);
+        return agent;
+    }
+
+    private String agentGraph(String agentId) {
+        return """
+            {"nodes":[
+              {"id":"start","type":"START"},
+              {"id":"n1","type":"AGENT","config":{"agent_id":"AGENT_ID"}},
+              {"id":"end","type":"END"}],
+             "edges":[
+              {"id":"e1","source":"start","target":"n1"},
+              {"id":"e2","source":"n1","target":"end"}]}
+            """.replace("AGENT_ID", agentId);
     }
 
     @Test

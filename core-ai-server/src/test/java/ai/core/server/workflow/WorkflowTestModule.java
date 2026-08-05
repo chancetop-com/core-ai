@@ -36,7 +36,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(WorkflowPublishedVersion.class);
         mongo.collection(WorkflowRun.class);
         mongo.collection(WorkflowNodeRun.class);
-        mongo.collection(AgentDefinition.class);   // injected by WorkflowPublishService; unused for START -> END
+        mongo.collection(AgentDefinition.class);   // injected by Workflow Agent services; unused for START -> END
         mongo.collection(ToolRegistryEntry.class);      // injected by WorkflowPortService for MCP reference resolution
         mongo.collection(Notification.class);            // injected by NotificationService (bound below)
 
@@ -44,6 +44,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(WorkflowAgentOptionService.class);
         bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
         bind(WorkflowAgentSnapshotService.class);
+        bind(WorkflowPrivateAgentSafetyValidator.class);
         bind(WorkflowPublishService.class);
         // bind the graph-loader seam before WorkflowRunService: the framework injects eagerly at bind() time, so a
         // dependency must already be registered when its dependent is bound.

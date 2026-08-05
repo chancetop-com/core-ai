@@ -31,6 +31,8 @@ import java.util.UUID;
  * @author Xander
  */
 public class WorkflowPublishService {
+    private static final String INACCESSIBLE_AGENT_ERROR = " references an agent/LLM definition you cannot access:";
+
     // Read a node config value as a non-blank String, treating null/blank/"null" as absent.
     private static String configValue(WorkflowNode node, String key) {
         Object raw = node.config().get(key);
@@ -65,6 +67,9 @@ public class WorkflowPublishService {
 
     @Inject
     WorkflowAgentSnapshotService agentSnapshotService;
+
+    @Inject
+    WorkflowPrivateAgentSafetyValidator privateAgentSafetyValidator;
 
     /** Compatibility path: save the current draft as a manual version, then make that version public. */
     public WorkflowPublishedVersion publish(String definitionId, String publishedBy) {
@@ -207,7 +212,17 @@ public class WorkflowPublishService {
 
     /** Validate a draft without publishing (the editor's Validate button). Returns all errors, empty if valid. */
     public List<String> validate(WorkflowDefinition definition) {
-        return collectErrors(definition, new LinkedHashMap<>(), new LinkedHashMap<>());
+        List<String> errors = collectErrors(definition, new LinkedHashMap<>(), new LinkedHashMap<>());
+        var safeWarnings = new ArrayList<String>(errors.size());
+        for (String error : errors) {
+            int marker = error.indexOf(INACCESSIBLE_AGENT_ERROR);
+            if (marker < 0) {
+                safeWarnings.add(error);
+            } else {
+                safeWarnings.add(error.substring(0, marker) + ": " + WorkflowPortService.PRIVATE_AGENT_REPLACEMENT_MESSAGE);
+            }
+        }
+        return safeWarnings;
     }
 
     // Parse + structural/type/dominator validation + agent-snapshot validation; fills snapshots as a side effect.
@@ -301,6 +316,7 @@ public class WorkflowPublishService {
         // Agent configs are already frozen in the saved version; workflow refs depend on the child workflow's current
         // public/active state, so re-check them at publish time.
         captureWorkflowNodeErrors(graph, definition.id, errors);
+        errors.addAll(privateAgentSafetyValidator.validate(version));
         if (!errors.isEmpty()) {
             throw new WorkflowValidationException(errors);
         }
