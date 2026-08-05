@@ -1,5 +1,10 @@
 package ai.core.server.workflow;
 
+import ai.core.server.agent.AgentNameKey;
+import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentPublishedConfig;
+import ai.core.server.domain.AgentStatus;
+import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowDefinition;
@@ -8,6 +13,8 @@ import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.WorkflowVisibility;
 import core.framework.inject.Inject;
+import core.framework.json.JSON;
+import core.framework.mongo.MongoCollection;
 import core.framework.test.Context;
 import core.framework.test.IntegrationExtension;
 import core.framework.web.exception.BadRequestException;
@@ -19,6 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,6 +71,9 @@ class WorkflowDiscoverCloneTest {
 
     @Inject
     WorkflowRunService runService;
+
+    @Inject
+    MongoCollection<AgentDefinition> agentCollection;
 
     @Test
     void publishedWorkflowIsDiscoverableByOtherUsersButDraftIsNot() {
@@ -188,6 +199,48 @@ class WorkflowDiscoverCloneTest {
         assertEquals(version.id, published.publishedVersionId);
         assertEquals(WorkflowVisibility.PUBLIC, WorkflowDefinitionService.visibilityOf(published));
         assertTrue(definitionService.explore("viewer-2", "manual-version", 0, 10).stream().anyMatch(d -> d.id.equals(definition.id)));
+    }
+
+    @Test
+    void publishingSavedVersionNeverRecapturesOwnedAgentSnapshot() {
+        var agent = new AgentDefinition();
+        agent.id = "private-agent-" + UUID.randomUUID();
+        agent.userId = "owner";
+        agent.name = "Private Reviewer";
+        agent.nameKey = AgentNameKey.normalize(agent.name);
+        agent.type = DefinitionType.AGENT;
+        agent.status = AgentStatus.DRAFT;
+        agent.systemPrompt = "captured before change";
+        agent.createdAt = ZonedDateTime.now();
+        agent.updatedAt = agent.createdAt;
+        agentCollection.insert(agent);
+        String graph = """
+            {"nodes":[
+              {"id":"start","type":"START"},
+              {"id":"n1","type":"AGENT","config":{"agent_id":"AGENT_ID"}},
+              {"id":"end","type":"END"}],
+             "edges":[
+              {"id":"e1","source":"start","target":"n1"},
+              {"id":"e2","source":"n1","target":"end"}]}
+            """.replace("AGENT_ID", agent.id);
+        WorkflowDefinition workflow = definitionService.create("private-agent-workflow-" + UUID.randomUUID(), "WORKFLOW", graph, "owner");
+        WorkflowPublishedVersion saved = publishService.saveVersion(workflow.id, "owner");
+        String frozen = saved.agentSnapshots.get("n1");
+
+        agent.systemPrompt = "changed after save";
+        agent.updatedAt = ZonedDateTime.now();
+        agentCollection.replace(agent);
+        publishService.publishVersion(workflow.id, saved.id, "owner");
+        assertEquals("captured before change", JSON.fromJSON(AgentPublishedConfig.class, frozen).systemPrompt);
+
+        agentCollection.delete(agent.id);
+        publishService.publishVersion(workflow.id, saved.id, "owner");
+        WorkflowPublishedVersion reloaded = publishService.listVersions(workflow.id, "owner").stream()
+            .filter(version -> saved.id.equals(version.id))
+            .findFirst()
+            .orElseThrow();
+        assertEquals(frozen, reloaded.agentSnapshots.get("n1"));
+        assertEquals(saved.agentSnapshotSources.get("n1"), reloaded.agentSnapshotSources.get("n1"));
     }
 
     @Test

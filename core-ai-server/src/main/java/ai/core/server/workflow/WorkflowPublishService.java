@@ -1,6 +1,5 @@
 package ai.core.server.workflow;
 
-import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowDefinitionStatus;
 import ai.core.server.domain.WorkflowPublishedVersion;
@@ -11,7 +10,6 @@ import ai.core.server.workflow.engine.WorkflowNode;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.json.JSON;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
@@ -43,16 +41,6 @@ public class WorkflowPublishService {
         return value.isBlank() || "null".equals(value) ? null : value;
     }
 
-    // A node may reference: its owner's agents, any system-default agent, OR any PUBLISHED agent (published == public,
-    // matching the Explore/clone sharing model). The published config is then frozen into the workflow snapshot
-    // (anti-drift). Referencing another user's UNPUBLISHED/private agent stays disallowed (falls through to "you do
-    // not own"), and an owner referencing their own still-unpublished agent is caught by the publishedConfig == null check.
-    private static boolean isAccessible(AgentDefinition agent, String ownerUserId) {
-        return Boolean.TRUE.equals(agent.systemDefault)
-            || agent.userId != null && agent.userId.equals(ownerUserId)
-            || agent.publishedConfig != null;
-    }
-
     private static boolean isWorkflowAccessible(WorkflowDefinition definition) {
         return WorkflowDefinitionService.isPublicActive(definition);
     }
@@ -76,7 +64,7 @@ public class WorkflowPublishService {
     MongoCollection<WorkflowPublishedVersion> versionCollection;
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    WorkflowAgentSnapshotService agentSnapshotService;
 
     /** Compatibility path: save the current draft as a manual version, then make that version public. */
     public WorkflowPublishedVersion publish(String definitionId, String publishedBy) {
@@ -186,7 +174,8 @@ public class WorkflowPublishService {
     // versions get version=0 + preview=true and a uuid id, so they never inflate the real version counter.
     private WorkflowPublishedVersion createVersion(WorkflowDefinition definition, String publishedBy, boolean preview) {
         Map<String, String> agentSnapshots = new LinkedHashMap<>();
-        List<String> errors = collectErrors(definition, agentSnapshots);
+        Map<String, String> agentSnapshotSources = new LinkedHashMap<>();
+        List<String> errors = collectErrors(definition, agentSnapshots, agentSnapshotSources);
         if (!errors.isEmpty()) {
             throw new WorkflowValidationException(errors);
         }
@@ -208,6 +197,7 @@ public class WorkflowPublishService {
         published.sha256 = WorkflowSha.hex(definition.draftGraph);
         published.envVars = Map.of();         // typed env vars land with the variable model (P2)
         published.agentSnapshots = agentSnapshots;
+        published.agentSnapshotSources = agentSnapshotSources;
         published.toolDigests = Map.of();
         published.publishedBy = publishedBy;
         published.publishedAt = ZonedDateTime.now();
@@ -217,14 +207,15 @@ public class WorkflowPublishService {
 
     /** Validate a draft without publishing (the editor's Validate button). Returns all errors, empty if valid. */
     public List<String> validate(WorkflowDefinition definition) {
-        return collectErrors(definition, new LinkedHashMap<>());
+        return collectErrors(definition, new LinkedHashMap<>(), new LinkedHashMap<>());
     }
 
     // Parse + structural/type/dominator validation + agent-snapshot validation; fills snapshots as a side effect.
-    private List<String> collectErrors(WorkflowDefinition definition, Map<String, String> snapshots) {
+    private List<String> collectErrors(WorkflowDefinition definition, Map<String, String> snapshots,
+                                       Map<String, String> sources) {
         WorkflowGraph graph = WorkflowGraphParser.parse(definition.draftGraph);
         List<String> errors = new ArrayList<>(WorkflowValidator.validate(graph));
-        captureAgentSnapshots(graph, definition.userId, errors, snapshots);
+        agentSnapshotService.capture(graph, definition.userId, errors, snapshots, sources);
         captureWorkflowNodeErrors(graph, definition.id, errors);
         return errors;
     }
@@ -294,36 +285,6 @@ public class WorkflowPublishService {
         return false;
     }
 
-    // Embed each AGENT/LLM node's referenced Agent published config; referencing an unknown, inaccessible or
-    // unpublished definition is a publish error (the workflow version must be self-contained, reproducible, and
-    // must not leak another tenant's config).
-    private void captureAgentSnapshots(WorkflowGraph graph, String ownerUserId, List<String> errors, Map<String, String> snapshots) {
-        for (WorkflowNode node : graph.nodes()) {
-            if (!"AGENT".equals(node.type()) && !"LLM".equals(node.type())) {
-                continue;
-            }
-            Object agentId = node.config().get("agent_id");
-            if (agentId == null) {
-                errors.add("node " + node.id() + " is missing agent_id");
-                continue;
-            }
-            AgentDefinition agent = agentDefinitionCollection.get(String.valueOf(agentId)).orElse(null);
-            if (agent == null) {
-                errors.add("node " + node.id() + " references an unknown agent/LLM definition: " + agentId);
-            } else if (!isAccessible(agent, ownerUserId)) {
-                errors.add("node " + node.id() + " references an agent/LLM definition you do not own: " + agentId);
-            } else if (agent.publishedConfig == null) {
-                errors.add("node " + node.id() + " references an unpublished agent/LLM definition: " + agentId);
-            } else {
-                snapshots.put(node.id(), JSON.toJSON(agent.publishedConfig));
-            }
-        }
-    }
-
-    // A node may reference: its owner's agents, any system-default agent, OR any PUBLISHED agent (published == public,
-    // matching the Explore/clone sharing model). The published config is then frozen into the workflow snapshot
-    // (anti-drift). Referencing another user's UNPUBLISHED/private agent stays disallowed (falls through to "you do
-    // not own"), and an owner referencing their own still-unpublished agent is caught by the publishedConfig == null check.
     private int nextVersion(String workflowId) {
         int max = 0;
         for (WorkflowPublishedVersion existing : versionCollection.find(Filters.eq("workflow_id", workflowId))) {

@@ -43,6 +43,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(WorkflowDefinitionService.class);
         bind(WorkflowAgentOptionService.class);
         bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
+        bind(WorkflowAgentSnapshotService.class);
         bind(WorkflowPublishService.class);
         // bind the graph-loader seam before WorkflowRunService: the framework injects eagerly at bind() time, so a
         // dependency must already be registered when its dependent is bound.

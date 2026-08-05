@@ -48,6 +48,9 @@ public class WorkflowPublishedVersion {
     @Field(name = "agent_snapshots")
     public Map<String, String> agentSnapshots;
 
+    @Field(name = "agent_snapshot_sources")
+    public Map<String, String> agentSnapshotSources;
+
     @Field(name = "tool_digests")
     public Map<String, String> toolDigests;
 

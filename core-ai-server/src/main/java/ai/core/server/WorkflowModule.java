@@ -13,6 +13,7 @@ import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeExecutorRegistry;
 import ai.core.server.workflow.NodeType;
 import ai.core.server.workflow.WorkflowAgentOptionService;
+import ai.core.server.workflow.WorkflowAgentSnapshotService;
 import ai.core.server.workflow.WorkflowDefinitionService;
 import ai.core.server.workflow.WorkflowGraphLoader;
 import ai.core.server.workflow.WorkflowPortService;
@@ -84,6 +85,7 @@ public class WorkflowModule extends Module {
         // WorkflowDefinitionService must be bound before WorkflowPortService, which injects it
         bind(WorkflowAgentOptionService.class);
         bind(WorkflowDefinitionService.class);
+        bind(WorkflowAgentSnapshotService.class);
         bind(WorkflowPublishService.class);
         bind(WorkflowPortService.class);
         bind(WorkflowRunner.class);
