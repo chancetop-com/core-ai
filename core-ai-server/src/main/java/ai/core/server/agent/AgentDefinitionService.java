@@ -7,7 +7,6 @@ import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.User;
@@ -283,27 +282,7 @@ public class AgentDefinitionService {
         entity.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
         entity.skillIds = IdLists.cleanOrNull(entity.skillIds);
 
-        var config = new AgentPublishedConfig();
-        config.systemPrompt = entity.systemPrompt;
-        config.systemPromptId = entity.systemPromptId;
-        config.model = entity.model;
-        config.multiModalModel = entity.multiModalModel;
-        config.preferCaptionPath = entity.preferCaptionPath;
-        config.temperature = entity.temperature;
-        config.thinkingEffort = entity.thinkingEffort;
-        config.maxTurns = entity.maxTurns;
-        config.timeoutSeconds = entity.timeoutSeconds;
-        config.tools = entity.tools;
-        config.inputTemplate = entity.inputTemplate;
-        config.variables = entity.variables;
-        config.responseSchema = entity.responseSchema;
-        config.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
-        config.skillIds = IdLists.cleanOrNull(entity.skillIds);
-        config.sandboxConfig = entity.sandboxConfig;
-        config.datasetConfig = entity.datasetConfig;
-        config.enableMemory = entity.enableMemory;
-
-        entity.publishedConfig = config;
+        entity.publishedConfig = AgentExecutableConfigFactory.fromEditableDefinition(entity);
         entity.status = AgentStatus.PUBLISHED;
         entity.publishedAt = ZonedDateTime.now();
         entity.updatedAt = entity.publishedAt;
