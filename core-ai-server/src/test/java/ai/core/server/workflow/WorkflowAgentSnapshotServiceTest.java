@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -231,6 +232,22 @@ class WorkflowAgentSnapshotServiceTest {
         assertNotNull(source.capturedAt);
         assertFalse(source.capturedAt.isBefore(before));
         assertFalse(source.capturedAt.isAfter(after));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void captureSerializesStableSnakeCaseProvenanceKeys() {
+        AgentDefinition agent = agent("provenance", "owner", AgentStatus.DRAFT, DefinitionType.AGENT);
+        when(collection.get("provenance")).thenReturn(Optional.of(agent));
+
+        Capture capture = capture(graph("n1", "AGENT", "provenance"), "owner");
+        Map<String, Object> raw = JSON.fromJSON(Map.class, capture.sources.get("n1"));
+
+        assertEquals(Set.of("agent_id", "source_kind", "source_updated_at", "captured_at"), raw.keySet());
+        assertFalse(raw.containsKey("agentId"));
+        assertFalse(raw.containsKey("sourceKind"));
+        assertFalse(raw.containsKey("sourceUpdatedAt"));
+        assertFalse(raw.containsKey("capturedAt"));
     }
 
     @Test
