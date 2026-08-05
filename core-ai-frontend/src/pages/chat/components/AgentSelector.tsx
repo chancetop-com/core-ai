@@ -14,7 +14,7 @@ interface AgentSelectorProps {
 }
 
 function canChatWithAgent(agent: AgentDefinition): boolean {
-  return agent.status === 'PUBLISHED' || agent.type === 'local';
+  return agent.type !== 'LLM_CALL' && (agent.status === 'PUBLISHED' || agent.type === 'local');
 }
 
 const AgentSelector = memo(function AgentSelector({
@@ -47,7 +47,7 @@ const AgentSelector = memo(function AgentSelector({
     let cancelled = false;
     const timer = setTimeout(() => {
       api.agents.list(false, searchQuery.trim(), 20).then(res => {
-        if (!cancelled) setSearchedAgents(res.agents || []);
+        if (!cancelled) setSearchedAgents((res.agents || []).filter(a => a.type !== 'LLM_CALL'));
       }).catch(() => {
         if (!cancelled) setSearchedAgents([]);
       });
