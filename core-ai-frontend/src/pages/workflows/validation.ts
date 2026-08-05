@@ -4,6 +4,25 @@ import type { WorkflowRFNode } from './graph';
 interface InputVar { name?: string; type?: string; options?: string }
 interface Case { edge_id?: string; conditions?: { selector?: string }[] }
 
+const NODE_ERROR_PREFIX = /^node\s+([^\s]+)\b/;
+
+export function groupNodeErrors(errors: string[]): Record<string, string[]> {
+  const grouped: Record<string, string[]> = {};
+  errors.forEach((error) => {
+    const nodeId = error.match(NODE_ERROR_PREFIX)?.[1];
+    if (nodeId) (grouped[nodeId] ??= []).push(error);
+  });
+  return grouped;
+}
+
+export function firstNodeErrorId(errors: string[]): string | undefined {
+  for (const error of errors) {
+    const nodeId = error.match(NODE_ERROR_PREFIX)?.[1];
+    if (nodeId) return nodeId;
+  }
+  return undefined;
+}
+
 /**
  * Config-time issues for a node — advisory warnings surfaced in the config panel and as a canvas marker.
  * A superset of the backend's publish-time required-config rules (WorkflowValidator); the backend stays the

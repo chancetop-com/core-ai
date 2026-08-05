@@ -20,7 +20,7 @@ import {
   branchLabel, edgeArrow, RUN_STATUS_COLOR, TERMINAL_RUN_STATUS,
   type WorkflowGraph, type WorkflowNodeData, type WorkflowRFNode,
 } from './graph';
-import { nodeIssues } from './validation';
+import { firstNodeErrorId, groupNodeErrors, nodeIssues } from './validation';
 
 const nodeTypes = { workflowNode: WorkflowNode };
 const DRAFT_VERSION_VALUE = 'draft';
@@ -68,9 +68,12 @@ export default function WorkflowEditor() {
   const [authorName, setAuthorName] = useState('');
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowRFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const nodesRef = useRef<WorkflowRFNode[]>(nodes);
+  nodesRef.current = nodes;
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [agents, setAgents] = useState<{ id: string; name: string; type?: string }[]>([]);
+  const [serverNodeErrors, setServerNodeErrors] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
+  const [loadedWorkflowId, setLoadedWorkflowId] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   // run overlay state
@@ -95,10 +98,13 @@ export default function WorkflowEditor() {
     setNodes(ensureEnd(ensureStart(rfNodes)));
     setEdges(rfEdges);
     setSelectedId(null);
+    setServerNodeErrors({});
   }, [setNodes, setEdges]);
 
   useEffect(() => {
     if (!id) return;
+    setLoading(true);
+    setLoadedWorkflowId(undefined);
     api.workflows.get(id).then((wf) => {
       setName(wf.name);
       setMode(wf.mode);
@@ -119,6 +125,7 @@ export default function WorkflowEditor() {
       draftGraphRef.current = graph;
       setSelectedVersionId(DRAFT_VERSION_VALUE);
       applyGraph(graph);
+      setLoadedWorkflowId(id);
       api.workflows.versions(id).then((res) => setVersions(res.versions || [])).catch(() => { /* versions are non-critical */ });
     }).catch((e) => {
       setMsg(`Failed to load workflow: ${(e as Error).message}`);
@@ -133,19 +140,6 @@ export default function WorkflowEditor() {
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [showMore]);
-
-  useEffect(() => {
-    // Load both my agents and other users' agents so any published agent can be selected for a node.
-    Promise.all([api.agents.list(true), api.agents.list(false)])
-      .then(([mine, others]) => {
-        const seen = new Set<string>();
-        const published = [...(mine.agents || []), ...(others.agents || [])]
-          .filter((a) => a.status === 'PUBLISHED')
-          .filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)));
-        setAgents(published.map((a) => ({ id: a.id, name: a.name, type: a.type })));
-      })
-      .catch(() => { /* agents are optional for non-agent workflows */ });
-  }, []);
 
   // poll the active run until it reaches a terminal status. The interval handle is local to this effect run,
   // so each runId owns exactly one interval and cleanup can never clear the wrong one.
@@ -178,6 +172,11 @@ export default function WorkflowEditor() {
   }, [runId]);
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) ?? null, [nodes, selectedId]);
+  const applyNodeErrors = useCallback((errors: string[]) => {
+    setServerNodeErrors(groupNodeErrors(errors));
+    const first = firstNodeErrorId(errors);
+    if (first && nodesRef.current.some((node) => node.id === first)) setSelectedId(first);
+  }, []);
   const viewingVersion = selectedVersionId !== DRAFT_VERSION_VALUE;
   const selectedVersion = useMemo(
     () => versions.find((v) => v.id === selectedVersionId),
@@ -216,6 +215,14 @@ export default function WorkflowEditor() {
 
   const updateNodeData = useCallback((nodeId: string, partial: Partial<WorkflowNodeData>) => {
     setNodes((nds) => nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...partial } } : n)));
+    if (partial.config !== undefined) {
+      setServerNodeErrors((current) => {
+        if (!current[nodeId]) return current;
+        const next = { ...current };
+        delete next[nodeId];
+        return next;
+      });
+    }
   }, [setNodes]);
 
   const deleteNode = useCallback((nodeId: string) => {
@@ -312,18 +319,21 @@ export default function WorkflowEditor() {
   // Surface unresolved references handed over from the list page's import, then clear the router state so a
   // refresh or back-navigation doesn't replay the notice.
   useEffect(() => {
+    if (loading || loadedWorkflowId !== id) return;
     const state = location.state as { importNotice?: UnresolvedReferenceView[]; cloneWarnings?: string[] } | null;
     const importNotice = state?.importNotice;
     const cloneWarnings = state?.cloneWarnings;
     if (importNotice && importNotice.length > 0) {
+      applyNodeErrors(importNotice.map((ref) => `node ${ref.node_id} ${ref.message}`));
       setMsg(`Imported with ${importNotice.length} unresolved reference(s) — fix before publishing.`);
       navigate(location.pathname, { replace: true, state: null });
     } else if (cloneWarnings && cloneWarnings.length > 0) {
       // The cloned graph references agents the caller doesn't own — replace those nodes before Test/Publish.
+      applyNodeErrors(cloneWarnings);
       setMsg(`Cloned — replace the agent nodes you don't own before Test/Publish: ${cloneWarnings.join('; ')}`);
       navigate(location.pathname, { replace: true, state: null });
     }
-  }, [location.pathname, location.state, navigate]);
+  }, [applyNodeErrors, id, loadedWorkflowId, loading, location.pathname, location.state, navigate]);
 
   // Export the current canvas. Draft exports use the server envelope so unresolved-reference import behavior stays
   // identical; historical version previews export the selected version graph that is currently on screen.
@@ -376,6 +386,7 @@ export default function WorkflowEditor() {
       setNodes(ensureEnd(ensureStart(rfNodes)));
       setEdges(rfEdges);
       setSelectedId(null);
+      setServerNodeErrors({});
       setMsg('Imported. Review and Publish when ready.');
     } catch (err) {
       setMsg(`Import failed: ${(err as Error).message}`);
@@ -388,7 +399,12 @@ export default function WorkflowEditor() {
     try {
       if (!(await saveDraft())) return;
       const result = await api.workflows.validate(id);
-      if (!result.valid) { setMsg(`Cannot save version: ${result.errors.join('; ')}`); return; }
+      if (!result.valid) {
+        applyNodeErrors(result.errors);
+        setMsg(`Cannot save version: ${result.errors.join('; ')}`);
+        return;
+      }
+      applyNodeErrors([]);
       const version = await api.workflows.saveVersion(id);
       setVersions((prev) => [version].concat(prev.filter((v) => v.id !== version.id)));
       setVersionDirty(false);
@@ -411,9 +427,15 @@ export default function WorkflowEditor() {
       setPublishedVersion(wf.published_version);
       setPublishedVersionId(wf.published_version_id);
       setVersions((prev) => prev.map((v) => ({ ...v, current_public: v.id === wf.published_version_id })));
+      applyNodeErrors([]);
       setMsg('Published');
     } catch (e) {
-      setMsg(`Publish failed: ${(e as Error).message}`);
+      const error = (e as Error).message;
+      const validationPrefix = 'workflow validation failed: ';
+      if (error.startsWith(validationPrefix)) {
+        applyNodeErrors(error.slice(validationPrefix.length).split(';').map((item) => item.trim()).filter(Boolean));
+      }
+      setMsg(`Publish failed: ${error}`);
     } finally { setBusy(false); }
   };
 
@@ -508,7 +530,11 @@ export default function WorkflowEditor() {
         : await (async () => {
             if (!(await saveDraft())) throw new Error('Save failed');
             const validation = await api.workflows.validate(id);
-            if (!validation.valid) throw new Error(`Cannot run: ${validation.errors.join('; ')}`);
+            if (!validation.valid) {
+              applyNodeErrors(validation.errors);
+              throw new Error(`Cannot run: ${validation.errors.join('; ')}`);
+            }
+            applyNodeErrors([]);
             return api.workflows.previewRun(id, input);
           })();
       setSelectedId(null);
@@ -690,7 +716,7 @@ export default function WorkflowEditor() {
                 node={selectedNode}
                 nodes={nodes}
                 edges={edges}
-                agents={agents}
+                externalIssues={serverNodeErrors[selectedNode.id]}
                 currentWorkflowId={id}
                 readOnly={canvasReadOnly}
                 onChange={(partial) => updateNodeData(selectedNode.id, partial)}

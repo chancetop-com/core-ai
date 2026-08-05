@@ -14,14 +14,13 @@ import RetryFields from './RetryFields';
 import VariableChipField from './VariableChipField';
 import DeliverablesField from './DeliverablesField';
 import WorkflowNodeConfig from './WorkflowNodeConfig';
-
-interface AgentOption { id: string; name: string; type?: string; }   // type: 'AGENT' | 'LLM_CALL' (the published definition's kind)
+import AgentPicker from './AgentPicker';
 
 interface Props {
   node: WorkflowRFNode;
   nodes: WorkflowRFNode[];
   edges: Edge[];
-  agents: AgentOption[];
+  externalIssues?: string[];
   currentWorkflowId?: string;
   readOnly?: boolean;
   onChange: (partial: Partial<WorkflowNodeData>) => void;
@@ -29,7 +28,7 @@ interface Props {
   onClose: () => void;
 }
 
-export default function NodeConfigPanel({ node, nodes, edges, agents, currentWorkflowId, readOnly, onChange, onDelete, onClose }: Props) {
+export default function NodeConfigPanel({ node, nodes, edges, externalIssues, currentWorkflowId, readOnly, onChange, onDelete, onClose }: Props) {
   const meta = nodeMeta(node.data.nodeType);
   const isAgentNode = node.data.nodeType === 'AGENT' || node.data.nodeType === 'LLM';
   const isMcpTool = node.data.nodeType === 'MCP_TOOL';
@@ -62,18 +61,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, currentWor
     }
   };
 
-  const setAgentId = (agentId: string) => {
-    const agentName = agents.find((a) => a.id === agentId)?.name;
-    onChange({ config: { ...config, agent_id: agentId, agent_name: agentName } });
-  };
-
-  // An AGENT node may only pick AGENT definitions; an LLM node only LLM_CALL definitions — the runtime forces the
-  // child run's type from the NODE type, so a mismatched pick would run under the wrong semantics.
-  const wantAgentType = node.data.nodeType === 'LLM' ? 'LLM_CALL' : 'AGENT';
-  const visibleAgents = agents.filter((a) => (a.type ?? 'AGENT') === wantAgentType);
-  const selectedAgentMissing = String(config.agent_id ?? '') !== '' && !visibleAgents.some((a) => a.id === config.agent_id);
-
-  const issues = nodeIssues(node, nodes, edges);
+  const issues = [...new Set([...nodeIssues(node, nodes, edges), ...(externalIssues ?? [])])];
 
   if (readOnly) {
     return (
@@ -126,15 +114,12 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, currentWor
       {isAgentNode ? (
         <>
           <label style={label}>Agent</label>
-          <select value={String(config.agent_id ?? '')} onChange={(e) => setAgentId(e.target.value)} style={input}>
-            <option value="">— select a published {node.data.nodeType === 'LLM' ? 'LLM' : 'agent'} —</option>
-            {visibleAgents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            {selectedAgentMissing && (
-              <option value={String(config.agent_id)} disabled>
-                {String(config.agent_name ?? config.agent_id)} (type mismatch — reselect)
-              </option>
-            )}
-          </select>
+          <AgentPicker
+            value={String(config.agent_id ?? '')}
+            selectedName={String(config.agent_name ?? '') || undefined}
+            type={node.data.nodeType === 'LLM' ? 'LLM_CALL' : 'AGENT'}
+            onChange={(agent) => onConfig({ agent_id: agent.id, agent_name: agent.name })}
+          />
           <label style={label}>Input</label>
           <VariableChipField
             value={String(config.input ?? '')}
