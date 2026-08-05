@@ -73,6 +73,10 @@ public final class UpdateDatasetRecordTool extends ToolCall {
         if (!registry.isWritable(datasetId)) {
             return ToolCallResult.failed("write access denied to dataset: " + datasetId);
         }
+        var sessionError = QueryDatasetRecordsTool.sessionDatasetAccessError(datasetService, datasetId);
+        if (sessionError != null) {
+            return ToolCallResult.failed(sessionError);
+        }
 
         var recordId = getStringValue(args, "record_id");
         @SuppressWarnings("unchecked")

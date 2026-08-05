@@ -24,9 +24,13 @@ public class DatasetRecord {
     @Field(name = "agent_id")
     public String agentId;
 
-    @NotNull
+    // null for session state records (no run dimension)
     @Field(name = "run_id")
     public String runId;
+
+    // session state record key, unique per dataset via partial unique index
+    @Field(name = "session_id")
+    public String sessionId;
 
     @Field(name = "user_id")
     public String userId;

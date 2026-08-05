@@ -85,6 +85,7 @@ export default function DatasetEditor() {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [type, setType] = useState('GENERAL');
   const [schema, setSchema] = useState<SchemaFieldView[]>([]);
 
   // Schema editor state (collapsible, two-tab like ResponseSchemaEditor)
@@ -103,6 +104,7 @@ export default function DatasetEditor() {
       .then(d => {
         setName(d.name);
         setDescription(d.description || '');
+        setType(d.type || 'GENERAL');
         const fields = d.schema || [];
         setSchema(fields);
         // Reconstruct JSON schema from fields for the JSON Schema tab
@@ -205,10 +207,10 @@ Description: ${description || 'N/A'}`,
     setSaveError('');
     try {
       if (isNew) {
-        const created = await api.datasets.create({ name, description, schema });
+        const created = await api.datasets.create({ name, description, type, schema });
         navigate(`/datasets/${created.id}`, { replace: true });
       } else {
-        await api.datasets.update(id!, { name, description, schema });
+        await api.datasets.update(id!, { name, description, type, schema });
         navigate(`/datasets/${id}`, { replace: true });
       }
     } catch (e) {
@@ -290,6 +292,35 @@ Description: ${description || 'N/A'}`,
           <input value={description} onChange={e => setDescription(e.target.value)}
             className="w-full px-3 py-1.5 rounded-lg border text-sm" style={inputStyle}
             placeholder="Describe what this dataset contains" />
+        </div>
+        <div className="mt-3">
+          <label className="text-xs mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>Type</label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <button type="button" onClick={() => setType('GENERAL')}
+              className="text-left px-3 py-2 rounded-lg border text-sm cursor-pointer"
+              style={{
+                borderColor: type === 'GENERAL' ? 'var(--color-primary)' : 'var(--color-border)',
+                background: type === 'GENERAL' ? 'rgba(99,102,241,0.08)' : 'var(--color-bg-tertiary)',
+                color: 'var(--color-text)',
+              }}>
+              <div className="font-medium">GENERAL</div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                Data records produced by agent runs. Agents query/insert/update records.
+              </div>
+            </button>
+            <button type="button" onClick={() => setType('SESSION')}
+              className="text-left px-3 py-2 rounded-lg border text-sm cursor-pointer"
+              style={{
+                borderColor: type === 'SESSION' ? 'var(--color-primary)' : 'var(--color-border)',
+                background: type === 'SESSION' ? 'rgba(99,102,241,0.08)' : 'var(--color-bg-tertiary)',
+                color: 'var(--color-text)',
+              }}>
+              <div className="font-medium">SESSION</div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                Per-session state (one document per chat session). Agents use get_session_state / set_session_state.
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 

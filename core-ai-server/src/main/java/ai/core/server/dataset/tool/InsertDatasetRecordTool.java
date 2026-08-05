@@ -77,6 +77,10 @@ public final class InsertDatasetRecordTool extends ToolCall {
         if (!registry.isWritable(datasetId)) {
             return ToolCallResult.failed("write access denied to dataset: " + datasetId);
         }
+        var sessionError = QueryDatasetRecordsTool.sessionDatasetAccessError(datasetService, datasetId);
+        if (sessionError != null) {
+            return ToolCallResult.failed(sessionError);
+        }
 
         @SuppressWarnings("unchecked")
         var data = (Map<String, Object>) args.get("data");

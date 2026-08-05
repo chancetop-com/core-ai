@@ -27,6 +27,10 @@ public class Dataset {
     @Field(name = "user_id")
     public String userId;
 
+    // null means GENERAL (backward compatible with existing datasets)
+    @Field(name = "type")
+    public DatasetType type;
+
     @Field(name = "schema")
     public List<SchemaField> schema;
 

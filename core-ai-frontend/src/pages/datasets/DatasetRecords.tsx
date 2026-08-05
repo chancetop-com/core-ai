@@ -67,6 +67,7 @@ export default function DatasetRecords() {
 
   const fieldNames = dataset?.schema?.map(f => f.name) || [];
   const hasSchema = fieldNames.length > 0;
+  const isSessionDataset = (dataset?.type || 'GENERAL') === 'SESSION';
 
   const inputStyle = {
     background: 'var(--color-bg-secondary)',
@@ -155,7 +156,7 @@ export default function DatasetRecords() {
                 <thead>
                   <tr style={{ background: 'var(--color-bg-secondary)' }}>
                     <th className="text-left px-3 py-2 text-xs font-medium"
-                      style={{ color: 'var(--color-text-secondary)' }}>Run ID</th>
+                      style={{ color: 'var(--color-text-secondary)' }}>{isSessionDataset ? 'Session ID' : 'Run ID'}</th>
                     <th className="text-left px-3 py-2 text-xs font-medium"
                       style={{ color: 'var(--color-text-secondary)' }}>Agent</th>
                     <th className="text-left px-3 py-2 text-xs font-medium"
@@ -184,7 +185,9 @@ export default function DatasetRecords() {
                           onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent' }}>
                           <td className="px-3 py-2 text-xs font-mono"
                             style={{ color: 'var(--color-text-secondary)' }}>
-                            {r.run_id?.slice(0, 12)}...
+                            {isSessionDataset
+                              ? (r.session_id?.slice(0, 12) || '-')
+                              : (r.run_id?.slice(0, 12) || '-')}
                           </td>
                           <td className="px-3 py-2 text-xs"
                             style={{ color: 'var(--color-text-secondary)' }}>
@@ -216,8 +219,10 @@ export default function DatasetRecords() {
                               <div className="grid grid-cols-[100px_1fr] gap-x-4 gap-y-1 text-xs mb-3">
                                 <div style={{ color: 'var(--color-text-secondary)' }}>Record ID</div>
                                 <div className="font-mono">{r.id}</div>
-                                <div style={{ color: 'var(--color-text-secondary)' }}>Run ID</div>
-                                <div className="font-mono" style={{ color: 'var(--color-text-secondary)' }}>{r.run_id || '-'}</div>
+                                <div style={{ color: 'var(--color-text-secondary)' }}>{isSessionDataset ? 'Session ID' : 'Run ID'}</div>
+                                <div className="font-mono" style={{ color: 'var(--color-text-secondary)' }}>
+                                  {isSessionDataset ? (r.session_id || '-') : (r.run_id || '-')}
+                                </div>
                                 <div style={{ color: 'var(--color-text-secondary)' }}>Agent</div>
                                 <div className="font-mono">{r.agent_id || '-'}</div>
                                 <div style={{ color: 'var(--color-text-secondary)' }}>Started At</div>

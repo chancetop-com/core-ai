@@ -65,7 +65,7 @@ export default function AgentEditor() {
   const [expandedApiService, setExpandedApiService] = useState<string | null>(null);
 
   // Output datasets
-  const [allDatasets, setAllDatasets] = useState<{ id: string; name: string }[]>([]);
+  const [allDatasets, setAllDatasets] = useState<{ id: string; name: string; type?: string; description?: string }[]>([]);
   const [datasetsLoaded, setDatasetsLoaded] = useState(false);
   const [datasetSearch, setDatasetSearch] = useState('');
   const [datasetFocused, setDatasetFocused] = useState(false);
@@ -169,7 +169,12 @@ export default function AgentEditor() {
   const addDatasetConfig = (datasetId: string) => {
     const current = agent.dataset_config || [];
     if (current.some(c => c.dataset_id === datasetId)) return;
-    const entry: AgentDatasetConfig = { dataset_id: datasetId, permission: 'READ' };
+    // SESSION datasets default to WRITE so state persistence works out of the box
+    const ds = allDatasets.find(d => d.id === datasetId);
+    const entry: AgentDatasetConfig = {
+      dataset_id: datasetId,
+      permission: ds?.type === 'SESSION' ? 'WRITE' : 'READ',
+    };
     setAgent({ ...agent, dataset_config: [...current, entry] } as AgentDefinition);
     setDatasetSearch('');
   };
@@ -287,7 +292,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
     if (datasetsLoaded) return;
     try {
       const res = await api.datasets.list();
-      setAllDatasets((res.datasets || []).map(d => ({ id: d.id, name: d.name })));
+      setAllDatasets((res.datasets || []).map(d => ({ id: d.id, name: d.name, type: d.type, description: d.description })));
       setDatasetsLoaded(true);
     } catch (e) {
       console.error('Failed to load datasets:', e);
@@ -1197,10 +1202,11 @@ The system prompt should define how this agent behaves, its capabilities, and it
             {datasetsOpen && (
               <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
                 <p className="text-xs pt-3 mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  Datasets the agent can read from. Auto-extraction results can optionally be written to a single output dataset.
+                  SESSION datasets give the agent per-session state tools (get_session_state / set_session_state, one record per chat session).
+                  GENERAL datasets give record query/insert/update tools for agent-run outputs.
                 </p>
                 <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
-                  Tip: At most one dataset can be the output target. Output requires WRITE or FULL permission.
+                  Tip: SESSION datasets require WRITE or FULL to persist state. At most one GENERAL dataset can be the output target.
                 </p>
 
                 {/* Current dataset config */}
@@ -1213,6 +1219,10 @@ The system prompt should define how this agent behaves, its capabilities, and it
                           style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
                           <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-primary)' }} />
                           <span className="font-medium flex-1" style={{ color: 'var(--color-text)' }}>{ds?.name || cfg.dataset_id}</span>
+                          {(ds?.type || 'GENERAL') === 'SESSION' ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+                              style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>SESSION</span>
+                          ) : null}
                           <select value={cfg.permission}
                             onChange={e => changeDatasetPermission(cfg.dataset_id, e.target.value as 'READ' | 'WRITE' | 'FULL')}
                             className="text-xs px-1.5 py-0.5 rounded border outline-none"
@@ -1221,7 +1231,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                             <option value="WRITE">WRITE</option>
                             <option value="FULL">FULL</option>
                           </select>
-                          {cfg.is_output ? (
+                          {(ds?.type || 'GENERAL') !== 'SESSION' && (cfg.is_output ? (
                             <button onClick={clearOutputDataset}
                               className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 cursor-pointer"
                               style={{ background: 'var(--color-primary)', color: '#fff' }}
@@ -1233,7 +1243,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                               title="Set as output dataset">output</button>
                           ) : (
                             <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-text-secondary)', opacity: 0.4 }}>—</span>
-                          )}
+                          ))}
                           <button onClick={() => removeDatasetConfig(cfg.dataset_id)}
                             className="cursor-pointer rounded flex-shrink-0"
                             style={{ color: 'var(--color-text-secondary)' }}>
@@ -1269,6 +1279,10 @@ The system prompt should define how this agent behaves, its capabilities, and it
                             style={{ borderBottom: '1px solid var(--color-border)' }}>
                             <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-text-secondary)' }} />
                             <span style={{ color: 'var(--color-text)' }}>{d.name}</span>
+                            {(d.type || 'GENERAL') === 'SESSION' && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+                                style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>SESSION</span>
+                            )}
                           </button>
                         ))}
                       {allDatasets.filter(d => !datasetConfig.some(c => c.dataset_id === d.id)).length === 0 && (

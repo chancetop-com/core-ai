@@ -1788,6 +1788,7 @@ export interface DatasetView {
   id: string;
   name: string;
   description: string;
+  type?: string;
   schema: SchemaFieldView[];
   created_at: string;
   created_by: string;
@@ -1802,18 +1803,21 @@ export interface ListDatasetsResponse {
 export interface CreateDatasetRequest {
   name: string;
   description?: string;
+  type?: string;
   schema: SchemaFieldView[];
 }
 
 export interface UpdateDatasetRequest {
   name?: string;
   description?: string;
+  type?: string;
   schema?: SchemaFieldView[];
 }
 
 export interface DatasetRecordView {
   id: string;
   run_id: string;
+  session_id: string;
   agent_id: string;
   run_started_at: string;
   data: string;

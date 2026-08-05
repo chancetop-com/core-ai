@@ -12,6 +12,7 @@ import ai.core.api.server.dataset.UpdateDatasetRequest;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.DatasetRecord;
+import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
 import ai.core.server.domain.User;
@@ -48,7 +49,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         var schema = toSchemaFields(request.schema);
-        var entity = datasetService.create(request.name, request.description, userId, schema);
+        var entity = datasetService.create(request.name, request.description, userId, schema, resolveType(request.type));
         return toView(entity);
     }
 
@@ -72,7 +73,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
     @Override
     public DatasetView update(String id, UpdateDatasetRequest request) {
         var schema = request.schema != null ? toSchemaFields(request.schema) : null;
-        var entity = datasetService.update(id, request.name, request.description, schema);
+        var entity = datasetService.update(id, request.name, request.description, schema, resolveType(request.type));
         if (entity == null) throw new RuntimeException("dataset not found, id=" + id);
         return toView(entity);
     }
@@ -122,6 +123,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
         view.id = entity.id;
         view.name = entity.name;
         view.description = entity.description;
+        view.type = entity.type != null ? entity.type.name() : DatasetType.GENERAL.name();
         view.schema = toSchemaFieldViews(entity.schema);
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;
@@ -135,6 +137,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
         var view = new DatasetRecordView();
         view.id = entity.id;
         view.runId = entity.runId;
+        view.sessionId = entity.sessionId;
         view.agentId = entity.agentId;
         view.runStartedAt = entity.runStartedAt != null ? entity.runStartedAt.format(DateTimeFormatter.ISO_DATE_TIME) : null;
         view.data = entity.data;
@@ -144,6 +147,11 @@ public class DatasetWebServiceImpl implements DatasetWebService {
         view.updatedAt = entity.updatedAt != null ? entity.updatedAt.format(DateTimeFormatter.ISO_DATE_TIME) : null;
         view.updatedBy = entity.updatedBy;
         return view;
+    }
+
+    private DatasetType resolveType(String type) {
+        if (type == null || type.isBlank()) return null;
+        return DatasetType.valueOf(type);
     }
 
     private List<SchemaField> toSchemaFields(List<SchemaFieldView> views) {

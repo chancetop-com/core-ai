@@ -3,6 +3,7 @@ package ai.core.server.dataset.tool;
 import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
+import ai.core.server.domain.DatasetType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
@@ -15,6 +16,7 @@ import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -23,7 +25,7 @@ public final class QueryDatasetRecordsTool extends ToolCall {
     public static final String TOOL_NAME = "query_dataset_records";
 
     public static QueryDatasetRecordsTool create(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
-        var tool = new QueryDatasetRecordsTool(recordService, registry);
+        var tool = new QueryDatasetRecordsTool(datasetService, recordService, registry);
         tool.setName(TOOL_NAME);
         tool.setDescription(buildDescription(datasetService, registry));
         tool.setParameters(parameters());
@@ -45,8 +47,13 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         for (var entry : registry.allowedDatasets().entrySet()) {
             var dataset = datasetService.get(entry.getKey());
             if (dataset == null) continue;
+            var type = DatasetService.resolveType(dataset);
             sb.append("- \"").append(dataset.name).append("\" (id: ").append(entry.getKey())
+              .append(", type: ").append(type.name())
               .append(", permission: ").append(entry.getValue().name()).append(')');
+            if (dataset.description != null && !dataset.description.isBlank()) {
+                sb.append("\n  description: ").append(dataset.description);
+            }
             if (dataset.schema != null && !dataset.schema.isEmpty()) {
                 sb.append("\n  schema: ");
                 var fieldDescs = dataset.schema.stream()
@@ -57,6 +64,15 @@ public final class QueryDatasetRecordsTool extends ToolCall {
             sb.append('\n');
         }
         return sb.toString();
+    }
+
+    // SESSION datasets hold per-session state and must only be accessed via get_session_state/set_session_state
+    static String sessionDatasetAccessError(DatasetService datasetService, String datasetId) {
+        var dataset = datasetService.get(datasetId);
+        if (dataset != null && DatasetService.resolveType(dataset) == DatasetType.SESSION) {
+            return "session dataset is not accessible via dataset record tools, use get_session_state/set_session_state instead: " + datasetId;
+        }
+        return null;
     }
 
     private static List<ToolCallParameter> parameters() {
@@ -70,10 +86,12 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         );
     }
 
+    private final DatasetService datasetService;
     private final DatasetRecordService recordService;
     private final DatasetAccessRegistry registry;
 
-    private QueryDatasetRecordsTool(DatasetRecordService recordService, DatasetAccessRegistry registry) {
+    private QueryDatasetRecordsTool(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
+        this.datasetService = datasetService;
         this.recordService = recordService;
         this.registry = registry;
     }
@@ -92,6 +110,10 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         }
         if (registry.resolve(datasetId) == null) {
             return ToolCallResult.failed("access denied to dataset: " + datasetId);
+        }
+        var sessionError = sessionDatasetAccessError(datasetService, datasetId);
+        if (sessionError != null) {
+            return ToolCallResult.failed(sessionError);
         }
 
         var fieldsStr = getStringValue(args, "fields");

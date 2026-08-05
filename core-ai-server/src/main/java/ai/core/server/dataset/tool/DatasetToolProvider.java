@@ -2,6 +2,7 @@ package ai.core.server.dataset.tool;
 
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
+import ai.core.server.domain.DatasetType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolProvider;
 
@@ -10,7 +11,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Provides dataset CRUD tools scoped to the given {@link DatasetAccessRegistry}.
+ * Provides dataset tools scoped to the given {@link DatasetAccessRegistry}.
+ * SESSION datasets only expose get_session_state/set_session_state/update_session_state;
+ * GENERAL datasets only expose the record CRUD tools.
  *
  * @author Lim Chen
  */
@@ -19,14 +22,27 @@ public class DatasetToolProvider implements ToolProvider {
 
     public DatasetToolProvider(DatasetService datasetService, DatasetRecordService datasetRecordService,
                                 DatasetAccessRegistry registry, String agentId, String runId) {
+        var hasGeneral = registry.allowedDatasets().keySet().stream()
+                .anyMatch(id -> DatasetService.resolveType(datasetService.get(id)) == DatasetType.GENERAL);
+        var hasSession = registry.allowedDatasets().keySet().stream()
+                .anyMatch(id -> DatasetService.resolveType(datasetService.get(id)) == DatasetType.SESSION);
         var list = new ArrayList<ToolCall>();
-        list.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
-        if (registry.hasAnyWrite()) {
-            list.add(InsertDatasetRecordTool.create(agentId, runId, datasetService, datasetRecordService, registry));
-            list.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
+        if (hasGeneral) {
+            list.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
+            if (registry.hasAnyWrite()) {
+                list.add(InsertDatasetRecordTool.create(agentId, runId, datasetService, datasetRecordService, registry));
+                list.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
+            }
+            if (registry.hasAnyFull()) {
+                list.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, registry));
+            }
         }
-        if (registry.hasAnyFull()) {
-            list.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, registry));
+        if (hasSession) {
+            list.add(GetSessionStateTool.create(datasetService, datasetRecordService, registry));
+            if (registry.hasAnyWrite()) {
+                list.add(SetSessionStateTool.create(agentId, datasetService, datasetRecordService, registry));
+                list.add(UpdateSessionStateTool.create(agentId, datasetService, datasetRecordService, registry));
+            }
         }
         var map = new LinkedHashMap<String, ToolCall>();
         for (var tc : list) {
