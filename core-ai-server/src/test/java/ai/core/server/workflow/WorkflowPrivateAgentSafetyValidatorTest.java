@@ -15,13 +15,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.ZonedDateTime;
+import java.util.AbstractMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -126,10 +130,22 @@ class WorkflowPrivateAgentSafetyValidatorTest {
 
     @Test
     void rejectsSemanticallyMalformedSourceMetadata() {
+        assertMalformedSource(null);
+        assertMalformedSource("  ");
         assertMalformedSource("{}");
         assertMalformedSource("null");
+        assertMalformedSource(" \n null \t");
         assertMalformedSource("{\"source_kind\":null}");
         assertMalformedSource("{\"source_kind\":\"UNKNOWN_PRIVATE_KIND\"}");
+    }
+
+    @Test
+    void fatalErrorWhileReadingSourceMetadataPropagates() {
+        var fatal = new LinkageError("fatal source read");
+        var version = new WorkflowPublishedVersion();
+        version.agentSnapshotSources = sourceMapThrowing(fatal);
+
+        assertSame(fatal, assertThrows(LinkageError.class, () -> validator.validate(version)));
     }
 
     @Test
@@ -169,7 +185,20 @@ class WorkflowPrivateAgentSafetyValidatorTest {
     void rejectsNullBlankAndMalformedOwnedSnapshotValuesWithoutEchoingThem() {
         assertMalformedSnapshot(snapshotVersionWithValue(null));
         assertMalformedSnapshot(snapshotVersionWithValue("  "));
+        assertMalformedSnapshot(snapshotVersionWithValue("null"));
+        assertMalformedSnapshot(snapshotVersionWithValue(" \n null \t"));
         assertMalformedSnapshot(snapshotVersionWithValue("{malformed-private-snapshot"));
+    }
+
+    @Test
+    void fatalErrorFromOwnedSnapshotValidationPropagates() {
+        var fatal = new LinkageError("fatal sub-agent lookup");
+        when(agentCollection.get("fatal-sub")).thenThrow(fatal);
+        var config = new AgentPublishedConfig();
+        config.subAgentIds = List.of("fatal-sub");
+
+        assertSame(fatal, assertThrows(LinkageError.class,
+            () -> validator.validate(ownedVersion("n1", config))));
     }
 
     @Test
@@ -218,10 +247,26 @@ class WorkflowPrivateAgentSafetyValidatorTest {
     private void assertMalformedSource(String sourceJson) {
         var version = new WorkflowPublishedVersion();
         version.agentSnapshots = Map.of("n1", JSON.toJSON(new AgentPublishedConfig()));
-        version.agentSnapshotSources = Map.of("n1", sourceJson);
+        var sources = new LinkedHashMap<String, String>();
+        sources.put("n1", sourceJson);
+        version.agentSnapshotSources = sources;
         List<String> errors = validator.validate(version);
         assertEquals(List.of("node n1 has malformed agent snapshot source metadata"), errors);
         assertFalse(errors.getFirst().contains("UNKNOWN_PRIVATE_KIND"));
+    }
+
+    private Map<String, String> sourceMapThrowing(LinkageError fatal) {
+        return new AbstractMap<>() {
+            @Override
+            public Set<Entry<String, String>> entrySet() {
+                return Set.of(new SimpleImmutableEntry<>("n1", "unused") {
+                    @Override
+                    public String getValue() {
+                        throw fatal;
+                    }
+                });
+            }
+        };
     }
 
     private WorkflowPublishedVersion snapshotVersionWithValue(String value) {
