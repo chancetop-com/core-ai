@@ -65,6 +65,7 @@ public class AgentDefinitionService {
         entity.id = UUID.randomUUID().toString();
         entity.userId = userId;
         entity.name = request.name;
+        entity.nameKey = AgentNameKey.normalize(entity.name);
         entity.description = request.description;
         entity.systemPrompt = request.systemPrompt;
         entity.systemPromptId = Strings.isBlank(request.systemPromptId) ? null : request.systemPromptId;
@@ -237,7 +238,10 @@ public class AgentDefinitionService {
 
         requireAdminForSystemDefault(entity, userId);
 
-        if (request.name != null) entity.name = request.name;
+        if (request.name != null) {
+            entity.name = request.name;
+            entity.nameKey = AgentNameKey.normalize(entity.name);
+        }
         if (request.description != null) entity.description = request.description;
         if (request.systemPrompt != null) entity.systemPrompt = request.systemPrompt;
         if (request.systemPromptId != null) entity.systemPromptId = request.systemPromptId;

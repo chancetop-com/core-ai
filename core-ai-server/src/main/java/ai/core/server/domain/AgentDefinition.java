@@ -25,6 +25,9 @@ public class AgentDefinition {
     @Field(name = "name")
     public String name;
 
+    @Field(name = "name_key")
+    public String nameKey;
+
     @Field(name = "description")
     public String description;
 
