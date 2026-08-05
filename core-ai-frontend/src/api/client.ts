@@ -1075,6 +1075,7 @@ export interface GatewayModel {
   supportsVision?: boolean;
   supportsVideo?: boolean;
   supportsFile?: boolean;
+  responseFormat?: string | null;
   reasoningEfforts?: string[] | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
@@ -1096,6 +1097,7 @@ export interface GatewayModelRequest {
   supportsVision?: boolean | null;
   supportsVideo?: boolean;
   supportsFile?: boolean | null;
+  responseFormat?: string | null;
   reasoningEfforts?: string[] | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
@@ -1309,7 +1311,7 @@ export const api = {
       request<ListGatewayModelsResponse>(`/api/gateway/providers/${providerId}/models/import`, { method: 'POST', body: JSON.stringify(data) }),
   },
   agents: {
-    list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean) => {
+    list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean, type?: string) => {
       const params = new URLSearchParams();
       if (my !== undefined) params.set('my', String(my));
       if (query) params.set('query', query);
@@ -1317,6 +1319,7 @@ export const api = {
       if (page) params.set('page', String(page));
       if (sort) params.set('sort', sort);
       if (includeSystemDefault !== undefined) params.set('include_system_default', String(includeSystemDefault));
+      if (type) params.set('type', type);
       const qs = params.toString();
       return request<ListAgentsResponse>(`/api/agents${qs ? `?${qs}` : ''}`);
     },
@@ -1815,6 +1818,7 @@ export interface DatasetView {
   id: string;
   name: string;
   description: string;
+  type?: string;
   schema: SchemaFieldView[];
   created_at: string;
   created_by: string;
@@ -1829,18 +1833,21 @@ export interface ListDatasetsResponse {
 export interface CreateDatasetRequest {
   name: string;
   description?: string;
+  type?: string;
   schema: SchemaFieldView[];
 }
 
 export interface UpdateDatasetRequest {
   name?: string;
   description?: string;
+  type?: string;
   schema?: SchemaFieldView[];
 }
 
 export interface DatasetRecordView {
   id: string;
   run_id: string;
+  session_id: string;
   agent_id: string;
   run_started_at: string;
   data: string;

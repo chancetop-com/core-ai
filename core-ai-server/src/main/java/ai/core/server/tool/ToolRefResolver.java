@@ -2,10 +2,13 @@ package ai.core.server.tool;
 
 import ai.core.mcp.client.McpClientManager;
 import ai.core.media.MediaProvider;
+import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
+import ai.core.server.llmcall.LLMCallTool;
+import ai.core.server.run.LLMCallExecutor;
 import ai.core.tool.ToolCall;
 import ai.core.tool.tools.UnderstandVideoTool;
 import ai.core.tool.registry.BuiltinToolProvider;
@@ -36,6 +39,8 @@ public class ToolRefResolver {
     private final MediaProvider mediaProvider;
     private final GitHubTokenProvider gitHubTokenProvider;
     private final ApplicationMcpManager applicationMcpManager;
+    private AgentDefinitionService agentDefinitionService;
+    private LLMCallExecutor llmCallExecutor;
     private UnderstandVideoTool.VideoUnderstandingService videoService;
     private final Map<String, List<ToolCall>> apiToolCache = new ConcurrentHashMap<>();
 
@@ -57,6 +62,14 @@ public class ToolRefResolver {
 
     public void setVideoService(UnderstandVideoTool.VideoUnderstandingService videoService) {
         this.videoService = videoService;
+    }
+
+    public void setAgentDefinitionService(AgentDefinitionService agentDefinitionService) {
+        this.agentDefinitionService = agentDefinitionService;
+    }
+
+    public void setLlmCallExecutor(LLMCallExecutor llmCallExecutor) {
+        this.llmCallExecutor = llmCallExecutor;
     }
 
     public List<ToolCall> resolve(List<ToolRef> toolRefs) {
@@ -86,6 +99,7 @@ public class ToolRefResolver {
                     case MCP -> resolveMcpRef(toolRef, result, sessionMcpManager);
                     case API -> resolveApiRef(toolRef, result);
                     case AGENT -> LOGGER.debug("skipping AGENT tool ref at registry level, id={}", toolRef.id);
+                    case LLM_CALL -> resolveLLMCallRef(toolRef, result);
                     default -> LOGGER.warn("unknown tool type, id={}, type={}", toolRef.id, type);
                 }
             } else {
@@ -214,6 +228,25 @@ public class ToolRefResolver {
         if (apiToolLoader != null && toolRef.source != null) {
             result.addAll(apiToolLoader.loadApiAppTools(toolRef.source));
         }
+    }
+
+    /**
+     * Resolves an LLM_CALL ref by loading its definition and wrapping it as a callable tool.
+     * Unlike AGENT refs (which are skipped and assembled separately), a missing or invalid
+     * LLM_CALL definition fails fast — an agent that references a deleted llm-call tool
+     * cannot degrade gracefully anyway.
+     */
+    private void resolveLLMCallRef(ToolRef toolRef, List<ToolCall> result) {
+        if (agentDefinitionService == null || llmCallExecutor == null) {
+            throw new IllegalStateException("LLM_CALL tool resolution requires AgentDefinitionService and LLMCallExecutor");
+        }
+        var definitionId = toolRef.id.substring(ToolRef.LLM_CALL_PREFIX.length());
+        if (definitionId.isEmpty()) {
+            LOGGER.warn("invalid llm call ref, id={}", toolRef.id);
+            return;
+        }
+        var definition = agentDefinitionService.getEntity(definitionId);
+        result.add(LLMCallTool.create(definition, llmCallExecutor));
     }
 
     private void resolveLegacyRef(ToolRef toolRef, List<ToolCall> result, McpClientManager sessionMgr) {

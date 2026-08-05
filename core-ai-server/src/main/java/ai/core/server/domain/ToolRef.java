@@ -10,6 +10,9 @@ import java.util.Objects;
 public class ToolRef {
     private static final String MCP_TOOL_PREFIX = "mcp-tool:";
 
+    /** Prefix of tool refs that wrap an LLM_CALL agent definition as a tool, e.g. "llm-call:{definitionId}". */
+    public static final String LLM_CALL_PREFIX = "llm-call:";
+
     /**
      * Parse an individual MCP tool ref id of the form "mcp-tool:{serverId}:{toolName}",
      * or "mcp-tool:{toolName}" with the serverId supplied via the source field.
@@ -74,6 +77,8 @@ public class ToolRef {
         } else if (id.startsWith("config:")) {
             type = ToolSourceType.MCP;
             source = id.substring("config:".length());
+        } else if (id.startsWith(LLM_CALL_PREFIX)) {
+            type = ToolSourceType.LLM_CALL;
         }
     }
 

@@ -19,7 +19,7 @@ public final class DeleteDatasetRecordTool extends ToolCall {
     public static final String TOOL_NAME = "delete_dataset_record";
 
     public static DeleteDatasetRecordTool create(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
-        var tool = new DeleteDatasetRecordTool(recordService, registry);
+        var tool = new DeleteDatasetRecordTool(datasetService, recordService, registry);
         tool.setName(TOOL_NAME);
         tool.setDescription(buildDescription(datasetService, registry));
         tool.setParameters(parameters());
@@ -42,10 +42,12 @@ public final class DeleteDatasetRecordTool extends ToolCall {
         );
     }
 
+    private final DatasetService datasetService;
     private final DatasetRecordService recordService;
     private final DatasetAccessRegistry registry;
 
-    private DeleteDatasetRecordTool(DatasetRecordService recordService, DatasetAccessRegistry registry) {
+    private DeleteDatasetRecordTool(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
+        this.datasetService = datasetService;
         this.recordService = recordService;
         this.registry = registry;
     }
@@ -64,6 +66,10 @@ public final class DeleteDatasetRecordTool extends ToolCall {
         }
         if (!registry.isDeletable(datasetId)) {
             return ToolCallResult.failed("delete access denied to dataset: " + datasetId);
+        }
+        var sessionError = QueryDatasetRecordsTool.sessionDatasetAccessError(datasetService, datasetId);
+        if (sessionError != null) {
+            return ToolCallResult.failed(sessionError);
         }
 
         var recordId = getStringValue(args, "record_id");

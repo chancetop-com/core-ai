@@ -19,7 +19,7 @@
 - Public APIs, clone payloads, and export files must never return `agentSnapshots` or private executable configuration.
 - Public publishing must not delegate owner secrets or owner-only dependencies; rejection is fail-closed and node-specific.
 - Keep Java comments in English and follow core-ng DTO/entity constraints from `instructions.md`.
-- The Mongo migration version is exactly `20260805001`; the server release version for this feature is `1.0.132`.
+- After integrating current master, the Agent-name migration version is `20260805002` because master already uses `20260805001` for the Dataset session index; the release version is `1.0.133` because master already uses `1.0.132`.
 - Preserve unrelated worktree changes and stage only files named by the current task.
 
 ---
@@ -149,7 +149,7 @@ public String nameKey;
 
 Set `entity.nameKey = AgentNameKey.normalize(entity.name)` in `create`, and recompute it whenever `request.name != null` in `update`.
 
-Implement migration `20260805001` with a Mongo update pipeline equivalent to:
+Implement migration `20260805002` with a Mongo update pipeline equivalent to:
 
 ```javascript
 db.agents.updateMany({}, [
@@ -1562,7 +1562,7 @@ git commit -m "feat: use private agents in workflow editor"
 
 **Interfaces:**
 - Consumes: all prior tasks.
-- Produces: release version `1.0.132` and a pushed `master` branch that triggers the configured automatic build.
+- Produces: release version `1.0.133` and a pushed `master` branch that triggers the configured automatic build.
 
 - [ ] **Step 1: Run the complete server test and quality gate**
 
@@ -1622,13 +1622,13 @@ Change exactly:
 to:
 
 ```text
-1.0.132
+1.0.133
 ```
 
 Then verify:
 
 ```bash
-test "$(tr -d '\n' < core-ai-server/VERSION)" = "1.0.132"
+test "$(tr -d '\n' < core-ai-server/VERSION)" = "1.0.133"
 git diff --check
 ```
 
@@ -1638,7 +1638,7 @@ Expected: both commands exit 0.
 
 ```bash
 git add core-ai-server/VERSION
-git commit -m "chore: bump server version to 1.0.132"
+git commit -m "chore: bump server version to 1.0.133"
 ```
 
 - [ ] **Step 6: Verify commit scope and clean worktree**

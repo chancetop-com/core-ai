@@ -3,10 +3,12 @@ package ai.core.server.tool;
 import ai.core.api.server.tool.UpdateMcpServerRequest;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.media.MediaProvider;
+import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolType;
+import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
@@ -51,6 +53,12 @@ public class ToolRegistryService {
     @Inject
     ApiDefinitionService apiDefinitionService;
 
+    @Inject
+    AgentDefinitionService agentDefinitionService;
+
+    @Inject
+    LLMCallExecutor llmCallExecutor;
+
     private InternalApiToolLoader internalApiToolLoader;
 
     @Inject
@@ -70,6 +78,8 @@ public class ToolRegistryService {
         mcpConnectionManager = new McpServerConnectionManager(sandboxService, applicationMcpManager);
         var mcpDependencies = new McpResolutionDependencies(mcpConnectionManager, sandboxService, applicationMcpManager);
         resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpDependencies, mediaProvider, gitHubTokenProvider, videoUnderstandingService);
+        resolutionService.setAgentDefinitionService(agentDefinitionService);
+        resolutionService.setLlmCallExecutor(llmCallExecutor);
         mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager, applicationMcpManager);
     }
 

@@ -98,6 +98,58 @@ class GatewayModelServiceTest {
     }
 
     @Test
+    void createAppliesResponseFormatNormalization() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        var request = new GatewayModelRequest();
+        request.modelId = "deepseek-chat";
+        request.providerId = "provider-1";
+        request.upstreamModel = "deepseek/deepseek-chat";
+        request.responseFormat = "JSON_OBJECT";
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals("json_object", view.responseFormat);
+        var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
+        verify(service.gatewayModelCollection).insert(captor.capture());
+        assertEquals("json_object", captor.getValue().responseFormat);
+    }
+
+    @Test
+    void rejectsInvalidResponseFormat() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        var request = new GatewayModelRequest();
+        request.modelId = "fast-chat";
+        request.providerId = "provider-1";
+        request.upstreamModel = "gpt-4o";
+        request.responseFormat = "yaml";
+
+        assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+    }
+
+    @Test
+    void updateClearsResponseFormat() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        var existing = new GatewayModelConfig();
+        existing.id = "model-1";
+        existing.modelId = "fast-chat";
+        existing.providerId = "provider-1";
+        existing.upstreamModel = "deepseek/deepseek-chat";
+        existing.endpointTypes = List.of("chat.completions");
+        existing.enabled = Boolean.TRUE;
+        existing.responseFormat = "json_object";
+        when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
+
+        var request = new GatewayModelRequest();
+        request.fields = Set.of("responseFormat");
+
+        service.update("model-1", request, "admin-1");
+
+        var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
+        verify(service.gatewayModelCollection).replace(captor.capture());
+        assertNull(captor.getValue().responseFormat);
+    }
+
+    @Test
     void importUsesOfficialModelIdAsDefaultAlias() {
         var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
         service.gatewayModelDiscoveryService = new StubModelDiscoveryService();

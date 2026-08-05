@@ -57,6 +57,11 @@ final class AgentQueryHelper {
         );
     }
 
+    static Bson buildTypeFilter(String type) {
+        if (type == null || type.isBlank()) return Filters.empty();
+        return Filters.eq("type", type);
+    }
+
     static Bson combineFilters(Bson first, Bson second) {
         var firstEmpty = isFilterEmpty(first);
         var secondEmpty = isFilterEmpty(second);

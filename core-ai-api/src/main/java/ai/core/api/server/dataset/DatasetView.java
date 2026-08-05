@@ -18,6 +18,10 @@ public class DatasetView {
     @Property(name = "description")
     public String description;
 
+    // GENERAL | SESSION (null means GENERAL)
+    @Property(name = "type")
+    public String type;
+
     @Property(name = "schema")
     public List<SchemaFieldView> schema;
 

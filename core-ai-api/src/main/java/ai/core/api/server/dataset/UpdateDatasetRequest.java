@@ -14,6 +14,10 @@ public class UpdateDatasetRequest {
     @Property(name = "description")
     public String description;
 
+    // GENERAL | SESSION
+    @Property(name = "type")
+    public String type;
+
     @Property(name = "schema")
     public List<SchemaFieldView> schema;
 }

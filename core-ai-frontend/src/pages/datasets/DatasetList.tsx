@@ -129,6 +129,13 @@ export default function DatasetList() {
               <div className="flex items-center gap-3">
                 <Database size={18} style={{ color: 'var(--color-primary)' }} />
                 <span className="font-medium">{d.name}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded"
+                  style={{
+                    background: (d.type || 'GENERAL') === 'SESSION' ? 'rgba(16,185,129,0.15)' : 'var(--color-bg-tertiary)',
+                    color: (d.type || 'GENERAL') === 'SESSION' ? 'var(--color-success, #10b981)' : 'var(--color-text-secondary)',
+                  }}>
+                  {(d.type || 'GENERAL') === 'SESSION' ? 'SESSION' : 'GENERAL'}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={e => { e.stopPropagation(); navigate(`/datasets/${d.id}/records`); }}

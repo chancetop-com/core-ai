@@ -141,6 +141,21 @@ public class GatewayRoutingEngine {
         return snapshot().models.stream().filter(model -> modelId.equals(model.modelId)).findFirst().orElse(null);
     }
 
+    /**
+     * The gateway's default chat model id: the enabled chat.completions model marked default,
+     * or the highest-priority one when no default is marked. Null when the gateway has no
+     * routable chat model, so callers can fall back to their own configuration.
+     */
+    public String defaultChatModelId() {
+        var models = registeredModels(snapshot(), GatewayEndpointType.CHAT_COMPLETIONS);
+        if (models.isEmpty()) return null;
+        return models.stream()
+                .filter(route -> Boolean.TRUE.equals(route.model.isDefault))
+                .findFirst()
+                .map(route -> route.model.modelId)
+                .orElse(models.getFirst().model.modelId);
+    }
+
     public boolean isRoutable(String modelId) {
         if (!hasText(modelId)) return false;
         return registeredModels(snapshot(), null).stream().anyMatch(route -> modelId.equals(route.model.modelId));

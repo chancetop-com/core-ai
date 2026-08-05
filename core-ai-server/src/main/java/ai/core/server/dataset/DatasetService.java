@@ -2,6 +2,7 @@ package ai.core.server.dataset;
 
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.DatasetRecord;
+import ai.core.server.domain.DatasetType;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -25,12 +26,13 @@ public class DatasetService {
     @Inject
     MongoCollection<DatasetRecord> datasetRecordCollection;
 
-    public Dataset create(String name, String description, String userId, List<ai.core.server.domain.SchemaField> schema) {
+    public Dataset create(String name, String description, String userId, List<ai.core.server.domain.SchemaField> schema, DatasetType type) {
         var entity = new Dataset();
         entity.id = UUID.randomUUID().toString();
         entity.name = name;
         entity.description = description;
         entity.userId = userId;
+        entity.type = type;
         entity.schema = schema;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -57,7 +59,7 @@ public class DatasetService {
         return datasetCollection.get(id).orElse(null);
     }
 
-    public Dataset update(String id, String name, String description, List<ai.core.server.domain.SchemaField> schema) {
+    public Dataset update(String id, String name, String description, List<ai.core.server.domain.SchemaField> schema, DatasetType type) {
         var entity = datasetCollection.get(id).orElse(null);
         if (entity == null) return null;
 
@@ -66,9 +68,14 @@ public class DatasetService {
         if (schema != null) {
             entity.schema = schema;
         }
+        if (type != null) entity.type = type;
         entity.updatedAt = ZonedDateTime.now();
         datasetCollection.replace(entity);
         return entity;
+    }
+
+    public static DatasetType resolveType(Dataset dataset) {
+        return dataset != null && dataset.type != null ? dataset.type : DatasetType.GENERAL;
     }
 
     public void delete(String id) {

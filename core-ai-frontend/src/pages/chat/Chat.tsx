@@ -47,6 +47,9 @@ function toToolRef(id: string, availableTools: ToolRegistryView[] = []): ToolRef
   if (id.startsWith('config:')) {
     return { id, type: 'MCP', source: id.substring('config:'.length) };
   }
+  if (id.startsWith('llm-call:')) {
+    return { id, type: 'LLM_CALL' };
+  }
   return { id, type: 'BUILTIN' };
 }
 
@@ -228,9 +231,9 @@ export default function Chat() {
     setOptimisticSession(null);
   }, []);
 
-  // All published agents for chat (my + others, filtered by status)
+  // All published agents for chat (my + others, filtered by status; LLM_CALL definitions are tools, not chat agents)
   const agents = useMemo(() =>
-    [...myAgents, ...otherAgents].filter(a => a.status === 'PUBLISHED' || a.type === 'local'),
+    [...myAgents, ...otherAgents].filter(a => a.type !== 'LLM_CALL' && (a.status === 'PUBLISHED' || a.type === 'local')),
     [myAgents, otherAgents]
   );
 
@@ -485,12 +488,13 @@ export default function Chat() {
   // Load my agents for agent selector
   useEffect(() => {
     api.agents.list(true).then(res => {
-      setMyAgents(res.agents || []);
+      // LLM_CALL definitions are callable tools, not chat agents — hide them from the selector.
+      const chatAgents = (res.agents || []).filter(a => a.type !== 'LLM_CALL');
+      setMyAgents(chatAgents);
       // Auto-select first published agent if none selected
-      const chatAgents = (res.agents || [])
-        .filter(a => a.status === 'PUBLISHED' || a.type === 'local');
-      if (chatAgents.length > 0) {
-        setSelectedAgentId(prev => prev || chatAgents[0].id);
+      const selectable = chatAgents.filter(a => a.status === 'PUBLISHED' || a.type === 'local');
+      if (selectable.length > 0) {
+        setSelectedAgentId(prev => prev || selectable[0].id);
       }
     }).catch(console.error);
   }, []);

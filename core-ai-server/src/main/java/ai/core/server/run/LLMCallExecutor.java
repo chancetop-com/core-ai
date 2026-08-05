@@ -15,6 +15,7 @@ import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
+import ai.core.server.gateway.GatewayRoutingEngine;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.utils.JsonUtil;
@@ -45,6 +46,9 @@ public class LLMCallExecutor {
 
     @Inject
     SystemSettingsService systemSettingsService;
+
+    @Inject
+    GatewayRoutingEngine gatewayRoutingEngine;
 
     public Result execute(AgentDefinition definition, String input) {
         return execute(definition, input, null);
@@ -115,13 +119,16 @@ public class LLMCallExecutor {
 
     private String resolveModel(AgentPublishedConfig config, String fallback) {
         var model = config != null ? config.model : fallback;
-        if (model == null) model = systemSettingsService.llmModel();
+        // gateway default wins over legacy config when the definition has no model of its own;
+        // treat blank as unset since the UI clears the field to an empty string
+        if (model == null || model.isBlank()) model = gatewayRoutingEngine.defaultChatModelId();
+        if (model == null || model.isBlank()) model = systemSettingsService.llmModel();
         return model;
     }
 
     private String resolveMultiModalModel(AgentPublishedConfig config, String fallback) {
         var model = config != null ? config.multiModalModel : fallback;
-        if (model == null) model = systemSettingsService.llmMultiModalModel();
+        if (model == null || model.isBlank()) model = systemSettingsService.llmMultiModalModel();
         return model;
     }
 

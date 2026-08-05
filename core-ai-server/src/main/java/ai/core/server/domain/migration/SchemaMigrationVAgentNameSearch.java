@@ -9,7 +9,7 @@ import java.util.List;
 public class SchemaMigrationVAgentNameSearch implements SchemaMigration {
     @Override
     public String version() {
-        return "20260805001";
+        return "20260805002";
     }
 
     @Override

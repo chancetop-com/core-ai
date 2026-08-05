@@ -12,6 +12,9 @@ public class DatasetRecordView {
     @Property(name = "run_id")
     public String runId;
 
+    @Property(name = "session_id")
+    public String sessionId;
+
     @Property(name = "agent_id")
     public String agentId;
 

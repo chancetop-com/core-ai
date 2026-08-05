@@ -54,6 +54,10 @@ public class GatewayModelConfig {
     @Field(name = "supports_file")
     public Boolean supportsFile;
 
+    // response_format type the model accepts: null/"json_schema" = structured outputs, "json_object" = JSON mode only
+    @Field(name = "response_format")
+    public String responseFormat;
+
     @Field(name = "reasoning_efforts")
     public List<String> reasoningEfforts;
 

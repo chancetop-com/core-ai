@@ -14,6 +14,14 @@ class ToolRefTest {
         assertApi("builtin-service-api");
     }
 
+    @Test
+    void infersLlmCallRefType() {
+        var ref = new ToolRef();
+        ref.id = "llm-call:66a8c3e9f4b2d1e9a7c2b3d4";
+        ref.inferTypeFromId();
+        assertEquals(ToolSourceType.LLM_CALL, ref.type);
+    }
+
     // Config-file MCP servers use a colon-prefixed id (config:{name}), so the serverId itself
     // contains a colon. The tool ref must keep the full prefix instead of splitting at the first colon.
     @Test

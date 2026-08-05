@@ -16,6 +16,10 @@ public class CreateDatasetRequest {
     @Property(name = "description")
     public String description;
 
+    // GENERAL (default) | SESSION — session datasets store per-session state for get_session_state/set_session_state
+    @Property(name = "type")
+    public String type;
+
     @Property(name = "schema")
     public List<SchemaFieldView> schema;
 }

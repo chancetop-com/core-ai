@@ -6,20 +6,26 @@ import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.Content;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
+import ai.core.llm.domain.Message;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
+import ai.core.llm.domain.ResponseFormat;
+import ai.core.llm.domain.RoleType;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.llm.streaming.DefaultStreamingCallback;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.utils.JsonUtil;
 import core.framework.web.exception.BadRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -105,7 +111,9 @@ public class GatewayLLMProvider extends LLMProvider {
         var upstream = upstreamProvider(provider, upstreamModel);
         var originalModel = request.model;
         request.model = upstreamModel;
-        applyReasoningEffort(request, routingEngine.modelConfig(originalModel));
+        var modelConfig = routingEngine.modelConfig(originalModel);
+        applyReasoningEffort(request, modelConfig);
+        applyResponseFormat(request, modelConfig);
         applyPreprocess(request);
         try {
             return upstream.delegateCompletionStream(request, callback);
@@ -149,6 +157,33 @@ public class GatewayLLMProvider extends LLMProvider {
         var effort = request.reasoningEffort;
         request.reasoningEffort = null;
         request.setReasoningEffortValue(resolveReasoningEffort(effort, modelConfig.reasoningEfforts));
+    }
+
+    // JSON-mode models (e.g. DeepSeek) reject response_format type json_schema; downgrade to
+    // json_object and constrain the output via the prompt instead of upstream schema validation
+    private void applyResponseFormat(CompletionRequest request, GatewayModelConfig modelConfig) {
+        if (modelConfig == null || !GatewayModelService.RESPONSE_FORMAT_JSON_OBJECT.equals(modelConfig.responseFormat)) return;
+        if (request.responseFormat == null || !GatewayModelService.RESPONSE_FORMAT_JSON_SCHEMA.equals(request.responseFormat.type)) return;
+        var schema = request.responseFormat.jsonSchema;
+        var schemaJson = schema == null || schema.schema == null ? null : JsonUtil.toJson(schema.schema);
+        request.responseFormat = ResponseFormat.jsonObject();
+        if (schemaJson == null) return;
+        appendSystemInstruction(request, "Return a JSON object that conforms to the following JSON schema:\n" + schemaJson);
+    }
+
+    private void appendSystemInstruction(CompletionRequest request, String instruction) {
+        var systemMessage = request.messages.stream()
+                .filter(message -> message.role == RoleType.SYSTEM)
+                .findFirst();
+        if (systemMessage.isPresent()) {
+            var message = systemMessage.get();
+            // message content is immutable (List.of), replace it with a mutable copy before appending
+            message.content = new ArrayList<>(message.content == null ? List.of() : message.content);
+            message.content.add(Content.of(instruction));
+            return;
+        }
+        request.messages = new ArrayList<>(request.messages);
+        request.messages.addFirst(Message.of(RoleType.SYSTEM, instruction));
     }
 
     private ResolvedRoute resolveRoute(String model) {
