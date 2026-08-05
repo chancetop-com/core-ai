@@ -210,6 +210,49 @@ class WorkflowAgentOptionServiceTest {
     }
 
     @Test
+    void mineListDropsRowsOutsideOwnedEditableAndRequestedType() {
+        var service = service();
+        when(service.agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of(
+            agent("owned-agent", USER_ID, DefinitionType.AGENT, AgentStatus.DRAFT, false, false),
+            agent("other-agent", "other", DefinitionType.AGENT, AgentStatus.DRAFT, false, false),
+            agent("owned-system", USER_ID, DefinitionType.AGENT, AgentStatus.PUBLISHED, true, true),
+            agent("owned-llm", USER_ID, DefinitionType.LLM_CALL, AgentStatus.DRAFT, false, false)));
+
+        var response = service.list(USER_ID, request("mine", "AGENT"));
+
+        assertEquals(List.of("owned-agent"), response.items.stream().map(view -> view.id).toList());
+    }
+
+    @Test
+    void sharedListDropsRowsOutsidePublishedSharedPlacementAndRequestedType() {
+        var service = service();
+        when(service.agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of(
+            agent("system-agent", USER_ID, DefinitionType.AGENT, AgentStatus.PUBLISHED, true, true),
+            agent("other-agent", "other", DefinitionType.AGENT, AgentStatus.PUBLISHED, false, true),
+            agent("owned-agent", USER_ID, DefinitionType.AGENT, AgentStatus.PUBLISHED, false, true),
+            agent("other-no-config", "other", DefinitionType.AGENT, AgentStatus.PUBLISHED, false, false),
+            agent("other-draft", "other", DefinitionType.AGENT, AgentStatus.DRAFT, false, true),
+            agent("other-llm", "other", DefinitionType.LLM_CALL, AgentStatus.PUBLISHED, false, true)));
+
+        var response = service.list(USER_ID, request("shared", "AGENT"));
+
+        assertEquals(List.of("system-agent", "other-agent"),
+            response.items.stream().map(view -> view.id).toList());
+    }
+
+    @Test
+    void rejectsPageOffsetBeyondMongoIntegerRange() {
+        var request = request("mine", "AGENT");
+        request.page = Integer.MAX_VALUE;
+        request.limit = 50;
+
+        var exception = assertThrows(BadRequestException.class, () -> service().list(USER_ID, request));
+
+        assertEquals("BAD_REQUEST", exception.errorCode());
+        assertTrue(exception.getMessage().contains("page offset"));
+    }
+
+    @Test
     void viewOwnershipPrioritizesSystemThenMineThenShared() {
         var system = agent("system", USER_ID, DefinitionType.AGENT, AgentStatus.PUBLISHED, true, true);
         var mine = agent("mine", USER_ID, DefinitionType.AGENT, AgentStatus.DRAFT, false, false);

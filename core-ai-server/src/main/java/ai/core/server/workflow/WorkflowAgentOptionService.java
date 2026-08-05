@@ -34,15 +34,20 @@ public class WorkflowAgentOptionService {
         int page = request.page == null ? 1 : Math.max(1, request.page);
         int limit = request.limit == null ? DEFAULT_LIMIT : Math.min(MAX_LIMIT, Math.max(1, request.limit));
         var filter = filter(scope, type, request.query, userId);
+        long offset = ((long) page - 1) * limit;
+        if (offset > Integer.MAX_VALUE) {
+            throw new BadRequestException("page offset exceeds supported range");
+        }
 
         var query = new Query();
         query.filter = filter;
         query.sort = Sorts.ascending("name_key", "_id");
-        query.skip = (page - 1) * limit;
+        query.skip = (int) offset;
         query.limit = limit;
 
         var response = new ListWorkflowAgentOptionsResponse();
         response.items = agentDefinitionCollection.find(query).stream()
+            .filter(agent -> canList(agent, scope, type, userId))
             .map(agent -> toView(agent, userId))
             .toList();
         response.total = agentDefinitionCollection.count(filter);
@@ -50,6 +55,16 @@ public class WorkflowAgentOptionService {
         response.limit = limit;
         response.selected = selected(request.selectedId, type, userId);
         return response;
+    }
+
+    private boolean canList(AgentDefinition agent, String scope, DefinitionType type, String userId) {
+        if (agent == null || agent.type != type || userId == null) return false;
+        return switch (scope) {
+            case "mine" -> WorkflowAgentAccessPolicy.isOwnedEditable(agent, userId);
+            case "shared" -> WorkflowAgentAccessPolicy.hasUsablePublishedConfig(agent)
+                             && (Boolean.TRUE.equals(agent.systemDefault) || !userId.equals(agent.userId));
+            default -> false;
+        };
     }
 
     private WorkflowAgentOptionView selected(String selectedId, DefinitionType type, String userId) {
