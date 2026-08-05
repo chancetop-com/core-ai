@@ -12,6 +12,7 @@ import ai.core.utils.JsonUtil;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Reads the session state document for the current session from a SESSION dataset.
@@ -20,6 +21,7 @@ import java.util.List;
  */
 public final class GetSessionStateTool extends ToolCall {
     public static final String TOOL_NAME = "get_session_state";
+    private static final Object MISSING_FIELD = new Object();
 
     public static GetSessionStateTool create(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
         var tool = new GetSessionStateTool(datasetService, recordService, registry);
@@ -45,6 +47,17 @@ public final class GetSessionStateTool extends ToolCall {
             ToolCallParameters.ParamSpec.of(String.class, "dataset_id", "The ID of the session dataset. Required — choose from available datasets listed above.").required(),
             ToolCallParameters.ParamSpec.of(String.class, "fields", "Comma-separated top-level field names to include in the state. If not specified, the full state is returned.")
         );
+    }
+
+    private static Map<String, Object> selectFields(Map<String, Object> state, String fields) {
+        var selected = new LinkedHashMap<String, Object>();
+        for (var field : fields.split(",")) {
+            var name = field.trim();
+            if (name.isEmpty()) continue;
+            var value = state.getOrDefault(name, MISSING_FIELD);
+            if (value != MISSING_FIELD) selected.put(name, value);
+        }
+        return selected;
     }
 
     private final DatasetService datasetService;
@@ -85,18 +98,11 @@ public final class GetSessionStateTool extends ToolCall {
 
         var record = recordService.queryBySession(datasetId, context.getSessionId()).orElse(null);
         var response = new LinkedHashMap<String, Object>();
-        var fieldsStr = getStringValue(args, "fields");
         if (record != null) {
             var state = JsonUtil.toMap(record.data);
+            var fieldsStr = getStringValue(args, "fields");
             if (fieldsStr != null && !fieldsStr.isBlank()) {
-                var selected = new LinkedHashMap<String, Object>();
-                for (var field : fieldsStr.split(",")) {
-                    var name = field.trim();
-                    if (!name.isEmpty() && state.containsKey(name)) {
-                        selected.put(name, state.get(name));
-                    }
-                }
-                response.put("state", selected);
+                response.put("state", selectFields(state, fieldsStr));
             } else {
                 response.put("state", state);
             }

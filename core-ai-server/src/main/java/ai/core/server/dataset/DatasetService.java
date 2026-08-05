@@ -20,6 +20,10 @@ import java.util.regex.Pattern;
  * @author stephen
  */
 public class DatasetService {
+    public static DatasetType resolveType(Dataset dataset) {
+        return dataset != null && dataset.type != null ? dataset.type : DatasetType.GENERAL;
+    }
+
     @Inject
     MongoCollection<Dataset> datasetCollection;
 
@@ -72,10 +76,6 @@ public class DatasetService {
         entity.updatedAt = ZonedDateTime.now();
         datasetCollection.replace(entity);
         return entity;
-    }
-
-    public static DatasetType resolveType(Dataset dataset) {
-        return dataset != null && dataset.type != null ? dataset.type : DatasetType.GENERAL;
     }
 
     public void delete(String id) {

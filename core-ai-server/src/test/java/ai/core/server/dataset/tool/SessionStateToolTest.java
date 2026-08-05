@@ -170,9 +170,9 @@ class SessionStateToolTest {
         when(datasetService.get("ds1")).thenReturn(sessionDataset("ds1"));
         var tool = SetSessionStateTool.create("agent1", datasetService, recordService, registry(DatasetPermission.WRITE));
         var big = new StringBuilder();
-        big.append("{\"blob\":\"");
-        big.append("x".repeat(DatasetRecordService.MAX_STATE_BYTES));
-        big.append("\"}");
+        big.append("{\"blob\":\"")
+            .append("x".repeat(DatasetRecordService.MAX_STATE_BYTES))
+            .append("\"}");
 
         var result = tool.execute("{\"dataset_id\":\"ds1\",\"data\":" + big + "}", context("s1"));
 

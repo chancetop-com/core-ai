@@ -29,6 +29,24 @@ public class DatasetRecordService {
 
     public static final int MAX_STATE_BYTES = 256 * 1024;
 
+    static Map<String, Object> merge(Map<String, Object> current, Map<String, Object> patch) {
+        var result = new LinkedHashMap<>(current);
+        for (var entry : patch.entrySet()) {
+            var key = entry.getKey();
+            var value = entry.getValue();
+            if (value == null) {
+                result.remove(key);
+            } else if (value instanceof Map<?, ?> patchMap && result.get(key) instanceof Map<?, ?> currentMap) {
+                @SuppressWarnings("unchecked")
+                var merged = merge(new LinkedHashMap<>((Map<String, Object>) currentMap), (Map<String, Object>) patchMap);
+                result.put(key, merged);
+            } else {
+                result.put(key, value);
+            }
+        }
+        return result;
+    }
+
     @Inject
     MongoCollection<DatasetRecord> datasetRecordCollection;
 
@@ -118,24 +136,6 @@ public class DatasetRecordService {
             merged = new LinkedHashMap<>(patch);
         }
         upsertBySession(datasetId, sessionId, JsonUtil.toJson(merged), agentId, userId);
-    }
-
-    static Map<String, Object> merge(Map<String, Object> current, Map<String, Object> patch) {
-        var result = new LinkedHashMap<>(current);
-        for (var entry : patch.entrySet()) {
-            var key = entry.getKey();
-            var value = entry.getValue();
-            if (value == null) {
-                result.remove(key);
-            } else if (value instanceof Map<?, ?> patchMap && result.get(key) instanceof Map<?, ?> currentMap) {
-                @SuppressWarnings("unchecked")
-                var merged = merge(new LinkedHashMap<>((Map<String, Object>) currentMap), (Map<String, Object>) patchMap);
-                result.put(key, merged);
-            } else {
-                result.put(key, value);
-            }
-        }
-        return result;
     }
 
     public void upsertBySession(String datasetId, String sessionId, String dataJson, String agentId, String userId) {
