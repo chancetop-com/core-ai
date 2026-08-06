@@ -26,4 +26,7 @@ public class ListAgentsRequest {
 
     @QueryParam(name = "type")
     public String type;
+
+    @QueryParam(name = "ids")
+    public String ids;
 }

@@ -4,6 +4,7 @@ import ai.core.api.server.agent.ListAgentsRequest;
 import com.mongodb.client.model.Filters;
 import org.bson.conversions.Bson;
 
+import java.util.ArrayList;
 import java.util.regex.Pattern;
 
 /**
@@ -60,6 +61,17 @@ final class AgentQueryHelper {
     static Bson buildTypeFilter(String type) {
         if (type == null || type.isBlank()) return Filters.empty();
         return Filters.eq("type", type);
+    }
+
+    static Bson buildIdsFilter(String ids) {
+        if (ids == null || ids.isBlank()) return Filters.empty();
+        var idList = new ArrayList<String>();
+        for (var id : ids.split(",")) {
+            var cleanId = id.trim();
+            if (!cleanId.isEmpty()) idList.add(cleanId);
+        }
+        if (idList.isEmpty()) return Filters.empty();
+        return Filters.in("_id", idList);
     }
 
     static Bson combineFilters(Bson first, Bson second) {

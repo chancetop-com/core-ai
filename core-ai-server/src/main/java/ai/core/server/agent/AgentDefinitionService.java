@@ -119,6 +119,7 @@ public class AgentDefinitionService {
         var typeFilter = AgentQueryHelper.buildTypeFilter(effectiveRequest.type);
         var combinedFilter = AgentQueryHelper.combineFilters(accessFilter, searchFilter);
         combinedFilter = AgentQueryHelper.combineFilters(combinedFilter, typeFilter);
+        combinedFilter = AgentQueryHelper.combineFilters(combinedFilter, AgentQueryHelper.buildIdsFilter(effectiveRequest.ids));
 
         boolean paginated = effectiveRequest.page != null || effectiveRequest.limit != null;
         int pageNum = effectiveRequest.page != null && effectiveRequest.page > 0 ? effectiveRequest.page : 1;
