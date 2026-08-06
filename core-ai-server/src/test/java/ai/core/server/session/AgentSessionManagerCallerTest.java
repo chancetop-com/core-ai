@@ -175,11 +175,11 @@ class AgentSessionManagerCallerTest {
     }
 
     @Test
-    void ownerDraftSessionRejectsForeignDefinitionSkillBeforeRegistration() {
+    void ownerDraftSessionRejectsMissingDefinitionSkillBeforeRegistration() {
         var harness = harness();
         var definition = definition(AgentStatus.DRAFT);
-        definition.skillIds = List.of("foreign-skill");
-        when(harness.manager.skillService.resolveAccessibleSkills(List.of("foreign-skill"), "owner-user"))
+        definition.skillIds = List.of("missing-skill");
+        when(harness.manager.skillService.resolveAccessibleSkills(List.of("missing-skill"), "owner-user"))
                 .thenThrow(new ForbiddenException("skill is unavailable"));
 
         var error = assertThrows(ForbiddenException.class,

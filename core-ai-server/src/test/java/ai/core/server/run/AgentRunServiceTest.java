@@ -83,12 +83,12 @@ class AgentRunServiceTest {
     }
 
     @Test
-    void triggerRejectsForeignSkillInOwnersEditableDraft() {
+    void triggerRejectsMissingSkillInOwnersEditableDraft() {
         var definition = definition();
-        definition.skillIds = List.of("foreign-skill");
+        definition.skillIds = List.of("missing-skill");
         var runner = mock(AgentRunner.class);
         var service = service(definition, runner, null);
-        when(service.skillService.resolveAccessibleSkills(List.of("foreign-skill"), "agent-owner"))
+        when(service.skillService.resolveAccessibleSkills(List.of("missing-skill"), "agent-owner"))
                 .thenThrow(new ForbiddenException("skill is unavailable"));
 
         var error = assertThrows(ForbiddenException.class,

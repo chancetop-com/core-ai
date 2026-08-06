@@ -360,14 +360,14 @@ class SessionRebuildManagerTest {
     }
 
     @Test
-    void legacyOwnerDraftRebuildRejectsForeignDefinitionSkill() {
+    void legacyOwnerDraftRebuildRejectsMissingDefinitionSkill() {
         var chatMessageService = mock(ChatMessageService.class);
         when(chatMessageService.getSessionMeta("session-1")).thenReturn(sessionMeta("owner"));
         when(chatMessageService.history("session-1")).thenReturn(java.util.List.of());
         @SuppressWarnings("unchecked")
         var agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         var definition = definition("owner", AgentStatus.DRAFT);
-        definition.skillIds = java.util.List.of("foreign-skill");
+        definition.skillIds = java.util.List.of("missing-skill");
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var skillManager = mock(SessionSkillManager.class);
         when(skillManager.resolveAccessibleDefinitionSkills(any(), eq("owner")))
@@ -396,14 +396,14 @@ class SessionRebuildManagerTest {
     }
 
     @Test
-    void versionOneOwnerDraftSnapshotIsRederivedAndRejectsForeignDefinitionSkill() {
+    void versionOneOwnerDraftSnapshotIsRederivedAndRejectsMissingDefinitionSkill() {
         var chatMessageService = mock(ChatMessageService.class);
         when(chatMessageService.getSessionMeta("session-1")).thenReturn(sessionMeta("owner"));
         when(chatMessageService.history("session-1")).thenReturn(java.util.List.of());
         @SuppressWarnings("unchecked")
         var agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         var definition = definition("owner", AgentStatus.DRAFT);
-        definition.skillIds = java.util.List.of("foreign-skill");
+        definition.skillIds = java.util.List.of("missing-skill");
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var skillManager = mock(SessionSkillManager.class);
         when(skillManager.resolveAccessibleDefinitionSkills(any(), eq("owner")))
@@ -421,7 +421,7 @@ class SessionRebuildManagerTest {
         var state = legacyUnsafeState(ToolRef.of("private", ToolSourceType.BUILTIN));
         state.agentSnapshotSecurityVersion = 1;
         state.userId = "owner";
-        state.agentConfig.skillIds = java.util.List.of("foreign-skill");
+        state.agentConfig.skillIds = java.util.List.of("missing-skill");
 
         var rebuilt = manager.rebuildSession("session-1", state, "owner");
         try {
@@ -436,13 +436,13 @@ class SessionRebuildManagerTest {
     }
 
     @Test
-    void databaseRebuildRejectsForeignSkillInOwnersEditableDefinition() {
+    void databaseRebuildRejectsMissingSkillInOwnersEditableDefinition() {
         var chatMessageService = mock(ChatMessageService.class);
         when(chatMessageService.getSessionMeta("session-1")).thenReturn(sessionMeta("owner"));
         @SuppressWarnings("unchecked")
         var agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         var definition = definition("owner", AgentStatus.DRAFT);
-        definition.skillIds = java.util.List.of("foreign-skill");
+        definition.skillIds = java.util.List.of("missing-skill");
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var skillManager = mock(SessionSkillManager.class);
         when(skillManager.resolveAccessibleDefinitionSkills(any(), eq("owner")))

@@ -39,28 +39,13 @@ import static org.mockito.Mockito.when;
 
 class AgentDefinitionServiceTest {
     @Test
-    void createRejectsForeignSkillBeforeInsert() {
-        assertCreateSkillUnavailable("foreign-skill");
-    }
-
-    @Test
     void createRejectsUnknownSkillBeforeInsert() {
         assertCreateSkillUnavailable("unknown-skill");
     }
 
     @Test
-    void updateRejectsForeignSkillBeforeChangingDefinition() {
-        assertUpdateSkillUnavailable("foreign-skill");
-    }
-
-    @Test
     void updateRejectsUnknownSkillBeforeChangingDefinition() {
         assertUpdateSkillUnavailable("unknown-skill");
-    }
-
-    @Test
-    void publishRejectsForeignSkillBeforeFreezingDefinition() {
-        assertPublishSkillUnavailable("foreign-skill");
     }
 
     @Test

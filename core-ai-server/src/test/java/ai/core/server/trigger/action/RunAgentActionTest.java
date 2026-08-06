@@ -28,11 +28,11 @@ import static org.mockito.Mockito.when;
 
 class RunAgentActionTest {
     @Test
-    void rejectsForeignSkillInTriggerOwnersEditableDraft() {
+    void rejectsMissingSkillInTriggerOwnersEditableDraft() {
         AgentDefinition definition = definition("owner", AgentStatus.DRAFT);
-        definition.skillIds = List.of("foreign-skill");
+        definition.skillIds = List.of("missing-skill");
         var harness = harness(definition);
-        when(harness.skillService.resolveAccessibleSkills(List.of("foreign-skill"), "owner"))
+        when(harness.skillService.resolveAccessibleSkills(List.of("missing-skill"), "owner"))
             .thenThrow(new ForbiddenException("skill is unavailable"));
 
         var error = assertThrows(ForbiddenException.class,

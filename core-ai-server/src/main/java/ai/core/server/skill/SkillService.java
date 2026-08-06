@@ -401,14 +401,14 @@ public class SkillService {
         return result;
     }
 
+    // Skills are shared catalog entries. Keep callerUserId in the API because callers still use it for Agent/session
+    // authorization, but Skill resolution itself only requires that every referenced Skill exists.
     public List<SkillMetadata> resolveAccessibleSkills(List<String> skillIds, String callerUserId) {
         var cleanSkillIds = IdLists.clean(skillIds);
         if (cleanSkillIds.isEmpty()) return List.of();
-        if (callerUserId == null || callerUserId.isBlank()) throw unavailableSkill();
         var result = new ArrayList<SkillMetadata>(cleanSkillIds.size());
         for (var id : cleanSkillIds) {
             var definition = skillCollection.get(id).orElseThrow(SkillService::unavailableSkill);
-            if (!callerUserId.equals(definition.userId)) throw unavailableSkill();
             result.add(toMetadata(definition));
         }
         return result;

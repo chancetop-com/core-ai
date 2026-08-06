@@ -126,11 +126,6 @@ class AgentRunnerTest {
     }
 
     @Test
-    void scheduledRawDraftRejectsForeignSkillBeforeRunSideEffects() {
-        assertScheduledRawSkillUnavailable("foreign-skill");
-    }
-
-    @Test
     void scheduledRawDraftRejectsUnknownSkillBeforeRunSideEffects() {
         assertScheduledRawSkillUnavailable("unknown-skill");
     }

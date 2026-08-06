@@ -66,11 +66,6 @@ class WorkflowAgentSnapshotServiceTest {
     }
 
     @Test
-    void previewCaptureRejectsForeignSkillInOwnedEditableAgent() {
-        assertUnavailableOwnedEditableSkill("foreign-skill");
-    }
-
-    @Test
     void previewCaptureRejectsUnknownSkillInOwnedEditableAgent() {
         assertUnavailableOwnedEditableSkill("unknown-skill");
     }
