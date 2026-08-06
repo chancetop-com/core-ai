@@ -193,6 +193,8 @@ class AgentRunServiceTest {
         service.agentDefinitionCollection = definitionCollection;
         service.agentRunCollection = runCollection;
         service.skillService = mock(SkillService.class);
+        service.permissionService = mock(ai.core.server.apiuser.PermissionService.class);
+        service.apiUserQuotaService = mock(ai.core.server.apiuser.ApiUserQuotaService.class);
         return service;
     }
 

@@ -6,6 +6,7 @@ import core.framework.mongo.Field;
 import core.framework.mongo.Id;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 /**
  * @author stephen
@@ -38,6 +39,28 @@ public class User {
     @NotNull
     @Field(name = "status")
     public String status = "pending";
+
+    @NotNull
+    @Field(name = "user_type")
+    public String userType = "internal";
+
+    @Field(name = "owner_id")
+    public String ownerId;
+
+    @Field(name = "external_id")
+    public String externalId;
+
+    @Field(name = "permissions")
+    public List<ResourcePermission> permissions;
+
+    @Field(name = "quota_tokens")
+    public Long quotaTokens;
+
+    @Field(name = "quota_window_start")
+    public ZonedDateTime quotaWindowStart;
+
+    @Field(name = "quota_consumed_tokens")
+    public Long quotaConsumedTokens;
 
     @NotNull
     @Field(name = "created_at")

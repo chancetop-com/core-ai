@@ -428,5 +428,9 @@ public class ChatMessageService {
         public static SessionMeta of(String userId, String agentId, String source) {
             return new SessionMeta(userId, agentId, source, null, null);
         }
+
+        public static SessionMeta of(String userId, String agentId, String source, String apiKeyId) {
+            return new SessionMeta(userId, agentId, source, null, apiKeyId);
+        }
     }
 }

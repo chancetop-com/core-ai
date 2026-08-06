@@ -7,9 +7,14 @@ import core.framework.web.WebContext;
  */
 public final class AuthContext {
     public static final String USER_ID_KEY = "auth.userId";
+    public static final String KEY_ID_KEY = "auth.keyId";
 
     public static String userId(WebContext context) {
         return (String) context.get(USER_ID_KEY);
+    }
+
+    public static String keyId(WebContext context) {
+        return (String) context.get(KEY_ID_KEY);
     }
 
     private AuthContext() {

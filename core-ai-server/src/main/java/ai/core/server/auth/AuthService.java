@@ -98,6 +98,10 @@ public class AuthService {
         var user = userCollection.get(normalizedEmail)
             .orElseThrow(() -> new UnauthorizedException("invalid email or password"));
 
+        if ("api".equals(user.userType)) {
+            throw new UnauthorizedException("api user cannot login");
+        }
+
         if (user.passwordHash == null || !verifyPassword(password, user.passwordHash)) {
             throw new UnauthorizedException("invalid email or password");
         }

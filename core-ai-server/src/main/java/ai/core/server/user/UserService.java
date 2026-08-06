@@ -7,6 +7,7 @@ import ai.core.server.domain.User;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
+import core.framework.web.exception.ForbiddenException;
 import org.bouncycastle.crypto.generators.OpenBSDBCrypt;
 
 import java.security.SecureRandom;
@@ -33,6 +34,9 @@ public class UserService {
     public ApiKeyView getApiKey(String userId) {
         var user = userCollection.get(userId)
             .orElseThrow(() -> new RuntimeException("user not found, id=" + userId));
+        if ("api".equals(user.userType)) {
+            throw new ForbiddenException("api user cannot manage api key");
+        }
         if (user.apiKey == null) return null;
         var view = new ApiKeyView();
         view.apiKey = user.apiKey;
@@ -43,6 +47,9 @@ public class UserService {
     public GenerateApiKeyResponse generateApiKey(String userId) {
         var user = userCollection.get(userId)
             .orElseThrow(() -> new RuntimeException("user not found, id=" + userId));
+        if ("api".equals(user.userType)) {
+            throw new ForbiddenException("api user cannot manage api key");
+        }
 
         var bytes = new byte[API_KEY_BYTES];
         RANDOM.nextBytes(bytes);

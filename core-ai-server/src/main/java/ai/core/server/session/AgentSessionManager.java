@@ -1,18 +1,12 @@
 package ai.core.server.session;
 
 import ai.core.agent.Agent;
-import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
-import ai.core.media.MediaProvider;
-import ai.core.server.gateway.ContextualMediaProvider;
-import ai.core.server.gateway.GatewayMediaProvider;
-import ai.core.server.gateway.MediaJobOwner;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.file.FileService;
-import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.domain.AgentDatasetConfig;
@@ -104,9 +98,9 @@ public class AgentSessionManager {
     @Inject
     AgentMemoryExperimentService memoryExperimentService;
     @Inject
-    MediaProvider mediaProvider;
-    @Inject
     SystemSettingsService systemSettingsService;
+    @Inject
+    SessionAgentHelper sessionAgentHelper;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -148,14 +142,14 @@ public class AgentSessionManager {
         sessionLastActivity.put(sessionId, System.currentTimeMillis());
         sandboxService.renewSandbox(sessionId);
     }
-    public String createSession(SessionConfig config, String userId) {
-        return createSession(config, userId, "chat");
-    }
     public String createSession(SessionConfig config, String userId, String source) {
+        return createSession(config, userId, source, null);
+    }
+    public String createSession(SessionConfig config, String userId, String source, String apiKeyId) {
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
         var context = SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService);
-        setMediaProvider(context, userId, sessionId);
+        sessionAgentHelper.setMediaProvider(context, userId, sessionId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
         var extraVars = buildExtraVars(effectiveConfig, sessionDatasetConfig(effectiveConfig));
@@ -166,7 +160,7 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
-        chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, null, source));
+        chatMessageService.registerSession(sessionId, new ChatMessageService.SessionMeta(userId, null, source, null, apiKeyId));
         var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent);
         if (sandbox != null) context.sandbox(sandbox);
         sessions.put(sessionId, session);
@@ -197,9 +191,12 @@ public class AgentSessionManager {
     }
 
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
-        return createSessionFromAgent(definition, overrides, userId, "chat");
+        return createSessionFromAgent(definition, overrides, userId, "chat", null);
     }
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId, String source) {
+        return createSessionFromAgent(definition, overrides, userId, source, null);
+    }
+    public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId, String source, String apiKeyId) {
         var ownedEditable = AgentDependencyAccessPolicy.isOwnedEditable(definition, userId);
         var executableDefinition = AgentDependencyAccessPolicy.executableSessionAgent(definition, userId);
         var resolvedDefinitionSkills = skillManager().resolveDefinitionSkills(executableDefinition, userId, ownedEditable);
@@ -214,7 +211,7 @@ public class AgentSessionManager {
             if (overrides.channelType != null) config.channelType = overrides.channelType;
         }
         var sessionId = UUID.randomUUID().toString();
-        var datasetConfig = resolveDatasetConfig(executableDefinition, config, overrides);
+        var datasetConfig = sessionAgentHelper.resolveDatasetConfig(executableDefinition, config, overrides);
         var buildResult = buildAgentForDefinition(executableDefinition, sessionId, userId, config, datasetConfig);
         var agent = buildResult.agent;
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
@@ -222,7 +219,7 @@ public class AgentSessionManager {
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId,
-            ChatMessageService.SessionMeta.of(userId, executableDefinition.id, source));
+            new ChatMessageService.SessionMeta(userId, executableDefinition.id, source, null, apiKeyId));
         sessions.put(sessionId, session);
         touchActivity(sessionId);
         claimOwnership(sessionId);
@@ -235,27 +232,6 @@ public class AgentSessionManager {
                 IdLists.clean(loadedSubAgentIds),
                 IdLists.clean(loadedSkillIds),
                 executableDefinition);
-    }
-
-    private List<AgentDatasetConfig> resolveDatasetConfig(AgentDefinition definition, SessionConfig config, SessionConfig overrides) {
-        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
-        if (overrides != null && overrides.datasetConfigs != null && !overrides.datasetConfigs.isEmpty()) {
-            datasetConfig = overrides.datasetConfigs.stream().map(entry -> {
-                var perm = new AgentDatasetConfig();
-                perm.datasetId = entry.datasetId;
-                perm.permission = DatasetPermission.valueOf(entry.permission);
-                perm.isOutput = entry.isOutput;
-                return perm;
-            }).toList();
-            config.datasetConfigs = overrides.datasetConfigs;
-        } else if (overrides != null && overrides.datasetId != null && !overrides.datasetId.isBlank()) {
-            var overridePerm = new AgentDatasetConfig();
-            overridePerm.datasetId = overrides.datasetId;
-            overridePerm.permission = DatasetPermission.READ;
-            datasetConfig = List.of(overridePerm);
-            config.datasetId = overrides.datasetId;
-        }
-        return datasetConfig;
     }
 
     private AgentBuildResult buildAgentForDefinition(AgentDefinition definition, String sessionId, String userId,
@@ -271,7 +247,7 @@ public class AgentSessionManager {
         var extraVars = buildExtraVars(config, datasetConfig);
         var context = SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService);
         if (sandbox2 != null) context.sandbox(sandbox2);
-        setMediaProvider(context, userId, sessionId);
+        sessionAgentHelper.setMediaProvider(context, userId, sessionId);
 
         var injectionResult = memoryExperimentService.prepareInjection(definition.id);
         var memoryInject = injectionResult.injected ? injectionResult.promptInject : null;
@@ -286,22 +262,11 @@ public class AgentSessionManager {
         return new AgentBuildResult(agent, sessionRef);
     }
 
-    private void setMediaProvider(ExecutionContext context, String userId, String sessionId) {
-        if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
-            var contextualProvider = new ContextualMediaProvider(gatewayMediaProvider, new MediaJobOwner(userId, sessionId, null));
-            context.setImageMediaProvider(contextualProvider);
-            context.setVideoMediaProvider(contextualProvider);
-        } else {
-            context.setImageMediaProvider(mediaProvider);
-            context.setVideoMediaProvider(mediaProvider);
-        }
-    }
-
     private void claimOwnership(String sessionId) {
-        if (ownershipRegistry != null) ownershipRegistry.claim(sessionId);
+        sessionAgentHelper.claimOwnership(sessionId);
     }
     private void renewSessionOwnership(String sessionId) {
-        if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
+        sessionAgentHelper.renewSessionOwnership(sessionId);
     }
     public InProcessAgentSession getSession(String sessionId) {
         return getSession(sessionId, null);
@@ -444,7 +409,6 @@ public class AgentSessionManager {
             throw new ForbiddenException("session is unavailable");
         }
     }
-    public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds,
-                                        List<String> loadedSkillIds, AgentDefinition executableDefinition) { }
+    public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds, AgentDefinition executableDefinition) { }
     private record AgentBuildResult(Agent agent, InProcessAgentSession[] sessionRef) { }
 }

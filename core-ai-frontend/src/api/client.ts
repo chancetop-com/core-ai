@@ -155,6 +155,39 @@ export const adminApi = {
       { method: 'POST', body: JSON.stringify({ type, date }) }),
 };
 
+export interface AdminApiUser {
+  user_id: string;
+  name: string;
+  status: string;
+  key_prefix?: string;
+  created_at?: string;
+  last_used_at?: string;
+}
+
+export interface ListApiUsersResponse {
+  users: AdminApiUser[];
+}
+
+export interface CreateApiUserResponse {
+  user_id: string;
+  api_key?: string;
+  status: string;
+}
+
+export const apiUsersAdminApi = {
+  create: (name: string) =>
+    requestWithAuth<CreateApiUserResponse>('/api/admin/api-users',
+      { method: 'POST', body: JSON.stringify({ name }) }),
+  list: () =>
+    requestWithAuth<ListApiUsersResponse>('/api/admin/api-users'),
+  rotateKey: (id: string) =>
+    requestWithAuth<CreateApiUserResponse>(`/api/admin/api-users/${encodeURIComponent(id)}/rotate-key`,
+      { method: 'POST' }),
+  updateStatus: (id: string, status: string) =>
+    requestWithAuth<void>(`/api/admin/api-users/${encodeURIComponent(id)}/update-status`,
+      { method: 'POST', body: JSON.stringify({ status }) }),
+};
+
 export interface Trace {
   id: string;
   traceId: string;

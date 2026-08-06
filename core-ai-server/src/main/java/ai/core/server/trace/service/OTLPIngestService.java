@@ -55,6 +55,8 @@ public class OTLPIngestService {
     MongoCollection<Span> spanCollection;
     @Inject
     ModelPricingService modelPricingService;
+    @Inject
+    ai.core.server.apiuser.ApiUserQuotaService apiUserQuotaService;
 
     public void ingest(ExportTraceServiceRequest request) {
         int spanCount = 0;
@@ -177,6 +179,17 @@ public class OTLPIngestService {
 
         // Increment trace token/cost totals atomically instead of reloading all spans
         incrementTraceTokens(traceId, span);
+        // API user quota accounting: idempotent per span (span_id unique index guards double counting);
+        // conditional update keeps internal users untouched.
+        apiUserQuotaService.recordUsage(span.userId, inputTokens(span) + outputTokens(span));
+    }
+
+    private long inputTokens(Span span) {
+        return span.inputTokens != null ? span.inputTokens : 0;
+    }
+
+    private long outputTokens(Span span) {
+        return span.outputTokens != null ? span.outputTokens : 0;
     }
 
     private void upsertTrace(io.opentelemetry.proto.trace.v1.Span protoSpan,

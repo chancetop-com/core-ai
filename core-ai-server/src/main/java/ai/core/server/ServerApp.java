@@ -10,6 +10,7 @@ import ai.core.server.channel.openclaw.OcgConfigView;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
+import ai.core.server.domain.ApiKey;
 import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.BackgroundTask;
 import ai.core.server.memory.AgentMemory;
@@ -84,6 +85,8 @@ public class ServerApp extends App {
         load(new AnalyticsModule());
         load(new SandboxSnapshotModule());
         load(new TaskModule());
+        // must load before TraceModule: trace ingest services depend on ApiUserQuotaService for quota accounting
+        load(new ApiUserModule());
         load(new TraceModule());
         load(new MemoryModule());
         load(new MessagingInfrastructureModule());
@@ -136,6 +139,7 @@ public class ServerApp extends App {
         mongo.collection(Trace.class);
         mongo.collection(Span.class);
         mongo.view(TraceFacetRow.class);
+        mongo.view(ai.core.server.apiuser.ApiUserDailyUsageRow.class);
         mongo.collection(PromptTemplate.class);
 
         mongo.collection(ServiceApi.class);
@@ -167,6 +171,7 @@ public class ServerApp extends App {
 
     private void registerCoreCollections(MongoConfig mongo) {
         mongo.collection(User.class);
+        mongo.collection(ApiKey.class);
         mongo.collection(ToolRegistryEntry.class);
         mongo.collection(AgentDefinition.class);
         mongo.collection(ChannelConfigView.class);

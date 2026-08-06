@@ -23,7 +23,13 @@ public class SseAuthInterceptor implements SseChannelInterceptor {
 
     @Override
     public void onConnect(Request request, WebContext webContext) {
-        var userId = requestAuthenticator.authenticate(request);
-        webContext.put(AuthContext.USER_ID_KEY, userId);
+        var apiKeyResult = requestAuthenticator.authenticateFromApiKeyRecord(request);
+        if (apiKeyResult != null) {
+            webContext.put(AuthContext.USER_ID_KEY, apiKeyResult.userId());
+            webContext.put(AuthContext.KEY_ID_KEY, apiKeyResult.keyId());
+        } else {
+            var userId = requestAuthenticator.authenticate(request);
+            webContext.put(AuthContext.USER_ID_KEY, userId);
+        }
     }
 }

@@ -29,6 +29,7 @@ const Authorize = lazy(() => import('./pages/login/Authorize'));
 const UserManagement = lazy(() => import('./pages/users/UserManagement'));
 const SettingsPage = lazy(() => import('./pages/settings/Settings'));
 const ApiKeysPage = lazy(() => import('./pages/settings/ApiKeys'));
+const ApiUsersPage = lazy(() => import('./pages/settings/ApiUsers'));
 const GatewayProvidersPage = lazy(() => import('./pages/settings/GatewayProviders'));
 const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettings'));
 const Scheduler = lazy(() => import('./pages/scheduler/Scheduler'));
@@ -173,6 +174,7 @@ export default function App() {
                       <Route path="api-keys" element={<ApiKeysPage />} />
                       {user?.role === 'admin' && <Route path="gateway" element={<GatewayProvidersPage />} />}
                       {user?.role === 'admin' && <Route path="system" element={<SystemSettingsPage />} />}
+                      {user?.role === 'admin' && <Route path="api-users" element={<ApiUsersPage />} />}
                       {user?.role === 'admin' && <Route index element={<Dashboard />} />}
                       {user?.role === 'admin' && <Route path="users" element={<UserManagement />} />}
                       {user?.role === 'admin' && <Route path="tasks" element={<Tasks />} />}

@@ -12,6 +12,8 @@ import ai.core.api.server.run.TriggerRunRequest;
 import ai.core.api.server.run.TriggerRunResponse;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
+import ai.core.server.apiuser.ApiUserQuotaService;
+import ai.core.server.apiuser.PermissionService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
@@ -46,8 +48,14 @@ public class AgentRunService {
     PublicUrlConfiguration publicUrlConfiguration;
     @Inject
     SkillService skillService;
+    @Inject
+    PermissionService permissionService;
+    @Inject
+    ApiUserQuotaService apiUserQuotaService;
 
     public TriggerRunResponse trigger(String agentId, TriggerRunRequest request, String callerUserId) {
+        permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, agentId);
+        apiUserQuotaService.checkQuota(callerUserId);
         var source = agentDefinitionCollection.get(agentId).orElse(null);
         var definition = AgentDependencyAccessPolicy.executableTopLevelAgent(
             source, callerUserId);
@@ -89,6 +97,8 @@ public class AgentRunService {
     }
 
     public LLMCallResponse llmCall(String id, LLMCallRequest request, String callerUserId) {
+        permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, id);
+        apiUserQuotaService.checkQuota(callerUserId);
         var definition = AgentDependencyAccessPolicy.executablePublishedLlmCall(
             agentDefinitionCollection.get(id).orElse(null), callerUserId);
 
@@ -104,6 +114,8 @@ public class AgentRunService {
     }
 
     public AgentCallResponse call(String agentId, AgentCallRequest request, String callerUserId) {
+        permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, agentId);
+        apiUserQuotaService.checkQuota(callerUserId);
         var source = agentDefinitionCollection.get(agentId).orElse(null);
         var definition = AgentDependencyAccessPolicy.executableTopLevelCallable(
             source, callerUserId);

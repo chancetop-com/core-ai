@@ -58,7 +58,8 @@
 | 业务系统主体 | 无「业务系统」概念 | 不新增实体：业务系统 = manager 型 API 用户，管理密钥 = 其名下 `scope=manage` 的 key |
 | 认证 | `RequestAuthenticator` 只认 `coreai_*`/`cai_*` → `users.api_key` | 增加 `ctk_*`（临时调用 key）/ `cmk_*`（管理密钥）→ 统一查 `api_keys` → 解析为 API 用户 userId |
 | 上下文 | `AuthContext` 只有 `auth.userId` | 增加 `auth.keyId`（临时 key id，供会话 `apiKeyId` 使用）；不需要 partnerId |
-| 管理 API | 无 | 新增 API 用户管理 WebService（增查、key 签发/续期/过期、quota 配置、用量查询）与 admin 侧管理 |
+| 管理 API | 无 | 新增 API 用户管理 WebService（增查、权限配置、key 签发/续期/过期、quota 配置、用量查询）与 admin 侧管理 |
+| 资源权限 | 无（任何已认证用户可调任意 Agent） | 新增 API 用户级资源权限（resourceType/resourceId 白名单），Agent Run 入口检查 |
 | 配额 | 无 | API 用户 quota 配置 + 窗口内消耗计数 + Agent Run 入口检查 |
 
 ## 3. 总体架构
@@ -72,8 +73,8 @@
 +-------------------+    2. 提供 cmk_ 管理密钥    +-------------------------------+
 | 业务系统后端        | <------------------------> |  core-ai-server               |
 | (Partner Backend) |   3. POST /api/api-users                  创建终端用户对应的 API 用户 |
-|                   |   4. POST /api/api-users/:userId/keys     签发临时 key  |
-|                   |   5. PUT /api/api-users/:userId/quota     配置额度      |
+|                   |   4. PUT /api/api-users/:userId/config    配置权限与额度      |
+|                   |   5. POST /api/api-users/:userId/keys     签发临时 key  |
 |                   |   6. GET /api/api-users/:userId/usage     查消耗        |
 |                   |   7. POST /api/api-users/keys/:keyId/renew|expire 续期/过期 |
 +-------------------+                              +-------------------------------+
@@ -106,7 +107,7 @@
 流程说明：
 
 1. core-ai admin 创建 manager 型 API 用户（代表业务系统主体），拿到一次性 `cmk_` 管理密钥，交给业务系统后端。
-2. 终端用户在业务系统触发需 Agent 的功能 → 业务系统后端用 `cmk_` 调管理接口：先 `POST /api/api-users`（幂等，按业务侧 externalId）创建/复用 API 用户。
+2. 终端用户在业务系统触发需 Agent 的功能 → 业务系统后端用 `cmk_` 调管理接口：先 `POST /api/api-users`（幂等，按业务侧 externalId）创建/复用 API 用户，再 `PUT /api/api-users/:userId/config` 配置权限（可调用哪些 Agent）与 token 额度。
 3. 业务系统后端 `POST /api/api-users/:userId/keys` 申请临时 key（指定 TTL），拿到 `ctk_xxx`。
 4. 业务系统把临时 key 下发给终端用户客户端（或后端代持），客户端带 `Authorization: Bearer ctk_xxx` 调用 Agent Run API。
 5. core-ai 认证链把 `ctk_` 解析为 API 用户 userId；配额检查在 Agent Run 入口执行；trace 按该 userId 记账，复用全部 Analytics 管道。
@@ -122,11 +123,11 @@
 | `userType` | String (新) | `internal`（默认，既有用户）\| `api`（API 用户，含 manager 型业务系统主体） |
 | `ownerId` | String (新) | API 用户归属的 manager 用户 id；internal 用户与 manager 型 API 用户为 null |
 | `externalId` | String (新) | 业务系统侧的终端用户标识（业务侧幂等键，如商户号） |
+| `permissions` | List\<ResourcePermission\> (新) | 可用 Agent 列表（P1 仅支持 `resource_type=agent` 的具体 id，不支持通配），见 4.2 |
 | `passwordHash` | String | API 用户恒为 null → 无法通过密码登录 |
-| `quotaTokens` | Long (新) | 配额窗口 token 上限；null/0 = 不限 |
-| `quotaWindow` | String (新) | `TOTAL` \| `DAY` \| `MONTH`，默认 `DAY` |
-| `quotaWindowStart` | ZonedDateTime (新) | 当前窗口起点（懒重置；PUT quota 时同步重置） |
-| `quotaConsumedTokens` | Long (新) | 窗口内已消耗计数（$inc） |
+| `quotaTokens` | Long (新) | **每日** token 上限；null/0 = 不限 |
+| `quotaWindowStart` | ZonedDateTime (新) | 当前日窗口起点（UTC 0 点，懒重置） |
+| `quotaConsumedTokens` | Long (新) | 当日已消耗计数（$inc） |
 | `status` | String | API 用户创建即 `active`，否则临时 key 校验不通过 |
 
 登录限制（三重保证）：
@@ -137,7 +138,24 @@
 
 实现注意（core-ng 约束）：`userType` 带默认值 `"internal"`，实体字段必须加 `@NotNull` 注解；quota 相关字段为可空 Long（`Long` 而非 `long`），无需默认值。**core-ng 的 `EntityEncoder` 会把 null 字段显式写入文档**（`writer.writeNull()`），因此存量 internal 用户的 `ownerId`/`externalId` 会以 null 值存在——幂等唯一索引**不能使用 sparse**（sparse 只跳过缺失字段、不跳过 null 值），必须用 partial index（见第 9 章）。
 
-### 4.2 `ApiKey`（新实体，`api_keys` collection）
+### 4.2 `ResourcePermission`（内嵌对象，非独立 collection）
+
+权限模型面向未来 core-ai-server 权限管理体系统一抽象：**资源类型 + 资源 id** 的二元组。**P1 范围：仅支持 `agent` 资源类型、具体 id 列表（不含通配）**，未来在此模型上扩展其他资源类型与通配语义。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `resourceType` | String | 资源类型：P1 仅 `agent`；未来扩展 `tool` / `dataset` / `skill` 等 |
+| `resourceId` | String | 资源 id（agentId），P1 为具体 id 列表，不支持 `*` |
+
+语义：
+
+- 白名单：`User.permissions` 为空 = 无任何资源权限（**不是**全部放行）；
+- P1：`permissions = [{resourceType: "agent", resourceId: "<agentId>"}, ...]` = 可调用这些指定 Agent；
+- 未来权限体系（RBAC/角色、internal 用户、通配、工具/数据集授权）在此模型上扩展：新增 resourceType 即可，检查点统一走 `PermissionService.check(userId, resourceType, resourceId)`。
+
+core-ng 约束：`ResourcePermission` 为 `User` 的内嵌对象（类似 `AgentDatasetConfig`），不注册为独立 collection；字段均为 String，无 `Object` 类型问题。
+
+### 4.3 `ApiKey`（新实体，`api_keys` collection）
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -146,7 +164,6 @@
 | `keyPrefix` | String | `ctk_` / `cmk_` + 前 8 位，便于展示 |
 | `userId` | String | 归属 API 用户 userId（manager 或终端 API 用户） |
 | `scope` | String (新) | `call`（临时调用 key）\| `manage`（管理密钥，仅 admin 创建 manager 用户/轮换时签发） |
-| `allowedAgentIds` | List\<String\> | 可选：允许调用的 Agent id 白名单；空 = 全部 |
 | `metadata` | Map\<String, String\> (新) | 业务侧上下文（如商户名、订单号），透传至 `Trace.metadata` |
 | `status` | String | `active` \| `revoked` \| `expired` |
 | `expiresAt` | ZonedDateTime | 到期时间（认证时校验）；`manage` 密钥为 null（长期，靠轮换） |
@@ -161,11 +178,12 @@ key 格式：
 
 状态机：`active` →（到期校验时懒更新 `expired`）或 →（手动 `revoked`）。`expired`/`revoked` 均不可续期；续期仅作用于 `active`、`scope=call` 且 `expiresAt > now` 的 key。
 
-### 4.3 不新增「业务系统」实体（方案 A）
+### 4.4 不新增「业务系统」实体（方案 A）
 
 - 业务系统主体 = **manager 型 API 用户**（`userType=api`、`ownerId=null`），业务系统名称 = `User.name`；
 - 管理密钥 = 该用户名下 `scope=manage` 的 ApiKey（无 TTL，靠 rotate-key 轮换）；
 - 终端用户（原 merchant 概念）= `ownerId` 指向 manager 用户的 API 用户；
+- 权限（可调用哪些 Agent）= `User.permissions`（用户级，**不挂在 key 上**——key 只负责认证与 TTL，权限随用户走，换 key 不丢权限、禁用用户即收回权限）；
 - 禁用业务系统 = manager 用户 `status=disabled`，其名下所有 API 用户的临时 key 认证同步失效（见 6.1 的 owner 状态校验）；
 - 密钥轮换 = 撤销旧 `cmk_` + 签发新 `cmk_`，完全复用 ApiKey 生命周期；
 - 审计：管理动作与调用都落在 userId 维度，trace 全链路可归因到具体业务系统。
@@ -174,25 +192,43 @@ key 格式：
 
 ### 5.1 Admin 侧（core-ai 管理端，需 `admin` 角色）— `AdminApiUserWebService`
 
+管理密钥**只能由 core-ai 管理员创建并线下交付**，业务系统侧无任何自助创建/自助获取管理密钥的接口；轮换同样走 admin 接口（旧密钥立即失效）。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/admin/api-users` | 创建 manager 型 API 用户，返回 `{user_id, api_key}`（明文一次性） |
+| POST | `/api/admin/api-users` | 创建 manager 型 API 用户（业务系统主体），返回 `{user_id, api_key}`（`cmk_` 明文一次性，admin 线下交付给业务系统） |
 | GET | `/api/admin/api-users` | 列表 |
-| POST | `/api/admin/api-users/:id/rotate-key` | 轮换管理密钥，返回新 `api_key`（旧密钥立即失效） |
+| POST | `/api/admin/api-users/:id/rotate-key` | 轮换管理密钥，返回新 `api_key`（旧密钥立即失效，admin 线下交付新密钥） |
 | POST | `/api/admin/api-users/:id/update-status` | 启用 / 禁用 |
 
 ### 5.2 管理侧（业务系统后端调用，`Authorization: Bearer cmk_*`）— `ApiUserWebService`
 
 | 方法 | 路径 | 请求 → 响应 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/api/api-users` | `CreateApiUserRequest{external_id, name}` → `ApiUserView{user_id, external_id, name, status, quota}` | 幂等创建/复用（按 ownerId + externalId） |
-| GET | `/api/api-users/:userId` | → `ApiUserView` | 查详情（含额度、当前窗口消耗） |
-| PUT | `/api/api-users/:userId/quota` | `UpdateQuotaRequest{token_quota, quota_window}` → `ApiUserView` | 配置 token 额度（TOTAL/DAY/MONTH）；**同时重置窗口起点与已消耗计数** |
+| POST | `/api/api-users` | `CreateApiUserRequest{external_id, name}` → `ApiUserView{user_id, external_id, name, status, permissions, quota}` | 幂等创建/复用（按 ownerId + externalId） |
+| GET | `/api/api-users/:userId` | → `ApiUserView` | 查详情（含权限、额度、当前窗口消耗） |
+| PUT | `/api/api-users/:userId/config` | `UpdateApiUserConfigRequest{permissions?, token_quota?}` → `ApiUserView` | **配置权限与每日额度**（合并接口，字段可选，语义见下） |
 | GET | `/api/api-users/:userId/usage` | `UsageQueryRequest{from, to}` → `UsageView{total_tokens, input_tokens, output_tokens, cached_tokens, cost_usd, call_count, by_day[]}` | 按时间范围查 token 消耗（限制 from/to 跨度 ≤ 90 天） |
-| POST | `/api/api-users/:userId/keys` | `CreateKeyRequest{ttl_seconds, allowed_agent_ids?, metadata?}` → `CreateKeyResponse{key_id, key, expires_at, allowed_agent_ids}` | 签发临时 key（明文一次性返回） |
+| POST | `/api/api-users/:userId/keys` | `CreateKeyRequest{ttl_seconds, metadata?}` → `CreateKeyResponse{key_id, key, expires_at}` | 签发临时 key（明文一次性返回） |
 | GET | `/api/api-users/:userId/keys` | → `ListKeysView{keys[]}` | 列出该用户的 key（不含明文） |
 | POST | `/api/api-users/keys/:keyId/renew` | `RenewKeyRequest{ttl_seconds}` → `RenewKeyResponse{key_id, expires_at}` | 续期（仅 active、call scope 且未到期） |
 | POST | `/api/api-users/keys/:keyId/expire` | → void | 立即过期（revoked） |
+
+`PUT /api/api-users/:userId/config` 语义：
+
+- 请求体字段均可选，**传了才更新**，未传字段保持不变（部分更新）；
+- `permissions`：可用 Agent 列表，**全量覆盖**（空数组 = 清空全部权限）；P1 仅支持 `resource_type=agent` 的具体 id；
+- `token_quota`：**每日** token 上限（按 UTC 日窗口），`null`/`0` = 不限；
+- 权限与额度查询统一看 `GET /api/api-users/:userId` 详情，不再提供独立查询接口。
+
+示例：
+
+```json
+{
+  "permissions": [ { "resource_type": "agent", "resource_id": "order-assistant" } ],
+  "token_quota": 1000000
+}
+```
 
 约束：
 
@@ -210,7 +246,7 @@ key 格式：
 
 - 认证：`Authorization: Bearer ctk_xxx` → API 用户 userId，随后链路与普通用户一致。
 - 会话场景：**两条创建路径**（带 agentId 的 `createSessionFromAgent(...)` 与纯 config 的 `createSession(...)`）都在创建时设置 `SessionMeta.apiKeyId = AuthContext.keyId()`、`source = "api"`，接上预留的 `ChatSession.apiKeyId` 字段。`AgentSessionManager` 的两个方法需新增 `apiKeyId` 参数（Web 层从 `AuthContext.keyId()` 传入，非 Web 调用方传 null）。
-- 临时 key 若配置了 `allowedAgentIds`，在 `AgentRunWebServiceImpl.call/trigger`（含 `llmCall`）与 `AgentSessionWebServiceImpl` 创建会话前校验 `agentId ∈ allowedAgentIds`。
+- **权限检查**：Agent Run 入口（`AgentRunWebServiceImpl.call/trigger`、`llmCall`、`AgentSessionWebServiceImpl` 创建会话前）调用 `PermissionService.check(userId, "agent", agentId)`——校验 `User.permissions` 是否含 `(agent, agentId)` 或 `(agent, *)`，无权限抛 403 `FORBIDDEN`。权限随用户走，key 不参与权限判定。
 - 临时 key 若配置了 `metadata`，调用时写入 `Trace.metadata`（与 `keyId` 一并解析自 AuthContext）。
 
 ## 6. 认证与授权改造
@@ -291,23 +327,21 @@ private String authenticateFromApiKeyRecord(String key) {
 
 ## 8. 配额控制
 
-### 8.1 配额模型
+### 8.1 配额模型（P1：每日 token 上限）
 
-- 配额挂在 API 用户上：`quotaTokens`（窗口内 token 上限）、`quotaWindow`（TOTAL / DAY / MONTH，默认 DAY）。
-- 配额窗口起点 `quotaWindowStart`：TOTAL 为创建时间（永不重置）；DAY 为当日 0 点；MONTH 为当月 1 日 0 点。
+- 配额挂在 API 用户上：`quotaTokens`（**每日** token 上限，null/0 = 不限）、`quotaWindowStart`（当前日窗口起点）、`quotaConsumedTokens`（当日已消耗）。
+- 日窗口按 **UTC 0 点** 划分（与 `trace_daily_stats` 口径一致）。
+- 不做 TOTAL / MONTH 窗口——P2 如需按生命周期/月度统计，复用同一字段扩展窗口类型即可（`quotaWindow` 字段暂不引入）。
 
 ### 8.2 入口检查（`ApiUserQuotaService.checkQuota(userId)`）
 
 在 Agent Run 入口（`AgentRunWebServiceImpl.call/trigger`、`llmCall`、`AgentSessionWebServiceImpl` 创建会话前）调用：
 
 1. 读 API 用户；`quotaTokens` 为 null/0 → 放行；
-2. 懒重置：若当前时间已越过窗口边界 → 重置 `quotaConsumedTokens=0` 并更新 `quotaWindowStart`；
+2. 懒重置：当前时间已越过 `quotaWindowStart + 1 天`（或 UTC 日期已变）→ 重置 `quotaConsumedTokens=0` 并更新 `quotaWindowStart`；
 3. `quotaConsumedTokens >= quotaTokens` → 抛 `QuotaExceededException`（HTTP 429，错误码 `QUOTA_EXCEEDED`）。
 
-窗口语义（v2 修正）：
-
-- **`PUT quota` 修改 `quotaWindow` 时同步重置 `quotaWindowStart=now` 并清零 `quotaConsumedTokens`**，避免 DAY→MONTH 切换后懒重置基准错位。
-- 会话场景：HTTP 层只在创建会话时检查一次；**每轮 turn 起点（会话 worker 内、Agent 执行前）复查**，避免长会话创建后持续消耗越过配额。
+会话场景：HTTP 层只在创建会话时检查一次；**每轮 turn 起点（会话 worker 内、Agent 执行前）复查**，避免长会话创建后持续消耗越过配额。
 
 ### 8.3 消耗记账（唯一写点）
 
@@ -355,7 +389,7 @@ ai/core/api/server/apiuser/
   AdminApiUserWebService.java     // admin：创建 manager 用户/列表/轮换密钥/启停
   ApiUserWebService.java          // 管理侧：API 用户增查、quota、usage、key 签发/续期/过期
   request/CreateApiUserRequest.java
-  request/UpdateQuotaRequest.java
+  request/UpdateApiUserConfigRequest.java
   request/UsageQueryRequest.java
   request/CreateKeyRequest.java
   request/RenewKeyRequest.java
@@ -373,16 +407,18 @@ ai/core/api/server/apiuser/
 ### core-ai-server
 
 ```text
-domain/User.java                              // + userType/ownerId/externalId/quota 字段
-domain/ApiKey.java                            // 新实体（含 scope/allowedAgentIds/metadata）
+domain/User.java                              // + userType/ownerId/externalId/permissions/quota 字段
+domain/ResourcePermission.java                // 新内嵌对象（resourceType/resourceId）
+domain/ApiKey.java                            // 新实体（含 scope/metadata）
 domain/migration/SchemaMigrationVApiKeys.java // 新迁移（v20260804001）
 web/auth/AuthContext.java                     // + keyId
 web/auth/RequestAuthenticator.java            // + ctk_/cmk_ 分支、authenticateFromApiKeyRecord()
 web/auth/AuthInterceptor.java                 // /api/api-users/* 与 /api/admin/api-users 分支
-apiuser/ApiUserService.java                   // 创建/查询 API 用户、quota 配置、幂等逻辑
+apiuser/ApiUserService.java                   // 创建/查询 API 用户、权限与 quota 配置、幂等逻辑
 apiuser/ApiUserKeyService.java                // key 签发/续期/过期/列表、sha256
 apiuser/ApiUserQuotaService.java              // checkQuota、recordUsage、窗口懒重置
 apiuser/ApiUserUsageService.java              // traces 聚合用量
+apiuser/PermissionService.java                // check(userId, resourceType, resourceId)；未来权限体系入口
 apiuser/AdminApiUserWebServiceImpl.java
 apiuser/ApiUserWebServiceImpl.java
 ApiUserModule.java                            // bind + api().service(...)，注册进 ServerApp
@@ -402,9 +438,10 @@ session/ChatMessageService.java               // SessionMeta.of 增加 apiKeyId�
 3. **不可登录**：API 用户无密码 + `AuthService.login` 显式拒绝 + 非真实邮箱 id（不触发 Azure AD 自动建号）。
 4. **无管理权限**：API 用户 `role=user`，所有 admin 接口的 `requireAdmin` 检查天然拒绝；`/api/user/api-key` 自助接口对 API 用户返回 403，防其自建永续 key 绕过 TTL。
 5. **临时 key 校验**：认证时校验 `status=active` + `expiresAt` + 归属用户与 owner 用户 `status=active`；过期懒更新为 `expired`；`revoked`/`expired` 不可续期。
-6. **配额保护**：入口检查阻止超额调用；唯一写点 + 每日对账校正计数器。
-7. **审计**：`ApiKey.lastUsedAt`、`revokedAt` 全量记录；run/trace 全链路按 userId 可追溯。
-8. **性能注记**：`updateLastUsed(k)` 采用节流更新（距上次更新 > 5 分钟才写库，或仅 `$set` 单字段），避免每次认证一次 Mongo 写放大；`updateLastLogin` 的整文档 replace 仅存在于既有 Azure AD 路径，不做扩展。
+6. **资源权限**：API 用户默认无任何资源权限（白名单空 = 拒绝），Agent Run 入口统一走 `PermissionService.check`；权限挂在用户上，不随 key 变化，禁用用户即收回全部权限。
+7. **配额保护**：入口检查阻止超额调用；唯一写点 + 每日对账校正计数器。
+8. **审计**：`ApiKey.lastUsedAt`、`revokedAt` 全量记录；run/trace 全链路按 userId 可追溯。
+9. **性能注记**：`updateLastUsed(k)` 采用节流更新（距上次更新 > 5 分钟才写库，或仅 `$set` 单字段），避免每次认证一次 Mongo 写放大；`updateLastLogin` 的整文档 replace 仅存在于既有 Azure AD 路径，不做扩展。
 
 ## 12. 与既有概念的关系
 
@@ -414,6 +451,7 @@ session/ChatMessageService.java               // SessionMeta.of 增加 apiKeyId�
 | 业务系统 | manager 型 API 用户（无独立实体） | `Channel` / `OcgConfig`（渠道） | Channel 面向 IM 平台 webhook 接入，API 用户面向后端 API 接入，二者不混用 |
 | 用户类型 | `userType=internal/api` | `User.role`（user/admin） | role 管权限，userType 管身份形态（可登录 vs 仅 API），正交 |
 | 会话归属 | `source=api` + `apiKeyId` | `ChatSession.source` / `apiKeyId` 预留字段 | 本期接上预留字段，两条创建路径都接入 |
+| 资源权限 | `User.permissions`（ResourcePermission 白名单） | `DatasetPermission`（agent 配置内）、`ToolPermissionStore`（工具级） | 本期新增统一资源权限模型；既有 dataset/tool 权限是 agent 内部机制，暂不打通，P2 统一 |
 | 消耗查询 | 管理侧 `usage` | admin `analytics/by-user` | 同一 traces 数据源，不同授权视角 |
 | 配额 | API 用户级 | 无 | 新增能力 |
 
@@ -425,6 +463,7 @@ session/ChatMessageService.java               // SessionMeta.of 增加 apiKeyId�
 - P2：管理侧 webhook 通知（如额度阈值告警、key 到期告警）。
 - P2：`api_keys` TTL 清理 job 与归档。
 - P2：API 用户会话的 `source=api` 在 analytics 中单独维度统计。
+- P2：**权限管理体系统一化**——`ResourcePermission` 模型扩展到 internal 用户（现有「任何已认证用户可调任意 Agent」行为收敛为显式授权）、工具/数据集/技能资源类型、基于角色的聚合（Role → permissions）与授权审计。
 - 不建议：把管理密钥做成永不过期且不轮换——admin 侧已提供 `rotate-key`。
 
 ## 14. 评审待确认（v2）
@@ -434,11 +473,11 @@ session/ChatMessageService.java               // SessionMeta.of 增加 apiKeyId�
 1. ✅ **概念抽象**：移除 merchant/partner，统一为 `userType=api`（方案 A：业务系统 = manager 型 API 用户，不新增实体）。
 2. ✅ **路径前缀**：管理面 `/api/api-users/*`，admin 面 `/api/admin/api-users/*`。
 3. ✅ **TTL 默认 1h、上限 7d**（`sys.api-user.key.*` 可配）。
-4. ✅ **配额窗口默认 DAY**（与 `trace_daily_stats` 对账口径一致）。
-5. ✅ **allowedAgentIds 白名单提入 P1**（外部系统用户默认可调全部 Agent 风险偏大，白名单成本低）。
+4. ✅ **P1 配额收敛为每日 token 上限**：固定按 UTC 日窗口，不做 TOTAL/MONTH；未来扩展时复用同一字段加窗口类型即可。
+5. ✅ **资源权限提入 P1 并升级为用户级模型**：外部系统用户默认可调全部 Agent 风险偏大；`ResourcePermission`（resourceType/resourceId 白名单）挂在 `User.permissions`，key 不再携带白名单（v2.1 修正：原 `allowedAgentIds` 挂在 key 上，权限应随用户走，换 key 不丢权限、禁用用户即收回权限）。P1 仅支持 `agent` 资源类型的具体 id 列表（不含通配）。
 6. ✅ **key metadata 提入 P1**（`Trace.metadata` 已有，透传成本低、业务检索价值高）。
 7. ✅ **配额唯一写点**（trace 写入点按 traceId 幂等；run 完成路径不记账）。
-8. ✅ **PUT quota 同步重置窗口起点与计数**（修复窗口切换错位）。
+8. ✅ **权限与额度配置合并为 `PUT /api/api-users/:userId/config`**（字段可选部分更新；permissions 全量覆盖、token_quota 为每日上限）。
 9. ✅ **会话两条创建路径均接 `source=api` + `apiKeyId`**。
 10. ✅ **认证级联校验 owner 状态**（manager 禁用后名下临时 key 立即失效）。
 11. ✅ **幂等唯一索引用 partial 而非 sparse**（core-ng 显式写 null 字段）。
@@ -448,3 +487,5 @@ session/ChatMessageService.java               // SessionMeta.of 增加 apiKeyId�
 1. 会话场景「每轮 turn 起点复查配额」落在哪个执行点（建议：`SessionCommand` 处理 / Agent 执行前），需要与会话 worker 现状对齐。
 2. 是否需要在 admin 侧提供「查看某业务系统全部 API 用户用量汇总」的只读接口（P1 可选，P2 兜底）。
 3. 管理密钥是否需要独立的被动过期策略（当前建议无 TTL、靠 admin 轮换）。
+4. **权限检查范围**：`PermissionService.check` 是否只约束 API 用户（internal 用户维持现状），还是 P1 就对 internal 用户也生效（影响既有行为，建议 P1 仅 API 用户，P2 统一）。
+5. **`config` 接口的 permissions 语义**：当前设计为全量覆盖（空数组 = 清空权限）；如需增量（add/remove）接口再行扩展。

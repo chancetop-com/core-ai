@@ -21,8 +21,10 @@ import ai.core.api.server.session.UnloadSkillsRequest;
 import ai.core.api.server.session.UnloadSkillsResponse;
 import ai.core.api.server.tool.ToolRefView;
 import ai.core.server.agent.AgentDraftGenerator;
-import ai.core.server.web.auth.AuthContext;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.apiuser.ApiUserQuotaService;
+import ai.core.server.apiuser.PermissionService;
+import ai.core.server.web.auth.AuthContext;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
@@ -90,16 +92,24 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     RpcClient rpcClient;
     @Inject
     SessionCreateHelper createHelper;
+    @Inject
+    PermissionService permissionService;
+    @Inject
+    ApiUserQuotaService apiUserQuotaService;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
+        var keyId = AuthContext.keyId(webContext);
+
+        if (request.agentId != null && !request.agentId.isBlank()) {
+            permissionService.check(userId, PermissionService.RESOURCE_TYPE_AGENT, request.agentId);
+        }
+        apiUserQuotaService.checkQuota(userId);
 
         String sessionId;
         var state = new SessionState();
-        state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;
-        state.sandboxBindingSecurityVersion = SessionState.CURRENT_SANDBOX_BINDING_SECURITY_VERSION;
         state.userId = userId;
         state.config = request.config;
         if (state.config == null) {
@@ -112,9 +122,9 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var loadedSkills = new ArrayList<IdName>();
 
         if (request.agentId != null && !request.agentId.isBlank()) {
-            sessionId = createHelper.createSessionFromAgent(request.agentId, state, userId, loadedSubAgents, loadedSkills);
+            sessionId = createHelper.createSessionFromAgent(request.agentId, state, userId, loadedSubAgents, loadedSkills, keyId);
         } else {
-            sessionId = sessionManager.createSession(request.config, userId);
+            sessionId = sessionManager.createSession(request.config, userId, keyId != null ? "api" : "chat", keyId);
             state.fromAgent = false;
         }
         state.sessionId = sessionId;

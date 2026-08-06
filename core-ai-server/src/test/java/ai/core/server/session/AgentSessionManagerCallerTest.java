@@ -269,6 +269,8 @@ class AgentSessionManagerCallerTest {
         manager.memoryExperimentService = mock(AgentMemoryExperimentService.class);
         when(manager.memoryExperimentService.prepareInjection(anyString())).thenReturn(MemoryInjectionResult.skipped());
         manager.eventPublisher = mock(EventPublisher.class);
+        manager.sessionAgentHelper = mock(SessionAgentHelper.class);
+        when(manager.sessionAgentHelper.resolveDatasetConfig(any(AgentDefinition.class), any(), any())).thenReturn(null);
         return new Harness(manager, assembler);
     }
 

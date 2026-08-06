@@ -44,7 +44,7 @@ class SessionCreateHelperTest {
         helper.agentDefinitionService = mock(AgentDefinitionService.class);
         when(helper.agentDefinitionService.getEntity(raw.id)).thenReturn(raw);
         helper.sessionManager = mock(AgentSessionManager.class);
-        when(helper.sessionManager.createSessionFromAgent(raw, null, "caller-1"))
+        when(helper.sessionManager.createSessionFromAgent(raw, null, "caller-1", "chat", null))
             .thenReturn(new AgentSessionManager.SessionCreationResult(
                 "session-1", List.of(), List.of(), executable));
         var state = new SessionState();
