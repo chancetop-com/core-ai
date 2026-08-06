@@ -108,7 +108,7 @@ const emptyProviderForm: ProviderFormState = {
   vertexLocation: 'us-central1',
   vertexGcsBucket: '',
   requestExtraBody: '',
-  timeoutSeconds: '30',
+  timeoutSeconds: '120',
   connectTimeoutSeconds: '10',
 };
 
@@ -213,7 +213,7 @@ export default function GatewayProviders() {
        vertexLocation: provider.vertexLocation || 'us-central1',
        vertexGcsBucket: provider.vertexGcsBucket || '',
        requestExtraBody: provider.requestExtraBody || '',
-      timeoutSeconds: String(provider.timeoutSeconds || 30),
+      timeoutSeconds: String(provider.timeoutSeconds || 120),
       connectTimeoutSeconds: String(provider.connectTimeoutSeconds || 10),
     });
     setProviderPanelOpen(true);
@@ -253,7 +253,7 @@ export default function GatewayProviders() {
          vertexLocation: providerForm.vertexLocation,
          vertexGcsBucket: providerForm.vertexGcsBucket,
          requestExtraBody: providerForm.requestExtraBody,
-        timeoutSeconds: Number(providerForm.timeoutSeconds || 30),
+        timeoutSeconds: Number(providerForm.timeoutSeconds || 120),
         connectTimeoutSeconds: Number(providerForm.connectTimeoutSeconds || 10),
       };
       if (providerForm.id) {

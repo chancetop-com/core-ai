@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static ai.core.server.gateway.GatewaySupport.DEFAULT_TIMEOUT_SECONDS;
 import static ai.core.server.gateway.GatewaySupport.hasText;
 import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
 import static ai.core.server.gateway.GatewaySupport.urlEncode;
@@ -171,7 +172,7 @@ public class GatewayProxyService {
 
     private void applyTimeouts(GatewayProviderConfig provider, HTTPRequest request) {
         request.connectTimeout = Duration.ofSeconds(valueOrDefault(provider.connectTimeoutSeconds, 10));
-        request.timeout = Duration.ofSeconds(valueOrDefault(provider.timeoutSeconds, 30));
+        request.timeout = Duration.ofSeconds(valueOrDefault(provider.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS));
     }
 
     private Response bufferedStream(GatewayUpstreamCall call) {

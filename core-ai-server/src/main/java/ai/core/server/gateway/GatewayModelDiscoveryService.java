@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static ai.core.server.gateway.GatewaySupport.DEFAULT_TIMEOUT_SECONDS;
 import static ai.core.server.gateway.GatewaySupport.isBlank;
 import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
 import static ai.core.server.gateway.GatewaySupport.truncate;
@@ -90,7 +91,7 @@ public class GatewayModelDiscoveryService {
             var request = new HTTPRequest(HTTPMethod.GET, url);
             request.headers.put("Content-Type", "application/json");
             request.connectTimeout = Duration.ofSeconds(valueOrDefault(provider.connectTimeoutSeconds, 10));
-            request.timeout = Duration.ofSeconds(valueOrDefault(provider.timeoutSeconds, 30));
+            request.timeout = Duration.ofSeconds(valueOrDefault(provider.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS));
             GatewaySupport.applyAuth(provider, request, secret(provider));
             var response = execute(request, provider);
             if (response.statusCode < 200 || response.statusCode >= 300) {

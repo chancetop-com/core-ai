@@ -40,6 +40,8 @@ class GatewayProviderServiceTest {
         assertEquals("openai/", view.modelPrefix);
         assertEquals("sk-t...3456", view.apiKeyMasked);
         assertTrue(view.hasApiKey);
+        assertEquals(120L, view.timeoutSeconds);
+        assertEquals(10L, view.connectTimeoutSeconds);
 
         var captor = ArgumentCaptor.forClass(GatewayProviderConfig.class);
         verify(service.gatewayProviderCollection).insert(captor.capture());

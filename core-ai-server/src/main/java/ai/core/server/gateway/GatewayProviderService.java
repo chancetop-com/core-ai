@@ -23,6 +23,7 @@ import java.time.ZonedDateTime;
 import java.util.Locale;
 import java.util.UUID;
 
+import static ai.core.server.gateway.GatewaySupport.DEFAULT_TIMEOUT_SECONDS;
 import static ai.core.server.gateway.GatewaySupport.isBlank;
 import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
 import static ai.core.server.gateway.GatewaySupport.trimToNull;
@@ -140,7 +141,7 @@ public class GatewayProviderService {
                 var request = new HTTPRequest(HTTPMethod.GET, testUrl(entity));
                 request.headers.put("Content-Type", "application/json");
                 request.connectTimeout = Duration.ofSeconds(valueOrDefault(entity.connectTimeoutSeconds, 10));
-                request.timeout = Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, 30));
+                request.timeout = Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS));
                 GatewaySupport.applyAuth(entity, request, secret(entity));
 
                 var response = CLIENT.execute(request);
@@ -168,7 +169,7 @@ public class GatewayProviderService {
         request.headers.put("x-goog-api-key", apiKey);
         request.body("{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"ping\"}]}]}", ContentType.APPLICATION_JSON);
         request.connectTimeout = Duration.ofSeconds(valueOrDefault(entity.connectTimeoutSeconds, 10));
-        request.timeout = Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, 30));
+        request.timeout = Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS));
         var response = CLIENT.execute(request);
         result.ok = response.statusCode >= 200 && response.statusCode < 300;
         result.status = result.ok ? "ok" : "failed";
@@ -247,7 +248,7 @@ public class GatewayProviderService {
         if (request.requestExtraBody != null) entity.requestExtraBody = trimToNull(request.requestExtraBody);
         if (request.timeoutSeconds != null) entity.timeoutSeconds = request.timeoutSeconds;
         if (request.connectTimeoutSeconds != null) entity.connectTimeoutSeconds = request.connectTimeoutSeconds;
-        if (entity.timeoutSeconds == null) entity.timeoutSeconds = 30L;
+        if (entity.timeoutSeconds == null) entity.timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
         if (entity.connectTimeoutSeconds == null) entity.connectTimeoutSeconds = 10L;
     }
 

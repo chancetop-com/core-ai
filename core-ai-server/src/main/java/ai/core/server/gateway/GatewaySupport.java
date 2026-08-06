@@ -7,6 +7,8 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 final class GatewaySupport {
+    static final long DEFAULT_TIMEOUT_SECONDS = 120;
+
     static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
