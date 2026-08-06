@@ -101,7 +101,9 @@ public class RequestAuthenticator {
         if (!value.startsWith("Bearer coreai_") && !value.startsWith("Bearer cai_")) return null;
 
         var apiKey = value.substring(7);
-        var user = userCollection.findOne(Filters.eq("api_key", apiKey));
+        var user = userCollection.findOne(Filters.and(
+            Filters.eq("api_key", apiKey),
+            Filters.type("api_key", "string")));
         if (user.isEmpty()) throw new UnauthorizedException("invalid api key");
 
         if (!"active".equals(user.get().status)) {

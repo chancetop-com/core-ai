@@ -1,27 +1,37 @@
 package ai.core.server.run;
 
+import ai.core.agent.Agent;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
+import ai.core.server.domain.DefinitionType;
+import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.TriggerType;
+import ai.core.sandbox.Sandbox;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.api.server.run.LLMCallRequest;
 import ai.core.skill.SkillMetadata;
 import ai.core.tool.registry.ToolRegistryFactory;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.ForbiddenException;
 import org.junit.jupiter.api.Test;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -30,6 +40,68 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AgentRunnerTest {
+    @Test
+    void successfulAgentExecutionMarksRunCompletedOnce() throws InterruptedException {
+        var harness = executionHarness();
+        when(harness.tracer.runAgentWithTrace(any(), any(), any(), any())).thenReturn("output");
+
+        try {
+            harness.runner.run(executableDefinition(30), "input", TriggerType.WORKFLOW);
+
+            assertTrue(harness.builder.terminalUpdate.await(2, TimeUnit.SECONDS));
+            assertEquals(List.of(RunStatus.COMPLETED), harness.builder.statuses);
+            assertEquals(RunStatus.COMPLETED, harness.builder.run.status);
+            assertEquals("output", harness.builder.run.output);
+        } finally {
+            harness.runner.shutdown();
+        }
+    }
+
+    @Test
+    void thrownAgentExecutionMarksRunFailed() throws InterruptedException {
+        var harness = executionHarness();
+        when(harness.tracer.runAgentWithTrace(any(), any(), any(), any()))
+            .thenThrow(new IllegalStateException("sse timeout"));
+
+        try {
+            harness.runner.run(executableDefinition(30), "input", TriggerType.WORKFLOW);
+
+            assertTrue(harness.builder.terminalUpdate.await(2, TimeUnit.SECONDS));
+            assertEquals(List.of(RunStatus.FAILED), harness.builder.statuses);
+            assertEquals(RunStatus.FAILED, harness.builder.run.status);
+            assertEquals("sse timeout", harness.builder.run.error);
+        } finally {
+            harness.runner.shutdown();
+        }
+    }
+
+    @Test
+    void timeoutWinsWhenAgentReturnsAfterDeadline() throws InterruptedException {
+        var harness = executionHarness();
+        var executionStarted = new CountDownLatch(1);
+        var releaseExecution = new CountDownLatch(1);
+        when(harness.tracer.runAgentWithTrace(any(), any(), any(), any())).thenAnswer(invocation -> {
+            executionStarted.countDown();
+            releaseExecution.await(5, TimeUnit.SECONDS);
+            return "late output";
+        });
+
+        try {
+            harness.runner.run(executableDefinition(1), "input", TriggerType.WORKFLOW);
+
+            assertTrue(executionStarted.await(1, TimeUnit.SECONDS));
+            assertTrue(harness.builder.terminalUpdate.await(2, TimeUnit.SECONDS));
+            assertEquals(RunStatus.TIMEOUT, harness.builder.run.status);
+
+            releaseExecution.countDown();
+            harness.runner.shutdown();
+            assertEquals(List.of(RunStatus.TIMEOUT), harness.builder.statuses);
+        } finally {
+            releaseExecution.countDown();
+            harness.runner.shutdown();
+        }
+    }
+
     @Test
     void safeNodeNameSanitizesDisplayNamesToToolSafeForm() {
         assertEquals("Xander-test-(1)", name("Xander-test (1)"));
@@ -200,6 +272,29 @@ class AgentRunnerTest {
             runner.sandboxService, runner.builder);
     }
 
+    @SuppressWarnings("unchecked")
+    private ExecutionHarness executionHarness() {
+        var runner = new AgentRunner();
+        var agent = mock(Agent.class);
+        var builder = new RecordingRunBuilder(agent);
+        var tracer = mock(AgentRunTracer.class);
+        runner.skillService = mock(SkillService.class);
+        runner.agentRunCollection = mock(MongoCollection.class);
+        runner.sandboxService = mock(SandboxService.class);
+        runner.builder = builder;
+        runner.tracer = tracer;
+        return new ExecutionHarness(runner, builder, tracer);
+    }
+
+    private AgentDefinition executableDefinition(int timeoutSeconds) {
+        var definition = new AgentDefinition();
+        definition.id = "agent-1";
+        definition.userId = "owner";
+        definition.type = DefinitionType.AGENT;
+        definition.timeoutSeconds = timeoutSeconds;
+        return definition;
+    }
+
     private String name(String displayName) {
         var definition = new AgentDefinition();
         definition.id = "id-1";
@@ -210,5 +305,53 @@ class AgentRunnerTest {
     private record RunnerHarness(AgentRunner runner, SkillService skillService,
                                  MongoCollection<AgentRun> runCollection, SandboxService sandboxService,
                                  AgentRunBuilder builder) {
+    }
+
+    private record ExecutionHarness(AgentRunner runner, RecordingRunBuilder builder, AgentRunTracer tracer) {
+    }
+
+    private static final class RecordingRunBuilder extends AgentRunBuilder {
+        private final Agent agent;
+        private final CountDownLatch terminalUpdate = new CountDownLatch(1);
+        private final List<RunStatus> statuses = new CopyOnWriteArrayList<>();
+        private volatile AgentRun run;
+
+        private RecordingRunBuilder(Agent agent) {
+            this.agent = agent;
+        }
+
+        @Override
+        Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox,
+                         Map<String, Object> variables, List<LLMCallRequest.Attachment> attachments) {
+            run = runEntity;
+            return agent;
+        }
+
+        @Override
+        void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error, Agent ignoredAgent) {
+            record(runEntity, status, output, error, null);
+        }
+
+        @Override
+        void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error,
+                             String errorStack, Agent ignoredAgent) {
+            record(runEntity, status, output, error, errorStack);
+        }
+
+        @Override
+        void extractDatasetRecords(String output, AgentDefinition definition, String runId, String agentId,
+                                   ZonedDateTime runStartedAt) {
+            // Dataset persistence is outside the terminal-state contract under test.
+        }
+
+        private void record(AgentRun runEntity, RunStatus status, String output, String error, String errorStack) {
+            runEntity.status = status;
+            runEntity.output = output;
+            runEntity.error = error;
+            runEntity.errorStack = errorStack;
+            runEntity.completedAt = ZonedDateTime.now();
+            statuses.add(status);
+            terminalUpdate.countDown();
+        }
     }
 }

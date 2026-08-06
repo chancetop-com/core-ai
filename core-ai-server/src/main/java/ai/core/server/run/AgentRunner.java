@@ -212,11 +212,10 @@ public class AgentRunner {
     private void runWithTimeout(AgentRun runEntity, Agent agent, ScheduledFuture<?> timeout, AtomicBoolean completed,
                                 AgentDefinition definition, WorkflowTraceContext traceContext) {
         try {
-            if (completed.compareAndSet(false, true)) {
-                var output = tracer.runAgentWithTrace(runEntity, definition, agent, traceContext);
-                builder.updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
-                builder.extractDatasetRecords(output, definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
-            }
+            var output = tracer.runAgentWithTrace(runEntity, definition, agent, traceContext);
+            if (!completed.compareAndSet(false, true)) return;
+            builder.updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
+            builder.extractDatasetRecords(output, definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
         } finally {
             timeout.cancel(false);
         }
