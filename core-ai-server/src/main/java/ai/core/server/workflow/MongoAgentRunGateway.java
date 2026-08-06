@@ -26,6 +26,7 @@ import core.framework.mongo.MongoCollection;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -72,6 +73,8 @@ public class MongoAgentRunGateway implements AgentRunGateway {
         }
     }
 
+    private final WorkflowPrivateAgentSafetyValidator privateAgentSafetyValidator;
+
     @Inject
     AgentRunner agentRunner;
 
@@ -82,12 +85,13 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     MongoCollection<WorkflowPublishedVersion> versionCollection;
 
     @Inject
-    WorkflowPrivateAgentSafetyValidator privateAgentSafetyValidator;
-
-    @Inject
     FileService fileService;
     @Inject
     PublicUrlConfiguration publicUrlConfiguration;
+
+    public MongoAgentRunGateway(WorkflowPrivateAgentSafetyValidator privateAgentSafetyValidator) {
+        this.privateAgentSafetyValidator = Objects.requireNonNull(privateAgentSafetyValidator);
+    }
 
     @Override
     public StartedAgentRun startChildRun(WorkflowRun run, WorkflowNode node, String input, List<StagedFile> stagedFiles) {

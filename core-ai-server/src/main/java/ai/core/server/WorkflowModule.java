@@ -54,7 +54,8 @@ public class WorkflowModule extends Module {
 
     private void bindWorkflow(ToolRegistryService toolRegistryService, SandboxService sandboxService, FileService fileService) {
         // AGENT/LLM nodes run as decoupled child AgentRuns through this gateway (depends on AgentRunner above).
-        var agentRunGateway = bind(MongoAgentRunGateway.class);
+        var privateAgentSafetyValidator = bind(WorkflowPrivateAgentSafetyValidator.class);
+        var agentRunGateway = bind(new MongoAgentRunGateway(privateAgentSafetyValidator));
         bind(AgentRunGateway.class, agentRunGateway);
         var graphLoader = bind(MongoWorkflowGraphLoader.class);
         bind(WorkflowGraphLoader.class, graphLoader);
@@ -87,7 +88,6 @@ public class WorkflowModule extends Module {
         bind(WorkflowAgentOptionService.class);
         bind(WorkflowDefinitionService.class);
         bind(WorkflowAgentSnapshotService.class);
-        bind(WorkflowPrivateAgentSafetyValidator.class);
         bind(WorkflowPublishService.class);
         bind(WorkflowPortService.class);
         bind(WorkflowRunner.class);

@@ -51,9 +51,8 @@ class MongoAgentRunGatewayTest {
         var validator = mock(WorkflowPrivateAgentSafetyValidator.class);
         var blocked = new WorkflowValidationException(List.of("node agent-node has an unsafe legacy snapshot"));
         doThrow(blocked).when(validator).requireSafe(version);
-        var gateway = new MongoAgentRunGateway();
+        var gateway = new MongoAgentRunGateway(validator);
         gateway.versionCollection = versions;
-        gateway.privateAgentSafetyValidator = validator;
         gateway.agentRunner = mock(ai.core.server.run.AgentRunner.class);
         var run = new WorkflowRun();
         run.versionId = version.id;
@@ -77,9 +76,9 @@ class MongoAgentRunGatewayTest {
         @SuppressWarnings("unchecked")
         MongoCollection<WorkflowPublishedVersion> versions = mock(MongoCollection.class);
         when(versions.get(version.id)).thenReturn(Optional.of(version));
-        var gateway = new MongoAgentRunGateway();
+        var validator = mock(WorkflowPrivateAgentSafetyValidator.class);
+        var gateway = new MongoAgentRunGateway(validator);
         gateway.versionCollection = versions;
-        gateway.privateAgentSafetyValidator = mock(WorkflowPrivateAgentSafetyValidator.class);
         gateway.agentRunner = mock(ai.core.server.run.AgentRunner.class);
         var run = new WorkflowRun();
         run.versionId = version.id;
@@ -91,6 +90,6 @@ class MongoAgentRunGatewayTest {
 
         assertEquals("agent snapshot contains unvalidated skills", error.getMessage());
         verifyNoInteractions(gateway.agentRunner);
-        verifyNoInteractions(gateway.privateAgentSafetyValidator);
+        verifyNoInteractions(validator);
     }
 }
