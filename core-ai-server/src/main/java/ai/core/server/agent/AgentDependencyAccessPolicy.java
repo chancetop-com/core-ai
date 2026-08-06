@@ -25,10 +25,9 @@ public final class AgentDependencyAccessPolicy {
 
     public static boolean hasUsablePublishedConfig(AgentDefinition definition) {
         return definition != null
-            && definition.status == AgentStatus.PUBLISHED
-            && definition.publishedConfig != null
-            && hasValidatedPublishedSkills(definition.publishedConfig)
-            && (definition.publishedConfig.systemPromptId == null
+                && definition.status == AgentStatus.PUBLISHED
+                && hasValidatedPublishedSkills(definition.publishedConfig)
+                && (definition.publishedConfig.systemPromptId == null
                 || definition.publishedConfig.systemPromptId.isBlank());
     }
 
