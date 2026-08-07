@@ -111,7 +111,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVApiKeys(),
             new SchemaMigrationVApiUserApiKeyIndex(),
             new SchemaMigrationVPublishedAgentSnapshotSecurity(),
-            new SchemaMigrationVSandboxAttachmentIndexes()
+            new SchemaMigrationVSandboxAttachmentIndexes(),
+            new SchemaMigrationVApiUserTypeIndex()
         );
     }
 }
