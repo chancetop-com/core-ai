@@ -108,7 +108,7 @@ POST /api/api-users
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `external_id` | string | 是 | 业务侧终端用户标识（商户号等），同一业务系统内唯一，幂等键 |
+| `external_id` | string | 是 | 业务侧终端用户标识（商户号等），同一业务系统内唯一，幂等键（首尾空白自动去除，建议业务侧自行 trim） |
 | `name` | string | 是 | 用户显示名 |
 
 响应（200）：
@@ -421,14 +421,18 @@ POST /api/sessions/:sessionId/messages/stream
 | 403 | `FORBIDDEN` | key 无权限调用该 Agent / 资源不属于当前业务系统 | 检查权限白名单与归属 |
 | 404 | `NOT_FOUND` | 用户 / key / Agent / run 不存在 | 检查 ID 是否正确 |
 | 409 | `CONFLICT` | 资源冲突（一般幂等场景不会出现） | 重查既有资源 |
-| 429 | `QUOTA_EXCEEDED` | 配额已用尽 | 提示用户稍后再试 / 调高配额 |
+| 429 | `QUOTA_EXCEEDED` | **每日 token 配额已用尽**（UTC 日窗口，次日 0 点重置） | 提示用户「额度已用完，请明日再来」 |
 | 429 | `RATE_LIMITED` | 触发限流 | 退避重试 |
 | 400 | `BAD_REQUEST` | 参数缺失或非法 | 检查请求体字段 |
 
-错误响应体：
+错误响应体（core-ng 标准格式，字段名为 `errorCode`）：
 
 ```json
-{ "error": { "code": "QUOTA_EXCEEDED", "message": "quota exceeded" } }
+{
+  "id": "9FDB...",
+  "errorCode": "QUOTA_EXCEEDED",
+  "message": "input quota exceeded"
+}
 ```
 
 ---

@@ -5,7 +5,6 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.web.exception.TooManyRequestsException;
 
 import java.time.ZonedDateTime;
 
@@ -37,13 +36,13 @@ public class ApiUserQuotaService {
         if (user.quotaInputTokens != null && user.quotaInputTokens > 0) {
             long consumed = user.quotaConsumedInputTokens != null ? user.quotaConsumedInputTokens : 0L;
             if (consumed >= user.quotaInputTokens) {
-                throw new TooManyRequestsException("input quota exceeded");
+                throw new QuotaExceededException("input quota exceeded");
             }
         }
         if (user.quotaOutputTokens != null && user.quotaOutputTokens > 0) {
             long consumed = user.quotaConsumedOutputTokens != null ? user.quotaConsumedOutputTokens : 0L;
             if (consumed >= user.quotaOutputTokens) {
-                throw new TooManyRequestsException("output quota exceeded");
+                throw new QuotaExceededException("output quota exceeded");
             }
         }
     }

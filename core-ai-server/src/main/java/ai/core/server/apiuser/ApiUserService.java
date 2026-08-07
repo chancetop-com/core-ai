@@ -32,21 +32,25 @@ public class ApiUserService {
 
     /**
      * Creates an API user owned by the given manager user (business system).
-     * Idempotent: same externalId under the same owner returns the existing user.
+     * Idempotent: same externalId under the same owner returns the existing user
+     * (business systems may retry creation; duplicates are guarded by the partial unique index
+     * on (owner_id, external_id) plus a re-fetch after insert conflict).
      */
     public User createApiUser(String ownerId, String externalId, String name) {
         if (ownerId == null || ownerId.isBlank()) throw new BadRequestException("owner required");
         if (externalId == null || externalId.isBlank()) throw new BadRequestException("external_id required");
+        var normalizedExternalId = externalId.trim();
+        var normalizedName = name != null ? name.trim() : null;
 
-        var existing = findByOwnerAndExternalId(ownerId, externalId);
+        var existing = findByOwnerAndExternalId(ownerId, normalizedExternalId);
         if (existing != null) return existing;
 
         var user = new User();
         user.id = "api:" + UUID.randomUUID();
         user.userType = USER_TYPE_API;
         user.ownerId = ownerId;
-        user.externalId = externalId;
-        user.name = name;
+        user.externalId = normalizedExternalId;
+        user.name = normalizedName;
         user.role = "user";
         user.status = "active";
         user.createdAt = ZonedDateTime.now();
@@ -54,7 +58,7 @@ public class ApiUserService {
             userCollection.insert(user);
         } catch (RuntimeException e) {
             // concurrent create with same (owner_id, external_id): return the winning record
-            var winner = findByOwnerAndExternalId(ownerId, externalId);
+            var winner = findByOwnerAndExternalId(ownerId, normalizedExternalId);
             if (winner != null) return winner;
             throw e;
         }
@@ -178,9 +182,13 @@ public class ApiUserService {
     }
 
     private User findByOwnerAndExternalId(String ownerId, String externalId) {
+        // explicit $type predicates are required for the partial unique index to be usable
+        // (MongoDB cannot derive $type from $eq; without them notablescan rejects the query)
         var users = userCollection.find(Filters.and(
                 Filters.eq("owner_id", ownerId),
-                Filters.eq("external_id", externalId)));
+                Filters.eq("external_id", externalId),
+                Filters.type("owner_id", "string"),
+                Filters.type("external_id", "string")));
         return users.isEmpty() ? null : users.getFirst();
     }
 
