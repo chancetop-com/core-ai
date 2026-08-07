@@ -170,6 +170,9 @@ public class OTLPIngestService {
             "usage.prompt_tokens_details.cached_tokens",
             "prompt_tokens_details.cached_tokens");
         applyCost(span, attrs);
+        // The langfuse/gen_ai payload attributes were copied to span.input/output above; drop the
+        // duplicate copies so spans stay small (a single long trace can otherwise reach 60MB+).
+        TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
         spanCollection.insert(span);
 
         // Back-fill model onto trace if not yet set

@@ -139,6 +139,22 @@ public class TraceController {
         return jsonResponse(spans);
     }
 
+    public Response span(Request request) {
+        var scope = traceScope();
+        if (scope.userId() == null) return unauthorized();
+        String traceId = request.pathParam("traceId");
+        String spanId = request.pathParam("spanId");
+        var trace = traceService.get(traceId);
+        if (!canRead(trace, scope)) {
+            return Response.text("not found").status(HTTPStatus.NOT_FOUND);
+        }
+        var span = traceService.span(trace.traceId, spanId);
+        if (span == null) {
+            return Response.text("not found").status(HTTPStatus.NOT_FOUND);
+        }
+        return jsonResponse(span);
+    }
+
     public Response generations(Request request) {
         var scope = traceScope();
         if (scope.userId() == null) return unauthorized();

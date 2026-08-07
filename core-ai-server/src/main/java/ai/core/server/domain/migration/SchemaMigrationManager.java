@@ -115,7 +115,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVApiUserTypeIndex(),
             new SchemaMigrationVBackfillUserType(),
             new SchemaMigrationVEmailPartialUniqueIndex(),
-            new SchemaMigrationVChatSessionAgentIdIndex()
+            new SchemaMigrationVChatSessionAgentIdIndex(),
+            new SchemaMigrationVStripSpanPayloadAttributes()
         );
     }
 }

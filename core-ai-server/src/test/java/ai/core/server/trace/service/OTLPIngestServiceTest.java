@@ -64,6 +64,53 @@ class OTLPIngestServiceTest {
         assertEquals("Xander-test (1)", inserted.getValue().agentName);
     }
 
+    @Test
+    void stripsDuplicatedPayloadAttributesFromStoredSpan() {
+        var service = service();
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        var input = "{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}";
+        var output = "{\"role\":\"assistant\",\"content\":\"hi\"}";
+        service.ingest(request(span("agent.run",
+            attr("langfuse.observation.type", "agent"),
+            attr("langfuse.observation.input", input),
+            attr("langfuse.observation.output", output),
+            attr("gen_ai.prompt", input),
+            attr("gen_ai.completion", output),
+            attr("gen_ai.usage.input_tokens", "10"),
+            attr("gen_ai.usage.output_tokens", "5"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection).insert(inserted.capture());
+        var span = inserted.getValue();
+        assertEquals(input, span.input);
+        assertEquals(output, span.output);
+        assertEquals(null, span.attributes.get("langfuse.observation.input"));
+        assertEquals(null, span.attributes.get("langfuse.observation.output"));
+        assertEquals(null, span.attributes.get("gen_ai.prompt"));
+        assertEquals(null, span.attributes.get("gen_ai.completion"));
+        assertEquals("agent", span.attributes.get("langfuse.observation.type"));
+    }
+
+    @Test
+    void keepsLangfuseAttributeWhenItDiffersFromSpanPayload() {
+        var service = service();
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        var attributeInput = "{\"messages\":[{\"role\":\"user\",\"content\":\"from attribute\"}]}";
+        var spanInput = "{\"messages\":[{\"role\":\"user\",\"content\":\"from prompt\"}]}";
+        service.ingest(request(span("chat",
+            attr("gen_ai.prompt", spanInput),
+            attr("langfuse.observation.input", attributeInput))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection).insert(inserted.capture());
+        assertEquals(spanInput, inserted.getValue().input);
+        assertEquals(attributeInput, inserted.getValue().attributes.get("langfuse.observation.input"));
+    }
+
     private OTLPIngestService service() {
         var service = new OTLPIngestService();
         service.traceCollection = traceCollection();

@@ -313,7 +313,21 @@ public class TraceService {
         query.filter = Filters.eq("trace_id", traceId);
         query.sort = Sorts.ascending("started_at");
         query.limit = TraceServiceHelper.MAX_SPANS_PER_TRACE;
+        // Metadata-only projection: the timeline UI never needs the (potentially huge) payloads,
+        // and the duplicated langfuse observation attributes are stripped from the list as well.
+        query.projection = TraceServiceHelper.spanSummaryProjection();
         return spanCollection.find(query);
+    }
+
+    public Span span(String traceId, String spanId) {
+        var query = new Query();
+        query.filter = Filters.and(Filters.eq("trace_id", traceId), Filters.eq("span_id", spanId));
+        query.limit = 1;
+        var results = spanCollection.find(query);
+        if (results.isEmpty()) return null;
+        var span = results.getFirst();
+        TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
+        return span;
     }
 
     public List<Span> generations(int offset, int limit, String model, String userId) {

@@ -2,6 +2,7 @@ package ai.core.server.web;
 
 import core.framework.api.http.HTTPStatus;
 import core.framework.api.web.service.ResponseStatus;
+import core.framework.http.ContentType;
 import core.framework.http.HTTPMethod;
 import core.framework.log.ErrorCode;
 import core.framework.web.ErrorHandler;
@@ -11,7 +12,6 @@ import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.exception.MethodNotAllowedException;
 
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -49,12 +49,17 @@ public class CorsInterceptor implements Interceptor, ErrorHandler {
         if (request.path().startsWith("/api/")) {
             String errorCode = e instanceof ErrorCode code ? code.errorCode() : "INTERNAL_ERROR";
             String message = e.getMessage() == null ? "" : e.getMessage();
-            var body = Map.of("errorCode", errorCode, "message", message);
-            return Optional.of(Response.bean(body)
+            var json = "{\"errorCode\":\"" + escape(errorCode) + "\",\"message\":\"" + escape(message) + "\"}";
+            return Optional.of(Response.text(json)
                     .status(httpStatus(e))
+                    .contentType(ContentType.APPLICATION_JSON)
                     .header("Access-Control-Allow-Origin", "*"));
         }
         return Optional.empty();
+    }
+
+    private String escape(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private HTTPStatus httpStatus(Throwable e) {

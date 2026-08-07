@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -23,6 +23,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type { Span, Trace } from '../../api/client';
+import { api } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import { sourceColors, typeColors } from './colors';
 import {
@@ -82,13 +83,42 @@ export default function TraceInspector({ trace, spans, mode = 'panel', onBack, o
   const [tabState, setTabState] = useState<{ traceId: string; tab: TraceTab }>({ traceId: trace.traceId, tab: 'timeline' });
   const tab = tabState.traceId === trace.traceId ? tabState.tab : 'timeline';
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
+  // Full span payloads are fetched on demand (spans list carries metadata only) and cached per trace+span.
+  const [spanDetails, setSpanDetails] = useState<Record<string, Span>>({});
+  const [loadingSpanKey, setLoadingSpanKey] = useState<string | null>(null);
+  const effectiveSelectedSpanId = selectedSpanId ?? findDefaultSpan(spans)?.spanId ?? null;
+  const selectedSpanKey = effectiveSelectedSpanId ? `${trace.traceId}:${effectiveSelectedSpanId}` : null;
+
   const selectedSpan = useMemo(() => {
-    if (selectedSpanId) {
-      const span = spans.find(item => item.spanId === selectedSpanId);
-      if (span) return span;
-    }
-    return findDefaultSpan(spans);
-  }, [selectedSpanId, spans]);
+    if (!effectiveSelectedSpanId) return null;
+    const detail = selectedSpanKey ? spanDetails[selectedSpanKey] : undefined;
+    if (detail) return detail;
+    return spans.find(item => item.spanId === effectiveSelectedSpanId) || null;
+  }, [effectiveSelectedSpanId, selectedSpanKey, spans, spanDetails]);
+
+  useEffect(() => {
+    if (!selectedSpanKey) return;
+    if (spanDetails[selectedSpanKey]) return;
+    const spanId = effectiveSelectedSpanId;
+    if (!spanId) return;
+    let cancelled = false;
+    setLoadingSpanKey(selectedSpanKey);
+    api.traces.span(trace.traceId, spanId)
+      .then(detail => {
+        if (cancelled) return;
+        setSpanDetails(prev => (prev[selectedSpanKey] ? prev : { ...prev, [selectedSpanKey]: detail }));
+      })
+      .catch(() => {
+        // Keep the metadata span as fallback; summary/timeline info stays available.
+        if (!cancelled) console.warn('load span detail failed', spanId);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSpanKey(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSpanKey, trace.traceId, spanDetails, effectiveSelectedSpanId]);
 
   const containerClass = mode === 'page'
     ? 'p-6 h-full overflow-auto'
@@ -113,7 +143,7 @@ export default function TraceInspector({ trace, spans, mode = 'panel', onBack, o
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
         {tab === 'timeline' && (
-          <TimelineTab trace={trace} spans={spans} selectedSpan={selectedSpan} onSelectSpan={span => setSelectedSpanId(span.spanId)} mode={mode} />
+          <TimelineTab trace={trace} spans={spans} selectedSpan={selectedSpan} onSelectSpan={span => setSelectedSpanId(span.spanId)} mode={mode} loading={loadingSpanKey === selectedSpanKey} />
         )}
         {tab === 'io' && <TraceIOTab trace={trace} />}
         {tab === 'raw' && <CodeBlock content={JSON.stringify({ trace, spans }, null, 2)} />}
@@ -284,12 +314,13 @@ function ErrorBlock({ message }: { message: string }) {
   );
 }
 
-function TimelineTab({ trace, spans, selectedSpan, onSelectSpan, mode }: {
+function TimelineTab({ trace, spans, selectedSpan, onSelectSpan, mode, loading }: {
   trace: Trace;
   spans: Span[];
   selectedSpan: Span | null;
   onSelectSpan: (span: Span) => void;
   mode: InspectorMode;
+  loading?: boolean;
 }) {
   if (spans.length === 0) {
     return <EmptyState>No spans recorded</EmptyState>;
@@ -306,7 +337,7 @@ function TimelineTab({ trace, spans, selectedSpan, onSelectSpan, mode }: {
   return (
     <div className={layoutClass}>
       <SpanTimeline trace={trace} spans={spans} selectedSpanId={selectedSpan?.spanId} onSelectSpan={onSelectSpan} />
-      {selectedSpan && <SpanInspector span={selectedSpan} parentSpan={parentSpan} />}
+      {selectedSpan && <SpanInspector span={selectedSpan} parentSpan={parentSpan} loading={loading} />}
     </div>
   );
 }
@@ -453,7 +484,7 @@ function SpanTimelineRow({ span, bounds, selected, collapsed, onSelect, onToggle
   );
 }
 
-function SpanInspector({ span, parentSpan }: { span: Span; parentSpan?: Span }) {
+function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?: Span; loading?: boolean }) {
   const [tabState, setTabState] = useState<{ spanId: string; tab: SpanTab }>({ spanId: span.spanId, tab: 'summary' });
   const tab = tabState.spanId === span.spanId ? tabState.tab : 'summary';
   const messages = useMemo(() => extractMessages(span.input), [span.input]);
@@ -502,6 +533,11 @@ function SpanInspector({ span, parentSpan }: { span: Span; parentSpan?: Span }) 
       </div>
 
       <div className="p-3 max-h-[520px] overflow-auto">
+        {loading && (
+          <div className="mb-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            Loading span details...
+          </div>
+        )}
         {span.status === 'ERROR' && span.errorMessage && (
           <div className="mb-3">
             <ErrorBlock message={span.errorMessage} />
@@ -556,8 +592,8 @@ function SpanSummary({ span, parentSpan }: { span: Span; parentSpan?: Span }) {
 function MessagesView({ messages, output, inputRaw, outputRaw }: {
   messages: ExtractedMessage[];
   output: ExtractedAssistantOutput | null;
-  inputRaw?: string;
-  outputRaw?: string;
+  inputRaw?: string | null;
+  outputRaw?: string | null;
 }) {
   if (messages.length === 0 && !output) {
     return (

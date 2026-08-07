@@ -2,6 +2,7 @@ package ai.core.server.trace.service;
 
 import ai.core.llm.LLMModelContextRegistry;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 
 import core.framework.mongo.MongoCollection;
@@ -24,6 +25,34 @@ import java.util.stream.Collectors;
  */
 final class TraceServiceHelper {
     static final int MAX_SPANS_PER_TRACE = 5000;
+
+    // The LLM/agent tracers emit the full request/response payloads as span attributes
+    // (langfuse.observation.* and gen_ai.prompt/completion), which the ingest path copies onto the
+    // span input/output fields. The attributes are stripped at ingest and by
+    // SchemaMigrationVStripSpanPayloadAttributes, so the summary read only needs to skip the
+    // input/output fields themselves (dotted projections cannot target the attribute keys anyway).
+    static final String LANGFUSE_OBSERVATION_INPUT = "langfuse.observation.input";
+    static final String LANGFUSE_OBSERVATION_OUTPUT = "langfuse.observation.output";
+    static final String GEN_AI_PROMPT = "gen_ai.prompt";
+    static final String GEN_AI_COMPLETION = "gen_ai.completion";
+
+    static Bson spanSummaryProjection() {
+        return Projections.exclude("input", "output");
+    }
+
+    static void stripDuplicatedPayloadAttributes(Span span) {
+        if (span.attributes == null) return;
+        stripIfDuplicate(span, LANGFUSE_OBSERVATION_INPUT, span.input);
+        stripIfDuplicate(span, LANGFUSE_OBSERVATION_OUTPUT, span.output);
+        stripIfDuplicate(span, GEN_AI_PROMPT, span.input);
+        stripIfDuplicate(span, GEN_AI_COMPLETION, span.output);
+    }
+
+    private static void stripIfDuplicate(Span span, String attributeKey, String payload) {
+        if (payload != null && payload.equals(span.attributes.get(attributeKey))) {
+            span.attributes.remove(attributeKey);
+        }
+    }
 
     static boolean hasText(String value) {
         return value != null && !value.isBlank();
@@ -136,6 +165,8 @@ final class TraceServiceHelper {
         var query = new Query();
         query.filter = Filters.in("trace_id", pending.stream().map(trace -> trace.traceId).toList());
         query.limit = MAX_SPANS_PER_TRACE * pending.size();
+        // Enrichment only reads token/cost fields; skip the payloads to avoid pulling huge span docs.
+        query.projection = spanSummaryProjection();
         var spansByTrace = spanCollection.find(query).stream()
             .filter(span -> span.traceId != null)
             .collect(Collectors.groupingBy(span -> span.traceId));

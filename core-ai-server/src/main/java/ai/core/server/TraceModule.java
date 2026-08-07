@@ -71,6 +71,7 @@ public class TraceModule extends Module {
         http().route(HTTPMethod.GET, "/api/traces/sessions/:sessionId/summary", traceController::sessionSummary);
         http().route(HTTPMethod.GET, "/api/traces/:traceId", traceController::get);
         http().route(HTTPMethod.GET, "/api/traces/:traceId/spans", traceController::spans);
+        http().route(HTTPMethod.GET, "/api/traces/:traceId/spans/:spanId", traceController::span);
 
         http().route(HTTPMethod.GET, "/api/prompts", promptController::list);
         http().route(HTTPMethod.POST, "/api/prompts", promptController::create);

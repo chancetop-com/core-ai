@@ -261,7 +261,7 @@ export function extractTracePreview(trace: Trace): string {
   return '';
 }
 
-export function extractMessages(input?: string): ExtractedMessage[] {
+export function extractMessages(input?: string | null): ExtractedMessage[] {
   if (!input) return [];
   const parsed = tryParseJson(input);
   if (!parsed || typeof parsed !== 'object' || !('messages' in parsed)) return [];
@@ -284,7 +284,7 @@ export function extractMessages(input?: string): ExtractedMessage[] {
   });
 }
 
-export function extractAssistantContent(output?: string): ExtractedAssistantOutput | null {
+export function extractAssistantContent(output?: string | null): ExtractedAssistantOutput | null {
   if (!output) return null;
   const parsed = tryParseJson(output);
   if (parsed && typeof parsed === 'object') {

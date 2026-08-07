@@ -242,8 +242,9 @@ export interface Span {
   name: string;
   type: 'LLM' | 'AGENT' | 'TOOL' | 'FLOW' | 'GROUP';
   model: string;
-  input: string;
-  output: string;
+  // The list endpoint returns metadata only; full payloads come from the per-span detail endpoint.
+  input?: string | null;
+  output?: string | null;
   inputTokens: number;
   outputTokens: number;
   cachedTokens?: number;
@@ -251,7 +252,7 @@ export interface Span {
   durationMs: number;
   status: 'OK' | 'CANCELLED' | 'ERROR';
   errorMessage?: string;
-  attributes: Record<string, string>;
+  attributes?: Record<string, string>;
   startedAt: string;
   completedAt: string;
 }
@@ -1297,6 +1298,7 @@ export const api = {
     },
     get: (id: string) => request<Trace>(`/api/traces/${id}`),
     spans: (id: string) => request<Span[]>(`/api/traces/${id}/spans`),
+    span: (traceId: string, spanId: string) => request<Span>(`/api/traces/${traceId}/spans/${spanId}`),
     generations: (offset = 0, limit = 20, model?: string) => {
       const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
       if (model) params.set('model', model);

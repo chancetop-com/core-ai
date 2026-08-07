@@ -200,6 +200,9 @@ public class IngestService {
         span.durationMs = spanReq.durationMs;
         span.status = mapSpanStatus(spanReq.status, spanReq.attributes);
         span.attributes = spanReq.attributes;
+        // Defensive: drop attribute copies that duplicate the payload fields (clients may mirror
+        // the OTLP tracer convention and send both); keeps spans small.
+        TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
         span.startedAt = toZonedDateTime(spanReq.startedAtEpochMs);
         span.completedAt = toZonedDateTime(spanReq.completedAtEpochMs);
         span.createdAt = ZonedDateTime.now();
