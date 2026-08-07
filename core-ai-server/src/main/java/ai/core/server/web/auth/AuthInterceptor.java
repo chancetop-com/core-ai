@@ -44,9 +44,6 @@ public class AuthInterceptor implements Interceptor {
 
         var apiKeyResult = requestAuthenticator.authenticateFromApiKeyRecord(request);
         if (apiKeyResult != null) {
-            if (!"call".equals(apiKeyResult.scope())) {
-                throw new ForbiddenException("management key cannot call agents");
-            }
             invocation.context().put(AuthContext.USER_ID_KEY, apiKeyResult.userId());
             invocation.context().put(AuthContext.KEY_ID_KEY, apiKeyResult.keyId());
         } else {
