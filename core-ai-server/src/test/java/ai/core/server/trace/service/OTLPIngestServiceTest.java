@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -86,10 +87,10 @@ class OTLPIngestServiceTest {
         var span = inserted.getValue();
         assertEquals(input, span.input);
         assertEquals(output, span.output);
-        assertEquals(null, span.attributes.get("langfuse.observation.input"));
-        assertEquals(null, span.attributes.get("langfuse.observation.output"));
-        assertEquals(null, span.attributes.get("gen_ai.prompt"));
-        assertEquals(null, span.attributes.get("gen_ai.completion"));
+        assertNull(span.attributes.get("langfuse.observation.input"));
+        assertNull(span.attributes.get("langfuse.observation.output"));
+        assertNull(span.attributes.get("gen_ai.prompt"));
+        assertNull(span.attributes.get("gen_ai.completion"));
         assertEquals("agent", span.attributes.get("langfuse.observation.type"));
     }
 
