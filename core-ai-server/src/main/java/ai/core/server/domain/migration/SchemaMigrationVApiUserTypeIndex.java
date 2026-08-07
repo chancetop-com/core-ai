@@ -11,7 +11,7 @@ import core.framework.mongo.Mongo;
 public class SchemaMigrationVApiUserTypeIndex implements SchemaMigration {
     @Override
     public String version() {
-        return "20260806001";
+        return "20260806003";
     }
 
     @Override
