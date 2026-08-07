@@ -8,6 +8,7 @@ import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -68,15 +69,22 @@ public class SandboxService {
     private final boolean enabled;
     ObjectStorageServiceResolver storageResolver;
     final FileService fileService;
+    final SessionAttachmentRefRepository attachmentRepository;
     private final SandboxSnapshotService snapshotService;
     private SandboxRedisStore redisStore;
 
     public SandboxService() {
-        this((JedisPool) null, null, null, null);
+        this((JedisPool) null, null, null, null, null);
     }
 
     public SandboxService(JedisPool jedisPool, SandboxSnapshotService snapshotService,
                           ObjectStorageServiceResolver storageResolver, FileService fileService) {
+        this(jedisPool, snapshotService, storageResolver, fileService, null);
+    }
+
+    public SandboxService(JedisPool jedisPool, SandboxSnapshotService snapshotService,
+                          ObjectStorageServiceResolver storageResolver, FileService fileService,
+                          SessionAttachmentRefRepository attachmentRepository) {
         this.sandboxManager = null;
         this.defaultConfig = new SandboxConfig();
         this.defaultConfig.enabled = Boolean.FALSE;
@@ -85,16 +93,17 @@ public class SandboxService {
         this.enabled = false;
         this.storageResolver = storageResolver;
         this.fileService = fileService;
+        this.attachmentRepository = attachmentRepository;
         this.snapshotService = snapshotService;
         this.redisStore = new SandboxRedisStore(jedisPool);
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig) {
-        this(provider, defaultConfig, null, new SandboxServiceDependencies(null, null, null, null));
+        this(provider, defaultConfig, null, new SandboxServiceDependencies(null, null, null, null, null));
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox) {
-        this(provider, defaultConfig, serverUrlFromSandbox, new SandboxServiceDependencies(null, null, null, null));
+        this(provider, defaultConfig, serverUrlFromSandbox, new SandboxServiceDependencies(null, null, null, null, null));
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox, SandboxServiceDependencies dependencies) {
@@ -113,6 +122,7 @@ public class SandboxService {
         this.enabled = true;
         this.storageResolver = dependencies.storageResolver();
         this.fileService = dependencies.fileService();
+        this.attachmentRepository = dependencies.attachmentRepository();
         this.snapshotService = dependencies.snapshotService();
         this.redisStore = new SandboxRedisStore(dependencies.jedisPool());
         this.cleanupScheduler = cleanupScheduler;
@@ -140,7 +150,9 @@ public class SandboxService {
         }
         return sessionSandboxes.computeIfAbsent(sessionId, sid -> {
             LOGGER.info("sandbox created (shared) for session: {}, config={}", sid, effectiveConfig);
-            return new LazySandbox(effectiveConfig, sandboxManager, null, new LazySandbox.SessionIdentity(sid, userId), () -> onSandboxReady(sid));
+            return new LazySandbox(effectiveConfig, sandboxManager, null, new LazySandbox.SessionIdentity(sid, userId),
+                    () -> onSandboxReady(sid, userId, new SandboxSnapshotService.RestoreResult(
+                            SandboxSnapshotService.RestoreOutcome.NONE, null)));
         });
     }
 
@@ -156,7 +168,7 @@ public class SandboxService {
             return null;
         }
         var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, new LazySandbox.SessionIdentity(sessionId, userId),
-                () -> onSandboxReady(sessionId), snapshot);
+                outcome -> onSandboxReady(sessionId, userId, outcome), snapshot);
         sessionSandboxes.put(sessionId, lazySandbox);
         LOGGER.info("sandbox created for session: {}, config={}", sessionId, effectiveConfig);
         return lazySandbox;
@@ -168,8 +180,8 @@ public class SandboxService {
     public void ensurePendingFilesUploaded(String sessionId) {
         sandboxFileService.ensurePendingFilesUploaded(sessionId);
     }
-    public void uploadFiles(String sessionId, List<PendingFile> files) {
-        sandboxFileService.uploadFiles(sessionId, files);
+    public void uploadFiles(String sessionId, String userId, List<PendingFile> files) {
+        sandboxFileService.uploadFiles(sessionId, userId, files);
     }
 
     public Sandbox getSandbox(String sessionId) {
@@ -257,7 +269,8 @@ public class SandboxService {
     // Called by LazySandbox post-acquire hook after the sandbox materializes.
     // Uploads files queued before the sandbox existed. MCP processes are started
     // lazily at resolveToolRefs time (per-session, on demand), not here.
-    private void onSandboxReady(String sessionId) {
+    private void onSandboxReady(String sessionId, String userId, SandboxSnapshotService.RestoreResult restoreResult) {
+        sandboxFileService.restoreAttachments(sessionId, userId, restoreResult.snapshotCreatedAt());
         sandboxFileService.ensurePendingFilesUploaded(sessionId);
         storeSandboxBinding(sessionId);
     }
@@ -354,7 +367,7 @@ public class SandboxService {
         var lazy = new LazySandbox(sandbox, effectiveConfig, sandboxManager,
                 new LazySandbox.SandboxContext(eventDispatcher,
                         new LazySandbox.SessionIdentity(sessionId, userId),
-                        () -> onSandboxReady(sessionId), snapshotService));
+                        outcome -> onSandboxReady(sessionId, userId, outcome), snapshotService));
         sessionSandboxes.put(sessionId, lazy);
         storeSandboxBinding(sessionId);
         LOGGER.info("reattached to existing sandbox, sessionId={}, sandboxId={}", sessionId, sandbox.getId());

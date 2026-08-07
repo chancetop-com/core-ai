@@ -102,38 +102,44 @@ public class SandboxSnapshotService {
     }
 
     public RestoreOutcome restoreLatest(String sessionId, String userId, String ip, int port) {
+        return restoreLatestWithMetadata(sessionId, userId, ip, port).outcome();
+    }
+
+    public RestoreResult restoreLatestWithMetadata(String sessionId, String userId, String ip, int port) {
         // Caller identity is mandatory for restore.
-        if (!enabled() || userId == null) return RestoreOutcome.NONE;
+        if (!enabled() || userId == null) return new RestoreResult(RestoreOutcome.NONE, null);
         SandboxSnapshotDoc doc;
         try {
             doc = findLatestAvailable(sessionId);
         } catch (Exception e) {
             LOGGER.warn("snapshot lookup failed, continuing with empty sandbox: session={}", sessionId, e);
-            return RestoreOutcome.NONE;
+            return new RestoreResult(RestoreOutcome.NONE, null);
         }
-        if (doc == null) return RestoreOutcome.NONE;
+        if (doc == null) return new RestoreResult(RestoreOutcome.NONE, null);
         if (!userId.equals(doc.userId)) {
             LOGGER.warn("snapshot user mismatch, skip restore: session={}, snapshot={}", sessionId, doc.id);
-            return RestoreOutcome.NONE;
+            return new RestoreResult(RestoreOutcome.NONE, null);
         }
-        if (doc.expiresAt != null && doc.expiresAt.isBefore(ZonedDateTime.now())) return RestoreOutcome.NONE;
+        if (doc.expiresAt != null && doc.expiresAt.isBefore(ZonedDateTime.now())) {
+            return new RestoreResult(RestoreOutcome.NONE, null);
+        }
         var liveVersion = client.fetchRuntimeVersion(ip, port);
         if (majorOf(liveVersion) != majorOf(doc.runtimeVersion)) {
             LOGGER.warn("snapshot runtime major mismatch, skip restore: session={}, snapshot={}, live={}, stored={}",
                     sessionId, doc.id, liveVersion, doc.runtimeVersion);
-            return RestoreOutcome.NONE;
+            return new RestoreResult(RestoreOutcome.NONE, null);
         }
         // Retry once: the second attempt absorbs transient network/blob hiccups.
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 downloadVerifyAndRestore(doc, ip, port);
                 LOGGER.info("snapshot restored: session={}, snapshot={}, attempt={}", sessionId, doc.id, attempt);
-                return RestoreOutcome.RESTORED;
+                return new RestoreResult(RestoreOutcome.RESTORED, doc.createdAt);
             } catch (Exception e) {
                 LOGGER.warn("snapshot restore attempt {} failed: session={}, snapshot={}", attempt, sessionId, doc.id, e);
             }
         }
-        return RestoreOutcome.DEGRADED;
+        return new RestoreResult(RestoreOutcome.DEGRADED, null);
     }
 
     /** Capture the sandbox filesystem before release. Never throws: release must proceed regardless. */
@@ -295,5 +301,8 @@ public class SandboxSnapshotService {
 
     public enum RestoreOutcome {
         NONE, RESTORED, DEGRADED
+    }
+
+    public record RestoreResult(RestoreOutcome outcome, ZonedDateTime snapshotCreatedAt) {
     }
 }

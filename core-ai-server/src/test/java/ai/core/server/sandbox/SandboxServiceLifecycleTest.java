@@ -87,6 +87,6 @@ class SandboxServiceLifecycleTest {
     }
 
     private SandboxServiceDependencies nullDependencies() {
-        return new SandboxServiceDependencies(null, null, null, null);
+        return new SandboxServiceDependencies(null, null, null, null, null);
     }
 }

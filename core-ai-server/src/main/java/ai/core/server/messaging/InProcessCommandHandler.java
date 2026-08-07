@@ -114,7 +114,7 @@ public class InProcessCommandHandler {
         if (variables == null || variables.isEmpty()) variables = null;
 
         LOGGER.info("handleSendMessage: looking up session sessionId={}", command.sessionId());
-        var session = sessionManager.getSession(command.sessionId());
+        var session = sessionManager.getSession(command.sessionId(), null, command.userId());
 
         // upload pending files carried in command payload (cross-pod safe)
         var pendingFilesRaw = (List<Map<String, Object>>) payload.get("pendingFiles");
@@ -124,10 +124,11 @@ public class InProcessCommandHandler {
                 pendingFiles.add(new PendingFile(
                         (String) f.get("fileName"),
                         (String) f.get("container"),
-                        (String) f.get("blobName")));
+                        (String) f.get("blobName"),
+                        (String) f.get("contentType")));
             }
             LOGGER.info("handleSendMessage: uploading {} pending files from command payload", pendingFiles.size());
-            sandboxService.uploadFiles(command.sessionId(), pendingFiles);
+            sandboxService.uploadFiles(command.sessionId(), command.userId(), pendingFiles);
         }
 
         var attachedContents = multimodalAttachments(payload, command.sessionId(), command.userId());
@@ -148,9 +149,7 @@ public class InProcessCommandHandler {
         }
         if (attachments == null || attachments.isEmpty()) return null;
         var storageService = objectStorageResolver.resolve();
-        if (storageService == null) {
-            throw new IllegalStateException("object storage is not configured");
-        }
+        if (storageService == null) throw new IllegalStateException("object storage is not configured");
         var contents = new ArrayList<ExecutionContext.AttachedContent>(attachments.size());
         for (var attachment : attachments) {
             var type = (String) attachment.get("type");
@@ -172,6 +171,7 @@ public class InProcessCommandHandler {
                 reference.sourceSizeBytes = metadata.sizeBytes();
                 reference.contentType = resolveVideoContentType(metadata.contentType(), contentType);
                 reference.fileName = (String) attachment.get("fileName");
+                reference.kind = ai.core.server.domain.SessionAttachmentRef.KIND_VIDEO;
                 reference.createdAt = java.time.ZonedDateTime.now();
                 attachmentRepository.insert(reference);
                 contents.add(ExecutionContext.AttachedContent.ofReference(

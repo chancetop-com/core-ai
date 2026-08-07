@@ -31,10 +31,9 @@ public class AttachmentMessageHelper {
                             sessionId, att.fileName);
                     continue;
                 }
-                result.add(Map.of(
-                        "fileName", att.fileName != null ? att.fileName : att.blobName,
-                        "container", att.container,
-                        "blobName", att.blobName));
+                result.add(pendingFileMetadata(
+                        att.fileName != null ? att.fileName : att.blobName,
+                        att.container, att.blobName, att.contentType));
                 continue;
             }
             if ("multimodal".equals(att.category)) {
@@ -46,16 +45,24 @@ public class AttachmentMessageHelper {
                 var blobInfo = parseBlobUrl(att.url);
                 if (blobInfo != null) {
                     LOGGER.info("[ENQUEUE] parsed blob URL: container={}, blobName={}", blobInfo.container, blobInfo.blobName);
-                    result.add(Map.of(
-                            "fileName", att.fileName != null ? att.fileName : blobInfo.fileName(),
-                            "container", blobInfo.container(),
-                            "blobName", blobInfo.blobName()));
+                    result.add(pendingFileMetadata(
+                            att.fileName != null ? att.fileName : blobInfo.fileName(),
+                            blobInfo.container(), blobInfo.blobName(), att.contentType));
                     continue;
                 }
                 LOGGER.info("[ENQUEUE] url is not a blob storage URL, skipping sandbox upload, url={}", att.url);
             }
         }
         return result.isEmpty() ? null : result;
+    }
+
+    private static Map<String, String> pendingFileMetadata(String fileName, String container, String blobName, String contentType) {
+        var metadata = new HashMap<String, String>();
+        metadata.put("fileName", fileName);
+        metadata.put("container", container);
+        metadata.put("blobName", blobName);
+        if (contentType != null && !contentType.isBlank()) metadata.put("contentType", contentType);
+        return metadata;
     }
 
     public static List<Map<String, String>> collectImageAttachments(SendMessageRequest request) {

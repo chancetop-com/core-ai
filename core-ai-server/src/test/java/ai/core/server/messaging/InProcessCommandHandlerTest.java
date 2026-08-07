@@ -7,6 +7,8 @@ import ai.core.api.server.session.sse.SseStatusChangeEvent;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.a2a.ServerA2AService;
+import ai.core.server.sandbox.PendingFile;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.session.InProcessAgentSession;
@@ -19,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,7 +35,8 @@ class InProcessCommandHandlerTest {
         var sessionManager = mock(AgentSessionManager.class);
         var ownershipRegistry = mock(SessionOwnershipRegistry.class);
         var eventPublisher = mock(EventPublisher.class);
-        doThrow(new RuntimeException("session missing")).when(sessionManager).getSession("s-1");
+        doThrow(new RuntimeException("session missing"))
+                .when(sessionManager).getSession("s-1", null, "u-1");
         var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, eventPublisher, null, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
@@ -51,7 +55,7 @@ class InProcessCommandHandlerTest {
         var chatMessageService = mock(ChatMessageService.class);
         var ownershipRegistry = mock(SessionOwnershipRegistry.class);
         var session = mock(InProcessAgentSession.class);
-        when(sessionManager.getSession("s-1")).thenReturn(session);
+        when(sessionManager.getSession("s-1", null, "u-1")).thenReturn(session);
         var storageService = mock(ObjectStorageService.class);
         when(storageService.downloadObject("uploads", "ai/image.jpg")).thenReturn("image".getBytes(StandardCharsets.UTF_8));
         var storageResolver = mock(ObjectStorageServiceResolver.class);
@@ -72,6 +76,60 @@ class InProcessCommandHandlerTest {
         verify(storageService).downloadObject("uploads", "ai/image.jpg");
         verify(session).sendMessage(eq("animate this"), eq(null), argThat(contents ->
                 contents.size() == 1 && "aW1hZ2U=".equals(contents.getFirst().data)));
+    }
+
+    @Test
+    void passesCallerIdentityWhenUploadingSandboxAttachments() {
+        var sessionManager = mock(AgentSessionManager.class);
+        var chatMessageService = mock(ChatMessageService.class);
+        var ownershipRegistry = mock(SessionOwnershipRegistry.class);
+        var sandboxService = mock(SandboxService.class);
+        var session = mock(InProcessAgentSession.class);
+        when(sessionManager.getSession("s-1", null, "u-1")).thenReturn(session);
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService, ownershipRegistry,
+                sandboxService, null, null, null);
+        var handler = new InProcessCommandHandler(sessionDependencies,
+                new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null));
+        var files = List.of(Map.of(
+                "fileName", "metrics.xlsx",
+                "container", "sandbox",
+                "blobName", "uploads/object.xlsx",
+                "contentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+
+        handler.handle(SessionCommand.sendMessage("s-1", "u-1", "analyze", null, files));
+
+        verify(sandboxService).uploadFiles(eq("s-1"), eq("u-1"), argThat(pending -> {
+            PendingFile file = pending.getFirst();
+            return "metrics.xlsx".equals(file.fileName())
+                    && "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".equals(file.contentType());
+        }));
+    }
+
+    @Test
+    void rejectsCrossUserSendBeforeUploadingSandboxAttachments() {
+        var sessionManager = mock(AgentSessionManager.class);
+        var ownershipRegistry = mock(SessionOwnershipRegistry.class);
+        var eventPublisher = mock(EventPublisher.class);
+        var sandboxService = mock(SandboxService.class);
+        doThrow(new SecurityException("session does not belong to caller"))
+                .when(sessionManager).getSession("victim-session", null, "attacker-user");
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry,
+                sandboxService, eventPublisher, null, null);
+        var handler = new InProcessCommandHandler(sessionDependencies,
+                new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null));
+        var files = List.of(Map.of(
+                "fileName", "payload.xlsx",
+                "container", "sandbox",
+                "blobName", "uploads/payload.xlsx",
+                "contentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+
+        handler.handle(SessionCommand.sendMessage(
+                "victim-session", "attacker-user", "analyze", null, files));
+
+        verify(sandboxService, never()).uploadFiles(any(), any(), any());
+        verify(eventPublisher).publish(eq("victim-session"),
+                argThat(event -> event instanceof SseErrorEvent error
+                        && "session does not belong to caller".equals(error.message)));
     }
 
     @Test

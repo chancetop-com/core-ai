@@ -11,6 +11,9 @@ import java.time.ZonedDateTime;
  */
 @Collection(name = "session_attachment_ref")
 public class SessionAttachmentRef {
+    public static final String KIND_SANDBOX = "SANDBOX";
+    public static final String KIND_VIDEO = "VIDEO";
+
     @Id
     public String id;
 
@@ -34,6 +37,12 @@ public class SessionAttachmentRef {
 
     @Field(name = "file_name")
     public String fileName;
+
+    @Field(name = "kind")
+    public String kind;
+
+    @Field(name = "target_path")
+    public String targetPath;
 
     @Field(name = "source_size_bytes")
     public Long sourceSizeBytes;

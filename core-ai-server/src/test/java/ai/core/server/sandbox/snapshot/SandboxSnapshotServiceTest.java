@@ -197,7 +197,9 @@ class SandboxSnapshotServiceTest {
             return null;
         }).when(storage).downloadObjectToFile(anyString(), anyString(), any(Path.class));
 
-        assertEquals(SandboxSnapshotService.RestoreOutcome.RESTORED, service.restoreLatest("s1", "u1", "10.0.0.1", 8080));
+        var result = service.restoreLatestWithMetadata("s1", "u1", "10.0.0.1", 8080);
+        assertEquals(SandboxSnapshotService.RestoreOutcome.RESTORED, result.outcome());
+        assertEquals(doc.createdAt, result.snapshotCreatedAt());
         verify(client).restore(eq("10.0.0.1"), eq(8080), any(Path.class), eq(sha));
     }
 

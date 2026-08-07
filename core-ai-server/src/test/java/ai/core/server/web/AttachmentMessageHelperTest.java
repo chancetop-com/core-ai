@@ -10,6 +10,23 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class AttachmentMessageHelperTest {
 
     @Test
+    void sandboxAttachmentPreservesContentTypeInCommandMetadata() {
+        var attachment = new SendMessageRequest.SendMessageAttachment();
+        attachment.type = "FILE";
+        attachment.fileName = "metrics.xlsx";
+        attachment.contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        attachment.category = "sandbox";
+        attachment.container = "sandbox";
+        attachment.blobName = "uploads/object.xlsx";
+        var request = new SendMessageRequest();
+        request.attachments = List.of(attachment);
+
+        var result = AttachmentMessageHelper.collectPendingFiles("session-1", request);
+
+        assertEquals(attachment.contentType, result.getFirst().get("contentType"));
+    }
+
+    @Test
     void multimodalAttachmentPreservesOriginalUrl() {
         var attachment = new SendMessageRequest.SendMessageAttachment();
         attachment.url = "https://blob/photo.png";

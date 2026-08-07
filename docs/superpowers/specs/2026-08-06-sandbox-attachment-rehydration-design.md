@@ -53,7 +53,8 @@ Sandbox 是临时计算资源。会话空闲后，Sandbox 可能因 TTL、空闲
 后续消息触发新 Sandbox
   -> 创建 Sandbox
   -> 尝试恢复完整快照
-  -> 若快照未恢复，则查询当前用户/会话的 Sandbox 附件引用
+  -> 查询当前用户/会话的 Sandbox 附件引用
+  -> 若快照已恢复，仅选择创建时间晚于该快照的引用
   -> 每个目标路径只取最新引用
   -> 从对象存储下载并回填到 /tmp
   -> Sandbox READY
@@ -131,7 +132,7 @@ Sandbox 附件记录同时保存已有字段：
 
 `LazySandbox` 把快照恢复结果传给 post-acquire hook：
 
-- `RESTORED`：跳过附件回填。完整快照包含当时的 `/tmp` 状态，必须保留用户对附件的修改。
+- `RESTORED`：只回填 `created_at` 晚于快照 `created_at` 的附件。快照已覆盖的旧引用不得覆盖 `/tmp` 中用户修改后的同名文件；快照之后上传的附件仍然必须恢复。
 - `NONE`：回填持久化的原始附件。
 - `DEGRADED`：回填原始附件，同时保留现有“工作文件未能恢复”的 READY 告警。
 - 快照能力未启用：等价于 `NONE`。
@@ -199,7 +200,7 @@ Repository 使用 `session_id + user_id + kind=SANDBOX` 查询，按 `created_at
    - 一个对象失败不影响其他对象。
    - 不安全路径和错误容器被跳过。
 5. `LazySandboxTest` / `SandboxServiceTest`
-   - `RESTORED` 时不执行原始附件回填。
+   - `RESTORED` 时只回填快照之后创建的附件引用。
    - `NONE` 和 `DEGRADED` 时执行回填。
    - 回填完成后才发送 READY。
    - attach 既有 Sandbox 不重复回填。

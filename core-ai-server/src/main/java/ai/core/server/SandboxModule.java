@@ -4,6 +4,7 @@ import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.file.FileService;
+import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.SandboxServiceDependencies;
 import ai.core.server.sandbox.TokenResolver;
@@ -36,7 +37,8 @@ class SandboxModule extends Module {
         var providerName = property("sys.sandbox.provider").orElse(null);
         if (providerName == null || providerName.isBlank()) {
             sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
-                    bean(ObjectStorageServiceResolver.class), bean(FileService.class));
+                    bean(ObjectStorageServiceResolver.class), bean(FileService.class),
+                    bean(SessionAttachmentRefRepository.class));
             bind(sandboxService);
             return;
         }
@@ -56,13 +58,15 @@ class SandboxModule extends Module {
             serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
         } else {
             sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
-                    bean(ObjectStorageServiceResolver.class), bean(FileService.class));
+                    bean(ObjectStorageServiceResolver.class), bean(FileService.class),
+                    bean(SessionAttachmentRefRepository.class));
             bind(sandboxService);
             return;
         }
         sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox,
                 new SandboxServiceDependencies(bean(JedisPool.class), bean(SandboxSnapshotService.class),
-                        bean(ObjectStorageServiceResolver.class), bean(FileService.class)));
+                        bean(ObjectStorageServiceResolver.class), bean(FileService.class),
+                        bean(SessionAttachmentRefRepository.class)));
         bind(sandboxService);
 
         onShutdown(sandboxService::shutdown);

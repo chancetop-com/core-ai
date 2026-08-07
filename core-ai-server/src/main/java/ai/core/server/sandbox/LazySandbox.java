@@ -27,7 +27,7 @@ public class LazySandbox implements Sandbox {
     private final SandboxManager manager;
     private final Consumer<SandboxEvent> eventDispatcher;
     private final SessionIdentity identity;
-    private final Runnable postAcquireHook;
+    private final Consumer<SandboxSnapshotService.RestoreResult> postAcquireHook;
     private final SandboxSnapshotService snapshotService;
     private volatile long snapshotEpoch;
     private volatile boolean snapshotDirty;
@@ -39,11 +39,12 @@ public class LazySandbox implements Sandbox {
     }
 
     public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity, Runnable postAcquireHook) {
-        this(config, manager, eventDispatcher, identity, postAcquireHook, null);
+        this(config, manager, eventDispatcher, identity,
+                postAcquireHook == null ? null : ignored -> postAcquireHook.run(), null);
     }
 
     public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity,
-                       Runnable postAcquireHook, SandboxSnapshotService snapshotService) {
+                       Consumer<SandboxSnapshotService.RestoreResult> postAcquireHook, SandboxSnapshotService snapshotService) {
         this.config = config;
         this.manager = manager;
         this.eventDispatcher = eventDispatcher;
@@ -222,39 +223,46 @@ public class LazySandbox implements Sandbox {
             var acquireDuration = System.currentTimeMillis() - startTime;
             LOGGER.info("sandbox acquired: id={}, duration={}ms", delegate.getId(), acquireDuration);
 
-            var restoreWarning = restoreSnapshot();
-            runPostAcquireHook();
+            var snapshotRestore = restoreSnapshot();
+            runPostAcquireHook(snapshotRestore.result());
 
             var totalDuration = System.currentTimeMillis() - startTime;
-            dispatchEvent(SandboxEventType.READY, totalDuration, restoreWarning);
+            dispatchEvent(SandboxEventType.READY, totalDuration, snapshotRestore.warning());
             LOGGER.info("sandbox ready: id={}, totalDuration={}ms (acquire={}ms)", delegate.getId(), totalDuration, acquireDuration);
         }
     }
 
-    private void runPostAcquireHook() {
+    private void runPostAcquireHook(SandboxSnapshotService.RestoreResult restoreResult) {
         if (postAcquireHook != null) {
             try {
-                postAcquireHook.run();
+                postAcquireHook.accept(restoreResult);
             } catch (Exception e) {
                 LOGGER.warn("post-acquire hook failed for session={}", identity.sessionId(), e);
             }
         }
     }
 
-    /** Restore the latest snapshot before READY. Returns a warning message on degradation, else null. */
-    private String restoreSnapshot() {
-        if (snapshotService == null || !snapshotService.enabled()) return null;
+    /** Restore the latest snapshot before READY and expose the outcome to the post-acquire hook. */
+    private SnapshotRestore restoreSnapshot() {
+        if (snapshotService == null || !snapshotService.enabled()) {
+            return new SnapshotRestore(new SandboxSnapshotService.RestoreResult(
+                    SandboxSnapshotService.RestoreOutcome.NONE, null), null);
+        }
         try {
             snapshotEpoch = snapshotService.beginEpoch(identity.sessionId());
             snapshotDirty = false;
-            var outcome = snapshotService.restoreLatest(identity.sessionId(), identity.userId(), delegate.ip(), delegate.port());
-            if (outcome == SandboxSnapshotService.RestoreOutcome.DEGRADED) {
-                return "Sandbox is ready (previous work files could not be restored; starting from a clean environment)";
+            var result = snapshotService.restoreLatestWithMetadata(
+                    identity.sessionId(), identity.userId(), delegate.ip(), delegate.port());
+            if (result.outcome() == SandboxSnapshotService.RestoreOutcome.DEGRADED) {
+                return new SnapshotRestore(result,
+                        "Sandbox is ready (previous work files could not be restored; starting from a clean environment)");
             }
+            return new SnapshotRestore(result, null);
         } catch (Exception e) {
             LOGGER.warn("snapshot restore hook failed, continuing with empty sandbox: session={}", identity.sessionId(), e);
+            return new SnapshotRestore(new SandboxSnapshotService.RestoreResult(
+                    SandboxSnapshotService.RestoreOutcome.NONE, null), null);
         }
-        return null;
     }
 
     private void dispatchEvent(SandboxEventType type) {
@@ -312,6 +320,11 @@ public class LazySandbox implements Sandbox {
     public record SessionIdentity(String sessionId, String userId) {
     }
 
-    public record SandboxContext(Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity, Runnable postAcquireHook, SandboxSnapshotService snapshotService) {
+    private record SnapshotRestore(SandboxSnapshotService.RestoreResult result, String warning) {
+    }
+
+    public record SandboxContext(Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity,
+                                 Consumer<SandboxSnapshotService.RestoreResult> postAcquireHook,
+                                 SandboxSnapshotService snapshotService) {
     }
 }
