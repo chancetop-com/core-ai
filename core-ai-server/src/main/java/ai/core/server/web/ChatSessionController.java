@@ -75,8 +75,12 @@ public class ChatSessionController {
         var sources = sourcesParam != null && !sourcesParam.isEmpty()
             ? Arrays.asList(sourcesParam.split(","))
             : null;
-        long total = chatMessageService.countSessions(userId, sources);
-        var sessions = chatMessageService.listSessions(userId, sources, offset, limit, "created_at").stream()
+        var agentIdsParam = params.get("agent_ids");
+        var agentIds = agentIdsParam != null && !agentIdsParam.isEmpty()
+            ? Arrays.asList(agentIdsParam.split(","))
+            : null;
+        long total = chatMessageService.countSessions(userId, sources, agentIds);
+        var sessions = chatMessageService.listSessions(userId, sources, agentIds, offset, limit, "created_at").stream()
             .map(this::toSummary)
             .toList();
         var result = new LinkedHashMap<String, Object>();

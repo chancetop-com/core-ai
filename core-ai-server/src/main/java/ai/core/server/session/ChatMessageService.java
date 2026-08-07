@@ -106,25 +106,33 @@ public class ChatMessageService {
     }
 
     public long countSessions(String userId, List<String> sources) {
-        return chatSessionCollection.count(buildSessionFilter(userId, sources));
+        return countSessions(userId, sources, null);
+    }
+
+    public long countSessions(String userId, List<String> sources, List<String> agentIds) {
+        return chatSessionCollection.count(buildSessionFilter(userId, sources, agentIds));
     }
 
     public List<ChatSession> listSessions(String userId, List<String> sources, int offset, int limit) {
-        return listSessions(userId, sources, offset, limit, "last_message_at");
+        return listSessions(userId, sources, null, offset, limit, "last_message_at");
     }
 
     // sortField controls the recency vs. stable ordering: the Chat sidebar passes "created_at" so active
     // sessions keep their position instead of jumping to the top, while the For You widget keeps "last_message_at".
     public List<ChatSession> listSessions(String userId, List<String> sources, int offset, int limit, String sortField) {
+        return listSessions(userId, sources, null, offset, limit, sortField);
+    }
+
+    public List<ChatSession> listSessions(String userId, List<String> sources, List<String> agentIds, int offset, int limit, String sortField) {
         var query = new Query();
-        query.filter = buildSessionFilter(userId, sources);
+        query.filter = buildSessionFilter(userId, sources, agentIds);
         query.sort = Sorts.descending(sortField);
         query.skip = offset;
         query.limit = limit;
         return chatSessionCollection.find(query);
     }
 
-    private org.bson.conversions.Bson buildSessionFilter(String userId, List<String> sources) {
+    private org.bson.conversions.Bson buildSessionFilter(String userId, List<String> sources, List<String> agentIds) {
         var filters = new java.util.ArrayList<org.bson.conversions.Bson>();
         filters.add(Filters.eq("user_id", userId));
         filters.add(Filters.or(
@@ -140,6 +148,9 @@ public class ChatMessageService {
             } else {
                 filters.add(Filters.in("source", sources));
             }
+        }
+        if (agentIds != null && !agentIds.isEmpty()) {
+            filters.add(Filters.in("agent_id", agentIds));
         }
         return Filters.and(filters);
     }

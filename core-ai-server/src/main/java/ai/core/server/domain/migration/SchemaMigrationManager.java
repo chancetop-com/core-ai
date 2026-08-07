@@ -112,7 +112,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVApiUserApiKeyIndex(),
             new SchemaMigrationVPublishedAgentSnapshotSecurity(),
             new SchemaMigrationVSandboxAttachmentIndexes(),
-            new SchemaMigrationVApiUserTypeIndex()
+            new SchemaMigrationVApiUserTypeIndex(),
+            new SchemaMigrationVChatSessionAgentIdIndex()
         );
     }
 }
