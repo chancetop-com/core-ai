@@ -73,7 +73,9 @@ export const userApi = {
 };
 
 export interface UserStatus {
-  email: string;
+  email?: string;
+  user_id?: string;
+  user_type?: string;
   name: string;
   role: string;
   status: string;
@@ -81,6 +83,14 @@ export interface UserStatus {
   has_api_key: boolean;
   api_key_created_at: string;
   api_key: string;
+  owner_id?: string;
+  owner_name?: string;
+  created_by?: string;
+  permissions?: { resource_type: string; resource_id: string }[];
+  input_token_quota?: number;
+  output_token_quota?: number;
+  quota_consumed_input_tokens?: number;
+  quota_consumed_output_tokens?: number;
 }
 
 export interface TraceAccount {
@@ -130,6 +140,9 @@ export interface BackgroundTask {
 export const adminApi = {
   listUsers: () =>
     requestWithAuth<ListUsersResponse>('/api/auth/users'),
+  updateUserConfig: (userId: string, config: { permissions?: { resource_type: string; resource_id: string }[]; input_token_quota?: number; output_token_quota?: number }) =>
+    requestWithAuth<void>(`/api/auth/users/${encodeURIComponent(userId)}/config`,
+      { method: 'PUT', body: JSON.stringify(config) }),
   updateUserStatus: (email: string, status: string) =>
     requestWithAuth<void>('/api/auth/users/update-status', { method: 'POST', body: JSON.stringify({ email, status }) }),
   deleteUser: (email: string) =>
@@ -162,6 +175,9 @@ export interface AdminApiUser {
   key_prefix?: string;
   created_at?: string;
   last_used_at?: string;
+  owner_id?: string;
+  owner_name?: string;
+  created_by?: string;
 }
 
 export interface ListApiUsersResponse {

@@ -179,9 +179,9 @@ public class OTLPIngestService {
 
         // Increment trace token/cost totals atomically instead of reloading all spans
         incrementTraceTokens(traceId, span);
-        // API user quota accounting: idempotent per span (span_id unique index guards double counting);
-        // conditional update keeps internal users untouched.
-        apiUserQuotaService.recordUsage(span.userId, inputTokens(span) + outputTokens(span));
+        // User quota accounting: idempotent per span (span_id unique index guards double counting);
+        // conditional update keeps unconfigured users untouched.
+        apiUserQuotaService.recordUsage(span.userId, inputTokens(span), outputTokens(span));
     }
 
     private long inputTokens(Span span) {

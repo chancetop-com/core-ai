@@ -6,11 +6,16 @@ import ai.core.api.server.apiuser.request.UpdateStatusRequest;
 import ai.core.api.server.apiuser.response.AdminApiUserView;
 import ai.core.api.server.apiuser.response.CreateApiUserResponse;
 import ai.core.api.server.apiuser.response.ListApiUsersResponse;
+import ai.core.server.domain.User;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
+import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
+
+import java.util.HashMap;
+import java.util.Objects;
 
 /**
  * Admin surface for manager-type API users (business system subjects).
@@ -25,11 +30,13 @@ public class AdminApiUserWebServiceImpl implements AdminApiUserWebService {
     ApiUserService apiUserService;
     @Inject
     ApiUserKeyService apiUserKeyService;
+    @Inject
+    MongoCollection<User> userCollection;
 
     @Override
     public CreateApiUserResponse create(CreateApiUserRequest request) {
         if (request.name == null || request.name.isBlank()) throw new BadRequestException("name is required");
-        var manager = apiUserService.createManager(request.name);
+        var manager = apiUserService.createManager(request.name, AuthContext.userId(webContext));
         ActionLogContext.put("user_id", manager.id);
         var response = new CreateApiUserResponse();
         response.userId = manager.id;
@@ -41,14 +48,23 @@ public class AdminApiUserWebServiceImpl implements AdminApiUserWebService {
 
     @Override
     public ListApiUsersResponse list() {
+        var users = apiUserService.listApiUsers(AuthContext.userId(webContext));
+        var ownerIds = users.stream().map(user -> user.ownerId).filter(Objects::nonNull).distinct().toList();
+        var ownerNames = new HashMap<String, String>();
+        for (var ownerId : ownerIds) {
+            ownerNames.put(ownerId, userCollection.get(ownerId).map(owner -> owner.name).orElse(ownerId));
+        }
         var response = new ListApiUsersResponse();
-        response.users = apiUserService.listApiUsers(AuthContext.userId(webContext)).stream()
+        response.users = users.stream()
                 .map(user -> {
                     var view = new AdminApiUserView();
                     view.userId = user.id;
                     view.name = user.name;
                     view.status = user.status;
                     view.createdAt = user.createdAt;
+                    view.ownerId = user.ownerId;
+                    if (user.ownerId != null) view.ownerName = ownerNames.get(user.ownerId);
+                    view.createdBy = user.createdBy;
                     return view;
                 })
                 .toList();

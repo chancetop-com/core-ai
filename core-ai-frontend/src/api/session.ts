@@ -334,9 +334,10 @@ export const sessionApi = {
   history: (sessionId: string) =>
     request<{ messages: HistoryMessage[]; artifacts?: SessionArtifact[] }>(`/api/sessions/${sessionId}/history`),
 
-  listChatSessions: (offset = 0, limit = 50, sources?: string[]) => {
+  listChatSessions: (offset = 0, limit = 50, sources?: string[], agentIds?: string[]) => {
     const qs = [`offset=${offset}`, `limit=${limit}`];
     if (sources && sources.length > 0) qs.push(`sources=${sources.join(',')}`);
+    if (agentIds && agentIds.length > 0) qs.push(`agent_ids=${agentIds.join(',')}`);
     return request<{ sessions: ChatSessionSummary[]; total: number }>(`/api/chat/sessions?${qs.join('&')}`);
   },
 

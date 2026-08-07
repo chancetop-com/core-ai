@@ -29,4 +29,13 @@ public class AdminApiUserView {
 
     @Property(name = "last_used_at")
     public ZonedDateTime lastUsedAt;
+
+    @Property(name = "owner_id")
+    public String ownerId;
+
+    @Property(name = "owner_name")
+    public String ownerName;
+
+    @Property(name = "created_by")
+    public String createdBy;
 }

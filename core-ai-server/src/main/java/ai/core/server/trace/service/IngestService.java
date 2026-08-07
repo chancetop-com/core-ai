@@ -225,9 +225,9 @@ public class IngestService {
         // Incrementally roll up this span's tokens/cost onto the parent trace doc.
         // Replaces the previous full re-aggregation pass for O(1) per span instead of O(N).
         incrementTraceTotals(spanReq.traceId, span);
-        // API user quota accounting: idempotent per span (span_id unique index guards double counting);
-        // conditional update keeps internal users untouched.
-        apiUserQuotaService.recordUsage(span.userId, safeLong(span.inputTokens) + safeLong(span.outputTokens));
+        // User quota accounting: idempotent per span (span_id unique index guards double counting);
+        // conditional update keeps unconfigured users untouched.
+        apiUserQuotaService.recordUsage(span.userId, safeLong(span.inputTokens), safeLong(span.outputTokens));
     }
 
     private void backfillTraceIdentity(String traceId, String spanName, Map<String, String> attributes) {

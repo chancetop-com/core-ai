@@ -207,7 +207,7 @@ key 格式：
 | --- | --- | --- | --- |
 | POST | `/api/api-users` | `CreateApiUserRequest{external_id, name}` → `ApiUserView{user_id, external_id, name, status, permissions, quota}` | 幂等创建/复用（按 ownerId + externalId） |
 | GET | `/api/api-users/:userId` | → `ApiUserView` | 查详情（含权限、额度、当前窗口消耗） |
-| PUT | `/api/api-users/:userId/config` | `UpdateApiUserConfigRequest{permissions?, token_quota?}` → `ApiUserView` | **配置权限与每日额度**（合并接口，字段可选，语义见下） |
+| PUT | `/api/api-users/:userId/config` | `UpdateApiUserConfigRequest{permissions?, input_token_quota?, output_token_quota?}` → `ApiUserView` | **配置权限与每日额度**（合并接口，字段可选，语义见下） |
 | GET | `/api/api-users/:userId/usage` | `UsageQueryRequest{from, to}` → `UsageView{total_tokens, input_tokens, output_tokens, cached_tokens, cost_usd, call_count, by_day[]}` | 按时间范围查 token 消耗（限制 from/to 跨度 ≤ 90 天） |
 | POST | `/api/api-users/:userId/keys` | `CreateKeyRequest{ttl_seconds, metadata?}` → `CreateKeyResponse{key_id, key, expires_at}` | 签发临时 key（明文一次性返回） |
 | GET | `/api/api-users/:userId/keys` | → `ListKeysView{keys[]}` | 列出该用户的 key（不含明文） |
@@ -218,7 +218,7 @@ key 格式：
 
 - 请求体字段均可选，**传了才更新**，未传字段保持不变（部分更新）；
 - `permissions`：可用 Agent 列表，**全量覆盖**（空数组 = 清空全部权限）；P1 仅支持 `resource_type=agent` 的具体 id；
-- `token_quota`：**每日** token 上限（按 UTC 日窗口），`null`/`0` = 不限；
+- `input_token_quota` / `output_token_quota`：**每日** input/output token 上限（按 UTC 日窗口），`null`/`0` = 不限（单位 token，1M = 1_000_000）；
 - 权限与额度查询统一看 `GET /api/api-users/:userId` 详情，不再提供独立查询接口。
 
 示例：
@@ -226,7 +226,8 @@ key 格式：
 ```json
 {
   "permissions": [ { "resource_type": "agent", "resource_id": "order-assistant" } ],
-  "token_quota": 1000000
+  "input_token_quota": 1000000,
+  "output_token_quota": 500000
 }
 ```
 
@@ -477,7 +478,7 @@ session/ChatMessageService.java               // SessionMeta.of 增加 apiKeyId�
 5. ✅ **资源权限提入 P1 并升级为用户级模型**：外部系统用户默认可调全部 Agent 风险偏大；`ResourcePermission`（resourceType/resourceId 白名单）挂在 `User.permissions`，key 不再携带白名单（v2.1 修正：原 `allowedAgentIds` 挂在 key 上，权限应随用户走，换 key 不丢权限、禁用用户即收回权限）。P1 仅支持 `agent` 资源类型的具体 id 列表（不含通配）。
 6. ✅ **key metadata 提入 P1**（`Trace.metadata` 已有，透传成本低、业务检索价值高）。
 7. ✅ **配额唯一写点**（trace 写入点按 traceId 幂等；run 完成路径不记账）。
-8. ✅ **权限与额度配置合并为 `PUT /api/api-users/:userId/config`**（字段可选部分更新；permissions 全量覆盖、token_quota 为每日上限）。
+8. ✅ **权限与额度配置合并为 `PUT /api/api-users/:userId/config`**（字段可选部分更新；permissions 全量覆盖、input/output token_quota 为每日上限，单位 token）。
 9. ✅ **会话两条创建路径均接 `source=api` + `apiKeyId`**。
 10. ✅ **认证级联校验 owner 状态**（manager 禁用后名下临时 key 立即失效）。
 11. ✅ **幂等唯一索引用 partial 而非 sparse**（core-ng 显式写 null 字段）。

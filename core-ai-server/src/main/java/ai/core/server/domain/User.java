@@ -50,17 +50,26 @@ public class User {
     @Field(name = "external_id")
     public String externalId;
 
+    @Field(name = "created_by")
+    public String createdBy;
+
     @Field(name = "permissions")
     public List<ResourcePermission> permissions;
 
-    @Field(name = "quota_tokens")
-    public Long quotaTokens;
+    @Field(name = "quota_input_tokens")
+    public Long quotaInputTokens;
+
+    @Field(name = "quota_output_tokens")
+    public Long quotaOutputTokens;
 
     @Field(name = "quota_window_start")
     public ZonedDateTime quotaWindowStart;
 
-    @Field(name = "quota_consumed_tokens")
-    public Long quotaConsumedTokens;
+    @Field(name = "quota_consumed_input_tokens")
+    public Long quotaConsumedInputTokens;
+
+    @Field(name = "quota_consumed_output_tokens")
+    public Long quotaConsumedOutputTokens;
 
     @NotNull
     @Field(name = "created_at")

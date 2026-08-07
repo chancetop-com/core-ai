@@ -2,7 +2,6 @@ package ai.core.api.server.apiuser;
 
 import ai.core.api.server.apiuser.request.CreateApiUserRequest;
 import ai.core.api.server.apiuser.request.UpdateStatusRequest;
-import ai.core.api.server.apiuser.response.AdminApiUserView;
 import ai.core.api.server.apiuser.response.CreateApiUserResponse;
 import ai.core.api.server.apiuser.response.ListApiUsersResponse;
 import core.framework.api.http.HTTPStatus;

@@ -64,13 +64,14 @@ public class ApiUserService {
     /**
      * Creates a manager-type API user (business system subject). Admin-only.
      */
-    public User createManager(String name) {
+    public User createManager(String name, String createdBy) {
         var user = new User();
         user.id = "api:" + UUID.randomUUID();
         user.userType = USER_TYPE_API;
         user.name = name;
         user.role = "user";
         user.status = "active";
+        user.createdBy = createdBy;
         user.createdAt = ZonedDateTime.now();
         userCollection.insert(user);
         return user;
@@ -86,19 +87,43 @@ public class ApiUserService {
         var user = requireApiUser(userId);
         requireOwnership(managerUserId, user);
         if (user.ownerId == null) throw new ForbiddenException("cannot configure manager user");
+        applyConfig(user, request);
+        userCollection.replace(user);
+        return user;
+    }
 
+    /**
+     * Admin surface for configuring any user's permissions & quota (manager users are not configurable).
+     */
+    public User updateConfigByAdmin(String adminUserId, String userId, UpdateApiUserConfigRequest request) {
+        var admin = userCollection.get(adminUserId).orElse(null);
+        if (admin == null || !"admin".equals(admin.role)) throw new ForbiddenException("admin required");
+        var user = userCollection.get(userId).orElse(null);
+        if (user == null) throw new NotFoundException("user not found, userId=" + userId);
+        if ("api".equals(user.userType) && user.ownerId == null) throw new ForbiddenException("cannot configure manager user");
+        applyConfig(user, request);
+        userCollection.replace(user);
+        return user;
+    }
+
+    private void applyConfig(User user, UpdateApiUserConfigRequest request) {
         if (request.permissions != null) {
             user.permissions = toEntities(request.permissions);
         }
-        if (request.tokenQuota != null) {
-            if (request.tokenQuota < 0) throw new BadRequestException("token_quota must be >= 0");
-            user.quotaTokens = request.tokenQuota;
-            if (request.tokenQuota == 0) {
-                user.quotaConsumedTokens = 0L;
+        if (request.inputTokenQuota != null) {
+            if (request.inputTokenQuota < 0) throw new BadRequestException("input_token_quota must be >= 0");
+            user.quotaInputTokens = request.inputTokenQuota;
+            if (request.inputTokenQuota == 0) {
+                user.quotaConsumedInputTokens = 0L;
             }
         }
-        userCollection.replace(user);
-        return user;
+        if (request.outputTokenQuota != null) {
+            if (request.outputTokenQuota < 0) throw new BadRequestException("output_token_quota must be >= 0");
+            user.quotaOutputTokens = request.outputTokenQuota;
+            if (request.outputTokenQuota == 0) {
+                user.quotaConsumedOutputTokens = 0L;
+            }
+        }
     }
 
     public User updateStatus(String adminUserId, String userId, String status) {
@@ -130,8 +155,10 @@ public class ApiUserService {
             }).toList();
         }
         var quota = new ApiUserQuotaView();
-        quota.tokenQuota = user.quotaTokens;
-        quota.consumedTokens = user.quotaConsumedTokens;
+        quota.inputTokenQuota = user.quotaInputTokens;
+        quota.outputTokenQuota = user.quotaOutputTokens;
+        quota.consumedInputTokens = user.quotaConsumedInputTokens;
+        quota.consumedOutputTokens = user.quotaConsumedOutputTokens;
         view.quota = quota;
         return view;
     }

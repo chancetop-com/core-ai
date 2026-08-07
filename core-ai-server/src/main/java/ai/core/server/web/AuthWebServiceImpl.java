@@ -13,7 +13,9 @@ import ai.core.api.server.auth.ResetUserPasswordRequest;
 import ai.core.api.server.auth.RevokeApiKeyRequest;
 import ai.core.api.server.auth.UpdateUserRoleRequest;
 import ai.core.api.server.auth.UpdateUserStatusRequest;
+import ai.core.api.server.apiuser.request.UpdateApiUserConfigRequest;
 import ai.core.api.server.user.GenerateApiKeyResponse;
+import ai.core.server.apiuser.ApiUserService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
@@ -28,6 +30,8 @@ public class AuthWebServiceImpl implements AuthWebService {
     WebContext webContext;
     @Inject
     AuthService authService;
+    @Inject
+    ApiUserService apiUserService;
 
     @Override
     public RegisterResponse register(RegisterRequest request) {
@@ -52,6 +56,13 @@ public class AuthWebServiceImpl implements AuthWebService {
     public ListUsersResponse listUsers() {
         var userId = AuthContext.userId(webContext);
         return authService.listUsers(userId);
+    }
+
+    @Override
+    public void updateUserConfig(String userId, UpdateApiUserConfigRequest request) {
+        var adminUserId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        apiUserService.updateConfigByAdmin(adminUserId, userId, request);
     }
 
     @Override

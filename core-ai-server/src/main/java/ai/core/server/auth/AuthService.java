@@ -3,11 +3,15 @@ package ai.core.server.auth;
 import ai.core.api.server.auth.ListUsersResponse;
 import ai.core.api.server.auth.LoginResponse;
 import ai.core.api.server.auth.RegisterResponse;
+import ai.core.api.server.apiuser.response.ResourcePermissionView;
 import ai.core.api.server.user.GenerateApiKeyResponse;
+import ai.core.server.apiuser.ApiUserService;
 import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.UnauthorizedException;
@@ -19,7 +23,9 @@ import java.security.SecureRandom;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Objects;
 
 /**
  * @author stephen
@@ -254,12 +260,22 @@ public class AuthService {
     public ListUsersResponse listUsers(String adminUserId) {
         requireAdmin(adminUserId);
 
-        var users = userCollection.find(Filters.exists("email"));
+        var query = new Query();
+        query.filter = Filters.in("user_type", "internal", ApiUserService.USER_TYPE_API);
+        query.sort = Sorts.ascending("created_at");
+        var users = userCollection.find(query);
+        var ownerIds = users.stream().map(user -> user.ownerId).filter(Objects::nonNull).distinct().toList();
+        var ownerNames = new HashMap<String, String>();
+        for (var ownerId : ownerIds) {
+            ownerNames.put(ownerId, userCollection.get(ownerId).map(owner -> owner.name).orElse(ownerId));
+        }
         var response = new ListUsersResponse();
         response.users = new ArrayList<>(users.size());
         for (var user : users) {
             var view = new ListUsersResponse.UserStatusView();
             view.email = user.email;
+            view.userId = user.id;
+            view.userType = user.userType;
             view.name = user.name;
             view.role = user.role;
             view.status = user.status;
@@ -267,6 +283,21 @@ public class AuthService {
             view.hasApiKey = user.apiKey != null;
             view.apiKeyCreatedAt = user.apiKeyCreatedAt;
             view.apiKey = user.apiKey;
+            view.ownerId = user.ownerId;
+            if (user.ownerId != null) view.ownerName = ownerNames.get(user.ownerId);
+            view.createdBy = user.createdBy;
+            if (user.permissions != null && !user.permissions.isEmpty()) {
+                view.permissions = user.permissions.stream().map(p -> {
+                    var pv = new ResourcePermissionView();
+                    pv.resourceType = p.resourceType;
+                    pv.resourceId = p.resourceId;
+                    return pv;
+                }).toList();
+            }
+            view.inputTokenQuota = user.quotaInputTokens;
+            view.outputTokenQuota = user.quotaOutputTokens;
+            view.quotaConsumedInputTokens = user.quotaConsumedInputTokens;
+            view.quotaConsumedOutputTokens = user.quotaConsumedOutputTokens;
             response.users.add(view);
         }
         return response;

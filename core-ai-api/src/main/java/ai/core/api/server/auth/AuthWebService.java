@@ -1,10 +1,13 @@
 package ai.core.api.server.auth;
 
+import ai.core.api.server.apiuser.request.UpdateApiUserConfigRequest;
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import core.framework.api.http.HTTPStatus;
 import core.framework.api.web.service.GET;
 import core.framework.api.web.service.POST;
+import core.framework.api.web.service.PUT;
 import core.framework.api.web.service.Path;
+import core.framework.api.web.service.PathParam;
 import core.framework.api.web.service.ResponseStatus;
 
 /**
@@ -27,6 +30,11 @@ public interface AuthWebService {
     @GET
     @Path("/api/auth/users")
     ListUsersResponse listUsers();
+
+    @PUT
+    @Path("/api/auth/users/:userId/config")
+    @ResponseStatus(HTTPStatus.OK)
+    void updateUserConfig(@PathParam("userId") String userId, UpdateApiUserConfigRequest request);
 
     @POST
     @Path("/api/auth/users/update-status")

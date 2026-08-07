@@ -120,7 +120,7 @@ POST /api/api-users
   "name": "张三的店铺",
   "status": "active",
   "permissions": [],
-  "quota": { "token_quota": null, "consumed_tokens": 0 }
+  "quota": { "input_token_quota": null, "output_token_quota": null, "consumed_input_tokens": 0, "consumed_output_tokens": 0 }
 }
 ```
 
@@ -129,7 +129,7 @@ POST /api/api-users
 
 ### 3.2 配置权限与每日额度（合并接口）
 
-> 权限（可用 Agent 列表）与额度（每日 token 上限）通过**一个接口**配置，字段可选、传了才更新。
+> 权限（可用 Agent 列表）与额度（每日 input/output token 上限）通过**一个接口**配置，字段可选、传了才更新。额度单位：token（1M = 1_000_000）。
 
 ```
 PUT /api/api-users/:userId/config
@@ -143,22 +143,24 @@ PUT /api/api-users/:userId/config
     { "resource_type": "agent", "resource_id": "order-assistant" },
     { "resource_type": "agent", "resource_id": "refund-agent" }
   ],
-  "token_quota": 1000000
+  "input_token_quota": 1000000,
+  "output_token_quota": 500000
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `permissions` | array | 否 | 可用 Agent 列表，**全量覆盖**（传空数组 = 清空全部权限）；P1 仅支持 `resource_type=agent` 的具体 id |
-| `token_quota` | long | 否 | **每日** token 上限（按 UTC 日窗口）；`null`/`0` 表示不限 |
+| `input_token_quota` | long | 否 | **每日** input token 上限（按 UTC 日窗口）；`null`/`0` 表示不限 |
+| `output_token_quota` | long | 否 | **每日** output token 上限（按 UTC 日窗口）；`null`/`0` 表示不限 |
 
 部分更新示例（只改额度，不动权限）：
 
 ```json
-{ "token_quota": 500000 }
+{ "input_token_quota": 500000, "output_token_quota": 250000 }
 ```
 
-响应（200）：`ApiUserView`（含 `permissions`、`quota` 与 `quota.consumed_tokens` 当日消耗）。
+响应（200）：`ApiUserView`（含 `permissions`、`quota` 与 `quota.consumed_input_tokens` / `quota.consumed_output_tokens` 当日消耗）。
 
 > 注意：每日 0 点（UTC）自动重置当日消耗；权限与额度的当前值通过 `GET /api/api-users/:userId` 查询（3.3）。
 
