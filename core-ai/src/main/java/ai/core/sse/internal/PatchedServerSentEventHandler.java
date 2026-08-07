@@ -25,6 +25,7 @@ import org.xnio.ChannelListeners;
 import org.xnio.IoUtils;
 import org.xnio.channels.StreamSinkChannel;
 
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -207,10 +208,24 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
 
             if (channel != null) {
                 String message = errorMessage(handlerContext.responseBeanWriter.toJSON(ErrorResponse.errorResponse(e, actionLog.id)));
-                channel.sendBytes(Strings.bytes(message));
-                channel.close();    // gracefully shutdown connection to make sure retry/error can be sent
+                sendErrorAndClose(channel, sink, message);
             }
         }
+    }
+
+    private void sendErrorAndClose(PatchedChannelImpl<Object> channel, StreamSinkChannel sink, String message) {
+        // write the error synchronously before close: the async sendBytes path can race with
+        // close() and drop the buffered message, leaving the client with a silent disconnect
+        try {
+            var buffer = ByteBuffer.wrap(Strings.bytes(message));
+            while (buffer.hasRemaining()) {
+                sink.write(buffer);
+            }
+            sink.flush();
+        } catch (Throwable writeError) {
+            logger.warn("failed to send sse error event, error={}", writeError.getMessage(), writeError);
+        }
+        channel.close();    // gracefully shutdown connection to make sure retry/error can be sent
     }
 
     void limitRate(RateControl rateControl, PatchedChannelSupport<Object> support, String clientIP) {

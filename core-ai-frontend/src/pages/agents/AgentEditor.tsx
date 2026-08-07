@@ -605,7 +605,12 @@ The system prompt should define how this agent behaves, its capabilities, and it
           setTesting(false);
           sessionApi.close(sid).catch(() => {});
         }
-      }, () => { setTesting(false); });
+      }, (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        testOutputRef.current += `\nError: ${msg}`;
+        setTestOutput(testOutputRef.current);
+        setTesting(false);
+      });
       testControllerRef.current = controller;
 
       setTimeout(() => {

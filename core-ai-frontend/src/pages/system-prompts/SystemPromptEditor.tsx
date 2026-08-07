@@ -124,7 +124,10 @@ export default function SystemPromptEditor() {
           setTesting(false);
           sessionApi.close(sid).catch(() => {});
         }
-      }, () => {
+      }, (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        testOutputRef.current += `\n\nError: ${msg}`;
+        setTestOutput(testOutputRef.current);
         setTesting(false);
       });
       testControllerRef.current = controller;

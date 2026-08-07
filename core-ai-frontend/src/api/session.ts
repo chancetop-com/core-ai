@@ -303,7 +303,14 @@ export const sessionApi = {
           const data = line.slice(5).trim();
           if (!data) continue;
           try {
-            onEvent(JSON.parse(data) as SseEvent);
+            const parsed = JSON.parse(data) as SseEvent & { errorCode?: string; message?: string };
+            // server-side auth/connection failures arrive as core-ng ErrorResponse without an `event` field;
+            // route them to onError so callers surface the reason instead of silently dropping them
+            if (parsed.errorCode) {
+              onError?.(new Error(`${parsed.errorCode}: ${parsed.message || 'SSE error'}`));
+              continue;
+            }
+            onEvent(parsed);
           } catch {
             // ignore
           }
@@ -424,8 +431,14 @@ export const sessionApi = {
             const data = line.slice(5).trim();
             if (data) {
               try {
-                const event = JSON.parse(data) as SseEvent;
-                onEvent(event);
+                const parsed = JSON.parse(data) as SseEvent & { errorCode?: string; message?: string };
+                // server-side auth/connection failures arrive as core-ng ErrorResponse without an `event` field;
+                // route them to onError so callers surface the reason instead of silently dropping them
+                if (parsed.errorCode) {
+                  onError?.(new Error(`${parsed.errorCode}: ${parsed.message || 'SSE error'}`));
+                  continue;
+                }
+                onEvent(parsed);
               } catch {
                 // ignore
               }
