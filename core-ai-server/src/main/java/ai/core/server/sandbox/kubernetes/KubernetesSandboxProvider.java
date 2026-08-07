@@ -211,7 +211,7 @@ public class KubernetesSandboxProvider implements SandboxProvider {
             };
         } catch (Exception e) {
             LOGGER.warn("failed to get pod status: name={}", sandbox.getId(), e);
-            return SandboxStatus.ERROR;
+            return sandbox.getStatus();
         }
     }
 }

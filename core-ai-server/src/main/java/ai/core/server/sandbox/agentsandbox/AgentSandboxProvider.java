@@ -348,7 +348,7 @@ public class AgentSandboxProvider implements SandboxProvider {
             return getDirectStatus(sandbox);
         } catch (Exception e) {
             LOGGER.warn("failed to get agent sandbox status: name={}", sandbox.getId(), e);
-            return SandboxStatus.ERROR;
+            return sandbox.getStatus();
         }
     }
 

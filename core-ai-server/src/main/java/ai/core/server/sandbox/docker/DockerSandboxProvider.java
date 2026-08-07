@@ -158,7 +158,7 @@ public class DockerSandboxProvider implements SandboxProvider {
             };
         } catch (Exception e) {
             LOGGER.warn("failed to get container status: id={}", sandbox.getId(), e);
-            return SandboxStatus.ERROR;
+            return sandbox.getStatus();
         }
     }
 

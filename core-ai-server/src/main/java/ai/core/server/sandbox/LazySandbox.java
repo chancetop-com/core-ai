@@ -22,6 +22,7 @@ import java.util.function.Consumer;
  */
 public class LazySandbox implements Sandbox {
     private static final Logger LOGGER = LoggerFactory.getLogger(LazySandbox.class);
+    private static final long PROVIDER_VALIDATION_IDLE_NANOS = java.time.Duration.ofSeconds(30).toNanos();
 
     private final SandboxConfig config;
     private final SandboxManager manager;
@@ -33,6 +34,7 @@ public class LazySandbox implements Sandbox {
     private volatile boolean snapshotDirty;
     private volatile Sandbox delegate;
     private volatile SandboxStatus status = SandboxStatus.PENDING;
+    private volatile long lastAccessNanos;
 
     public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity) {
         this(config, manager, eventDispatcher, identity, null, null);
@@ -190,19 +192,23 @@ public class LazySandbox implements Sandbox {
 
     public void ensureReady() {
         var current = delegate;
-        if (current != null && current.getStatus() == SandboxStatus.READY) {
+        var now = System.nanoTime();
+        if (canReuseWithoutProviderValidation(current, now)) {
             // Bump sandbox TTL so long-running agent loops don't trigger expiry mid-turn.
             // touch() only bumps in-memory createdAt on every call; it throttles the
             // provider-level renewal (K8s patch) to at most once per half-TTL.
             manager.touch(current.getId());
+            lastAccessNanos = now;
             return;
         }
 
         synchronized (this) {
             // Double-check after acquiring lock
             current = delegate;
-            if (current != null && current.getStatus() == SandboxStatus.READY) {
+            now = System.nanoTime();
+            if (isReusableAfterIdleValidation(current, now)) {
                 manager.touch(current.getId());
+                lastAccessNanos = now;
                 return;
             }
 
@@ -228,8 +234,42 @@ public class LazySandbox implements Sandbox {
 
             var totalDuration = System.currentTimeMillis() - startTime;
             dispatchEvent(SandboxEventType.READY, totalDuration, snapshotRestore.warning());
+            lastAccessNanos = System.nanoTime();
             LOGGER.info("sandbox ready: id={}, totalDuration={}ms (acquire={}ms)", delegate.getId(), totalDuration, acquireDuration);
         }
+    }
+
+    private boolean canReuseWithoutProviderValidation(Sandbox sandbox, long now) {
+        return lastAccessNanos != 0
+                && now - lastAccessNanos < PROVIDER_VALIDATION_IDLE_NANOS
+                && isLocallyReady(sandbox);
+    }
+
+    private boolean isReusableAfterIdleValidation(Sandbox sandbox, long now) {
+        if (!isLocallyReady(sandbox)) return false;
+        if (canReuseWithoutProviderValidation(sandbox, now)) return true;
+
+        try {
+            var providerStatus = manager.getStatus(sandbox);
+            if (providerStatus == SandboxStatus.TERMINATED || providerStatus == SandboxStatus.ERROR) {
+                LOGGER.info("sandbox provider reports terminal state, replacing delegate: id={}, providerStatus={}",
+                        sandbox.getId(), providerStatus);
+                return false;
+            }
+            if (providerStatus != SandboxStatus.READY && providerStatus != SandboxStatus.EXECUTING) {
+                LOGGER.warn("sandbox provider status is inconclusive, retaining locally ready delegate: id={}, providerStatus={}",
+                        sandbox.getId(), providerStatus);
+            }
+            return true;
+        } catch (RuntimeException e) {
+            // A control-plane timeout must not destroy a runtime that is still locally healthy.
+            LOGGER.warn("sandbox provider validation failed, retaining locally ready delegate: id={}", sandbox.getId(), e);
+            return true;
+        }
+    }
+
+    private boolean isLocallyReady(Sandbox sandbox) {
+        return sandbox != null && sandbox.getStatus() == SandboxStatus.READY;
     }
 
     private void runPostAcquireHook(SandboxSnapshotService.RestoreResult restoreResult) {

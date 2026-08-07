@@ -126,6 +126,8 @@ Sandbox 附件记录同时保存已有字段：
 
 回填仍由 `LazySandbox.ensureReady()` 的 post-acquire 阶段触发，发生在 Sandbox `READY` 事件之前，因此 Agent 的第一次文件工具调用看到的已经是恢复后的环境。
 
+复用现有 delegate 前，进程内状态必须为 `READY`；首次使用重新 attach 的 delegate，或 delegate 空闲超过 30 秒后的首次操作，还会同步校验 provider 状态。SandboxClaim 可能由控制器按 `shutdownTime` 在进程外删除；若 provider 明确返回 `TERMINATED` 或 `ERROR`，应在执行工具前直接 acquire 新 Sandbox，并走同一回填流程。连续文件/工具操作复用最近校验结果，避免每次操作都访问 Kubernetes 控制面；provider 查询超时或返回过渡态时保留本地健康 delegate，不能因短暂控制面故障破坏仍在工作的 runtime。
+
 已有 Sandbox 从 Redis 重新 attach 成功时不回填，避免覆盖仍然存活的文件；只有实际 acquire 新 Sandbox 时执行。
 
 ### 7.2 与完整快照的关系
@@ -160,7 +162,7 @@ Repository 使用 `session_id + user_id + kind=SANDBOX` 查询，按 `created_at
 - `InProcessCommandHandler`：获取可信对象元数据，在 Sandbox 上传成功后持久化引用。
 - `SessionAttachmentRef` / `SessionAttachmentRefRepository`：增加类型、路径和按 owner/session 查询。
 - `SandboxServiceDependencies` / `SandboxService`：注入 Repository，并在新 Sandbox ready hook 中执行恢复。
-- `LazySandbox`：把快照恢复结果传给 post-acquire hook。
+- `LazySandbox`：用 provider 状态识别进程外过期，并把快照恢复结果传给 post-acquire hook。
 - Mongo schema migration：创建恢复查询索引。
 
 不修改 `ChatMessage` 文档结构。现有路径提示继续用于 Agent 上下文，持久化引用独立承担恢复职责。
