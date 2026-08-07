@@ -4,6 +4,7 @@ import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.SessionCommand;
+import ai.core.server.session.ChatMessageService;
 import ai.core.server.web.AttachmentMessageHelper;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.utils.JsonUtil;
@@ -12,6 +13,7 @@ import core.framework.log.ActionLogContext;
 import core.framework.web.Request;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
+import core.framework.web.exception.NotFoundException;
 import core.framework.web.sse.Channel;
 import core.framework.web.sse.ChannelListener;
 import org.slf4j.Logger;
@@ -36,14 +38,18 @@ public class AgentMessageStreamChannelListener implements ChannelListener<SseBas
     CommandPublisher commandPublisher;
     @Inject
     WebContext webContext;
+    @Inject
+    ChatMessageService chatMessageService;
 
     @Override
     public void onConnect(Request request, Channel<SseBaseEvent> channel, String lastEventId) {
         ActionLogContext.triggerTrace(false);
         var sessionId = request.queryParams().get(SESSION_ID_KEY);
         if (sessionId == null || sessionId.isBlank()) {
-            channel.close();
-            return;
+            throw new BadRequestException("agent-session-id is required");
+        }
+        if (chatMessageService.getSessionMeta(sessionId) == null) {
+            throw new NotFoundException("session not found, sessionId=" + sessionId);
         }
 
         var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));

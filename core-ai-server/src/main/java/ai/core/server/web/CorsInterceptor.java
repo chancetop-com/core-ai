@@ -1,6 +1,9 @@
 package ai.core.server.web;
 
+import core.framework.api.http.HTTPStatus;
+import core.framework.api.web.service.ResponseStatus;
 import core.framework.http.HTTPMethod;
+import core.framework.log.ErrorCode;
 import core.framework.web.ErrorHandler;
 import core.framework.web.Interceptor;
 import core.framework.web.Invocation;
@@ -8,6 +11,7 @@ import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.exception.MethodNotAllowedException;
 
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -39,7 +43,24 @@ public class CorsInterceptor implements Interceptor, ErrorHandler {
                 && e instanceof MethodNotAllowedException) {
             return Optional.of(preflightResponse());
         }
+        // Error responses need CORS headers too: without Access-Control-Allow-Origin the browser
+        // blocks cross-origin reads of 401/403/429 bodies, so clients cannot see errorCode/message
+        // (e.g. QUOTA_EXCEEDED vs UNAUTHORIZED) and cannot decide whether to refresh the token.
+        if (request.path().startsWith("/api/")) {
+            String errorCode = e instanceof ErrorCode code ? code.errorCode() : "INTERNAL_ERROR";
+            String message = e.getMessage() == null ? "" : e.getMessage();
+            var body = Map.of("errorCode", errorCode, "message", message);
+            return Optional.of(Response.bean(body)
+                    .status(httpStatus(e))
+                    .header("Access-Control-Allow-Origin", "*"));
+        }
         return Optional.empty();
+    }
+
+    private HTTPStatus httpStatus(Throwable e) {
+        ResponseStatus responseStatus = e.getClass().getDeclaredAnnotation(ResponseStatus.class);
+        if (responseStatus != null) return responseStatus.value();
+        return HTTPStatus.INTERNAL_SERVER_ERROR;
     }
 
     private Response preflightResponse() {

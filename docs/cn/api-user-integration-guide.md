@@ -398,8 +398,10 @@ POST /api/sessions
 **发送消息（SSE 流式）：**
 
 ```
-POST /api/sessions/:sessionId/messages/stream
+POST /api/sessions/messages/stream?agent-session-id=<session_id>
 ```
+
+> ⚠️ 注意：session 标识通过 **query 参数 `agent-session-id`** 传递，路径中**没有** `:sessionId` 段（早期文档误写为 `/api/sessions/:sessionId/messages/stream`，该路径未注册，会返回 404）。
 
 请求：
 
@@ -408,6 +410,17 @@ POST /api/sessions/:sessionId/messages/stream
 ```
 
 响应：`text/event-stream`，事件结构见 core-ai SSE 协议（消息增量、工具调用、完成事件）。
+
+**SSE 认证失败**：连接返回 HTTP 200（SSE 协议特性），随后流内收到一个 `event: error` 事件，`data` 为 core-ng 错误格式：
+
+```
+event: error
+data: {"id":"...","errorCode":"UNAUTHORIZED","message":"invalid api key"}
+```
+
+- 前端必须监听**命名事件 `error`**（原生 `EventSource` 用 `addEventListener('error', ...)`，`onerror` 属性收不到）；
+- `errorCode == "UNAUTHORIZED"` → 用 `cmk_` 重新签发 `ctk_` 后重连；
+- 其他 `errorCode`（如 `QUOTA_EXCEEDED`）见第 5 章错误码表。
 
 > 多轮会话的每轮消息都会计入该用户的 token 消耗与配额。
 
