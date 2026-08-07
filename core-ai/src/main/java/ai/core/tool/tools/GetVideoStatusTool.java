@@ -25,8 +25,13 @@ public class GetVideoStatusTool extends ToolCall {
     private static final String TOOL_DESC = """
             Check the status of a previously submitted video generation task.
             Returns the current status and progress. If the video is still processing,
-            poll again after a short wait. If completed, the result includes the video
-            ID for reference.
+            poll again after a short wait (5-10 seconds). If completed, the result
+            includes the video ID for reference.
+
+            IMPORTANT: Keep polling with the SAME video_id until the status is
+            "completed" or "failed". While a task is still processing, do NOT submit
+            a new generate_video request — it will be rejected until this task reaches
+            a terminal status.
 
             Parameters:
             - video_id (required): The video task ID returned by generate_video
@@ -55,6 +60,7 @@ public class GetVideoStatusTool extends ToolCall {
 
             return switch (status.status()) {
                 case "completed" -> {
+                    clearPendingTaskIfMatches(context, videoId);
                     var output = saveVideo(context, provider.downloadVideo(videoId), videoId);
                     yield ToolCallResult.completed(
                             "Video generation completed.\nvideo_id: " + videoId + "\n\n[Download/play video](" + output + ")")
@@ -63,11 +69,14 @@ public class GetVideoStatusTool extends ToolCall {
                             .withStats("video_path", output)
                             .withStats("status", "completed");
                 }
-                case "failed" -> ToolCallResult.failed(
-                        "Video generation failed: " + (status.error() != null ? status.error() : "unknown error"))
-                        .withDuration(System.currentTimeMillis() - startTime)
-                        .withStats("video_id", videoId)
-                        .withStats("status", "failed");
+                case "failed" -> {
+                    clearPendingTaskIfMatches(context, videoId);
+                    yield ToolCallResult.failed(
+                            "Video generation failed: " + (status.error() != null ? status.error() : "unknown error"))
+                            .withDuration(System.currentTimeMillis() - startTime)
+                            .withStats("video_id", videoId)
+                            .withStats("status", "failed");
+                }
                 default -> {
                     // "processing", "queued", or any other non-terminal status
                     var progress = status.progress() != null ? status.progress() + "%" : "unknown";
@@ -83,6 +92,13 @@ public class GetVideoStatusTool extends ToolCall {
         } catch (Exception e) {
             return ToolCallResult.failed("Video status check failed: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
+        }
+    }
+
+    private void clearPendingTaskIfMatches(ExecutionContext context, String videoId) {
+        var pending = context.getCustomVariable(GenerateVideoTool.PENDING_VIDEO_TASK_CONTEXT_KEY);
+        if (pending instanceof String s && s.equals(videoId)) {
+            context.getCustomVariables().remove(GenerateVideoTool.PENDING_VIDEO_TASK_CONTEXT_KEY);
         }
     }
 

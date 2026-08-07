@@ -3,6 +3,7 @@ package ai.core.tool.tools;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.media.MediaProvider;
 import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.VideoGenerationRequest;
@@ -10,8 +11,12 @@ import ai.core.utils.JsonUtil;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import core.framework.http.HTTPClient;
+import core.framework.http.HTTPMethod;
+import core.framework.http.HTTPRequest;
 import core.framework.util.Strings;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -22,27 +27,54 @@ import java.util.Map;
  * {@code get_video_status} tool is also available for explicit status checks.
  * <p>
  * Videos typically take 1–10 minutes to generate.
+ * <p>
+ * Only ONE video task may be in flight per session: a new {@code generate_video}
+ * submission is rejected while a previous task has not reached a terminal status
+ * (completed/failed) via {@code get_video_status}.
  *
  * @author stephen
  */
 public final class GenerateVideoTool extends ToolCall {
     public static final String TOOL_NAME = "generate_video";
+    static final String PENDING_VIDEO_TASK_CONTEXT_KEY = "__pending_video_task_id";
+    static final String VIDEO_SUBMIT_FAIL_COUNT_CONTEXT_KEY = "__video_submit_fail_count";
+    private static final int MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
+    private static final int MAX_ERROR_MESSAGE_LENGTH = 500;
 
     private static final String TOOL_DESC = """
             Generate a video from a text prompt. This is an asynchronous operation — the tool
             returns a task ID immediately, and the agent must poll get_video_status with that
             ID to check when the video is ready.
 
-            IMPORTANT: After calling this tool, use get_video_status to poll for completion.
-            Videos typically take 1–10 minutes to generate. Once the status is "completed",
-            the download URL will be available in the status response.
+            IMPORTANT — ONE VIDEO TASK AT A TIME:
+            This session can only have ONE video generation task in progress. After this tool
+            returns a video_id, you MUST call get_video_status with that ID and keep polling
+            until it reports "completed" or "failed" before submitting another generate_video
+            request. Submitting a new request while a previous task is still processing will
+            be REJECTED. Do not start a new task just because the previous one is taking a
+            while — video generation takes 1-10 minutes.
 
             Parameters:
             - prompt (required): A detailed text description of the video scene
-            - model: The video generation model to use (uses the default if omitted)
-            - seconds: Video duration in seconds (optional; defaults to 10, model-specific)
-            - size: Video dimensions, e.g. "1280x720"
-            - input_references: JSON array of reference images. Each image must provide b64Json with base64 data or a data URL.
+            - model: Optional. Omit to use the gateway default video model. If specified it
+              must be a video model actually configured in the gateway — do NOT guess model
+              names. If the default model fails with image references, fix the reference
+              format instead of trying random model names.
+            - seconds: Optional, defaults to 10. The provider maximum is 10 seconds; larger
+              values are clamped to 10.
+            - size: Optional, e.g. "1280x720" or "720x1280". The provider renders video at
+              most 720p; aspect ratio is derived from the width/height.
+            - input_references: Optional JSON array of reference images. Each item must be
+              an object with exactly one of:
+                - {"b64Json": "data:image/jpeg;base64,..."} — a full data URL. The
+                  "data:<mime>;base64," prefix is REQUIRED; raw base64 without the prefix is
+                  REJECTED.
+                - {"url": "https://..."} — an http(s) image URL; the server downloads the
+                  image automatically.
+              If omitted, the images attached to the current chat message are used
+              automatically.
+              NEVER embed huge base64 blobs in the tool arguments — prefer passing an image
+              url or relying on the attached images; the server converts them.
             - previous_video_id: A video_id from this gateway to edit conversationally. Supported by Gemini Omni.
             - provider_extra: JSON string with provider-specific parameters
             """;
@@ -69,9 +101,11 @@ public final class GenerateVideoTool extends ToolCall {
     }
 
     private final MediaProvider mediaProvider;
+    private final ReferenceImageLoader referenceImageLoader;
 
-    private GenerateVideoTool(MediaProvider mediaProvider) {
+    private GenerateVideoTool(MediaProvider mediaProvider, ReferenceImageLoader referenceImageLoader) {
         this.mediaProvider = mediaProvider;
+        this.referenceImageLoader = referenceImageLoader;
     }
 
     @Override
@@ -89,6 +123,16 @@ public final class GenerateVideoTool extends ToolCall {
             var prompt = getStringValue(args, "prompt");
             if (Strings.isBlank(prompt)) return ToolCallResult.failed("prompt is required");
 
+            var pendingTaskId = pendingVideoTask(context);
+            if (pendingTaskId != null) {
+                return ToolCallResult.failed(
+                        "There is already a video generation task in progress for this session: video_id=" + pendingTaskId + ". "
+                                + "You MUST call get_video_status with that video_id and wait until it reports 'completed' or 'failed' "
+                                + "before submitting a new generate_video request.")
+                        .withDuration(System.currentTimeMillis() - startTime)
+                        .withStats("video_id", pendingTaskId);
+            }
+
             var request = new VideoGenerationRequest(
                     getStringValue(args, "model") != null ? getStringValue(args, "model") : defaultModel(context),
                     prompt,
@@ -100,25 +144,51 @@ public final class GenerateVideoTool extends ToolCall {
 
             var response = provider.generateVideo(request);
             var videoId = response.id();
+            context.getCustomVariables().put(PENDING_VIDEO_TASK_CONTEXT_KEY, videoId);
+            resetFailCount(context);
 
             var result = "Video generation submitted.\n"
                     + "video_id: " + videoId + "\n"
-                    + "Videos typically take 1–10 minutes.";
+                    + "Videos typically take 1–10 minutes.\n"
+                    + "Poll get_video_status with this video_id until it reports 'completed' or 'failed' — do not submit another video task before then.";
 
             return ToolCallResult.pending(videoId, result)
                     .withDuration(System.currentTimeMillis() - startTime)
                     .withStats("video_id", videoId);
         } catch (Exception e) {
-            return ToolCallResult.failed("Video generation failed: " + e.getMessage(), e)
+            return ToolCallResult.failed(failureMessage(e, context), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    private String failureMessage(Exception e, ExecutionContext context) {
+        var count = incrementFailCount(context);
+        var message = "Video generation failed: " + sanitize(e.getMessage() != null ? e.getMessage() : e.toString());
+        if (count >= 2) {
+            message += "\n\nYou have now failed " + count + " times in a row. Do NOT keep guessing. "
+                    + "Re-read the generate_video tool description: input_references items must be either "
+                    + "a full data URL (\"data:image/jpeg;base64,...\") or an http(s) url (the server downloads it), "
+                    + "and the model must be one actually configured in the gateway.";
+        }
+        return message;
+    }
+
+    private String sanitize(String message) {
+        var sanitized = message
+                .replaceAll("data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]{100,}", "data:image/...;base64,[truncated]")
+                .replaceAll("[A-Za-z0-9+/=]{200,}", "[base64 truncated]");
+        if (sanitized.length() > MAX_ERROR_MESSAGE_LENGTH) {
+            sanitized = sanitized.substring(0, MAX_ERROR_MESSAGE_LENGTH) + "... (message truncated)";
+        }
+        return sanitized;
     }
 
     private List<MediaReference> inputReferences(Map<String, Object> args, ExecutionContext context) {
         var references = getStringValue(args, "input_references");
         if (!Strings.isBlank(references)) {
             try {
-                return JsonUtil.fromJson(new TypeReference<>() { }, references);
+                List<MediaReference> parsed = JsonUtil.fromJson(new TypeReference<>() { }, references);
+                return parsed.stream().map(this::resolveReference).toList();
             } catch (Exception e) {
                 throw new IllegalArgumentException("input_references must be a JSON array of reference images", e);
             }
@@ -129,6 +199,17 @@ public final class GenerateVideoTool extends ToolCall {
                 .filter(content -> content.type == ExecutionContext.AttachedContent.AttachedContentType.IMAGE)
                 .map(this::mediaReference)
                 .toList();
+    }
+
+    // server-side conversion so the LLM never has to embed base64: any http(s) url is downloaded and turned into a data URL
+    private MediaReference resolveReference(MediaReference reference) {
+        if (reference.b64Json() != null && !reference.b64Json().isBlank()) return reference;
+        if (reference.url() != null && !reference.url().isBlank()) {
+            var loaded = referenceImageLoader.load(reference.url());
+            var mimeType = loaded.contentType() != null && !loaded.contentType().isBlank() ? loaded.contentType() : "image/png";
+            return new MediaReference(null, "data:" + mimeType + ";base64," + java.util.Base64.getEncoder().encodeToString(loaded.data()));
+        }
+        return reference;
     }
 
     private MediaReference mediaReference(ExecutionContext.AttachedContent content) {
@@ -142,6 +223,32 @@ public final class GenerateVideoTool extends ToolCall {
     private String defaultModel(ExecutionContext context) {
         var model = context.getCustomVariables().get("media.video.model");
         return model instanceof String value && !value.isBlank() ? value : null;
+    }
+
+    private String pendingVideoTask(ExecutionContext context) {
+        var value = context.getCustomVariable(PENDING_VIDEO_TASK_CONTEXT_KEY);
+        return value instanceof String s && !s.isBlank() ? s : null;
+    }
+
+    private int incrementFailCount(ExecutionContext context) {
+        var next = failCount(context) + 1;
+        context.getCustomVariables().put(VIDEO_SUBMIT_FAIL_COUNT_CONTEXT_KEY, next);
+        return next;
+    }
+
+    private int failCount(ExecutionContext context) {
+        var value = context.getCustomVariable(VIDEO_SUBMIT_FAIL_COUNT_CONTEXT_KEY);
+        return value instanceof Number n ? n.intValue() : 0;
+    }
+
+    private void resetFailCount(ExecutionContext context) {
+        context.getCustomVariables().remove(VIDEO_SUBMIT_FAIL_COUNT_CONTEXT_KEY);
+    }
+
+    // video submission mutates per-session pending state; never run two submissions concurrently
+    @Override
+    public boolean isConcurrencySafe(String arguments) {
+        return false;
     }
 
     @Override
@@ -165,11 +272,45 @@ public final class GenerateVideoTool extends ToolCall {
         }
     }
 
+    interface ReferenceImageLoader {
+        LoadedImage load(String url);
+
+        record LoadedImage(byte[] data, String contentType) {
+        }
+    }
+
+    static final class HTTPReferenceImageLoader implements ReferenceImageLoader {
+        private final HTTPClient client = new PatchedHTTPClientBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .timeout(Duration.ofSeconds(30))
+                .trustAll()
+                .build();
+
+        @Override
+        public LoadedImage load(String url) {
+            var response = client.execute(new HTTPRequest(HTTPMethod.GET, url));
+            if (response.statusCode < 200 || response.statusCode >= 300) {
+                throw new IllegalArgumentException("failed to download reference image: HTTP " + response.statusCode);
+            }
+            if (response.body.length > MAX_REFERENCE_IMAGE_BYTES) {
+                throw new IllegalArgumentException("reference image too large: " + response.body.length + " bytes (max " + MAX_REFERENCE_IMAGE_BYTES + ")");
+            }
+            var contentType = response.headers == null ? null : response.headers.get("Content-Type");
+            return new LoadedImage(response.body, contentType);
+        }
+    }
+
     public static class Builder extends ToolCall.Builder<Builder, GenerateVideoTool> {
         private MediaProvider mediaProvider;
+        private ReferenceImageLoader referenceImageLoader = new HTTPReferenceImageLoader();
 
         public Builder mediaProvider(MediaProvider mediaProvider) {
             this.mediaProvider = mediaProvider;
+            return this;
+        }
+
+        Builder referenceImageLoader(ReferenceImageLoader referenceImageLoader) {
+            this.referenceImageLoader = referenceImageLoader;
             return this;
         }
 
@@ -184,14 +325,14 @@ public final class GenerateVideoTool extends ToolCall {
             this.timeoutMs(120_000L); // submit should be fast — video generation is async
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "A detailed text description of the video scene").required(),
-                    ToolCallParameters.ParamSpec.of(String.class, "model", "The video generation model to use (uses the default if omitted)"),
-                    ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; defaults to 10, model-specific)"),
+                    ToolCallParameters.ParamSpec.of(String.class, "model", "The video generation model to use (uses the default if omitted); must be a model configured in the gateway — do not guess"),
+                    ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; defaults to 10, provider maximum is 10)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720"),
-                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON array of reference images with b64Json base64 data or data URLs"),
+                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON array of reference images; each item is {\"b64Json\":\"data:image/jpeg;base64,...\"} (full data URL) or {\"url\":\"https://...\"} (server downloads it); omit to use attached images"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_video_id", "A gateway video ID to edit conversationally with a supported provider"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));
-            var tool = new GenerateVideoTool(mediaProvider);
+            var tool = new GenerateVideoTool(mediaProvider, referenceImageLoader);
             build(tool);
             return tool;
         }

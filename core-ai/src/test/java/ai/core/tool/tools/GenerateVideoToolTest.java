@@ -10,10 +10,12 @@ import ai.core.media.domain.VideoStatusResponse;
 import core.framework.json.JSON;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author stephen
@@ -66,8 +68,100 @@ class GenerateVideoToolTest {
         assertEquals("data:image/jpeg;base64,aGVsbG8=", provider.videoRequest.inputReferences().getFirst().b64Json());
     }
 
+    @Test
+    void downloadsUrlReferencesServerSide() {
+        var provider = new TestMediaProvider();
+        var context = ExecutionContext.builder().build();
+        context.setVideoMediaProvider(provider);
+        var tool = GenerateVideoTool.builder()
+                .referenceImageLoader(url -> new GenerateVideoTool.ReferenceImageLoader.LoadedImage(
+                        "aGVsbG8=".getBytes(StandardCharsets.UTF_8), "image/jpeg"))
+                .build();
+
+        tool.execute(JSON.toJSON(Map.of(
+                "prompt", "Animate the reference image",
+                "input_references", "[{\"url\":\"https://example.com/image.jpg\"}]")), context);
+
+        assertNotNull(provider.videoRequest);
+        var expected = "data:image/jpeg;base64," + java.util.Base64.getEncoder().encodeToString("aGVsbG8=".getBytes(StandardCharsets.UTF_8));
+        assertEquals(expected, provider.videoRequest.inputReferences().getFirst().b64Json());
+    }
+
+    @Test
+    void rejectsSecondSubmissionWhilePreviousTaskIsPending() {
+        var provider = new TestMediaProvider();
+        var context = ExecutionContext.builder().build();
+        context.setVideoMediaProvider(provider);
+        var tool = GenerateVideoTool.builder().build();
+
+        var first = tool.execute(JSON.toJSON(Map.of("prompt", "First video")), context);
+        assertTrue(first.isPending(), "first submission should be pending");
+        assertEquals("video-id", first.getTaskId());
+
+        var second = tool.execute(JSON.toJSON(Map.of("prompt", "Second video")), context);
+        assertTrue(second.isFailed(), "second submission while previous task is pending must be rejected");
+        assertTrue(second.getResult().contains("video-id"), "rejection should name the in-flight task");
+    }
+
+    @Test
+    void allowsNewSubmissionAfterPreviousTaskReachesTerminalStatus() {
+        var provider = new TestMediaProvider();
+        var context = ExecutionContext.builder().build();
+        context.setVideoMediaProvider(provider);
+        var tool = GenerateVideoTool.builder().build();
+        var statusTool = GetVideoStatusTool.builder().build();
+
+        var first = tool.execute(JSON.toJSON(Map.of("prompt", "First video")), context);
+        assertEquals("video-id", first.getTaskId());
+
+        provider.status = "completed";
+        statusTool.execute(JSON.toJSON(Map.of("video_id", "video-id")), context);
+
+        var second = tool.execute(JSON.toJSON(Map.of("prompt", "Second video")), context);
+        assertTrue(second.isPending(), "submission after terminal status should be allowed");
+        assertEquals("video-id", second.getTaskId());
+    }
+
+    @Test
+    void failedStatusClearsPendingTask() {
+        var provider = new TestMediaProvider();
+        var context = ExecutionContext.builder().build();
+        context.setVideoMediaProvider(provider);
+        var tool = GenerateVideoTool.builder().build();
+        var statusTool = GetVideoStatusTool.builder().build();
+
+        var first = tool.execute(JSON.toJSON(Map.of("prompt", "First video")), context);
+        assertEquals("video-id", first.getTaskId());
+
+        provider.status = "failed";
+        provider.error = "upstream exploded";
+        var status = statusTool.execute(JSON.toJSON(Map.of("video_id", "video-id")), context);
+        assertTrue(status.isFailed());
+        assertTrue(status.getResult().contains("upstream exploded"), "provider error must be surfaced");
+
+        var second = tool.execute(JSON.toJSON(Map.of("prompt", "Second video")), context);
+        assertTrue(second.isPending(), "submission after failed terminal status should be allowed");
+    }
+
+    @Test
+    void failureMessageGuidesRetryAfterRepeatedFailures() {
+        var provider = new FailingMediaProvider();
+        var context = ExecutionContext.builder().build();
+        context.setVideoMediaProvider(provider);
+        var tool = GenerateVideoTool.builder().build();
+
+        var first = tool.execute(JSON.toJSON(Map.of("prompt", "boom")), context);
+        var second = tool.execute(JSON.toJSON(Map.of("prompt", "boom")), context);
+
+        assertTrue(first.isFailed());
+        assertTrue(second.isFailed());
+        assertTrue(second.getResult().contains("Do NOT keep guessing"), "repeated failures must inject guidance");
+    }
+
     private static final class TestMediaProvider implements MediaProvider {
         private VideoGenerationRequest videoRequest;
+        private String status = "processing";
+        private String error;
 
         @Override
         public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
@@ -78,6 +172,28 @@ class GenerateVideoToolTest {
         public VideoGenerationResponse generateVideo(VideoGenerationRequest request) {
             videoRequest = request;
             return new VideoGenerationResponse("video-id", "processing", null, null);
+        }
+
+        @Override
+        public VideoStatusResponse getVideoStatus(String videoId) {
+            return new VideoStatusResponse(videoId, status, null, error, null);
+        }
+
+        @Override
+        public byte[] downloadVideo(String videoId) {
+            return new byte[0];
+        }
+    }
+
+    private static final class FailingMediaProvider implements MediaProvider {
+        @Override
+        public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public VideoGenerationResponse generateVideo(VideoGenerationRequest request) {
+            throw new IllegalArgumentException("upstream rejected the request: invalid reference format");
         }
 
         @Override
