@@ -236,9 +236,14 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
     }
 
     String errorMessage(String errorResponse) {
+        // inject "type":"error" so clients can route the error through the same event dispatcher
+        // (regular SSE events carry a `type` field; without it the error would be dropped by switch-on-type handlers)
+        String withType = errorResponse.startsWith("{")
+                ? errorResponse.replaceFirst("\\{", "{\"type\":\"error\",")
+                : errorResponse;
         return "retry: 86400000\n\n"
                + "event: error\n"
-               + "data: " + errorResponse + "\n\n";
+               + "data: " + withType + "\n\n";
     }
 
     public <T> void add(HTTPMethod method, String path, Class<T> eventClass, ChannelListener<T> listener, PatchedServerSentEventContextImpl<T> context) {
