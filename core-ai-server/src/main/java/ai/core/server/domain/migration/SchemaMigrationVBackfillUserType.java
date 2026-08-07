@@ -15,7 +15,7 @@ import java.util.List;
 public class SchemaMigrationVBackfillUserType implements SchemaMigration {
     @Override
     public String version() {
-        return "20260807001";
+        return "20260807002";
     }
 
     @Override
