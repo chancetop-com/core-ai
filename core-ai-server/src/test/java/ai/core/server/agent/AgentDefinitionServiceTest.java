@@ -148,13 +148,12 @@ class AgentDefinitionServiceTest {
 
     @Test
     void prioritizeDefaultAssistantMovesAssistantToFirst() {
-        var service = new AgentDefinitionService();
         var recent = agent("recent-agent");
         var assistant = agent("default-assistant");
         var old = agent("old-agent");
         var agents = new ArrayList<>(List.of(recent, assistant, old));
 
-        service.prioritizeDefaultAssistant(agents);
+        AgentListHelper.prioritizeDefaultAssistant(agents);
 
         assertSame(assistant, agents.get(0));
         assertEquals(List.of(assistant, recent, old), agents);
@@ -162,12 +161,11 @@ class AgentDefinitionServiceTest {
 
     @Test
     void prioritizeDefaultAssistantKeepsOrderWithoutAssistant() {
-        var service = new AgentDefinitionService();
         var recent = agent("recent-agent");
         var old = agent("old-agent");
         var agents = new ArrayList<>(List.of(recent, old));
 
-        service.prioritizeDefaultAssistant(agents);
+        AgentListHelper.prioritizeDefaultAssistant(agents);
 
         assertEquals(List.of(recent, old), agents);
     }

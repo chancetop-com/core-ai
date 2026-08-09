@@ -2,6 +2,7 @@ package ai.core.server.agent;
 
 import ai.core.api.server.agent.ListAgentsRequest;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Projections;
 import org.bson.conversions.Bson;
 
 import java.util.ArrayList;
@@ -16,6 +17,8 @@ import java.util.regex.Pattern;
 final class AgentQueryHelper {
     private static final String AIRAGENT_USER_ID_FIELD = "user_id";
     private static final String AIRAGENT_SYSTEM_DEFAULT_FIELD = "system_default";
+
+    static final Bson SUMMARY_PROJECTION = Projections.include("_id", "name");
 
     static Bson buildAccessFilter(String userId, ListAgentsRequest request) {
         Boolean myAgents = myAgentsFilter(request.myAgents);

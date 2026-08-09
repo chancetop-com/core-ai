@@ -74,9 +74,9 @@ export default function ArtifactList() {
   const [filterUserId, setFilterUserId] = useState('');
   const [sharedFilterAgentId, setSharedFilterAgentId] = useState('');
 
-  // Agent options for the filter dropdown (shared by both tabs)
+  // Agent options for the filter dropdown (shared by both tabs); summary mode avoids pulling full definitions
   useEffect(() => {
-    api.agents.list(false, undefined, 200)
+    api.agents.list(false, undefined, 200, undefined, undefined, undefined, undefined, true)
       .then(res => setAgents(res.agents))
       .catch(() => setAgents([]));
   }, []);

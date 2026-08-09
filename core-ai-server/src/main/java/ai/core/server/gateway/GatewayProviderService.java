@@ -10,6 +10,7 @@ import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
+import core.framework.http.HTTPResponse;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -20,6 +21,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.io.IOException;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -136,6 +138,8 @@ public class GatewayProviderService {
                     result.status = "ok";
                     result.message = "Google credentials verified; video generation is not started by provider test";
                 }
+            } else if (isKieMediaProvider(entity)) {
+                testKie(entity, result);
             } else {
                 GatewayNetworkGuard.validateOutboundUrl(testUrl(entity), Boolean.TRUE.equals(entity.allowPrivateNetwork));
                 var request = new HTTPRequest(HTTPMethod.GET, testUrl(entity));
@@ -176,6 +180,31 @@ public class GatewayProviderService {
         result.message = result.ok ? "Connected" : truncate("HTTP " + response.statusCode + ": " + response.text(), 300);
     }
 
+    // KIE tasks are created through the unified job API; the credit endpoint is a zero-cost connectivity probe
+    private void testKie(GatewayProviderConfig entity, TestGatewayProviderResponse result) {
+        var url = stripTrailingSlash(entity.baseUrl) + "/api/v1/chat/credit";
+        GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(entity.allowPrivateNetwork));
+        var request = new HTTPRequest(HTTPMethod.GET, url);
+        request.headers.put("Content-Type", "application/json");
+        request.connectTimeout = Duration.ofSeconds(valueOrDefault(entity.connectTimeoutSeconds, 10));
+        request.timeout = Duration.ofSeconds(valueOrDefault(entity.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS));
+        GatewaySupport.applyAuth(entity, request, secret(entity));
+        var response = CLIENT.execute(request);
+        result.ok = response.statusCode >= 200 && response.statusCode < 300;
+        result.status = result.ok ? "ok" : "failed";
+        result.message = result.ok ? kieCreditMessage(response) : truncate("HTTP " + response.statusCode + ": " + response.text(), 300);
+    }
+
+    private String kieCreditMessage(HTTPResponse response) {
+        try {
+            var body = GatewayJson.MAPPER.readTree(response.body == null ? new byte[0] : response.body);
+            var data = body.path("data");
+            return data.isNumber() ? "Connected, credit=" + data.asText() : "Connected";
+        } catch (IOException e) {
+            return "Connected";
+        }
+    }
+
     private String probeModel(GatewayProviderConfig entity) {
         if (gatewayModelCollection != null) {
             var query = new Query();
@@ -190,6 +219,10 @@ public class GatewayProviderService {
     private boolean isVertexMediaProvider(GatewayProviderConfig provider) {
         return "VERTEX_GEMINI_GENERATE_CONTENT".equals(provider.mediaProtocol)
                 || "VERTEX_GEMINI_INTERACTIONS".equals(provider.mediaProtocol);
+    }
+
+    private boolean isKieMediaProvider(GatewayProviderConfig provider) {
+        return "KIE".equals(provider.mediaProtocol);
     }
 
     private boolean vertexMediaProviderConfigurationInvalid(GatewayProviderConfig provider) {
@@ -341,7 +374,7 @@ public class GatewayProviderService {
     private String normalizeMediaProtocol(String mediaProtocol) {
         var value = mediaProtocol.trim().toUpperCase(Locale.ROOT);
         return switch (value) {
-            case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_INTERACTIONS" -> value;
+            case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_INTERACTIONS", "KIE" -> value;
             default -> throw new BadRequestException("unsupported media protocol: " + mediaProtocol);
         };
     }

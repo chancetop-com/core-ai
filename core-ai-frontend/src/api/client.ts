@@ -1362,7 +1362,7 @@ export const api = {
       request<ListGatewayModelsResponse>(`/api/gateway/providers/${providerId}/models/import`, { method: 'POST', body: JSON.stringify(data) }),
   },
   agents: {
-    list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean, type?: string) => {
+    list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean, type?: string, summary?: boolean) => {
       const params = new URLSearchParams();
       if (my !== undefined) params.set('my', String(my));
       if (query) params.set('query', query);
@@ -1371,6 +1371,7 @@ export const api = {
       if (sort) params.set('sort', sort);
       if (includeSystemDefault !== undefined) params.set('include_system_default', String(includeSystemDefault));
       if (type) params.set('type', type);
+      if (summary !== undefined) params.set('summary', String(summary));
       const qs = params.toString();
       return request<ListAgentsResponse>(`/api/agents${qs ? `?${qs}` : ''}`);
     },

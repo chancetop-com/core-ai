@@ -29,4 +29,7 @@ public class ListAgentsRequest {
 
     @QueryParam(name = "ids")
     public String ids;
+
+    @QueryParam(name = "summary")
+    public Boolean summary;
 }

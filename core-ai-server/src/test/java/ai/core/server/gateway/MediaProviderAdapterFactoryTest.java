@@ -2,6 +2,7 @@ package ai.core.server.gateway;
 
 import ai.core.llm.providers.LiteLLMMediaProvider;
 import ai.core.media.GeminiImageMediaProvider;
+import ai.core.media.KieMediaProvider;
 import ai.core.media.OpenAIImageMediaProvider;
 import ai.core.media.VertexGeminiImageMediaProvider;
 import ai.core.media.VertexGeminiOmniMediaProvider;
@@ -52,6 +53,14 @@ class MediaProviderAdapterFactoryTest {
         var provider = provider("litellm", null);
 
         assertInstanceOf(LiteLLMMediaProvider.class, factory.create(provider, "key"));
+    }
+
+    @Test
+    void createsKieAdapterWhenProtocolIsConfigured() {
+        var provider = provider("openai-compatible", "KIE");
+        provider.baseUrl = "https://api.kie.ai";
+
+        assertInstanceOf(KieMediaProvider.class, factory.create(provider, "key"));
     }
 
     private GatewayProviderConfig provider(String type, String mediaProtocol) {

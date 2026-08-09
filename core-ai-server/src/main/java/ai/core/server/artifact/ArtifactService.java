@@ -3,12 +3,14 @@ package ai.core.server.artifact;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +19,11 @@ import java.util.regex.Pattern;
 public class ArtifactService {
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 100;
+
+    // listing only exposes metadata; the base64 file content in `data` is never part of a list payload
+    private static final org.bson.conversions.Bson FILE_LIST_PROJECTION = Projections.exclude("data", "storage_path");
+    private static final org.bson.conversions.Bson SESSION_LOOKUP_PROJECTION = Projections.include("_id", "title", "artifacts");
+    private static final org.bson.conversions.Bson SESSION_AGENT_LOOKUP_PROJECTION = Projections.include("artifacts");
 
     @Inject
     MongoCollection<FileRecord> fileRecordCollection;
@@ -49,6 +56,7 @@ public class ArtifactService {
         query.sort = Sorts.descending("created_at");
         query.skip = skip;
         query.limit = take;
+        query.projection = FILE_LIST_PROJECTION;
         var files = fileRecordCollection.find(query);
 
         // Build file_id -> session info map
@@ -89,13 +97,16 @@ public class ArtifactService {
         var query = new Query();
         query.filter = Filters.and(filters);
         query.sort = Sorts.descending("last_message_at");
+        query.limit = Math.max(fileIds.size() * 3, 100);
+        query.projection = SESSION_LOOKUP_PROJECTION;
         var sessions = chatSessionCollection.find(query);
 
+        var fileIdSet = new HashSet<>(fileIds);
         Map<String, SessionInfo> map = new LinkedHashMap<>();
         for (var session : sessions) {
             if (session.artifacts == null) continue;
             for (var artifact : session.artifacts) {
-                if (artifact.fileId != null && fileIds.contains(artifact.fileId)) {
+                if (artifact.fileId != null && fileIdSet.contains(artifact.fileId)) {
                     map.putIfAbsent(artifact.fileId, new SessionInfo(session.id, session.title));
                 }
             }
@@ -112,6 +123,7 @@ public class ArtifactService {
 
         var query = new Query();
         query.filter = Filters.and(filters);
+        query.projection = SESSION_AGENT_LOOKUP_PROJECTION;
         var sessions = chatSessionCollection.find(query);
 
         var fileIds = new ArrayList<String>();
@@ -156,6 +168,7 @@ public class ArtifactService {
         query.sort = Sorts.descending("shared_at");
         query.skip = skip;
         query.limit = take;
+        query.projection = FILE_LIST_PROJECTION;
         var files = fileRecordCollection.find(query);
 
         var result = new SharedArtifactResult();

@@ -20,6 +20,7 @@ const MEDIA_PROTOCOLS = [
   { value: 'GEMINI_GENERATE_CONTENT', label: 'Gemini generateContent' },
   { value: 'VERTEX_GEMINI_GENERATE_CONTENT', label: 'Vertex Gemini generateContent' },
   { value: 'VERTEX_GEMINI_INTERACTIONS', label: 'Vertex Gemini Interactions (video)' },
+  { value: 'KIE', label: 'KIE (video)' },
 ];
 
 const GOOGLE_AUTH_TYPES = [
