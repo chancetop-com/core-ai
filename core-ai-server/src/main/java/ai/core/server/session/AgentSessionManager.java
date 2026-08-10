@@ -267,11 +267,19 @@ public class AgentSessionManager {
     private void initializeSession(InProcessAgentSession session, SessionRegistry.SessionRegistration registration) {
         var sessionId = registration.sessionId();
         sessions.put(sessionId, session);
+        boolean claimed;
         try {
             touchActivity(sessionId);
-            if (!claimOwnership(sessionId)) {
-                throw new IllegalStateException("failed to claim session ownership, sessionId=" + sessionId);
-            }
+            claimed = claimOwnership(sessionId);
+        } catch (RuntimeException | Error e) {
+            cleanupRuntime(sessionId);
+            throw e;
+        }
+        if (!claimed) {
+            cleanupRuntime(sessionId);
+            throw new IllegalStateException("failed to claim session ownership, sessionId=" + sessionId);
+        }
+        try {
             sessionRegistry.create(registration);
         } catch (RuntimeException | Error e) {
             cleanupRuntime(sessionId);

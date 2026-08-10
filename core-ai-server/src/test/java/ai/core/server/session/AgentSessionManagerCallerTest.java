@@ -30,6 +30,7 @@ import ai.core.skill.SkillProvider;
 import ai.core.tool.registry.ToolRegistryFactory;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -49,6 +50,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@SuppressFBWarnings("NAB_NEEDLESS_BOOLEAN_CONSTANT_CONVERSION")
 class AgentSessionManagerCallerTest {
     @Test
     void sessionMutationRejectsCallerWhoDoesNotOwnSession() {

@@ -260,6 +260,7 @@ class SessionRegistryTest {
         return session;
     }
 
+    @SuppressWarnings("PMD.LooseCoupling")
     private BsonDocument bson(Bson value) {
         return value.toBsonDocument(BsonDocument.class,
                 CodecRegistries.fromRegistries(
