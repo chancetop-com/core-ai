@@ -1,6 +1,7 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.Notification;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -11,6 +12,7 @@ import ai.core.server.domain.WorkflowRun;
 import ai.core.server.notification.NotificationEventPublisher;
 import ai.core.server.notification.NotificationService;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.session.SessionRegistry;
 import ai.core.server.skill.SkillService;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.HumanInputExecutor;
@@ -42,6 +44,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(SkillDefinition.class);   // validates owner-editable Agent skill dependencies during capture
         mongo.collection(ToolRegistryEntry.class);      // injected by WorkflowPortService for MCP reference resolution
         mongo.collection(Notification.class);            // injected by NotificationService (bound below)
+        mongo.collection(ChatSession.class);             // shared by SessionRegistry Mongo integration tests
 
         bindWorkflowServices();
 
@@ -82,6 +85,7 @@ public class WorkflowTestModule extends AbstractTestModule {
     }
 
     private void bindWorkflowServices() {
+        bind(SessionRegistry.class);
         bind(WorkflowDefinitionService.class);
         bind(WorkflowAgentOptionService.class);
         bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context

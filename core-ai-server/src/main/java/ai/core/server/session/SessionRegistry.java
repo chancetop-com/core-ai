@@ -10,6 +10,7 @@ import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import org.bson.BsonArray;
 import org.bson.conversions.Bson;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
@@ -40,6 +41,9 @@ public class SessionRegistry {
         session.apiKeyId = registration.apiKeyId;
         session.messageCount = 0L;
         session.createdAt = ZonedDateTime.now();
+        session.loadedTools = new ArrayList<>();
+        session.loadedSkillIds = new ArrayList<>();
+        session.loadedSubAgentIds = new ArrayList<>();
         try {
             chatSessionCollection.insert(session);
             return session;
@@ -92,6 +96,7 @@ public class SessionRegistry {
 
     public void addLoadedTools(String sessionId, List<ToolRef> toolRefs) {
         if (toolRefs == null || toolRefs.isEmpty()) return;
+        initializeNullListField(sessionId, "loaded_tools");
         requireUpdated(sessionId, chatSessionCollection.update(
                 Filters.eq("_id", sessionId),
                 Updates.addEachToSet("loaded_tools", toolRefs)));
@@ -108,6 +113,7 @@ public class SessionRegistry {
     public void addLoadedSkillIds(String sessionId, List<String> skillIds) {
         var cleanSkillIds = IdLists.clean(skillIds);
         if (cleanSkillIds.isEmpty()) return;
+        initializeNullListField(sessionId, "loaded_skill_ids");
         requireUpdated(sessionId, chatSessionCollection.update(
                 Filters.eq("_id", sessionId),
                 Updates.addEachToSet("loaded_skill_ids", cleanSkillIds)));
@@ -116,6 +122,7 @@ public class SessionRegistry {
     public void addLoadedSubAgentIds(String sessionId, List<String> agentIds) {
         var cleanAgentIds = IdLists.clean(agentIds);
         if (cleanAgentIds.isEmpty()) return;
+        initializeNullListField(sessionId, "loaded_sub_agent_ids");
         requireUpdated(sessionId, chatSessionCollection.update(
                 Filters.eq("_id", sessionId),
                 Updates.addEachToSet("loaded_sub_agent_ids", cleanAgentIds)));
@@ -124,6 +131,7 @@ public class SessionRegistry {
     public void removeLoadedSkillIds(String sessionId, List<String> skillIds) {
         var cleanSkillIds = IdLists.clean(skillIds);
         if (cleanSkillIds.isEmpty()) return;
+        initializeNullListField(sessionId, "loaded_skill_ids");
         requireUpdated(sessionId, chatSessionCollection.update(
                 Filters.eq("_id", sessionId),
                 Updates.pullAll("loaded_skill_ids", cleanSkillIds)));
@@ -175,6 +183,12 @@ public class SessionRegistry {
         query.skip = offset;
         query.limit = limit;
         return chatSessionCollection.find(query);
+    }
+
+    private void initializeNullListField(String sessionId, String field) {
+        chatSessionCollection.update(
+                Filters.and(Filters.eq("_id", sessionId), Filters.eq(field, null)),
+                Updates.set(field, new BsonArray()));
     }
 
     private void requireUpdated(String sessionId, long updated) {

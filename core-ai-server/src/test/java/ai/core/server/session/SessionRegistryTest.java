@@ -9,6 +9,8 @@ import core.framework.mongo.Query;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.BsonDocument;
+import org.bson.BsonArray;
+import org.bson.BsonNull;
 import org.bson.BsonReader;
 import org.bson.BsonWriter;
 import org.bson.codecs.Codec;
@@ -25,6 +27,7 @@ import java.time.ZonedDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -59,6 +62,9 @@ class SessionRegistryTest {
         assertEquals("key-1", persisted.apiKeyId);
         assertEquals(0L, persisted.messageCount);
         assertNotNull(persisted.createdAt);
+        assertEquals(List.of(), persisted.loadedTools);
+        assertEquals(List.of(), persisted.loadedSkillIds);
+        assertEquals(List.of(), persisted.loadedSubAgentIds);
     }
 
     @Test
@@ -171,16 +177,43 @@ class SessionRegistryTest {
     }
 
     @Test
-    void loadedResourceMutationsRequireAnExistingRegistryRow() {
+    void addLoadedToolsInitializesNullCollectionBeforeAdding() {
+        var tool = ToolRef.of("tool-1", ToolSourceType.BUILTIN, null);
+
+        assertInitializesNullCollectionBeforeMutation(
+                "loaded_tools", registry -> registry.addLoadedTools("s-1", List.of(tool)));
+    }
+
+    @Test
+    void addLoadedSkillIdsInitializesNullCollectionBeforeAdding() {
+        assertInitializesNullCollectionBeforeMutation(
+                "loaded_skill_ids", registry -> registry.addLoadedSkillIds("s-1", List.of("skill-1")));
+    }
+
+    @Test
+    void addLoadedSubAgentIdsInitializesNullCollectionBeforeAdding() {
+        assertInitializesNullCollectionBeforeMutation(
+                "loaded_sub_agent_ids", registry -> registry.addLoadedSubAgentIds("s-1", List.of("agent-1")));
+    }
+
+    @Test
+    void removeLoadedSkillIdsInitializesNullCollectionBeforeRemoving() {
+        assertInitializesNullCollectionBeforeMutation(
+                "loaded_skill_ids", registry -> registry.removeLoadedSkillIds("s-1", List.of("skill-1")));
+    }
+
+    @Test
+    void loadedResourceMutationsRejectMissingRegistryRowWithoutInsertingStub() {
         var registry = registry();
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
 
-        registry.addLoadedSkillIds("s-1", List.of(" skill-1 ", "skill-1", ""));
-        registry.addLoadedSubAgentIds("s-1", List.of(" agent-1 ", "agent-1", ""));
-        registry.removeLoadedSkillIds("s-1", List.of(" skill-1 "));
+        assertThrows(IllegalStateException.class,
+                () -> registry.addLoadedSkillIds("missing", List.of(" skill-1 ", "skill-1", "")));
+        assertThrows(IllegalStateException.class,
+                () -> registry.addLoadedSubAgentIds("missing", List.of(" agent-1 ", "agent-1", "")));
+        assertThrows(IllegalStateException.class,
+                () -> registry.removeLoadedSkillIds("missing", List.of(" skill-1 ")));
 
-        verify(registry.chatSessionCollection, org.mockito.Mockito.times(3))
-                .update(any(Bson.class), any(Bson.class));
         verify(registry.chatSessionCollection, never()).insert(any(ChatSession.class));
     }
 
@@ -258,6 +291,24 @@ class SessionRegistryTest {
         session.userId = userId;
         session.agentId = agentId;
         return session;
+    }
+
+    private void assertInitializesNullCollectionBeforeMutation(String field, Consumer<SessionRegistry> mutation) {
+        var registry = registry();
+        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+
+        mutation.accept(registry);
+
+        var filterCaptor = ArgumentCaptor.forClass(Bson.class);
+        var updateCaptor = ArgumentCaptor.forClass(Bson.class);
+        verify(registry.chatSessionCollection, org.mockito.Mockito.times(2))
+                .update(filterCaptor.capture(), updateCaptor.capture());
+        var normalizationFilter = bson(filterCaptor.getAllValues().getFirst());
+        assertEquals("s-1", normalizationFilter.getArray("$and").getFirst()
+                .asDocument().getString("_id").getValue());
+        assertEquals(BsonNull.VALUE, normalizationFilter.getArray("$and").get(1).asDocument().get(field));
+        assertEquals(new BsonArray(), bson(updateCaptor.getAllValues().getFirst())
+                .getDocument("$set").getArray(field));
     }
 
     @SuppressWarnings("PMD.LooseCoupling")
