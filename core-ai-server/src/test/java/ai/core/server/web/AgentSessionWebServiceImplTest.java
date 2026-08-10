@@ -1,7 +1,11 @@
 package ai.core.server.web;
 
 import ai.core.api.server.session.LoadSkillsRequest;
+import ai.core.api.server.session.CreateSessionRequest;
+import ai.core.api.server.session.SessionConfig;
 import ai.core.api.server.session.UnloadSkillsRequest;
+import ai.core.server.apiuser.ApiUserQuotaService;
+import ai.core.server.apiuser.PermissionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
@@ -23,12 +27,42 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AgentSessionWebServiceImplTest {
+    @Test
+    void createCompensatesWhenPostCreateInitializationFails() {
+        var service = createService();
+        var request = new CreateSessionRequest();
+        request.config = new SessionConfig();
+        when(service.sessionManager.createSession(request.config, "user-1", "chat", null))
+                .thenReturn("s-1");
+        doThrow(new IllegalStateException("tool initialization failed"))
+                .when(service.createHelper).loadToolsOnSessionCreate("s-1", request, "user-1");
+
+        var error = assertThrows(IllegalStateException.class, () -> service.create(request));
+
+        assertEquals("tool initialization failed", error.getMessage());
+        verify(service.sessionManager).abortSessionCreation("s-1");
+    }
+
+    @Test
+    void createDoesNotCompensateWhenNoSessionIdWasCreated() {
+        var service = createService();
+        var request = new CreateSessionRequest();
+        when(service.sessionManager.createSession(null, "user-1", "chat", null))
+                .thenThrow(new IllegalStateException("creation failed"));
+
+        assertThrows(IllegalStateException.class, () -> service.create(request));
+
+        verify(service.sessionManager, never()).abortSessionCreation(any());
+    }
+
     @Test
     void getInfoReturnsPersistedLoadedResources() {
         var service = new AgentSessionWebServiceImpl();
@@ -125,5 +159,16 @@ class AgentSessionWebServiceImplTest {
                 argThat(state -> state != null && state.agentConfig != null
                         && "agent-1".equals(state.agentConfig.agentId)),
                 org.mockito.ArgumentMatchers.eq("caller-1"));
+    }
+
+    private AgentSessionWebServiceImpl createService() {
+        var service = new AgentSessionWebServiceImpl();
+        service.webContext = mock(WebContext.class);
+        when(service.webContext.get(AuthContext.USER_ID_KEY)).thenReturn("user-1");
+        service.sessionManager = mock(AgentSessionManager.class);
+        service.createHelper = mock(SessionCreateHelper.class);
+        service.permissionService = mock(PermissionService.class);
+        service.apiUserQuotaService = mock(ApiUserQuotaService.class);
+        return service;
     }
 }

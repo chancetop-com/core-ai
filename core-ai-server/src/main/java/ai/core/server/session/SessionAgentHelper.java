@@ -58,11 +58,15 @@ public class SessionAgentHelper {
         }
     }
 
-    void claimOwnership(String sessionId) {
-        if (ownershipRegistry != null) ownershipRegistry.claim(sessionId);
+    boolean claimOwnership(String sessionId) {
+        return ownershipRegistry == null || ownershipRegistry.claim(sessionId);
     }
 
     void renewSessionOwnership(String sessionId) {
         if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
+    }
+
+    void releaseOwnership(String sessionId) {
+        if (ownershipRegistry != null) ownershipRegistry.release(sessionId);
     }
 }

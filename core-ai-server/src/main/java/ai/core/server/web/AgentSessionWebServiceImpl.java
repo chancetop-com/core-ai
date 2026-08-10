@@ -108,7 +108,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         }
         apiUserQuotaService.checkQuota(userId);
 
-        String sessionId;
+        String sessionId = null;
         var state = new SessionState();
         state.userId = userId;
         state.config = request.config;
@@ -121,31 +121,36 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var loadedSubAgents = new ArrayList<IdName>();
         var loadedSkills = new ArrayList<IdName>();
 
-        if (request.agentId != null && !request.agentId.isBlank()) {
-            sessionId = createHelper.createSessionFromAgent(request.agentId, state, userId, loadedSubAgents, loadedSkills, keyId);
-        } else {
-            sessionId = sessionManager.createSession(request.config, userId, keyId != null ? "api" : "chat", keyId);
-            state.fromAgent = false;
-        }
-        state.sessionId = sessionId;
-
-        var loadedTools = createHelper.loadToolsOnSessionCreate(sessionId, request, userId);
-        var extraLoadedSkills = createHelper.loadSkillsOnSessionCreate(sessionId, request, userId);
-        if (extraLoadedSkills != null) {
-            for (var skill : extraLoadedSkills) {
-                if (loadedSkills.stream().noneMatch(s -> s.id.equals(skill.id))) loadedSkills.add(skill);
+        try {
+            if (request.agentId != null && !request.agentId.isBlank()) {
+                sessionId = createHelper.createSessionFromAgent(request.agentId, state, userId, loadedSubAgents, loadedSkills, keyId);
+            } else {
+                sessionId = sessionManager.createSession(request.config, userId, keyId != null ? "api" : "chat", keyId);
+                state.fromAgent = false;
             }
+            state.sessionId = sessionId;
+
+            var loadedTools = createHelper.loadToolsOnSessionCreate(sessionId, request, userId);
+            var extraLoadedSkills = createHelper.loadSkillsOnSessionCreate(sessionId, request, userId);
+            if (extraLoadedSkills != null) {
+                for (var skill : extraLoadedSkills) {
+                    if (loadedSkills.stream().noneMatch(s -> s.id.equals(skill.id))) loadedSkills.add(skill);
+                }
+            }
+            createHelper.loadExtraSubAgentsOnSessionCreate(sessionId, request, loadedSubAgents, userId);
+
+            createHelper.saveSessionState(sessionId, state);
+
+            var response = new CreateSessionResponse();
+            response.sessionId = sessionId;
+            response.loadedTools = loadedTools;
+            response.loadedSkills = loadedSkills.isEmpty() ? null : loadedSkills;
+            response.loadedSubAgents = loadedSubAgents.isEmpty() ? null : loadedSubAgents;
+            return response;
+        } catch (RuntimeException | Error e) {
+            if (sessionId != null) sessionManager.abortSessionCreation(sessionId);
+            throw e;
         }
-        createHelper.loadExtraSubAgentsOnSessionCreate(sessionId, request, loadedSubAgents, userId);
-
-        createHelper.saveSessionState(sessionId, state);
-
-        var response = new CreateSessionResponse();
-        response.sessionId = sessionId;
-        response.loadedTools = loadedTools;
-        response.loadedSkills = loadedSkills.isEmpty() ? null : loadedSkills;
-        response.loadedSubAgents = loadedSubAgents.isEmpty() ? null : loadedSubAgents;
-        return response;
     }
 
     @Override

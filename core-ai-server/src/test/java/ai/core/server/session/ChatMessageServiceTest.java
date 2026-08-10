@@ -1,160 +1,69 @@
 package ai.core.server.session;
 
+import ai.core.api.server.session.TurnCompleteEvent;
+import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
-import org.bson.BsonDocument;
-import org.bson.codecs.BsonValueCodecProvider;
-import org.bson.codecs.ValueCodecProvider;
-import org.bson.codecs.configuration.CodecRegistries;
-import org.bson.conversions.Bson;
+import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.time.ZonedDateTime;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ChatMessageServiceTest {
     @Test
-    void updateSessionTitleSucceedsForOwner() {
-        var service = new ChatMessageService();
-        service.chatSessionCollection = mock();
-        var session = session("s-1", "user-1");
-        when(service.chatSessionCollection.get("s-1")).thenReturn(Optional.of(session));
-        when(service.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+    void userMessagePersistsContentAndUpdatesExistingRegistryRow() {
+        var service = service();
+        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
 
-        var ok = service.updateSessionTitle("user-1", "s-1", "  My  renamed  chat ");
+        service.writeUserMessage("s-1", "hello");
 
-        assertTrue(ok);
-        var captor = ArgumentCaptor.forClass(Bson.class);
-        verify(service.chatSessionCollection).update(any(Bson.class), captor.capture());
-        var doc = captor.getValue().toBsonDocument(BsonDocument.class,
-            CodecRegistries.fromProviders(new ValueCodecProvider(), new BsonValueCodecProvider()));
-        assertEquals("My renamed chat", doc.getDocument("$set").getString("title").getValue());
+        var captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(service.chatMessageCollection).insert(captor.capture());
+        assertEquals("s-1", captor.getValue().sessionId);
+        assertEquals("user", captor.getValue().role);
+        assertEquals("hello", captor.getValue().content);
+        assertEquals(1L, captor.getValue().seq);
+        verify(service.sessionRegistry).recordUserMessage("s-1", "hello");
     }
 
     @Test
-    void registeredSessionOwnerIsAvailableBeforeFirstPersistedMessage() {
-        var service = new ChatMessageService();
-        service.chatSessionCollection = mock();
-        service.registerSession("fresh-session", ChatMessageService.SessionMeta.of("caller-1", null, "chat"));
+    void completedAgentTurnPersistsContentAndUpdatesExistingRegistryRow() {
+        var service = service();
+        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
 
-        assertEquals("caller-1", service.findSessionUserId("fresh-session"));
+        service.listener("s-1").onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
 
-        verify(service.chatSessionCollection, never()).get("fresh-session");
+        var captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(service.chatMessageCollection).insert(captor.capture());
+        assertEquals("agent", captor.getValue().role);
+        assertEquals("done", captor.getValue().content);
+        verify(service.sessionRegistry).recordAgentMessage("s-1");
     }
 
     @Test
-    void registeredSessionAgentIsAvailableBeforeFirstPersistedMessage() {
-        var service = new ChatMessageService();
-        service.chatSessionCollection = mock();
-        service.registerSession("fresh-session", ChatMessageService.SessionMeta.of("caller-1", "agent-1", "a2a"));
+    void metadataReadsComeFromDurableRegistry() {
+        var service = service();
+        var stored = new ChatSession();
+        stored.id = "s-1";
+        when(service.sessionRegistry.get("s-1")).thenReturn(stored);
 
-        assertEquals("agent-1", service.findSessionAgentId("fresh-session"));
-
-        verify(service.chatSessionCollection, never()).get("fresh-session");
+        assertSame(stored, service.getSessionMeta("s-1"));
     }
 
-    @Test
-    void updateSessionTitleReturnsFalseWhenMissing() {
+    private ChatMessageService service() {
         var service = new ChatMessageService();
-        service.chatSessionCollection = mock();
-        when(service.chatSessionCollection.get("missing")).thenReturn(Optional.empty());
-
-        var ok = service.updateSessionTitle("user-1", "missing", "title");
-
-        assertFalse(ok);
-        verify(service.chatSessionCollection, never()).update(any(Bson.class), any(Bson.class));
-    }
-
-    @Test
-    void updateSessionTitleReturnsFalseForNonOwner() {
-        var service = new ChatMessageService();
-        service.chatSessionCollection = mock();
-        var session = session("s-1", "owner");
-        when(service.chatSessionCollection.get("s-1")).thenReturn(Optional.of(session));
-
-        var ok = service.updateSessionTitle("intruder", "s-1", "title");
-
-        assertFalse(ok);
-        verify(service.chatSessionCollection, never()).update(any(Bson.class), any(Bson.class));
-    }
-
-    @Test
-    void updateSessionTitleReturnsFalseForBlank() {
-        var service = new ChatMessageService();
-        service.chatSessionCollection = mock();
-        var session = session("s-1", "user-1");
-        when(service.chatSessionCollection.get("s-1")).thenReturn(Optional.of(session));
-
-        var ok = service.updateSessionTitle("user-1", "s-1", "   ");
-
-        assertFalse(ok);
-        verify(service.chatSessionCollection, never()).update(any(Bson.class), any(Bson.class));
-    }
-
-    @Test
-    void updateSessionTitleCapsLength() {
-        var service = new ChatMessageService();
-        service.chatSessionCollection = mock();
-        var session = session("s-1", "user-1");
-        when(service.chatSessionCollection.get("s-1")).thenReturn(Optional.of(session));
-        when(service.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
-
-        var ok = service.updateSessionTitle("user-1", "s-1", "x".repeat(200));
-
-        assertTrue(ok);
-        var captor = ArgumentCaptor.forClass(Bson.class);
-        verify(service.chatSessionCollection).update(any(Bson.class), captor.capture());
-        var doc = captor.getValue().toBsonDocument(BsonDocument.class,
-            CodecRegistries.fromProviders(new ValueCodecProvider(), new BsonValueCodecProvider()));
-        assertEquals("x".repeat(100), doc.getDocument("$set").getString("title").getValue());
-    }
-
-    @Test
-    void batchSoftDeleteReturnsOnlyOwnedExistingIds() {
-        var service = new ChatMessageService();
-        service.chatSessionCollection = mock();
-        when(service.chatSessionCollection.get("owned")).thenReturn(Optional.of(session("owned", "user-1")));
-        when(service.chatSessionCollection.get("foreign")).thenReturn(Optional.of(session("foreign", "user-2")));
-        when(service.chatSessionCollection.get("missing")).thenReturn(Optional.empty());
-        when(service.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
-
-        var deletedIds = service.batchSoftDelete("user-1", List.of("owned", "foreign", "missing"));
-
-        // Non-owned and missing ids must not leak into the result: callers run
-        // follow-up cleanup (e.g. sandbox snapshot deletion) on the returned ids.
-        assertEquals(List.of("owned"), deletedIds);
-        verify(service.chatSessionCollection, times(1)).update(any(Bson.class), any(Bson.class));
-    }
-
-    @Test
-    void updateSessionTitleReturnsFalseForDeletedSession() {
-        var service = new ChatMessageService();
-        service.chatSessionCollection = mock();
-        var session = session("s-1", "user-1");
-        session.deletedAt = ZonedDateTime.now();
-        when(service.chatSessionCollection.get("s-1")).thenReturn(Optional.of(session));
-
-        var ok = service.updateSessionTitle("user-1", "s-1", "new title");
-
-        assertFalse(ok);
-        verify(service.chatSessionCollection, never()).update(any(Bson.class), any(Bson.class));
-    }
-
-    private ChatSession session(String id, String userId) {
-        var s = new ChatSession();
-        s.id = id;
-        s.userId = userId;
-        return s;
+        @SuppressWarnings("unchecked")
+        MongoCollection<ChatMessage> collection = mock(MongoCollection.class);
+        service.chatMessageCollection = collection;
+        service.sessionRegistry = mock(SessionRegistry.class);
+        return service;
     }
 }

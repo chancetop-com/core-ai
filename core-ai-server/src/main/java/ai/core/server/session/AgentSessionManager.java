@@ -67,6 +67,8 @@ public class AgentSessionManager {
     @Inject
     ChatMessageService chatMessageService;
     @Inject
+    SessionRegistry sessionRegistry;
+    @Inject
     SessionChannelService sessionChannelService;
     @Inject
     SandboxService sandboxService;
@@ -160,12 +162,10 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
-        chatMessageService.registerSession(sessionId, new ChatMessageService.SessionMeta(userId, null, source, null, apiKeyId));
         var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent);
         if (sandbox != null) context.sandbox(sandbox);
-        sessions.put(sessionId, session);
-        touchActivity(sessionId);
-        claimOwnership(sessionId);
+        initializeSession(session, new SessionRegistry.SessionRegistration(
+                sessionId, userId, null, source, null, apiKeyId));
         return sessionId;
     }
 
@@ -218,16 +218,18 @@ public class AgentSessionManager {
         buildResult.sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
-        chatMessageService.registerSession(sessionId,
-            new ChatMessageService.SessionMeta(userId, executableDefinition.id, source, null, apiKeyId));
-        sessions.put(sessionId, session);
-        touchActivity(sessionId);
-        claimOwnership(sessionId);
+        initializeSession(session, new SessionRegistry.SessionRegistration(
+                sessionId, userId, executableDefinition.id, source, null, apiKeyId));
         var executableConfig = executableDefinition.publishedConfig;
         var loadedSkillIds = executableConfig != null ? executableConfig.skillIds : executableDefinition.skillIds;
         var loadedSubAgentIds = executableConfig != null ? executableConfig.subAgentIds : executableDefinition.subAgentIds;
-        skillManager().loadDefinitionSkills(session, executableDefinition, resolvedDefinitionSkills);
-        subAgentManager().loadSubAgentsFromDefinition(session, executableDefinition, userId);
+        try {
+            skillManager().loadDefinitionSkills(session, executableDefinition, resolvedDefinitionSkills);
+            subAgentManager().loadSubAgentsFromDefinition(session, executableDefinition, userId);
+        } catch (RuntimeException | Error e) {
+            abortSessionCreation(sessionId);
+            throw e;
+        }
         return new SessionCreationResult(sessionId,
                 IdLists.clean(loadedSubAgentIds),
                 IdLists.clean(loadedSkillIds),
@@ -262,8 +264,23 @@ public class AgentSessionManager {
         return new AgentBuildResult(agent, sessionRef);
     }
 
-    private void claimOwnership(String sessionId) {
-        sessionAgentHelper.claimOwnership(sessionId);
+    private void initializeSession(InProcessAgentSession session, SessionRegistry.SessionRegistration registration) {
+        var sessionId = registration.sessionId();
+        sessions.put(sessionId, session);
+        try {
+            touchActivity(sessionId);
+            if (!claimOwnership(sessionId)) {
+                throw new IllegalStateException("failed to claim session ownership, sessionId=" + sessionId);
+            }
+            sessionRegistry.create(registration);
+        } catch (RuntimeException | Error e) {
+            cleanupRuntime(sessionId);
+            throw e;
+        }
+    }
+
+    private boolean claimOwnership(String sessionId) {
+        return sessionAgentHelper.claimOwnership(sessionId);
     }
     private void renewSessionOwnership(String sessionId) {
         sessionAgentHelper.renewSessionOwnership(sessionId);
@@ -296,7 +313,11 @@ public class AgentSessionManager {
             logger.info("session not found locally, attempting to rebuild, sessionId={}", id);
             var rebuilt = rebuildManager().rebuildSession(id, effectiveState, callerUserId);
             if (rebuilt != null) {
-                claimOwnership(id);
+                if (!claimOwnership(id)) {
+                    logger.warn("failed to claim rebuilt session ownership, sessionId={}", id);
+                    rebuilt.close();
+                    return null;
+                }
                 logger.info("session rebuilt successfully, sessionId={}", id);
             }
             return rebuilt;
@@ -310,7 +331,7 @@ public class AgentSessionManager {
     }
     public InProcessAgentSession getSessionForAgentCaller(String sessionId, String agentId, String callerUserId) {
         requireSessionOwner(sessionId, callerUserId);
-        String sessionAgentId = chatMessageService.findSessionAgentId(sessionId);
+        String sessionAgentId = sessionRegistry.requireAgentId(sessionId);
         if (agentId == null || agentId.isBlank() || !agentId.equals(sessionAgentId)) {
             throw new ForbiddenException("session is unavailable");
         }
@@ -318,7 +339,7 @@ public class AgentSessionManager {
     }
 
     public void requireSessionOwner(String sessionId, String callerUserId) {
-        String ownerUserId = chatMessageService.findSessionUserId(sessionId);
+        String ownerUserId = sessionRegistry.requireUserId(sessionId);
         if (callerUserId == null || callerUserId.isBlank() || !callerUserId.equals(ownerUserId)) {
             throw new ForbiddenException("session is unavailable");
         }
@@ -327,6 +348,15 @@ public class AgentSessionManager {
         if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
     }
     public void closeSession(String sessionId) {
+        cleanupRuntime(sessionId);
+    }
+
+    public void abortSessionCreation(String sessionId) {
+        cleanupRuntime(sessionId);
+        sessionRegistry.softDelete(null, sessionId);
+    }
+
+    private void cleanupRuntime(String sessionId) {
         var session = sessions.remove(sessionId);
         if (session != null) session.close();
         skillManager().removeSkillState(sessionId);
@@ -336,7 +366,7 @@ public class AgentSessionManager {
         chatMessageService.onSessionClosed(sessionId);
         sessionChannelService.close(sessionId);
         if (channelRegistry != null) channelRegistry.removeSessionBridge(sessionId);
-        if (ownershipRegistry != null) ownershipRegistry.release(sessionId);
+        sessionAgentHelper.releaseOwnership(sessionId);
     }
 
     private void captureSandboxSnapshot(String sessionId) {
@@ -404,7 +434,7 @@ public class AgentSessionManager {
     }
 
     void requireSessionCaller(String sessionId, String callerUserId) {
-        String ownerUserId = chatMessageService.findSessionUserId(sessionId);
+        String ownerUserId = sessionRegistry.requireUserId(sessionId);
         if (callerUserId == null || callerUserId.isBlank() || !callerUserId.equals(ownerUserId)) {
             throw new ForbiddenException("session is unavailable");
         }

@@ -8,11 +8,9 @@ import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
-import ai.core.server.util.IdLists;
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.mongo.MongoCollection;
@@ -37,26 +35,13 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class ChatMessageService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatMessageService.class);
-    private static final int TITLE_MAX_LENGTH = 40;
-    private static final int MANUAL_TITLE_MAX_LENGTH = 100;
-
     @Inject
     MongoCollection<ChatMessage> chatMessageCollection;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    SessionRegistry sessionRegistry;
 
     private final ConcurrentMap<String, AtomicLong> seqBySession = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, TurnBuffer> bufferBySession = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, SessionMeta> metaBySession = new ConcurrentHashMap<>();
-
-    public void registerSession(String sessionId, String userId, String agentId) {
-        registerSession(sessionId, SessionMeta.of(userId, agentId, "chat"));
-    }
-
-    public void registerSession(String sessionId, SessionMeta meta) {
-        metaBySession.put(sessionId, meta);
-    }
-
     public void writeUserMessage(String sessionId, String content) {
         var seq = nextSeq(sessionId);
         var msg = new ChatMessage();
@@ -69,7 +54,7 @@ public class ChatMessageService {
         msg.createdAt = ZonedDateTime.now();
         insertWithRetry(msg, sessionId);
 
-        upsertSessionOnUserMessage(sessionId, content);
+        sessionRegistry.recordUserMessage(sessionId, content);
     }
 
     public List<ChatMessage> history(String sessionId) {
@@ -80,29 +65,22 @@ public class ChatMessageService {
     }
 
     public ChatSession getSessionMeta(String sessionId) {
-        return chatSessionCollection.get(sessionId).orElse(null);
+        return sessionRegistry.get(sessionId);
     }
 
     public String findSessionUserId(String sessionId) {
-        SessionMeta registered = metaBySession.get(sessionId);
-        if (registered != null && registered.userId != null && !registered.userId.isBlank()) {
-            return registered.userId;
-        }
-        ChatSession persisted = chatSessionCollection.get(sessionId).orElse(null);
+        ChatSession persisted = sessionRegistry.get(sessionId);
         return persisted != null ? persisted.userId : null;
     }
 
     public String findSessionAgentId(String sessionId) {
-        SessionMeta registered = metaBySession.get(sessionId);
-        if (registered != null && registered.agentId != null && !registered.agentId.isBlank()) {
-            return registered.agentId;
-        }
-        ChatSession persisted = chatSessionCollection.get(sessionId).orElse(null);
+        ChatSession persisted = sessionRegistry.get(sessionId);
         return persisted != null ? persisted.agentId : null;
     }
 
     public List<ai.core.server.domain.AgentRunArtifact> artifacts(String sessionId) {
-        return chatSessionCollection.get(sessionId).map(s -> s.artifacts).orElse(null);
+        var session = sessionRegistry.get(sessionId);
+        return session != null ? session.artifacts : null;
     }
 
     public long countSessions(String userId, List<String> sources) {
@@ -110,7 +88,7 @@ public class ChatMessageService {
     }
 
     public long countSessions(String userId, List<String> sources, List<String> agentIds) {
-        return chatSessionCollection.count(buildSessionFilter(userId, sources, agentIds));
+        return sessionRegistry.countSessions(userId, sources, agentIds);
     }
 
     public List<ChatSession> listSessions(String userId, List<String> sources, int offset, int limit) {
@@ -124,76 +102,29 @@ public class ChatMessageService {
     }
 
     public List<ChatSession> listSessions(String userId, List<String> sources, List<String> agentIds, int offset, int limit, String sortField) {
-        var query = new Query();
-        query.filter = buildSessionFilter(userId, sources, agentIds);
-        query.sort = Sorts.descending(sortField);
-        query.skip = offset;
-        query.limit = limit;
-        return chatSessionCollection.find(query);
-    }
-
-    private org.bson.conversions.Bson buildSessionFilter(String userId, List<String> sources, List<String> agentIds) {
-        var filters = new java.util.ArrayList<org.bson.conversions.Bson>();
-        filters.add(Filters.eq("user_id", userId));
-        filters.add(Filters.or(
-            Filters.exists("deleted_at", false),
-            Filters.eq("deleted_at", null)));
-        if (sources != null && !sources.isEmpty()) {
-            // include rows where source is missing (legacy data) when filtering by "chat" to avoid losing old sessions
-            if (sources.contains("chat")) {
-                filters.add(Filters.or(
-                    Filters.in("source", sources),
-                    Filters.exists("source", false),
-                    Filters.eq("source", null)));
-            } else {
-                filters.add(Filters.in("source", sources));
-            }
-        }
-        if (agentIds != null && !agentIds.isEmpty()) {
-            filters.add(Filters.in("agent_id", agentIds));
-        }
-        return Filters.and(filters);
+        return sessionRegistry.listSessions(userId, sources, agentIds, offset, limit, sortField);
     }
 
     // soft-delete: mark session as deleted, but keep chat_messages rows for audit/trace.
     // returns true if hidden; false if not found or not owned by user.
     public boolean softDeleteSession(String userId, String sessionId) {
-        var meta = chatSessionCollection.get(sessionId).orElse(null);
-        if (meta == null) return false;
-        if (userId != null && meta.userId != null && !userId.equals(meta.userId)) return false;
-        chatSessionCollection.update(Filters.eq("_id", sessionId), Updates.set("deleted_at", ZonedDateTime.now()));
-        onSessionClosed(sessionId);
-        return true;
+        var deleted = sessionRegistry.softDelete(userId, sessionId);
+        if (deleted) onSessionClosed(sessionId);
+        return deleted;
     }
 
     // batch soft-delete: returns the ids actually deleted (non-existent or non-owned ids are skipped),
     // so callers can safely run follow-up cleanup only on sessions the user truly owns.
     public List<String> batchSoftDelete(String userId, List<String> sessionIds) {
-        var deletedAt = ZonedDateTime.now();
-        var deletedIds = new java.util.ArrayList<String>();
-        for (var sessionId : sessionIds) {
-            var meta = chatSessionCollection.get(sessionId).orElse(null);
-            if (meta == null) continue;
-            if (userId != null && meta.userId != null && !userId.equals(meta.userId)) continue;
-            chatSessionCollection.update(Filters.eq("_id", sessionId), Updates.set("deleted_at", deletedAt));
-            onSessionClosed(sessionId);
-            deletedIds.add(sessionId);
-        }
+        var deletedIds = sessionRegistry.batchSoftDelete(userId, sessionIds);
+        deletedIds.forEach(this::onSessionClosed);
         return deletedIds;
     }
 
     // user-initiated rename: trims/collapses whitespace, caps length, enforces ownership.
     // returns true if updated; false if not found, not owned, or blank after trimming.
     public boolean updateSessionTitle(String userId, String sessionId, String title) {
-        var meta = chatSessionCollection.get(sessionId).orElse(null);
-        if (meta == null) return false;
-        if (meta.deletedAt != null) return false;
-        if (userId != null && meta.userId != null && !userId.equals(meta.userId)) return false;
-        var cleaned = title == null ? "" : title.replaceAll("\\s+", " ").trim();
-        if (cleaned.isEmpty()) return false;
-        if (cleaned.length() > MANUAL_TITLE_MAX_LENGTH) cleaned = cleaned.substring(0, MANUAL_TITLE_MAX_LENGTH);
-        chatSessionCollection.update(Filters.eq("_id", sessionId), Updates.set("title", cleaned));
-        return true;
+        return sessionRegistry.updateTitle(userId, sessionId, title);
     }
 
     public AgentEventListener listener(String sessionId) {
@@ -203,146 +134,22 @@ public class ChatMessageService {
     public void onSessionClosed(String sessionId) {
         seqBySession.remove(sessionId);
         bufferBySession.remove(sessionId);
-        metaBySession.remove(sessionId);
     }
 
     public void addLoadedTools(String sessionId, List<ToolRef> toolRefs) {
-        if (toolRefs == null || toolRefs.isEmpty()) return;
-        try {
-            var existing = chatSessionCollection.get(sessionId).orElse(null);
-            if (existing == null) {
-                var stub = newStub(sessionId);
-                stub.loadedTools = new java.util.ArrayList<>(toolRefs);
-                if (tryInsertStub(stub, "loaded tools")) return;
-            }
-            chatSessionCollection.update(Filters.eq("_id", sessionId),
-                Updates.addEachToSet("loaded_tools", toolRefs));
-        } catch (Exception e) {
-            LOGGER.warn("failed to persist loaded tools, sessionId={}", sessionId, e);
-        }
+        sessionRegistry.addLoadedTools(sessionId, toolRefs);
     }
 
     public void addLoadedSkillIds(String sessionId, List<String> skillIds) {
-        var cleanSkillIds = IdLists.clean(skillIds);
-        if (cleanSkillIds.isEmpty()) return;
-        try {
-            var existing = chatSessionCollection.get(sessionId).orElse(null);
-            if (existing == null) {
-                var stub = newStub(sessionId);
-                stub.loadedSkillIds = new java.util.ArrayList<>(cleanSkillIds);
-                if (tryInsertStub(stub, "loaded skills")) return;
-            }
-            chatSessionCollection.update(Filters.eq("_id", sessionId),
-                Updates.addEachToSet("loaded_skill_ids", cleanSkillIds));
-        } catch (Exception e) {
-            LOGGER.warn("failed to persist loaded skills, sessionId={}", sessionId, e);
-        }
+        sessionRegistry.addLoadedSkillIds(sessionId, skillIds);
     }
 
     public void addLoadedSubAgentIds(String sessionId, List<String> agentIds) {
-        var cleanAgentIds = IdLists.clean(agentIds);
-        if (cleanAgentIds.isEmpty()) return;
-        try {
-            var existing = chatSessionCollection.get(sessionId).orElse(null);
-            if (existing == null) {
-                var stub = newStub(sessionId);
-                stub.loadedSubAgentIds = new java.util.ArrayList<>(cleanAgentIds);
-                if (tryInsertStub(stub, "loaded sub-agents")) return;
-            }
-            chatSessionCollection.update(Filters.eq("_id", sessionId),
-                Updates.addEachToSet("loaded_sub_agent_ids", cleanAgentIds));
-        } catch (Exception e) {
-            LOGGER.warn("failed to persist loaded sub-agents, sessionId={}", sessionId, e);
-        }
-    }
-
-    private boolean tryInsertStub(ChatSession stub, String description) {
-        try {
-            chatSessionCollection.insert(stub);
-            return true;
-        } catch (Exception e) {
-            LOGGER.warn("stub insert conflict for {}, falling back to update, sessionId={}", description, stub.id);
-            return false;
-        }
-    }
-
-    private ChatSession newStub(String sessionId) {
-        var meta = metaBySession.get(sessionId);
-        var stub = new ChatSession();
-        stub.id = sessionId;
-        stub.userId = meta != null ? meta.userId : null;
-        stub.agentId = meta != null ? meta.agentId : null;
-        stub.source = meta != null && meta.source != null ? meta.source : "chat";
-        stub.messageCount = 0L;
-        stub.createdAt = ZonedDateTime.now();
-        return stub;
+        sessionRegistry.addLoadedSubAgentIds(sessionId, agentIds);
     }
 
     public void removeLoadedSkillIds(String sessionId, List<String> skillIds) {
-        var cleanSkillIds = IdLists.clean(skillIds);
-        if (cleanSkillIds.isEmpty()) return;
-        try {
-            chatSessionCollection.update(Filters.eq("_id", sessionId),
-                Updates.pullAll("loaded_skill_ids", cleanSkillIds));
-        } catch (Exception e) {
-            LOGGER.warn("failed to remove loaded skills, sessionId={}", sessionId, e);
-        }
-    }
-
-    private void upsertSessionOnUserMessage(String sessionId, String content) {
-        var now = ZonedDateTime.now();
-        var existing = chatSessionCollection.get(sessionId).orElse(null);
-        if (existing == null) {
-            var meta = metaBySession.get(sessionId);
-            var session = new ChatSession();
-            session.id = sessionId;
-            session.userId = meta != null ? meta.userId : null;
-            session.agentId = meta != null ? meta.agentId : null;
-            session.source = meta != null && meta.source != null ? meta.source : "chat";
-            session.scheduleId = meta != null ? meta.scheduleId : null;
-            session.apiKeyId = meta != null ? meta.apiKeyId : null;
-            session.title = truncateTitle(content);
-            session.messageCount = 1L;
-            session.createdAt = now;
-            session.lastMessageAt = now;
-            try {
-                chatSessionCollection.insert(session);
-            } catch (Exception e) {
-                LOGGER.warn("failed to insert chat session, fallback to update, sessionId={}", sessionId, e);
-                bumpSession(sessionId, now);
-            }
-        } else {
-            if (existing.title == null) {
-                chatSessionCollection.update(Filters.eq("_id", sessionId),
-                    Updates.combine(
-                        Updates.set("title", truncateTitle(content)),
-                        Updates.set("last_message_at", now),
-                        Updates.inc("message_count", 1L)));
-            } else {
-                bumpSession(sessionId, now);
-            }
-        }
-    }
-
-    private void bumpSessionOnAgentTurn(String sessionId) {
-        bumpSession(sessionId, ZonedDateTime.now());
-    }
-
-    private void bumpSession(String sessionId, ZonedDateTime now) {
-        try {
-            chatSessionCollection.update(Filters.eq("_id", sessionId),
-                Updates.combine(
-                    Updates.set("last_message_at", now),
-                    Updates.inc("message_count", 1L)));
-        } catch (Exception e) {
-            LOGGER.warn("failed to bump chat session, sessionId={}", sessionId, e);
-        }
-    }
-
-    private String truncateTitle(String content) {
-        if (content == null) return "";
-        var cleaned = content.replaceAll("\\s+", " ").trim();
-        return cleaned.length() > TITLE_MAX_LENGTH ? cleaned.substring(0, TITLE_MAX_LENGTH) : cleaned;
+        sessionRegistry.removeLoadedSkillIds(sessionId, skillIds);
     }
 
     private long nextSeq(String sessionId) {
@@ -423,7 +230,7 @@ public class ChatMessageService {
                 msg.traceId = ActionLogContext.id();
                 msg.createdAt = ZonedDateTime.now();
                 insertWithRetry(msg, sessionId);
-                bumpSessionOnAgentTurn(sessionId);
+                sessionRegistry.recordAgentMessage(sessionId);
             } catch (Exception e) {
                 LOGGER.warn("failed to persist agent message, sessionId={}", sessionId, e);
             }
@@ -435,13 +242,4 @@ public class ChatMessageService {
         final Map<String, ChatMessage.ToolCallRecord> tools = new LinkedHashMap<>();
     }
 
-    public record SessionMeta(String userId, String agentId, String source, String scheduleId, String apiKeyId) {
-        public static SessionMeta of(String userId, String agentId, String source) {
-            return new SessionMeta(userId, agentId, source, null, null);
-        }
-
-        public static SessionMeta of(String userId, String agentId, String source, String apiKeyId) {
-            return new SessionMeta(userId, agentId, source, null, apiKeyId);
-        }
-    }
 }

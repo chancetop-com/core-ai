@@ -19,6 +19,7 @@ import ai.core.server.file.FileService;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.memory.experiment.MemoryInjectionResult;
 import ai.core.server.messaging.EventPublisher;
+import ai.core.server.web.sse.SessionChannelService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.skill.MongoSkillProvider;
@@ -28,6 +29,7 @@ import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillProvider;
 import ai.core.tool.registry.ToolRegistryFactory;
 import core.framework.web.exception.ForbiddenException;
+import core.framework.web.exception.NotFoundException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -43,6 +45,7 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,8 +53,8 @@ class AgentSessionManagerCallerTest {
     @Test
     void sessionMutationRejectsCallerWhoDoesNotOwnSession() {
         var manager = new AgentSessionManager();
-        manager.chatMessageService = mock(ChatMessageService.class);
-        when(manager.chatMessageService.findSessionUserId("victim-session")).thenReturn("victim-user");
+        manager.sessionRegistry = mock(SessionRegistry.class);
+        when(manager.sessionRegistry.requireUserId("victim-session")).thenReturn("victim-user");
 
         assertThrows(ForbiddenException.class,
             () -> manager.requireSessionCaller("victim-session", "attacker-user"));
@@ -60,18 +63,19 @@ class AgentSessionManagerCallerTest {
     @Test
     void sessionMutationFailsClosedWhenSessionOwnerIsUnknown() {
         var manager = new AgentSessionManager();
-        manager.chatMessageService = mock(ChatMessageService.class);
-        when(manager.chatMessageService.findSessionUserId("unknown-session")).thenReturn(null);
+        manager.sessionRegistry = mock(SessionRegistry.class);
+        when(manager.sessionRegistry.requireUserId("unknown-session"))
+                .thenThrow(new NotFoundException("session not found"));
 
-        assertThrows(ForbiddenException.class,
+        assertThrows(NotFoundException.class,
                 () -> manager.requireSessionCaller("unknown-session", "caller-user"));
     }
 
     @Test
     void dynamicSkillMutationRejectsCallerWhoDoesNotOwnSession() {
         var manager = new AgentSessionManager();
-        manager.chatMessageService = mock(ChatMessageService.class);
-        when(manager.chatMessageService.findSessionUserId("victim-session")).thenReturn("victim-user");
+        manager.sessionRegistry = mock(SessionRegistry.class);
+        when(manager.sessionRegistry.requireUserId("victim-session")).thenReturn("victim-user");
 
         assertThrows(ForbiddenException.class,
                 () -> manager.loadSkills("victim-session", List.of("skill-1"), "attacker-user"));
@@ -84,7 +88,7 @@ class AgentSessionManagerCallerTest {
         var harness = harness();
         var result = harness.manager.createSessionFromAgent(
                 definition(AgentStatus.DRAFT), null, "owner-user", "chat");
-        when(harness.manager.chatMessageService.findSessionUserId(result.sessionId()))
+        when(harness.manager.sessionRegistry.requireUserId(result.sessionId()))
                 .thenReturn("owner-user");
 
         try {
@@ -98,7 +102,7 @@ class AgentSessionManagerCallerTest {
     @Test
     void rebuiltSessionRevalidatesExplicitCallerAfterAtomicCacheInsertion() {
         var harness = harness();
-        when(harness.manager.chatMessageService.findSessionUserId("rebuilt-session"))
+        when(harness.manager.sessionRegistry.requireUserId("rebuilt-session"))
                 .thenReturn("owner-user");
         var state = new SessionState();
         state.userId = "owner-user";
@@ -106,16 +110,16 @@ class AgentSessionManagerCallerTest {
 
         var rebuilt = harness.manager.getSession("rebuilt-session", state, "owner-user");
 
-        verify(harness.manager.chatMessageService).findSessionUserId("rebuilt-session");
+        verify(harness.manager.sessionRegistry).requireUserId("rebuilt-session");
         rebuilt.close();
     }
 
     @Test
     void a2aContextReuseRejectsMismatchedOwnerOrAgent() {
         var manager = new AgentSessionManager();
-        manager.chatMessageService = mock(ChatMessageService.class);
-        when(manager.chatMessageService.findSessionUserId("victim-session")).thenReturn("victim-user");
-        when(manager.chatMessageService.findSessionAgentId("victim-session")).thenReturn("agent-1");
+        manager.sessionRegistry = mock(SessionRegistry.class);
+        when(manager.sessionRegistry.requireUserId("victim-session")).thenReturn("victim-user");
+        when(manager.sessionRegistry.requireAgentId("victim-session")).thenReturn("agent-1");
 
         assertThrows(ForbiddenException.class,
             () -> manager.getSessionForAgentCaller("victim-session", "agent-1", "attacker-user"));
@@ -171,7 +175,69 @@ class AgentSessionManagerCallerTest {
 
         assertEquals(List.of(), result.loadedSkillIds());
         assertEquals(List.of(), result.loadedSubAgentIds());
+        var registration = ArgumentCaptor.forClass(SessionRegistry.SessionRegistration.class);
+        verify(harness.manager.sessionRegistry).create(registration.capture());
+        assertEquals(result.sessionId(), registration.getValue().sessionId());
+        assertEquals("owner-user", registration.getValue().userId());
+        assertEquals("agent-1", registration.getValue().agentId());
+        assertEquals("chat", registration.getValue().source());
         harness.manager.getSession(result.sessionId()).close();
+    }
+
+    @Test
+    void genericSessionRegistersDurableIdentityBeforeReturning() {
+        var harness = harness();
+
+        var sessionId = harness.manager.createSession(new SessionConfig(), "owner-user", "chat", "key-1");
+
+        var registration = ArgumentCaptor.forClass(SessionRegistry.SessionRegistration.class);
+        verify(harness.manager.sessionRegistry).create(registration.capture());
+        assertEquals(sessionId, registration.getValue().sessionId());
+        assertEquals("owner-user", registration.getValue().userId());
+        assertNull(registration.getValue().agentId());
+        assertEquals("key-1", registration.getValue().apiKeyId());
+        harness.manager.getSession(sessionId).close();
+    }
+
+    @Test
+    void definitionDependenciesPersistOnlyAfterRegistryCreation() {
+        var harness = harness();
+        var definition = definition(AgentStatus.DRAFT);
+        definition.skillIds = List.of("owner-skill");
+        when(harness.manager.skillService.resolveAccessibleSkills(List.of("owner-skill"), "owner-user"))
+                .thenReturn(List.of(skill("owner-skill")));
+
+        harness.manager.createSessionFromAgent(definition, null, "owner-user", "chat");
+
+        var ordered = inOrder(harness.manager.sessionRegistry, harness.manager.chatMessageService);
+        ordered.verify(harness.manager.sessionRegistry).create(any(SessionRegistry.SessionRegistration.class));
+        ordered.verify(harness.manager.chatMessageService).addLoadedSkillIds(anyString(), anyList());
+    }
+
+    @Test
+    void failedOwnershipClaimDoesNotRegisterOrExposeSession() {
+        var harness = harness();
+        when(harness.manager.sessionAgentHelper.claimOwnership(anyString())).thenReturn(false);
+
+        assertThrows(IllegalStateException.class,
+                () -> harness.manager.createSessionFromAgent(
+                        definition(AgentStatus.DRAFT), null, "owner-user", "chat"));
+
+        verify(harness.manager.sessionRegistry, never()).create(any());
+    }
+
+    @Test
+    void registryFailureReleasesPartiallyCreatedRuntime() {
+        var harness = harness();
+        when(harness.manager.sessionRegistry.create(any()))
+                .thenThrow(new IllegalStateException("mongo unavailable"));
+
+        assertThrows(IllegalStateException.class,
+                () -> harness.manager.createSessionFromAgent(
+                        definition(AgentStatus.DRAFT), null, "owner-user", "chat"));
+
+        verify(harness.manager.sandboxService).releaseSandbox(anyString());
+        verify(harness.manager.sessionAgentHelper).releaseOwnership(anyString());
     }
 
     @Test
@@ -186,7 +252,7 @@ class AgentSessionManagerCallerTest {
                 () -> harness.manager.createSessionFromAgent(definition, null, "owner-user", "chat"));
 
         assertEquals("skill is unavailable", error.getMessage());
-        verify(harness.manager.chatMessageService, never()).registerSession(anyString(), any());
+        verify(harness.manager.sessionRegistry, never()).create(any());
     }
 
     @Test
@@ -269,8 +335,11 @@ class AgentSessionManagerCallerTest {
         manager.memoryExperimentService = mock(AgentMemoryExperimentService.class);
         when(manager.memoryExperimentService.prepareInjection(anyString())).thenReturn(MemoryInjectionResult.skipped());
         manager.eventPublisher = mock(EventPublisher.class);
+        manager.sessionChannelService = mock(SessionChannelService.class);
+        manager.sessionRegistry = mock(SessionRegistry.class);
         manager.sessionAgentHelper = mock(SessionAgentHelper.class);
         when(manager.sessionAgentHelper.resolveDatasetConfig(any(AgentDefinition.class), any(), any())).thenReturn(null);
+        when(manager.sessionAgentHelper.claimOwnership(anyString())).thenReturn(true);
         return new Harness(manager, assembler);
     }
 

@@ -276,7 +276,6 @@ public class SessionRebuildManager {
         if (eventPublisher != null) {
             session.onEvent(new SseEventBridge(params.sessionId, eventPublisher));
         }
-        registerSessionFromDb(params.sessionId, params.userId);
         restoreAgentHistory(agent, params.sessionId);
         skillManager.restoreDefinitionSkills(session, params.state != null && params.state.agentConfig != null
                 ? params.state.agentConfig.skillIds : null);
@@ -335,19 +334,6 @@ public class SessionRebuildManager {
             } catch (Exception e) {
                 logger.warn("failed to restore dynamically loaded sub-agents, sessionId={}", sessionId, e);
             }
-        }
-    }
-    private void registerSessionFromDb(String sessionId, String userId) {
-        var meta = chatMessageService.getSessionMeta(sessionId);
-        if (meta != null) {
-            chatMessageService.registerSession(sessionId, new ChatMessageService.SessionMeta(
-                    meta.userId != null ? meta.userId : userId,
-                    meta.agentId,
-                    meta.source != null ? meta.source : "chat",
-                    meta.scheduleId,
-                    meta.apiKeyId));
-        } else {
-            chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, null, "chat"));
         }
     }
     private void restoreAgentHistory(Agent agent, String sessionId) {

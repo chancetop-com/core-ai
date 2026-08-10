@@ -5,6 +5,7 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import com.mongodb.MongoWriteException;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.BsonDocument;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -142,6 +144,104 @@ class SessionRegistryTest {
                 () -> registry.addLoadedTools("missing", List.of(tool)));
 
         verify(registry.chatSessionCollection, never()).insert(any(ChatSession.class));
+    }
+
+    @Test
+    void identityLookupsRejectDeletedSessions() {
+        var registry = registry();
+        var active = session("active", "user-1", "agent-1");
+        var deleted = session("deleted", "user-1", "agent-1");
+        deleted.deletedAt = ZonedDateTime.now();
+        when(registry.chatSessionCollection.get("active")).thenReturn(Optional.of(active));
+        when(registry.chatSessionCollection.get("deleted")).thenReturn(Optional.of(deleted));
+
+        assertEquals("user-1", registry.requireUserId("active"));
+        assertEquals("agent-1", registry.requireAgentId("active"));
+        assertThrows(NotFoundException.class, () -> registry.requireUserId("deleted"));
+    }
+
+    @Test
+    void recordAgentMessageRequiresAnExistingRegistryRow() {
+        var registry = registry();
+        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class)))
+                .thenReturn(1L, 0L);
+
+        registry.recordAgentMessage("active");
+        assertThrows(IllegalStateException.class, () -> registry.recordAgentMessage("missing"));
+    }
+
+    @Test
+    void loadedResourceMutationsRequireAnExistingRegistryRow() {
+        var registry = registry();
+        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+
+        registry.addLoadedSkillIds("s-1", List.of(" skill-1 ", "skill-1", ""));
+        registry.addLoadedSubAgentIds("s-1", List.of(" agent-1 ", "agent-1", ""));
+        registry.removeLoadedSkillIds("s-1", List.of(" skill-1 "));
+
+        verify(registry.chatSessionCollection, org.mockito.Mockito.times(3))
+                .update(any(Bson.class), any(Bson.class));
+        verify(registry.chatSessionCollection, never()).insert(any(ChatSession.class));
+    }
+
+    @Test
+    void softDeleteOnlyDeletesOwnedSession() {
+        var registry = registry();
+        when(registry.chatSessionCollection.get("owned"))
+                .thenReturn(Optional.of(session("owned", "user-1", null)));
+        when(registry.chatSessionCollection.get("foreign"))
+                .thenReturn(Optional.of(session("foreign", "user-2", null)));
+        when(registry.chatSessionCollection.get("missing")).thenReturn(Optional.empty());
+        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+
+        assertTrue(registry.softDelete("user-1", "owned"));
+        assertFalse(registry.softDelete("user-1", "foreign"));
+        assertFalse(registry.softDelete("user-1", "missing"));
+        verify(registry.chatSessionCollection).update(any(Bson.class), any(Bson.class));
+    }
+
+    @Test
+    void updateTitleNormalizesTextAndEnforcesOwnership() {
+        var registry = registry();
+        when(registry.chatSessionCollection.get("s-1"))
+                .thenReturn(Optional.of(session("s-1", "user-1", null)));
+        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+
+        assertTrue(registry.updateTitle("user-1", "s-1", "  My  renamed  chat "));
+        assertFalse(registry.updateTitle("user-2", "s-1", "not allowed"));
+
+        var captor = ArgumentCaptor.forClass(Bson.class);
+        verify(registry.chatSessionCollection).update(any(Bson.class), captor.capture());
+        assertEquals("My renamed chat", bson(captor.getValue()).getDocument("$set").getString("title").getValue());
+    }
+
+    @Test
+    void batchSoftDeleteReturnsOnlyOwnedExistingIds() {
+        var registry = registry();
+        when(registry.chatSessionCollection.get("owned"))
+                .thenReturn(Optional.of(session("owned", "user-1", null)));
+        when(registry.chatSessionCollection.get("foreign"))
+                .thenReturn(Optional.of(session("foreign", "user-2", null)));
+        when(registry.chatSessionCollection.get("missing")).thenReturn(Optional.empty());
+        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+
+        assertEquals(List.of("owned"),
+                registry.batchSoftDelete("user-1", List.of("owned", "foreign", "missing")));
+    }
+
+    @Test
+    void metadataQueriesReturnDurableRegistryData() {
+        var registry = registry();
+        var stored = session("s-1", "user-1", "agent-1");
+        var listed = List.of(stored);
+        when(registry.chatSessionCollection.get("s-1")).thenReturn(Optional.of(stored));
+        when(registry.chatSessionCollection.count(any(Bson.class))).thenReturn(1L);
+        when(registry.chatSessionCollection.find(any(Query.class))).thenReturn(listed);
+
+        assertSame(stored, registry.get("s-1"));
+        assertEquals(1L, registry.countSessions("user-1", List.of("chat"), List.of("agent-1")));
+        assertSame(listed, registry.listSessions(
+                "user-1", List.of("chat"), List.of("agent-1"), 0, 20, "created_at"));
     }
 
     private SessionRegistry registry() {
