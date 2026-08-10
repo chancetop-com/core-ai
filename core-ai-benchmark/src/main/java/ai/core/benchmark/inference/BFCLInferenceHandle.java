@@ -22,6 +22,26 @@ import java.util.Objects;
  */
 public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, BFCLItemEvalResult> {
 
+    private static final Map<String, String> TYPE_MAPPINGS = Map.ofEntries(
+            Map.entry("dict", "object"),
+            Map.entry("hashmap", "object"),
+            Map.entry("hashtable", "object"),
+            Map.entry("double", "number"),
+            Map.entry("float", "number"),
+            Map.entry("arraylist", "array"),
+            Map.entry("list", "array"),
+            Map.entry("tuple", "array"),
+            Map.entry("queue", "array"),
+            Map.entry("stack", "array"),
+            Map.entry("bool", "boolean"),
+            Map.entry("long", "integer"),
+            Map.entry("byte", "integer"),
+            Map.entry("short", "integer"),
+            Map.entry("bigint", "integer"),
+            Map.entry("char", "string"),
+            Map.entry("any", "string")
+    );
+
     @Override
     public BFCLItemEvalResult handle(BFCLItem item) {
         var tools = completeTools(item);
@@ -78,26 +98,6 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
     private String toJson(Object obj) {
         return JsonUtil.toJson(obj);
     }
-
-    private static final Map<String, String> TYPE_MAPPINGS = Map.ofEntries(
-            Map.entry("dict", "object"),
-            Map.entry("hashmap", "object"),
-            Map.entry("hashtable", "object"),
-            Map.entry("double", "number"),
-            Map.entry("float", "number"),
-            Map.entry("arraylist", "array"),
-            Map.entry("list", "array"),
-            Map.entry("tuple", "array"),
-            Map.entry("queue", "array"),
-            Map.entry("stack", "array"),
-            Map.entry("bool", "boolean"),
-            Map.entry("long", "integer"),
-            Map.entry("byte", "integer"),
-            Map.entry("short", "integer"),
-            Map.entry("bigint", "integer"),
-            Map.entry("char", "string"),
-            Map.entry("any", "string")
-    );
 
     private String convertType(String type) {
         var tempType = type.toLowerCase(Locale.ROOT);
