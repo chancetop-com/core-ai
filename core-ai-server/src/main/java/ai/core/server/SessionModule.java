@@ -7,6 +7,7 @@ import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionAgentHelper;
+import ai.core.server.session.SessionRegistry;
 import ai.core.server.web.ChatSessionController;
 import ai.core.server.web.SessionCreateHelper;
 import ai.core.server.web.auth.RequestAuthenticator;
@@ -40,6 +41,7 @@ public class SessionModule extends Module {
     private void bindSessionRuntime() {
         bind(SubAgentAssembler.class);
         bind(SessionAgentHelper.class);
+        bind(SessionRegistry.class);
         bind(ChatMessageService.class);
         bind(AgentSessionManager.class);
         bind(SessionCreateHelper.class);
