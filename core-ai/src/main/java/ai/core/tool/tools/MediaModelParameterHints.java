@@ -1,15 +1,15 @@
 package ai.core.tool.tools;
 
 /**
- * Model-family knowledge for video generation providers: maps an upstream model name to the
+ * Model-family knowledge for media generation providers: maps an upstream model name to the
  * model-specific input parameters the agent may pass via provider_extra. Kept in sync with the
  * provider documentation (e.g. docs.kie.ai); unknown models return null and get no hint.
  *
  * @author stephen
  */
-public final class VideoModelParameterHints {
+public final class MediaModelParameterHints {
 
-    public static String hint(String upstreamModel) {
+    public static String videoHint(String upstreamModel) {
         if (upstreamModel == null) return null;
         if (upstreamModel.startsWith("bytedance/seedance-2")) {
             return "first_frame_url/last_frame_url (first/last-frame image-to-video); "
@@ -32,6 +32,20 @@ public final class VideoModelParameterHints {
         return null;
     }
 
-    private VideoModelParameterHints() {
+    public static String imageHint(String upstreamModel) {
+        if (upstreamModel == null) return null;
+        if (upstreamModel.startsWith("gpt-image") || upstreamModel.startsWith("dall-e")) {
+            return "quality (low/medium/high/auto), output_format (png/jpeg), output_compression, background (transparent)";
+        }
+        if (upstreamModel.startsWith("seedream")) {
+            return "n (1-4), size; negative prompt via provider_extra";
+        }
+        if (upstreamModel.startsWith("imagen")) {
+            return "quality (standard/hd), size, style via provider_extra";
+        }
+        return null;
+    }
+
+    private MediaModelParameterHints() {
     }
 }

@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -156,6 +157,55 @@ class GenerateVideoToolTest {
         assertTrue(first.isFailed());
         assertTrue(second.isFailed());
         assertTrue(second.getResult().contains("Do NOT keep guessing"), "repeated failures must inject guidance");
+    }
+
+    @Test
+    void sessionScopeSetsConversationDefaultModel() {
+        var provider = new TestMediaProvider();
+        var context = ExecutionContext.builder().build();
+        context.setVideoMediaProvider(provider);
+        var tool = GenerateVideoTool.builder().build();
+
+        tool.execute(JSON.toJSON(Map.of("prompt", "A cat", "model", "kling-2.6", "model_scope", "session")), context);
+
+        assertEquals("kling-2.6", context.getCustomVariables().get("media.video.model"));
+        assertEquals("kling-2.6", provider.videoRequest.model(), "session scope must also apply to the current call");
+    }
+
+    @Test
+    void sessionScopeWithEmptyModelClearsConversationDefault() {
+        var provider = new TestMediaProvider();
+        var context = ExecutionContext.builder().customVariable("media.video.model", "old-model").build();
+        context.setVideoMediaProvider(provider);
+        var tool = GenerateVideoTool.builder().build();
+
+        tool.execute(JSON.toJSON(Map.of("prompt", "A cat", "model", "", "model_scope", "session")), context);
+
+        assertFalse(context.getCustomVariables().containsKey("media.video.model"), "session default must be cleared");
+    }
+
+    @Test
+    void onceScopeDoesNotChangeConversationDefault() {
+        var provider = new TestMediaProvider();
+        var context = ExecutionContext.builder().build();
+        context.setVideoMediaProvider(provider);
+        var tool = GenerateVideoTool.builder().build();
+
+        tool.execute(JSON.toJSON(Map.of("prompt", "A cat", "model", "kling-2.6")), context);
+
+        assertFalse(context.getCustomVariables().containsKey("media.video.model"), "once scope must not change the session default");
+    }
+
+    @Test
+    void failedGenerationDoesNotChangeConversationDefault() {
+        var provider = new FailingMediaProvider();
+        var context = ExecutionContext.builder().build();
+        context.setVideoMediaProvider(provider);
+        var tool = GenerateVideoTool.builder().build();
+
+        tool.execute(JSON.toJSON(Map.of("prompt", "boom", "model", "kling-2.6", "model_scope", "session")), context);
+
+        assertFalse(context.getCustomVariables().containsKey("media.video.model"), "failed generation must not set the session default");
     }
 
     private static final class TestMediaProvider implements MediaProvider {

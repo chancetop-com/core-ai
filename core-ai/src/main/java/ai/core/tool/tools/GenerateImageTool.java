@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.media.domain.ImageGenerationRequest;
+import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -12,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,7 +33,12 @@ public class GenerateImageTool extends ToolCall {
 
             Parameters:
             - prompt (required): A detailed text description of the desired image
-            - model: The image generation model to use (uses the default if omitted)
+            - model: Optional. The image model to use (model_id from the Configured image models
+              list below). Omit to use the default model (the session default if set, otherwise
+              the system default). Do NOT guess model names.
+            - model_scope: Optional, "once" (default) or "session". "session" makes the model
+              the default for the rest of the conversation; pass model="" with
+              model_scope="session" to clear the session default and fall back to the system default.
             - n: Number of images to generate (1-10, default 1)
             - size: Image dimensions, e.g. "1024x1024", "1792x1024", "1024x1792"
             - quality: Optional output quality. For gpt-image-2, use only "low", "medium", "high", or "auto". Omit it unless the user requests a quality preference. Never use "standard" or "hd".
@@ -44,6 +51,25 @@ public class GenerateImageTool extends ToolCall {
 
             The result provides a display-ready Markdown image link. In your final response, you MUST include that exact Markdown image link unchanged so the generated image is rendered inline. Do not merely say that the image was generated.
             """;
+
+    /**
+     * Builds the tool description with the currently configured gateway image models appended,
+     * so the agent knows which models exist and which model-specific parameters each accepts.
+     */
+    public static String buildDescription(List<MediaModelHint> imageModels) {
+        var description = new StringBuilder(TOOL_DESC.length() + 256);
+        if (imageModels != null && !imageModels.isEmpty()) {
+            description.append("\n\nConfigured image models (pass their model_id in the model parameter; "
+                    + "use model_scope=\"session\" to make it the default for the rest of the conversation):");
+            for (var model : imageModels) {
+                description.append("\n- ").append(model.modelId());
+                if (model.providerName() != null) description.append(" (").append(model.providerName()).append(')');
+                var hint = MediaModelParameterHints.imageHint(model.upstreamModel());
+                if (hint != null) description.append(": ").append(hint);
+            }
+        }
+        return description.toString();
+    }
 
     public static Builder builder() {
         return new Builder();
@@ -92,16 +118,10 @@ public class GenerateImageTool extends ToolCall {
                     getStringValue(args, "previous_interaction_id"));
 
             var response = provider.generateImage(request);
+            GenerateVideoTool.applySessionModelScope(context, args, "media.image.model");
 
             if (response.data() != null && response.data().size() == 1) {
-                var image = response.data().get(0);
-                if (image.b64Json() != null) {
-                    var output = saveImage(context, image.b64Json(), getStringValue(args, "output_format"));
-                    return ToolCallResult.completed(imageResult(output, response.interactionId()))
-                            .withDuration(System.currentTimeMillis() - startTime);
-                }
-                return ToolCallResult.completed(imageResult(image.url() != null ? image.url() : "(no URL)", response.interactionId()))
-                        .withDuration(System.currentTimeMillis() - startTime);
+                return singleImageResult(context, response, getStringValue(args, "output_format"), startTime);
             }
 
             var sb = new StringBuilder(256);
@@ -121,6 +141,17 @@ public class GenerateImageTool extends ToolCall {
             return ToolCallResult.failed("Image generation failed: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    private ToolCallResult singleImageResult(ExecutionContext context, ImageGenerationResponse response, String outputFormat, long startTime) {
+        var image = response.data().get(0);
+        if (image.b64Json() != null) {
+            var output = saveImage(context, image.b64Json(), outputFormat);
+            return ToolCallResult.completed(imageResult(output, response.interactionId()))
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+        return ToolCallResult.completed(imageResult(image.url() != null ? image.url() : "(no URL)", response.interactionId()))
+                .withDuration(System.currentTimeMillis() - startTime);
     }
 
     private String imageResult(String output, String interactionId) {
@@ -169,6 +200,16 @@ public class GenerateImageTool extends ToolCall {
     }
 
     public static class Builder extends ToolCall.Builder<Builder, GenerateImageTool> {
+        // tracks whether a custom description was set; the parent field is kept in sync via super
+        private boolean customDescriptionSet;
+
+        @Override
+        public Builder description(String description) {
+            customDescriptionSet = true;
+            super.description(description);
+            return this;
+        }
+
         @Override
         protected Builder self() {
             return this;
@@ -176,10 +217,11 @@ public class GenerateImageTool extends ToolCall {
 
         public GenerateImageTool build() {
             this.name(TOOL_NAME);
-            this.description(TOOL_DESC);
+            if (!customDescriptionSet) super.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "A detailed text description of the desired image").required(),
-                    ToolCallParameters.ParamSpec.of(String.class, "model", "The image generation model to use (uses the default if omitted)"),
+                    ToolCallParameters.ParamSpec.of(String.class, "model", "The image generation model to use (uses the default if omitted); must be a model configured in the gateway — do not guess"),
+                    ToolCallParameters.ParamSpec.of(String.class, "model_scope", "once (default) or session; session sets the model as the conversation default for subsequent calls, empty model clears it"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "n", "Number of images to generate (1-10, default 1)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Image dimensions, e.g. 1024x1024, 1792x1024, 1024x1792"),
                     ToolCallParameters.ParamSpec.of(String.class, "quality", "Optional output quality. For gpt-image-2 use only low, medium, high, or auto. Omit it when no quality preference was requested; do not use standard or hd."),

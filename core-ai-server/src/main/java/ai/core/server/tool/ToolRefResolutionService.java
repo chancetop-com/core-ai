@@ -59,7 +59,7 @@ class ToolRefResolutionService {
     private final MediaProvider mediaProvider;
     private final GitHubTokenProvider gitHubTokenProvider;
     private final ai.core.tool.tools.UnderstandVideoTool.VideoUnderstandingService videoService;
-    private java.util.function.Supplier<List<ai.core.tool.tools.VideoModelHint>> videoModelHintsSupplier;
+    private java.util.function.Function<ai.core.server.gateway.GatewayEndpointType, List<ai.core.tool.tools.MediaModelHint>> mediaModelHintsProvider;
     private AgentDefinitionService agentDefinitionService;
     private LLMCallExecutor llmCallExecutor;
 
@@ -93,8 +93,8 @@ class ToolRefResolutionService {
         this.llmCallExecutor = llmCallExecutor;
     }
 
-    void setVideoModelHintsSupplier(java.util.function.Supplier<List<ai.core.tool.tools.VideoModelHint>> videoModelHintsSupplier) {
-        this.videoModelHintsSupplier = videoModelHintsSupplier;
+    void setMediaModelHintsProvider(java.util.function.Function<ai.core.server.gateway.GatewayEndpointType, List<ai.core.tool.tools.MediaModelHint>> mediaModelHintsProvider) {
+        this.mediaModelHintsProvider = mediaModelHintsProvider;
     }
 
     // ── Public API ───────────────────────────────────────────────────────────────
@@ -139,19 +139,26 @@ class ToolRefResolutionService {
         resolver.setVideoService(videoService);
         resolver.setAgentDefinitionService(agentDefinitionService);
         resolver.setLlmCallExecutor(llmCallExecutor);
-        resolver.setBuiltinEnhancer(this::enhanceVideoToolDescription);
+        resolver.setBuiltinEnhancer(this::enhanceMediaToolDescription);
         return resolver.resolve(toolRefs, sessionMgr, callerUserId);
     }
 
-    // replaces generate_video with a gateway-aware description listing the configured video models
-    // and their model-specific parameters; runs per resolution so gateway changes take effect quickly
-    private List<ToolCall> enhanceVideoToolDescription(List<ToolCall> tools) {
-        var hints = videoModelHintsSupplier == null ? List.<ai.core.tool.tools.VideoModelHint>of() : videoModelHintsSupplier.get();
-        if (hints.isEmpty()) return tools;
+    // replaces generate_image / generate_video with gateway-aware descriptions listing the configured
+    // media models and their model-specific parameters; runs per resolution so gateway changes take effect quickly
+    private List<ToolCall> enhanceMediaToolDescription(List<ToolCall> tools) {
+        var imageHints = mediaModelHintsProvider == null ? List.<ai.core.tool.tools.MediaModelHint>of()
+                : mediaModelHintsProvider.apply(ai.core.server.gateway.GatewayEndpointType.IMAGE_GENERATION);
+        var videoHints = mediaModelHintsProvider == null ? List.<ai.core.tool.tools.MediaModelHint>of()
+                : mediaModelHintsProvider.apply(ai.core.server.gateway.GatewayEndpointType.VIDEO_GENERATION);
         return tools.stream().map(tool -> {
+            if (tool instanceof ai.core.tool.tools.GenerateImageTool) {
+                return ai.core.tool.tools.GenerateImageTool.builder()
+                        .description(ai.core.tool.tools.GenerateImageTool.buildDescription(imageHints))
+                        .build();
+            }
             if (tool instanceof ai.core.tool.tools.GenerateVideoTool) {
                 return ai.core.tool.tools.GenerateVideoTool.builder(mediaProvider)
-                        .description(ai.core.tool.tools.GenerateVideoTool.buildDescription(hints))
+                        .description(ai.core.tool.tools.GenerateVideoTool.buildDescription(videoHints))
                         .build();
             }
             return tool;
@@ -271,7 +278,7 @@ class ToolRefResolutionService {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
                 registry.registerProvider(BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService,
-                        this::enhanceVideoToolDescription));
+                        this::enhanceMediaToolDescription));
                 return;
             }
         }

@@ -81,7 +81,7 @@ public class ToolRegistryService {
         mcpConnectionManager = new McpServerConnectionManager(sandboxService, applicationMcpManager);
         var mcpDependencies = new McpResolutionDependencies(mcpConnectionManager, sandboxService, applicationMcpManager);
         resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpDependencies, mediaProvider, gitHubTokenProvider, videoUnderstandingService);
-        resolutionService.setVideoModelHintsSupplier(gatewayRoutingEngine::videoModelHints);
+        resolutionService.setMediaModelHintsProvider(gatewayRoutingEngine::mediaModelHints);
         resolutionService.setAgentDefinitionService(agentDefinitionService);
         resolutionService.setLlmCallExecutor(llmCallExecutor);
         mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager, applicationMcpManager);

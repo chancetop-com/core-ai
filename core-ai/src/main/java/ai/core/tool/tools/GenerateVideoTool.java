@@ -60,10 +60,12 @@ public final class GenerateVideoTool extends ToolCall {
 
                 Parameters:
                 - prompt (required): A detailed text description of the video scene
-                - model: Optional. Omit to use the gateway default video model. If specified it
-                  must be a video model actually configured in the gateway — do NOT guess model
-                  names. If the default model fails with image references, fix the reference
-                  format instead of trying random model names.
+                - model: Optional. The video model to use (model_id from the Configured video models
+                  list below). Omit to use the default model (the session default if set, otherwise
+                  the system default). Do NOT guess model names.
+                - model_scope: Optional, "once" (default) or "session". "session" makes the model
+                  the default for the rest of the conversation; pass model="" with
+                  model_scope="session" to clear the session default and fall back to the system default.
                 - seconds: Optional, defaults to 10. The provider maximum is 10 seconds; larger
                   values are clamped to 10.
                 - size: Optional, e.g. "1280x720" or "720x1280". The provider renders video at
@@ -91,14 +93,15 @@ public final class GenerateVideoTool extends ToolCall {
      * Builds the tool description with the currently configured gateway video models appended,
      * so the agent knows which models exist and which model-specific parameters each accepts.
      */
-    public static String buildDescription(List<VideoModelHint> videoModels) {
+    public static String buildDescription(List<MediaModelHint> videoModels) {
         var description = new StringBuilder(TOOL_DESC);
         if (videoModels != null && !videoModels.isEmpty()) {
-            description.append("\n\nConfigured video models (pass their model_id in the model parameter):");
+            description.append("\n\nConfigured video models (pass their model_id in the model parameter; "
+                    + "use model_scope=\"session\" to make it the default for the rest of the conversation):");
             for (var model : videoModels) {
                 description.append("\n- ").append(model.modelId());
                 if (model.providerName() != null) description.append(" (").append(model.providerName()).append(')');
-                var hint = VideoModelParameterHints.hint(model.upstreamModel());
+                var hint = MediaModelParameterHints.videoHint(model.upstreamModel());
                 if (hint != null) description.append(": ").append(hint);
             }
         }
@@ -124,6 +127,21 @@ public final class GenerateVideoTool extends ToolCall {
             }
         }
         return null;
+    }
+
+    /**
+     * Applies the model_scope argument to the session media model variable, shared by the
+     * generate_video / generate_image tools. Called only after a successful generation so a
+     * failed call never changes the session default; an empty model clears the session default.
+     */
+    static void applySessionModelScope(ExecutionContext context, Map<String, Object> args, String variableKey) {
+        if (!"session".equals(getStringValue(args, "model_scope"))) return;
+        var model = getStringValue(args, "model");
+        if (model == null || model.isBlank()) {
+            context.getCustomVariables().remove(variableKey);
+        } else {
+            context.getCustomVariables().put(variableKey, model);
+        }
     }
 
     private final MediaProvider mediaProvider;
@@ -170,6 +188,7 @@ public final class GenerateVideoTool extends ToolCall {
 
             var response = provider.generateVideo(request);
             var videoId = response.id();
+            applySessionModelScope(context, args, "media.video.model");
             context.getCustomVariables().put(PENDING_VIDEO_TASK_CONTEXT_KEY, videoId);
             resetFailCount(context);
 
@@ -361,6 +380,7 @@ public final class GenerateVideoTool extends ToolCall {
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "A detailed text description of the video scene").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "model", "The video generation model to use (uses the default if omitted); must be a model configured in the gateway — do not guess"),
+                    ToolCallParameters.ParamSpec.of(String.class, "model_scope", "once (default) or session; session sets the model as the conversation default for subsequent calls, empty model clears it"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; defaults to 10, provider maximum is 10)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720"),
                     ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON array of reference images; each item is {\"b64Json\":\"data:image/jpeg;base64,...\"} (full data URL) or {\"url\":\"https://...\"} (server downloads it); omit to use attached images"),

@@ -2,7 +2,7 @@ package ai.core.server.gateway;
 
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
-import ai.core.tool.tools.VideoModelHint;
+import ai.core.tool.tools.MediaModelHint;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -127,12 +127,12 @@ public class GatewayRoutingEngine {
     }
 
     /**
-     * Enabled video models with their upstream names, used to inject gateway-aware hints
-     * into the generate_video tool description.
+     * Enabled media models (image or video) with their upstream names, used to inject gateway-aware
+     * hints into the generate_image / generate_video tool descriptions.
      */
-    public List<VideoModelHint> videoModelHints() {
-        return registeredModels(snapshot(), GatewayEndpointType.VIDEO_GENERATION).stream()
-                .map(route -> new VideoModelHint(route.model.modelId, route.model.upstreamModel,
+    public List<MediaModelHint> mediaModelHints(GatewayEndpointType endpoint) {
+        return registeredModels(snapshot(), endpoint).stream()
+                .map(route -> new MediaModelHint(route.model.modelId, route.model.upstreamModel,
                         route.provider.name == null ? null : route.provider.name))
                 .toList();
     }
