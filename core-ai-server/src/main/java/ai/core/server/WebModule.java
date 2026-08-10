@@ -1,6 +1,7 @@
 package ai.core.server;
 
 import ai.core.server.web.StaticFileController;
+import ai.core.server.web.WebAssetsUploader;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 
@@ -13,9 +14,16 @@ import java.nio.file.Path;
  */
 public class WebModule extends Module {
 
+    private static final String[] ROOT_FILES = {"/favicon.svg", "/favicon.ico", "/icons.svg", "/logo-lockup.svg", "/logo-lockup-dark.svg"};
+
     @Override
     protected void initialize() {
         registerStaticFiles();
+    }
+
+    private void registerWebAssetsUploader(Path webDir, StaticFileController controller) {
+        var uploader = bind(WebAssetsUploader.class);
+        onStartup(() -> uploader.upload(webDir, controller));
     }
 
     @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
@@ -25,15 +33,14 @@ public class WebModule extends Module {
         var webDir = Path.of(webPath);
         if (!webDir.toFile().exists()) return;
         var controller = new StaticFileController(webDir);
-        http().route(HTTPMethod.GET, "/favicon.svg", controller::serve);
-        http().route(HTTPMethod.GET, "/favicon.ico", controller::serve);
-        http().route(HTTPMethod.GET, "/icons.svg", controller::serve);
-        http().route(HTTPMethod.GET, "/logo-lockup.svg", controller::serve);
-        http().route(HTTPMethod.GET, "/logo-lockup-dark.svg", controller::serve);
+        registerWebAssetsUploader(webDir, controller);
+        for (var path : ROOT_FILES) {
+            http().route(HTTPMethod.GET, path, controller::serve);
+        }
         http().route(HTTPMethod.GET, "/apple-touch-icon.png", controller::serveAppleTouchIcon);
-        http().route(HTTPMethod.GET, "/assets/:file", controller::serve);
         // iOS Safari legacy probe; reuse favicon.svg to silence 404 noise.
         http().route(HTTPMethod.GET, "/apple-touch-icon-precomposed.png", controller::serveAppleTouchIcon);
+        http().route(HTTPMethod.GET, "/assets/:file", controller::serve);
         var spaRoutes = new String[]{
             "/", "/login", "/register", "/authorize", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",

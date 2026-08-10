@@ -21,14 +21,29 @@ public class StaticFileController {
     private static final String IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 
     private final Path webDir;
+    volatile String webAssetsRedirectBase;
 
     public StaticFileController(Path webDir) {
         this.webDir = webDir;
     }
 
+    /**
+     * Enables 301 redirects for /assets/* to the public object storage/CDN base URL.
+     * Only called after all assets are uploaded and the public URL probe succeeded.
+     */
+    public void enableWebAssetsRedirect(String baseUrl) {
+        webAssetsRedirectBase = baseUrl;
+    }
+
     public Response serve(Request request) {
         var path = request.path();
         if ("/".equals(path)) path = "/index.html";
+
+        var redirectBase = webAssetsRedirectBase;
+        if (path.startsWith("/assets/") && redirectBase != null) {
+            return Response.redirect(redirectBase + path, HTTPStatus.MOVED_PERMANENTLY)
+                    .header(CACHE_CONTROL, IMMUTABLE_CACHE);
+        }
 
         var file = webDir.resolve(path.substring(1)).normalize();
         if (!file.startsWith(webDir) || !Files.exists(file) || Files.isDirectory(file)) {

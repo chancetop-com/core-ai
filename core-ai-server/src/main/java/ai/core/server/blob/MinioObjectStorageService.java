@@ -60,6 +60,12 @@ public class MinioObjectStorageService implements ObjectStorageService {
     }
 
     @Override
+    public DownloadCredential generateDownloadCredential(String container, String blobName) {
+        var result = presigner.presignedGetUrl(container, blobName, 3600); // 1 hour
+        return new DownloadCredential(result.presignedUrl(), result.bucket(), result.key(), result.timestamp());
+    }
+
+    @Override
     public byte[] downloadObject(String container, String blobName) {
         var result = presigner.presignedGetUrl(container, blobName, 300); // 5 min
         try {
@@ -84,14 +90,21 @@ public class MinioObjectStorageService implements ObjectStorageService {
 
     @Override
     public void uploadObject(String container, String blobName, Path file) {
+        uploadObject(container, blobName, file, null);
+    }
+
+    @Override
+    public void uploadObject(String container, String blobName, Path file, String contentType) {
         var result = presigner.presignedPutUrl(container, blobName, 1800);
         try {
-            var request = HttpRequest.newBuilder()
+            var builder = HttpRequest.newBuilder()
                     .uri(URI.create(result.presignedUrl()))
                     .timeout(TRANSFER_TIMEOUT)
-                    .PUT(HttpRequest.BodyPublishers.ofFile(file))
-                    .build();
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                    .PUT(HttpRequest.BodyPublishers.ofFile(file));
+            if (contentType != null && !contentType.isBlank()) {
+                builder.header("Content-Type", contentType);
+            }
+            var response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 throw new RuntimeException("upload failed: status=" + response.statusCode() + ", body=" + response.body());
             }
@@ -145,6 +158,27 @@ public class MinioObjectStorageService implements ObjectStorageService {
                     response.headers().firstValue("ETag").orElse(null),
                     response.headers().firstValue("Content-Type").orElse(null),
                     response.headers().firstValue("Last-Modified").orElse(null));
+        } catch (IOException e) {
+            throw new RuntimeException("failed to inspect object: bucket=" + container + ", key=" + blobName, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted while inspecting object", e);
+        }
+    }
+
+    @Override
+    public boolean exists(String container, String blobName) {
+        var result = presigner.presignedGetUrl(container, blobName, 300);
+        try {
+            var request = HttpRequest.newBuilder()
+                    .uri(URI.create(result.presignedUrl()))
+                    .timeout(Duration.ofSeconds(30))
+                    .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                    .build();
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() == 200) return true;
+            if (response.statusCode() == 404) return false;
+            throw new RuntimeException("head failed: status=" + response.statusCode() + ", bucket=" + container + ", key=" + blobName);
         } catch (IOException e) {
             throw new RuntimeException("failed to inspect object: bucket=" + container + ", key=" + blobName, e);
         } catch (InterruptedException e) {

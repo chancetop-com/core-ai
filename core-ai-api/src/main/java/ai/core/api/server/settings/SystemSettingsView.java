@@ -50,6 +50,12 @@ public class SystemSettingsView {
     @Property(name = "default_video_understanding_model")
     public String defaultVideoUnderstandingModel;
 
+    @Property(name = "storage_provider")
+    public String storageProvider;
+
+    @Property(name = "azure_blob_artifact_container")
+    public String azureBlobArtifactContainer;
+
     @Property(name = "azure_blob_account_name")
     public String azureBlobAccountName;
 
@@ -61,6 +67,9 @@ public class SystemSettingsView {
 
     @Property(name = "azure_blob_public_base_url")
     public String azureBlobPublicBaseUrl;
+
+    @Property(name = "azure_blob_cdn_base_url")
+    public String azureBlobCdnBaseUrl;
 
     @Property(name = "has_azure_speech_key")
     public Boolean hasAzureSpeechKey;

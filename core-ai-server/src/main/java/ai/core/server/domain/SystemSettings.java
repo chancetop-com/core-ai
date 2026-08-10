@@ -35,6 +35,12 @@ public class SystemSettings {
     @Field(name = "video_understanding_model")
     public String videoUnderstandingModel;
 
+    @Field(name = "storage_provider")
+    public String storageProvider;
+
+    @Field(name = "azure_blob_artifact_container")
+    public String azureBlobArtifactContainer;
+
     @Field(name = "azure_blob_account_name")
     public String azureBlobAccountName;
 
@@ -46,6 +52,9 @@ public class SystemSettings {
 
     @Field(name = "azure_blob_public_base_url")
     public String azureBlobPublicBaseUrl;
+
+    @Field(name = "azure_blob_cdn_base_url")
+    public String azureBlobCdnBaseUrl;
 
     @Field(name = "azure_speech_key")
     public String azureSpeechKey;

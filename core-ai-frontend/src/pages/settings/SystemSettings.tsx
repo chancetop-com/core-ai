@@ -12,10 +12,13 @@ export default function SystemSettings() {
   const [imageGenerationModel, setImageGenerationModel] = useState('');
   const [videoGenerationModel, setVideoGenerationModel] = useState('');
   const [videoUnderstandingModel, setVideoUnderstandingModel] = useState('');
+  const [storageProvider, setStorageProvider] = useState('');
+  const [azureBlobArtifactContainer, setAzureBlobArtifactContainer] = useState('');
   const [azureBlobAccountName, setAzureBlobAccountName] = useState('');
   const [azureBlobAccountKey, setAzureBlobAccountKey] = useState('');
   const [azureBlobMultimodalContainer, setAzureBlobMultimodalContainer] = useState('');
   const [azureBlobPublicBaseUrl, setAzureBlobPublicBaseUrl] = useState('');
+  const [azureBlobCdnBaseUrl, setAzureBlobCdnBaseUrl] = useState('');
   const [azureSpeechKey, setAzureSpeechKey] = useState('');
   const [azureSpeechRegion, setAzureSpeechRegion] = useState('');
   const [azureSpeechEndpoint, setAzureSpeechEndpoint] = useState('');
@@ -70,10 +73,13 @@ export default function SystemSettings() {
       setImageGenerationModel(settingsResponse.image_generation_model || '');
       setVideoGenerationModel(settingsResponse.video_generation_model || '');
       setVideoUnderstandingModel(settingsResponse.video_understanding_model || '');
+      setStorageProvider(settingsResponse.storage_provider || '');
+      setAzureBlobArtifactContainer(settingsResponse.azure_blob_artifact_container || '');
       setAzureBlobAccountName(settingsResponse.azure_blob_account_name || '');
       setAzureBlobAccountKey('');
       setAzureBlobMultimodalContainer(settingsResponse.azure_blob_multimodal_container || '');
       setAzureBlobPublicBaseUrl(settingsResponse.azure_blob_public_base_url || '');
+      setAzureBlobCdnBaseUrl(settingsResponse.azure_blob_cdn_base_url || '');
       setAzureSpeechKey('');
       setAzureSpeechRegion(settingsResponse.azure_speech_region || '');
       setAzureSpeechEndpoint(settingsResponse.azure_speech_endpoint || '');
@@ -104,10 +110,13 @@ export default function SystemSettings() {
         image_generation_model: imageGenerationModel.trim() || null,
         video_generation_model: videoGenerationModel.trim() || null,
         video_understanding_model: videoUnderstandingModel.trim() || null,
+        storage_provider: storageProvider.trim() || null,
+        azure_blob_artifact_container: azureBlobArtifactContainer.trim() || null,
         azure_blob_account_name: azureBlobAccountName.trim() || null,
         azure_blob_account_key: azureBlobAccountKey.trim() || null,
         azure_blob_multimodal_container: azureBlobMultimodalContainer.trim() || null,
         azure_blob_public_base_url: azureBlobPublicBaseUrl.trim() || null,
+        azure_blob_cdn_base_url: azureBlobCdnBaseUrl.trim() || null,
         azure_speech_key: azureSpeechKey.trim() || null,
         azure_speech_region: azureSpeechRegion.trim() || null,
         azure_speech_endpoint: azureSpeechEndpoint.trim() || null,
@@ -123,10 +132,13 @@ export default function SystemSettings() {
       setImageGenerationModel(response.image_generation_model || '');
       setVideoGenerationModel(response.video_generation_model || '');
       setVideoUnderstandingModel(response.video_understanding_model || '');
+      setStorageProvider(response.storage_provider || '');
+      setAzureBlobArtifactContainer(response.azure_blob_artifact_container || '');
       setAzureBlobAccountName(response.azure_blob_account_name || '');
       setAzureBlobAccountKey('');
       setAzureBlobMultimodalContainer(response.azure_blob_multimodal_container || '');
       setAzureBlobPublicBaseUrl(response.azure_blob_public_base_url || '');
+      setAzureBlobCdnBaseUrl(response.azure_blob_cdn_base_url || '');
       setAzureSpeechKey('');
       setAzureSpeechRegion(response.azure_speech_region || '');
       setAzureSpeechEndpoint(response.azure_speech_endpoint || '');
@@ -317,13 +329,26 @@ export default function SystemSettings() {
 
       <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
         <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="font-semibold">Azure Blob Storage</h2>
+          <h2 className="font-semibold">Object Storage</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Credentials for user file uploads. Leave the account key blank to keep the existing value.
+            Provider for file uploads and artifact downloads. Leave the account key blank to keep the existing value.
             Changes take effect immediately.
           </p>
         </div>
         <div className="p-5 space-y-4">
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Provider</span>
+            <select
+              value={storageProvider}
+              onChange={e => setStorageProvider(e.target.value)}
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            >
+              <option value="">Auto (Azure first, then MinIO)</option>
+              <option value="azure">Azure Blob</option>
+              <option value="minio">MinIO / S3</option>
+            </select>
+          </label>
           <label className="block">
             <span className="block text-sm font-medium mb-2">Account name</span>
             <input
@@ -347,12 +372,23 @@ export default function SystemSettings() {
             />
           </label>
           <label className="block">
-            <span className="block text-sm font-medium mb-2">Multimodal container</span>
+            <span className="block text-sm font-medium mb-2">Multimodal container (public)</span>
             <input
               type="text"
               value={azureBlobMultimodalContainer}
               onChange={e => setAzureBlobMultimodalContainer(e.target.value)}
-              placeholder="uploads"
+              placeholder="static"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Artifact container (private)</span>
+            <input
+              type="text"
+              value={azureBlobArtifactContainer}
+              onChange={e => setAzureBlobArtifactContainer(e.target.value)}
+              placeholder="artifacts"
               className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
               style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
             />
@@ -364,6 +400,17 @@ export default function SystemSettings() {
               value={azureBlobPublicBaseUrl}
               onChange={e => setAzureBlobPublicBaseUrl(e.target.value)}
               placeholder="https://<account>.blob.core.windows.net"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">CDN base URL (optional)</span>
+            <input
+              type="text"
+              value={azureBlobCdnBaseUrl}
+              onChange={e => setAzureBlobCdnBaseUrl(e.target.value)}
+              placeholder="https://<front-door>.azurefd.net"
               className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
               style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
             />

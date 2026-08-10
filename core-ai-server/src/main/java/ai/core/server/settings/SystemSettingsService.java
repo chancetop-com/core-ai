@@ -99,12 +99,15 @@ public class SystemSettingsService {
     }
 
     private void applyIntegrations(SystemSettings entity, SystemSettingsRequest request) {
+        entity.storageProvider = normalizeModel(request.storageProvider);
+        entity.azureBlobArtifactContainer = normalizeModel(request.azureBlobArtifactContainer);
         entity.azureBlobAccountName = normalizeModel(request.azureBlobAccountName);
         if (request.azureBlobAccountKey != null && !request.azureBlobAccountKey.isBlank()) {
             entity.azureBlobAccountKey = secretProtector.protect(request.azureBlobAccountKey.trim());
         }
         entity.azureBlobMultimodalContainer = normalizeModel(request.azureBlobMultimodalContainer);
         entity.azureBlobPublicBaseUrl = normalizeModel(request.azureBlobPublicBaseUrl);
+        entity.azureBlobCdnBaseUrl = normalizeModel(request.azureBlobCdnBaseUrl);
         if (request.azureSpeechKey != null && !request.azureSpeechKey.isBlank()) {
             entity.azureSpeechKey = secretProtector.protect(request.azureSpeechKey.trim());
         }
@@ -180,6 +183,16 @@ public class SystemSettingsService {
         return entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
     }
 
+    public String storageProvider() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.storageProvider);
+    }
+
+    public String azureBlobArtifactContainer() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.azureBlobArtifactContainer);
+    }
+
     public String azureBlobAccountName() {
         var entity = entity();
         return entity == null ? null : normalizeModel(entity.azureBlobAccountName);
@@ -198,6 +211,11 @@ public class SystemSettingsService {
     public String azureBlobPublicBaseUrl() {
         var entity = entity();
         return entity == null ? null : normalizeModel(entity.azureBlobPublicBaseUrl);
+    }
+
+    public String azureBlobCdnBaseUrl() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.azureBlobCdnBaseUrl);
     }
 
     public String azureSpeechKey() {
@@ -297,10 +315,13 @@ public class SystemSettingsService {
         view.imageGenerationModel = entity == null ? null : normalizeModel(entity.imageGenerationModel);
         view.videoGenerationModel = entity == null ? null : normalizeModel(entity.videoGenerationModel);
         view.videoUnderstandingModel = entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
+        view.storageProvider = entity == null ? null : normalizeModel(entity.storageProvider);
+        view.azureBlobArtifactContainer = entity == null ? null : normalizeModel(entity.azureBlobArtifactContainer);
         view.azureBlobAccountName = entity == null ? null : normalizeModel(entity.azureBlobAccountName);
         view.hasAzureBlobAccountKey = entity != null && entity.azureBlobAccountKey != null;
         view.azureBlobMultimodalContainer = entity == null ? null : normalizeModel(entity.azureBlobMultimodalContainer);
         view.azureBlobPublicBaseUrl = entity == null ? null : normalizeModel(entity.azureBlobPublicBaseUrl);
+        view.azureBlobCdnBaseUrl = entity == null ? null : normalizeModel(entity.azureBlobCdnBaseUrl);
         view.hasAzureSpeechKey = entity != null && entity.azureSpeechKey != null;
         view.azureSpeechRegion = entity == null ? null : normalizeModel(entity.azureSpeechRegion);
         view.azureSpeechEndpoint = entity == null ? null : normalizeModel(entity.azureSpeechEndpoint);

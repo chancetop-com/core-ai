@@ -35,7 +35,7 @@ public class BlobUploadCredentialController {
         var category = params.get("category");
         var container = "sandbox".equals(category) ? resolver.sandboxContainer() : resolver.multimodalContainer();
         var ext = inferExtension(contentType);
-        var prefix = "sandbox".equals(category) ? "uploads" : "ai";
+        var prefix = "sandbox".equals(category) ? "uploads" : "ai/uploads";
         var blobName = prefix + "/" + UUID.randomUUID() + ext;
 
         var result = storageService.generateUploadCredential(container, blobName);

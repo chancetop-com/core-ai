@@ -1,30 +1,53 @@
 package ai.core.server.file;
 
+import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.FileRecord;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.ZonedDateTime;
+import java.util.Base64;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class FileServiceTest {
+    private FileService service;
+    private ObjectStorageService storage;
+    private ObjectStorageServiceResolver resolver;
+
+    @BeforeEach
+    void setUp() {
+        service = new FileService();
+        service.fileRecordCollection = fileRecordCollection();
+        storage = mock(ObjectStorageService.class);
+        resolver = mock(ObjectStorageServiceResolver.class);
+        service.storageResolver = resolver;
+        when(resolver.resolve()).thenReturn(storage);
+    }
+
     @Test
     void shareCreatesToken() {
-        var service = new FileService();
-        service.fileRecordCollection = fileRecordCollection();
         var record = file("file-1");
         when(service.fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
         when(service.fileRecordCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
@@ -39,8 +62,6 @@ class FileServiceTest {
 
     @Test
     void shareReusesExistingToken() {
-        var service = new FileService();
-        service.fileRecordCollection = fileRecordCollection();
         var record = file("file-1");
         record.shareToken = "existing-token";
         record.sharedAt = ZonedDateTime.now();
@@ -54,8 +75,6 @@ class FileServiceTest {
 
     @Test
     void shareReturnsTokenCreatedByConcurrentRequest() {
-        var service = new FileService();
-        service.fileRecordCollection = fileRecordCollection();
         var record = file("file-1");
         var latest = file("file-1");
         latest.shareToken = "concurrent-token";
@@ -70,8 +89,6 @@ class FileServiceTest {
 
     @Test
     void shareRejectsNonOwner() {
-        var service = new FileService();
-        service.fileRecordCollection = fileRecordCollection();
         var record = file("file-1");
         record.userId = "user-2";
         when(service.fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
@@ -82,8 +99,6 @@ class FileServiceTest {
 
     @Test
     void getSharedFindsByToken() {
-        var service = new FileService();
-        service.fileRecordCollection = fileRecordCollection();
         var record = file("file-1");
         when(service.fileRecordCollection.findOne(any(Bson.class))).thenReturn(Optional.of(record));
 
@@ -92,16 +107,97 @@ class FileServiceTest {
 
     @Test
     void getSharedThrowsForMissingToken() {
-        var service = new FileService();
-        service.fileRecordCollection = fileRecordCollection();
         when(service.fileRecordCollection.findOne(any(Bson.class))).thenReturn(Optional.empty());
 
         assertThrows(NotFoundException.class, () -> service.getShared("missing"));
     }
 
+    @Test
+    void uploadStoresContentInObjectStorageWhenConfigured() throws IOException {
+        when(resolver.artifactContainer()).thenReturn("artifacts");
+        var tempFile = tempFile("hello video".getBytes());
+
+        var record = service.upload("user-1", "v.mp4", "video/mp4", tempFile);
+
+        assertNull(record.data);
+        assertEquals("artifacts/artifacts/" + record.id + ".mp4", record.storagePath);
+        assertEquals(11L, record.size);
+        verify(storage).uploadObject(eq("artifacts"), eq("artifacts/" + record.id + ".mp4"), any(Path.class), eq("video/mp4"));
+        verify(service.fileRecordCollection).insert(record);
+    }
+
+    @Test
+    void uploadStoresBase64WhenObjectStorageNotConfigured() throws IOException {
+        when(resolver.resolve()).thenReturn(null);
+        var payload = "legacy content".getBytes();
+        var tempFile = tempFile(payload);
+
+        var record = service.upload("user-1", "doc.txt", "text/plain", tempFile);
+
+        assertNull(record.storagePath);
+        assertArrayEquals(payload, Base64.getDecoder().decode(record.data));
+        assertEquals((long) payload.length, record.size);
+    }
+
+    @Test
+    void getBytesReadsFromObjectStorageWhenMigrated() {
+        var record = file("file-1");
+        record.storagePath = "uploads/artifacts/file-1.pdf";
+        when(storage.downloadObject("uploads", "artifacts/file-1.pdf")).thenReturn(new byte[]{1, 2, 3});
+
+        var bytes = service.getBytes(record);
+
+        assertArrayEquals(new byte[]{1, 2, 3}, bytes);
+    }
+
+    @Test
+    void getBytesDecodesLegacyBase64() {
+        var record = file("file-1");
+        record.data = Base64.getEncoder().encodeToString(new byte[]{4, 5, 6});
+
+        var bytes = service.getBytes(record);
+
+        assertArrayEquals(new byte[]{4, 5, 6}, bytes);
+    }
+
+    @Test
+    void downloadUrlResolvesPresignedUrlForMigratedContent() {
+        var record = file("file-1");
+        record.storagePath = "uploads/artifacts/file-1.mp4";
+        when(storage.generateDownloadCredential("uploads", "artifacts/file-1.mp4"))
+                .thenReturn(new ObjectStorageService.DownloadCredential("https://presigned/url", "uploads", "artifacts/file-1.mp4", "exp"));
+
+        var url = service.downloadUrl(record);
+
+        assertEquals("https://presigned/url", url);
+    }
+
+    @Test
+    void downloadUrlReturnsNullForLegacyContent() {
+        assertNull(service.downloadUrl(file("file-1")));
+    }
+
+    @Test
+    void deleteRemovesObjectWhenMigrated() {
+        var record = file("file-1");
+        record.storagePath = "uploads/artifacts/file-1.zip";
+        when(service.fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
+
+        service.delete("file-1");
+
+        verify(storage).deleteObject("uploads", "artifacts/file-1.zip");
+        verify(service.fileRecordCollection).delete("file-1");
+    }
+
     @SuppressWarnings("unchecked")
     private MongoCollection<FileRecord> fileRecordCollection() {
         return (MongoCollection<FileRecord>) mock(MongoCollection.class);
+    }
+
+    private Path tempFile(byte[] content) throws IOException {
+        var path = Files.createTempFile("file-service-test", ".tmp");
+        Files.write(path, content);
+        return path;
     }
 
     private FileRecord file(String id) {

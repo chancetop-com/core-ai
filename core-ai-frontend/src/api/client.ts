@@ -1219,10 +1219,13 @@ export interface SystemSettings {
   default_video_generation_model?: string;
   video_understanding_model?: string | null;
   default_video_understanding_model?: string;
+  storage_provider?: string | null;
+  azure_blob_artifact_container?: string | null;
   azure_blob_account_name?: string | null;
   has_azure_blob_account_key?: boolean;
   azure_blob_multimodal_container?: string | null;
   azure_blob_public_base_url?: string | null;
+  azure_blob_cdn_base_url?: string | null;
   has_azure_speech_key?: boolean;
   azure_speech_region?: string | null;
   azure_speech_endpoint?: string | null;
@@ -1243,10 +1246,13 @@ export interface SystemSettingsRequest {
   image_generation_model?: string | null;
   video_generation_model?: string | null;
   video_understanding_model?: string | null;
+  storage_provider?: string | null;
+  azure_blob_artifact_container?: string | null;
   azure_blob_account_name?: string | null;
   azure_blob_account_key?: string | null;
   azure_blob_multimodal_container?: string | null;
   azure_blob_public_base_url?: string | null;
+  azure_blob_cdn_base_url?: string | null;
   azure_speech_key?: string | null;
   azure_speech_region?: string | null;
   azure_speech_endpoint?: string | null;
