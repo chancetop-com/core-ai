@@ -1,12 +1,13 @@
 package ai.core.server.web.sse;
 
 import ai.core.api.server.session.sse.SseBaseEvent;
-import ai.core.server.session.ChatMessageService;
+import ai.core.server.session.SessionRegistry;
+import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.Request;
+import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
-import core.framework.web.exception.NotFoundException;
 import core.framework.web.sse.Channel;
 import core.framework.web.sse.ChannelListener;
 import org.slf4j.Logger;
@@ -22,7 +23,9 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
     @Inject
     SessionChannelService sessionChannelService;
     @Inject
-    ChatMessageService chatMessageService;
+    SessionRegistry sessionRegistry;
+    @Inject
+    WebContext webContext;
 
     @Override
     public void onConnect(Request request, Channel<SseBaseEvent> channel, String lastEventId) {
@@ -31,9 +34,10 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
         if (sessionId == null || sessionId.isBlank()) {
             throw new BadRequestException("agent-session-id is required");
         }
-        if (chatMessageService.getSessionMeta(sessionId) == null) {
-            throw new NotFoundException("session not found, sessionId=" + sessionId);
-        }
+        var userId = AuthContext.userId(webContext);
+        sessionRegistry.requireAccessible(sessionId, userId);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
 
         logger.info("SSE client connected, sessionId={}", sessionId);
         sessionChannelService.connect(channel, sessionId);
