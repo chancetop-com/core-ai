@@ -13,6 +13,7 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.time.ZonedDateTime;
 import java.util.Base64;
@@ -303,6 +304,7 @@ public class SystemSettingsService {
         }
     }
 
+    @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     private SystemSettingsView toView(SystemSettings entity) {
         var view = new SystemSettingsView();
         view.memoryExtractionModel = entity == null ? null : normalizeModel(entity.memoryExtractionModel);

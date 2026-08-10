@@ -40,7 +40,7 @@ public class StaticFileController {
         if ("/".equals(path)) path = "/index.html";
 
         var redirectBase = webAssetsRedirectBase;
-        if (path.startsWith("/assets/") && redirectBase != null) {
+        if (redirectBase != null && path.startsWith("/assets/")) {
             return Response.redirect(redirectBase + path, HTTPStatus.MOVED_PERMANENTLY)
                     .header(CACHE_CONTROL, IMMUTABLE_CACHE);
         }

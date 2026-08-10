@@ -8,6 +8,7 @@ import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +30,7 @@ public class FileService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final String ARTIFACT_PREFIX = "artifacts/";
 
+    @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     static String extension(String contentType) {
         if (contentType == null) return "";
         return switch (contentType) {

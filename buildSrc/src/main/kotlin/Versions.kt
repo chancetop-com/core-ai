@@ -5,6 +5,7 @@ object Versions {
     const val CORE_FRAMEWORK_VERSION = "9.4.2"
     const val JACKSON_VERSION = "2.20.1"
     const val UNDERTOW_CORE_VERSION = "2.3.23.Final"
+    const val OKHTTP_VERSION = "5.3.2"
     const val MUSTACHE_JAVA_VERSION = "0.9.10"
     const val MILVUS_JAVA_VERSION = "2.5.2"
     const val HNSWLIB_JAVA_VERSION = "1.2.0"

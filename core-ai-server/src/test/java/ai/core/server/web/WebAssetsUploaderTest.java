@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -70,8 +71,8 @@ class WebAssetsUploaderTest {
     void uploadsMissingFilesOnly() throws Exception {
         createAsset("app.js");
         createAsset("app.css");
-        when(storage.exists("static", "web-assets/assets/app.js")).thenReturn(true);
-        when(storage.exists("static", "web-assets/assets/app.css")).thenReturn(false);
+        when(storage.exists("static", "web-assets/assets/app.js")).thenReturn(Boolean.TRUE);
+        when(storage.exists("static", "web-assets/assets/app.css")).thenReturn(Boolean.FALSE);
         mockProbe(200);
 
         uploader.upload(tempDir, controller);
@@ -84,7 +85,7 @@ class WebAssetsUploaderTest {
     @Test
     void keepsLocalServingWhenPublicProbeFails() throws Exception {
         createAsset("app.js");
-        when(storage.exists("static", "web-assets/assets/app.js")).thenReturn(false);
+        when(storage.exists("static", "web-assets/assets/app.js")).thenReturn(Boolean.FALSE);
         mockProbe(403);
 
         uploader.upload(tempDir, controller);
@@ -105,7 +106,7 @@ class WebAssetsUploaderTest {
 
     private void createAsset(String name) throws IOException {
         var file = tempDir.resolve("assets").resolve(name);
-        Files.createDirectories(file.getParent());
+        Files.createDirectories(Objects.requireNonNull(file.getParent()));
         Files.writeString(file, "content");
     }
 

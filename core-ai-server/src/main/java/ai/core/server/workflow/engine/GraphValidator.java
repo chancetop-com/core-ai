@@ -49,7 +49,7 @@ public final class GraphValidator {
     }
 
     private static void validateNodeIds(WorkflowGraph graph, List<String> errors) {
-        Set<String> ids = new HashSet<>(graph.nodes().size());
+        Set<String> ids = HashSet.newHashSet(graph.nodes().size());
         for (WorkflowNode node : graph.nodes()) {
             if (node.id() == null || !NODE_ID.matcher(node.id()).matches()) {
                 errors.add("invalid node id: " + node.id());

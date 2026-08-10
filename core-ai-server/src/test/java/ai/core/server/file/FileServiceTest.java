@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZonedDateTime;
@@ -24,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -115,7 +115,7 @@ class FileServiceTest {
     @Test
     void uploadStoresContentInObjectStorageWhenConfigured() throws IOException {
         when(resolver.artifactContainer()).thenReturn("artifacts");
-        var tempFile = tempFile("hello video".getBytes());
+        var tempFile = tempFile("hello video".getBytes(StandardCharsets.UTF_8));
 
         var record = service.upload("user-1", "v.mp4", "video/mp4", tempFile);
 
@@ -129,7 +129,7 @@ class FileServiceTest {
     @Test
     void uploadStoresBase64WhenObjectStorageNotConfigured() throws IOException {
         when(resolver.resolve()).thenReturn(null);
-        var payload = "legacy content".getBytes();
+        var payload = "legacy content".getBytes(StandardCharsets.UTF_8);
         var tempFile = tempFile(payload);
 
         var record = service.upload("user-1", "doc.txt", "text/plain", tempFile);

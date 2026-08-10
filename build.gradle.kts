@@ -168,6 +168,10 @@ project(":core-ai-server") {
         // SpotBugs annotations for SuppressFBWarnings
         compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
         testCompileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
+        // SpotBugs analyzes bytecode from core-ai; expose its implementation-only types as analysis auxiliaries.
+        compileOnly("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
+        compileOnly("com.google.auth:google-auth-library-oauth2-http:${Versions.GOOGLE_AUTH_VERSION}")
+        compileOnly("com.squareup.okhttp3:okhttp:${Versions.OKHTTP_VERSION}")
         testImplementation("org.apache.commons:commons-lang3:3.12.0")
         // Redis client for distributed messaging
         implementation("redis.clients:jedis:${Versions.JEDIS_VERSION}")

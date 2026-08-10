@@ -88,7 +88,7 @@ public class IngestService {
         }
 
         // Ensure trace doc exists BEFORE saving any spans so $inc has a target.
-        Set<String> ensuredTraces = new HashSet<>(request.spans.size());
+        Set<String> ensuredTraces = HashSet.newHashSet(request.spans.size());
         for (var spanReq : request.spans) {
             if (ensuredTraces.add(spanReq.traceId)) {
                 var representative = rootByTrace.getOrDefault(spanReq.traceId, spanReq);
