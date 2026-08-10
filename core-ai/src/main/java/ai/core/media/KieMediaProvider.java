@@ -70,6 +70,8 @@ public class KieMediaProvider implements MediaProvider {
     public VideoGenerationResponse generateVideo(VideoGenerationRequest request) {
         if (request.model() == null || request.model().isBlank()) throw new IllegalArgumentException("video model is required");
         if (request.prompt() == null || request.prompt().isBlank()) throw new IllegalArgumentException("video prompt is required");
+        if (request.previousInteractionId() != null && !request.previousInteractionId().isBlank())
+            throw new IllegalArgumentException("KIE video generation does not support previous_video_id");
 
         var body = new LinkedHashMap<String, Object>();
         body.put("model", request.model());
@@ -99,7 +101,7 @@ public class KieMediaProvider implements MediaProvider {
         var resultUrl = firstResultUrl(videoId);
         if (resultUrl == null) throw new IllegalStateException("completed KIE task did not include result URLs");
         var response = execute(HTTPMethod.GET, resultUrl, null, "video download");
-        if (response.body == null || response.body.length == 0) {
+        if (response.body.length == 0) {
             throw new IllegalStateException("downloaded KIE video is empty");
         }
         return response.body;
@@ -118,15 +120,16 @@ public class KieMediaProvider implements MediaProvider {
     }
 
     private String referenceField(String model) {
-        return isBytedance(model) ? "reference_image_urls" : "image_urls";
+        return seedance2Family(model) ? "reference_image_urls" : "image_urls";
     }
 
     private Object duration(VideoGenerationRequest request) {
-        return isBytedance(request.model()) ? request.seconds() : request.seconds().toString();
+        return seedance2Family(request.model()) ? request.seconds() : request.seconds().toString();
     }
 
-    private boolean isBytedance(String model) {
-        return model != null && model.startsWith("bytedance/");
+    // only the Seedance 2 family accepts integer duration and reference_image_urls; other models use string duration
+    private boolean seedance2Family(String model) {
+        return model != null && model.startsWith("bytedance/seedance-2");
     }
 
     private List<String> referenceUrls(List<MediaReference> references) {
@@ -204,9 +207,18 @@ public class KieMediaProvider implements MediaProvider {
     @SuppressWarnings("unchecked")
     private Map<String, Object> taskData(core.framework.http.HTTPResponse response) {
         var map = (Map<String, Object>) JsonUtil.fromJson(Map.class, response.text());
+        if (!successCode(map.get("code"))) {
+            throw new IllegalStateException("KIE API error: code=" + map.get("code") + ", msg=" + map.get("msg"));
+        }
         var data = map.get("data");
-        if (!(data instanceof Map<?, ?> task)) throw new IllegalStateException("KIE task response is missing data");
+        if (!(data instanceof Map<?, ?> task)) throw new IllegalStateException("KIE task response is missing data, msg=" + map.get("msg"));
         return (Map<String, Object>) task;
+    }
+
+    private boolean successCode(Object code) {
+        if (code instanceof Number number) return number.intValue() == 200;
+        if (code instanceof String string) return "200".equals(string);
+        return false;
     }
 
     @SuppressWarnings("unchecked")

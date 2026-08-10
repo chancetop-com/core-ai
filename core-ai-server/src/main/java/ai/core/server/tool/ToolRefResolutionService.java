@@ -59,6 +59,7 @@ class ToolRefResolutionService {
     private final MediaProvider mediaProvider;
     private final GitHubTokenProvider gitHubTokenProvider;
     private final ai.core.tool.tools.UnderstandVideoTool.VideoUnderstandingService videoService;
+    private java.util.function.Supplier<List<ai.core.tool.tools.VideoModelHint>> videoModelHintsSupplier;
     private AgentDefinitionService agentDefinitionService;
     private LLMCallExecutor llmCallExecutor;
 
@@ -90,6 +91,10 @@ class ToolRefResolutionService {
 
     void setLlmCallExecutor(LLMCallExecutor llmCallExecutor) {
         this.llmCallExecutor = llmCallExecutor;
+    }
+
+    void setVideoModelHintsSupplier(java.util.function.Supplier<List<ai.core.tool.tools.VideoModelHint>> videoModelHintsSupplier) {
+        this.videoModelHintsSupplier = videoModelHintsSupplier;
     }
 
     // ── Public API ───────────────────────────────────────────────────────────────
@@ -134,7 +139,23 @@ class ToolRefResolutionService {
         resolver.setVideoService(videoService);
         resolver.setAgentDefinitionService(agentDefinitionService);
         resolver.setLlmCallExecutor(llmCallExecutor);
+        resolver.setBuiltinEnhancer(this::enhanceVideoToolDescription);
         return resolver.resolve(toolRefs, sessionMgr, callerUserId);
+    }
+
+    // replaces generate_video with a gateway-aware description listing the configured video models
+    // and their model-specific parameters; runs per resolution so gateway changes take effect quickly
+    private List<ToolCall> enhanceVideoToolDescription(List<ToolCall> tools) {
+        var hints = videoModelHintsSupplier == null ? List.<ai.core.tool.tools.VideoModelHint>of() : videoModelHintsSupplier.get();
+        if (hints.isEmpty()) return tools;
+        return tools.stream().map(tool -> {
+            if (tool instanceof ai.core.tool.tools.GenerateVideoTool) {
+                return ai.core.tool.tools.GenerateVideoTool.builder(mediaProvider)
+                        .description(ai.core.tool.tools.GenerateVideoTool.buildDescription(hints))
+                        .build();
+            }
+            return tool;
+        }).toList();
     }
 
     /**
@@ -249,7 +270,8 @@ class ToolRefResolutionService {
         if (entry != null && entry.type == ToolType.BUILTIN) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
-                registry.registerProvider(BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService));
+                registry.registerProvider(BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService,
+                        this::enhanceVideoToolDescription));
                 return;
             }
         }

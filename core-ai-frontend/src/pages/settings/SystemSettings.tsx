@@ -34,6 +34,22 @@ export default function SystemSettings() {
     [models],
   );
 
+  const imageGenerationModels = useMemo(
+    () => models.filter(model => model.enabled !== false
+        && ((model.endpointTypes || []).includes('image.generations') || (model.endpointTypes || []).includes('image.edits'))),
+    [models],
+  );
+
+  const videoGenerationModels = useMemo(
+    () => models.filter(model => model.enabled !== false && (model.endpointTypes || []).includes('video.generations')),
+    [models],
+  );
+
+  // caption and video understanding run on chat models that must accept image/video input;
+  // keep unknown capability models (null = auto) and exclude explicitly unsupported ones
+  const captionModels = useMemo(() => chatModels.filter(model => model.supportsVision !== false), [chatModels]);
+  const videoUnderstandingModels = useMemo(() => chatModels.filter(model => model.supportsVideo !== false), [chatModels]);
+
   const effectiveModel = memoryExtractionModel || settings?.default_memory_extraction_model || '';
 
   const load = async () => {
@@ -258,7 +274,7 @@ export default function SystemSettings() {
             <span className="block text-sm font-medium mb-2">Caption image model</span>
             <ModelSelect
               value={captionImageModel}
-              models={chatModels}
+              models={captionModels}
               defaultModel={settings?.default_caption_image_model}
               onChange={setCaptionImageModel}
             />
@@ -267,7 +283,7 @@ export default function SystemSettings() {
             <span className="block text-sm font-medium mb-2">Image generation model</span>
             <ModelSelect
               value={imageGenerationModel}
-              models={chatModels}
+              models={imageGenerationModels}
               defaultModel={settings?.default_image_generation_model}
               onChange={setImageGenerationModel}
             />
@@ -276,7 +292,7 @@ export default function SystemSettings() {
             <span className="block text-sm font-medium mb-2">Video generation model</span>
             <ModelSelect
               value={videoGenerationModel}
-              models={chatModels}
+              models={videoGenerationModels}
               defaultModel={settings?.default_video_generation_model}
               onChange={setVideoGenerationModel}
             />
@@ -285,7 +301,7 @@ export default function SystemSettings() {
             <span className="block text-sm font-medium mb-2">Video understanding model</span>
             <ModelSelect
               value={videoUnderstandingModel}
-              models={chatModels}
+              models={videoUnderstandingModels}
               defaultModel={settings?.default_video_understanding_model}
               onChange={setVideoUnderstandingModel}
             />

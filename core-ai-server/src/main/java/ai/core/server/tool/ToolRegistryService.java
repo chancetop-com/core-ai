@@ -73,11 +73,15 @@ public class ToolRegistryService {
     @Inject
     private ai.core.tool.tools.UnderstandVideoTool.VideoUnderstandingService videoUnderstandingService;
 
+    @Inject
+    private ai.core.server.gateway.GatewayRoutingEngine gatewayRoutingEngine;
+
     private void initializeDependencies() {
         if (mcpConnectionManager != null) return;
         mcpConnectionManager = new McpServerConnectionManager(sandboxService, applicationMcpManager);
         var mcpDependencies = new McpResolutionDependencies(mcpConnectionManager, sandboxService, applicationMcpManager);
         resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpDependencies, mediaProvider, gitHubTokenProvider, videoUnderstandingService);
+        resolutionService.setVideoModelHintsSupplier(gatewayRoutingEngine::videoModelHints);
         resolutionService.setAgentDefinitionService(agentDefinitionService);
         resolutionService.setLlmCallExecutor(llmCallExecutor);
         mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager, applicationMcpManager);

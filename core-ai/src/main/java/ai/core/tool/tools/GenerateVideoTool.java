@@ -41,43 +41,69 @@ public final class GenerateVideoTool extends ToolCall {
     private static final int MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
     private static final int MAX_ERROR_MESSAGE_LENGTH = 500;
 
-    private static final String TOOL_DESC = """
-            Generate a video from a text prompt. This is an asynchronous operation — the tool
-            returns a task ID immediately, and the agent must poll get_video_status with that
-            ID to check when the video is ready.
+    private static final String TOOL_DESC = buildToolDescription();
 
-            IMPORTANT — ONE VIDEO TASK AT A TIME:
-            This session can only have ONE video generation task in progress. After this tool
-            returns a video_id, you MUST call get_video_status with that ID and keep polling
-            until it reports "completed" or "failed" before submitting another generate_video
-            request. Submitting a new request while a previous task is still processing will
-            be REJECTED. Do not start a new task just because the previous one is taking a
-            while — video generation takes 1-10 minutes.
+    // built at runtime so the description is not inlined into referencing class files (duplicated constant pools)
+    private static String buildToolDescription() {
+        return """
+                Generate a video from a text prompt. This is an asynchronous operation — the tool
+                returns a task ID immediately, and the agent must poll get_video_status with that
+                ID to check when the video is ready.
 
-            Parameters:
-            - prompt (required): A detailed text description of the video scene
-            - model: Optional. Omit to use the gateway default video model. If specified it
-              must be a video model actually configured in the gateway — do NOT guess model
-              names. If the default model fails with image references, fix the reference
-              format instead of trying random model names.
-            - seconds: Optional, defaults to 10. The provider maximum is 10 seconds; larger
-              values are clamped to 10.
-            - size: Optional, e.g. "1280x720" or "720x1280". The provider renders video at
-              most 720p; aspect ratio is derived from the width/height.
-            - input_references: Optional JSON array of reference images. Each item must be
-              an object with exactly one of:
-                - {"b64Json": "data:image/jpeg;base64,..."} — a full data URL. The
-                  "data:<mime>;base64," prefix is REQUIRED; raw base64 without the prefix is
-                  REJECTED.
-                - {"url": "https://..."} — an http(s) image URL; the server downloads the
-                  image automatically.
-              If omitted, the images attached to the current chat message are used
-              automatically.
-              NEVER embed huge base64 blobs in the tool arguments — prefer passing an image
-              url or relying on the attached images; the server converts them.
-            - previous_video_id: A video_id from this gateway to edit conversationally. Supported by Gemini Omni.
-            - provider_extra: JSON string with provider-specific parameters
-            """;
+                IMPORTANT — ONE VIDEO TASK AT A TIME:
+                This session can only have ONE video generation task in progress. After this tool
+                returns a video_id, you MUST call get_video_status with that ID and keep polling
+                until it reports "completed" or "failed" before submitting another generate_video
+                request. Submitting a new request while a previous task is still processing will
+                be REJECTED. Do not start a new task just because the previous one is taking a
+                while — video generation takes 1-10 minutes.
+
+                Parameters:
+                - prompt (required): A detailed text description of the video scene
+                - model: Optional. Omit to use the gateway default video model. If specified it
+                  must be a video model actually configured in the gateway — do NOT guess model
+                  names. If the default model fails with image references, fix the reference
+                  format instead of trying random model names.
+                - seconds: Optional, defaults to 10. The provider maximum is 10 seconds; larger
+                  values are clamped to 10.
+                - size: Optional, e.g. "1280x720" or "720x1280". The provider renders video at
+                  most 720p; aspect ratio is derived from the width/height.
+                - input_references: Optional JSON array of reference images. Each item must be
+                  an object with exactly one of:
+                    - {"b64Json": "data:image/jpeg;base64,..."} — a full data URL. The
+                      "data:<mime>;base64," prefix is REQUIRED; raw base64 without the prefix is
+                      REJECTED.
+                    - {"url": "https://..."} — an http(s) image URL; the server downloads the
+                      image automatically.
+                  If omitted, the images attached to the current chat message are used
+                  automatically.
+                  NEVER embed huge base64 blobs in the tool arguments — prefer passing an image
+                  url or relying on the attached images; the server converts them.
+                - previous_video_id: A video_id from this gateway to edit conversationally. Supported by Gemini Omni.
+                - provider_extra: JSON string with model-specific input parameters, merged into the
+                  upstream request. Format: {"input": {...}} puts the keys into the model input, any
+                  other keys go to the request top level. Image/video URLs must be public http(s)
+                  URLs the upstream can fetch — for local images use input_references instead.
+                """.stripIndent();
+    }
+
+    /**
+     * Builds the tool description with the currently configured gateway video models appended,
+     * so the agent knows which models exist and which model-specific parameters each accepts.
+     */
+    public static String buildDescription(List<VideoModelHint> videoModels) {
+        var description = new StringBuilder(TOOL_DESC);
+        if (videoModels != null && !videoModels.isEmpty()) {
+            description.append("\n\nConfigured video models (pass their model_id in the model parameter):");
+            for (var model : videoModels) {
+                description.append("\n- ").append(model.modelId());
+                if (model.providerName() != null) description.append(" (").append(model.providerName()).append(')');
+                var hint = VideoModelParameterHints.hint(model.upstreamModel());
+                if (hint != null) description.append(": ").append(hint);
+            }
+        }
+        return description.toString();
+    }
 
     public static Builder builder() {
         return new Builder();
@@ -303,9 +329,18 @@ public final class GenerateVideoTool extends ToolCall {
     public static class Builder extends ToolCall.Builder<Builder, GenerateVideoTool> {
         private MediaProvider mediaProvider;
         private ReferenceImageLoader referenceImageLoader = new HTTPReferenceImageLoader();
+        // tracks whether a custom description was set; the parent field is kept in sync via super
+        private boolean customDescriptionSet;
 
         public Builder mediaProvider(MediaProvider mediaProvider) {
             this.mediaProvider = mediaProvider;
+            return this;
+        }
+
+        @Override
+        public Builder description(String description) {
+            customDescriptionSet = true;
+            super.description(description);
             return this;
         }
 
@@ -321,7 +356,7 @@ public final class GenerateVideoTool extends ToolCall {
 
         public GenerateVideoTool build() {
             this.name(TOOL_NAME);
-            this.description(TOOL_DESC);
+            if (!customDescriptionSet) super.description(TOOL_DESC);
             this.timeoutMs(120_000L); // submit should be fast — video generation is async
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "A detailed text description of the video scene").required(),

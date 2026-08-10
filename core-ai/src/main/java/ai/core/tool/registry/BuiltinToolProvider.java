@@ -31,6 +31,19 @@ public class BuiltinToolProvider implements ToolProvider {
         return new BuiltinToolProvider(setName, BuiltinTools.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService));
     }
 
+    /**
+     * Builds a builtin tool set and lets the caller replace individual tools before registration,
+     * e.g. to inject a gateway-aware description into generate_video.
+     */
+    public static BuiltinToolProvider fromSet(String setName, ai.core.media.MediaProvider mediaProvider,
+                                               ai.core.tool.github.GitHubTokenProvider gitHubTokenProvider,
+                                               ai.core.tool.tools.UnderstandVideoTool.VideoUnderstandingService videoService,
+                                               java.util.function.UnaryOperator<List<ToolCall>> enhancer) {
+        var tools = BuiltinTools.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService);
+        if (enhancer != null) tools = enhancer.apply(tools);
+        return new BuiltinToolProvider(setName, tools);
+    }
+
     private final String id;
     private final Map<String, ToolCall> tools;
 

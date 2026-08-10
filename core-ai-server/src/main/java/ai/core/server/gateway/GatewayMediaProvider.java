@@ -10,6 +10,8 @@ import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.MediaJob;
 import core.framework.web.exception.BadRequestException;
 
+import java.time.Duration;
+import java.time.ZonedDateTime;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static ai.core.server.gateway.GatewaySupport.hasText;
@@ -20,6 +22,7 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class GatewayMediaProvider implements MediaProvider {
     private static final int MAX_CACHED_UPSTREAM_PROVIDERS = 32;
+    private static final Duration VIDEO_STATUS_CACHE_TTL = Duration.ofSeconds(5);
 
     private final GatewayRoutingEngine routingEngine;
     private final GatewaySecretProtector secretProtector;
@@ -71,6 +74,11 @@ public class GatewayMediaProvider implements MediaProvider {
     @Override
     public VideoStatusResponse getVideoStatus(String videoId) {
         var job = mediaJobService.get(GatewayVideoHandle.decode(videoId));
+        // serve the persisted status within the TTL to avoid hammering upstream providers with rate limits (e.g. KIE)
+        if (job.updatedAt != null && job.updatedAt.isAfter(ZonedDateTime.now().minus(VIDEO_STATUS_CACHE_TTL))) {
+            var completedAt = job.completedAt == null ? null : job.completedAt.toInstant().toEpochMilli();
+            return new VideoStatusResponse(videoId, job.state, job.progress, job.error, completedAt);
+        }
         var status = upstreamProvider(routingEngine.jobProvider(job.providerId)).getVideoStatus(job.upstreamVideoId);
         mediaJobService.updateVideoStatus(job, status);
         return new VideoStatusResponse(videoId, status.status(), status.progress(), status.error(), status.completedAt());

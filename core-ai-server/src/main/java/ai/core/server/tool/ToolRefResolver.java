@@ -50,6 +50,7 @@ public class ToolRefResolver {
     private AgentDefinitionService agentDefinitionService;
     private LLMCallExecutor llmCallExecutor;
     private UnderstandVideoTool.VideoUnderstandingService videoService;
+    private java.util.function.UnaryOperator<List<ToolCall>> builtinEnhancer;
     private final Map<String, List<ToolCall>> apiToolCache = new ConcurrentHashMap<>();
 
     public ToolRefResolver(Map<String, ToolRegistryEntry> toolRegistry, InternalApiToolLoader apiToolLoader,
@@ -78,6 +79,18 @@ public class ToolRefResolver {
 
     public void setLlmCallExecutor(LLMCallExecutor llmCallExecutor) {
         this.llmCallExecutor = llmCallExecutor;
+    }
+
+    /**
+     * Optional transformation applied to builtin tool lists before registration, e.g. to inject
+     * a gateway-aware description into generate_video.
+     */
+    public void setBuiltinEnhancer(java.util.function.UnaryOperator<List<ToolCall>> builtinEnhancer) {
+        this.builtinEnhancer = builtinEnhancer;
+    }
+
+    private List<ToolCall> enhanceBuiltinTools(List<ToolCall> tools) {
+        return builtinEnhancer == null ? tools : builtinEnhancer.apply(tools);
     }
 
     public List<ToolCall> resolve(List<ToolRef> toolRefs) {
@@ -148,7 +161,7 @@ public class ToolRefResolver {
         if (entry != null) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
-                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService);
+                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService, this::enhanceBuiltinTools);
                 result.addAll(provider.provide().values());
             }
             return;
@@ -279,7 +292,7 @@ public class ToolRefResolver {
             case MCP -> result.addAll(resolveMcpTools(entry, sessionMgr));
             case BUILTIN -> {
                 var setName = entry.config != null ? entry.config.get("set") : null;
-                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService);
+                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService, this::enhanceBuiltinTools);
                 result.addAll(provider.provide().values());
             }
             case API -> result.addAll(resolveApiTools(entry));

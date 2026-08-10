@@ -90,6 +90,32 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
   const isPending = (status?: string) => status === 'pending' || status === 'PENDING' || status === 'async_launched';
   const doneCount = tools.filter(t => t.type === 'result' && (isSuccessful(t.resultStatus) || isPending(t.resultStatus))).length;
 
+  // generate_video returns PENDING (async task); resolve its final outcome from the matching
+  // get_video_status result in the same turn so the row shows ✓ done / ✗ failed instead of "submitted"
+  const videoIdOf = (t: ToolEvent): string | null => {
+    const fromResult = t.result?.match(/video_id:\s*([^\s,]+)/);
+    if (fromResult) return fromResult[1];
+    const parsed = tryParseJson(t.arguments || '');
+    if (parsed && typeof parsed === 'object' && typeof (parsed as Record<string, unknown>).video_id === 'string') {
+      return (parsed as Record<string, unknown>).video_id as string;
+    }
+    return null;
+  };
+  const videoTaskOutcome = (t: ToolEvent): 'success' | 'failed' | null => {
+    if (t.tool !== 'generate_video' || t.type !== 'result' || !isPending(t.resultStatus)) return null;
+    const videoId = videoIdOf(t);
+    if (!videoId) return null;
+    let success = false;
+    let failed = false;
+    for (const other of tools) {
+      if (other.type !== 'result' || other.tool !== 'get_video_status') continue;
+      if (videoIdOf(other) !== videoId) continue;
+      if (isSuccessful(other.resultStatus)) success = true;
+      else if (other.resultStatus && !isPending(other.resultStatus)) failed = true;
+    }
+    return success ? 'success' : failed ? 'failed' : null;
+  };
+
   const buildTaskToolLabel = (t: ToolEvent): string | null => {
     if (t.tool !== 'task') return null;
     const args = normalizeArgs(t.arguments);
@@ -119,13 +145,18 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
     const hasChildren = t.children && t.children.length > 0;
     const showTaskIdBadge = level === 0 && t.taskId;
     const detail = toolDetail(t);
+    const videoOutcome = videoTaskOutcome(t);
+    // get_video_status polling results are successful tool executions even while the video renders
+    const done = isSuccessful(t.resultStatus) || videoOutcome === 'success'
+        || (t.tool === 'get_video_status' && isPending(t.resultStatus));
+    const pending = isPending(t.resultStatus) && videoOutcome === null && t.tool !== 'get_video_status';
     const headerContent = (
       <>
         {t.type === 'start' ? (
           <Loader2 size={14} className="animate-spin shrink-0" style={{ color: 'var(--color-warning)' }} />
         ) : (
-          <span className="shrink-0" style={{ color: isSuccessful(t.resultStatus) ? 'var(--color-success)' : isPending(t.resultStatus) ? 'var(--color-warning)' : 'var(--color-error)' }}>
-            {isSuccessful(t.resultStatus) ? '\u2713' : isPending(t.resultStatus) ? '\u2026' : '\u2717'}
+          <span className="shrink-0" style={{ color: done ? 'var(--color-success)' : pending ? 'var(--color-warning)' : 'var(--color-error)' }}>
+            {done ? '\u2713' : pending ? '\u2026' : '\u2717'}
           </span>
         )}
         <span className="font-mono font-medium truncate" style={{ color: hasChildren ? '#8b5cf6' : 'var(--color-primary)' }}>{buildTaskToolLabel(t) ?? t.tool}</span>
@@ -146,8 +177,8 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
         )}
         {t.type === 'result' && (
           <>
-            <span className="shrink-0" style={{ color: isSuccessful(t.resultStatus) ? 'var(--color-success)' : isPending(t.resultStatus) ? 'var(--color-warning)' : 'var(--color-error)' }}>
-              {isSuccessful(t.resultStatus) ? 'done' : isPending(t.resultStatus) ? 'submitted' : (t.resultStatus || 'error')}
+            <span className="shrink-0" style={{ color: done ? 'var(--color-success)' : pending ? 'var(--color-warning)' : 'var(--color-error)' }}>
+              {done ? 'done' : pending ? 'submitted' : (t.resultStatus || 'error')}
             </span>
             {detail && (
               <button onClick={() => toggleResult(key)}

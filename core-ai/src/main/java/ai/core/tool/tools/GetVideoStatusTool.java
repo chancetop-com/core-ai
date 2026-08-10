@@ -89,7 +89,7 @@ public class GetVideoStatusTool extends ToolCall {
                             .withStats("progress", status.progress());
                 }
             };
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return ToolCallResult.failed("Video status check failed: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }

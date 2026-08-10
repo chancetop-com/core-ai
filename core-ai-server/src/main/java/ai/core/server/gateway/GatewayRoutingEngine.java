@@ -2,6 +2,7 @@ package ai.core.server.gateway;
 
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.tool.tools.VideoModelHint;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -123,6 +124,17 @@ public class GatewayRoutingEngine {
         if (!hasText(providerId)) throw new BadRequestException("gateway provider ID is required");
         return gatewayProviderCollection.get(providerId)
                 .orElseThrow(() -> new BadRequestException("gateway provider is unavailable for video task: " + providerId));
+    }
+
+    /**
+     * Enabled video models with their upstream names, used to inject gateway-aware hints
+     * into the generate_video tool description.
+     */
+    public List<VideoModelHint> videoModelHints() {
+        return registeredModels(snapshot(), GatewayEndpointType.VIDEO_GENERATION).stream()
+                .map(route -> new VideoModelHint(route.model.modelId, route.model.upstreamModel,
+                        route.provider.name == null ? null : route.provider.name))
+                .toList();
     }
 
     /**
