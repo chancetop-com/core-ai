@@ -286,7 +286,6 @@ public class AgentSessionManager {
             throw e;
         }
     }
-
     private boolean claimOwnership(String sessionId) {
         return sessionAgentHelper.claimOwnership(sessionId);
     }
@@ -345,7 +344,6 @@ public class AgentSessionManager {
         }
         return getSession(sessionId);
     }
-
     public void requireSessionOwner(String sessionId, String callerUserId) {
         String ownerUserId = sessionRegistry.requireUserId(sessionId);
         if (callerUserId == null || callerUserId.isBlank() || !callerUserId.equals(ownerUserId)) {
