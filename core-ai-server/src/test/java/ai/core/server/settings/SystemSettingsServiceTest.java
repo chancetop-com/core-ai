@@ -48,6 +48,16 @@ class SystemSettingsServiceTest {
     }
 
     @Test
+    void legacyNullSnapshotRequestDefaultsAccessorAndViewToFalse() {
+        var legacy = new SystemSettings();
+        legacy.id = "default";
+        when(settings.get("default")).thenReturn(Optional.of(legacy));
+
+        assertFalse(service.sandboxSnapshotEnabled());
+        assertFalse(service.get("admin").sandboxSnapshotEnabled);
+    }
+
+    @Test
     void updatePersistsAndReturnsSnapshotRequest() {
         when(settings.get("default")).thenReturn(Optional.empty());
         var request = new SystemSettingsRequest();
