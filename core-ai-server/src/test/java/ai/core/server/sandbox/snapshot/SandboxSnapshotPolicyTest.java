@@ -13,20 +13,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SandboxSnapshotPolicyTest {
     private SandboxSnapshotPolicy policy;
-    private SystemSettingsService settings;
+    private TestSystemSettingsService settings;
     private ObjectStorageServiceResolver storageResolver;
     private ObjectStorageService storage;
 
     @BeforeEach
     void setUp() {
         policy = new SandboxSnapshotPolicy();
-        settings = mock(SystemSettingsService.class);
+        settings = new TestSystemSettingsService();
         storageResolver = mock(ObjectStorageServiceResolver.class);
         storage = mock(ObjectStorageService.class);
         policy.settings = settings;
@@ -35,7 +33,7 @@ class SandboxSnapshotPolicyTest {
 
     @Test
     void effectiveRequiresAllThreeConditions() {
-        when(settings.sandboxSnapshotEnabled()).thenReturn(true);
+        settings.requestedEnabled = true;
         when(storageResolver.resolve()).thenReturn(storage);
         policy.configure(true);
 
@@ -48,17 +46,17 @@ class SandboxSnapshotPolicyTest {
     @Test
     void readsRequestedStateOnEveryDecision() {
         when(storageResolver.resolve()).thenReturn(storage);
-        when(settings.sandboxSnapshotEnabled()).thenReturn(false, true);
         policy.configure(true);
 
         assertFalse(policy.status().effective());
+        settings.requestedEnabled = true;
         assertTrue(policy.status().effective());
-        verify(settings, times(2)).sandboxSnapshotEnabled();
+        assertEquals(2, settings.readCount);
     }
 
     @Test
     void storageResolutionFailureFailsClosed() {
-        when(settings.sandboxSnapshotEnabled()).thenReturn(true);
+        settings.requestedEnabled = true;
         when(storageResolver.resolve()).thenThrow(new IllegalStateException("storage unavailable"));
         policy.configure(true);
 
@@ -67,7 +65,7 @@ class SandboxSnapshotPolicyTest {
 
     @Test
     void decisionRetainsResolvedStorageInstance() {
-        when(settings.sandboxSnapshotEnabled()).thenReturn(true);
+        settings.requestedEnabled = true;
         when(storageResolver.resolve()).thenReturn(storage);
         policy.configure(true);
 
@@ -76,24 +74,39 @@ class SandboxSnapshotPolicyTest {
 
     @Test
     void statusEffectiveAlwaysMatchesItsExposedConditions() {
-        var requested = new AtomicBoolean();
         var storageReady = new AtomicBoolean();
-        when(settings.sandboxSnapshotEnabled()).thenAnswer(invocation -> requested.get());
         when(storageResolver.resolve()).thenAnswer(invocation -> storageReady.get() ? storage : null);
 
-        for (var requestedEnabled : new boolean[]{false, true}) {
-            for (var deploymentAllowed : new boolean[]{false, true}) {
-                for (var ready : new boolean[]{false, true}) {
-                    requested.set(requestedEnabled);
-                    storageReady.set(ready);
-                    policy.configure(deploymentAllowed);
+        var cases = new boolean[][]{
+                {false, false, false},
+                {false, false, true},
+                {false, true, false},
+                {false, true, true},
+                {true, false, false},
+                {true, false, true},
+                {true, true, false},
+                {true, true, true}
+        };
+        for (var values : cases) {
+            settings.requestedEnabled = values[0];
+            policy.configure(values[1]);
+            storageReady.set(values[2]);
 
-                    var status = policy.status();
+            var status = policy.status();
 
-                    assertEquals(status.requestedEnabled() && status.deploymentAllowed() && status.storageReady(),
-                            status.effective());
-                }
-            }
+            assertEquals(status.requestedEnabled() && status.deploymentAllowed() && status.storageReady(),
+                    status.effective());
+        }
+    }
+
+    private static final class TestSystemSettingsService extends SystemSettingsService {
+        boolean requestedEnabled;
+        int readCount;
+
+        @Override
+        public boolean sandboxSnapshotEnabled() {
+            readCount++;
+            return requestedEnabled;
         }
     }
 }

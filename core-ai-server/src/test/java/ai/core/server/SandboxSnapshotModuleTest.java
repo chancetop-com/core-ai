@@ -34,7 +34,7 @@ class SandboxSnapshotModuleTest {
             return switch (key) {
                 case "sys.sandbox.snapshot.enabled" -> Optional.of("true");
                 case "azure.blob.snapshot.container", "storage.minio.snapshot.bucket" ->
-                        Optional.of("sandbox-snapshots");
+                    Optional.of("sandbox-snapshots");
                 default -> Optional.empty();
             };
         }

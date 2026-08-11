@@ -43,11 +43,13 @@ public class SandboxSnapshotPolicy {
         return new Decision(status, storage);
     }
 
-    private synchronized void logChange(Status status) {
-        if (status.equals(lastLoggedStatus)) return;
-        LOGGER.info("sandbox snapshot policy: requested={}, deploymentAllowed={}, storageReady={}, effective={}",
-                status.requestedEnabled(), status.deploymentAllowed(), status.storageReady(), status.effective());
-        lastLoggedStatus = status;
+    private void logChange(Status status) {
+        synchronized (this) {
+            if (status.equals(lastLoggedStatus)) return;
+            LOGGER.info("sandbox snapshot policy: requested={}, deploymentAllowed={}, storageReady={}, effective={}",
+                    status.requestedEnabled(), status.deploymentAllowed(), status.storageReady(), status.effective());
+            lastLoggedStatus = status;
+        }
     }
 
     public record Status(boolean requestedEnabled, boolean deploymentAllowed,
