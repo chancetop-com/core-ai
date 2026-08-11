@@ -96,6 +96,9 @@ public class SystemSettingsService {
     }
 
     private void applyIntegrations(SystemSettings entity, SystemSettingsRequest request) {
+        if (request.sandboxSnapshotEnabled != null) {
+            entity.sandboxSnapshotEnabled = request.sandboxSnapshotEnabled;
+        }
         entity.storageProvider = normalizeModel(request.storageProvider);
         entity.azureBlobArtifactContainer = normalizeModel(request.azureBlobArtifactContainer);
         entity.azureBlobAccountName = normalizeModel(request.azureBlobAccountName);
@@ -172,6 +175,11 @@ public class SystemSettingsService {
     public String videoUnderstandingModel() {
         var entity = entity();
         return entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
+    }
+
+    public boolean sandboxSnapshotEnabled() {
+        var entity = entity();
+        return entity != null && Boolean.TRUE.equals(entity.sandboxSnapshotEnabled);
     }
 
     public String storageProvider() {
@@ -305,6 +313,7 @@ public class SystemSettingsService {
         view.imageGenerationModel = entity == null ? null : normalizeModel(entity.imageGenerationModel);
         view.videoGenerationModel = entity == null ? null : normalizeModel(entity.videoGenerationModel);
         view.videoUnderstandingModel = entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
+        view.sandboxSnapshotEnabled = entity != null && Boolean.TRUE.equals(entity.sandboxSnapshotEnabled);
         view.storageProvider = entity == null ? null : normalizeModel(entity.storageProvider);
         view.azureBlobArtifactContainer = entity == null ? null : normalizeModel(entity.azureBlobArtifactContainer);
         view.azureBlobAccountName = entity == null ? null : normalizeModel(entity.azureBlobAccountName);

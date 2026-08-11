@@ -44,6 +44,18 @@ public class SystemSettingsView {
     @Property(name = "default_video_understanding_model")
     public String defaultVideoUnderstandingModel;
 
+    @Property(name = "sandbox_snapshot_enabled")
+    public Boolean sandboxSnapshotEnabled;
+
+    @Property(name = "sandbox_snapshot_deployment_allowed")
+    public Boolean sandboxSnapshotDeploymentAllowed;
+
+    @Property(name = "sandbox_snapshot_storage_ready")
+    public Boolean sandboxSnapshotStorageReady;
+
+    @Property(name = "sandbox_snapshot_effective")
+    public Boolean sandboxSnapshotEffective;
+
     @Property(name = "storage_provider")
     public String storageProvider;
 

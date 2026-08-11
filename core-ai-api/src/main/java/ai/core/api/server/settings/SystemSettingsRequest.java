@@ -24,6 +24,9 @@ public class SystemSettingsRequest {
     @Property(name = "video_understanding_model")
     public String videoUnderstandingModel;
 
+    @Property(name = "sandbox_snapshot_enabled")
+    public Boolean sandboxSnapshotEnabled;
+
     @Property(name = "storage_provider")
     public String storageProvider;
 
