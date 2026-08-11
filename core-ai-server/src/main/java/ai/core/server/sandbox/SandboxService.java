@@ -349,10 +349,7 @@ public class SandboxService {
         if (redisStore != null) redisStore.deleteBindingStrict(sessionId);
     }
 
-    /**
-     * Reattach to an existing sandbox for the session during rebuild.
-     * Returns a LazySandbox wrapping the reattached delegate, or null if the sandbox no longer exists.
-     */
+    /** Reattaches during rebuild, returning a LazySandbox around the delegate or null when unavailable. */
     public Sandbox reattachOrCreateSandbox(String sandboxId, SandboxConfig config, String sessionId, String userId,
                                            Consumer<SandboxEvent> eventDispatcher) {
         if (!enabled) return null;
@@ -373,10 +370,9 @@ public class SandboxService {
                         sessionId, sandbox.getId(), e);
             }
         }
-        var lazy = new LazySandbox(sandbox, effectiveConfig, sandboxManager,
-                new LazySandbox.SandboxContext(eventDispatcher,
-                        new LazySandbox.SessionIdentity(sessionId, userId),
-                        outcome -> onSandboxReady(sessionId, userId, outcome), snapshotService, snapshotEpoch));
+        var lazy = new LazySandbox(sandbox, effectiveConfig, sandboxManager, new LazySandbox.SandboxContext(
+                eventDispatcher, new LazySandbox.SessionIdentity(sessionId, userId),
+                outcome -> onSandboxReady(sessionId, userId, outcome), snapshotService, snapshotEpoch));
         sessionSandboxes.put(sessionId, lazy);
         storeSandboxBinding(sessionId);
         LOGGER.info("reattached to existing sandbox, sessionId={}, sandboxId={}", sessionId, sandbox.getId());
