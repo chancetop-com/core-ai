@@ -1,7 +1,7 @@
 package ai.core.server.sandbox.snapshot;
 
 import ai.core.server.blob.ObjectStorageService;
-import ai.core.server.blob.ObjectStorageServiceResolver;
+import com.mongodb.MongoClientSettings;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import org.bson.conversions.Bson;
@@ -17,8 +17,14 @@ import java.time.ZonedDateTime;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -37,6 +43,7 @@ class SandboxSnapshotServiceTest {
     private MongoCollection<SandboxEpochDoc> epochs;
     private ObjectStorageService storage;
     private SandboxSnapshotClient client;
+    private SandboxSnapshotPolicy policy;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -49,10 +56,18 @@ class SandboxSnapshotServiceTest {
         service.snapshotCollection = snapshots;
         service.epochCollection = epochs;
         service.client = client;
-        var resolver = mock(ObjectStorageServiceResolver.class);
-        when(resolver.resolve()).thenReturn(storage);
-        service.storageResolver = resolver;
-        service.configure("sandbox-snapshots", "sandbox-snapshots", true);
+        policy = mock(SandboxSnapshotPolicy.class);
+        when(policy.decision()).thenReturn(decision(true, storage));
+        when(policy.status()).thenReturn(new SandboxSnapshotPolicy.Status(true, true, true, true));
+        service.policy = policy;
+        service.configure("sandbox-snapshots", "sandbox-snapshots");
+    }
+
+    private SandboxSnapshotPolicy.Decision decision(boolean effective, ObjectStorageService selectedStorage) {
+        var ready = selectedStorage != null;
+        return new SandboxSnapshotPolicy.Decision(
+                new SandboxSnapshotPolicy.Status(effective, effective, ready, effective && ready),
+                selectedStorage);
     }
 
     private SandboxEpochDoc epochDoc(long epoch) {
@@ -80,8 +95,7 @@ class SandboxSnapshotServiceTest {
 
     @Test
     void beginEpochInsertsOnFirstUse() {
-        when(epochs.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
-        when(epochs.get("s1")).thenReturn(Optional.of(epochDoc(1)));
+        when(epochs.get("s1")).thenReturn(Optional.empty());
 
         var epoch = service.beginEpoch("s1");
 
@@ -92,9 +106,59 @@ class SandboxSnapshotServiceTest {
     @Test
     void beginEpochIncrementsExisting() {
         when(epochs.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
-        when(epochs.get("s1")).thenReturn(Optional.of(epochDoc(5)));
+        when(epochs.get("s1")).thenReturn(Optional.of(epochDoc(4)));
 
         assertEquals(5, service.beginEpoch("s1"));
+        verify(epochs, never()).insert(any(SandboxEpochDoc.class));
+    }
+
+    @Test
+    void concurrentBeginEpochAllocatesDistinctOwners() throws Exception {
+        var storedEpoch = new AtomicLong(4);
+        var firstReads = new CountDownLatch(2);
+        var unfencedUpdates = new CountDownLatch(2);
+        when(epochs.get("s1")).thenAnswer(invocation -> {
+            firstReads.countDown();
+            assertTrue(firstReads.await(5, TimeUnit.SECONDS));
+            return Optional.of(epochDoc(storedEpoch.get()));
+        });
+        when(epochs.update(any(Bson.class), any(Bson.class))).thenAnswer(invocation -> {
+            var expected = expectedEpoch(invocation.getArgument(0));
+            if (expected == null) {
+                storedEpoch.incrementAndGet();
+                unfencedUpdates.countDown();
+                assertTrue(unfencedUpdates.await(5, TimeUnit.SECONDS));
+                return 1L;
+            }
+            return storedEpoch.compareAndSet(expected, expected + 1) ? 1L : 0L;
+        });
+        var first = CompletableFuture.supplyAsync(() -> service.beginEpoch("s1"));
+        var second = CompletableFuture.supplyAsync(() -> service.beginEpoch("s1"));
+        var firstEpoch = first.get(5, TimeUnit.SECONDS);
+        var secondEpoch = second.get(5, TimeUnit.SECONDS);
+
+        assertNotEquals(firstEpoch, secondEpoch);
+        assertEquals(Set.of(5L, 6L), Set.of(firstEpoch, secondEpoch));
+    }
+
+    private Long expectedEpoch(Bson filter) {
+        var document = filter.toBsonDocument(
+                org.bson.BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
+        if (!document.containsKey("$and")) return null;
+        for (var value : document.getArray("$and")) {
+            var clause = value.asDocument();
+            if (clause.containsKey("epoch")) return clause.getNumber("epoch").longValue();
+        }
+        return null;
+    }
+
+    @Test
+    void beginEpochReturnsZeroWithoutWritingWhenPolicyIsInactive() {
+        when(policy.decision()).thenReturn(decision(false, storage));
+
+        assertEquals(0, service.beginEpoch("s1"));
+
+        verify(epochs, never()).update(any(Bson.class), any(Bson.class));
         verify(epochs, never()).insert(any(SandboxEpochDoc.class));
     }
 
@@ -103,6 +167,17 @@ class SandboxSnapshotServiceTest {
         when(snapshots.find(any(Query.class))).thenReturn(List.of());
 
         assertEquals(SandboxSnapshotService.RestoreOutcome.NONE, service.restoreLatest("s1", "u1", "10.0.0.1", 8080));
+    }
+
+    @Test
+    void restoreReturnsNoneWithoutLookupOrRuntimeCallsWhenPolicyIsInactive() {
+        when(policy.decision()).thenReturn(decision(false, storage));
+
+        assertEquals(SandboxSnapshotService.RestoreOutcome.NONE, service.restoreLatest("s1", "u1", "10.0.0.1", 8080));
+
+        verify(snapshots, never()).find(any(Query.class));
+        verify(client, never()).fetchRuntimeVersion(anyString(), anyInt());
+        verify(client, never()).restore(anyString(), anyInt(), any(Path.class), anyString());
     }
 
     @Test
@@ -149,12 +224,51 @@ class SandboxSnapshotServiceTest {
     }
 
     @Test
-    void captureSkipsWhenDisabled() {
-        service.configure("sandbox-snapshots", "sandbox-snapshots", false);
+    void captureSkipsWhenPolicyIsInactive() {
+        when(policy.decision()).thenReturn(decision(false, storage));
 
         service.captureBeforeRelease("s1", "u1", 5, "10.0.0.1", 8080, "img:latest");
 
         verify(snapshots, never()).insert(any(SandboxSnapshotDoc.class));
+    }
+
+    @Test
+    void captureSkipsUnsafeZeroEpoch() {
+        service.captureBeforeRelease("s1", "u1", 0, "10.0.0.1", 8080, "img:latest");
+
+        verify(client, never()).capture(anyString(), anyInt(), any(Path.class));
+    }
+
+    @Test
+    void cleanupRunsWhenCaptureAndRestoreAreDisabled() {
+        var expired = availableDoc("1.0.27");
+        expired.expiresAt = ZonedDateTime.now().minusMinutes(1);
+        when(policy.decision()).thenReturn(decision(false, storage));
+        when(snapshots.find(any(Query.class))).thenReturn(List.of(expired));
+
+        assertEquals(1, service.cleanupExpired());
+        verify(storage).deleteObject("sandbox-snapshots", expired.blobKey);
+        verify(snapshots).delete(expired.id);
+    }
+
+    @Test
+    void cleanupSkipsWhenStorageIsUnavailable() {
+        when(policy.decision()).thenReturn(decision(false, null));
+
+        assertEquals(0, service.cleanupExpired());
+        verify(snapshots, never()).find(any(Query.class));
+    }
+
+    @Test
+    void deleteForSessionRunsWhenFeatureIsDisabled() {
+        var doc = availableDoc("1.0.27");
+        when(policy.decision()).thenReturn(decision(false, storage));
+        when(snapshots.find(any(Query.class))).thenReturn(List.of(doc));
+
+        service.deleteForSession("s1");
+
+        verify(storage).deleteObject("sandbox-snapshots", doc.blobKey);
+        verify(snapshots).delete(doc.id);
     }
 
     @Test

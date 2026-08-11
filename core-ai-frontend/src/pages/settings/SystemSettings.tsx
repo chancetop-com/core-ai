@@ -24,6 +24,7 @@ export default function SystemSettings() {
   const [githubAppId, setGithubAppId] = useState('');
   const [githubAppInstallationId, setGithubAppInstallationId] = useState('');
   const [githubAppPrivateKey, setGithubAppPrivateKey] = useState('');
+  const [sandboxSnapshotEnabled, setSandboxSnapshotEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -84,6 +85,7 @@ export default function SystemSettings() {
       setGithubAppId(settingsResponse.github_app_id || '');
       setGithubAppInstallationId(settingsResponse.github_app_installation_id || '');
       setGithubAppPrivateKey('');
+      setSandboxSnapshotEnabled(settingsResponse.sandbox_snapshot_enabled === true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load system settings');
     } finally {
@@ -120,6 +122,7 @@ export default function SystemSettings() {
         github_app_id: githubAppId.trim() || null,
         github_app_installation_id: githubAppInstallationId.trim() || null,
         github_app_private_key: githubAppPrivateKey.trim() || null,
+        sandbox_snapshot_enabled: sandboxSnapshotEnabled,
       });
       setSettings(response);
       setMemoryExtractionModel(response.memory_extraction_model || '');
@@ -141,6 +144,7 @@ export default function SystemSettings() {
       setGithubAppId(response.github_app_id || '');
       setGithubAppInstallationId(response.github_app_installation_id || '');
       setGithubAppPrivateKey('');
+      setSandboxSnapshotEnabled(response.sandbox_snapshot_enabled === true);
       setMessage('System settings saved. Changes take effect immediately.');
       setSaved(true);
       if (savedTimer.current) window.clearTimeout(savedTimer.current);
@@ -391,6 +395,39 @@ export default function SystemSettings() {
 
       <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
         <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+          <h2 className="font-semibold">Sandbox Resume</h2>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Preserve /workspace and /root/.claude when a sandbox is released. This is a release checkpoint, not continuous backup.
+          </p>
+        </div>
+        <div className="p-5 space-y-4">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={sandboxSnapshotEnabled}
+              disabled={settings?.sandbox_snapshot_deployment_allowed !== true}
+              onChange={event => setSandboxSnapshotEnabled(event.target.checked)}
+            />
+            <span>
+              <span className="block text-sm font-medium">Enable filesystem snapshot and resume</span>
+              <span className="block text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Requires deployment authorization and configured private object storage.
+              </span>
+            </span>
+          </label>
+          <div className="grid gap-3 sm:grid-cols-3 text-sm">
+            <SnapshotStatus label="Deployment" active={settings?.sandbox_snapshot_deployment_allowed === true}
+              activeText="Allowed" inactiveText="Blocked" />
+            <SnapshotStatus label="Private storage" active={settings?.sandbox_snapshot_storage_ready === true}
+              activeText="Ready" inactiveText="Not ready" />
+            <SnapshotStatus label="Effective state" active={settings?.sandbox_snapshot_effective === true}
+              activeText="Active" inactiveText="Inactive" />
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
           <h2 className="font-semibold">Azure Speech</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
             Credentials for speech token issuance. Leave the key blank to keep the existing value.
@@ -488,6 +525,22 @@ export default function SystemSettings() {
           {saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Settings'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function SnapshotStatus({ label, active, activeText, inactiveText }: {
+  label: string;
+  active: boolean;
+  activeText: string;
+  inactiveText: string;
+}) {
+  return (
+    <div className="rounded-lg p-3" style={{ background: 'var(--color-bg-tertiary)' }}>
+      <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{label}</div>
+      <div className="mt-1 font-medium" style={{ color: active ? '#22c55e' : '#ef4444' }}>
+        {active ? activeText : inactiveText}
       </div>
     </div>
   );
