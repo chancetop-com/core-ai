@@ -40,6 +40,7 @@ class KieMediaProviderTest {
     private final AtomicReference<String> taskState = new AtomicReference<>("generating");
     private final AtomicReference<String> failMsg = new AtomicReference<>("");
     private final AtomicReference<String> taskRejectMsg = new AtomicReference<>();
+    private final AtomicReference<Integer> taskRejectCode = new AtomicReference<>(422);
     private final AtomicInteger recordInfoCalls = new AtomicInteger();
 
     @BeforeEach
@@ -49,7 +50,7 @@ class KieMediaProviderTest {
             createTaskBodies.add(JsonUtil.toMap(body(exchange)));
             if (taskRejectMsg.get() != null) {
                 var rejectBody = new LinkedHashMap<String, Object>();
-                rejectBody.put("code", 422);
+                rejectBody.put("code", taskRejectCode.get());
                 rejectBody.put("msg", taskRejectMsg.get());
                 rejectBody.put("data", null);
                 json(exchange, 200, rejectBody);
@@ -254,6 +255,30 @@ class KieMediaProviderTest {
 
         assertTrue(error.getMessage().contains("422"));
         assertTrue(error.getMessage().contains("model not found"));
+    }
+
+    @Test
+    void generateVideoAppendsModelHintToParameterError() {
+        taskRejectMsg.set("resolution is not within the range of allowed options");
+
+        var error = assertThrows(IllegalStateException.class,
+                () -> provider.generateVideo(videoRequest("minimax-h3/reference-to-video", "A cat", 5, null, null)));
+
+        assertTrue(error.getMessage().contains("resolution is not within the range"));
+        assertTrue(error.getMessage().contains("Allowed parameters for minimax-h3/reference-to-video"));
+        assertTrue(error.getMessage().contains("768P/2K"));
+    }
+
+    @Test
+    void generateVideoDoesNotAppendHintToNonParameterError() {
+        taskRejectCode.set(402);
+        taskRejectMsg.set("insufficient credits");
+
+        var error = assertThrows(IllegalStateException.class,
+                () -> provider.generateVideo(videoRequest("minimax-h3/reference-to-video", "A cat", 5, null, null)));
+
+        assertTrue(error.getMessage().contains("402"));
+        assertFalse(error.getMessage().contains("Allowed parameters"));
     }
 
     @Test

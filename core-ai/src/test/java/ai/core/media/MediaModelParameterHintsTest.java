@@ -1,4 +1,4 @@
-package ai.core.tool.tools;
+package ai.core.media;
 
 import org.junit.jupiter.api.Test;
 

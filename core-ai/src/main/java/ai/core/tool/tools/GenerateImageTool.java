@@ -1,6 +1,7 @@
 package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.media.MediaModelParameterHints;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.tool.ToolCall;

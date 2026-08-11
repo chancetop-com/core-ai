@@ -120,7 +120,7 @@ public class KieMediaProvider implements MediaProvider {
         mergeProviderExtra(body, input, request.providerExtra());
 
         var response = execute(HTTPMethod.POST, createTaskUrl, body, "video generation");
-        var taskId = stringValue(taskData(response), "taskId");
+        var taskId = stringValue(taskData(response, request.model()), "taskId");
         if (taskId == null || taskId.isBlank()) throw new IllegalStateException("KIE video task response is missing taskId");
         return new VideoGenerationResponse(taskId, "pending", null, null);
     }
@@ -261,6 +261,30 @@ public class KieMediaProvider implements MediaProvider {
         var data = map.get("data");
         if (!(data instanceof Map<?, ?> task)) throw new IllegalStateException("KIE task response is missing data, msg=" + map.get("msg"));
         return (Map<String, Object>) task;
+    }
+
+    // KIE wraps parameter validation failures as business errors (HTTP 200 + code 422, sometimes
+    // code 500 with a parameter message); append the model hint so the agent can retry with valid values
+    private Map<String, Object> taskData(core.framework.http.HTTPResponse response, String model) {
+        try {
+            return taskData(response);
+        } catch (IllegalStateException e) {
+            if (isParameterError(e.getMessage())) {
+                var hint = MediaModelParameterHints.videoHint(model);
+                if (hint != null) {
+                    throw new IllegalStateException(e.getMessage() + " Allowed parameters for " + model + ": " + hint, e);
+                }
+            }
+            throw e;
+        }
+    }
+
+    private boolean isParameterError(String message) {
+        return message.contains("code=422")
+                || message.contains("not within the range of allowed options")
+                || message.contains("is not supported")
+                || message.contains("is required")
+                || message.contains("must be");
     }
 
     private boolean successCode(Object code) {

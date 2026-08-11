@@ -6,6 +6,7 @@ import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
 import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.media.MediaProvider;
+import ai.core.media.MediaModelParameterHints;
 import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.utils.JsonUtil;

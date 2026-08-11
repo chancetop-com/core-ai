@@ -1,4 +1,4 @@
-package ai.core.tool.tools;
+package ai.core.media;
 
 /**
  * Model-family knowledge for media generation providers: maps an upstream model name to the
