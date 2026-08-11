@@ -1231,6 +1231,10 @@ export interface SystemSettings {
   github_app_id?: string | null;
   github_app_installation_id?: string | null;
   has_github_app_private_key?: boolean;
+  sandbox_snapshot_enabled?: boolean;
+  sandbox_snapshot_deployment_allowed?: boolean;
+  sandbox_snapshot_storage_ready?: boolean;
+  sandbox_snapshot_effective?: boolean;
   created_by?: string;
   updated_by?: string;
   created_at?: string;
@@ -1257,6 +1261,7 @@ export interface SystemSettingsRequest {
   github_app_id?: string | null;
   github_app_installation_id?: string | null;
   github_app_private_key?: string | null;
+  sandbox_snapshot_enabled?: boolean;
 }
 
 export interface NotificationView {
