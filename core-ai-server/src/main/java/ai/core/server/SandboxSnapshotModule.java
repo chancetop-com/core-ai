@@ -19,8 +19,7 @@ public class SandboxSnapshotModule extends Module {
         policy.configure(deploymentAllowed);
         var service = bind(SandboxSnapshotService.class);
         service.configure(property("azure.blob.snapshot.container").orElse("sandbox-snapshots"),
-                property("storage.minio.snapshot.bucket").orElse("sandbox-snapshots"),
-                deploymentAllowed);
+                property("storage.minio.snapshot.bucket").orElse("sandbox-snapshots"));
         schedule().fixedRate("sandbox-snapshot-cleanup", bind(SandboxSnapshotCleanupJob.class), Duration.ofHours(1));
     }
 }

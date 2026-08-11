@@ -1,7 +1,6 @@
 package ai.core.server.sandbox.snapshot;
 
 import ai.core.server.blob.ObjectStorageService;
-import ai.core.server.blob.ObjectStorageServiceResolver;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import org.bson.conversions.Bson;
@@ -37,6 +36,7 @@ class SandboxSnapshotServiceTest {
     private MongoCollection<SandboxEpochDoc> epochs;
     private ObjectStorageService storage;
     private SandboxSnapshotClient client;
+    private SandboxSnapshotPolicy policy;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -49,10 +49,18 @@ class SandboxSnapshotServiceTest {
         service.snapshotCollection = snapshots;
         service.epochCollection = epochs;
         service.client = client;
-        var resolver = mock(ObjectStorageServiceResolver.class);
-        when(resolver.resolve()).thenReturn(storage);
-        service.storageResolver = resolver;
-        service.configure("sandbox-snapshots", "sandbox-snapshots", true);
+        policy = mock(SandboxSnapshotPolicy.class);
+        when(policy.decision()).thenReturn(decision(true, storage));
+        when(policy.status()).thenReturn(new SandboxSnapshotPolicy.Status(true, true, true, true));
+        service.policy = policy;
+        service.configure("sandbox-snapshots", "sandbox-snapshots");
+    }
+
+    private SandboxSnapshotPolicy.Decision decision(boolean effective, ObjectStorageService selectedStorage) {
+        var ready = selectedStorage != null;
+        return new SandboxSnapshotPolicy.Decision(
+                new SandboxSnapshotPolicy.Status(effective, effective, ready, effective && ready),
+                selectedStorage);
     }
 
     private SandboxEpochDoc epochDoc(long epoch) {
@@ -149,12 +157,51 @@ class SandboxSnapshotServiceTest {
     }
 
     @Test
-    void captureSkipsWhenDisabled() {
-        service.configure("sandbox-snapshots", "sandbox-snapshots", false);
+    void captureSkipsWhenPolicyIsInactive() {
+        when(policy.decision()).thenReturn(decision(false, storage));
 
         service.captureBeforeRelease("s1", "u1", 5, "10.0.0.1", 8080, "img:latest");
 
         verify(snapshots, never()).insert(any(SandboxSnapshotDoc.class));
+    }
+
+    @Test
+    void captureSkipsUnsafeZeroEpoch() {
+        service.captureBeforeRelease("s1", "u1", 0, "10.0.0.1", 8080, "img:latest");
+
+        verify(client, never()).capture(anyString(), anyInt(), any(Path.class));
+    }
+
+    @Test
+    void cleanupRunsWhenCaptureAndRestoreAreDisabled() {
+        var expired = availableDoc("1.0.27");
+        expired.expiresAt = ZonedDateTime.now().minusMinutes(1);
+        when(policy.decision()).thenReturn(decision(false, storage));
+        when(snapshots.find(any(Query.class))).thenReturn(List.of(expired));
+
+        assertEquals(1, service.cleanupExpired());
+        verify(storage).deleteObject("sandbox-snapshots", expired.blobKey);
+        verify(snapshots).delete(expired.id);
+    }
+
+    @Test
+    void cleanupSkipsWhenStorageIsUnavailable() {
+        when(policy.decision()).thenReturn(decision(false, null));
+
+        assertEquals(0, service.cleanupExpired());
+        verify(snapshots, never()).find(any(Query.class));
+    }
+
+    @Test
+    void deleteForSessionRunsWhenFeatureIsDisabled() {
+        var doc = availableDoc("1.0.27");
+        when(policy.decision()).thenReturn(decision(false, storage));
+        when(snapshots.find(any(Query.class))).thenReturn(List.of(doc));
+
+        service.deleteForSession("s1");
+
+        verify(storage).deleteObject("sandbox-snapshots", doc.blobKey);
+        verify(snapshots).delete(doc.id);
     }
 
     @Test

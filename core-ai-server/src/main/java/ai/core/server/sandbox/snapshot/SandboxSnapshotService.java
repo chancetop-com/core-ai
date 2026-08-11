@@ -2,7 +2,6 @@ package ai.core.server.sandbox.snapshot;
 
 import ai.core.server.blob.MinioObjectStorageService;
 import ai.core.server.blob.ObjectStorageService;
-import ai.core.server.blob.ObjectStorageServiceResolver;
 import com.mongodb.MongoException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
@@ -49,31 +48,25 @@ public class SandboxSnapshotService {
     @Inject
     MongoCollection<SandboxEpochDoc> epochCollection;
     @Inject
-    ObjectStorageServiceResolver storageResolver;
+    SandboxSnapshotPolicy policy;
 
     SandboxSnapshotClient client = new SandboxSnapshotClient();
 
     private String snapshotContainer = "sandbox-snapshots";
     private String minioSnapshotBucket = "sandbox-snapshots";
-    private boolean snapshotEnabled;
 
-    public void configure(String snapshotContainer, String minioSnapshotBucket, boolean snapshotEnabled) {
+    public void configure(String snapshotContainer, String minioSnapshotBucket) {
         this.snapshotContainer = snapshotContainer;
         this.minioSnapshotBucket = minioSnapshotBucket;
-        this.snapshotEnabled = snapshotEnabled;
-        LOGGER.info("sandbox snapshot configured: enabled={}, container={}", snapshotEnabled, snapshotContainer);
+        LOGGER.info("sandbox snapshot configured: container={}", snapshotContainer);
     }
 
     public boolean enabled() {
-        return snapshotEnabled && storage() != null;
+        return policy != null && policy.status().effective();
     }
 
-    private ObjectStorageService storage() {
-        return storageResolver == null ? null : storageResolver.resolve();
-    }
-
-    private String container() {
-        return storage() instanceof MinioObjectStorageService ? minioSnapshotBucket : snapshotContainer;
+    private String container(ObjectStorageService storage) {
+        return storage instanceof MinioObjectStorageService ? minioSnapshotBucket : snapshotContainer;
     }
 
     /**
@@ -82,7 +75,11 @@ public class SandboxSnapshotService {
      * increment we own, which makes the capture-time epoch check stricter, never looser.
      */
     public long beginEpoch(String sessionId) {
-        if (!enabled()) return 0;
+        var decision = policy == null ? null : policy.decision();
+        if (decision == null || !decision.status().effective() || decision.storage() == null) {
+            logInactive("beginEpoch", decision);
+            return 0;
+        }
         var now = ZonedDateTime.now();
         var update = Updates.combine(Updates.inc("epoch", 1), Updates.set("updated_at", now));
         long modified = epochCollection.update(Filters.eq("_id", sessionId), update);
@@ -107,7 +104,14 @@ public class SandboxSnapshotService {
 
     public RestoreResult restoreLatestWithMetadata(String sessionId, String userId, String ip, int port) {
         // Caller identity is mandatory for restore.
-        if (!enabled() || userId == null) return new RestoreResult(RestoreOutcome.NONE, null);
+        var decision = policy == null ? null : policy.decision();
+        if (decision == null || !decision.status().effective() || decision.storage() == null) {
+            logInactive("restoreLatest", decision);
+            return new RestoreResult(RestoreOutcome.NONE, null);
+        }
+        if (userId == null) return new RestoreResult(RestoreOutcome.NONE, null);
+        var storage = decision.storage();
+        var container = container(storage);
         SandboxSnapshotDoc doc;
         try {
             doc = findLatestAvailable(sessionId);
@@ -132,7 +136,7 @@ public class SandboxSnapshotService {
         // Retry once: the second attempt absorbs transient network/blob hiccups.
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
-                downloadVerifyAndRestore(doc, ip, port);
+                downloadVerifyAndRestore(doc, ip, port, storage, container);
                 LOGGER.info("snapshot restored: session={}, snapshot={}, attempt={}", sessionId, doc.id, attempt);
                 return new RestoreResult(RestoreOutcome.RESTORED, doc.createdAt);
             } catch (Exception e) {
@@ -144,7 +148,17 @@ public class SandboxSnapshotService {
 
     /** Capture the sandbox filesystem before release. Never throws: release must proceed regardless. */
     public void captureBeforeRelease(String sessionId, String userId, long epoch, String ip, int port, String image) {
-        if (!enabled()) return;
+        var decision = policy == null ? null : policy.decision();
+        if (decision == null || !decision.status().effective() || decision.storage() == null) {
+            logInactive("captureBeforeRelease", decision);
+            return;
+        }
+        if (epoch <= 0) {
+            LOGGER.debug("sandbox snapshot capture skipped: invalid epoch");
+            return;
+        }
+        var storage = decision.storage();
+        var container = container(storage);
         Path tmp = null;
         try {
             tmp = Files.createTempFile("sandbox-capture-", ".tar.gz");
@@ -164,7 +178,7 @@ public class SandboxSnapshotService {
             doc.createdAt = ZonedDateTime.now();
             doc.expiresAt = doc.createdAt.plusDays(EXPIRES_DAYS);
             snapshotCollection.insert(doc);
-            storage().uploadObject(container(), doc.blobKey, tmp);
+            storage.uploadObject(container, doc.blobKey, tmp);
 
             long currentEpoch = epochCollection.get(sessionId).map(d -> d.epoch).orElse(-1L);
             if (currentEpoch != epoch) {
@@ -180,7 +194,7 @@ public class SandboxSnapshotService {
             if (updated == 0) return;
             LOGGER.info("snapshot available: session={}, snapshot={}, files={}, size={}",
                     sessionId, doc.id, doc.fileCount, doc.sizeBytes);
-            deletePreviousGenerations(sessionId, doc.id);
+            deletePreviousGenerations(sessionId, doc.id, storage, container);
         } catch (Exception e) {
             LOGGER.warn("snapshot capture failed, releasing sandbox without snapshot: session={}", sessionId, e);
         } finally {
@@ -190,7 +204,13 @@ public class SandboxSnapshotService {
 
     /** Expired docs (and tombstones, whose expires_at is forced to now) — delete blob then doc. */
     public int cleanupExpired() {
-        if (!enabled()) return 0;
+        var decision = policy == null ? null : policy.decision();
+        if (decision == null || decision.storage() == null) {
+            LOGGER.debug("sandbox snapshot cleanup skipped: storage unavailable");
+            return 0;
+        }
+        var storage = decision.storage();
+        var container = container(storage);
         var query = new Query();
         query.filter = Filters.lt("expires_at", ZonedDateTime.now());
         query.limit = 100;
@@ -198,7 +218,7 @@ public class SandboxSnapshotService {
         int cleaned = 0;
         for (var doc : expired) {
             try {
-                storage().deleteObject(container(), doc.blobKey);
+                storage.deleteObject(container, doc.blobKey);
                 snapshotCollection.delete(doc.id);
                 cleaned++;
             } catch (Exception e) {
@@ -210,12 +230,18 @@ public class SandboxSnapshotService {
 
     /** Called when the user deletes a chat session. Best-effort; leftovers expire via cleanup. */
     public void deleteForSession(String sessionId) {
-        if (!enabled()) return;
+        var decision = policy == null ? null : policy.decision();
+        if (decision == null || decision.storage() == null) {
+            LOGGER.debug("sandbox snapshot session deletion skipped: storage unavailable");
+            return;
+        }
+        var storage = decision.storage();
+        var container = container(storage);
         try {
             var query = new Query();
             query.filter = Filters.eq("session_id", sessionId);
             for (var doc : snapshotCollection.find(query)) {
-                deleteOrTombstone(doc);
+                deleteOrTombstone(doc, storage, container);
             }
         } catch (Exception e) {
             LOGGER.warn("failed to delete snapshots for session={}", sessionId, e);
@@ -233,10 +259,11 @@ public class SandboxSnapshotService {
         return docs.isEmpty() ? null : docs.getFirst();
     }
 
-    private void downloadVerifyAndRestore(SandboxSnapshotDoc doc, String ip, int port) throws Exception {
+    private void downloadVerifyAndRestore(SandboxSnapshotDoc doc, String ip, int port,
+                                          ObjectStorageService storage, String container) throws Exception {
         var tmp = Files.createTempFile("sandbox-restore-", ".tar.gz");
         try {
-            storage().downloadObjectToFile(container(), doc.blobKey, tmp);
+            storage.downloadObjectToFile(container, doc.blobKey, tmp);
             var actual = sha256Hex(tmp);
             if (!actual.equalsIgnoreCase(doc.sha256)) {
                 throw new IllegalStateException("snapshot sha256 mismatch: snapshot=" + doc.id);
@@ -247,22 +274,23 @@ public class SandboxSnapshotService {
         }
     }
 
-    private void deletePreviousGenerations(String sessionId, String currentId) {
+    private void deletePreviousGenerations(String sessionId, String currentId,
+                                           ObjectStorageService storage, String container) {
         var query = new Query();
         query.filter = Filters.and(
                 Filters.eq("session_id", sessionId),
                 Filters.eq("status", SandboxSnapshotDoc.STATUS_AVAILABLE));
         for (var doc : snapshotCollection.find(query)) {
             if (currentId.equals(doc.id)) continue;
-            deleteOrTombstone(doc);
+            deleteOrTombstone(doc, storage, container);
         }
     }
 
     /** Delete the blob and doc; if either fails, tombstone so cleanup retries later. */
     @SuppressFBWarnings("REC_CATCH_EXCEPTION")
-    private void deleteOrTombstone(SandboxSnapshotDoc doc) {
+    private void deleteOrTombstone(SandboxSnapshotDoc doc, ObjectStorageService storage, String container) {
         try {
-            storage().deleteObject(container(), doc.blobKey);
+            storage.deleteObject(container, doc.blobKey);
             snapshotCollection.delete(doc.id);
         } catch (Exception e) {
             tombstone(doc.id);
@@ -274,6 +302,16 @@ public class SandboxSnapshotService {
         snapshotCollection.update(Filters.eq("_id", snapshotId), Updates.combine(
                 Updates.set("status", SandboxSnapshotDoc.STATUS_DELETED),
                 Updates.set("expires_at", ZonedDateTime.now())));
+    }
+
+    private void logInactive(String operation, SandboxSnapshotPolicy.Decision decision) {
+        if (decision == null) {
+            LOGGER.debug("sandbox snapshot {} skipped: policy unavailable", operation);
+            return;
+        }
+        var status = decision.status();
+        LOGGER.debug("sandbox snapshot {} skipped: requested={}, deploymentAllowed={}, storageReady={}, effective={}",
+                operation, status.requestedEnabled(), status.deploymentAllowed(), status.storageReady(), status.effective());
     }
 
     private String sha256Hex(Path file) throws Exception {
