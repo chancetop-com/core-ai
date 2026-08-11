@@ -219,7 +219,7 @@ public class SubAgentAssembler {
     // otherwise the upstream rejects the request with 400
     private String resolveMultiModalModel(SessionConfig config, LLMProvider llmProvider) {
         if (config != null && config.multiModalModel != null) return config.multiModalModel;
-        var mmModel = systemSettingsService.llmMultiModalModel();
+        var mmModel = systemSettingsService.captionImageModel();
         return mmModel != null ? mmModel : llmProvider.config.getMultiModalModel();
     }
 

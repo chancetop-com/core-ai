@@ -445,6 +445,6 @@ P1/P2 验收标准(必须包含):
 ## 12. 待决问题
 
 1. 请求期降级是否需要把 data URI 图片临时落 blob 以保留可引用性?——倾向不做,成本高且正常流量不应走到该路径;
-2. `media.caption.model` 与 `llm.model.multimodal` 是否合并?——倾向保留两个(caption 可用更便宜的专用模型),文档需写明优先级;
+2. ~~`media.caption.model` 与 `llm.model.multimodal` 是否合并?~~ **已解决(2026-08-11)**:删除系统级 `llm.model.multimodal`(Default Multimodal Model 配置),`media.caption.model`(Caption image model)成为唯一系统级视觉兜底配置;agent 级 `multiModalModel` 保留为 agent 显式覆盖,优先级 agent 显式 > 系统 caption model;
 3. CLI(core-ai-cli)的 ModelRegistry 是否同步暴露模态信息供 `/model` 切换时提示?——P2 评估;
 4. 400 自愈的图片拒绝模式表放代码常量还是配置?——倾向常量起步,误伤案例出现再配置化。

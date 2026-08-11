@@ -1209,8 +1209,6 @@ export interface SystemSettings {
   default_memory_extraction_model?: string;
   llm_model?: string | null;
   default_llm_model?: string;
-  llm_model_multimodal?: string | null;
-  default_llm_model_multimodal?: string;
   caption_image_model?: string | null;
   default_caption_image_model?: string;
   image_generation_model?: string | null;
@@ -1241,7 +1239,6 @@ export interface SystemSettings {
 export interface SystemSettingsRequest {
   memory_extraction_model?: string | null;
   llm_model?: string | null;
-  llm_model_multimodal?: string | null;
   caption_image_model?: string | null;
   image_generation_model?: string | null;
   video_generation_model?: string | null;

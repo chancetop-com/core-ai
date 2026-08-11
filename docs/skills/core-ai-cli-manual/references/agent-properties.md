@@ -59,7 +59,6 @@ Providers are auto-detected when their `<provider>.api.key` is set. For `litellm
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `llm.model` | String | — | Default model name |
-| `llm.model.multimodal` | String | — | Multimodal model name |
 | `llm.temperature` | double | `0.7` | Default temperature |
 | `llm.embeddings.model` | String | `text-embedding-3-large` | Embedding model |
 | `llm.request.extra_body` | JSON | — | Extra body for API requests |

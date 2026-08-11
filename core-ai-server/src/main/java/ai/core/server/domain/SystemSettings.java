@@ -20,9 +20,6 @@ public class SystemSettings {
     @Field(name = "llm_model")
     public String llmModel;
 
-    @Field(name = "llm_model_multimodal")
-    public String llmMultiModalModel;
-
     @Field(name = "caption_image_model")
     public String captionImageModel;
 

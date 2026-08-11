@@ -223,7 +223,7 @@ public class AgentRunBuilder {
 
     private String resolveMultiModalModel(AgentPublishedConfig config, AgentDefinition definition) {
         var mmm = config != null ? config.multiModalModel : definition.multiModalModel;
-        if (mmm == null || mmm.isBlank()) mmm = systemSettingsService.llmMultiModalModel();
+        if (mmm == null || mmm.isBlank()) mmm = systemSettingsService.captionImageModel();
         return mmm;
     }
 

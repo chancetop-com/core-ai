@@ -20,12 +20,6 @@ public class SystemSettingsView {
     @Property(name = "default_llm_model")
     public String defaultLlmModel;
 
-    @Property(name = "llm_model_multimodal")
-    public String llmMultiModalModel;
-
-    @Property(name = "default_llm_model_multimodal")
-    public String defaultLlmMultiModalModel;
-
     @Property(name = "caption_image_model")
     public String captionImageModel;
 

@@ -12,9 +12,6 @@ public class SystemSettingsRequest {
     @Property(name = "llm_model")
     public String llmModel;
 
-    @Property(name = "llm_model_multimodal")
-    public String llmMultiModalModel;
-
     @Property(name = "caption_image_model")
     public String captionImageModel;
 

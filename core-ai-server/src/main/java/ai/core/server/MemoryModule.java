@@ -68,10 +68,6 @@ public class MemoryModule extends Module {
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
                 .orElse(null);
-        systemSettingsService.defaultLlmMultiModalModel = property("llm.model.multimodal")
-                .map(String::trim)
-                .filter(s -> !s.isBlank())
-                .orElse(null);
         schedule().fixedRate("agent-memory-consolidation", memoryConsolidationJob, Duration.ofHours(1));
     }
 }

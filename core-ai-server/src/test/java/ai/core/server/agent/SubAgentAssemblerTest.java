@@ -60,7 +60,7 @@ class SubAgentAssemblerTest {
 
     @Test
     void pinnedModelWithoutMultiModalModelFallsBackToSystemSetting() {
-        when(systemSettingsService.llmMultiModalModel()).thenReturn("azure/responses/gpt-5-mini");
+        when(systemSettingsService.captionImageModel()).thenReturn("azure/responses/gpt-5-mini");
         var config = new SessionConfig();
         config.model = "deepseek/deepseek-v4-flash";
 
@@ -71,7 +71,7 @@ class SubAgentAssemblerTest {
 
     @Test
     void explicitMultiModalModelWins() {
-        when(systemSettingsService.llmMultiModalModel()).thenReturn("system-mm-model");
+        when(systemSettingsService.captionImageModel()).thenReturn("system-mm-model");
         var config = new SessionConfig();
         config.model = "deepseek/deepseek-v4-flash";
         config.multiModalModel = "explicit-mm-model";
@@ -83,7 +83,7 @@ class SubAgentAssemblerTest {
 
     @Test
     void preferCaptionPathForcesCaptionRouting() {
-        when(systemSettingsService.llmMultiModalModel()).thenReturn("system-mm-model");
+        when(systemSettingsService.captionImageModel()).thenReturn("system-mm-model");
         var config = new SessionConfig();
         config.model = "azure/gpt-5-mini";
         config.preferCaptionPath = Boolean.TRUE;
@@ -95,7 +95,7 @@ class SubAgentAssemblerTest {
 
     @Test
     void nullConfigFallsBackToSystemSetting() {
-        when(systemSettingsService.llmMultiModalModel()).thenReturn("system-mm-model");
+        when(systemSettingsService.captionImageModel()).thenReturn("system-mm-model");
 
         var agent = assembler.buildAgent(buildConfig(null));
 

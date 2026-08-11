@@ -7,7 +7,6 @@ export default function SystemSettings() {
   const [models, setModels] = useState<GatewayModel[]>([]);
   const [memoryExtractionModel, setMemoryExtractionModel] = useState('');
   const [llmModel, setLlmModel] = useState('');
-  const [llmMultiModalModel, setLlmMultiModalModel] = useState('');
   const [captionImageModel, setCaptionImageModel] = useState('');
   const [imageGenerationModel, setImageGenerationModel] = useState('');
   const [videoGenerationModel, setVideoGenerationModel] = useState('');
@@ -68,7 +67,6 @@ export default function SystemSettings() {
       setModels(modelsResponse.models || []);
       setMemoryExtractionModel(settingsResponse.memory_extraction_model || '');
       setLlmModel(settingsResponse.llm_model || '');
-      setLlmMultiModalModel(settingsResponse.llm_model_multimodal || '');
       setCaptionImageModel(settingsResponse.caption_image_model || '');
       setImageGenerationModel(settingsResponse.image_generation_model || '');
       setVideoGenerationModel(settingsResponse.video_generation_model || '');
@@ -105,7 +103,6 @@ export default function SystemSettings() {
       const response = await api.systemSettings.update({
         memory_extraction_model: memoryExtractionModel.trim() || null,
         llm_model: llmModel.trim() || null,
-        llm_model_multimodal: llmMultiModalModel.trim() || null,
         caption_image_model: captionImageModel.trim() || null,
         image_generation_model: imageGenerationModel.trim() || null,
         video_generation_model: videoGenerationModel.trim() || null,
@@ -127,7 +124,6 @@ export default function SystemSettings() {
       setSettings(response);
       setMemoryExtractionModel(response.memory_extraction_model || '');
       setLlmModel(response.llm_model || '');
-      setLlmMultiModalModel(response.llm_model_multimodal || '');
       setCaptionImageModel(response.caption_image_model || '');
       setImageGenerationModel(response.image_generation_model || '');
       setVideoGenerationModel(response.video_generation_model || '');
@@ -244,31 +240,6 @@ export default function SystemSettings() {
           <div className="rounded-lg p-4 text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
             <div style={{ color: 'var(--color-text-secondary)' }}>Effective model</div>
             <div className="font-mono mt-1">{llmModel || settings?.default_llm_model || 'Not configured'}</div>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="font-semibold">Default Multimodal Model</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            The default model used for vision/multimodal requests (images, files) when no model is specified in the agent definition.
-            Falls back to the value from agent.properties if not set here.
-          </p>
-        </div>
-        <div className="p-5 space-y-5">
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Multimodal model</span>
-            <ModelSelect
-              value={llmMultiModalModel}
-              models={chatModels}
-              defaultModel={settings?.default_llm_model_multimodal}
-              onChange={setLlmMultiModalModel}
-            />
-          </label>
-          <div className="rounded-lg p-4 text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
-            <div style={{ color: 'var(--color-text-secondary)' }}>Effective model</div>
-            <div className="font-mono mt-1">{llmMultiModalModel || settings?.default_llm_model_multimodal || 'Not configured'}</div>
           </div>
         </div>
       </section>

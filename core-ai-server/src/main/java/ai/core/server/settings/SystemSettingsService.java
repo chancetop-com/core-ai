@@ -26,7 +26,6 @@ public class SystemSettingsService {
 
     public String defaultMemoryExtractionModel = AgentMemoryConsolidationJob.DEFAULT_EXTRACTION_MODEL;
     public String defaultLlmModel;
-    public String defaultLlmMultiModalModel;
 
     @Inject
     MongoCollection<SystemSettings> systemSettingsCollection;
@@ -75,8 +74,6 @@ public class SystemSettingsService {
         validateMemoryExtractionModel(memoryExtractionModel);
         var llmModel = normalizeModel(request.llmModel);
         validateChatModel(llmModel);
-        var llmMultiModalModel = normalizeModel(request.llmMultiModalModel);
-        validateChatModel(llmMultiModalModel);
         var captionImageModel = normalizeModel(request.captionImageModel);
         validateChatModel(captionImageModel);
         var imageGenerationModel = normalizeModel(request.imageGenerationModel);
@@ -85,14 +82,13 @@ public class SystemSettingsService {
         validateModelExists(videoGenerationModel, "videoGenerationModel");
         var videoUnderstandingModel = normalizeModel(request.videoUnderstandingModel);
         validateModelExists(videoUnderstandingModel, "videoUnderstandingModel");
-        return new NormalizedSettings(memoryExtractionModel, llmModel, llmMultiModalModel, captionImageModel,
+        return new NormalizedSettings(memoryExtractionModel, llmModel, captionImageModel,
                 imageGenerationModel, videoGenerationModel, videoUnderstandingModel);
     }
 
     private void applyModels(SystemSettings entity, NormalizedSettings models) {
         entity.memoryExtractionModel = models.memoryExtractionModel();
         entity.llmModel = models.llmModel();
-        entity.llmMultiModalModel = models.llmMultiModalModel();
         entity.captionImageModel = models.captionImageModel();
         entity.imageGenerationModel = models.imageGenerationModel();
         entity.videoGenerationModel = models.videoGenerationModel();
@@ -156,12 +152,6 @@ public class SystemSettingsService {
         var entity = entity();
         var configured = entity == null ? null : normalizeModel(entity.llmModel);
         return configured == null ? defaultLlmModel : configured;
-    }
-
-    public String llmMultiModalModel() {
-        var entity = entity();
-        var configured = entity == null ? null : normalizeModel(entity.llmMultiModalModel);
-        return configured == null ? defaultLlmMultiModalModel : configured;
     }
 
     public String captionImageModel() {
@@ -311,8 +301,6 @@ public class SystemSettingsService {
         view.defaultMemoryExtractionModel = defaultMemoryExtractionModel;
         view.llmModel = entity == null ? null : normalizeModel(entity.llmModel);
         view.defaultLlmModel = defaultLlmModel;
-        view.llmMultiModalModel = entity == null ? null : normalizeModel(entity.llmMultiModalModel);
-        view.defaultLlmMultiModalModel = defaultLlmMultiModalModel;
         view.captionImageModel = entity == null ? null : normalizeModel(entity.captionImageModel);
         view.imageGenerationModel = entity == null ? null : normalizeModel(entity.imageGenerationModel);
         view.videoGenerationModel = entity == null ? null : normalizeModel(entity.videoGenerationModel);
@@ -349,7 +337,7 @@ public class SystemSettingsService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private record NormalizedSettings(String memoryExtractionModel, String llmModel, String llmMultiModalModel,
+    private record NormalizedSettings(String memoryExtractionModel, String llmModel,
                                        String captionImageModel, String imageGenerationModel, String videoGenerationModel,
                                        String videoUnderstandingModel) {
     }

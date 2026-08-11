@@ -128,7 +128,7 @@ public class LLMCallExecutor {
 
     private String resolveMultiModalModel(AgentPublishedConfig config, String fallback) {
         var model = config != null ? config.multiModalModel : fallback;
-        if (model == null || model.isBlank()) model = systemSettingsService.llmMultiModalModel();
+        if (model == null || model.isBlank()) model = systemSettingsService.captionImageModel();
         return model;
     }
 
