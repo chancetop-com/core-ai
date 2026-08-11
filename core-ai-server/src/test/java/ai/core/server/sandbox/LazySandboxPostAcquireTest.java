@@ -114,7 +114,7 @@ class LazySandboxPostAcquireTest {
     private LazySandbox attachedLazySandbox(Sandbox sandbox, SandboxManager manager) {
         return new LazySandbox(sandbox, new SandboxConfig(), manager,
                 new LazySandbox.SandboxContext(null,
-                        new LazySandbox.SessionIdentity("session-1", "user-1"), null, null));
+                        new LazySandbox.SessionIdentity("session-1", "user-1"), null, null, 0L));
     }
 
     private Sandbox readySandbox() {

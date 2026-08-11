@@ -364,10 +364,19 @@ public class SandboxService {
             return null;
         }
         var sandbox = attached.get();
+        long snapshotEpoch = 0;
+        if (snapshotService != null) {
+            try {
+                snapshotEpoch = snapshotService.beginEpoch(sessionId);
+            } catch (RuntimeException e) {
+                LOGGER.warn("snapshot epoch allocation failed for reattached sandbox, capture disabled: sessionId={}, sandboxId={}",
+                        sessionId, sandbox.getId(), e);
+            }
+        }
         var lazy = new LazySandbox(sandbox, effectiveConfig, sandboxManager,
                 new LazySandbox.SandboxContext(eventDispatcher,
                         new LazySandbox.SessionIdentity(sessionId, userId),
-                        outcome -> onSandboxReady(sessionId, userId, outcome), snapshotService));
+                        outcome -> onSandboxReady(sessionId, userId, outcome), snapshotService, snapshotEpoch));
         sessionSandboxes.put(sessionId, lazy);
         storeSandboxBinding(sessionId);
         LOGGER.info("reattached to existing sandbox, sessionId={}, sandboxId={}", sessionId, sandbox.getId());
