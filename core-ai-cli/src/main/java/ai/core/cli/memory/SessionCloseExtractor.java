@@ -87,7 +87,7 @@ public class SessionCloseExtractor {
     private static void doCloseExtraction(Agent mainAgent, Path workspace) {
         var triggerService = MemoryTriggerService.getInstance();
         try {
-            int totalMessages = mainAgent.getMessages().size();
+            int totalMessages = mainAgent.getHistory().size();
             var agent = AgentFork.fork(mainAgent, new AgentFork.ForkConfig("session-close", MAX_TURNS, TEMPERATURE, false, null));
             agent.injectUserMessage(buildCloseExtractionPrompt(workspace, triggerService.extractionCursor.get(), totalMessages));
             agent.continueWithInjectedMessage();

@@ -16,7 +16,8 @@ public final class AgentFork {
 
     public static Agent fork(Agent source, ForkConfig config) {
         var forked = forkConfigOnly(source, config);
-        forked.restoreHistory(source.getMessages());
+        // extraction agents consume the full display history, not the compressed context
+        forked.restoreHistory(source.getHistory());
         return forked;
     }
 

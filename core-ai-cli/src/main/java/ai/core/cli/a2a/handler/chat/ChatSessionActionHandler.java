@@ -107,8 +107,9 @@ public class ChatSessionActionHandler implements HttpHandler {
         try {
             var domain = JsonUtil.fromJson(AgentPersistence.AgentPersistenceDomain.class, data.get());
             var messages = new ArrayList<HistoryMessage>();
-            if (domain.messages != null) {
-                for (var msg : domain.messages) {
+            var history = domain.history != null ? domain.history : domain.messages;
+            if (history != null) {
+                for (var msg : history) {
                     // Skip system messages
                     if (msg.role == RoleType.SYSTEM) continue;
                     String text = msg.getTextContent();
@@ -133,8 +134,9 @@ public class ChatSessionActionHandler implements HttpHandler {
         try {
             var domain = JsonUtil.fromJson(AgentPersistence.AgentPersistenceDomain.class, data.get());
             var messages = new ArrayList<SimpleMessage>();
-            if (domain.messages != null) {
-                for (var msg : domain.messages) {
+            var history = domain.history != null ? domain.history : domain.messages;
+            if (history != null) {
+                for (var msg : history) {
                     // Skip system messages
                     if (msg.role == RoleType.SYSTEM) continue;
                     String text = msg.getTextContent();

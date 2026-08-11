@@ -183,7 +183,7 @@ class AcpSlashCommandHandler {
 
     private String handleStats(AcpSession session, ai.core.agent.Agent agent) {
         var usage = agent.getCurrentTokenUsage();
-        long turns = agent.getMessages().stream().filter(m -> m.role == RoleType.USER).count();
+        long turns = agent.getHistory().stream().filter(m -> m.role == RoleType.USER).count();
         return "Session: " + session.sessionId()
                 + "\nModel: " + (agent.getModel() != null ? agent.getModel() : "default")
                 + "\nTurns: " + turns
@@ -197,7 +197,12 @@ class AcpSlashCommandHandler {
         while (idx >= 0 && msgs.get(idx).role != RoleType.USER) idx--;
         if (idx < 0) return "Nothing to undo.";
         int removed = msgs.size() - idx;
-        msgs.subList(idx, msgs.size()).clear();
+        var removedMessages = msgs.subList(idx, msgs.size());
+        var history = agent.getHistory();
+        for (var message : removedMessages) {
+            history.remove(message);
+        }
+        removedMessages.clear();
         if (agent.hasPersistenceProvider()) agent.save(session.sessionId());
         return "Undone " + removed + " message(s).";
     }
@@ -220,7 +225,7 @@ class AcpSlashCommandHandler {
                 ? parts[1].trim() : "session-" + session.sessionId() + ".md";
         var sb = new StringBuilder(4096);
         sb.append("# Session: ").append(session.sessionId()).append("\n\n");
-        for (var msg : agent.getMessages()) {
+        for (var msg : agent.getHistory()) {
             String text = msg.getTextContent();
             if (text != null) sb.append("## ").append(msg.role.name()).append("\n\n").append(text).append("\n\n");
         }
@@ -314,7 +319,7 @@ class AcpSlashCommandHandler {
         if (target.equals(session.sessionId())) return "Already in this session.";
         try {
             agent.load(target);
-            return "Resumed session: " + target + " (" + agent.getMessages().size() + " messages loaded).";
+            return "Resumed session: " + target + " (" + agent.getHistory().size() + " messages loaded).";
         } catch (Exception e) {
             return "Failed to resume session: " + e.getMessage();
         }

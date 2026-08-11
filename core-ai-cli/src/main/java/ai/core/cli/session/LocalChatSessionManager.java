@@ -131,7 +131,7 @@ public class LocalChatSessionManager {
         try {
             var domain = JsonUtil.fromJson(AgentPersistence.AgentPersistenceDomain.class, data);
             if (domain.messages != null && !domain.messages.isEmpty()) {
-                agent.restoreHistory(domain.messages);
+                agent.restorePersistedState(domain.messages, domain.history);
                 LOGGER.debug("restored {} messages from session data, sessionId={}", domain.messages.size(), sessionId);
             }
         } catch (Exception e) {

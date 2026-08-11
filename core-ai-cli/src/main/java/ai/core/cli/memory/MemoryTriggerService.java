@@ -181,7 +181,7 @@ public final class MemoryTriggerService {
     }
 
     public void resetCursorToEnd() {
-        extractionCursor.set(Math.max(0, mainAgent.getMessages().size()));
+        extractionCursor.set(Math.max(0, mainAgent.getHistory().size()));
     }
 
     /**
@@ -259,12 +259,12 @@ public final class MemoryTriggerService {
         tools.add(KnowledgeLogTool.addBuilder().workspace(workspace).build());
         tools.add(ExtractionCursorTool.readBuilder()
                 .cursorReader(extractionCursor::get)
-                .totalMessagesSnapshot(agent.getMessages()::size)
+                .totalMessagesSnapshot(agent.getHistory()::size)
                 .build());
-        var liveMessages = agent.getMessages();
+        var liveHistory = agent.getHistory();
         IntSupplier totalSnapshot = () -> {
             int captured = extractionTargetCount.get();
-            return captured >= 0 ? captured : liveMessages.size();
+            return captured >= 0 ? captured : liveHistory.size();
         };
         tools.add(ExtractionCursorTool.advanceBuilder()
                 .cursorWriter(extractionCursor::set)
@@ -277,10 +277,12 @@ public final class MemoryTriggerService {
 
     private int readCursor() {
         int cursor = extractionCursor.get();
-        if (cursor >= 0 && cursor >= mainAgent.getMessages().size()) {
-            LOGGER.debug("Cursor {} stale, resetting", cursor);
-            extractionCursor.set(-1);
-            return -1;
+        if (cursor >= 0 && cursor >= mainAgent.getHistory().size()) {
+            // legacy cursor values were based on the compressed message list — treat
+            // everything as already extracted instead of re-extracting from scratch
+            LOGGER.debug("Cursor {} stale, resetting to history size {}", cursor, mainAgent.getHistory().size());
+            extractionCursor.set(mainAgent.getHistory().size());
+            return mainAgent.getHistory().size();
         }
         return cursor;
     }
@@ -290,7 +292,7 @@ public final class MemoryTriggerService {
         if (compression != null) {
             compression.addListener((beforeCount, afterCount, completed) -> {
                 if (completed) {
-                    extractionCursor.set(-1);
+                    // history is append-only — compression does not move the extraction cursor
                     MemorySectionManager.reloadAgentMemorySection(mainAgent, memoryProvider);
                 } else if (scheduler != null && !extractionInProgress.get()) {
                     scheduler.execute(this::runIncrementalExtraction);
@@ -362,7 +364,7 @@ public final class MemoryTriggerService {
     private void runExtractionAgent() {
         try {
             int cursor = readCursor();
-            int totalMessages = mainAgent.getMessages().size();
+            int totalMessages = mainAgent.getHistory().size();
             extractionTargetCount.set(totalMessages);
             var agent = AgentFork.fork(mainAgent, new AgentFork.ForkConfig("extraction", EXTRACTION_MAX_TURNS, (double) EXTRACTION_TEMPERATURE, false, null));
             agent.injectUserMessage(buildExtractionPrompt(cursor, totalMessages, EXTRACTION_MAX_TURNS));

@@ -19,7 +19,9 @@ final class AgentInterruptionHandler {
     static boolean isInterruptionMarker(Message msg) {
         if (msg.role != RoleType.USER) return false;
         var text = msg.getTextContent();
-        return text != null && text.startsWith("<system-reminder>The previous");
+        if (text == null) return false;
+        return text.startsWith("<system-reminder>The previous")
+                || text.startsWith("<system-reminder>The user interrupted");
     }
 
     static CancellationToken getCancellationToken(Agent agent) {
@@ -71,6 +73,7 @@ final class AgentInterruptionHandler {
 
     static void persistInterruptionMarkerIfExists(Agent agent) {
         if (!agent.hasPersistenceProvider()) return;
+        if (!agent.hasUserMessage()) return;
         var sessionId = agent.getExecutionContext().getSessionId();
         if (sessionId != null) {
             agent.save(sessionId);

@@ -53,7 +53,7 @@ public abstract class Node<T extends Node<T>> {
     private Tracer tracer;
     private ExecutionContext executionContext;
     private final List<Termination> terminations;
-    private final List<Message> messages;
+    private final NodeMessages nodeMessages = new NodeMessages();
     private final Usage currentTokenUsage = new Usage();
     private double currentCostUsd;
     private final Map<String, Object> systemVariables = Maps.newHashMap();
@@ -62,7 +62,6 @@ public abstract class Node<T extends Node<T>> {
 
     public Node() {
         this.nodeStatus = NodeStatus.INITED;
-        this.messages = Lists.newArrayList();
         this.terminations = Lists.newArrayList();
     }
 
@@ -147,7 +146,11 @@ public abstract class Node<T extends Node<T>> {
     }
 
     public List<Message> getMessages() {
-        return this.messages;
+        return nodeMessages.messages();
+    }
+
+    public List<Message> getHistory() {
+        return nodeMessages.history();
     }
 
     public LongQueryHandler getLongQueryHandler() {
@@ -337,23 +340,43 @@ public abstract class Node<T extends Node<T>> {
         this.persistenceProvider = persistenceProvider;
     }
     void addMessage(Message message) {
+        nodeMessages.recordHistory(message);
         if (message.role == RoleType.ASSISTANT || message.role == RoleType.TOOL) {
             addAssistantOrToolMessage(message);
         } else {
-            this.messages.add(message);
+            nodeMessages.add(message);
         }
     }
+
     void addMessages(List<Message> messages) {
-        this.messages.addAll(messages);
+        for (var message : messages) {
+            nodeMessages.recordHistory(message);
+        }
+        nodeMessages.addAll(messages);
     }
+
     void addMessageToFront(Message message) {
-        this.messages.add(0, message);
+        nodeMessages.addToFront(message);
     }
+
     void removeMessage(Message message) {
-        this.messages.remove(message);
+        nodeMessages.remove(message);
     }
+
     void clearMessages() {
-        this.messages.clear();
+        nodeMessages.clear();
+    }
+
+    // Restore persisted state on session load. History is replaced directly (never appended),
+    // and a legacy file without history falls back to the user/assistant text baseline.
+    public void restorePersistedState(List<Message> messages, List<Message> history) {
+        nodeMessages.restore(messages, history);
+    }
+
+    // A session only exists once the user has actually said something — interruption
+    // markers injected on ESC/cancel are not real user input.
+    public boolean hasUserMessage() {
+        return nodeMessages.hasUserMessage();
     }
     Map<String, Object> getSystemVariables() {
         return this.systemVariables;
@@ -414,7 +437,7 @@ public abstract class Node<T extends Node<T>> {
 
     @SuppressWarnings("unchecked")
     void addAssistantOrToolMessage(Message message) {
-        this.messages.add(message);
+        nodeMessages.add(message);
         this.getMessageUpdatedEventListener().ifPresent(v -> v.eventHandler((T) this, message));
         if (this.parent != null) this.parent.addAssistantOrToolMessage(message);
     }

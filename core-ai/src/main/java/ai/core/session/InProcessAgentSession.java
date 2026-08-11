@@ -152,6 +152,7 @@ public class InProcessAgentSession implements AgentSession {
 
     private void persistOnFailure() {
         if (!agent.hasPersistenceProvider()) return;
+        if (!agent.hasUserMessage()) return;
         try {
             agent.save(sessionId);
         } catch (RuntimeException e) {
@@ -163,6 +164,7 @@ public class InProcessAgentSession implements AgentSession {
         // runTurnsLoop may have added partial assistant messages (incl. reasoning) before
         // unwinding — persist them so the cancelled turn is not lost.
         if (!agent.hasPersistenceProvider()) return;
+        if (!agent.hasUserMessage()) return;
         try {
             agent.save(sessionId);
         } catch (RuntimeException e) {

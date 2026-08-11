@@ -43,19 +43,20 @@ public class SessionMessagesHandler implements HttpHandler {
         }
 
         try {
-            List<Message> messages = sessionPersistence.load(sessionId)
+            List<Message> history = sessionPersistence.load(sessionId)
                     .map(data -> {
                         var domain = JsonUtil.fromJson(AgentPersistence.AgentPersistenceDomain.class, data);
-                        return domain.messages;
+                        // display history is append-only; legacy files fall back to the message list
+                        return domain.history != null ? domain.history : domain.messages;
                     })
                     .orElse(null);
 
-            if (messages == null) {
+            if (history == null) {
                 sendJson(exchange, "{\"error\":\"session not found\"}");
                 return;
             }
 
-            var result = messages.stream()
+            var result = history.stream()
                     .map(msg -> {
                         String text = msg.getTextContent();
                         String role = msg.role == RoleType.USER ? "user" : "agent";

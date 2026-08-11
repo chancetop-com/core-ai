@@ -48,7 +48,7 @@ class AgentSessionRunnerCommandHandler {
     void handleStats() {
         var u = agent.getCurrentTokenUsage();
         String model = modelPicker.getCurrentModelName();
-        int turns = (int) agent.getMessages().stream().filter(m -> m.role == RoleType.USER).count();
+        int turns = (int) agent.getHistory().stream().filter(m -> m.role == RoleType.USER).count();
         ui.printStreamingChunk(String.format("%n  %sSession Stats%s%n  Model:       %s%n  Session:     %s%n  Turns:       %d%n  Tokens:      %,d (prompt: %,d, completion: %,d)%n  Tools:       %d available%n%n",
                 AnsiTheme.PROMPT, AnsiTheme.RESET, model, sessionId, turns, (long) u.getTotalTokens(), (long) u.getPromptTokens(), (long) u.getCompletionTokens(), agent.getToolCalls().size()));
     }
@@ -118,7 +118,7 @@ class AgentSessionRunnerCommandHandler {
         String filePath = parts.length > 1 ? parts[1].trim() : "session-" + sessionId + ".md";
         var sb = new StringBuilder(4096);
         sb.append("# Session: ").append(sessionId).append("\n\n");
-        for (var msg : agent.getMessages()) {
+        for (var msg : agent.getHistory()) {
             String text = msg.getTextContent();
             if (text != null) sb.append("## ").append(msg.role.name()).append("\n\n").append(text).append("\n\n");
         }
@@ -207,7 +207,12 @@ class AgentSessionRunnerCommandHandler {
         String preview = messages.get(idx).getTextContent();
         if (preview != null && preview.length() > 60) preview = preview.substring(0, 57) + "...";
         int removed = messages.size() - idx;
-        messages.subList(idx, messages.size()).clear();
+        var removedMessages = messages.subList(idx, messages.size());
+        var history = agent.getHistory();
+        for (var message : removedMessages) {
+            history.remove(message);
+        }
+        removedMessages.clear();
         if (agent.hasPersistenceProvider()) agent.save(sessionId);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Undone " + removed
                 + " message(s): " + AnsiTheme.MUTED + preview + AnsiTheme.RESET + "\n\n");

@@ -90,7 +90,7 @@ public class AgentSessionRunner {
     public String run() {
         if (agent.hasPersistenceProvider()) {
             agent.load(sessionId);
-            if (memoryEnabled && !agent.getMessages().isEmpty()) {
+            if (memoryEnabled && !agent.getHistory().isEmpty()) {
                 MemoryTriggerService.getInstance().resetCursorToEnd();
             }
         }
@@ -145,6 +145,7 @@ public class AgentSessionRunner {
 
     private void saveSessionIfPersistable() {
         if (!agent.hasPersistenceProvider()) return;
+        if (!agent.hasUserMessage()) return;
         try {
             agent.save(sessionId);
         } catch (RuntimeException e) {
@@ -192,7 +193,7 @@ public class AgentSessionRunner {
     }
 
     private void printSessionHistory() {
-        var messages = agent.getMessages();
+        var messages = agent.getHistory();
         boolean hasHistory = false;
         var renderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
         for (var msg : messages) {
