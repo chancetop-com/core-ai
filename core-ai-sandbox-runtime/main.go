@@ -512,6 +512,14 @@ func writeFileUploadError(w http.ResponseWriter, status int, msg string) {
 
 // ---- Code execution tools ----
 
+// Timeout contract for run_bash_command, aligned with ShellCommandTool:
+// timeout is expressed in milliseconds, defaults to 120000ms (2 minutes)
+// and is capped at 600000ms (10 minutes).
+const (
+	defaultBashTimeoutMs = 120_000
+	maxBashTimeoutMs     = 600_000
+)
+
 func executeBash(args string) (string, string) {
 	var parsed struct {
 		Command      string `json:"command"`
@@ -525,9 +533,9 @@ func executeBash(args string) (string, string) {
 		return "command is empty", "failed"
 	}
 
-	timeout := 30 * time.Second
+	timeout := defaultBashTimeoutMs * time.Millisecond
 	if parsed.Timeout > 0 {
-		timeout = time.Duration(parsed.Timeout) * time.Second
+		timeout = time.Duration(min(parsed.Timeout, maxBashTimeoutMs)) * time.Millisecond
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)

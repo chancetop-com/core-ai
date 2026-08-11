@@ -6,7 +6,7 @@ A lightweight HTTP server that executes code execution and file operation tools 
 
 - HTTP API for tool execution
 - Health check endpoint
-- Timeout support (5 minutes default)
+- Timeout support (run_bash_command 120s / run_python_script 60s default)
 - Isolated execution environment with restricted environment variables
 - Non-root user execution
 - Path security (all file operations are restricted to workspace directory)
@@ -59,6 +59,16 @@ Health check endpoint.
 ```
 
 ## Tool Arguments
+
+### run_bash_command
+```json
+{
+  "command": "ls -la",
+  "workspace": "/workspace",
+  "timeout": 120000
+}
+```
+`timeout` is in milliseconds (default 120000, max 600000).
 
 ### read_file
 ```json
