@@ -128,6 +128,21 @@ public class ToolExecutor {
     }
 
     private ToolCallResult doExecute(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {
+        // Caller identity rides the OpenTelemetry Context so async tool threads (supplyAsync + makeCurrent)
+        // see it too; outbound HTTP injection points read it via OutboundCallerContext.current().
+        var caller = context.getCaller();
+        if (caller != null) {
+            var scope = OutboundCallerContext.set(caller);
+            try {
+                return doExecuteWithCaller(tool, functionCall, args, context);
+            } finally {
+                scope.close();
+            }
+        }
+        return doExecuteWithCaller(tool, functionCall, args, context);
+    }
+
+    private ToolCallResult doExecuteWithCaller(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {
         var sandbox = context.getSandbox();
         var useSandbox = sandbox != null && sandbox.shouldIntercept(tool.getName());
 

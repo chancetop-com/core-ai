@@ -3,6 +3,7 @@ package ai.core.api.server.apiuser.request;
 import core.framework.api.json.Property;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Partial update of an API user's permissions and daily quota.
@@ -20,4 +21,10 @@ public class UpdateApiUserConfigRequest {
 
     @Property(name = "output_token_quota")
     public Long outputTokenQuota;
+
+    @Property(name = "metadata")
+    public Map<String, String> metadata;
+
+    @Property(name = "outbound_caller_headers")
+    public List<OutboundCallerHeaderRequest> outboundCallerHeaders;
 }

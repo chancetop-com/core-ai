@@ -92,6 +92,7 @@ export interface UserStatus {
   output_token_quota?: number;
   quota_consumed_input_tokens?: number;
   quota_consumed_output_tokens?: number;
+  outbound_caller_headers?: { header_name: string; value_source: string }[];
 }
 
 export interface TraceAccount {
@@ -141,7 +142,13 @@ export interface BackgroundTask {
 export const adminApi = {
   listUsers: () =>
     requestWithAuth<ListUsersResponse>('/api/auth/users'),
-  updateUserConfig: (userId: string, config: { permissions?: { resource_type: string; resource_id: string }[]; input_token_quota?: number; output_token_quota?: number }) =>
+  updateUserConfig: (userId: string, config: {
+    permissions?: { resource_type: string; resource_id: string }[];
+    input_token_quota?: number;
+    output_token_quota?: number;
+    metadata?: Record<string, string>;
+    outbound_caller_headers?: { header_name: string; value_source: string }[];
+  }) =>
     requestWithAuth<void>(`/api/auth/users/${encodeURIComponent(userId)}/config`,
       { method: 'PUT', body: JSON.stringify(config) }),
   updateUserStatus: (email: string, status: string) =>

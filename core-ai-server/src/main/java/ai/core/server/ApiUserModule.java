@@ -9,6 +9,8 @@ import ai.core.server.apiuser.ApiUserService;
 import ai.core.server.apiuser.ApiUserUsageService;
 import ai.core.server.apiuser.ApiUserWebServiceImpl;
 import ai.core.server.apiuser.PermissionService;
+import ai.core.server.tool.CallerHeaderConfigResolver;
+import ai.core.tool.CallerHeaderProvider;
 import core.framework.module.Module;
 
 /**
@@ -24,6 +26,10 @@ public class ApiUserModule extends Module {
         bind(ApiUserQuotaService.class);
         bind(ApiUserUsageService.class);
         bind(PermissionService.class);
+
+        // registers the manager-config based caller header resolver used by outbound tool HTTP injection
+        var callerHeaderResolver = bind(CallerHeaderConfigResolver.class);
+        CallerHeaderProvider.set(callerHeaderResolver);
 
         api().service(ApiUserWebService.class, bind(ApiUserWebServiceImpl.class));
         api().service(AdminApiUserWebService.class, bind(AdminApiUserWebServiceImpl.class));

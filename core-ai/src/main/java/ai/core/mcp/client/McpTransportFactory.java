@@ -1,5 +1,7 @@
 package ai.core.mcp.client;
 
+import ai.core.tool.CallerHeaderProvider;
+import ai.core.tool.OutboundCallerContext;
 import ai.core.utils.SystemUtil;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
@@ -16,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -105,13 +108,12 @@ public final class McpTransportFactory {
     }
 
     private static McpClientTransport applyHeadersAndBuild(HttpClientStreamableHttpTransport.Builder builder, McpServerConfig config) {
-        if (config.getHeaders() != null && !config.getHeaders().isEmpty()) {
-            builder.customizeRequest(requestBuilder -> {
-                for (var entry : config.getHeaders().entrySet()) {
-                    requestBuilder.header(entry.getKey(), entry.getValue());
-                }
-            });
-        }
+        builder.customizeRequest(requestBuilder -> {
+            var headers = requestHeaders(config);
+            for (var entry : headers.entrySet()) {
+                requestBuilder.header(entry.getKey(), entry.getValue());
+            }
+        });
         return builder.build();
     }
 
@@ -140,14 +142,30 @@ public final class McpTransportFactory {
     }
 
     private static McpClientTransport applySseHeadersAndBuild(HttpClientSseClientTransport.Builder builder, McpServerConfig config) {
-        if (config.getHeaders() != null && !config.getHeaders().isEmpty()) {
-            builder.customizeRequest(requestBuilder -> {
-                for (var entry : config.getHeaders().entrySet()) {
-                    requestBuilder.header(entry.getKey(), entry.getValue());
-                }
-            });
-        }
+        builder.customizeRequest(requestBuilder -> {
+            var headers = requestHeaders(config);
+            for (var entry : headers.entrySet()) {
+                requestBuilder.header(entry.getKey(), entry.getValue());
+            }
+        });
         return builder.build();
+    }
+
+    /**
+     * Merges static server-config headers with per-request caller identity headers
+     * (configured per business account on the manager user; resolved from the current
+     * OutboundCallerContext on every request). Caller headers win on name collision.
+     */
+    private static Map<String, String> requestHeaders(McpServerConfig config) {
+        var headers = new java.util.HashMap<String, String>();
+        if (config.getHeaders() != null) {
+            headers.putAll(config.getHeaders());
+        }
+        var caller = OutboundCallerContext.current();
+        if (caller != null) {
+            headers.putAll(CallerHeaderProvider.get().headersFor(caller));
+        }
+        return headers;
     }
 
     public static McpSyncClient createClient(McpClientTransport transport, McpServerConfig config) {

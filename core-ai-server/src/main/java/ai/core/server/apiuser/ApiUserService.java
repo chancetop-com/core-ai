@@ -1,10 +1,12 @@
 package ai.core.server.apiuser;
 
+import ai.core.api.server.apiuser.request.OutboundCallerHeaderRequest;
 import ai.core.api.server.apiuser.request.ResourcePermissionRequest;
 import ai.core.api.server.apiuser.request.UpdateApiUserConfigRequest;
 import ai.core.api.server.apiuser.response.ApiUserQuotaView;
 import ai.core.api.server.apiuser.response.ApiUserView;
 import ai.core.api.server.apiuser.response.ResourcePermissionView;
+import ai.core.server.domain.OutboundCallerHeaderConfig;
 import ai.core.server.domain.ResourcePermission;
 import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
@@ -16,7 +18,10 @@ import core.framework.web.exception.NotFoundException;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -36,7 +41,7 @@ public class ApiUserService {
      * (business systems may retry creation; duplicates are guarded by the partial unique index
      * on (owner_id, external_id) plus a re-fetch after insert conflict).
      */
-    public User createApiUser(String ownerId, String externalId, String name) {
+    public User createApiUser(String ownerId, String externalId, String name, Map<String, String> metadata) {
         if (ownerId == null || ownerId.isBlank()) throw new BadRequestException("owner required");
         if (externalId == null || externalId.isBlank()) throw new BadRequestException("external_id required");
         var normalizedExternalId = externalId.trim();
@@ -51,6 +56,7 @@ public class ApiUserService {
         user.ownerId = ownerId;
         user.externalId = normalizedExternalId;
         user.name = normalizedName;
+        user.metadata = normalizeMetadata(metadata);
         user.role = "user";
         user.status = "active";
         user.createdAt = ZonedDateTime.now();
@@ -91,21 +97,37 @@ public class ApiUserService {
         var user = requireApiUser(userId);
         requireOwnership(managerUserId, user);
         if (user.ownerId == null) throw new ForbiddenException("cannot configure manager user");
+        if (request.outboundCallerHeaders != null) {
+            throw new BadRequestException("outbound_caller_headers can only be configured by admin on manager users");
+        }
         applyConfig(user, request);
         userCollection.replace(user);
         return user;
     }
 
     /**
-     * Admin surface for configuring any user's permissions & quota (manager users are not configurable).
+     * Admin surface for configuring any user's permissions & quota.
+     * Manager users only accept outbound_caller_headers (per-business header injection config);
+     * sub users accept permissions/quota/metadata but never outbound_caller_headers.
      */
     public User updateConfigByAdmin(String adminUserId, String userId, UpdateApiUserConfigRequest request) {
         var admin = userCollection.get(adminUserId).orElse(null);
         if (admin == null || !"admin".equals(admin.role)) throw new ForbiddenException("admin required");
         var user = userCollection.get(userId).orElse(null);
         if (user == null) throw new NotFoundException("user not found, userId=" + userId);
-        if ("api".equals(user.userType) && user.ownerId == null) throw new ForbiddenException("cannot configure manager user");
-        applyConfig(user, request);
+        var isManager = "api".equals(user.userType) && user.ownerId == null;
+        if (isManager) {
+            if (request.permissions != null || request.inputTokenQuota != null || request.outputTokenQuota != null
+                    || request.metadata != null) {
+                throw new BadRequestException("manager users only support outbound_caller_headers config");
+            }
+            user.outboundCallerHeaders = toHeaderEntities(request.outboundCallerHeaders);
+        } else {
+            if (request.outboundCallerHeaders != null) {
+                throw new BadRequestException("outbound_caller_headers can only be configured on manager users");
+            }
+            applyConfig(user, request);
+        }
         userCollection.replace(user);
         return user;
     }
@@ -128,6 +150,19 @@ public class ApiUserService {
                 user.quotaConsumedOutputTokens = 0L;
             }
         }
+        if (request.metadata != null) {
+            user.metadata = normalizeMetadata(request.metadata);
+        }
+    }
+
+    private Map<String, String> normalizeMetadata(Map<String, String> metadata) {
+        if (metadata == null || metadata.isEmpty()) return null;
+        var normalized = new LinkedHashMap<String, String>();
+        for (var entry : metadata.entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) continue;
+            normalized.put(entry.getKey().trim(), entry.getValue().trim());
+        }
+        return normalized.isEmpty() ? null : normalized;
     }
 
     public User updateStatus(String adminUserId, String userId, String status) {
@@ -150,6 +185,7 @@ public class ApiUserService {
         view.externalId = user.externalId;
         view.name = user.name;
         view.status = user.status;
+        view.metadata = user.metadata;
         if (user.permissions != null && !user.permissions.isEmpty()) {
             view.permissions = user.permissions.stream().map(p -> {
                 var pv = new ResourcePermissionView();
@@ -205,5 +241,45 @@ public class ApiUserService {
             permissions.add(permission);
         }
         return permissions;
+    }
+
+    private List<OutboundCallerHeaderConfig> toHeaderEntities(List<OutboundCallerHeaderRequest> headers) {
+        validateOutboundCallerHeaders(headers);
+        if (headers == null) return null;
+        var entities = new ArrayList<OutboundCallerHeaderConfig>(headers.size());
+        for (var header : headers) {
+            var entity = new OutboundCallerHeaderConfig();
+            entity.headerName = header.headerName.trim();
+            entity.valueSource = header.valueSource.trim();
+            entities.add(entity);
+        }
+        return entities;
+    }
+
+    private void validateOutboundCallerHeaders(List<OutboundCallerHeaderRequest> headers) {
+        if (headers == null) return;
+        var seen = new HashSet<String>();
+        for (var header : headers) {
+            if (header.headerName == null || header.headerName.isBlank()) {
+                throw new BadRequestException("outbound_caller_headers: header_name is required");
+            }
+            var name = header.headerName.trim();
+            if (!name.matches("[A-Za-z0-9!#$%&'*+.^_`|~-]+")) {
+                throw new BadRequestException("outbound_caller_headers: invalid header name: " + name);
+            }
+            if (!seen.add(name)) {
+                throw new BadRequestException("outbound_caller_headers: duplicate header name: " + name);
+            }
+            var source = header.valueSource;
+            if (source == null || source.isBlank()) {
+                throw new BadRequestException("outbound_caller_headers: value_source is required for " + name);
+            }
+            var value = source.trim();
+            if (!"external_id".equals(value) && !"user_id".equals(value) && !"manager_id".equals(value)
+                    && !value.startsWith("metadata.")) {
+                throw new BadRequestException("outbound_caller_headers: invalid value_source: " + value
+                        + " (supported: external_id, user_id, manager_id, metadata.<key>)");
+            }
+        }
     }
 }

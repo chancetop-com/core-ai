@@ -36,7 +36,7 @@ public class ApiUserWebServiceImpl implements ApiUserWebService {
     @Override
     public CreateApiUserResponse create(CreateApiUserRequest request) {
         var managerUserId = AuthContext.userId(webContext);
-        var user = apiUserService.createApiUser(managerUserId, request.externalId, request.name);
+        var user = apiUserService.createApiUser(managerUserId, request.externalId, request.name, request.metadata);
         ActionLogContext.put("user_id", user.id);
         var response = new CreateApiUserResponse();
         response.userId = user.id;

@@ -8,6 +8,7 @@ import ai.core.media.MediaProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.BackgroundTaskManager;
+import ai.core.tool.OutboundCallerContext.Caller;
 import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.prompt.PromptInject;
@@ -36,6 +37,7 @@ public final class ExecutionContext {
 
     private final String sessionId;
     private final String userId;
+    private Caller caller;
     private final String taskId;
     private final String taskName;
     private final Map<String, Object> customVariables;
@@ -66,6 +68,7 @@ public final class ExecutionContext {
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
         this.userId = builder.userId;
+        this.caller = builder.caller;
         this.taskId = builder.taskId;
         this.taskName = builder.taskName;
         this.attachedContents = builder.attachedContent == null ? null : List.of(builder.attachedContent);
@@ -87,6 +90,15 @@ public final class ExecutionContext {
 
     public String getUserId() {
         return userId;
+    }
+
+    /** Caller identity (business-side external_id, manager id, metadata) resolved from the authenticated user. */
+    public Caller getCaller() {
+        return caller;
+    }
+
+    public void setCaller(Caller caller) {
+        this.caller = caller;
     }
 
     public boolean isSubagent() {
@@ -305,6 +317,7 @@ public final class ExecutionContext {
     public static class Builder {
         private String sessionId;
         private String userId;
+        private Caller caller;
         private String taskId;
         private String taskName;
         private ToolCallAsyncTaskManager asyncTaskManager;
@@ -325,6 +338,11 @@ public final class ExecutionContext {
 
         public Builder userId(String userId) {
             this.userId = userId;
+            return this;
+        }
+
+        public Builder caller(Caller caller) {
+            this.caller = caller;
             return this;
         }
 

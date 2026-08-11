@@ -2,16 +2,20 @@ package ai.core.server.workflow.executor;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
+import ai.core.server.domain.User;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.StagedFile;
+import ai.core.server.tool.CallerContexts;
 import ai.core.server.workflow.ArtifactStaging;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeOutcome;
 import ai.core.server.workflow.VariablePool;
 import ai.core.tool.ToolCallResult;
+import core.framework.inject.Inject;
 import core.framework.json.JSON;
+import core.framework.mongo.MongoCollection;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -134,6 +138,9 @@ public class CodeExecutor implements NodeExecutor {
     private final SandboxService sandboxService;
     private final FileService fileService;
 
+    @Inject
+    MongoCollection<User> userCollection;
+
     public CodeExecutor(SandboxService sandboxService, FileService fileService) {
         this.sandboxService = sandboxService;
         this.fileService = fileService;
@@ -169,6 +176,7 @@ public class CodeExecutor implements NodeExecutor {
             }
         }
         var exec = ExecutionContext.builder().sessionId(sessionId).userId(ctx.run().userId).sandbox(sandbox).build();
+        exec.setCaller(CallerContexts.fromUser(userCollection.get(ctx.run().userId).orElse(null)));
         ToolCallResult result = sandbox.execute(PYTHON_TOOL, JSON.toJSON(Map.of("code", script)), exec);
         return toOutcome(result);
     }

@@ -13,6 +13,7 @@ import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.User;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.LazySandbox;
@@ -24,6 +25,7 @@ import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
+import ai.core.server.tool.CallerContexts;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import ai.core.server.channel.ChannelRegistry;
@@ -62,6 +64,8 @@ public class AgentSessionManager {
     MongoSkillProvider mongoSkillProvider;
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
+    @Inject
+    MongoCollection<User> userCollection;
     @Inject
     SkillService skillService;
     @Inject
@@ -113,18 +117,15 @@ public class AgentSessionManager {
         if (skillManager == null) skillManager = new SessionSkillManager(skillService, mongoSkillProvider, skillArchiveBuilder, chatMessageService);
         return skillManager;
     }
-
     private SessionSubAgentManager subAgentManager() {
         if (subAgentManager == null) subAgentManager = new SessionSubAgentManager(chatMessageService, subAgentAssembler);
         return subAgentManager;
     }
-
     private SessionRebuildManager rebuildManager() {
         if (rebuildManager == null) {
-            rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection,
-                    skillManager(), subAgentManager(), sandboxService, artifactSetup,
-                    toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService,
-                    publicUrlConfiguration, eventPublisher, ownershipRegistry, systemSettingsService));
+            rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
+                    artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
+                    ownershipRegistry, systemSettingsService, userCollection));
         }
         return rebuildManager;
     }
@@ -151,6 +152,7 @@ public class AgentSessionManager {
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
         var context = SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService);
+        CallerContexts.attach(context, userCollection, userId);
         sessionAgentHelper.setMediaProvider(context, userId, sessionId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
@@ -168,7 +170,6 @@ public class AgentSessionManager {
                 sessionId, userId, null, source, null, apiKeyId));
         return sessionId;
     }
-
     private List<AgentDatasetConfig> sessionDatasetConfig(SessionConfig config) {
         if (config.datasetId == null || config.datasetId.isBlank()) return null;
         var dp = new AgentDatasetConfig();
@@ -176,7 +177,6 @@ public class AgentSessionManager {
         dp.permission = DatasetPermission.READ;
         return List.of(dp);
     }
-
     private Map<String, Object> buildExtraVars(SessionConfig config, List<AgentDatasetConfig> datasetConfig) {
         Map<String, Object> extraVars = null;
         if (datasetConfig != null && !datasetConfig.isEmpty()) {
@@ -189,7 +189,6 @@ public class AgentSessionManager {
         }
         return extraVars;
     }
-
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
         return createSessionFromAgent(definition, overrides, userId, "chat", null);
     }
@@ -248,6 +247,7 @@ public class AgentSessionManager {
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
         var extraVars = buildExtraVars(config, datasetConfig);
         var context = SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService);
+        CallerContexts.attach(context, userCollection, userId);
         if (sandbox2 != null) context.sandbox(sandbox2);
         sessionAgentHelper.setMediaProvider(context, userId, sessionId);
 

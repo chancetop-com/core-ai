@@ -2,6 +2,8 @@ package ai.core.mcp.server.apiserver;
 
 import ai.core.api.apidefinition.ApiDefinition;
 import ai.core.api.apidefinition.ApiDefinitionType;
+import ai.core.tool.CallerHeaderProvider;
+import ai.core.tool.OutboundCallerContext;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
@@ -98,11 +100,23 @@ public class DynamicApiCaller {
             if (interceptor != null) {
                 req = interceptor.invoke(req);
             }
+            injectCallerHeaders(req);
             var rsp = client.execute(req);
             ActionLogContext.put("mcp-call-api-rsp", JSON.toJSON(rsp));
             return rsp;
         } catch (Exception e) {
             return new HTTPResponse(500, new HashMap<>(), Strings.format("Call api[{}, {}] failed: {}", url, JSON.toJSON(req), e.getMessage()).getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    // Platform-controlled caller identity headers (configured per business account on the manager user);
+    // overwrites anything present so agents cannot forge identity headers via tool arguments.
+    private void injectCallerHeaders(HTTPRequest req) {
+        var caller = OutboundCallerContext.current();
+        if (caller == null) return;
+        var headers = CallerHeaderProvider.get().headersFor(caller);
+        if (!headers.isEmpty()) {
+            req.headers.putAll(headers);
         }
     }
 

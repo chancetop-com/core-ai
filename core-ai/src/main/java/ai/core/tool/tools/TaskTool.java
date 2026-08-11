@@ -163,6 +163,7 @@ public class TaskTool extends ToolCall {
         var subContext = ExecutionContext.builder()
                 .sessionId("subagent:" + subagentType + "-" + System.currentTimeMillis())
                 .userId(context.getUserId())
+                .caller(context.getCaller())
                 .customVariables(context.getCustomVariables())
                 .asyncTaskManager(context.getAsyncTaskManager())
                 .attachedContent(context.getAttachedContent())

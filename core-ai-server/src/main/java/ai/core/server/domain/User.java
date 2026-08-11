@@ -7,6 +7,7 @@ import core.framework.mongo.Id;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -49,6 +50,12 @@ public class User {
 
     @Field(name = "external_id")
     public String externalId;
+
+    @Field(name = "metadata")
+    public Map<String, String> metadata;
+
+    @Field(name = "outbound_caller_headers")
+    public List<OutboundCallerHeaderConfig> outboundCallerHeaders;
 
     @Field(name = "created_by")
     public String createdBy;

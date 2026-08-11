@@ -29,6 +29,7 @@ import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.TranscriptEntry;
+import ai.core.server.domain.User;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
@@ -38,6 +39,7 @@ import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
+import ai.core.server.tool.CallerContexts;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
@@ -121,6 +123,8 @@ public class AgentRunBuilder {
     AgentTracer agentTracer;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
+    @Inject
+    MongoCollection<User> userCollection;
 
     Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,
                      List<LLMCallRequest.Attachment> attachments) {
@@ -191,6 +195,8 @@ public class AgentRunBuilder {
                                 new AgentRunArtifactSink(runEntity.id, agentRunCollection), publicUrlConfiguration))
                 .customVariables(mediaModelVariables())
                 .build();
+        // caller identity follows the run initiator (runEntity.userId), not the agent definition owner
+        context.setCaller(CallerContexts.fromUser(userCollection.get(runEntity.userId).orElse(null)));
         if (sandbox != null) context.sandbox(sandbox);
         if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
             var contextualProvider = new ContextualMediaProvider(gatewayMediaProvider,

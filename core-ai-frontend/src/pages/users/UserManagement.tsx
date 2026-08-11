@@ -26,6 +26,7 @@ interface ManagedUser {
   output_token_quota?: number;
   quota_consumed_input_tokens?: number;
   quota_consumed_output_tokens?: number;
+  outbound_caller_headers?: { header_name: string; value_source: string }[];
 }
 
 export default function UserManagement() {
@@ -50,6 +51,9 @@ export default function UserManagement() {
   const [configSaving, setConfigSaving] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [callerHeadersDraft, setCallerHeadersDraft] = useState<CallerHeaderDraft[]>([]);
+  const [callerHeadersSaving, setCallerHeadersSaving] = useState(false);
+  const [callerHeadersSaved, setCallerHeadersSaved] = useState(false);
 
   useEffect(() => {
     api.agents.list(undefined, undefined, 1000).then(res => setAgents(res.agents)).catch(() => {});
@@ -67,6 +71,15 @@ export default function UserManagement() {
         permissions: (selectedUser.permissions || []).map(p => ({ resourceType: p.resource_type, resourceId: p.resource_id })),
       });
       setConfigSaved(false);
+      setCallerHeadersDraft((selectedUser.outbound_caller_headers || []).map(h => {
+        const isMetadata = h.value_source.startsWith('metadata.');
+        return {
+          headerName: h.header_name,
+          valueSource: isMetadata ? 'metadata' : h.value_source,
+          metadataKey: isMetadata ? h.value_source.substring('metadata.'.length) : '',
+        };
+      }));
+      setCallerHeadersSaved(false);
     }
   }, [selectedUser]);
 
@@ -102,6 +115,7 @@ export default function UserManagement() {
         output_token_quota: u.output_token_quota,
         quota_consumed_input_tokens: u.quota_consumed_input_tokens,
         quota_consumed_output_tokens: u.quota_consumed_output_tokens,
+        outbound_caller_headers: u.outbound_caller_headers,
       } as ManagedUser;
     });
   }, []);
@@ -299,6 +313,29 @@ export default function UserManagement() {
       setError(err instanceof Error ? err.message : 'Failed to save config');
     } finally {
       setConfigSaving(false);
+    }
+  };
+
+  const handleSaveCallerHeaders = async () => {
+    if (!selectedUser?.user_id) return;
+    setCallerHeadersSaving(true);
+    setError('');
+    try {
+      const headers = callerHeadersDraft
+        .filter(h => h.headerName.trim() && h.valueSource)
+        .map(h => ({
+          header_name: h.headerName.trim(),
+          value_source: h.valueSource === 'metadata'
+            ? `metadata.${h.metadataKey.trim()}`
+            : h.valueSource,
+        }));
+      await adminApi.updateUserConfig(selectedUser.user_id, { outbound_caller_headers: headers });
+      setCallerHeadersSaved(true);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save caller headers');
+    } finally {
+      setCallerHeadersSaving(false);
     }
   };
 
@@ -576,6 +613,16 @@ export default function UserManagement() {
                   </div>
                 </section>
 
+                {!selectedUser.owner_id && (
+                  <CallerHeadersSection
+                    draft={callerHeadersDraft}
+                    saved={callerHeadersSaved}
+                    saving={callerHeadersSaving}
+                    onChange={setCallerHeadersDraft}
+                    onSave={handleSaveCallerHeaders}
+                  />
+                )}
+
                 {configDraft && (
                   <PermissionsQuotaSection
                     user={selectedUser}
@@ -836,6 +883,12 @@ interface ConfigDraft {
   permissions: { resourceType: string; resourceId: string }[];
 }
 
+interface CallerHeaderDraft {
+  headerName: string;
+  valueSource: string;  // external_id | user_id | manager_id | metadata
+  metadataKey: string;
+}
+
 const toM = (tokens?: number) => tokens != null ? String(Math.round((tokens / 1_000_000) * 1_000_000) / 1_000_000) : '';
 
 const toTokens = (m: string) => {
@@ -844,6 +897,83 @@ const toTokens = (m: string) => {
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 1_000_000) : 0;
 };
+
+function CallerHeadersSection({
+  draft, saved, saving, onChange, onSave,
+}: {
+  draft: CallerHeaderDraft[];
+  saved: boolean;
+  saving: boolean;
+  onChange: (draft: CallerHeaderDraft[]) => void;
+  onSave: () => void;
+}) {
+  const update = (i: number, patch: Partial<CallerHeaderDraft>) => {
+    onChange(draft.map((h, j) => (j === i ? { ...h, ...patch } : h)));
+  };
+  return (
+    <section>
+      <h3 className="text-xs font-medium uppercase tracking-wider mb-3"
+        style={{ color: 'var(--color-text-secondary)' }}>Outbound Caller Headers</h3>
+      <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+        HTTP headers injected into API/MCP tool calls made by this business account's sub users.
+        The business backend reads them to scope data (e.g. X-MERCHANT-ID ← external_id).
+        Empty = no headers injected.
+      </p>
+      <div className="space-y-2">
+        {draft.map((h, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              value={h.headerName}
+              onChange={(e) => update(i, { headerName: e.target.value })}
+              placeholder="Header name (e.g. X-MERCHANT-ID)"
+              className="flex-1 px-2 py-1.5 rounded text-sm border-0 outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
+            />
+            <select
+              value={h.valueSource}
+              onChange={(e) => update(i, { valueSource: e.target.value })}
+              className="px-2 py-1.5 rounded text-xs border-0 outline-none cursor-pointer"
+              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+              <option value="external_id">external_id</option>
+              <option value="user_id">user_id</option>
+              <option value="manager_id">manager_id</option>
+              <option value="metadata">metadata.&lt;key&gt;</option>
+            </select>
+            {h.valueSource === 'metadata' && (
+              <input
+                value={h.metadataKey}
+                onChange={(e) => update(i, { metadataKey: e.target.value })}
+                placeholder="key (e.g. store_id)"
+                className="w-28 px-2 py-1.5 rounded text-xs border-0 outline-none"
+                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
+              />
+            )}
+            <button
+              onClick={() => onChange(draft.filter((_, j) => j !== i))}
+              className="p-1 rounded hover:opacity-70 cursor-pointer"
+              style={{ color: 'var(--color-text-secondary)' }}
+              title="Remove">
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() => onChange([...draft, { headerName: '', valueSource: 'external_id', metadataKey: '' }])}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+          style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
+          <Plus size={12} /> Add Header
+        </button>
+      </div>
+      <button
+        onClick={onSave}
+        disabled={saving}
+        className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors disabled:opacity-50"
+        style={{ background: saved ? '#22c55e' : 'var(--color-primary)' }}>
+        {saved ? 'Saved' : saving ? 'Saving...' : 'Save Caller Headers'}
+      </button>
+    </section>
+  );
+}
 
 function PermissionsQuotaSection({
   user, draft, saved, saving, agents, onChange, onSave,

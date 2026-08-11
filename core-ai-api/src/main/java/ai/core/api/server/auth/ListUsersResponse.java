@@ -1,5 +1,6 @@
 package ai.core.api.server.auth;
 
+import ai.core.api.server.apiuser.response.OutboundCallerHeaderView;
 import ai.core.api.server.apiuser.response.ResourcePermissionView;
 import core.framework.api.json.Property;
 
@@ -70,5 +71,8 @@ public class ListUsersResponse {
 
         @Property(name = "quota_consumed_output_tokens")
         public Long quotaConsumedOutputTokens;
+
+        @Property(name = "outbound_caller_headers")
+        public List<OutboundCallerHeaderView> outboundCallerHeaders;
     }
 }

@@ -10,6 +10,7 @@ import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
+import ai.core.server.domain.User;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.dataset.DatasetRecordService;
@@ -43,6 +44,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SessionRebuildManagerTest {
+    @SuppressWarnings("unchecked")
+    private final MongoCollection<User> users = (MongoCollection<User>) mock(MongoCollection.class);
+
     @Test
     void agentSnapshotPersistsCaptionRoutingPreferenceAcrossPodRebuilds() {
         var chatMessageService = mock(ChatMessageService.class);
@@ -66,7 +70,7 @@ class SessionRebuildManagerTest {
         var skillManager = mock(SessionSkillManager.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, users));
 
         var state = manager.buildStateFromDb("session-1");
 
@@ -105,7 +109,7 @@ class SessionRebuildManagerTest {
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null));
+            null, null, null, null, null, null, null, users));
 
         var state = manager.buildStateFromDb("session-1");
         var restored = SessionState.fromJson(state.toJson());
@@ -160,7 +164,7 @@ class SessionRebuildManagerTest {
             chatMessageService, agents, mock(SessionSkillManager.class), subAgentManager,
             sandboxService, artifactSetup, mock(ToolRegistryService.class), mock(SystemPromptService.class),
             mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
-            publicUrlConfiguration, null, null, systemSettingsService));
+            publicUrlConfiguration, null, null, systemSettingsService, users));
         var state = new SessionState();
         state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;
         state.sandboxBindingSecurityVersion = SessionState.CURRENT_SANDBOX_BINDING_SECURITY_VERSION;
@@ -449,7 +453,7 @@ class SessionRebuildManagerTest {
                 .thenThrow(new ForbiddenException("skill is unavailable"));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, users));
 
         var error = assertThrows(ForbiddenException.class,
                 () -> manager.buildStateFromDb("session-1"));
@@ -553,7 +557,7 @@ class SessionRebuildManagerTest {
         var skillManager = mock(SessionSkillManager.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             mock(ChatMessageService.class), mock(), skillManager, null, null, null, toolRegistry, null,
-            null, null, null, null, null, null, null));
+            null, null, null, null, null, null, null, users));
         var ref = ToolRef.fromLegacyToolId("llm-call:published-llm");
         var state = new SessionState();
         state.userId = null;
@@ -669,17 +673,21 @@ class SessionRebuildManagerTest {
                                                          SessionSubAgentManager subAgentManager,
                                                          SandboxService sandboxService,
                                                          ToolRegistryService toolRegistryService) {
+        @SuppressWarnings("unchecked")
+        var users = (MongoCollection<User>) mock(MongoCollection.class);
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, subAgentManager, sandboxService,
                 mock(ChatArtifactSetup.class), toolRegistryService, mock(SystemPromptService.class),
                 mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
-                mock(PublicUrlConfiguration.class), null, null, mock(SystemSettingsService.class)));
+                mock(PublicUrlConfiguration.class), null, null, mock(SystemSettingsService.class), users));
     }
 
     private SessionRebuildManager rebuildManager(ChatMessageService chatMessageService,
                                                  MongoCollection<AgentDefinition> agents) {
+        @SuppressWarnings("unchecked")
+        var users = (MongoCollection<User>) mock(MongoCollection.class);
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null));
+            null, null, null, null, null, null, null, users));
     }
 }

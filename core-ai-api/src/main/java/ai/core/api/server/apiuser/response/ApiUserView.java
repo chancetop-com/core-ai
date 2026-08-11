@@ -4,6 +4,7 @@ import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -23,6 +24,9 @@ public class ApiUserView {
     @NotNull
     @Property(name = "status")
     public String status;
+
+    @Property(name = "metadata")
+    public Map<String, String> metadata;
 
     @Property(name = "permissions")
     public List<ResourcePermissionView> permissions;

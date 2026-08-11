@@ -15,6 +15,8 @@ import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
+import ai.core.server.domain.User;
+import core.framework.mongo.MongoCollection;
 import ai.core.server.file.FileService;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.memory.experiment.MemoryInjectionResult;
@@ -342,6 +344,10 @@ class AgentSessionManagerCallerTest {
         manager.sessionAgentHelper = mock(SessionAgentHelper.class);
         when(manager.sessionAgentHelper.resolveDatasetConfig(any(AgentDefinition.class), any(), any())).thenReturn(null);
         when(manager.sessionAgentHelper.claimOwnership(anyString())).thenReturn(true);
+        @SuppressWarnings("unchecked")
+        MongoCollection<User> users = (MongoCollection<User>) mock(MongoCollection.class);
+        when(users.get(anyString())).thenReturn(java.util.Optional.empty());
+        manager.userCollection = users;
         return new Harness(manager, assembler);
     }
 

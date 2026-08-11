@@ -21,6 +21,7 @@ import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.User;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxLifecycle;
@@ -29,6 +30,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
+import ai.core.server.tool.CallerContexts;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import ai.core.server.web.sse.SseEventBridge;
@@ -70,6 +72,7 @@ public class SessionRebuildManager {
     private final EventPublisher eventPublisher;
     private final SessionOwnershipRegistry ownershipRegistry;
     private final SystemSettingsService systemSettingsService;
+    private final MongoCollection<User> userCollection;
 
     public SessionRebuildManager(Deps deps) {
         this.chatMessageService = deps.chatMessageService;
@@ -87,6 +90,7 @@ public class SessionRebuildManager {
         this.eventPublisher = deps.eventPublisher;
         this.ownershipRegistry = deps.ownershipRegistry;
         this.systemSettingsService = deps.systemSettingsService;
+        this.userCollection = deps.userCollection;
     }
 
     public SessionState buildStateFromDb(String sessionId) {
@@ -204,6 +208,9 @@ public class SessionRebuildManager {
     private SandboxSetup setupSandboxContext(String sessionId, String userId, SandboxConfig sandboxConfig,
                                              boolean allowSandboxReattach) {
         var context = userId != null ? SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService) : null;
+        if (context != null) {
+            context.setCaller(CallerContexts.fromUser(userCollection.get(userId).orElse(null)));
+        }
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(sandboxConfig);
         var sessionRef = new InProcessAgentSession[1];
         if (context != null) {
@@ -430,6 +437,7 @@ public class SessionRebuildManager {
                         PublicUrlConfiguration publicUrlConfiguration,
                          EventPublisher eventPublisher,
                          SessionOwnershipRegistry ownershipRegistry,
-                         SystemSettingsService systemSettingsService) {
+                         SystemSettingsService systemSettingsService,
+                         MongoCollection<User> userCollection) {
     }
 }

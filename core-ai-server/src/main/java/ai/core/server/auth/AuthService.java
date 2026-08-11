@@ -3,9 +3,11 @@ package ai.core.server.auth;
 import ai.core.api.server.auth.ListUsersResponse;
 import ai.core.api.server.auth.LoginResponse;
 import ai.core.api.server.auth.RegisterResponse;
+import ai.core.api.server.apiuser.response.OutboundCallerHeaderView;
 import ai.core.api.server.apiuser.response.ResourcePermissionView;
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.server.apiuser.ApiUserService;
+import ai.core.server.domain.OutboundCallerHeaderConfig;
 import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
@@ -24,6 +26,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -299,9 +302,20 @@ public class AuthService {
             view.outputTokenQuota = user.quotaOutputTokens;
             view.quotaConsumedInputTokens = user.quotaConsumedInputTokens;
             view.quotaConsumedOutputTokens = user.quotaConsumedOutputTokens;
+            view.outboundCallerHeaders = toCallerHeaderViews(user.outboundCallerHeaders);
             response.users.add(view);
         }
         return response;
+    }
+
+    private List<OutboundCallerHeaderView> toCallerHeaderViews(List<OutboundCallerHeaderConfig> configs) {
+        if (configs == null || configs.isEmpty()) return null;
+        return configs.stream().map(c -> {
+            var cv = new OutboundCallerHeaderView();
+            cv.headerName = c.headerName;
+            cv.valueSource = c.valueSource;
+            return cv;
+        }).toList();
     }
 
     private void requireAdmin(String userId) {
