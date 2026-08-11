@@ -6,6 +6,8 @@ import ai.core.server.settings.SystemSettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -70,5 +72,28 @@ class SandboxSnapshotPolicyTest {
         policy.configure(true);
 
         assertSame(storage, policy.decision().storage());
+    }
+
+    @Test
+    void statusEffectiveAlwaysMatchesItsExposedConditions() {
+        var requested = new AtomicBoolean();
+        var storageReady = new AtomicBoolean();
+        when(settings.sandboxSnapshotEnabled()).thenAnswer(invocation -> requested.get());
+        when(storageResolver.resolve()).thenAnswer(invocation -> storageReady.get() ? storage : null);
+
+        for (var requestedEnabled : new boolean[]{false, true}) {
+            for (var deploymentAllowed : new boolean[]{false, true}) {
+                for (var ready : new boolean[]{false, true}) {
+                    requested.set(requestedEnabled);
+                    storageReady.set(ready);
+                    policy.configure(deploymentAllowed);
+
+                    var status = policy.status();
+
+                    assertEquals(status.requestedEnabled() && status.deploymentAllowed() && status.storageReady(),
+                            status.effective());
+                }
+            }
+        }
     }
 }

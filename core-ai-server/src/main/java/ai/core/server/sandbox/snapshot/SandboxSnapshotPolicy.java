@@ -35,8 +35,10 @@ public class SandboxSnapshotPolicy {
         } catch (RuntimeException e) {
             LOGGER.warn("sandbox snapshot storage resolution failed", e);
         }
-        var status = new Status(requested, deploymentAllowed, storage != null,
-                requested && deploymentAllowed && storage != null);
+        var configured = deploymentAllowed;
+        var storageReady = storage != null;
+        var status = new Status(requested, configured, storageReady,
+                requested && configured && storageReady);
         logChange(status);
         return new Decision(status, storage);
     }
