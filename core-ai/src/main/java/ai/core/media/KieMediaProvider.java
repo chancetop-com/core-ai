@@ -93,7 +93,7 @@ public class KieMediaProvider implements MediaProvider {
      * require string enum values. Unknown models default to the image_urls array +
      * string duration mapping.
      */
-    private static ModelFamily modelFamily(String model) {
+    private ModelFamily modelFamily(String model) {
         if (model == null) return DEFAULT_FAMILY;
         for (var family : MODEL_FAMILIES) {
             if (model.startsWith(family.prefix())) return family;
