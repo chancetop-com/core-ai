@@ -1,6 +1,7 @@
 package ai.core.server.sandbox.snapshot;
 
 import ai.core.server.blob.ObjectStorageService;
+import com.mongodb.MongoClientSettings;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import org.bson.conversions.Bson;
@@ -16,8 +17,14 @@ import java.time.ZonedDateTime;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -88,8 +95,7 @@ class SandboxSnapshotServiceTest {
 
     @Test
     void beginEpochInsertsOnFirstUse() {
-        when(epochs.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
-        when(epochs.get("s1")).thenReturn(Optional.of(epochDoc(1)));
+        when(epochs.get("s1")).thenReturn(Optional.empty());
 
         var epoch = service.beginEpoch("s1");
 
@@ -100,10 +106,50 @@ class SandboxSnapshotServiceTest {
     @Test
     void beginEpochIncrementsExisting() {
         when(epochs.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
-        when(epochs.get("s1")).thenReturn(Optional.of(epochDoc(5)));
+        when(epochs.get("s1")).thenReturn(Optional.of(epochDoc(4)));
 
         assertEquals(5, service.beginEpoch("s1"));
         verify(epochs, never()).insert(any(SandboxEpochDoc.class));
+    }
+
+    @Test
+    void concurrentBeginEpochAllocatesDistinctOwners() throws Exception {
+        var storedEpoch = new AtomicLong(4);
+        var firstReads = new CountDownLatch(2);
+        var unfencedUpdates = new CountDownLatch(2);
+        when(epochs.get("s1")).thenAnswer(invocation -> {
+            firstReads.countDown();
+            assertTrue(firstReads.await(5, TimeUnit.SECONDS));
+            return Optional.of(epochDoc(storedEpoch.get()));
+        });
+        when(epochs.update(any(Bson.class), any(Bson.class))).thenAnswer(invocation -> {
+            var expected = expectedEpoch(invocation.getArgument(0));
+            if (expected == null) {
+                storedEpoch.incrementAndGet();
+                unfencedUpdates.countDown();
+                assertTrue(unfencedUpdates.await(5, TimeUnit.SECONDS));
+                return 1L;
+            }
+            return storedEpoch.compareAndSet(expected, expected + 1) ? 1L : 0L;
+        });
+        var first = CompletableFuture.supplyAsync(() -> service.beginEpoch("s1"));
+        var second = CompletableFuture.supplyAsync(() -> service.beginEpoch("s1"));
+        var firstEpoch = first.get(5, TimeUnit.SECONDS);
+        var secondEpoch = second.get(5, TimeUnit.SECONDS);
+
+        assertNotEquals(firstEpoch, secondEpoch);
+        assertEquals(Set.of(5L, 6L), Set.of(firstEpoch, secondEpoch));
+    }
+
+    private Long expectedEpoch(Bson filter) {
+        var document = filter.toBsonDocument(
+                org.bson.BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
+        if (!document.containsKey("$and")) return null;
+        for (var value : document.getArray("$and")) {
+            var clause = value.asDocument();
+            if (clause.containsKey("epoch")) return clause.getNumber("epoch").longValue();
+        }
+        return null;
     }
 
     @Test

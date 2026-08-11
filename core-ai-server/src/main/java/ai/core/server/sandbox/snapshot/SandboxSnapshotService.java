@@ -69,33 +69,36 @@ public class SandboxSnapshotService {
         return storage instanceof MinioObjectStorageService ? minioSnapshotBucket : snapshotContainer;
     }
 
-    /**
-     * Increment and return the session's sandbox epoch. The read-after-inc is not
-     * atomic; a concurrent acquire can only make our recorded value HIGHER than the
-     * increment we own, which makes the capture-time epoch check stricter, never looser.
-     */
+    /** Atomically claim and return the next session sandbox epoch. */
     public long beginEpoch(String sessionId) {
         var decision = policy == null ? null : policy.decision();
         if (decision == null || !decision.status().effective() || decision.storage() == null) {
             logInactive("beginEpoch", decision);
             return 0;
         }
-        var now = ZonedDateTime.now();
-        var update = Updates.combine(Updates.inc("epoch", 1), Updates.set("updated_at", now));
-        long modified = epochCollection.update(Filters.eq("_id", sessionId), update);
-        if (modified == 0) {
+        while (true) {
+            var existing = epochCollection.get(sessionId);
+            if (existing.isPresent()) {
+                var current = existing.get().epoch;
+                var next = current + 1;
+                var update = Updates.combine(
+                        Updates.set("epoch", next), Updates.set("updated_at", ZonedDateTime.now()));
+                long modified = epochCollection.update(Filters.and(
+                        Filters.eq("_id", sessionId), Filters.eq("epoch", current)), update);
+                if (modified == 1) return next;
+                continue;
+            }
             var doc = new SandboxEpochDoc();
             doc.id = sessionId;
             doc.epoch = 1L;
-            doc.updatedAt = now;
+            doc.updatedAt = ZonedDateTime.now();
             try {
                 epochCollection.insert(doc);
+                return 1L;
             } catch (MongoException e) {
-                // Another pod inserted concurrently; fall through to increment it.
-                epochCollection.update(Filters.eq("_id", sessionId), update);
+                if (epochCollection.get(sessionId).isEmpty()) throw e;
             }
         }
-        return epochCollection.get(sessionId).map(d -> d.epoch).orElse(1L);
     }
 
     public RestoreOutcome restoreLatest(String sessionId, String userId, String ip, int port) {

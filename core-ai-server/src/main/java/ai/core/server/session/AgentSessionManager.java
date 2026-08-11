@@ -388,7 +388,7 @@ public class AgentSessionManager {
                 logger.info("skip snapshot capture, sandbox already released by ttl cleanup: sessionId={}", sessionId);
                 return;
             }
-            sandboxSnapshotService.captureBeforeRelease(sessionId, lazy.userId(), lazy.snapshotEpoch(), ip, port, lazy.image());
+            sandboxSnapshotService.captureBeforeRelease(sessionId, lazy.userId(), lazy.snapshotEpochForCapture(), ip, port, lazy.image());
         } catch (Exception e) {
             logger.warn("sandbox snapshot capture failed, releasing anyway: sessionId={}", sessionId, e);
         }

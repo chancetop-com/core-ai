@@ -64,6 +64,18 @@ class SandboxSnapshotPolicyTest {
     }
 
     @Test
+    void settingsReadFailureFailsRequestedStateClosedButRetainsCleanupStorage() {
+        settings.readFailure = new IllegalStateException("settings unavailable");
+        when(storageResolver.resolve()).thenReturn(storage);
+        policy.configure(true);
+
+        var decision = policy.decision();
+
+        assertEquals(new SandboxSnapshotPolicy.Status(false, true, true, false), decision.status());
+        assertSame(storage, decision.storage());
+    }
+
+    @Test
     void decisionRetainsResolvedStorageInstance() {
         settings.requestedEnabled = true;
         when(storageResolver.resolve()).thenReturn(storage);
@@ -102,10 +114,12 @@ class SandboxSnapshotPolicyTest {
     private static final class TestSystemSettingsService extends SystemSettingsService {
         boolean requestedEnabled;
         int readCount;
+        RuntimeException readFailure;
 
         @Override
         public boolean sandboxSnapshotEnabled() {
             readCount++;
+            if (readFailure != null) throw readFailure;
             return requestedEnabled;
         }
     }

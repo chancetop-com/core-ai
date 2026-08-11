@@ -28,7 +28,12 @@ public class SandboxSnapshotPolicy {
     }
 
     public Decision decision() {
-        var requested = settings.sandboxSnapshotEnabled();
+        boolean requested = false;
+        try {
+            requested = settings.sandboxSnapshotEnabled();
+        } catch (RuntimeException e) {
+            LOGGER.warn("sandbox snapshot requested-state read failed", e);
+        }
         ObjectStorageService storage = null;
         try {
             storage = storageResolver.resolve();

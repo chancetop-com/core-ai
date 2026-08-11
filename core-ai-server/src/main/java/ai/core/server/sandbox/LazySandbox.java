@@ -64,6 +64,7 @@ public class LazySandbox implements Sandbox {
         this.postAcquireHook = context.postAcquireHook;
         this.snapshotService = context.snapshotService;
         this.snapshotEpoch = context.snapshotEpoch;
+        this.snapshotDirty = context.snapshotEpoch > 0;
         this.delegate = delegate;
         this.status = delegate.getStatus();
     }
@@ -344,6 +345,13 @@ public class LazySandbox implements Sandbox {
     }
 
     public long snapshotEpoch() {
+        return snapshotEpoch;
+    }
+
+    public long snapshotEpochForCapture() {
+        if (snapshotEpoch <= 0 && snapshotService != null) {
+            snapshotEpoch = snapshotService.beginEpoch(identity.sessionId());
+        }
         return snapshotEpoch;
     }
 
