@@ -6,6 +6,7 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.util.Encodings;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -16,10 +17,13 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.ZonedDateTime;
 import java.util.Base64;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -61,12 +65,17 @@ public class FileService {
     ObjectStorageServiceResolver storageResolver;
 
     public FileRecord upload(String userId, String fileName, String contentType, Path tempFile) {
+        return upload(userId, fileName, contentType, tempFile, computeContentHash(tempFile));
+    }
+
+    private FileRecord upload(String userId, String fileName, String contentType, Path tempFile, String contentHash) {
         var id = UUID.randomUUID().toString();
         var record = new FileRecord();
         record.id = id;
         record.userId = userId;
         record.fileName = fileName;
         record.contentType = contentType;
+        record.contentHash = contentHash;
         record.createdAt = ZonedDateTime.now();
 
         var storage = storageResolver.resolve();
@@ -86,6 +95,46 @@ public class FileService {
         fileRecordCollection.insert(record);
         LOGGER.info("file uploaded, id={}, fileName={}, size={}", id, fileName, record.size);
         return record;
+    }
+
+    /**
+     * Uploads the file unless the user already has a record with identical content, in which case the existing
+     * record is reused. Prevents duplicate artifacts when the same generated media is saved twice
+     * (e.g. get_video_status auto-save followed by submit_artifacts with the downloaded copy).
+     */
+    public FileRecord uploadIfAbsent(String userId, String fileName, String contentType, Path tempFile) {
+        var contentHash = computeContentHash(tempFile);
+        var existing = findByContentHash(userId, contentHash).orElse(null);
+        if (existing != null) {
+            deleteTempFile(tempFile);
+            LOGGER.info("file upload deduplicated, id={}, contentHash={}", existing.id, contentHash);
+            return existing;
+        }
+        return upload(userId, fileName, contentType, tempFile, contentHash);
+    }
+
+    public Optional<FileRecord> findByContentHash(String userId, String contentHash) {
+        return fileRecordCollection.findOne(Filters.and(
+                Filters.eq("user_id", userId),
+                Filters.eq("content_hash", contentHash),
+                Filters.type("content_hash", "string")));
+    }
+
+    private String computeContentHash(Path tempFile) {
+        try (var input = Files.newInputStream(tempFile)) {
+            var digest = MessageDigest.getInstance("MD5");
+            var buffer = new byte[8192];
+            int read = input.read(buffer);
+            while (read >= 0) {
+                digest.update(buffer, 0, read);
+                read = input.read(buffer);
+            }
+            return Encodings.hex(digest.digest());
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to read file for content hash", e);
+        } catch (NoSuchAlgorithmException e) {
+            throw new Error("MD5 algorithm not available", e);
+        }
     }
 
     private byte[] readAllBytes(Path tempFile) {

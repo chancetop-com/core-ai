@@ -174,7 +174,9 @@ public final class SubmitArtifactsTool extends ToolCall {
             var sandboxFile = sandbox.downloadFile(item.path);
             var fileName = !Strings.isBlank(item.name) ? item.name : sandboxFile.fileName();
             var contentType = !Strings.isBlank(item.contentType) ? item.contentType : sandboxFile.contentType();
-            var record = fileService.upload(userId, fileName, contentType, sandboxFile.path());
+            // Reuse an existing record when the user already has a file with identical content,
+            // so platform-saved media (e.g. get_video_status auto-save) is not duplicated as artifacts.
+            var record = fileService.uploadIfAbsent(userId, fileName, contentType, sandboxFile.path());
 
             var artifact = new AgentRunArtifact();
             artifact.fileId = record.id;

@@ -4,6 +4,7 @@ import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.FileRecord;
 import core.framework.mongo.MongoCollection;
+import core.framework.util.Encodings;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
@@ -14,12 +15,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.ZonedDateTime;
 import java.util.Base64;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -189,6 +193,42 @@ class FileServiceTest {
         verify(service.fileRecordCollection).delete("file-1");
     }
 
+    @Test
+    void uploadStoresContentHash() throws IOException, NoSuchAlgorithmException {
+        when(resolver.artifactContainer()).thenReturn("artifacts");
+        var payload = "hello video".getBytes(StandardCharsets.UTF_8);
+        var tempFile = tempFile(payload);
+
+        var record = service.upload("user-1", "v.mp4", "video/mp4", tempFile);
+
+        assertEquals(md5(payload), record.contentHash);
+    }
+
+    @Test
+    void uploadIfAbsentReusesExistingRecordWhenContentMatches() throws IOException {
+        var existing = file("file-1");
+        when(service.fileRecordCollection.findOne(any(Bson.class))).thenReturn(Optional.of(existing));
+        var tempFile = tempFile("same content".getBytes(StandardCharsets.UTF_8));
+
+        var record = service.uploadIfAbsent("user-1", "v.mp4", "video/mp4", tempFile);
+
+        assertSame(existing, record);
+        verify(service.fileRecordCollection, never()).insert(any(FileRecord.class));
+        assertFalse(Files.exists(tempFile));
+    }
+
+    @Test
+    void uploadIfAbsentUploadsWhenNoContentMatch() throws IOException {
+        when(service.fileRecordCollection.findOne(any(Bson.class))).thenReturn(Optional.empty());
+        when(resolver.artifactContainer()).thenReturn("artifacts");
+        var tempFile = tempFile("new content".getBytes(StandardCharsets.UTF_8));
+
+        var record = service.uploadIfAbsent("user-1", "v.mp4", "video/mp4", tempFile);
+
+        assertNotNull(record.id);
+        verify(service.fileRecordCollection).insert(record);
+    }
+
     @SuppressWarnings("unchecked")
     private MongoCollection<FileRecord> fileRecordCollection() {
         return (MongoCollection<FileRecord>) mock(MongoCollection.class);
@@ -198,6 +238,10 @@ class FileServiceTest {
         var path = Files.createTempFile("file-service-test", ".tmp");
         Files.write(path, content);
         return path;
+    }
+
+    private String md5(byte[] payload) throws NoSuchAlgorithmException {
+        return Encodings.hex(MessageDigest.getInstance("MD5").digest(payload));
     }
 
     private FileRecord file(String id) {

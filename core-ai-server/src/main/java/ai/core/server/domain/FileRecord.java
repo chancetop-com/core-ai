@@ -30,6 +30,9 @@ public class FileRecord {
     @Field(name = "size")
     public Long size;
 
+    @Field(name = "content_hash")
+    public String contentHash;
+
     @Field(name = "data")
     public String data;
 
