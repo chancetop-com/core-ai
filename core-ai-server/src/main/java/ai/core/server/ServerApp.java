@@ -84,6 +84,7 @@ public class ServerApp extends App {
         load(new PromptModule());
         load(new AnalyticsModule());
         load(new SandboxSnapshotModule());
+        load(new SystemSettingsWebModule());
         load(new TaskModule());
         // must load before TraceModule: trace ingest services depend on ApiUserQuotaService for quota accounting
         load(new ApiUserModule());

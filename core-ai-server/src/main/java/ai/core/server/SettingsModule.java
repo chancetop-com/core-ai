@@ -1,9 +1,7 @@
 package ai.core.server;
 
-import ai.core.api.server.settings.SystemSettingsWebService;
 import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.settings.SystemSettingsService;
-import ai.core.server.web.SystemSettingsWebServiceImpl;
 import core.framework.module.Module;
 
 /**
@@ -14,7 +12,6 @@ public class SettingsModule extends Module {
     protected void initialize() {
         bindGatewaySecretProtector();
         bind(SystemSettingsService.class);
-        api().service(SystemSettingsWebService.class, bind(SystemSettingsWebServiceImpl.class));
     }
 
     private void bindGatewaySecretProtector() {
