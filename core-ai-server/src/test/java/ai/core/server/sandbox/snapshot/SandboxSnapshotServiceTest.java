@@ -107,10 +107,31 @@ class SandboxSnapshotServiceTest {
     }
 
     @Test
+    void beginEpochReturnsZeroWithoutWritingWhenPolicyIsInactive() {
+        when(policy.decision()).thenReturn(decision(false, storage));
+
+        assertEquals(0, service.beginEpoch("s1"));
+
+        verify(epochs, never()).update(any(Bson.class), any(Bson.class));
+        verify(epochs, never()).insert(any(SandboxEpochDoc.class));
+    }
+
+    @Test
     void restoreReturnsNoneWithoutSnapshot() {
         when(snapshots.find(any(Query.class))).thenReturn(List.of());
 
         assertEquals(SandboxSnapshotService.RestoreOutcome.NONE, service.restoreLatest("s1", "u1", "10.0.0.1", 8080));
+    }
+
+    @Test
+    void restoreReturnsNoneWithoutLookupOrRuntimeCallsWhenPolicyIsInactive() {
+        when(policy.decision()).thenReturn(decision(false, storage));
+
+        assertEquals(SandboxSnapshotService.RestoreOutcome.NONE, service.restoreLatest("s1", "u1", "10.0.0.1", 8080));
+
+        verify(snapshots, never()).find(any(Query.class));
+        verify(client, never()).fetchRuntimeVersion(anyString(), anyInt());
+        verify(client, never()).restore(anyString(), anyInt(), any(Path.class), anyString());
     }
 
     @Test
