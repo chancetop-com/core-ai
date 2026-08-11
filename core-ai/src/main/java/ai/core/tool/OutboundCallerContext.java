@@ -20,12 +20,6 @@ import java.util.Map;
 public final class OutboundCallerContext {
     private static final ContextKey<Caller> CALLER_KEY = ContextKey.named("outbound-caller");
 
-    public record Caller(String externalId, String userId, String managerId, Map<String, String> metadata) {
-        public static Caller empty() {
-            return new Caller(null, null, null, null);
-        }
-    }
-
     /** Makes the given caller current for the calling thread; close the scope when done. */
     public static Scope set(Caller caller) {
         return Context.current().with(CALLER_KEY, caller).makeCurrent();
@@ -37,5 +31,11 @@ public final class OutboundCallerContext {
     }
 
     private OutboundCallerContext() {
+    }
+
+    public record Caller(String externalId, String userId, String managerId, Map<String, String> metadata) {
+        public static Caller empty() {
+            return new Caller(null, null, null, null);
+        }
     }
 }

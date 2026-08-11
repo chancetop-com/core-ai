@@ -127,16 +127,14 @@ public class ToolExecutor {
         return "Tool arguments are not valid JSON. Fix the arguments and retry this tool call.";
     }
 
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private ToolCallResult doExecute(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {
         // Caller identity rides the OpenTelemetry Context so async tool threads (supplyAsync + makeCurrent)
         // see it too; outbound HTTP injection points read it via OutboundCallerContext.current().
         var caller = context.getCaller();
         if (caller != null) {
-            var scope = OutboundCallerContext.set(caller);
-            try {
+            try (var scope = OutboundCallerContext.set(caller)) {
                 return doExecuteWithCaller(tool, functionCall, args, context);
-            } finally {
-                scope.close();
             }
         }
         return doExecuteWithCaller(tool, functionCall, args, context);
