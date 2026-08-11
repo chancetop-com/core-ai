@@ -5,6 +5,7 @@ import core.framework.http.ContentType;
 import core.framework.web.Request;
 import core.framework.web.Response;
 
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -56,6 +57,9 @@ public class StaticFileController {
         if (!Files.exists(file)) {
             return notFound();
         }
+        if (isIndexHtml(file)) {
+            return serveIndex(file);
+        }
 
         var contentType = resolveContentType(file.toString());
         try {
@@ -63,6 +67,36 @@ public class StaticFileController {
         } catch (UncheckedIOException e) {
             return Response.text("error").status(HTTPStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private boolean isIndexHtml(Path file) {
+        var fileName = file.getFileName();
+        return fileName != null && "index.html".equals(fileName.toString());
+    }
+
+    String rewriteAssetReferences(String html, String redirectBase) {
+        return html.replace("\"/assets/", "\"" + redirectBase + "/assets/");
+    }
+
+    /**
+     * Serves index.html. When the web assets redirect is enabled, /assets/ references are
+     * rewritten to absolute blob/CDN URLs so module scripts load without 301 redirects.
+     * A 301 on module scripts can register the same file under two URLs, splitting shared
+     * chunks (react, react-router) into duplicate module instances and breaking React
+     * context lookups (e.g. "useLocation() may be used only in the context of a <Router>").
+     */
+    private Response serveIndex(Path file) {
+        var redirectBase = webAssetsRedirectBase;
+        if (redirectBase == null) {
+            return withCacheHeaders(Response.file(file).contentType(ContentType.TEXT_HTML), "/index.html", file);
+        }
+        String html;
+        try {
+            html = rewriteAssetReferences(Files.readString(file), redirectBase);
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to read index.html", e);
+        }
+        return withCacheHeaders(Response.text(html).contentType(ContentType.TEXT_HTML), "/index.html", file);
     }
 
     // Serve the requested apple-touch-icon file if present; otherwise fall back
