@@ -6,7 +6,7 @@ import ai.core.api.server.session.IdName;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
-import ai.core.agent.ExecutionContext;
+import ai.core.agent.AttachedContent;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
@@ -142,7 +142,7 @@ public class InProcessCommandHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private List<ExecutionContext.AttachedContent> multimodalAttachments(Map<String, Object> payload, String sessionId, String userId) {
+    private List<AttachedContent> multimodalAttachments(Map<String, Object> payload, String sessionId, String userId) {
         var attachments = (List<Map<String, Object>>) payload.get("multimodalAttachments");
         if (attachments == null || attachments.isEmpty()) {
             attachments = (List<Map<String, Object>>) payload.get("imageAttachments");
@@ -150,7 +150,7 @@ public class InProcessCommandHandler {
         if (attachments == null || attachments.isEmpty()) return null;
         var storageService = objectStorageResolver.resolve();
         if (storageService == null) throw new IllegalStateException("object storage is not configured");
-        var contents = new ArrayList<ExecutionContext.AttachedContent>(attachments.size());
+        var contents = new ArrayList<AttachedContent>(attachments.size());
         for (var attachment : attachments) {
             var type = (String) attachment.get("type");
             var container = (String) attachment.get("container");
@@ -174,16 +174,16 @@ public class InProcessCommandHandler {
                 reference.kind = ai.core.server.domain.SessionAttachmentRef.KIND_VIDEO;
                 reference.createdAt = java.time.ZonedDateTime.now();
                 attachmentRepository.insert(reference);
-                contents.add(ExecutionContext.AttachedContent.ofReference(
+                contents.add(AttachedContent.ofReference(
                         reference.id, reference.contentType, reference.fileName));
             } else {
                 if (!validImageAttachment(container, blobName, contentType)) {
                     throw new IllegalArgumentException("invalid image attachment");
                 }
                 var bytes = storageService.downloadObject(container, blobName);
-                var content = ExecutionContext.AttachedContent.ofBase64(
+                var content = AttachedContent.ofBase64(
                         Base64.getEncoder().encodeToString(bytes), contentType,
-                        ExecutionContext.AttachedContent.AttachedContentType.IMAGE,
+                        AttachedContent.AttachedContentType.IMAGE,
                         (String) attachment.get("fileName"));
                 content.url = (String) attachment.get("url");
                 contents.add(content);
@@ -192,11 +192,11 @@ public class InProcessCommandHandler {
         return contents;
     }
 
-    private String appendVideoHints(String message, List<ExecutionContext.AttachedContent> attachedContents) {
+    private String appendVideoHints(String message, List<AttachedContent> attachedContents) {
         if (attachedContents == null || attachedContents.isEmpty()) return message;
         var hints = new ArrayList<String>();
         for (var content : attachedContents) {
-            if (content.type != ExecutionContext.AttachedContent.AttachedContentType.VIDEO) continue;
+            if (content.type != AttachedContent.AttachedContentType.VIDEO) continue;
             var name = content.filename != null ? content.filename : "video";
             hints.add("[Video attachment: " + name + "]\nreference: " + content.url);
         }

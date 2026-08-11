@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
+import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
 import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.media.MediaProvider;
@@ -241,7 +242,7 @@ public final class GenerateVideoTool extends ToolCall {
         var attachedContents = context.getAttachedContents();
         if (attachedContents == null) return null;
         return attachedContents.stream()
-                .filter(content -> content.type == ExecutionContext.AttachedContent.AttachedContentType.IMAGE)
+                .filter(content -> content.type == AttachedContent.AttachedContentType.IMAGE)
                 .map(this::mediaReference)
                 .toList();
     }
@@ -257,7 +258,7 @@ public final class GenerateVideoTool extends ToolCall {
         return reference;
     }
 
-    private MediaReference mediaReference(ExecutionContext.AttachedContent content) {
+    private MediaReference mediaReference(AttachedContent content) {
         if (content.isBase64()) {
             var mimeType = Strings.isBlank(content.mediaType) ? "image/png" : content.mediaType;
             return new MediaReference(null, "data:" + mimeType + ";base64," + content.data);

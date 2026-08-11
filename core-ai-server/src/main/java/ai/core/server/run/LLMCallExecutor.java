@@ -1,6 +1,6 @@
 package ai.core.server.run;
 
-import ai.core.agent.ExecutionContext;
+import ai.core.agent.AttachedContent;
 import ai.core.agent.internal.AgentHelper;
 import ai.core.api.jsonschema.JsonSchema;
 import ai.core.api.server.run.LLMCallRequest;
@@ -99,12 +99,12 @@ public class LLMCallExecutor {
             return Message.of(RoleType.USER, input);
         }
         var attachment = attachments.getFirst();
-        var type = ExecutionContext.AttachedContent.AttachedContentType.valueOf(attachment.type.name());
-        ExecutionContext.AttachedContent attachedContent;
+        var type = AttachedContent.AttachedContentType.valueOf(attachment.type.name());
+        AttachedContent attachedContent;
         if (attachment.data != null) {
-            attachedContent = ExecutionContext.AttachedContent.ofBase64(attachment.data, attachment.mediaType, type);
+            attachedContent = AttachedContent.ofBase64(attachment.data, attachment.mediaType, type);
         } else {
-            attachedContent = ExecutionContext.AttachedContent.ofUrl(attachment.url, type);
+            attachedContent = AttachedContent.ofUrl(attachment.url, type);
         }
         return AgentHelper.buildUserMessage(input, attachedContent);
     }

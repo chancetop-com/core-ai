@@ -1,5 +1,6 @@
 package ai.core.agent.internal;
 
+import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.InputModality;
 import ai.core.llm.ModalityRuntimeOverrides;
@@ -147,11 +148,11 @@ public class AgentHelper {
         var contents = new java.util.ArrayList<Content>(attachedContents.size() + 1);
         contents.add(Content.of(withoutDuplicateAttachmentUrls(query, attachedContents)));
         attachedContents.stream()
-                .filter(attachedContent -> attachedContent.type != ExecutionContext.AttachedContent.AttachedContentType.VIDEO)
+                .filter(attachedContent -> attachedContent.type != AttachedContent.AttachedContentType.VIDEO)
                 .map(attachedContent -> buildAttachedContent(attachedContent, context))
                 .forEach(contents::add);
         attachedContents.stream()
-                .filter(attachedContent -> attachedContent.type == ExecutionContext.AttachedContent.AttachedContentType.VIDEO)
+                .filter(attachedContent -> attachedContent.type == AttachedContent.AttachedContentType.VIDEO)
                 .map(AgentHelper::buildVideoReferenceHint)
                 .map(Content::of)
                 .forEach(contents::add);
@@ -164,7 +165,7 @@ public class AgentHelper {
             null));
     }
 
-    public static Message buildUserMessage(String query, ExecutionContext.AttachedContent attachedContent) {
+    public static Message buildUserMessage(String query, AttachedContent attachedContent) {
         if (attachedContent == null) {
             return Message.of(RoleType.USER, query, buildRequestName(false), null, null);
         }
@@ -177,7 +178,7 @@ public class AgentHelper {
             null));
     }
 
-    private static String buildVideoReferenceHint(ExecutionContext.AttachedContent attachedContent) {
+    private static String buildVideoReferenceHint(AttachedContent attachedContent) {
         var name = attachedContent.filename != null ? attachedContent.filename : "video";
         return "[Video attachment: " + name + "]\n"
                 + "reference: " + attachedContent.url + "\n"
@@ -185,11 +186,11 @@ public class AgentHelper {
                 + "you MUST call the understand_video tool with attachment_reference_id=\"" + attachedContent.url + "\".";
     }
 
-    public static Content buildAttachedContent(ExecutionContext.AttachedContent attachedContent) {
+    public static Content buildAttachedContent(AttachedContent attachedContent) {
         return buildAttachedContent(attachedContent, null);
     }
 
-    private static Content buildAttachedContent(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
+    private static Content buildAttachedContent(AttachedContent attachedContent, ExecutionContext context) {
         return switch (attachedContent.type) {
             case IMAGE -> buildImageAttachedContent(attachedContent, context);
             case PDF -> buildPdfAttachedContent(attachedContent, context);
@@ -197,7 +198,7 @@ public class AgentHelper {
         };
     }
 
-    private static Content buildImageAttachedContent(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
+    private static Content buildImageAttachedContent(AttachedContent attachedContent, ExecutionContext context) {
         if (!attachedContent.isBase64()) {
             var captionPath = context != null && !context.isVisionNative();
             if (captionPath) return Content.of(imageReferenceText(attachedContent.url));
@@ -215,13 +216,13 @@ public class AgentHelper {
         return Strings.format("[Image attachment: {}] The current model cannot view images directly. Call caption_image with this url to inspect it.", url);
     }
 
-    private static String captionPathUrl(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
+    private static String captionPathUrl(AttachedContent attachedContent, ExecutionContext context) {
         if (context == null || context.isVisionNative()) return null;
         if (attachedContent.url != null && !attachedContent.url.isBlank()) return attachedContent.url;
         return persistImage(attachedContent.data, attachedContent.mediaType, context);
     }
 
-    private static String withoutDuplicateAttachmentUrls(String query, List<ExecutionContext.AttachedContent> attachedContents) {
+    private static String withoutDuplicateAttachmentUrls(String query, List<AttachedContent> attachedContents) {
         if (query == null || query.isBlank()) return query;
         var urls = attachedContents.stream()
                 .map(content -> content.url)
@@ -234,7 +235,7 @@ public class AgentHelper {
                 .stripTrailing();
     }
 
-    private static Content buildPdfAttachedContent(ExecutionContext.AttachedContent attachedContent, ExecutionContext context) {
+    private static Content buildPdfAttachedContent(AttachedContent attachedContent, ExecutionContext context) {
         if (!attachedContent.isBase64()) return Content.ofFileUrl(attachedContent.url);
         var referenceUrl = captionPathUrl(attachedContent, context);
         if (referenceUrl != null) {

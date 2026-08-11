@@ -1,6 +1,6 @@
 package ai.core.llm;
 
-import ai.core.agent.ExecutionContext;
+import ai.core.agent.AttachedContent;
 import ai.core.agent.internal.AgentHelper;
 import ai.core.llm.streaming.AsyncStreamingCallback;
 import ai.core.llm.streaming.BufferedStreamingCallback;
@@ -69,11 +69,11 @@ public abstract class LLMProvider {
         return tracer;
     }
 
-    public final <T> T completionFormatAttachedContent(String systemPrompt, String query, ExecutionContext.AttachedContent attachedContent, String model, Class<T> clazz) {
+    public final <T> T completionFormatAttachedContent(String systemPrompt, String query, AttachedContent attachedContent, String model, Class<T> clazz) {
         return completionFormatAttachedContent(systemPrompt, query, attachedContent, model, clazz, null);
     }
 
-    public final <T> T completionFormatAttachedContent(String systemPrompt, String query, ExecutionContext.AttachedContent attachedContent, String model, Class<T> clazz, Integer timeoutSeconds) {
+    public final <T> T completionFormatAttachedContent(String systemPrompt, String query, AttachedContent attachedContent, String model, Class<T> clazz, Integer timeoutSeconds) {
         var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
                 List.of(Message.of(RoleType.SYSTEM, systemPrompt),
                         AgentHelper.buildUserMessage(query, attachedContent)),

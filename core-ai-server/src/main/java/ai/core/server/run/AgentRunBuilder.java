@@ -2,6 +2,7 @@ package ai.core.server.run;
 
 import ai.core.agent.Agent;
 import ai.core.agent.AgentBuilder;
+import ai.core.agent.AttachedContent;
 import ai.core.api.server.run.LLMCallRequest;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProviders;
@@ -170,15 +171,15 @@ public class AgentRunBuilder {
         return agent;
     }
 
-    private ExecutionContext.AttachedContent toAttachedContent(LLMCallRequest.Attachment attachment) {
-        var type = ExecutionContext.AttachedContent.AttachedContentType.valueOf(attachment.type.name());
-        if (type == ExecutionContext.AttachedContent.AttachedContentType.VIDEO) {
-            return ExecutionContext.AttachedContent.ofReference(attachment.url, attachment.mediaType, null);
+    private AttachedContent toAttachedContent(LLMCallRequest.Attachment attachment) {
+        var type = AttachedContent.AttachedContentType.valueOf(attachment.type.name());
+        if (type == AttachedContent.AttachedContentType.VIDEO) {
+            return AttachedContent.ofReference(attachment.url, attachment.mediaType, null);
         }
         if (attachment.data != null) {
-            return ExecutionContext.AttachedContent.ofBase64(attachment.data, attachment.mediaType, type);
+            return AttachedContent.ofBase64(attachment.data, attachment.mediaType, type);
         }
-        return ExecutionContext.AttachedContent.ofUrl(attachment.url, type);
+        return AttachedContent.ofUrl(attachment.url, type);
     }
 
     private ExecutionContext buildExecutionContext(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {

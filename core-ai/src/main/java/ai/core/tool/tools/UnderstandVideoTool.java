@@ -1,5 +1,6 @@
 package ai.core.tool.tools;
 
+import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.domain.Usage;
 import ai.core.tool.ToolCall;
@@ -74,7 +75,7 @@ public final class UnderstandVideoTool extends ToolCall {
         var attachments = context.getAttachedContents();
         if (attachments == null || attachments.isEmpty()) return true; // follow-up turn: service validates owner
         return attachments.stream().anyMatch(content ->
-                content.type == ExecutionContext.AttachedContent.AttachedContentType.VIDEO
+                content.type == AttachedContent.AttachedContentType.VIDEO
                         && referenceId.equals(content.url));
     }
 

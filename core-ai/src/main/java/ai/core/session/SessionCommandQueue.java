@@ -1,6 +1,6 @@
 package ai.core.session;
 
-import ai.core.agent.ExecutionContext;
+import ai.core.agent.AttachedContent;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,7 +29,7 @@ public class SessionCommandQueue {
         enqueueUserInput(value, variables, null);
     }
 
-    public void enqueueUserInput(String value, Map<String, Object> variables, List<ExecutionContext.AttachedContent> attachedContents) {
+    public void enqueueUserInput(String value, Map<String, Object> variables, List<AttachedContent> attachedContents) {
         enqueue(new QueuedCommand(CommandMode.USER_INPUT, new QueuedMessage(value, variables, attachedContents)));
     }
 
@@ -135,7 +135,7 @@ public class SessionCommandQueue {
         }
     }
 
-    public record QueuedMessage(String value, Map<String, Object> variables, List<ExecutionContext.AttachedContent> attachedContents) {
+    public record QueuedMessage(String value, Map<String, Object> variables, List<AttachedContent> attachedContents) {
 
     }
 

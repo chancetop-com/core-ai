@@ -1,5 +1,6 @@
 package ai.core.tool.tools;
 
+import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
 import ai.core.media.MediaProvider;
 import ai.core.media.domain.ImageGenerationRequest;
@@ -26,8 +27,8 @@ class GenerateVideoToolTest {
     void usesAttachedImagesWhenReferencesAreNotExplicitlyProvided() {
         var provider = new TestMediaProvider();
         var context = ExecutionContext.builder()
-                .attachedContent(ExecutionContext.AttachedContent.ofBase64(
-                        "aGVsbG8=", "image/jpeg", ExecutionContext.AttachedContent.AttachedContentType.IMAGE))
+                .attachedContent(AttachedContent.ofBase64(
+                        "aGVsbG8=", "image/jpeg", AttachedContent.AttachedContentType.IMAGE))
                 .build();
         context.setVideoMediaProvider(provider);
         var tool = GenerateVideoTool.builder().build();

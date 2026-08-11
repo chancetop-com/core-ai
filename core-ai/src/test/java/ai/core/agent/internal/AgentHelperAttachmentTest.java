@@ -1,5 +1,6 @@
 package ai.core.agent.internal;
 
+import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.domain.Content;
 import ai.core.tool.tools.GenerateImageTool;
@@ -73,8 +74,8 @@ class AgentHelperAttachmentTest {
     @Test
     void urlImageAttachmentBecomesReferenceTextOnCaptionPath() {
         var context = ExecutionContext.builder().sessionId("test").build();
-        context.setAttachedContents(List.of(ExecutionContext.AttachedContent.ofUrl(
-                "https://blob/photo.png", ExecutionContext.AttachedContent.AttachedContentType.IMAGE)));
+        context.setAttachedContents(List.of(AttachedContent.ofUrl(
+                "https://blob/photo.png", AttachedContent.AttachedContentType.IMAGE)));
         context.setVisionNative(false);
 
         var message = AgentHelper.buildUserMessage("look at this", context);
@@ -117,8 +118,8 @@ class AgentHelperAttachmentTest {
         var builder = ExecutionContext.builder().sessionId("test");
         if (sink != null) builder.customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, sink);
         var context = builder.build();
-        context.setAttachedContents(List.of(ExecutionContext.AttachedContent.ofBase64(
-                "QUJD", "application/pdf", ExecutionContext.AttachedContent.AttachedContentType.PDF, "doc.pdf")));
+        context.setAttachedContents(List.of(AttachedContent.ofBase64(
+                "QUJD", "application/pdf", AttachedContent.AttachedContentType.PDF, "doc.pdf")));
         return context;
     }
 
@@ -130,8 +131,8 @@ class AgentHelperAttachmentTest {
         var builder = ExecutionContext.builder().sessionId("test");
         if (sink != null) builder.customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, sink);
         var context = builder.build();
-        context.setAttachedContents(List.of(ExecutionContext.AttachedContent.ofBase64(
-                "QUJD", "image/png", ExecutionContext.AttachedContent.AttachedContentType.IMAGE, "photo.png")));
+        context.setAttachedContents(List.of(AttachedContent.ofBase64(
+                "QUJD", "image/png", AttachedContent.AttachedContentType.IMAGE, "photo.png")));
         return context;
     }
 
