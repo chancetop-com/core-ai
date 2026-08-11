@@ -21,6 +21,7 @@ import ai.core.server.file.FileService;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.memory.experiment.MemoryInjectionResult;
 import ai.core.server.messaging.EventPublisher;
+import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.settings.SystemSettingsService;
@@ -115,6 +116,28 @@ class AgentSessionManagerCallerTest {
         var rebuilt = harness.manager.getSession("rebuilt-session", state, "owner-user");
 
         verify(harness.manager.sessionRegistry).requireUserId("rebuilt-session");
+        rebuilt.close();
+    }
+
+    @Test
+    void rebuiltSessionAcceptsOwnershipAlreadyClaimedByUnownedConsumer() {
+        var harness = harness();
+        var ownershipRegistry = mock(SessionOwnershipRegistry.class);
+        harness.manager.ownershipRegistry = ownershipRegistry;
+        var sessionAgentHelper = new SessionAgentHelper();
+        sessionAgentHelper.ownershipRegistry = ownershipRegistry;
+        harness.manager.sessionAgentHelper = sessionAgentHelper;
+        when(ownershipRegistry.getOwner("rebuilt-session")).thenReturn("this-pod");
+        when(ownershipRegistry.isOwner("rebuilt-session")).thenReturn(true);
+        when(harness.manager.sessionRegistry.requireUserId("rebuilt-session"))
+                .thenReturn("owner-user");
+        var state = new SessionState();
+        state.userId = "owner-user";
+        state.config = new SessionConfig();
+
+        var rebuilt = harness.manager.getSession("rebuilt-session", state, "owner-user");
+
+        verify(ownershipRegistry, never()).claim("rebuilt-session");
         rebuilt.close();
     }
 
@@ -344,6 +367,7 @@ class AgentSessionManagerCallerTest {
         manager.sessionAgentHelper = mock(SessionAgentHelper.class);
         when(manager.sessionAgentHelper.resolveDatasetConfig(any(AgentDefinition.class), any(), any())).thenReturn(null);
         when(manager.sessionAgentHelper.claimOwnership(anyString())).thenReturn(true);
+        when(manager.sessionAgentHelper.claimOrConfirmOwnership(anyString())).thenReturn(true);
         @SuppressWarnings("unchecked")
         MongoCollection<User> users = (MongoCollection<User>) mock(MongoCollection.class);
         when(users.get(anyString())).thenReturn(java.util.Optional.empty());

@@ -320,7 +320,7 @@ public class AgentSessionManager {
             logger.info("session not found locally, attempting to rebuild, sessionId={}", id);
             var rebuilt = rebuildManager().rebuildSession(id, effectiveState, callerUserId);
             if (rebuilt != null) {
-                if (!claimOwnership(id)) {
+                if (!sessionAgentHelper.claimOrConfirmOwnership(id)) {
                     logger.warn("failed to claim rebuilt session ownership, sessionId={}", id);
                     rebuilt.close();
                     return null;

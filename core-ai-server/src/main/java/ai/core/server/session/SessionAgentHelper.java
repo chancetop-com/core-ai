@@ -62,6 +62,10 @@ public class SessionAgentHelper {
         return ownershipRegistry == null || ownershipRegistry.claim(sessionId);
     }
 
+    boolean claimOrConfirmOwnership(String sessionId) {
+        return ownershipRegistry == null || ownershipRegistry.isOwner(sessionId) || ownershipRegistry.claim(sessionId);
+    }
+
     void renewSessionOwnership(String sessionId) {
         if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
     }
