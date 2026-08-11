@@ -163,20 +163,7 @@ public class SandboxSnapshotService {
         try {
             tmp = Files.createTempFile("sandbox-capture-", ".tar.gz");
             var captured = client.capture(ip, port, tmp);
-            var doc = new SandboxSnapshotDoc();
-            doc.id = UUID.randomUUID().toString();
-            doc.sessionId = sessionId;
-            doc.userId = userId;
-            doc.epoch = epoch;
-            doc.status = SandboxSnapshotDoc.STATUS_UPLOADING;
-            doc.blobKey = userId + "/" + sessionId + "/" + doc.id + ".tar.gz";
-            doc.sha256 = captured.sha256();
-            doc.sizeBytes = captured.sizeBytes();
-            doc.fileCount = captured.fileCount();
-            doc.image = image;
-            doc.runtimeVersion = captured.runtimeVersion();
-            doc.createdAt = ZonedDateTime.now();
-            doc.expiresAt = doc.createdAt.plusDays(EXPIRES_DAYS);
+            var doc = newUploadingSnapshot(sessionId, userId, epoch, image, captured);
             snapshotCollection.insert(doc);
             storage.uploadObject(container, doc.blobKey, tmp);
 
@@ -200,6 +187,25 @@ public class SandboxSnapshotService {
         } finally {
             deleteQuietly(tmp);
         }
+    }
+
+    private SandboxSnapshotDoc newUploadingSnapshot(String sessionId, String userId, long epoch, String image,
+                                                     SandboxSnapshotClient.CaptureResult captured) {
+        var doc = new SandboxSnapshotDoc();
+        doc.id = UUID.randomUUID().toString();
+        doc.sessionId = sessionId;
+        doc.userId = userId;
+        doc.epoch = epoch;
+        doc.status = SandboxSnapshotDoc.STATUS_UPLOADING;
+        doc.blobKey = userId + "/" + sessionId + "/" + doc.id + ".tar.gz";
+        doc.sha256 = captured.sha256();
+        doc.sizeBytes = captured.sizeBytes();
+        doc.fileCount = captured.fileCount();
+        doc.image = image;
+        doc.runtimeVersion = captured.runtimeVersion();
+        doc.createdAt = ZonedDateTime.now();
+        doc.expiresAt = doc.createdAt.plusDays(EXPIRES_DAYS);
+        return doc;
     }
 
     /** Expired docs (and tombstones, whose expires_at is forced to now) — delete blob then doc. */
