@@ -276,6 +276,7 @@ public class AuthService {
             view.email = user.email;
             view.userId = user.id;
             view.userType = user.userType;
+            view.externalId = user.externalId;
             view.name = user.name;
             view.role = user.role;
             view.status = user.status;

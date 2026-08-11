@@ -76,6 +76,7 @@ export interface UserStatus {
   email?: string;
   user_id?: string;
   user_type?: string;
+  external_id?: string;
   name: string;
   role: string;
   status: string;

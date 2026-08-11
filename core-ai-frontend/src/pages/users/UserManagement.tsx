@@ -17,6 +17,7 @@ interface ManagedUser {
   api_key?: string;
   api_key_created_at?: string;
   user_id?: string;
+  external_id?: string;
   owner_id?: string;
   owner_name?: string;
   created_by?: string;
@@ -92,6 +93,7 @@ export default function UserManagement() {
         api_key: u.api_key,
         api_key_created_at: u.api_key_created_at,
         user_id: u.user_id,
+        external_id: u.external_id,
         owner_id: u.owner_id,
         owner_name: u.owner_name,
         created_by: u.created_by,
@@ -559,6 +561,9 @@ export default function UserManagement() {
                     style={{ color: 'var(--color-text-secondary)' }}>General</h3>
                   <div className="space-y-2">
                     <InfoRow label="User ID" value={selectedUser.user_id || '-'} mono />
+                    {selectedUser.external_id && (
+                      <InfoRow label="External ID" value={selectedUser.external_id} mono />
+                    )}
                     <InfoRow label="Name" value={selectedUser.name} />
                     <InfoRow label="Status" value={selectedUser.status} />
                     {selectedUser.owner_id ? (

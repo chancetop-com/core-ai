@@ -23,6 +23,9 @@ public class ListUsersResponse {
         @Property(name = "user_type")
         public String userType;
 
+        @Property(name = "external_id")
+        public String externalId;
+
         @Property(name = "name")
         public String name;
 
