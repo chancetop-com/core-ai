@@ -47,6 +47,7 @@ class SystemSettingsWebServiceImplTest {
         assertEquals(Boolean.FALSE, response.sandboxSnapshotStorageReady);
         assertEquals(Boolean.FALSE, response.sandboxSnapshotEffective);
         verify(service.systemSettingsService).get("user-1");
+        verify(service.sandboxSnapshotPolicy).status();
     }
 
     @Test
@@ -67,6 +68,7 @@ class SystemSettingsWebServiceImplTest {
         assertEquals(Boolean.TRUE, response.sandboxSnapshotStorageReady);
         assertEquals(Boolean.FALSE, response.sandboxSnapshotEffective);
         verify(service.systemSettingsService).update(request, "user-1");
+        verify(service.sandboxSnapshotPolicy).status();
     }
 
     private SystemSettingsWebServiceImpl createService() {

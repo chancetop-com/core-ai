@@ -22,20 +22,23 @@ public class SystemSettingsWebServiceImpl implements SystemSettingsWebService {
 
     @Override
     public SystemSettingsView get() {
-        return addSnapshotStatus(systemSettingsService.get(userId()));
+        var view = systemSettingsService.get(userId());
+        addSnapshotStatus(view);
+        return view;
     }
 
     @Override
     public SystemSettingsView update(SystemSettingsRequest request) {
-        return addSnapshotStatus(systemSettingsService.update(request, userId()));
+        var view = systemSettingsService.update(request, userId());
+        addSnapshotStatus(view);
+        return view;
     }
 
-    SystemSettingsView addSnapshotStatus(SystemSettingsView view) {
+    void addSnapshotStatus(SystemSettingsView view) {
         var status = sandboxSnapshotPolicy.status();
         view.sandboxSnapshotDeploymentAllowed = status.deploymentAllowed();
         view.sandboxSnapshotStorageReady = status.storageReady();
         view.sandboxSnapshotEffective = status.effective();
-        return view;
     }
 
     private String userId() {
