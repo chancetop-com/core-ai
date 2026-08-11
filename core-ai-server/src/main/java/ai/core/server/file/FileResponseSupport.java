@@ -14,14 +14,17 @@ import core.framework.web.Response;
  */
 final class FileResponseSupport {
     private static final String CACHE_CONTROL = "public, max-age=604800";
+    private static final String NO_STORE = "no-store";
     private static final String ETAG = "ETag";
 
     static Response content(FileRecord record, FileService fileService) {
         var downloadUrl = fileService.downloadUrl(record);
         if (downloadUrl != null) {
+            // The pre-signed URL expires (Azure SAS ~1h, MinIO ~1h), so the redirect must never
+            // be cached. A cached 307 would keep redirecting to a stale signed URL and fail with
+            // 403 after the signature expires.
             return Response.redirect(downloadUrl, HTTPStatus.TEMPORARY_REDIRECT)
-                    .header(HTTPHeaders.CACHE_CONTROL, CACHE_CONTROL)
-                    .header(ETAG, etag(record));
+                    .header(HTTPHeaders.CACHE_CONTROL, NO_STORE);
         }
         var data = fileService.getBytes(record);
         var contentType = record.contentType != null ? ContentType.parse(record.contentType) : ContentType.APPLICATION_OCTET_STREAM;
