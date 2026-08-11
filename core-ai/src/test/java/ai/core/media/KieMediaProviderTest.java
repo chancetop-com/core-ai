@@ -124,6 +124,69 @@ class KieMediaProviderTest {
     }
 
     @Test
+    void generateVideoMapsMinimaxH3ReferenceToVideoReferencesAndDuration() {
+        var reference = new MediaReference("https://example.com/ref.png", null);
+
+        provider.generateVideo(videoRequest("minimax-h3/reference-to-video", "animate", 10, null, List.of(reference)));
+
+        assertEquals(10, createTaskInput().get("duration"));
+        assertEquals(List.of("https://example.com/ref.png"), createTaskInput().get("reference_image_urls"));
+    }
+
+    @Test
+    void generateVideoMapsMinimaxH3ImageToVideoReferencesToFirstAndLastFrame() {
+        var first = new MediaReference("https://example.com/first.png", null);
+        var last = new MediaReference("https://example.com/last.png", null);
+
+        provider.generateVideo(videoRequest("minimax-h3/image-to-video", "animate", 8, null, List.of(first, last)));
+
+        assertEquals(8, createTaskInput().get("duration"));
+        assertEquals("https://example.com/first.png", createTaskInput().get("first_frame_url"));
+        assertEquals("https://example.com/last.png", createTaskInput().get("last_frame_url"));
+    }
+
+    @Test
+    void generateVideoRejectsReferencesForMinimaxH3TextToVideo() {
+        var reference = new MediaReference("https://example.com/ref.png", null);
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> provider.generateVideo(videoRequest("minimax-h3/text-to-video", "A cat", 5, null, List.of(reference))));
+
+        assertTrue(error.getMessage().contains("does not accept reference images"));
+    }
+
+    @Test
+    void generateVideoRejectsMultipleReferencesForSingleImageFamily() {
+        var first = new MediaReference("https://example.com/1.png", null);
+        var second = new MediaReference("https://example.com/2.png", null);
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> provider.generateVideo(videoRequest("hailuo/2-3-image-to-video-pro", "animate", 6, null, List.of(first, second))));
+
+        assertTrue(error.getMessage().contains("exactly one reference image"));
+    }
+
+    @Test
+    void generateVideoMapsSingleImageFamilyToImageUrl() {
+        var reference = new MediaReference("https://example.com/ref.png", null);
+
+        provider.generateVideo(videoRequest("hailuo/2-3-image-to-video-pro", "animate", 6, null, List.of(reference)));
+
+        assertEquals("https://example.com/ref.png", createTaskInput().get("image_url"));
+        assertEquals("6", createTaskInput().get("duration"));
+    }
+
+    @Test
+    void generateVideoMapsWan27ImageToVideoToFirstFrameWithIntegerDuration() {
+        var reference = new MediaReference("https://example.com/frame.png", null);
+
+        provider.generateVideo(videoRequest("wan/2-7-image-to-video", "animate", 5, null, List.of(reference)));
+
+        assertEquals(5, createTaskInput().get("duration"));
+        assertEquals("https://example.com/frame.png", createTaskInput().get("first_frame_url"));
+    }
+
+    @Test
     void generateVideoRejectsPreviousVideoEditing() {
         var request = new VideoGenerationRequest("kling-2.6/text-to-video", "edit", 5, "1280x720", null, null, "previous-id");
 

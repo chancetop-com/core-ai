@@ -33,6 +33,31 @@ public class KieMediaProvider implements MediaProvider {
     private static final String RECORD_INFO_PATH = "/api/v1/jobs/recordInfo";
     private static final String FILE_BASE64_UPLOAD_PATH = "/api/file-base64-upload";
 
+    private static final ModelFamily DEFAULT_FAMILY =
+            new ModelFamily("", ReferenceMode.ARRAY, "image_urls", DurationType.STRING);
+
+    // longest prefix first; the first match wins
+    private static final List<ModelFamily> MODEL_FAMILIES = List.of(
+            new ModelFamily("minimax-h3/reference-to-video", ReferenceMode.ARRAY, "reference_image_urls", DurationType.INT),
+            new ModelFamily("minimax-h3/image-to-video", ReferenceMode.FIRST_LAST, "first_frame_url", DurationType.INT),
+            new ModelFamily("minimax-h3/text-to-video", ReferenceMode.NONE, null, DurationType.INT),
+            new ModelFamily("wan/2-7-image-to-video", ReferenceMode.FIRST_LAST, "first_frame_url", DurationType.INT),
+            new ModelFamily("wan/2-7-r2v", ReferenceMode.ARRAY, "reference_image", DurationType.INT),
+            new ModelFamily("wan/2-7-", ReferenceMode.NONE, null, DurationType.INT),
+            new ModelFamily("wan/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("bytedance/seedance-2", ReferenceMode.ARRAY, "reference_image_urls", DurationType.INT),
+            new ModelFamily("bytedance/seedance-1", ReferenceMode.ARRAY, "input_urls", DurationType.INT),
+            new ModelFamily("bytedance/v1-", ReferenceMode.SINGLE, "image_url", DurationType.STRING),
+            new ModelFamily("kling-2.6/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("kling-3.0/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("kling/v3-", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("kling/v2-", ReferenceMode.SINGLE, "image_url", DurationType.STRING),
+            new ModelFamily("grok-imagine/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("hailuo/", ReferenceMode.SINGLE, "image_url", DurationType.STRING),
+            new ModelFamily("pixverse/", ReferenceMode.ARRAY, "image_urls", DurationType.INT),
+            new ModelFamily("happyhorse", ReferenceMode.ARRAY, "image_urls", DurationType.INT)
+    );
+
     private final String createTaskUrl;
     private final String recordInfoUrl;
     private final String uploadUrl;
@@ -59,6 +84,21 @@ public class KieMediaProvider implements MediaProvider {
                 .timeout(Duration.ofMinutes(5))
                 .trustAll()
                 .build();
+    }
+
+    /**
+     * Per-family KIE contract differences (verified against docs.kie.ai model pages):
+     * some families send references as an array field, some as a single image_url,
+     * some as first/last frame URLs, and some accept integer durations while others
+     * require string enum values. Unknown models default to the image_urls array +
+     * string duration mapping.
+     */
+    private static ModelFamily modelFamily(String model) {
+        if (model == null) return DEFAULT_FAMILY;
+        for (var family : MODEL_FAMILIES) {
+            if (model.startsWith(family.prefix())) return family;
+        }
+        return DEFAULT_FAMILY;
     }
 
     @Override
@@ -110,26 +150,34 @@ public class KieMediaProvider implements MediaProvider {
     private Map<String, Object> input(VideoGenerationRequest request) {
         var input = new LinkedHashMap<>(defaultInputParams);
         input.put("prompt", request.prompt());
+        var family = modelFamily(request.model());
         if (request.inputReferences() != null && !request.inputReferences().isEmpty()) {
-            input.put(referenceField(request.model()), referenceUrls(request.inputReferences()));
+            var urls = referenceUrls(request.inputReferences());
+            switch (family.referenceMode()) {
+                case ARRAY -> input.put(family.referenceField(), urls);
+                case SINGLE -> {
+                    if (urls.size() > 1)
+                        throw new IllegalArgumentException(request.model() + " accepts exactly one reference image, got " + urls.size());
+                    input.put(family.referenceField(), urls.getFirst());
+                }
+                case FIRST_LAST -> {
+                    if (urls.size() > 2)
+                        throw new IllegalArgumentException(request.model() + " accepts at most two reference images (first and last frame), got " + urls.size());
+                    input.put("first_frame_url", urls.getFirst());
+                    if (urls.size() == 2) input.put("last_frame_url", urls.get(1));
+                }
+                case NONE -> throw new IllegalArgumentException(request.model() + " does not accept reference images");
+                default -> throw new IllegalArgumentException("unexpected reference mode: " + family.referenceMode());
+            }
         }
         var aspectRatio = aspectRatio(request.size());
         if (aspectRatio != null) input.put("aspect_ratio", aspectRatio);
-        if (request.seconds() != null) input.put("duration", duration(request));
+        if (request.seconds() != null) input.put("duration", duration(request, family));
         return input;
     }
 
-    private String referenceField(String model) {
-        return seedance2Family(model) ? "reference_image_urls" : "image_urls";
-    }
-
-    private Object duration(VideoGenerationRequest request) {
-        return seedance2Family(request.model()) ? request.seconds() : request.seconds().toString();
-    }
-
-    // only the Seedance 2 family accepts integer duration and reference_image_urls; other models use string duration
-    private boolean seedance2Family(String model) {
-        return model != null && model.startsWith("bytedance/seedance-2");
+    private Object duration(VideoGenerationRequest request, ModelFamily family) {
+        return family.durationType() == DurationType.INT ? request.seconds() : request.seconds().toString();
     }
 
     private List<String> referenceUrls(List<MediaReference> references) {
@@ -282,5 +330,12 @@ public class KieMediaProvider implements MediaProvider {
     private Integer intValue(Map<String, Object> map, String name) {
         var value = map.get(name);
         return value instanceof Number number ? number.intValue() : null;
+    }
+
+    private enum DurationType { INT, STRING }
+
+    private enum ReferenceMode { ARRAY, SINGLE, FIRST_LAST, NONE }
+
+    private record ModelFamily(String prefix, ReferenceMode referenceMode, String referenceField, DurationType durationType) {
     }
 }
