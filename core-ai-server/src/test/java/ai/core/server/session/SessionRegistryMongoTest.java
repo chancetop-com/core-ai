@@ -1,6 +1,8 @@
 package ai.core.server.session;
 
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.ToolSourceType;
 import ai.core.server.workflow.WorkflowTestModule;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -50,6 +52,19 @@ class SessionRegistryMongoTest {
         assertEquals(List.of(), stored.loadedTools);
         assertEquals(List.of("skill-1"), stored.loadedSkillIds);
         assertEquals(List.of(), stored.loadedSubAgentIds);
+    }
+
+    @Test
+    void toolRefsArePersistedByAtomicSessionUpdate() {
+        var sessionId = "tool-ref-" + UUID.randomUUID();
+        registry.create(new SessionRegistry.SessionRegistration(
+                sessionId, "user-1", "agent-1", "chat", null, null));
+        var toolRef = ToolRef.of("mcp-tool:server:search", ToolSourceType.MCP, "server");
+
+        registry.addLoadedTools(sessionId, List.of(toolRef));
+
+        var stored = chatSessionCollection.get(sessionId).orElseThrow();
+        assertEquals(List.of(toolRef), stored.loadedTools);
     }
 
     @Test

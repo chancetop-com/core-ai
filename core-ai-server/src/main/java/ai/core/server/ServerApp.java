@@ -33,6 +33,7 @@ import ai.core.server.domain.MediaJob;
 import ai.core.server.domain.SessionAttachmentRef;
 import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.SystemSettings;
+import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.User;
 import ai.core.server.domain.UserReport;
@@ -135,6 +136,7 @@ public class ServerApp extends App {
         mongo.collection(SystemSettings.class);
         mongo.collection(ChatMessage.class);
         mongo.collection(ChatSession.class);
+        mongo.view(ToolRef.class);
         mongo.collection(SessionFeedback.class);
 
         mongo.collection(Trace.class);

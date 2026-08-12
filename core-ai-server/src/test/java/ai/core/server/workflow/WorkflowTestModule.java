@@ -4,6 +4,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.Notification;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
@@ -45,6 +46,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(ToolRegistryEntry.class);      // injected by WorkflowPortService for MCP reference resolution
         mongo.collection(Notification.class);            // injected by NotificationService (bound below)
         mongo.collection(ChatSession.class);             // shared by SessionRegistry Mongo integration tests
+        mongo.view(ToolRef.class);                        // partial updates persist loaded ToolRef values
 
         bindWorkflowServices();
 
