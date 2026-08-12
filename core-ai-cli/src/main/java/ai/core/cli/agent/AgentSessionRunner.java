@@ -203,11 +203,16 @@ public class AgentSessionRunner {
                 hasHistory = true;
                 ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET + text.strip() + "\n");
             } else if (msg.role == RoleType.ASSISTANT) {
-                ui.printStreamingChunk("\n" + AnsiTheme.SEPARATOR + "⏺" + AnsiTheme.RESET + "\n");
-                renderer.processChunk(text);
+                hasHistory = true;
+                // mirror the live turn rendering: ● icon with continuation lines indented
+                var writer = ui.getWriter();
+                writer.print("\n" + AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " ");
+                writer.flush();
+                renderer.setFirstLineOffset(AnsiTheme.displayWidth("\u25CF "));
+                renderer.processChunk(text.replace("\n", "\n  "));
                 renderer.flush();
                 renderer.reset();
-                ui.getWriter().println();
+                writer.println();
             }
         }
         if (hasHistory) {
