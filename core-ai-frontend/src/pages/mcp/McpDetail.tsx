@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Server, RefreshCw, Plug, Play, ChevronDown, ChevronRight, Wrench, Loader2, Zap } from 'lucide-react';
+import { ArrowLeft, Server, RefreshCw, Plug, Play, ChevronDown, ChevronRight, Wrench, Loader2, Zap, Eye, EyeOff } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ToolRegistryView, McpToolInfo, McpConnectionState } from '../../api/client';
 import { ConnectionStateBadge, EnabledBadge } from './badges';
+import { containsSensitiveConfigJson, isSensitiveConfigKey } from './mcpConfig';
 
 export default function McpDetail() {
   const { id = '' } = useParams<{ id: string }>();
@@ -17,6 +18,8 @@ export default function McpDetail() {
   const [refreshingTools, setRefreshingTools] = useState(false);
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [revealedConfigKeys, setRevealedConfigKeys] = useState<Set<string>>(() => new Set());
+  const [rawConfigRevealed, setRawConfigRevealed] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,6 +134,16 @@ export default function McpDetail() {
       return server.raw_config;
     }
   }, [server?.raw_config]);
+  const rawConfigContainsSecrets = rawConfigDisplay ? containsSensitiveConfigJson(rawConfigDisplay) : false;
+
+  const toggleConfigVisibility = (key: string) => {
+    setRevealedConfigKeys(current => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   if (loading) {
     return <div className="p-6 text-sm" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>;
@@ -212,19 +225,49 @@ export default function McpDetail() {
           <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
             <div className="text-xs mb-2" style={{ color: 'var(--color-text-secondary)' }}>Configuration</div>
             {server.config?.transport === 'sandbox_hosted' ? (
-              <pre className="text-xs font-mono p-2 rounded overflow-auto max-h-60"
-                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                {rawConfigDisplay || 'No raw config'}
-              </pre>
+              <div>
+                {rawConfigContainsSecrets && !rawConfigRevealed ? (
+                  <div className="text-xs font-mono p-2 rounded"
+                    style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                    ••••••••••••••••
+                  </div>
+                ) : (
+                  <pre className="text-xs font-mono p-2 rounded overflow-auto max-h-60 whitespace-pre-wrap break-all"
+                    style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                    {rawConfigDisplay || 'No raw config'}
+                  </pre>
+                )}
+                {rawConfigContainsSecrets && (
+                  <button type="button" onClick={() => setRawConfigRevealed(value => !value)}
+                    aria-label={`${rawConfigRevealed ? 'Hide' : 'Reveal'} raw configuration`}
+                    className="mt-2 flex items-center gap-1 text-xs cursor-pointer"
+                    style={{ color: 'var(--color-primary)' }}>
+                    {rawConfigRevealed ? <EyeOff size={13} /> : <Eye size={13} />}
+                    {rawConfigRevealed ? 'Hide sensitive configuration' : 'Reveal sensitive configuration'}
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
-                {Object.entries(server.config).map(([k, v]) => (
-                  <div key={k} className="text-xs font-mono rounded px-2 py-1 min-w-0"
-                    style={{ background: 'var(--color-bg-tertiary)' }}>
-                    <span style={{ color: 'var(--color-text-secondary)' }}>{k}: </span>
-                    <span className="break-all">{v}</span>
-                  </div>
-                ))}
+                {Object.entries(server.config).map(([k, v]) => {
+                  const sensitive = isSensitiveConfigKey(k);
+                  const revealed = revealedConfigKeys.has(k);
+                  return (
+                    <div key={k} className="flex items-start gap-1 text-xs font-mono rounded px-2 py-1 min-w-0 overflow-hidden"
+                      style={{ background: 'var(--color-bg-tertiary)' }}>
+                      <span className="shrink-0" style={{ color: 'var(--color-text-secondary)' }}>{k}: </span>
+                      <span className="min-w-0 flex-1 break-all">{sensitive && !revealed ? '••••••••••••••••' : v}</span>
+                      {sensitive && (
+                        <button type="button" onClick={() => toggleConfigVisibility(k)}
+                          aria-label={`${revealed ? 'Hide' : 'Reveal'} ${k} value`}
+                          className="shrink-0 cursor-pointer"
+                          style={{ color: 'var(--color-primary)' }}>
+                          {revealed ? <EyeOff size={13} /> : <Eye size={13} />}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

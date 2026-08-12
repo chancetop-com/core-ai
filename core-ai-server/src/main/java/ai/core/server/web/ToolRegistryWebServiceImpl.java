@@ -137,7 +137,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
         var response = new McpServerStatusResponse();
         response.serverId = id;
         response.state = state.name();
-        response.message = entity.enabled ? null : "server is disabled";
+        response.message = mcpStatusMessage(state, entity.enabled);
         LOGGER.debug("getMcpServerStatus completed, id={}, state={}, elapsed={}", id, state, watch.elapsed());
         return response;
     }
@@ -148,11 +148,21 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
         var response = new McpServerStatusResponse();
         response.serverId = id;
         response.state = state.name();
-        if (state == McpClientManager.ConnectionState.CONNECTING
-            || state == McpClientManager.ConnectionState.NOT_CONNECTED) {
-            response.message = "Connection in progress, check status endpoint for completion";
-        }
+        response.message = mcpStatusMessage(state, true);
         return response;
+    }
+
+    private String mcpStatusMessage(McpClientManager.ConnectionState state, boolean enabled) {
+        if (!enabled) return "server is disabled";
+        if (state == McpClientManager.ConnectionState.FAILED) {
+            return "Connection failed. Check the server URL and credentials, save changes, then retry.";
+        }
+        if (state == McpClientManager.ConnectionState.CONNECTING
+            || state == McpClientManager.ConnectionState.NOT_CONNECTED
+            || state == McpClientManager.ConnectionState.RECONNECTING) {
+            return "Connection in progress, check status endpoint for completion";
+        }
+        return null;
     }
 
     @Override

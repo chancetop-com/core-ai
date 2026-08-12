@@ -303,8 +303,10 @@ class McpServerOperationService {
         var currentState = mcpManager.getState(entity.id);
         if (currentState == McpClientManager.ConnectionState.FAILED
             || currentState == McpClientManager.ConnectionState.RECONNECTING) {
-            LOGGER.warn("mcp server is in {} state, skipping connect, id={}", currentState, serverId);
-            return currentState;
+            LOGGER.info("manual retry requested for mcp server, previousState={}, id={}", currentState, serverId);
+            // Re-registering clears the manager's exhausted/permanent reconnect state and
+            // cancels any pending backoff task before this explicit user retry.
+            mcpConnectionManager.unregisterMcpServer(entity.id);
         }
         if (currentState == McpClientManager.ConnectionState.CONNECTED) return currentState;
 

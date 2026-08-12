@@ -1,6 +1,8 @@
 package ai.core.server.tool;
 
 import ai.core.server.domain.ToolRegistryEntry;
+import ai.core.server.domain.ToolType;
+import ai.core.mcp.client.McpClientManager;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,6 +20,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class McpServerOperationServiceTest {
     @SuppressWarnings("unchecked")
@@ -25,14 +29,17 @@ class McpServerOperationServiceTest {
     }
 
     private final MongoCollection<ToolRegistryEntry> collection = collection();
+    private final McpServerConnectionManager connectionManager = mock(McpServerConnectionManager.class);
+    private final ApplicationMcpManager applicationMcpManager = mock(ApplicationMcpManager.class);
+    private final Map<String, ToolRegistryEntry> tools = new HashMap<>();
     private McpServerOperationService service;
 
     @BeforeEach
     void setUp() {
         service = new McpServerOperationService(
-            new HashMap<>(),
-            mock(McpServerConnectionManager.class),
-            mock(ApplicationMcpManager.class)
+            tools,
+            connectionManager,
+            applicationMcpManager
         );
         service.setToolRegistryCollection(collection);
     }
@@ -123,6 +130,31 @@ class McpServerOperationServiceTest {
         assertEquals("remote", inserted.getValue().name);
         assertEquals("ops", inserted.getValue().category);
         assertFalse(inserted.getValue().enabled);
+    }
+
+    @Test
+    void retriesFailedServerWhenConnectIsRequested() {
+        var entity = new ToolRegistryEntry();
+        entity.id = "meta-ads";
+        entity.name = "meta-ads-mcp";
+        entity.type = ToolType.MCP;
+        entity.config = Map.of("url", "https://mcp.facebook.com", "endpoint", "/ads");
+        entity.enabled = Boolean.TRUE;
+        tools.put(entity.id, entity);
+
+        var manager = mock(McpClientManager.class);
+        when(applicationMcpManager.get()).thenReturn(manager);
+        when(manager.getState(entity.id))
+            .thenReturn(McpClientManager.ConnectionState.FAILED)
+            .thenReturn(McpClientManager.ConnectionState.NOT_CONNECTED)
+            .thenReturn(McpClientManager.ConnectionState.CONNECTED);
+
+        var state = service.connectMcpServer(entity.id);
+
+        assertEquals(McpClientManager.ConnectionState.CONNECTED, state);
+        verify(connectionManager).unregisterMcpServer(entity.id);
+        verify(connectionManager).registerMcpServer(entity);
+        verify(manager).getClient(entity.id);
     }
 
 }
