@@ -49,7 +49,9 @@ public class SessionModule extends Module {
 
     private void registerSseEndpoints() {
         var registry = bean(SseEndpointRegistry.class);
-        registry.addInterceptor(new SseAuthInterceptor(bean(RequestAuthenticator.class)));
+        registry.addInterceptor(new SseAuthInterceptor(bean(RequestAuthenticator.class),
+                bean(ai.core.server.web.session.SessionIdentity.class),
+                bean(ai.core.server.apiuser.PermissionService.class)));
         registry.register(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class), false);
         registry.register(HTTPMethod.POST, "/api/litellm/v1/chat/completions", Object.class, bind(LiteLLMProxyChannelListener.class), false);
     }

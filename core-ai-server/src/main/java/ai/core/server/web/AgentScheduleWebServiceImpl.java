@@ -10,6 +10,8 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.run.AgentRunner;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.schedule.AgentScheduleService;
 import core.framework.inject.Inject;
@@ -33,6 +35,7 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     MongoCollection<AgentDefinition> agentDefinitionCollection;
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public AgentScheduleView create(CreateScheduleRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -40,16 +43,19 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public ListSchedulesResponse list() {
         return agentScheduleService.list();
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public ListSchedulesResponse listByAgent(String agentId) {
         return agentScheduleService.listByAgent(agentId);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public AgentScheduleView update(String id, UpdateScheduleRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -57,6 +63,7 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public void delete(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -64,6 +71,7 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public TriggerRunResponse trigger(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);

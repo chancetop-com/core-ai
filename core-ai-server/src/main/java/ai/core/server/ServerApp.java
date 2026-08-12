@@ -55,6 +55,7 @@ import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trigger.domain.Trigger;
+import ai.core.server.rbac.RbacModule;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
 import core.framework.mongo.module.MongoConfig;
@@ -92,6 +93,7 @@ public class ServerApp extends App {
         load(new TaskModule());
         // must load before TraceModule: trace ingest services depend on ApiUserQuotaService for quota accounting
         load(new ApiUserModule());
+        load(new RbacModule());
         load(new TraceModule());
         load(new MemoryModule());
         load(new MessagingInfrastructureModule());

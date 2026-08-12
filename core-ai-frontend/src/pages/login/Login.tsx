@@ -32,7 +32,7 @@ export default function Login() {
     setLoading(true);
     try {
       const res = await authApi.login(email, password);
-      login(res.api_key, res.user_id, res.name, res.role);
+      login(res.api_key, res.user_id, res.name, res.role, res.permissions);
       if (callback) {
         navigate(`/authorize?callback=${encodeURIComponent(callback)}`);
       } else {

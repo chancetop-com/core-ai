@@ -74,6 +74,9 @@ public class SystemSettings {
     @Field(name = "github_app_private_key")
     public String githubAppPrivateKey;
 
+    @Field(name = "rbac_roles")
+    public String rbacRoles;
+
     @Field(name = "created_by")
     public String createdBy;
 

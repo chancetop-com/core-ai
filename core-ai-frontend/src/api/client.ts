@@ -44,6 +44,19 @@ export interface LoginResponse {
   user_id: string;
   name: string;
   role?: string;
+  permissions?: string[];
+}
+
+export interface UserProfile {
+  user_id: string;
+  name: string;
+  role?: string;
+  permissions?: string[];
+}
+
+export interface RoleConfig {
+  roles: Record<string, string[]>;
+  catalog?: string[];
 }
 
 export const authApi = {
@@ -51,6 +64,10 @@ export const authApi = {
     request<LoginResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (email: string, password: string, name?: string) =>
     request<{ api_key: string; user_id: string }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password, name }) }),
+  logout: () =>
+    requestWithAuth<void>('/api/auth/logout', { method: 'POST' }),
+  me: () =>
+    requestWithAuth<UserProfile>('/api/auth/me'),
 };
 
 export interface ApiKeyInfo {
@@ -70,6 +87,13 @@ export const userApi = {
   changePassword: (currentPassword: string, newPassword: string) =>
     requestWithAuth<void>('/api/user/change-password',
       { method: 'POST', body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }),
+};
+
+export const rbacApi = {
+  listRoles: () =>
+    requestWithAuth<RoleConfig>('/api/admin/rbac/roles'),
+  updateRoles: (roles: Record<string, string[]>) =>
+    requestWithAuth<void>('/api/admin/rbac/roles', { method: 'PUT', body: JSON.stringify({ roles }) }),
 };
 
 export interface UserStatus {

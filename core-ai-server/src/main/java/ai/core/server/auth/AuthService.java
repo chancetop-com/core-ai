@@ -7,8 +7,10 @@ import ai.core.api.server.apiuser.response.OutboundCallerHeaderView;
 import ai.core.api.server.apiuser.response.ResourcePermissionView;
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.server.apiuser.ApiUserService;
+import ai.core.server.apiuser.PermissionService;
 import ai.core.server.domain.OutboundCallerHeaderConfig;
 import ai.core.server.domain.User;
+import ai.core.server.rbac.RoleRegistry;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -42,6 +44,10 @@ public class AuthService {
 
     @Inject
     MongoCollection<User> userCollection;
+    @Inject
+    PermissionService permissionService;
+    @Inject
+    RoleRegistry roleRegistry;
 
     public String adminEmail;
     public String adminPassword;
@@ -131,6 +137,7 @@ public class AuthService {
         response.userId = user.id;
         response.name = user.name;
         response.role = user.role;
+        response.permissions = permissionService.permissionsOf(user.id);
         return response;
     }
 
@@ -206,8 +213,8 @@ public class AuthService {
             throw new BadRequestException("cannot change your own role");
         }
 
-        if (!"user".equals(newRole) && !"admin".equals(newRole)) {
-            throw new BadRequestException("invalid role, must be 'user' or 'admin'");
+        if (!RoleRegistry.ROLE_ADMIN.equals(newRole) && !roleRegistry.effectiveRoles().containsKey(newRole)) {
+            throw new BadRequestException("invalid role: " + newRole);
         }
 
         var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());

@@ -24,6 +24,8 @@ import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.apiuser.PermissionService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
@@ -57,6 +59,7 @@ import java.util.Map;
 /**
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.CHAT_USE)
 public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     private static final String SESSION_STATE_KEY = "agent-session-state";
 

@@ -1,5 +1,6 @@
 package ai.core.server.channel;
 
+import ai.core.server.rbac.PermissionsBypass;
 import core.framework.inject.Inject;
 import core.framework.web.Controller;
 import core.framework.web.Request;
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 /**
  * @author stephen
  */
+@PermissionsBypass
 public class ChannelController implements Controller {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChannelController.class);
 

@@ -16,6 +16,8 @@ import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
 import ai.core.server.domain.User;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
@@ -45,6 +47,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
     MongoCollection<User> userCollection;
 
     @Override
+    @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
     public DatasetView create(CreateDatasetRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -54,6 +57,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.DATASET_VIEW)
     public ListDatasetsResponse list(ListDatasetsRequest request) {
         var effectiveRequest = request != null ? request : new ListDatasetsRequest();
         var entities = datasetService.list(effectiveRequest.query, effectiveRequest.offset, effectiveRequest.limit);
@@ -64,6 +68,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.DATASET_VIEW)
     public DatasetView get(String id) {
         var entity = datasetService.get(id);
         if (entity == null) throw new RuntimeException("dataset not found, id=" + id);
@@ -71,6 +76,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
     public DatasetView update(String id, UpdateDatasetRequest request) {
         var schema = request.schema != null ? toSchemaFields(request.schema) : null;
         var entity = datasetService.update(id, request.name, request.description, schema, resolveType(request.type));
@@ -79,11 +85,13 @@ public class DatasetWebServiceImpl implements DatasetWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
     public void delete(String id) {
         datasetService.delete(id);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.DATASET_VIEW)
     public ListDatasetRecordsResponse listRecords(String id) {
         var dataset = datasetService.get(id);
         if (dataset == null) throw new RuntimeException("dataset not found, id=" + id);

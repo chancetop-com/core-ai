@@ -7,6 +7,8 @@ import ai.core.api.server.trigger.TriggerView;
 import ai.core.api.server.trigger.TriggerWebService;
 import ai.core.api.server.trigger.UpdateTriggerRequest;
 import ai.core.server.trigger.TriggerService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
@@ -23,6 +25,7 @@ public class TriggerWebServiceImpl implements TriggerWebService {
     TriggerService triggerService;
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public TriggerView create(CreateTriggerRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -30,16 +33,19 @@ public class TriggerWebServiceImpl implements TriggerWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public ListTriggersResponse list(ListTriggersRequest request) {
         return triggerService.list(request != null ? request.type : null);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public TriggerView get(String id) {
         return triggerService.get(id);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public TriggerView update(String id, UpdateTriggerRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -47,6 +53,7 @@ public class TriggerWebServiceImpl implements TriggerWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public void delete(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -54,6 +61,7 @@ public class TriggerWebServiceImpl implements TriggerWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public TriggerView enable(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -61,6 +69,7 @@ public class TriggerWebServiceImpl implements TriggerWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public TriggerView disable(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -68,6 +77,7 @@ public class TriggerWebServiceImpl implements TriggerWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public TriggerView rotateSecret(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);

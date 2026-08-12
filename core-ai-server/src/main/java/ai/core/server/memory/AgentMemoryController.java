@@ -5,6 +5,8 @@ import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.memory.experiment.AgentMemoryExperimentConfig;
 import ai.core.server.memory.experiment.MemoryLayerView;
 import ai.core.server.memory.experiment.RankingStrategyView;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import core.framework.inject.Inject;
 import core.framework.web.Request;
 import core.framework.web.Response;
@@ -51,6 +53,7 @@ public class AgentMemoryController {
     @Inject
     AgentMemoryExperimentService agentMemoryExperimentService;
 
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public Response list(Request request) {
         var agentId = request.pathParam("id");
         var memories = agentMemoryService.findByAgentId(agentId);
@@ -71,6 +74,7 @@ public class AgentMemoryController {
         return Response.bean(resp);
     }
 
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public Response getExperimentConfig(Request request) {
         var agentId = request.pathParam("id");
         var config = agentMemoryExperimentService.getConfig(agentId);
@@ -78,18 +82,21 @@ public class AgentMemoryController {
         return Response.bean(toView(config));
     }
 
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public Response delete(Request request) {
         var memoryId = request.pathParam("memoryId");
         agentMemoryService.deleteMemory(memoryId);
         return Response.empty();
     }
 
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public Response deleteAll(Request request) {
         var agentId = request.pathParam("id");
         agentMemoryService.deleteAllByAgentId(agentId);
         return Response.empty();
     }
 
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public Response saveExperimentConfig(Request request) {
         var agentId = request.pathParam("id");
         var view = request.bean(AgentMemoryExperimentConfigView.class);

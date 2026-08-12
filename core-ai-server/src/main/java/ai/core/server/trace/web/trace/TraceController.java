@@ -15,6 +15,8 @@ import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.service.TracePreviewExtractor;
 import ai.core.server.trace.service.TraceListFilter;
 import ai.core.server.trace.service.TraceService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.workflow.WorkflowRunService;
 import ai.core.utils.JsonUtil;
@@ -28,6 +30,7 @@ import java.util.Map;
 /**
  * @author Xander
  */
+@PermissionsRequired(PermissionCodes.TRACE_VIEW)
 public class TraceController {
     private static final ObjectMapper MAPPER = JsonUtil.OBJECT_MAPPER;
 

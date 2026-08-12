@@ -4,6 +4,8 @@ import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@PermissionsRequired(PermissionCodes.DASHBOARD_VIEW)
 public class ForYouController {
     private static final ObjectMapper MAPPER = JsonUtil.OBJECT_MAPPER;
 

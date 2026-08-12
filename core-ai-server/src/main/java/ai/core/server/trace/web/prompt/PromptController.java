@@ -9,6 +9,8 @@ import core.framework.web.Response;
 
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.service.PromptService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 
 /**
  * @author Xander
@@ -19,6 +21,7 @@ public class PromptController {
     @Inject
     PromptService promptService;
 
+    @PermissionsRequired(PermissionCodes.PROMPT_VIEW)
     public Response list(Request request) {
         var params = request.queryParams();
         int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
@@ -27,12 +30,14 @@ public class PromptController {
         return jsonResponse(prompts);
     }
 
+    @PermissionsRequired(PermissionCodes.PROMPT_MANAGE)
     public Response create(Request request) {
         var body = readBody(request);
         var created = promptService.create(body);
         return jsonResponse(created).status(core.framework.api.http.HTTPStatus.CREATED);
     }
 
+    @PermissionsRequired(PermissionCodes.PROMPT_VIEW)
     public Response get(Request request) {
         String promptId = request.pathParam("promptId");
         var prompt = promptService.get(promptId);
@@ -42,6 +47,7 @@ public class PromptController {
         return jsonResponse(prompt);
     }
 
+    @PermissionsRequired(PermissionCodes.PROMPT_MANAGE)
     public Response update(Request request) {
         String promptId = request.pathParam("promptId");
         var body = readBody(request);
@@ -49,12 +55,14 @@ public class PromptController {
         return jsonResponse(updated);
     }
 
+    @PermissionsRequired(PermissionCodes.PROMPT_MANAGE)
     public Response delete(Request request) {
         String promptId = request.pathParam("promptId");
         promptService.delete(promptId);
         return Response.text("deleted");
     }
 
+    @PermissionsRequired(PermissionCodes.PROMPT_MANAGE)
     public Response publish(Request request) {
         String promptId = request.pathParam("promptId");
         var published = promptService.publish(promptId);

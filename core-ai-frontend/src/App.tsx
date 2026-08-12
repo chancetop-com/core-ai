@@ -2,10 +2,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import RequirePermission from './components/RequirePermission';
 import { CapabilitiesContext, fetchCapabilities } from './api/capabilities';
 import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
 import type { AuthUser } from './api/auth';
+import { authApi } from './api/client';
 
 const TraceList = lazy(() => import('./pages/traces/TraceList'));
 const TraceDetail = lazy(() => import('./pages/traces/TraceDetail'));
@@ -75,23 +77,40 @@ export default function App() {
       // Skip auth for local modes (cli serve / local server)
       if (!c.authRequired) {
         // Always use local user when auth is not required
-        storeUser('local', 'local', 'Local');
-        setUser({ apiKey: 'local', userId: 'local', name: 'Local' });
+        storeUser('local', 'local', 'Local', undefined, ['*']);
+        setUser({ apiKey: 'local', userId: 'local', name: 'Local', permissions: ['*'] });
       } else {
         // Auth required - check stored user
         const stored = getStoredUser();
-        if (stored) setUser(stored);
+        if (stored) {
+          setUser(stored);
+          // Refresh profile/permissions from the session-backed /api/auth/me
+          authApi.me().then(profile => {
+            if (!profile) return;
+            const refreshed: AuthUser = {
+              apiKey: stored.apiKey,
+              userId: profile.user_id || stored.userId,
+              name: profile.name || stored.name,
+              role: profile.role || stored.role,
+              permissions: profile.permissions || stored.permissions,
+            };
+            storeUser(refreshed.apiKey, refreshed.userId, refreshed.name, refreshed.role, refreshed.permissions);
+            setUser(refreshed);
+          }).catch(() => { /* keep stored user on network errors */ });
+        }
       }
       setLoading(false);
     });
   }, []);
 
-  const login = useCallback((apiKey: string, userId: string, name: string, role?: string) => {
-    storeUser(apiKey, userId, name, role);
-    setUser({ apiKey, userId, name, role });
+  const login = useCallback((apiKey: string, userId: string, name: string, role?: string, permissions?: string[]) => {
+    storeUser(apiKey, userId, name, role, permissions);
+    setUser({ apiKey, userId, name, role, permissions });
   }, []);
 
   const logout = useCallback(() => {
+    // Invalidate the server session (cookie) so the browser can't resume it
+    authApi.logout().catch(() => {});
     clearUser();
     setUser(null);
   }, []);
@@ -129,59 +148,59 @@ export default function App() {
                   <Route path="*" element={<Navigate to="/login" replace />} />
                 ) : (
                   <Route element={<Layout />}>
-                    <Route path="/for-you" element={<ForYou />} />
-                    <Route path="/for-you/artifacts" element={<ArtifactList />} />
-                    {caps.chat && <Route path="/chat" element={<Chat />} />}
-                    {caps.traces && <Route path="/traces" element={<TraceList />} />}
-                    {caps.traces && <Route path="/traces/:id" element={<TraceDetail />} />}
+                    <Route path="/for-you" element={<RequirePermission permission="dashboard.view"><ForYou /></RequirePermission>} />
+                    <Route path="/for-you/artifacts" element={<RequirePermission permission="dashboard.view"><ArtifactList /></RequirePermission>} />
+                    {caps.chat && <Route path="/chat" element={<RequirePermission permission="chat.use"><Chat /></RequirePermission>} />}
+                    {caps.traces && <Route path="/traces" element={<RequirePermission permission="trace.view"><TraceList /></RequirePermission>} />}
+                    {caps.traces && <Route path="/traces/:id" element={<RequirePermission permission="trace.view"><TraceDetail /></RequirePermission>} />}
                     {/* Sessions page removed - session list now in Chat sidebar */}
-                    {caps.prompts && <Route path="/prompts" element={<PromptList />} />}
-                    {caps.prompts && <Route path="/prompts/:id" element={<PromptEditor />} />}
-                    <Route path="/agents" element={<AgentList />} />
-                    <Route path="/agents/:id" element={<AgentEditor />} />
-                    <Route path="/agents/:id/memories" element={<AgentMemory />} />
-                    <Route path="/runs/:id" element={<RunDetail />} />
-                    <Route path="/experiments/memory" element={<MemoryExperiment />} />
-                    <Route path="/experiments/memory/runs/:id" element={<MemoryExperimentRunDetail />} />
-                    <Route path="/experiments/memory/configs/:id" element={<MemoryExperimentConfigDetail />} />
-                    <Route path="/workflows/explore" element={<WorkflowExplore />} />
-                    <Route path="/workflows" element={<WorkflowList />} />
-                    <Route path="/workflows/:id/runs" element={<WorkflowRuns />} />
-                    <Route path="/workflows/:id" element={<WorkflowEditor />} />
-                    {caps.systemPrompts && <Route path="/system-prompts" element={<SystemPromptList />} />}
-                    {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<SystemPromptEditor />} />}
-                    <Route path="/triggers/webhook" element={<TriggersWebhook />} />
-                    <Route path="/triggers/channels" element={<Channels />} />
-                    <Route path="/triggers/openclaw" element={<OpenClaw />} />
-                    <Route path="/triggers/schedule" element={<Scheduler />} />
+                    {caps.prompts && <Route path="/prompts" element={<RequirePermission permission="prompt.view"><PromptList /></RequirePermission>} />}
+                    {caps.prompts && <Route path="/prompts/:id" element={<RequirePermission permission="prompt.view"><PromptEditor /></RequirePermission>} />}
+                    <Route path="/agents" element={<RequirePermission permission="agent.view"><AgentList /></RequirePermission>} />
+                    <Route path="/agents/:id" element={<RequirePermission permission="agent.view"><AgentEditor /></RequirePermission>} />
+                    <Route path="/agents/:id/memories" element={<RequirePermission permission="agent.view"><AgentMemory /></RequirePermission>} />
+                    <Route path="/runs/:id" element={<RequirePermission permission="agent.view"><RunDetail /></RequirePermission>} />
+                    <Route path="/experiments/memory" element={<RequirePermission permission="experiment.view"><MemoryExperiment /></RequirePermission>} />
+                    <Route path="/experiments/memory/runs/:id" element={<RequirePermission permission="experiment.view"><MemoryExperimentRunDetail /></RequirePermission>} />
+                    <Route path="/experiments/memory/configs/:id" element={<RequirePermission permission="experiment.view"><MemoryExperimentConfigDetail /></RequirePermission>} />
+                    <Route path="/workflows/explore" element={<RequirePermission permission="workflow.view"><WorkflowExplore /></RequirePermission>} />
+                    <Route path="/workflows" element={<RequirePermission permission="workflow.view"><WorkflowList /></RequirePermission>} />
+                    <Route path="/workflows/:id/runs" element={<RequirePermission permission="workflow.view"><WorkflowRuns /></RequirePermission>} />
+                    <Route path="/workflows/:id" element={<RequirePermission permission="workflow.view"><WorkflowEditor /></RequirePermission>} />
+                    {caps.systemPrompts && <Route path="/system-prompts" element={<RequirePermission permission="prompt.view"><SystemPromptList /></RequirePermission>} />}
+                    {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<RequirePermission permission="prompt.view"><SystemPromptEditor /></RequirePermission>} />}
+                    <Route path="/triggers/webhook" element={<RequirePermission permission="trigger.view"><TriggersWebhook /></RequirePermission>} />
+                    <Route path="/triggers/channels" element={<RequirePermission permission="trigger.view"><Channels /></RequirePermission>} />
+                    <Route path="/triggers/openclaw" element={<RequirePermission permission="trigger.view"><OpenClaw /></RequirePermission>} />
+                    <Route path="/triggers/schedule" element={<RequirePermission permission="trigger.view"><Scheduler /></RequirePermission>} />
                     <Route path="/triggers" element={<Navigate to="/triggers/webhook" replace />} />
                     {/* Backward compat: old /scheduler redirects to /triggers/schedule */}
                     <Route path="/scheduler" element={<Navigate to="/triggers/schedule" replace />} />
-                    <Route path="/tasks" element={<Tasks />} />
-                    <Route path="/mcp" element={<Mcp />} />
-                    <Route path="/mcp/:id" element={<McpDetail />} />
+                    <Route path="/tasks" element={<RequirePermission permission="task.view"><Tasks /></RequirePermission>} />
+                    <Route path="/mcp" element={<RequirePermission permission="mcp.view"><Mcp /></RequirePermission>} />
+                    <Route path="/mcp/:id" element={<RequirePermission permission="mcp.view"><McpDetail /></RequirePermission>} />
                     <Route path="/tools" element={<Navigate to="/tools/builtin" replace />} />
-                    <Route path="/tools/builtin" element={<BuiltinTools />} />
-                    <Route path="/api-tools" element={<ApiTools />} />
-                    <Route path="/api-tools/:id" element={<ApiToolDetail />} />
-                    <Route path="/skills" element={<SkillList />} />
-                    <Route path="/skills/marketplace/:repoId" element={<MarketplaceRepoDetail />} />
-                    <Route path="/skills/:id/edit" element={<SkillEditor />} />
-                    <Route path="/datasets" element={<DatasetList />} />
-                    <Route path="/datasets/:id" element={<DatasetEditor />} />
-                    <Route path="/datasets/:id/records" element={<DatasetRecords />} />
+                    <Route path="/tools/builtin" element={<RequirePermission permission="tool.view"><BuiltinTools /></RequirePermission>} />
+                    <Route path="/api-tools" element={<RequirePermission permission="apitool.view"><ApiTools /></RequirePermission>} />
+                    <Route path="/api-tools/:id" element={<RequirePermission permission="apitool.view"><ApiToolDetail /></RequirePermission>} />
+                    <Route path="/skills" element={<RequirePermission permission="skill.view"><SkillList /></RequirePermission>} />
+                    <Route path="/skills/marketplace/:repoId" element={<RequirePermission permission="skill.view"><MarketplaceRepoDetail /></RequirePermission>} />
+                    <Route path="/skills/:id/edit" element={<RequirePermission permission="skill.view"><SkillEditor /></RequirePermission>} />
+                    <Route path="/datasets" element={<RequirePermission permission="dataset.view"><DatasetList /></RequirePermission>} />
+                    <Route path="/datasets/:id" element={<RequirePermission permission="dataset.view"><DatasetEditor /></RequirePermission>} />
+                    <Route path="/datasets/:id/records" element={<RequirePermission permission="dataset.view"><DatasetRecords /></RequirePermission>} />
                     <Route path="/settings" element={<SettingsPage />}>
                       <Route path="api-keys" element={<ApiKeysPage />} />
-                      {user?.role === 'admin' && <Route path="gateway" element={<GatewayProvidersPage />} />}
-                      {user?.role === 'admin' && <Route path="system" element={<SystemSettingsPage />} />}
-                      {user?.role === 'admin' && <Route path="cost-alerts" element={<CostAlerts />} />}
-                      {user?.role === 'admin' && <Route path="api-users" element={<Navigate to="/settings/users" replace />} />}
+                      <Route path="gateway" element={<RequirePermission permission="gateway.manage"><GatewayProvidersPage /></RequirePermission>} />
+                      <Route path="system" element={<RequirePermission permission="system.manage"><SystemSettingsPage /></RequirePermission>} />
+                      <Route path="cost-alerts" element={<RequirePermission permission="costalert.manage"><CostAlerts /></RequirePermission>} />
+                      <Route path="api-users" element={<RequirePermission permission="user.manage"><Navigate to="/settings/users" replace /></RequirePermission>} />
                       {user?.role === 'admin' && <Route index element={<Dashboard />} />}
-                      {user?.role === 'admin' && <Route path="users" element={<UserManagement />} />}
-                      {user?.role === 'admin' && <Route path="tasks" element={<Tasks />} />}
+                      <Route path="users" element={<RequirePermission permission="user.manage"><UserManagement /></RequirePermission>} />
+                      <Route path="tasks" element={<RequirePermission permission="task.view"><Tasks /></RequirePermission>} />
                       {user?.role !== 'admin' && <Route index element={<Navigate to="/settings/api-keys" replace />} />}
                     </Route>
-                    <Route path="/notifications" element={<NotificationsPage />} />
+                    <Route path="/notifications" element={<RequirePermission permission="notification.view"><NotificationsPage /></RequirePermission>} />
                     <Route path="*" element={<Navigate to={defaultPath} replace />} />
                   </Route>
                 )}

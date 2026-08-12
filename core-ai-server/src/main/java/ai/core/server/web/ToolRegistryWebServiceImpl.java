@@ -19,81 +19,127 @@ import ai.core.api.server.tool.TestMcpToolResponse;
 import ai.core.api.server.tool.ToolRegistryView;
 import ai.core.api.server.tool.UpdateMcpServerRequest;
 import ai.core.mcp.client.McpClientManager;
+import ai.core.server.apiuser.PermissionService;
 import ai.core.server.domain.ToolRegistryEntry;
+import ai.core.server.domain.ToolType;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsBypass;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.tool.InternalApiToolLoader;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.web.auth.AuthContext;
+import ai.core.server.web.session.SessionIdentity;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.util.StopWatch;
+import core.framework.web.WebContext;
+import core.framework.web.exception.ForbiddenException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
  */
 public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistryWebServiceImpl.class);
+    private static final String MASKED_SECRET = "***";
 
     @Inject
     ToolRegistryService toolRegistryService;
+    @Inject
+    WebContext webContext;
+    @Inject
+    PermissionService permissionService;
+    @Inject
+    SessionIdentity sessionIdentity;
 
     @Override
+    @PermissionsBypass
     public ListToolsResponse list(ListToolsRequest request) {
+        var userId = AuthContext.userId(webContext);
         var tools = toolRegistryService.listTools(request.category);
+        var visible = tools.stream()
+                .filter(tool -> tool.type != ToolType.MCP || hasMcpView(userId))
+                .toList();
         var response = new ListToolsResponse();
-        response.tools = tools.stream().map(this::toView).toList();
+        response.tools = visible.stream().map(tool -> toView(tool, userId)).toList();
         response.total = (long) response.tools.size();
         return response;
     }
 
     @Override
+    @PermissionsBypass
     public ToolRegistryView get(String id) {
-        return toView(toolRegistryService.getTool(id));
+        var userId = AuthContext.userId(webContext);
+        var entity = toolRegistryService.getTool(id);
+        if (entity.type == ToolType.MCP) {
+            if (!hasMcpView(userId)) {
+                throw new ForbiddenException("permission required: " + PermissionCodes.MCP_VIEW);
+            }
+        } else if (entity.type == ToolType.BUILTIN) {
+            if (!sessionIdentity.has(PermissionCodes.TOOL_VIEW)) permissionService.check(userId, PermissionCodes.TOOL_VIEW);
+        } else {
+            if (!sessionIdentity.has(PermissionCodes.APITOOL_VIEW)) permissionService.check(userId, PermissionCodes.APITOOL_VIEW);
+        }
+        return toView(entity, userId);
     }
 
     @Override
+    @PermissionsBypass
     public ListToolCategoriesResponse categories() {
+        requireAnyToolView(AuthContext.userId(webContext));
         var response = new ListToolCategoriesResponse();
         response.categories = toolRegistryService.listCategories();
         return response;
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_MANAGE)
     public ToolRegistryView createMcpServer(CreateMcpServerRequest request) {
-        return toView(toolRegistryService.createMcpServer(request.name, request.description, request.category, request.config, request.enabled));
+        return toView(toolRegistryService.createMcpServer(request.name, request.description, request.category, request.config, request.enabled), AuthContext.userId(webContext));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_MANAGE)
     public ImportMcpServersResponse importMcpServers(ImportMcpServersRequest request) {
         var created = toolRegistryService.importMcpServers(request.config, request.category, request.enabled);
         var response = new ImportMcpServersResponse();
-        response.servers = created.stream().map(this::toView).toList();
+        response.servers = created.stream().map(entity -> toView(entity, AuthContext.userId(webContext))).toList();
         response.total = response.servers.size();
         return response;
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_MANAGE)
     public ToolRegistryView updateMcpServer(String id, UpdateMcpServerRequest request) {
-        return toView(toolRegistryService.updateMcpServer(id, request));
+        return toView(toolRegistryService.updateMcpServer(id, request), AuthContext.userId(webContext));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_MANAGE)
     public void deleteMcpServer(String id) {
         toolRegistryService.deleteMcpServer(id);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_MANAGE)
     public ToolRegistryView enableMcpServer(String id) {
-        return toView(toolRegistryService.enableMcpServer(id));
+        return toView(toolRegistryService.enableMcpServer(id), AuthContext.userId(webContext));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_MANAGE)
     public ToolRegistryView disableMcpServer(String id) {
-        return toView(toolRegistryService.disableMcpServer(id));
+        return toView(toolRegistryService.disableMcpServer(id), AuthContext.userId(webContext));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_VIEW)
     public McpServerToolsResponse listMcpServerTools(String id) {
         var watch = new StopWatch();
         var entity = toolRegistryService.getTool(id);
@@ -113,6 +159,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TOOL_VIEW)
     public BuiltinGroupToolsResponse listBuiltinGroupTools(String id) {
         var entity = toolRegistryService.getTool(id);
         var tools = toolRegistryService.listBuiltinGroupTools(id);
@@ -130,6 +177,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_VIEW)
     public McpServerStatusResponse getMcpServerStatus(String id) {
         var watch = new StopWatch();
         var entity = toolRegistryService.getTool(id);
@@ -143,6 +191,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_MANAGE)
     public McpServerStatusResponse connectMcpServer(String id) {
         var state = toolRegistryService.connectMcpServer(id);
         var response = new McpServerStatusResponse();
@@ -166,6 +215,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.MCP_MANAGE)
     public TestMcpToolResponse testMcpServerTool(String id, TestMcpToolRequest request) {
         if (request == null || request.toolName == null || request.toolName.isBlank()) {
             throw new IllegalArgumentException("tool_name is required");
@@ -180,6 +230,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.APITOOL_VIEW)
     public ListApiAppsResponse listServiceApiApps() {
         var apps = toolRegistryService.listServiceApiApps();
         var response = new ListApiAppsResponse();
@@ -188,6 +239,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.APITOOL_VIEW)
     public ListApiAppServicesResponse listApiAppServices(String appName) {
         var services = toolRegistryService.listApiAppServices(appName);
         var response = new ListApiAppServicesResponse();
@@ -215,6 +267,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.APITOOL_MANAGE)
     public TestApiToolResponse testServiceApiTool(TestApiToolRequest request) {
         if (request == null || request.toolId == null || request.toolId.isBlank()) {
             throw new IllegalArgumentException("tool_id is required");
@@ -228,6 +281,25 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
         return response;
     }
 
+    private void requireAnyToolView(String userId) {
+        if (sessionIdentity.hasAny(PermissionCodes.TOOL_VIEW, PermissionCodes.MCP_VIEW, PermissionCodes.APITOOL_VIEW)) return;
+        if (!permissionService.has(userId, PermissionCodes.TOOL_VIEW)
+            && !permissionService.has(userId, PermissionCodes.MCP_VIEW)
+            && !permissionService.has(userId, PermissionCodes.APITOOL_VIEW)) {
+            throw new ForbiddenException("permission required: tool.view or mcp.view or apitool.view");
+        }
+    }
+
+    private boolean hasMcpView(String userId) {
+        if (sessionIdentity.has(PermissionCodes.MCP_VIEW)) return true;
+        return permissionService.has(userId, PermissionCodes.MCP_VIEW);
+    }
+
+    private boolean hasMcpManage(String userId) {
+        if (sessionIdentity.has(PermissionCodes.MCP_MANAGE)) return true;
+        return permissionService.has(userId, PermissionCodes.MCP_MANAGE);
+    }
+
     private ListApiAppsResponse.ApiAppView toApiAppView(InternalApiToolLoader.ApiAppInfo info) {
         var view = new ListApiAppsResponse.ApiAppView();
         view.name = info.app();
@@ -237,16 +309,35 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
         return view;
     }
 
-    private ToolRegistryView toView(ToolRegistryEntry entity) {
+    /**
+     * MCP entries are masked for viewers: config secret keys (headers/env) and raw_config
+     * are hidden unless the caller has {@code mcp.manage}; without {@code mcp.view} the
+     * entry is filtered out entirely by the caller.
+     */
+    private ToolRegistryView toView(ToolRegistryEntry entity, String userId) {
         var view = new ToolRegistryView();
         view.id = entity.id;
         view.name = entity.name;
         view.description = entity.description;
         view.type = entity.type.name();
         view.category = entity.category;
-        view.config = entity.config;
-        view.rawConfig = entity.rawConfig;
+        if (entity.type == ToolType.MCP && !hasMcpManage(userId)) {
+            view.config = maskMcpConfig(entity.config);
+            view.rawConfig = null;
+        } else {
+            view.config = entity.config;
+            view.rawConfig = entity.rawConfig;
+        }
         view.enabled = entity.enabled;
         return view;
+    }
+
+    private Map<String, String> maskMcpConfig(Map<String, String> config) {
+        if (config == null || config.isEmpty()) return Map.of();
+        var masked = new HashMap<String, String>(config);
+        for (var key : List.of("headers", "env")) {
+            if (masked.containsKey(key)) masked.put(key, MASKED_SECRET);
+        }
+        return masked;
     }
 }

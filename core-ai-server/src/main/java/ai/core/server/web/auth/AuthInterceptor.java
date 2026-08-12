@@ -2,6 +2,7 @@ package ai.core.server.web.auth;
 
 import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.domain.User;
+import ai.core.server.web.session.SessionIdentity;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.Interceptor;
@@ -15,6 +16,36 @@ import core.framework.web.exception.ForbiddenException;
 public class AuthInterceptor implements Interceptor {
     private static final String API_USERS_PREFIX = "/api/api-users";
     private static final String ADMIN_API_USERS_PREFIX = "/api/admin/api-users";
+    private static final String USER_TYPE_API = "api";
+
+    public static boolean isPublicPath(String path) {
+        return "/api/auth/register".equals(path) || "/api/auth/login".equals(path)
+                || path.startsWith("/api/public/otel/")
+                || path.startsWith("/api/public/artifacts/")
+                || path.startsWith("/api/ingest/")
+                || path.startsWith("/api/capabilities")
+                || path.startsWith("/api/webhook-triggers/")
+                || path.startsWith("/api/weclaw/");
+    }
+
+    public static boolean isAnonymousChannelPath(String path, ChannelConfigStore channelConfigStore) {
+        return path.startsWith("/api/channels/") && channelAllowsAnonymous(path, channelConfigStore);
+    }
+
+    public static String extractChannelId(String path) {
+        // path format: /api/channels/:channelId
+        int start = "/api/channels/".length();
+        if (start >= path.length()) return null;
+        int end = path.indexOf('/', start);
+        return end < 0 ? path.substring(start) : path.substring(start, end);
+    }
+
+    private static boolean channelAllowsAnonymous(String path, ChannelConfigStore channelConfigStore) {
+        var channelId = extractChannelId(path);
+        if (channelId == null) return false;
+        var channel = channelConfigStore.load(channelId);
+        return channel != null && Boolean.FALSE.equals(channel.requireAuth);
+    }
 
     @Inject
     RequestAuthenticator requestAuthenticator;
@@ -25,6 +56,9 @@ public class AuthInterceptor implements Interceptor {
     @Inject
     MongoCollection<User> userCollection;
 
+    @Inject
+    SessionIdentity sessionIdentity;
+
     @Override
     public Response intercept(Invocation invocation) throws Exception {
         var request = invocation.context().request();
@@ -34,7 +68,7 @@ public class AuthInterceptor implements Interceptor {
             return invocation.proceed();
         }
 
-        if (isPublicPath(path) || isAnonymousChannelPath(path)) {
+        if (isPublicPath(path) || isAnonymousChannelPath(path, channelConfigStore)) {
             return invocation.proceed();
         }
 
@@ -42,6 +76,14 @@ public class AuthInterceptor implements Interceptor {
             return interceptApiUsers(invocation);
         }
 
+        // 1. session identity first (browser web login, stored in Redis when configured)
+        var identity = sessionIdentity.getUserIdentityOrNull();
+        if (identity != null) {
+            invocation.context().put(AuthContext.USER_ID_KEY, identity.userId);
+            return invocation.proceed();
+        }
+
+        // 2. bearer api key fallback (CLI / api users / non-cookie clients)
         var apiKeyResult = requestAuthenticator.authenticateFromApiKeyRecord(request);
         if (apiKeyResult != null) {
             invocation.context().put(AuthContext.USER_ID_KEY, apiKeyResult.userId());
@@ -49,6 +91,11 @@ public class AuthInterceptor implements Interceptor {
         } else {
             var userId = requestAuthenticator.authenticate(request);
             invocation.context().put(AuthContext.USER_ID_KEY, userId);
+            // 3. persist identity into session for internal users so subsequent requests skip key lookup
+            var user = userCollection.get(userId).orElse(null);
+            if (user != null && !USER_TYPE_API.equals(user.userType)) {
+                sessionIdentity.setLoginSession(userId);
+            }
         }
         if (path.startsWith(ADMIN_API_USERS_PREFIX)) {
             requireAdmin(AuthContext.userId(invocation.context()));
@@ -64,35 +111,6 @@ public class AuthInterceptor implements Interceptor {
         invocation.context().put(AuthContext.USER_ID_KEY, result.userId());
         invocation.context().put(AuthContext.KEY_ID_KEY, result.keyId());
         return invocation.proceed();
-    }
-
-    private boolean isPublicPath(String path) {
-        return "/api/auth/register".equals(path) || "/api/auth/login".equals(path)
-                || path.startsWith("/api/public/otel/")
-                || path.startsWith("/api/public/artifacts/")
-                || path.startsWith("/api/ingest/")
-                || path.startsWith("/api/capabilities")
-                || path.startsWith("/api/webhook-triggers/")
-                || path.startsWith("/api/weclaw/");
-    }
-
-    private boolean isAnonymousChannelPath(String path) {
-        return path.startsWith("/api/channels/") && channelAllowsAnonymous(path);
-    }
-
-    private boolean channelAllowsAnonymous(String path) {
-        var channelId = extractChannelId(path);
-        if (channelId == null) return false;
-        var channel = channelConfigStore.load(channelId);
-        return channel != null && Boolean.FALSE.equals(channel.requireAuth);
-    }
-
-    private String extractChannelId(String path) {
-        // path format: /api/channels/:channelId
-        int start = "/api/channels/".length();
-        if (start >= path.length()) return null;
-        int end = path.indexOf('/', start);
-        return end < 0 ? path.substring(start) : path.substring(start, end);
     }
 
     private void requireAdmin(String userId) {

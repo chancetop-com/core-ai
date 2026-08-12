@@ -1,5 +1,6 @@
 package ai.core.server.gateway;
 
+import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.web.Request;
@@ -7,6 +8,7 @@ import core.framework.web.WebContext;
 import core.framework.web.Response;
 import core.framework.web.exception.BadRequestException;
 
+@PermissionsBypass
 public class GatewayProxyController {
     @Inject
     GatewayProxyService gatewayProxyService;

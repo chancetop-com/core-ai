@@ -4,6 +4,8 @@ import ai.core.api.server.ApiDefinitionWebService;
 import ai.core.api.server.apidefinition.SearchApiDefinitionRequest;
 import ai.core.api.server.apidefinition.SearchApiDefinitionResponse;
 import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import core.framework.inject.Inject;
 
 /**
@@ -14,6 +16,7 @@ public class ApiDefinitionWebServiceImpl implements ApiDefinitionWebService {
     ApiDefinitionService apiDefinitionService;
 
     @Override
+    @PermissionsRequired(PermissionCodes.APITOOL_VIEW)
     public SearchApiDefinitionResponse search(SearchApiDefinitionRequest request) {
         return apiDefinitionService.search(request);
     }

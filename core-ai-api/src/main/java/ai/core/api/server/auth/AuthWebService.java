@@ -24,6 +24,14 @@ public interface AuthWebService {
     LoginResponse login(LoginRequest request);
 
     @POST
+    @Path("/api/auth/logout")
+    void logout();
+
+    @GET
+    @Path("/api/auth/me")
+    UserProfileView me();
+
+    @POST
     @Path("/api/auth/invite")
     void invite(InviteRequest request);
 

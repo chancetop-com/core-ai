@@ -2,6 +2,8 @@ package ai.core.api.server.auth;
 
 import core.framework.api.json.Property;
 
+import java.util.List;
+
 /**
  * @author stephen
  */
@@ -17,4 +19,7 @@ public class LoginResponse {
 
     @Property(name = "role")
     public String role;
+
+    @Property(name = "permissions")
+    public List<String> permissions;
 }

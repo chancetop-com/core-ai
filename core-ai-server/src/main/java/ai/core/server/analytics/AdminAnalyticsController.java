@@ -1,6 +1,8 @@
 package ai.core.server.analytics;
 
 import ai.core.server.domain.User;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,6 +20,7 @@ import java.util.List;
 /**
  * Admin analytics API controller. All endpoints require admin role.
  */
+@PermissionsRequired(PermissionCodes.ANALYTICS_VIEW)
 public class AdminAnalyticsController {
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .findAndRegisterModules()

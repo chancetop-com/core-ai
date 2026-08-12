@@ -8,6 +8,8 @@ import ai.core.api.server.costalert.response.CostAlertRuleView;
 import ai.core.api.server.costalert.response.ListCostAlertEventsResponse;
 import ai.core.api.server.costalert.response.ListCostAlertRulesResponse;
 import ai.core.server.channel.ChannelConfigStore;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -32,6 +34,7 @@ import java.util.Map;
  *
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.COSTALERT_MANAGE)
 public class CostAlertAdminWebServiceImpl implements CostAlertAdminWebService {
     private static final Logger LOGGER = LoggerFactory.getLogger(CostAlertAdminWebServiceImpl.class);
     private static final ZoneOffset UTC = ZoneOffset.UTC;

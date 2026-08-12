@@ -4,6 +4,7 @@ import { Activity, Bell, Bot, Calendar, ChevronRight, Database, Files, FlaskConi
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
+import { hasPermission } from '../api/permissions';
 import QuickActionDialog from './QuickActionDialog';
 
 interface NavItem {
@@ -11,7 +12,8 @@ interface NavItem {
   icon?: React.ComponentType<{ size: number; className?: string }>;
   label: string;
   show: boolean;
-  children?: { to: string; icon?: React.ComponentType<{ size: number; className?: string }>; label: string; show: boolean }[];
+  permission?: string;
+  children?: { to: string; icon?: React.ComponentType<{ size: number; className?: string }>; label: string; show: boolean; permission?: string }[];
 }
 
 export default function Layout() {
@@ -81,32 +83,32 @@ export default function Layout() {
   };
 
   const navItems: NavItem[] = [
-    { to: '/for-you', icon: Star, label: 'For You', show: true, children: [
-      { to: '/for-you/artifacts', icon: Files, label: 'Artifacts', show: true },
+    { to: '/for-you', icon: Star, label: 'For You', show: true, permission: 'dashboard.view', children: [
+      { to: '/for-you/artifacts', icon: Files, label: 'Artifacts', show: true, permission: 'dashboard.view' },
     ]},
-    { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
-    { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces },
-    { to: '/agents', icon: Bot, label: 'Agents', show: true },
-    { to: '/workflows', icon: Workflow, label: 'Workflows', show: true },
-    { to: '/system-prompts', icon: FileText, label: 'System Prompts', show: caps.systemPrompts },
-    { to: '/tasks', icon: ListChecks, label: 'Tasks', show: false }, // hidden until Tasks page is built
-    { to: '/triggers', icon: Zap, label: 'Triggers', show: true, children: [
-      { to: '/triggers/webhook', icon: Webhook, label: 'Webhook', show: true },
-      { to: '/triggers/channels', icon: Radio, label: 'Channels', show: true },
-      { to: '/triggers/openclaw', icon: Zap, label: 'OpenClaw', show: true },
-      { to: '/triggers/schedule', icon: Calendar, label: 'Schedule', show: true },
+    { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat, permission: 'chat.use' },
+    { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces, permission: 'trace.view' },
+    { to: '/agents', icon: Bot, label: 'Agents', show: true, permission: 'agent.view' },
+    { to: '/workflows', icon: Workflow, label: 'Workflows', show: true, permission: 'workflow.view' },
+    { to: '/system-prompts', icon: FileText, label: 'System Prompts', show: caps.systemPrompts, permission: 'prompt.view' },
+    { to: '/tasks', icon: ListChecks, label: 'Tasks', show: false, permission: 'task.view' }, // hidden until Tasks page is built
+    { to: '/triggers', icon: Zap, label: 'Triggers', show: true, permission: 'trigger.view', children: [
+      { to: '/triggers/webhook', icon: Webhook, label: 'Webhook', show: true, permission: 'trigger.view' },
+      { to: '/triggers/channels', icon: Radio, label: 'Channels', show: true, permission: 'trigger.view' },
+      { to: '/triggers/openclaw', icon: Zap, label: 'OpenClaw', show: true, permission: 'trigger.view' },
+      { to: '/triggers/schedule', icon: Calendar, label: 'Schedule', show: true, permission: 'trigger.view' },
     ]},
-    { to: '/tools', icon: Wrench, label: 'Tools', show: true, children: [
-      { to: '/tools/builtin', icon: Wrench, label: 'Builtin Tools', show: true },
-      { to: '/mcp', icon: Network, label: 'MCP', show: true },
-      { to: '/api-tools', icon: Key, label: 'API Tools', show: true },
+    { to: '/tools', icon: Wrench, label: 'Tools', show: true, permission: 'tool.view', children: [
+      { to: '/tools/builtin', icon: Wrench, label: 'Builtin Tools', show: true, permission: 'tool.view' },
+      { to: '/mcp', icon: Network, label: 'MCP', show: true, permission: 'mcp.view' },
+      { to: '/api-tools', icon: Key, label: 'API Tools', show: true, permission: 'apitool.view' },
     ]},
-    { to: '/skills', icon: Sparkles, label: 'Skills', show: true },
-    { to: '/datasets', icon: Database, label: 'Datasets', show: true },
-    { to: '/experiments', icon: FlaskConical, label: 'Experiments', show: true, children: [
-      { to: '/experiments/memory', icon: FlaskConical, label: 'Agent Memory', show: true },
+    { to: '/skills', icon: Sparkles, label: 'Skills', show: true, permission: 'skill.view' },
+    { to: '/datasets', icon: Database, label: 'Datasets', show: true, permission: 'dataset.view' },
+    { to: '/experiments', icon: FlaskConical, label: 'Experiments', show: true, permission: 'experiment.view', children: [
+      { to: '/experiments/memory', icon: FlaskConical, label: 'Agent Memory', show: true, permission: 'experiment.view' },
     ]},
-  ].filter(item => item.show);
+  ].filter(item => item.show && (!item.permission || hasPermission(user?.permissions, item.permission)));
 
   return (
     <div className="flex h-screen">
@@ -179,7 +181,7 @@ export default function Layout() {
                 </div>
                 {!collapsed && hasChildren && isExpanded && (
                   <div className="ml-6 mt-1 flex flex-col gap-0.5">
-                    {children.filter(c => c.show).map(child => {
+                    {children.filter(c => c.show && (!c.permission || hasPermission(user?.permissions, c.permission))).map(child => {
                       const ChildIcon = child.icon;
                       const childActive = isRouteActive(child.to, location.pathname);
                       return (

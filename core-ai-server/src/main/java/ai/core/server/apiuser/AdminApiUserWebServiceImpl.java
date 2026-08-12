@@ -7,6 +7,8 @@ import ai.core.api.server.apiuser.response.AdminApiUserView;
 import ai.core.api.server.apiuser.response.CreateApiUserResponse;
 import ai.core.api.server.apiuser.response.ListApiUsersResponse;
 import ai.core.server.domain.User;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
@@ -23,6 +25,7 @@ import java.util.Objects;
  *
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.USER_MANAGE)
 public class AdminApiUserWebServiceImpl implements AdminApiUserWebService {
     @Inject
     WebContext webContext;

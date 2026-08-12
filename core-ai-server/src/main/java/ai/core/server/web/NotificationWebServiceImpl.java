@@ -8,6 +8,8 @@ import ai.core.api.server.notification.UnreadCountResponse;
 import ai.core.server.domain.NotificationCategory;
 import ai.core.server.domain.NotificationStatus;
 import ai.core.server.notification.NotificationService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
@@ -17,6 +19,7 @@ import java.util.Locale;
 /**
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.NOTIFICATION_VIEW)
 public class NotificationWebServiceImpl implements NotificationWebService {
 
     @Inject

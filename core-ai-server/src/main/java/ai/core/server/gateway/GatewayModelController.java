@@ -1,5 +1,7 @@
 package ai.core.server.gateway;
 
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.api.http.HTTPStatus;
@@ -12,6 +14,7 @@ import core.framework.web.exception.BadRequestException;
 
 import java.util.HashSet;
 
+@PermissionsRequired(PermissionCodes.GATEWAY_MANAGE)
 public class GatewayModelController {
     private static final ObjectMapper MAPPER = GatewayJson.MAPPER;
 

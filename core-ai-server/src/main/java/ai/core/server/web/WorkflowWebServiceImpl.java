@@ -16,7 +16,6 @@ import ai.core.api.server.workflow.ListWorkflowRunsResponse;
 import ai.core.api.server.workflow.ListWorkflowVersionsResponse;
 import ai.core.api.server.workflow.ListWorkflowsRequest;
 import ai.core.api.server.workflow.ListWorkflowsResponse;
-import ai.core.api.server.workflow.NodeRunView;
 import ai.core.api.server.workflow.ResumeFromNodeRequest;
 import ai.core.api.server.workflow.ResumeRunRequest;
 import ai.core.api.server.workflow.UpdateWorkflowRequest;
@@ -32,9 +31,10 @@ import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.User;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowDefinitionStatus;
-import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.workflow.WorkflowAgentOptionService;
 import ai.core.server.workflow.WorkflowDefinitionService;
@@ -94,6 +94,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     WorkflowPortService portService;
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public ListWorkflowsResponse list(ListWorkflowsRequest request) {
         var userId = AuthContext.userId(webContext);
         Boolean myWorkflows = null;
@@ -125,11 +126,13 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public ListWorkflowAgentOptionsResponse agentOptions(ListWorkflowAgentOptionsRequest request) {
         return agentOptionService.list(AuthContext.userId(webContext), request);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public ExploreWorkflowsResponse explore(ExploreWorkflowsRequest request) {
         var userId = AuthContext.userId(webContext);
         var keyword = request == null ? null : request.keyword;
@@ -165,6 +168,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public CloneWorkflowResponse clone(String id) {
         var userId = AuthContext.userId(webContext);
         var definition = definitionService.clone(id, userId);
@@ -177,12 +181,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public WorkflowView create(CreateWorkflowRequest request) {
         var userId = AuthContext.userId(webContext);
         return WorkflowViewMapper.toView(definitionService.create(request.name, request.mode, request.graph, userId));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public WorkflowView get(String id) {
         var userId = AuthContext.userId(webContext);
         var definition = definitionService.getReadable(id, userId);   // owner: editable draft; other user: read-only published
@@ -196,12 +202,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public ExportWorkflowResponse export(String id) {
         var userId = AuthContext.userId(webContext);
         return portService.export(id, userId);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public ImportWorkflowResponse importWorkflow(ImportWorkflowRequest request) {
         var userId = AuthContext.userId(webContext);
         WorkflowPortService.WorkflowImportResult result = portService.importWorkflow(request.content, request.name, userId);
@@ -212,12 +220,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public WorkflowView update(String id, UpdateWorkflowRequest request) {
         var userId = AuthContext.userId(webContext);
         return WorkflowViewMapper.toView(definitionService.update(id, request.name, request.graph, userId));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public void delete(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_id", id);
@@ -225,6 +235,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public ValidateWorkflowResponse validate(String id) {
         var userId = AuthContext.userId(webContext);
         List<String> errors = publishService.validate(definitionService.get(id, userId));
@@ -235,6 +246,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public WorkflowView publish(String id) {
         var userId = AuthContext.userId(webContext);
         definitionService.get(id, userId);   // ownership check before publishing
@@ -243,6 +255,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public ListWorkflowVersionsResponse listVersions(String id) {
         var userId = AuthContext.userId(webContext);
         WorkflowDefinition definition = definitionService.getReadable(id, userId);
@@ -254,6 +267,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public WorkflowVersionView saveVersion(String id) {
         var userId = AuthContext.userId(webContext);
         WorkflowPublishedVersion version = publishService.saveVersion(id, userId);
@@ -262,24 +276,28 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public WorkflowView publishVersion(String id, String versionId) {
         var userId = AuthContext.userId(webContext);
         return WorkflowViewMapper.toView(publishService.publishVersion(id, versionId, userId));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public WorkflowView restoreVersion(String id, String versionId) {
         var userId = AuthContext.userId(webContext);
         return WorkflowViewMapper.toView(publishService.restoreVersionToDraft(id, versionId, userId));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public WorkflowView unpublish(String id) {
         var userId = AuthContext.userId(webContext);
         return WorkflowViewMapper.toView(publishService.unpublish(id, userId));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public CreateRunResponse createRun(String id, CreateRunRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_id", id);
@@ -292,6 +310,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public WorkflowRunView runSync(String id, CreateRunRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_id", id);
@@ -316,10 +335,11 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
                 break;
             }
         }
-        return toRunViewWithPending(latest);
+        return WorkflowRunViewSupport.toRunViewWithPending(runService, latest);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public CreateRunResponse createPreviewRun(String id, CreateRunRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_id", id);
@@ -332,6 +352,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public ListWorkflowRunsResponse listRuns(String id) {
         var userId = AuthContext.userId(webContext);
         var response = new ListWorkflowRunsResponse();
@@ -340,30 +361,26 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public WorkflowRunView getRun(String runId) {
         var userId = AuthContext.userId(webContext);
-        return toRunViewWithPending(runService.getRun(runId, userId, isAdmin(userId)));
+        return WorkflowRunViewSupport.toRunViewWithPending(runService, runService.getRun(runId, userId, isAdmin(userId)));
     }
 
     // single-run reads attach the resume contract of a PAUSED run; list endpoints stay cheap (no node-run query)
-    private WorkflowRunView toRunViewWithPending(WorkflowRun run) {
-        WorkflowRunView view = WorkflowViewMapper.toRunView(run);
-        var pending = runService.pendingInputs(run);
-        if (!pending.isEmpty()) {
-            view.pendingInputs = pending;
-        }
-        return view;
-    }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public ListNodeRunsResponse listNodeRuns(String runId) {
         var userId = AuthContext.userId(webContext);
         var response = new ListNodeRunsResponse();
-        response.nodeRuns = runService.listNodeRuns(runId, userId, isAdmin(userId)).stream().map(this::toNodeRunView).toList();
+        response.nodeRuns = runService.listNodeRuns(runId, userId, isAdmin(userId)).stream()
+            .map(nodeRun -> WorkflowRunViewSupport.toNodeRunView(nodeRun, runCollection, agentRunCollection)).toList();
         return response;
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public WorkflowRunGraphResponse runGraph(String runId) {
         var userId = AuthContext.userId(webContext);
         var response = new WorkflowRunGraphResponse();
@@ -372,6 +389,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_VIEW)
     public WorkflowRunGraphResponse versionGraph(String versionId) {
         var userId = AuthContext.userId(webContext);
         var response = new WorkflowRunGraphResponse();
@@ -380,6 +398,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public CreateRunResponse resumeRun(String runId, ResumeRunRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_run_id", runId);
@@ -392,6 +411,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.WORKFLOW_MANAGE)
     public CreateRunResponse resumeRunFromNode(String runId, ResumeFromNodeRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_run_id", runId);
@@ -401,41 +421,5 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         response.runId = run.id;
         response.status = run.status.name();
         return response;
-    }
-
-    private NodeRunView toNodeRunView(WorkflowNodeRun nodeRun) {
-        var view = new NodeRunView();
-        view.nodeId = nodeRun.nodeId;
-        view.nodeType = nodeRun.nodeType;
-        view.status = nodeRun.status != null ? nodeRun.status.name() : null;
-        view.input = nodeRun.inputJson;
-        view.output = nodeRun.output;
-        view.artifacts = WorkflowViewMapper.toArtifactViews(nodeRun.artifacts);
-        view.error = nodeRun.error;
-        view.errorStack = nodeRun.errorStack;
-        view.childRunId = nodeRun.childRunId;
-        view.traceMetadata = WorkflowViewMapper.toTraceMetadataView(nodeRun.traceMetadata);
-        if (nodeRun.traceMetadata != null && nodeRun.traceMetadata.childTraceId != null && !nodeRun.traceMetadata.childTraceId.isBlank()) {
-            view.traceId = nodeRun.traceMetadata.childTraceId;
-        }
-        if (nodeRun.childRunId != null && !nodeRun.childRunId.isBlank()) {
-            if ("WORKFLOW".equals(nodeRun.nodeType)) {
-                view.childRunType = "WORKFLOW";
-                runCollection.get(nodeRun.childRunId).ifPresent(child -> view.childWorkflowId = child.workflowId);
-            } else {
-                view.childRunType = "AGENT";
-                resolveAgentTraceId(view, nodeRun.childRunId);
-            }
-        }
-        view.spanId = nodeRun.spanId;
-        view.startedAt = nodeRun.startedAt;
-        view.completedAt = nodeRun.completedAt;
-        return view;
-    }
-
-    private void resolveAgentTraceId(NodeRunView view, String childRunId) {
-        if (view.traceId == null || view.traceId.isBlank()) {
-            agentRunCollection.get(childRunId).ifPresent(child -> view.traceId = child.traceId);
-        }
     }
 }

@@ -1,5 +1,7 @@
 package ai.core.server.gateway;
 
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.api.http.HTTPStatus;
@@ -10,6 +12,7 @@ import core.framework.web.Response;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 
+@PermissionsRequired(PermissionCodes.GATEWAY_MANAGE)
 public class GatewayProviderController {
     private static final ObjectMapper MAPPER = GatewayJson.MAPPER;
 

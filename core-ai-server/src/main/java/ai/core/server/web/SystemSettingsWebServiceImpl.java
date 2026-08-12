@@ -5,6 +5,8 @@ import ai.core.api.server.settings.SystemSettingsView;
 import ai.core.api.server.settings.SystemSettingsWebService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotPolicy;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
@@ -12,6 +14,7 @@ import core.framework.web.WebContext;
 /**
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.SYSTEM_MANAGE)
 public class SystemSettingsWebServiceImpl implements SystemSettingsWebService {
     @Inject
     WebContext webContext;

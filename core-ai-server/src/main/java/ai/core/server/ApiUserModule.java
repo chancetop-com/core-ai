@@ -25,7 +25,9 @@ public class ApiUserModule extends Module {
         keyService.maxTtlSeconds = property("sys.api-user.key.max.ttl").map(Integer::parseInt).orElse(604800);
         bind(ApiUserQuotaService.class);
         bind(ApiUserUsageService.class);
+        bind(ai.core.server.rbac.RoleRegistry.class);
         bind(PermissionService.class);
+        bind(ai.core.server.web.session.SessionIdentity.class);
 
         // registers the manager-config based caller header resolver used by outbound tool HTTP injection
         var callerHeaderResolver = bind(CallerHeaderConfigResolver.class);

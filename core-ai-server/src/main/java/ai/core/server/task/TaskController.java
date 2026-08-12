@@ -1,6 +1,8 @@
 package ai.core.server.task;
 
 import ai.core.server.domain.BackgroundTask;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,6 +21,7 @@ import java.util.Map;
  *
  * @author cyril
  */
+@PermissionsRequired(PermissionCodes.TASK_VIEW)
 public class TaskController {
     private static final ObjectMapper MAPPER = JsonUtil.OBJECT_MAPPER;
 

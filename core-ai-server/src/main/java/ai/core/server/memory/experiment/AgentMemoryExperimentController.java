@@ -1,5 +1,7 @@
 package ai.core.server.memory.experiment;
 
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import core.framework.api.http.HTTPStatus;
 import core.framework.inject.Inject;
 import core.framework.web.Request;
@@ -10,6 +12,7 @@ import core.framework.web.Response;
  *
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.EXPERIMENT_VIEW)
 public class AgentMemoryExperimentController {
     private static ExperimentRunView toRunView(AgentMemoryExperimentRun r) {
         var v = new ExperimentRunView();

@@ -12,6 +12,8 @@ import ai.core.api.server.run.TriggerRunRequest;
 import ai.core.api.server.run.TriggerRunResponse;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.run.AgentRunService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.WebContext;
@@ -19,6 +21,7 @@ import core.framework.web.WebContext;
 /**
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.AGENT_VIEW)
 public class AgentRunWebServiceImpl implements AgentRunWebService {
     @Inject
     WebContext webContext;

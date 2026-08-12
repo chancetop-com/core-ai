@@ -5,6 +5,8 @@ import ai.core.server.domain.SessionFeedback;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +29,7 @@ import java.util.UUID;
 /**
  * @author Xander
  */
+@PermissionsRequired(PermissionCodes.CHAT_USE)
 public class ChatSessionController {
     private static final ObjectMapper MAPPER = JsonUtil.OBJECT_MAPPER;
 

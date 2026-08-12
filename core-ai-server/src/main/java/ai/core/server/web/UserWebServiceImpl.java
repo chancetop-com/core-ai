@@ -5,8 +5,9 @@ import ai.core.api.server.user.ApiKeyView;
 import ai.core.api.server.user.ChangePasswordRequest;
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.api.server.user.UserView;
-import ai.core.server.web.auth.AuthContext;
+import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.user.UserService;
+import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.WebContext;
@@ -14,6 +15,7 @@ import core.framework.web.WebContext;
 /**
  * @author stephen
  */
+@PermissionsBypass
 public class UserWebServiceImpl implements UserWebService {
     @Inject
     WebContext webContext;

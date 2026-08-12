@@ -2,6 +2,8 @@ package ai.core.server.web;
 
 import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
@@ -15,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 
+@PermissionsRequired(PermissionCodes.CHAT_USE)
 public class SpeechController {
     private final Logger logger = LoggerFactory.getLogger(SpeechController.class);
 

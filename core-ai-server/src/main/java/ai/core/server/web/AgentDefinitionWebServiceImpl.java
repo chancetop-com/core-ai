@@ -13,6 +13,8 @@ import ai.core.api.server.utils.GenerateResponse;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.GenerateService;
 import ai.core.server.agent.JavaToSchemaService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
@@ -32,6 +34,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     GenerateService generateService;
 
     @Override
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public AgentDefinitionView create(CreateAgentRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -39,23 +42,27 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public ListAgentsResponse list(ListAgentsRequest request) {
         var userId = AuthContext.userId(webContext);
         return agentDefinitionService.list(userId, request);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public AgentDefinitionView get(String id) {
         return agentDefinitionService.get(id);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public AgentDefinitionView getByName(String name) {
         var userId = AuthContext.userId(webContext);
         return agentDefinitionService.getByName(name, userId);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public AgentDefinitionView update(String id, UpdateAgentRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -63,6 +70,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public AgentDefinitionView publish(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -77,6 +85,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
 //    }
 
     @Override
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public void delete(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -84,11 +93,13 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public ConvertJavaToSchemaResponse convertJavaToSchema(ConvertJavaToSchemaRequest request) {
         return javaToSchemaService.convert(request.javaCode);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public GenerateResponse generate(GenerateRequest request) {
         return generateService.generate(request);
     }

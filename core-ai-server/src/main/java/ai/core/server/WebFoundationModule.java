@@ -3,6 +3,7 @@ package ai.core.server;
 import ai.core.server.domain.migration.SchemaMigrationManager;
 import ai.core.server.web.CorsInterceptor;
 import ai.core.server.web.auth.AuthInterceptor;
+import ai.core.server.web.auth.PermissionInterceptor;
 import ai.core.server.web.auth.RequestAuthenticator;
 import core.framework.module.Module;
 
@@ -19,6 +20,9 @@ public class WebFoundationModule extends Module {
 
         bind(RequestAuthenticator.class);
         http().intercept(bind(AuthInterceptor.class));
+        var permissionInterceptor = bind(PermissionInterceptor.class);
+        permissionInterceptor.authDisabled = "true".equals(property("sys.auth.disabled").orElse("false"));
+        http().intercept(permissionInterceptor);
         var corsInterceptor = bind(CorsInterceptor.class);
         http().intercept(corsInterceptor);
         http().errorHandler(corsInterceptor);

@@ -1,5 +1,7 @@
 package ai.core.server.channel;
 
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
@@ -29,6 +31,7 @@ public class ChannelAdminController {
     @Inject
     WebContext webContext;
 
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public Response list(Request request) {
         var baseUrl = baseUrl(request);
         var channels = new ArrayList<Map<String, Object>>();
@@ -40,6 +43,7 @@ public class ChannelAdminController {
     }
 
     @SuppressWarnings("unchecked")
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public Response create(Request request) {
         var body = request.body();
         if (body.isEmpty()) throw new BadRequestException("body is required");
@@ -58,6 +62,7 @@ public class ChannelAdminController {
         return Response.text(resp);
     }
 
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public Response get(Request request) {
         var channelId = request.pathParam("channelId");
         var view = configStore.load(channelId);
@@ -68,6 +73,7 @@ public class ChannelAdminController {
     }
 
     @SuppressWarnings("unchecked")
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public Response update(Request request) {
         var channelId = request.pathParam("channelId");
         var view = configStore.load(channelId);
@@ -86,6 +92,7 @@ public class ChannelAdminController {
         return Response.text(resp);
     }
 
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public Response delete(Request request) {
         var channelId = request.pathParam("channelId");
         if (configStore.load(channelId) == null) throw new NotFoundException("channel not found: " + channelId);
@@ -95,6 +102,7 @@ public class ChannelAdminController {
     }
 
     /** Returns available channel types that have registered adapters. */
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public Response types(Request request) {
         var types = List.of(
             Map.of("type", "slack", "label", "Slack"),

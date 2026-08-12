@@ -2,6 +2,7 @@ package ai.core.server.a2a;
 
 import ai.core.api.a2a.CancelTaskRequest;
 import ai.core.api.a2a.GetTaskRequest;
+import ai.core.server.rbac.PermissionsBypass;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.inject.Inject;
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 /**
  * @author xander
  */
+@PermissionsBypass
 public class A2ATaskController {
     private static final ContentType A2A_JSON = ContentType.parse("application/a2a+json");
 

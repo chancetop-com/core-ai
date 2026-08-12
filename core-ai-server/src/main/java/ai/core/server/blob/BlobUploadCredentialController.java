@@ -1,6 +1,8 @@
 package ai.core.server.blob;
 
 import ai.core.api.server.blob.BlobUploadCredentialView;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import core.framework.api.http.HTTPStatus;
 import core.framework.inject.Inject;
 import core.framework.web.Request;
@@ -17,6 +19,7 @@ import java.util.UUID;
  *
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.DASHBOARD_VIEW)
 public class BlobUploadCredentialController {
 
     @Inject

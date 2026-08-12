@@ -3,7 +3,8 @@ import {
   Users, CheckCircle, XCircle, RefreshCw, Trash2, Key, KeyRound, X, ArrowLeft,
   Plus, Copy, Pause, Play, Search,
 } from 'lucide-react';
-import { api, adminApi, apiUsersAdminApi, type CreateApiUserResponse } from '../../api/client';
+import { api, adminApi, apiUsersAdminApi, rbacApi, type CreateApiUserResponse } from '../../api/client';
+import RolesTab from './RolesTab';
 
 interface ManagedUser {
   key: string;
@@ -54,9 +55,18 @@ export default function UserManagement() {
   const [callerHeadersDraft, setCallerHeadersDraft] = useState<CallerHeaderDraft[]>([]);
   const [callerHeadersSaving, setCallerHeadersSaving] = useState(false);
   const [callerHeadersSaved, setCallerHeadersSaved] = useState(false);
+  const [tab, setTab] = useState<'users' | 'roles'>('users');
+  const [roleOptions, setRoleOptions] = useState<string[]>(['user', 'admin']);
 
   useEffect(() => {
     api.agents.list(undefined, undefined, 1000).then(res => setAgents(res.agents)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    rbacApi.listRoles().then(res => {
+      const names = Object.keys(res.roles || {});
+      if (names.length > 0) setRoleOptions(['admin', ...names.filter(n => n !== 'admin')]);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -397,6 +407,24 @@ export default function UserManagement() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-4">
+        {(['users', 'roles'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className="px-4 py-1.5 rounded-lg text-sm font-medium capitalize cursor-pointer transition-colors"
+            style={{
+              background: tab === t ? 'var(--color-primary-bg)' : 'transparent',
+              color: tab === t ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            }}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'roles' ? (
+        <RolesTab onRolesChanged={names => setRoleOptions(['admin', ...names.filter(n => n !== 'admin')])} />
+      ) : (
+      <>
       {error && (
         <div className="mb-4 px-4 py-3 rounded-lg text-sm" style={{ background: '#ef444420', color: 'var(--color-error)' }}>
           {error}
@@ -696,15 +724,16 @@ export default function UserManagement() {
                     <InfoRow label="Name" value={selectedUser.name || '-'} />
                     <div className="flex items-start justify-between py-1.5">
                       <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Role</span>
-                      <select
-                        value={selectedUser.role}
-                        onChange={(e) => handleUpdateRole(selectedUser.email || '', e.target.value)}
-                        disabled={roleLoading}
-                        className="text-sm text-right ml-4 rounded px-2 py-0.5 cursor-pointer border-0 outline-none"
-                        style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
-                        <option value="user">user</option>
-                        <option value="admin">admin</option>
-                      </select>
+                        <select
+                          value={selectedUser.role}
+                          onChange={(e) => handleUpdateRole(selectedUser.email || '', e.target.value)}
+                          disabled={roleLoading}
+                          className="text-sm text-right ml-4 rounded px-2 py-0.5 cursor-pointer border-0 outline-none"
+                          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                          {roleOptions.map(r => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
                     </div>
                     <InfoRow label="Status" value={selectedUser.status} />
                     <InfoRow label="Created"
@@ -862,6 +891,8 @@ export default function UserManagement() {
             )}
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

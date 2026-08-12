@@ -8,6 +8,8 @@ import ai.core.api.server.artifact.ListSharedArtifactsResponse;
 import ai.core.api.server.artifact.MyArtifactView;
 import ai.core.api.server.artifact.SharedArtifactView;
 import ai.core.server.artifact.ArtifactService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
@@ -15,6 +17,7 @@ import core.framework.web.WebContext;
 
 import java.util.ArrayList;
 
+@PermissionsRequired(PermissionCodes.DASHBOARD_VIEW)
 public class ArtifactWebServiceImpl implements ArtifactWebService {
     @Inject
     WebContext webContext;

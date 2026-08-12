@@ -18,6 +18,8 @@ import ai.core.server.domain.SkillResource;
 import ai.core.server.skill.MarketplaceService;
 import ai.core.server.skill.SkillFilter;
 import ai.core.server.skill.SkillService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
@@ -38,6 +40,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     WebContext webContext;
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public RegisterRepoSkillsResponse registerFromRepo(RegisterRepoSkillRequest request) {
         var userId = AuthContext.userId(webContext);
         var skills = skillService.registerFromRepo(userId, request.repoUrl, request.branch, request.skillPath);
@@ -47,6 +50,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
     public ListSkillsResponse list(ListSkillsRequest request) {
         var effectiveRequest = request != null ? request : new ListSkillsRequest();
         var filter = new SkillFilter(effectiveRequest.namespace, effectiveRequest.sourceType);
@@ -70,11 +74,13 @@ public class SkillWebServiceImpl implements SkillWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
     public SkillDefinitionView get(String id) {
         return toView(skillService.get(id));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public SkillDefinitionView update(String id, UpdateSkillRequest request) {
         List<SkillResource> resources = null;
         if (request.resources != null) {
@@ -89,16 +95,19 @@ public class SkillWebServiceImpl implements SkillWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public void delete(String id) {
         skillService.delete(id);
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public SkillDefinitionView syncFromRepo(String id) {
         return toView(skillService.syncFromRepo(id));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
     public SkillDownloadResponse download(String id) {
         var entity = skillService.download(id);
         var response = new SkillDownloadResponse();
@@ -117,6 +126,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public MarketplaceRepoView createMarketplaceRepo(CreateMarketplaceRepoRequest request) {
         var repo = marketplaceService.register(request.repoUrl, request.branch);
         var view = toRepoView(repo);
@@ -125,6 +135,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
     public MarketplaceListResponse marketplace() {
         var repos = marketplaceService.listRepos();
         long uploadedCount = marketplaceService.countUploadedSkills();
@@ -139,6 +150,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
     public MarketplaceRepoDetailResponse marketplaceRepo(String repoId) {
         var repo = marketplaceService.getRepo(repoId);
         var skills = marketplaceService.listRepoSkills(repoId);
@@ -159,6 +171,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public RegisterRepoSkillsResponse installMarketplaceRepo(String repoId) {
         var userId = AuthContext.userId(webContext);
         var skills = marketplaceService.installRepo(userId, repoId);
@@ -168,6 +181,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public void deleteMarketplaceRepo(String repoId) {
         marketplaceService.delete(repoId);
     }

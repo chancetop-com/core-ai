@@ -6,6 +6,8 @@ import ai.core.api.server.file.FileView;
 import ai.core.api.server.file.SharedFileView;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.file.FileService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.WebContext;
@@ -20,6 +22,7 @@ public class FileWebServiceImpl implements FileWebService {
     FileService fileService;
 
     @Override
+    @PermissionsRequired(PermissionCodes.DASHBOARD_VIEW)
     public FileView get(String id) {
         var record = fileService.get(id);
         var view = new FileView();
@@ -32,6 +35,7 @@ public class FileWebServiceImpl implements FileWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.DASHBOARD_VIEW)
     public FileShareView share(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -45,6 +49,7 @@ public class FileWebServiceImpl implements FileWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.DASHBOARD_VIEW)
     public SharedFileView getShared(String token) {
         var record = fileService.getShared(token);
         var view = new SharedFileView();
@@ -57,6 +62,7 @@ public class FileWebServiceImpl implements FileWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.DASHBOARD_VIEW)
     public void delete(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);

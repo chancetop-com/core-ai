@@ -13,6 +13,7 @@ import ai.core.api.server.apiuser.response.ListKeysView;
 import ai.core.api.server.apiuser.response.RenewKeyResponse;
 import ai.core.api.server.apiuser.response.UsageView;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.rbac.PermissionsBypass;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.WebContext;
@@ -23,6 +24,7 @@ import core.framework.web.WebContext;
  *
  * @author stephen
  */
+@PermissionsBypass
 public class ApiUserWebServiceImpl implements ApiUserWebService {
     @Inject
     WebContext webContext;

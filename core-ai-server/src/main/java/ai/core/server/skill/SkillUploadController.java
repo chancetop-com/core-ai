@@ -2,6 +2,8 @@ package ai.core.server.skill;
 
 import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.server.domain.User;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -20,6 +22,7 @@ import java.util.LinkedHashMap;
 /**
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.SKILL_MANAGE)
 public class SkillUploadController implements Controller {
     @Inject
     SkillService skillService;
