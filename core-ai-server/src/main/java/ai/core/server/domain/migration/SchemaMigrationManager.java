@@ -118,7 +118,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVChatSessionAgentIdIndex(),
             new SchemaMigrationVStripSpanPayloadAttributes(),
             new SchemaMigrationVArtifactListIndexes(),
-            new SchemaMigrationVFileContentHashIndex()
+            new SchemaMigrationVFileContentHashIndex(),
+            new SchemaMigrationVCostAlertIndexes()
         );
     }
 }

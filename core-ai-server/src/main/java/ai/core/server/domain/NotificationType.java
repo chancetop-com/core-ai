@@ -11,5 +11,7 @@ public enum NotificationType {
     @MongoEnumValue("TERMINATE")
     TERMINATE,
     @MongoEnumValue("AGENT_NOTIFICATION")
-    AGENT_NOTIFICATION
+    AGENT_NOTIFICATION,
+    @MongoEnumValue("COST_ALERT")
+    COST_ALERT
 }

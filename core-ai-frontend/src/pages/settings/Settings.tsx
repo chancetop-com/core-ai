@@ -1,4 +1,4 @@
-import { Activity, ListChecks, PlugZap, Settings as SettingsIcon, Shield, User } from 'lucide-react';
+import { Activity, Bell, ListChecks, PlugZap, Settings as SettingsIcon, Shield, User } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
 
@@ -87,6 +87,18 @@ export default function Settings() {
                 })}>
                 <SettingsIcon size={16} />
                 System Configuration
+              </NavLink>
+              <NavLink to="/settings/cost-alerts"
+                className={() =>
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
+                }
+                style={({ isActive }) => ({
+                  background: isActive ? 'var(--color-primary-bg)' : 'transparent',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                  fontWeight: isActive ? 500 : 400,
+                })}>
+                <Bell size={16} />
+                Cost Alerts
               </NavLink>
             </>
           )}

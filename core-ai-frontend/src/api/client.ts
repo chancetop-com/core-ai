@@ -1671,6 +1671,27 @@ export const api = {
     types: () =>
       request<ChannelTypesResponse>('/api/admin/channel-types'),
   },
+  costAlerts: {
+    listRules: () =>
+      request<ListCostAlertRulesResponse>('/api/admin/cost-alert-rules'),
+    getRule: (id: string) =>
+      request<CostAlertRuleResponse>(`/api/admin/cost-alert-rules/${id}`),
+    createRule: (data: Record<string, unknown>) =>
+      request<CostAlertRuleResponse>('/api/admin/cost-alert-rules', { method: 'POST', body: JSON.stringify(data) }),
+    updateRule: (id: string, data: Record<string, unknown>) =>
+      request<CostAlertRuleResponse>(`/api/admin/cost-alert-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteRule: (id: string) =>
+      request<void>(`/api/admin/cost-alert-rules/${id}`, { method: 'DELETE' }),
+    listEvents: (params?: { ruleId?: string; dateFrom?: string; dateTo?: string; limit?: number }) => {
+      const p = new URLSearchParams();
+      if (params?.ruleId) p.set('ruleId', params.ruleId);
+      if (params?.dateFrom) p.set('dateFrom', params.dateFrom);
+      if (params?.dateTo) p.set('dateTo', params.dateTo);
+      if (params?.limit) p.set('limit', String(params.limit));
+      const qs = p.toString();
+      return request<ListCostAlertEventsResponse>(`/api/admin/cost-alert-events${qs ? `?${qs}` : ''}`);
+    },
+  },
   ocg: {
     list: () =>
       request<ListOcgConfigsResponse>('/api/admin/ocg-configs'),
@@ -2143,6 +2164,55 @@ export interface ChannelTypeInfo {
 
 export interface ChannelTypesResponse {
   types: ChannelTypeInfo[];
+}
+
+// Cost alerts
+
+export interface CostAlertTarget {
+  type: 'notification' | 'channel';
+  userId?: string;
+  channelId?: string;
+  recipient?: string;
+}
+
+export interface CostAlertRuleView {
+  id: string;
+  name: string;
+  enabled: boolean;
+  metric: string;
+  scope: string;
+  scope_value: string;
+  threshold: number;
+  targets: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CostAlertRuleResponse {
+  rule: CostAlertRuleView;
+}
+
+export interface ListCostAlertRulesResponse {
+  rules: CostAlertRuleView[];
+}
+
+export interface CostAlertEventView {
+  id: string;
+  rule_id: string;
+  rule_name: string;
+  date: string;
+  scope: string;
+  scope_value: string;
+  metric: string;
+  threshold: number;
+  actual_value: number;
+  detail: string;
+  status: string;
+  created_at: string;
+}
+
+export interface ListCostAlertEventsResponse {
+  events: CostAlertEventView[];
 }
 
 export type OcgSandboxStatus = 'stopped' | 'running' | 'error';

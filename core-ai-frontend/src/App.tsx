@@ -46,6 +46,7 @@ const DatasetEditor = lazy(() => import('./pages/datasets/DatasetEditor'));
 const DatasetRecords = lazy(() => import('./pages/datasets/DatasetRecords'));
 const TriggersWebhook = lazy(() => import('./pages/triggers/TriggersWebhook'));
 const Channels = lazy(() => import('./pages/channels/Channels'));
+const CostAlerts = lazy(() => import('./pages/cost-alerts/CostAlerts'));
 const OpenClaw = lazy(() => import('./pages/openclaw/OpenClaw'));
 const ForYou = lazy(() => import('./pages/for-you/ForYou'));
 const ArtifactList = lazy(() => import('./pages/artifacts/ArtifactList'));
@@ -173,6 +174,7 @@ export default function App() {
                       <Route path="api-keys" element={<ApiKeysPage />} />
                       {user?.role === 'admin' && <Route path="gateway" element={<GatewayProvidersPage />} />}
                       {user?.role === 'admin' && <Route path="system" element={<SystemSettingsPage />} />}
+                      {user?.role === 'admin' && <Route path="cost-alerts" element={<CostAlerts />} />}
                       {user?.role === 'admin' && <Route path="api-users" element={<Navigate to="/settings/users" replace />} />}
                       {user?.role === 'admin' && <Route index element={<Dashboard />} />}
                       {user?.role === 'admin' && <Route path="users" element={<UserManagement />} />}

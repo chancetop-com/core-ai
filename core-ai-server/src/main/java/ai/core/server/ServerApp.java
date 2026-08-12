@@ -7,6 +7,9 @@ import ai.core.server.apimcp.serviceapi.ServiceApiModule;
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.channel.ChannelConfigView;
 import ai.core.server.channel.openclaw.OcgConfigView;
+import ai.core.server.costalert.CostAlertEvent;
+import ai.core.server.costalert.CostAlertModule;
+import ai.core.server.costalert.CostAlertRule;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
@@ -113,6 +116,7 @@ public class ServerApp extends App {
         load(new SelfHarnessModule());
         load(new A2AModule());
         load(new NotificationModule());
+        load(new CostAlertModule());
         load(new ForYouModule());
         load(new AgentRunnerModule());
         load(new TriggerModule());
@@ -170,6 +174,8 @@ public class ServerApp extends App {
         mongo.collection(AnalyticsDailyStats.class);
 
         mongo.collection(Notification.class);
+        mongo.collection(CostAlertRule.class);
+        mongo.collection(CostAlertEvent.class);
     }
 
     private void registerCoreCollections(MongoConfig mongo) {
