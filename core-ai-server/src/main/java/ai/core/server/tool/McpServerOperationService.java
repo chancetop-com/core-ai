@@ -6,7 +6,6 @@ import ai.core.mcp.client.McpServerConfig;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolType;
 import ai.core.tool.ToolCallResult;
-import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import core.framework.mongo.MongoCollection;
 import core.framework.util.StopWatch;
@@ -111,27 +110,17 @@ class McpServerOperationService {
     /**
      * Import MCP servers from a standard mcpServers JSON (Claude Desktop format).
      */
-    @SuppressWarnings("unchecked")
     List<ToolRegistryEntry> importMcpServers(String rawJson, String category, Boolean enabled) {
-        Map<String, Object> parsed = JsonUtil.fromJson(Map.class, rawJson);
-        var mcpServers = (Map<String, Object>) parsed.get("mcpServers");
-        if (mcpServers == null || mcpServers.isEmpty()) {
-            throw new IllegalArgumentException("missing or empty 'mcpServers' key in config");
-        }
-
+        var candidates = McpServerImportParser.parse(rawJson);
         var results = new ArrayList<ToolRegistryEntry>();
-        for (var entry : mcpServers.entrySet()) {
-            String name = entry.getKey();
-            if (!(entry.getValue() instanceof Map<?, ?> serverConf)) {
-                LOGGER.warn("skipping invalid mcp server config for '{}', expected object", name);
+        for (var candidate : candidates) {
+            if (findMcpServerByName(candidate.name()).isPresent()) {
+                LOGGER.warn("skipping duplicate mcp server, name={}", candidate.name());
                 continue;
             }
-            if (findMcpServerByName(name).isPresent()) {
-                LOGGER.warn("skipping duplicate mcp server, name={}", name);
-                continue;
-            }
-            var config = convertImportConfigToMap((Map<String, Object>) serverConf);
-            var rawConfig = JsonUtil.toJson(serverConf);
+            var name = candidate.name();
+            var config = candidate.config();
+            var rawConfig = candidate.rawConfig();
             var entity = createMcpServerInternal(name, null, category, config, enabled, rawConfig);
             results.add(entity);
         }
@@ -390,33 +379,6 @@ class McpServerOperationService {
         return toolRegistryCollection.findOne(Filters.and(
                 Filters.eq("type", ToolType.MCP.name()),
                 Filters.eq("name", name)));
-    }
-
-    // Convert a single server config from the import JSON to Map<String,String>
-    @SuppressWarnings("unchecked")
-    private Map<String, String> convertImportConfigToMap(Map<String, Object> serverConf) {
-        var result = new HashMap<String, String>();
-        result.put("transport", "sandbox_hosted");
-
-        var command = serverConf.get("command");
-        if (command instanceof String cmd && !cmd.isBlank()) {
-            result.put("command", cmd);
-        } else {
-            throw new IllegalArgumentException("command is required");
-        }
-
-        for (var e : serverConf.entrySet()) {
-            if (result.containsKey(e.getKey()) || e.getValue() == null) continue;
-            var value = e.getValue();
-            if (value instanceof String s) {
-                result.put(e.getKey(), s);
-            } else if (value instanceof Number || value instanceof Boolean) {
-                result.put(e.getKey(), value.toString());
-            } else {
-                result.put(e.getKey(), JsonUtil.toJson(value));
-            }
-        }
-        return result;
     }
 
     private record CachedToolDetails(List<McpSchema.Tool> tools, long createdAtNanos) {

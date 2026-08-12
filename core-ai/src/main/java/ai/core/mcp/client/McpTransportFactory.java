@@ -108,7 +108,7 @@ public final class McpTransportFactory {
     }
 
     private static McpClientTransport applyHeadersAndBuild(HttpClientStreamableHttpTransport.Builder builder, McpServerConfig config) {
-        builder.customizeRequest(requestBuilder -> {
+        builder.httpRequestCustomizer((requestBuilder, method, uri, body, context) -> {
             var headers = requestHeaders(config);
             for (var entry : headers.entrySet()) {
                 requestBuilder.header(entry.getKey(), entry.getValue());
@@ -142,7 +142,7 @@ public final class McpTransportFactory {
     }
 
     private static McpClientTransport applySseHeadersAndBuild(HttpClientSseClientTransport.Builder builder, McpServerConfig config) {
-        builder.customizeRequest(requestBuilder -> {
+        builder.httpRequestCustomizer((requestBuilder, method, uri, body, context) -> {
             var headers = requestHeaders(config);
             for (var entry : headers.entrySet()) {
                 requestBuilder.header(entry.getKey(), entry.getValue());

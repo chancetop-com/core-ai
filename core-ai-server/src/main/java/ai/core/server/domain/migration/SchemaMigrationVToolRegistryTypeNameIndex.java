@@ -10,12 +10,15 @@ import static com.mongodb.client.model.Indexes.ascending;
 public class SchemaMigrationVToolRegistryTypeNameIndex implements SchemaMigration {
     @Override
     public String version() {
-        return "20260630001";
+        // 20260630001 was also used by an older trace_daily_stats migration in Dev.
+        // Dev therefore recorded that version without creating this index. A fresh
+        // version makes the idempotent createIndex run in every environment.
+        return "20260812001";
     }
 
     @Override
     public String description() {
-        return "add tool_registry compound index on (type, name) for notablescan compliance";
+        return "ensure tool_registry compound index on (type, name) for notablescan compliance";
     }
 
     @Override

@@ -96,8 +96,10 @@ project(":core-ai") {
         implementation("io.opentelemetry:opentelemetry-sdk:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-exporter-otlp:${Versions.OPENTELEMETRY_VERSION}")
         compileOnly("io.opentelemetry:opentelemetry-api-incubator:${Versions.OPENTELEMETRY_VERSION}-alpha")
-        // MCP SDK — exposed via api so downstream modules (server/cli) can reference McpSchema types
-        api("io.modelcontextprotocol.sdk:mcp:${Versions.MCP_SDK_VERSION}")
+        // MCP SDK — keep the Jackson 2 adapter explicit because the `mcp` convenience
+        // artifact switched its default JSON implementation to Jackson 3 in SDK 1.x.
+        api("io.modelcontextprotocol.sdk:mcp-core:${Versions.MCP_SDK_VERSION}")
+        api("io.modelcontextprotocol.sdk:mcp-json-jackson2:${Versions.MCP_SDK_VERSION}")
         // SnakeYAML for Skills YAML frontmatter parsing
         implementation("org.yaml:snakeyaml:${Versions.SNAKEYAML_VERSION}")
         // Jsoup for HTML parsing (DuckDuckGo search provider)

@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Server, Power, PowerOff, Trash2, Edit2, X, Save, ChevronLeft, ChevronRight, ChevronRight as ArrowRight } from 'lucide-react';
+import { Plus, Server, Power, PowerOff, Trash2, Edit2, X, Save, ChevronLeft, ChevronRight, ChevronRight as ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ToolRegistryView, McpConnectionState } from '../../api/client';
 import { ConnectionStateBadge, EnabledBadge } from './badges';
+import { containsSensitiveConfigJson, isSensitiveConfigKey, validateMcpImportJson } from './mcpConfig';
 
 export default function Mcp() {
   const navigate = useNavigate();
@@ -348,6 +349,8 @@ function McpServerModal({
   const [mode, setMode] = useState<'manual' | 'import'>('manual');
   const [importJson, setImportJson] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [revealedConfigKeys, setRevealedConfigKeys] = useState<Set<string>>(() => new Set());
 
   // Dynamic MCP editing state
   const isDynamicEdit = !creating && server.config?.transport === 'sandbox_hosted' && !!server.raw_config;
@@ -358,6 +361,8 @@ function McpServerModal({
   })();
   const [editJson, setEditJson] = useState(prettyRawConfig);
   const [editJsonError, setEditJsonError] = useState<string | null>(null);
+  const dynamicJsonContainsSecrets = containsSensitiveConfigJson(prettyRawConfig);
+  const [editJsonRevealed, setEditJsonRevealed] = useState(!dynamicJsonContainsSecrets);
 
   const handleDynamicSave = () => {
     if (!editJson.trim()) return;
@@ -371,8 +376,13 @@ function McpServerModal({
   };
 
   const handleImport = async () => {
-    if (!importJson.trim()) return;
+    const validationError = validateMcpImportJson(importJson);
+    if (validationError) {
+      setImportError(validationError);
+      return;
+    }
     setImportError(null);
+    setImporting(true);
     try {
       const result = await api.tools.importMcpServers({ config: importJson, category: server.category || undefined, enabled: server.enabled });
       setImportJson('');
@@ -380,6 +390,8 @@ function McpServerModal({
       alert('Imported ' + result.total + ' MCP server' + (result.total !== 1 ? 's' : '') + ' successfully.');
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -397,20 +409,36 @@ function McpServerModal({
     const newConfig = { ...server.config };
     delete newConfig[key];
     onChange({ ...server, config: newConfig });
+    setRevealedConfigKeys(current => {
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const toggleConfigVisibility = (key: string) => {
+    setRevealedConfigKeys(current => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
   const showImport = creating && mode === 'import';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.5)' }}
       onClick={onClose}>
-      <div className="w-full max-w-lg mx-4 rounded-xl border p-6"
+      <div role="dialog" aria-modal="true" aria-labelledby="mcp-server-modal-title"
+        className="w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border p-5 sm:p-6"
         style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">{creating ? 'New MCP Server' : 'Edit MCP Server'}</h2>
-          <button onClick={onClose} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+          <h2 id="mcp-server-modal-title" className="text-lg font-semibold">{creating ? 'New MCP Server' : 'Edit MCP Server'}</h2>
+          <button onClick={onClose} aria-label="Close MCP server dialog"
+            className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
             <X size={18} />
           </button>
         </div>
@@ -435,14 +463,17 @@ function McpServerModal({
         {showImport ? (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>mcpServers JSON</label>
-              <textarea value={importJson} onChange={e => { setImportJson(e.target.value); setImportError(null); }}
+              <label htmlFor="mcp-import-json" className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>mcpServers JSON</label>
+              <textarea id="mcp-import-json" value={importJson} onChange={e => { setImportJson(e.target.value); setImportError(null); }}
                 placeholder={`{"mcpServers":{"MyServer":{"command":"npx","args":["-y","@scope/server"],"env":{"KEY":"value"}}}}`}
                 spellCheck={false}
                 className="w-full font-mono text-xs px-3 py-3 rounded-lg border resize-y"
                 style={{ minHeight: 200, borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              <p className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                Supports local command servers and remote URL servers. Existing server names are skipped.
+              </p>
               {importError && (
-                <div className="text-xs rounded p-2 mt-2" style={{ background: '#7f1d1d', color: '#fff' }}>{importError}</div>
+                <div role="alert" className="text-xs rounded p-2 mt-2" style={{ background: '#7f1d1d', color: '#fff' }}>{importError}</div>
               )}
             </div>
             <div>
@@ -483,11 +514,36 @@ function McpServerModal({
                 style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
             </div>
             <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Configuration (JSON)</label>
-              <textarea value={editJson} onChange={e => { setEditJson(e.target.value); setEditJsonError(null); }}
-                spellCheck={false}
-                className="w-full font-mono text-xs px-3 py-3 rounded-lg border resize-y"
-                style={{ minHeight: 200, borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <label htmlFor={editJsonRevealed ? 'mcp-dynamic-json' : undefined} className="block text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                  Configuration (JSON)
+                </label>
+                {dynamicJsonContainsSecrets && editJsonRevealed && (
+                  <button type="button" onClick={() => setEditJsonRevealed(false)}
+                    className="inline-flex items-center gap-1 text-xs cursor-pointer"
+                    style={{ color: 'var(--color-text-secondary)' }}>
+                    <EyeOff size={13} /> Hide sensitive values
+                  </button>
+                )}
+              </div>
+              {editJsonRevealed ? (
+                <textarea id="mcp-dynamic-json" value={editJson} onChange={e => { setEditJson(e.target.value); setEditJsonError(null); }}
+                  spellCheck={false}
+                  className="w-full font-mono text-xs px-3 py-3 rounded-lg border resize-y"
+                  style={{ minHeight: 200, borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              ) : (
+                <div className="flex min-h-32 flex-col items-center justify-center gap-3 rounded-lg border px-4 text-center"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+                  <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    This JSON contains sensitive values and is hidden by default.
+                  </p>
+                  <button type="button" onClick={() => setEditJsonRevealed(true)}
+                    className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium cursor-pointer"
+                    style={{ borderColor: 'var(--color-border)' }}>
+                    <Eye size={14} /> Reveal and edit configuration
+                  </button>
+                </div>
+              )}
               {editJsonError && (
                 <div className="text-xs rounded p-2 mt-2" style={{ background: '#7f1d1d', color: '#fff' }}>{editJsonError}</div>
               )}
@@ -527,30 +583,47 @@ function McpServerModal({
             <div>
               <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Configuration</label>
               <div className="space-y-2 mb-2">
-                {Object.entries(server.config).map(([k, v]) => (
-                  <div key={k} className="flex items-center gap-2">
-                    <span className="text-xs font-mono flex-1 px-2 py-1 rounded"
+                {Object.entries(server.config).map(([k, v]) => {
+                  const sensitive = isSensitiveConfigKey(k);
+                  const revealed = revealedConfigKeys.has(k);
+                  return (
+                    <div key={k} className="grid grid-cols-[minmax(6rem,0.35fr)_minmax(0,1fr)_auto] items-start gap-2 rounded-lg p-2"
                       style={{ background: 'var(--color-bg-tertiary)' }}>
-                      {k}: {v}
-                    </span>
-                    <button onClick={() => removeConfigEntry(k)}
-                      className="p-1 rounded cursor-pointer"
-                      style={{ color: '#f87171' }}>
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
+                      <code className="min-w-0 break-all text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>{k}</code>
+                      <code className="min-w-0 whitespace-pre-wrap break-all text-xs leading-5">
+                        {sensitive && !revealed ? '••••••••••••••••' : v}
+                      </code>
+                      <div className="flex items-center gap-1">
+                        {sensitive && (
+                          <button type="button" onClick={() => toggleConfigVisibility(k)}
+                            aria-label={`${revealed ? 'Hide' : 'Reveal'} ${k} value`}
+                            className="p-1 rounded cursor-pointer"
+                            style={{ color: 'var(--color-text-secondary)' }}>
+                            {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => removeConfigEntry(k)}
+                          aria-label={`Remove ${k}`}
+                          className="p-1 rounded cursor-pointer"
+                          style={{ color: '#f87171' }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="flex items-center gap-2">
-                <input type="text" placeholder="Key" value={configKey}
+              <div className="grid grid-cols-1 sm:grid-cols-[minmax(7rem,0.7fr)_minmax(0,1.3fr)_auto] items-center gap-2">
+                <input type="text" aria-label="Configuration key" placeholder="Key" value={configKey}
                   onChange={e => setConfigKey(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') addConfigEntry(); }}
-                  className="flex-1 px-2 py-1.5 rounded border text-xs"
+                  className="min-w-0 px-2 py-1.5 rounded border text-xs"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
-                <input type="text" placeholder="Value" value={configValue}
+                <input type={isSensitiveConfigKey(configKey) ? 'password' : 'text'} aria-label="Configuration value" placeholder="Value" value={configValue}
                   onChange={e => setConfigValue(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') addConfigEntry(); }}
-                  className="flex-1 px-2 py-1.5 rounded border text-xs"
+                  autoComplete="off"
+                  className="min-w-0 px-2 py-1.5 rounded border text-xs"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
                 <button onClick={addConfigEntry}
                   className="px-2 py-1.5 rounded text-xs cursor-pointer"
@@ -576,10 +649,10 @@ function McpServerModal({
             Cancel
           </button>
           {showImport ? (
-            <button onClick={handleImport} disabled={saving || !importJson.trim()}
+            <button onClick={handleImport} disabled={saving || importing || !importJson.trim()}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
               style={{ background: 'var(--color-primary)' }}>
-              <Save size={14} /> {saving ? 'Importing...' : 'Import'}
+              <Save size={14} /> {importing ? 'Importing...' : 'Import'}
             </button>
           ) : isDynamicEdit ? (
             <button onClick={handleDynamicSave} disabled={saving || !server.name || !editJson.trim()}

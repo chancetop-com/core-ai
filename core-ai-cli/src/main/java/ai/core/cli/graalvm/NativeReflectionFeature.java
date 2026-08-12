@@ -33,8 +33,8 @@ public class NativeReflectionFeature implements Feature {
         "ai/core/api/server",
         "ai/core/api/a2a",
         "io/modelcontextprotocol/spec",
-        "io/modelcontextprotocol/json/jackson",
-        "io/modelcontextprotocol/json/schema/jackson",
+        "io/modelcontextprotocol/json/jackson2",
+        "io/modelcontextprotocol/json/schema/jackson2",
         // ACP SDK
         "com/agentclientprotocol/sdk/spec",
         "com/agentclientprotocol/sdk/json",
@@ -70,10 +70,10 @@ public class NativeReflectionFeature implements Feature {
         // MCP SDK stdio transport (for subprocess process extraction via reflection)
         "io.modelcontextprotocol.client.transport.StdioClientTransport",
         // MCP SDK service loader implementations
-        "io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapperSupplier",
-        "io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper",
-        "io.modelcontextprotocol.json.schema.jackson.JacksonJsonSchemaValidatorSupplier",
-        "io.modelcontextprotocol.json.schema.jackson.DefaultJsonSchemaValidator",
+        "io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier",
+        "io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper",
+        "io.modelcontextprotocol.json.schema.jackson2.JacksonJsonSchemaValidatorSupplier",
+        "io.modelcontextprotocol.json.schema.jackson2.DefaultJsonSchemaValidator",
         // JLine FFM terminal provider for Windows native terminal support
         "org.jline.terminal.impl.ffm.FfmTerminalProvider",
         "org.jline.terminal.impl.ffm.FfmTerminal",
@@ -96,6 +96,10 @@ public class NativeReflectionFeature implements Feature {
     private static final String[] TOOL_SCAN_PACKAGES = {
         "ai/core"
     };
+
+    static Set<String> configuredReflectionClassNames() {
+        return Set.of(EXTRA_CLASSES);
+    }
 
     private final Set<Class<?>> registered = new HashSet<>();
 
