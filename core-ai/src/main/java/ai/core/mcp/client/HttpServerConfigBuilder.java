@@ -118,6 +118,7 @@ public final class HttpServerConfigBuilder implements McpServerConfig.CommonConf
         if (config.url == null || config.url.isBlank()) {
             throw new IllegalArgumentException("url is required for HTTP transport");
         }
+        McpServerConfig.applyHttpCompatibilityDefaults(config);
         return config;
     }
 }

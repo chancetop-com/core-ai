@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * @author stephen
@@ -111,7 +112,7 @@ public final class McpTransportFactory {
         builder.httpRequestCustomizer((requestBuilder, method, uri, body, context) -> {
             var headers = requestHeaders(config);
             for (var entry : headers.entrySet()) {
-                requestBuilder.header(entry.getKey(), entry.getValue());
+                requestBuilder.setHeader(entry.getKey(), entry.getValue());
             }
         });
         return builder.build();
@@ -145,7 +146,7 @@ public final class McpTransportFactory {
         builder.httpRequestCustomizer((requestBuilder, method, uri, body, context) -> {
             var headers = requestHeaders(config);
             for (var entry : headers.entrySet()) {
-                requestBuilder.header(entry.getKey(), entry.getValue());
+                requestBuilder.setHeader(entry.getKey(), entry.getValue());
             }
         });
         return builder.build();
@@ -157,7 +158,7 @@ public final class McpTransportFactory {
      * OutboundCallerContext on every request). Caller headers win on name collision.
      */
     private static Map<String, String> requestHeaders(McpServerConfig config) {
-        var headers = new java.util.HashMap<String, String>();
+        var headers = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
         if (config.getHeaders() != null) {
             headers.putAll(config.getHeaders());
         }
