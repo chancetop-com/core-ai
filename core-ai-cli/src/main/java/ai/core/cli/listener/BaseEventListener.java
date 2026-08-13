@@ -15,6 +15,7 @@ import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
+import ai.core.api.server.session.TaskStatusEvent;
 import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
@@ -232,7 +233,25 @@ public class BaseEventListener implements AgentEventListener {
         lastTurnComplete.set(event);
         printTurnSummary();
 
+        // Background tasks keep working between turns - keep the spinner alive so the
+        // user sees live progress (task count / tool call count) while waiting.
+        if (hasRunningBackgroundTasks()) {
+            panel.startSpinner();
+        }
+
         if (turnFuture != null) turnFuture.complete(null);
+    }
+
+    @Override
+    public void onTaskStatus(TaskStatusEvent event) {
+        removeTask(event.taskId);
+        if (!hasRunningBackgroundTasks()) {
+            panel.stopSpinnerIfActive();
+        }
+    }
+
+    private boolean hasRunningBackgroundTasks() {
+        return runTasks.values().stream().anyMatch(RuntimeTask::runInBackground);
     }
 
     @Override

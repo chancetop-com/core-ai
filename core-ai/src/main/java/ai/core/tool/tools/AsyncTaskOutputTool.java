@@ -15,10 +15,11 @@ public class AsyncTaskOutputTool extends ToolCall {
     public static final String TOOL_NAME = "async_task_output";
 
     private static final String TOOL_DESC = """
-            Query the status and output of async tasks.
+            Query the status and output of async tasks, including background agents launched
+            via the task tool (run_in_background=true).
 
             Use action='poll' with task_id to check a specific task's status and get its result when completed.
-            Use action='cancel' with task_id to cancel a running task.
+            Use action='cancel' with task_id to stop a running task or background agent.
 
             Poll returns one of these statuses:
             - PENDING: Task is still running, poll again later
@@ -32,11 +33,6 @@ public class AsyncTaskOutputTool extends ToolCall {
 
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
-        return execute(arguments);
-    }
-
-    @Override
-    public ToolCallResult execute(String arguments) {
         var startTime = System.currentTimeMillis();
         try {
             var args = parseArguments(arguments);
@@ -50,8 +46,8 @@ public class AsyncTaskOutputTool extends ToolCall {
 
             var executor = AsyncToolTaskExecutor.getInstance();
             var result = switch (action) {
-                case "poll" -> pollTask(executor, taskId);
-                case "cancel" -> cancelTask(executor, taskId);
+                case "poll" -> pollTask(executor, taskId, context);
+                case "cancel" -> cancelTask(executor, taskId, context);
                 default -> ToolCallResult.failed("Unknown action: " + action + ". Use 'poll' or 'cancel'.");
             };
 
@@ -64,8 +60,18 @@ public class AsyncTaskOutputTool extends ToolCall {
         }
     }
 
-    private ToolCallResult pollTask(AsyncToolTaskExecutor executor, String taskId) {
+    @Override
+    public ToolCallResult execute(String arguments) {
+        return execute(arguments, null);
+    }
+
+    private ToolCallResult pollTask(AsyncToolTaskExecutor executor, String taskId, ExecutionContext context) {
         var result = executor.poll(taskId);
+        var taskManager = context != null ? context.getTaskManager() : null;
+        if (taskManager != null && result.isFailed() && taskManager.isRunning(taskId)) {
+            // Not an async tool task - a background agent launched via the task tool is still running.
+            return ToolCallResult.pending(taskId, "Background agent is still running");
+        }
 
         var taskInfo = executor.getTaskInfo(taskId);
         if (taskInfo.isPresent()) {
@@ -77,8 +83,14 @@ public class AsyncTaskOutputTool extends ToolCall {
         return result;
     }
 
-    private ToolCallResult cancelTask(AsyncToolTaskExecutor executor, String taskId) {
-        return executor.cancel(taskId);
+    private ToolCallResult cancelTask(AsyncToolTaskExecutor executor, String taskId, ExecutionContext context) {
+        var result = executor.cancel(taskId);
+        var taskManager = context != null ? context.getTaskManager() : null;
+        if (taskManager != null && result.isFailed() && taskManager.cancel(taskId)) {
+            // Not an async tool task - cancelled a background agent launched via the task tool.
+            return ToolCallResult.completed("Task cancelled: " + taskId);
+        }
+        return result;
     }
 
     public static class Builder extends ToolCall.Builder<Builder, AsyncTaskOutputTool> {

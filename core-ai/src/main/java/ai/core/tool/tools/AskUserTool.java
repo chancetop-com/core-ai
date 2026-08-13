@@ -1,5 +1,6 @@
 package ai.core.tool.tools;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -33,6 +34,17 @@ public class AskUserTool extends ToolCall {
 
     public void setQuestionHandler(Function<String, String> handler) {
         this.questionHandler = handler;
+    }
+
+    @Override
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
+        // Subagents run on worker threads and share no terminal; a blocking question read
+        // would hang the whole background task forever. Return the question to the main
+        // agent, which asks the user on its own turn instead.
+        if (context != null && context.isSubagent()) {
+            return ToolCallResult.failed("ask_user is not available inside subagents: return the question in your final result so the main agent can ask the user");
+        }
+        return execute(arguments);
     }
 
     @Override

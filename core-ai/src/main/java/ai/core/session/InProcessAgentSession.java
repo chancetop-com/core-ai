@@ -19,6 +19,7 @@ import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
+import ai.core.api.server.session.TaskStatusEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
@@ -53,7 +54,7 @@ public class InProcessAgentSession implements AgentSession {
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
         var context = agent.getExecutionContext();
         if (context.getSubagentOutputSinkFactory() != null) {
-            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
+            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(), sessionId, this::dispatch));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context));
         var permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
@@ -74,7 +75,7 @@ public class InProcessAgentSession implements AgentSession {
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
         var context = agent.getExecutionContext();
         if (context.getSubagentOutputSinkFactory() != null) {
-            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
+            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(), sessionId, this::dispatch));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context));
         var permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
@@ -350,6 +351,7 @@ public class InProcessAgentSession implements AgentSession {
                     case SandboxEvent e -> listener.onSandbox(e);
                     case EnvironmentOutputChunkEvent e -> listener.onEnvironmentOutput(e);
                     case BatchToolStartEvent e -> listener.onBatchToolStart(e);
+                    case TaskStatusEvent e -> listener.onTaskStatus(e);
                     default -> {
                     }
                 }

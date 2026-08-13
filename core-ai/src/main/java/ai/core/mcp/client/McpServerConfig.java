@@ -121,7 +121,7 @@ public class McpServerConfig {
                 : baseUri.resolve(URI.create(config.endpoint));
             if (!"https".equalsIgnoreCase(endpointUri.getScheme())
                 || !"mcp.facebook.com".equalsIgnoreCase(endpointUri.getHost())
-                || (endpointUri.getPort() != -1 && endpointUri.getPort() != 443)) {
+                || endpointUri.getPort() != -1 && endpointUri.getPort() != 443) {
                 return false;
             }
             String path = endpointUri.normalize().getPath();

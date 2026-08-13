@@ -2,6 +2,8 @@ package ai.core.session;
 
 import ai.core.agent.CancellationToken;
 import ai.core.agent.Task;
+import ai.core.api.server.session.AgentEvent;
+import ai.core.api.server.session.TaskStatusEvent;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.subagent.SubagentOutputSink;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
@@ -11,10 +13,13 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class BackgroundTaskManager {
@@ -46,14 +51,19 @@ public class BackgroundTaskManager {
     }
 
     private final List<Task> tasks = new CopyOnWriteArrayList<>();
+    private final Map<String, RunningTask> runningTasks = new ConcurrentHashMap<>();
     private final SessionCommandQueue commandQueue;
     private final SubagentOutputSinkFactory sinkFactory;
     private final ExecutorService executor;
+    private final String sessionId;
+    private final Consumer<AgentEvent> dispatcher;
 
-    public BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory) {
+    public BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId, Consumer<AgentEvent> dispatcher) {
         this.commandQueue = commandQueue;
         this.sinkFactory = sinkFactory;
         this.executor = AsyncToolTaskExecutor.getInstance().getExecutor();
+        this.sessionId = sessionId;
+        this.dispatcher = dispatcher;
     }
 
     @SuppressWarnings("PMD.UseTryWithResources")
@@ -62,19 +72,22 @@ public class BackgroundTaskManager {
         var sink = sinkFactory.create(taskId);
         var outputRef = sink.getReference();
         var notified = new AtomicBoolean(false);
+        // Registered before the executor submit so notifyTerminal on the worker thread
+        // always observes the entry (the reverse order could leave a stale entry behind).
+        var running = new RunningTask(null, notified, outputRef);
+        runningTasks.put(taskId, running);
         var otelContext = Context.current();
         var future = executor.submit(() -> {
             var scope = otelContext.makeCurrent();
             try {
                 var runResult = runAgentWithSink(agentRunner, sink, taskId);
                 LOGGER.debug("background task finished, taskId={}, status={}", taskId, runResult.status);
-                if (notified.compareAndSet(false, true)) {
-                    commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, runResult.status, outputRef, runResult.result, runResult.error));
-                }
+                notifyTerminal(taskId, runResult.status, outputRef, runResult.result, runResult.error, notified);
             } finally {
                 scope.close();
             }
         });
+        running.future = future;
         if (token != null) {
             token.onCancel(() -> {
                 LOGGER.debug("token cancelled for background task, taskId={}", taskId);
@@ -83,10 +96,7 @@ public class BackgroundTaskManager {
                 // sends a "cancelled" status when it detects the interruption, but if the
                 // task hasn't started yet, future.cancel(true) prevents execution entirely
                 // and the lambda never runs. The notified CAS ensures exactly one notification.
-                if (notified.compareAndSet(false, true)) {
-                    commandQueue.enqueueTaskNotification(
-                            buildNotificationXml(taskId, "cancelled", outputRef, null, "cancelled by user"));
-                }
+                notifyTerminal(taskId, "cancelled", outputRef, null, "cancelled by user", notified);
             });
         }
         return new TaskHandle(outputRef, future);
@@ -97,13 +107,43 @@ public class BackgroundTaskManager {
         tasks.add(task);
     }
 
+    /**
+     * Cancels a running background task by task id, notifying the session so the
+     * main agent learns about the cancellation.
+     *
+     * @return true if the task was found and cancelled, false if it is not running
+     */
+    public boolean cancel(String taskId) {
+        var running = runningTasks.get(taskId);
+        if (running == null) {
+            return false;
+        }
+        LOGGER.debug("cancelling background task, taskId={}", taskId);
+        running.future.cancel(true);
+        notifyTerminal(taskId, "cancelled", running.outputRef, null, "cancelled by user", running.notified);
+        return true;
+    }
+
+    public boolean isRunning(String taskId) {
+        return runningTasks.containsKey(taskId);
+    }
+
+    private void notifyTerminal(String taskId, String status, String outputRef, String result, String error, AtomicBoolean notified) {
+        if (!notified.compareAndSet(false, true)) {
+            return;
+        }
+        runningTasks.remove(taskId);
+        commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error));
+        dispatcher.accept(TaskStatusEvent.of(sessionId, taskId, status));
+    }
+
     public void cancelAll() {
         LOGGER.debug("cancelling all tasks, count={}", tasks.size());
         tasks.forEach(Task::cancel);
     }
 
     public BackgroundTaskManager createChild() {
-        return new BackgroundTaskManager(commandQueue, sinkFactory);
+        return new BackgroundTaskManager(commandQueue, sinkFactory, sessionId, dispatcher);
     }
 
     public List<Task> getTasks() {
@@ -119,6 +159,18 @@ public class BackgroundTaskManager {
     }
 
     public record TaskHandle(String outputRef, Future<?> future) {
+    }
+
+    private static final class RunningTask {
+        volatile Future<?> future;
+        final AtomicBoolean notified;
+        final String outputRef;
+
+        private RunningTask(Future<?> future, AtomicBoolean notified, String outputRef) {
+            this.future = future;
+            this.notified = notified;
+            this.outputRef = outputRef;
+        }
     }
 
     private record TaskRunResult(String status, String result, String error) {

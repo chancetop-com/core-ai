@@ -133,18 +133,11 @@ class McpTransportFactoryTest {
         useShortTimeouts(builder);
         var caller = new OutboundCallerContext.Caller("external", "user", "manager", java.util.Map.of());
 
-        var callerScope = OutboundCallerContext.set(caller);
-        McpClientService client = null;
-        try {
+        try (var callerScope = OutboundCallerContext.set(caller);
+             var client = new McpClientService(builder.build())) {
             assertNotNull(callerScope);
             assertEquals(caller, OutboundCallerContext.current());
-            client = new McpClientService(builder.build());
             assertEquals("ping", client.listTools().getFirst().name());
-        } finally {
-            if (client != null) {
-                client.close();
-            }
-            callerScope.close();
         }
 
         assertEquals("caller-value", managerId.get());

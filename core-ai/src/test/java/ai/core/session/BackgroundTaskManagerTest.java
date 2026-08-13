@@ -42,7 +42,7 @@ class BackgroundTaskManagerTest {
                     .build();
             var tracer = openTelemetry.getTracer("test");
             var commandQueue = new SessionCommandQueue();
-            var manager = new BackgroundTaskManager(commandQueue, taskId -> new InMemorySink(taskId));
+            var manager = new BackgroundTaskManager(commandQueue, taskId -> new InMemorySink(taskId), "test-session", event -> { });
             var parentSpan = tracer.spanBuilder("task-tool").startSpan();
 
             submitAndWait(tracer, manager, parentSpan);

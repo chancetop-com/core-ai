@@ -46,5 +46,8 @@ public interface AgentEventListener {
 
     default void onBatchToolStart(BatchToolStartEvent event) {
     }
+
+    default void onTaskStatus(TaskStatusEvent event) {
+    }
 }
 
