@@ -1,5 +1,6 @@
 package ai.core.server;
 
+import ai.core.api.server.session.ChatSessionWebService;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.sse.SseEndpointRegistry;
@@ -8,7 +9,7 @@ import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionAgentHelper;
 import ai.core.server.session.SessionRegistry;
-import ai.core.server.web.ChatSessionController;
+import ai.core.server.web.ChatSessionWebServiceImpl;
 import ai.core.server.web.SessionCreateHelper;
 import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.web.sse.AgentSessionChannelListener;
@@ -28,14 +29,7 @@ public class SessionModule extends Module {
         bindSessionRuntime();
         registerSseEndpoints();
         schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
-
-        var chatSessionController = bind(ChatSessionController.class);
-        http().route(HTTPMethod.GET, "/api/chat/sessions", chatSessionController::list);
-        http().route(HTTPMethod.GET, "/api/chat/sessions/:sessionId", chatSessionController::get);
-        http().route(HTTPMethod.DELETE, "/api/chat/sessions/:sessionId", chatSessionController::delete);
-        http().route(HTTPMethod.POST, "/api/chat/sessions/batch-delete", chatSessionController::batchDelete);
-        http().route(HTTPMethod.PUT, "/api/chat/sessions/:sessionId", chatSessionController::update);
-        http().route(HTTPMethod.POST, "/api/chat/sessions/:sessionId/feedback", chatSessionController::submitFeedback);
+        api().service(ChatSessionWebService.class, bind(ChatSessionWebServiceImpl.class));
     }
 
     private void bindSessionRuntime() {

@@ -1,5 +1,9 @@
 package ai.core.server.gateway;
 
+import ai.core.api.server.gateway.GatewayProviderRequest;
+import ai.core.api.server.gateway.GatewayProviderView;
+import ai.core.api.server.gateway.ListGatewayProvidersResponse;
+import ai.core.api.server.gateway.TestGatewayProviderResponse;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.User;
@@ -120,7 +124,7 @@ public class GatewayProviderService {
         var started = System.nanoTime();
         var result = new TestGatewayProviderResponse();
         if (isVertexMediaProvider(entity) && vertexMediaProviderConfigurationInvalid(entity)) {
-            result.ok = false;
+            result.ok = Boolean.FALSE;
             result.status = "failed";
             result.message = "Vertex provider requires GCP Project ID and GCP Location";
             result.durationMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
@@ -134,7 +138,7 @@ public class GatewayProviderService {
                 } else {
                     var credentials = secretProtector.unprotect(entity.googleCredentialsEncrypted);
                     new GoogleAccessTokenProvider("GOOGLE_SERVICE_ACCOUNT_JSON".equals(entity.mediaAuthType) ? credentials : null).accessToken();
-                    result.ok = true;
+                    result.ok = Boolean.TRUE;
                     result.status = "ok";
                     result.message = "Google credentials verified; video generation is not started by provider test";
                 }
@@ -155,7 +159,7 @@ public class GatewayProviderService {
             }
         } catch (RuntimeException e) {
             LOGGER.warn("gateway provider test failed, providerId={}, error={}", entity.id, e.getMessage());
-            result.ok = false;
+            result.ok = Boolean.FALSE;
             result.status = "failed";
             result.message = truncate(e.getMessage(), 300);
         } finally {

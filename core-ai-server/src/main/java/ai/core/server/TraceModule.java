@@ -1,5 +1,7 @@
 package ai.core.server;
 
+import ai.core.api.server.prompt.PromptWebService;
+import ai.core.api.server.trace.TraceWebService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.task.TaskRunner;
 import ai.core.server.trace.maintenance.TraceArchiveService;
@@ -16,8 +18,8 @@ import ai.core.server.trace.service.TraceService;
 import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
 import ai.core.server.trace.web.ingest.IngestController;
 import ai.core.server.trace.web.otlp.OTLPController;
-import ai.core.server.trace.web.prompt.PromptController;
-import ai.core.server.trace.web.trace.TraceController;
+import ai.core.server.trace.web.prompt.PromptWebServiceImpl;
+import ai.core.server.trace.web.trace.TraceWebServiceImpl;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -60,25 +62,11 @@ public class TraceModule extends Module {
         // Register OTLPIngestService for LocalSpanProcessor (SPI bridge)
         onStartup(() -> LocalSpanProcessorRegistry.register(otlpIngestService));
 
-        var traceController = bind(TraceController.class);
-        var promptController = bind(PromptController.class);
         var otlpController = bind(OTLPController.class);
         var ingestController = bind(IngestController.class);
 
-        http().route(HTTPMethod.GET, "/api/traces", traceController::list);
-        http().route(HTTPMethod.GET, "/api/traces/facets", traceController::facets);
-        http().route(HTTPMethod.GET, "/api/traces/generations", traceController::generations);
-        http().route(HTTPMethod.GET, "/api/traces/sessions/:sessionId/summary", traceController::sessionSummary);
-        http().route(HTTPMethod.GET, "/api/traces/:traceId", traceController::get);
-        http().route(HTTPMethod.GET, "/api/traces/:traceId/spans", traceController::spans);
-        http().route(HTTPMethod.GET, "/api/traces/:traceId/spans/:spanId", traceController::span);
-
-        http().route(HTTPMethod.GET, "/api/prompts", promptController::list);
-        http().route(HTTPMethod.POST, "/api/prompts", promptController::create);
-        http().route(HTTPMethod.GET, "/api/prompts/:promptId", promptController::get);
-        http().route(HTTPMethod.PUT, "/api/prompts/:promptId", promptController::update);
-        http().route(HTTPMethod.DELETE, "/api/prompts/:promptId", promptController::delete);
-        http().route(HTTPMethod.POST, "/api/prompts/:promptId/publish", promptController::publish);
+        api().service(TraceWebService.class, bind(TraceWebServiceImpl.class));
+        api().service(PromptWebService.class, bind(PromptWebServiceImpl.class));
 
         http().route(HTTPMethod.POST, "/v1/traces", otlpController::receive);
         http().route(HTTPMethod.POST, "/api/public/otel/v1/traces", otlpController::receive);

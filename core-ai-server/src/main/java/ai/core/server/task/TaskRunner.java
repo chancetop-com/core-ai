@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Guarantees at-most-once execution per task-id via MongoDB insert-or-skip:
  * the first pod to insert a RUNNING record wins; other pods see a
  * {@code DuplicateKeyException} and skip.  No PENDING state, no timeout recovery —
- * stuck RUNNING records are reset manually via {@link TaskController#retry}.</p>
+ * stuck RUNNING records are reset manually via {@link TaskWebServiceImpl#retry}.</p>
  *
  * @author cyril
  */

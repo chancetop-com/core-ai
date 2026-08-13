@@ -1,5 +1,7 @@
 package ai.core.server.gateway;
 
+import ai.core.api.server.gateway.GatewayAvailableModelView;
+
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.tool.tools.MediaModelHint;

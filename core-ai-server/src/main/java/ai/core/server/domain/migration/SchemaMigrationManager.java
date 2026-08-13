@@ -119,7 +119,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVStripSpanPayloadAttributes(),
             new SchemaMigrationVArtifactListIndexes(),
             new SchemaMigrationVFileContentHashIndex(),
-            new SchemaMigrationVCostAlertIndexes()
+            new SchemaMigrationVCostAlertIndexes(),
+            new SchemaMigrationVRemoveLegacyMultimodalModelSetting()
         );
     }
 }

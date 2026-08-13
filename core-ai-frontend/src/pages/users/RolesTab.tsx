@@ -114,7 +114,7 @@ export default function RolesTab({ onRolesChanged }: RolesTabProps) {
     setSaved(false);
   };
 
-  const toggleDomain = (domain: string, permissions: string[]) => {
+  const toggleDomain = (_domain: string, permissions: string[]) => {
     if (!selected) return;
     const current = roles[selected] || [];
     const allGranted = permissions.every(p => current.includes(p));

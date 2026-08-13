@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionRegistry;
+import core.framework.module.APIConfig;
 import core.framework.module.HTTPConfig;
 import core.framework.module.SchedulerConfig;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,11 @@ class SessionModuleTest {
         @Override
         public HTTPConfig http() {
             return mock(HTTPConfig.class);
+        }
+
+        @Override
+        public APIConfig api() {
+            return mock(APIConfig.class);
         }
     }
 }

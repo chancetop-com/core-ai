@@ -1,5 +1,7 @@
 package ai.core.server.gateway;
 
+import ai.core.api.server.gateway.GatewayDiscoveredModelView;
+import ai.core.api.server.gateway.ListGatewayDiscoveredModelsResponse;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.User;

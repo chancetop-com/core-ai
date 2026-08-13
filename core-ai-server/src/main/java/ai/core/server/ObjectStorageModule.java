@@ -1,8 +1,8 @@
 package ai.core.server;
 
 import ai.core.api.server.FileWebService;
-import ai.core.api.server.blob.BlobUploadCredentialView;
-import ai.core.server.blob.BlobUploadCredentialController;
+import ai.core.api.server.blob.BlobUploadCredentialWebService;
+import ai.core.server.blob.BlobUploadCredentialWebServiceImpl;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
@@ -33,9 +33,7 @@ public class ObjectStorageModule extends Module {
         readProperties();
         bindObjectStorageResolver();
         registerFile();
-        bind(BlobUploadCredentialController.class);
-        http().bean(BlobUploadCredentialView.class);
-        http().route(HTTPMethod.GET, "/api/blob/upload-credential", bean(BlobUploadCredentialController.class)::getCredential);
+        api().service(BlobUploadCredentialWebService.class, bind(BlobUploadCredentialWebServiceImpl.class));
     }
 
     private void bindObjectStorageResolver() {

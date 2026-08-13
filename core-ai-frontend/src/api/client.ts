@@ -1337,26 +1337,27 @@ export const api = {
       return request<TraceListResponse>(`/api/traces?${params}`);
     },
     get: (id: string) => request<Trace>(`/api/traces/${id}`),
-    spans: (id: string) => request<Span[]>(`/api/traces/${id}/spans`),
+    spans: async (id: string) =>
+      (await request<{ spans: Span[] }>(`/api/traces/${id}/spans`)).spans,
     span: (traceId: string, spanId: string) => request<Span>(`/api/traces/${traceId}/spans/${spanId}`),
-    generations: (offset = 0, limit = 20, model?: string) => {
+    generations: async (offset = 0, limit = 20, model?: string) => {
       const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
       if (model) params.set('model', model);
-      return request<Span[]>(`/api/traces/generations?${params}`);
+      return (await request<{ spans: Span[] }>(`/api/traces/generations?${params}`)).spans;
     },
     sessionSummary: (sessionId: string) =>
       request<SessionSummary>(`/api/traces/sessions/${encodeURIComponent(sessionId)}/summary`),
-    facets: (field: 'model' | 'agentName' | 'source', filters?: TraceFilter) => {
+    facets: async (field: 'model' | 'agentName' | 'source', filters?: TraceFilter) => {
       const params = new URLSearchParams({ field });
       if (filters) {
         Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
       }
-      return request<TraceFacet[]>(`/api/traces/facets?${params}`);
+      return (await request<{ facets: TraceFacet[] }>(`/api/traces/facets?${params}`)).facets;
     },
   },
   prompts: {
-    list: (offset = 0, limit = 20) =>
-      request<PromptTemplate[]>(`/api/prompts?offset=${offset}&limit=${limit}`),
+    list: async (offset = 0, limit = 20) =>
+      (await request<{ prompts: PromptTemplate[] }>(`/api/prompts?offset=${offset}&limit=${limit}`)).prompts,
     get: (id: string) => request<PromptTemplate>(`/api/prompts/${id}`),
     create: (data: Partial<PromptTemplate>) =>
       request<PromptTemplate>('/api/prompts', { method: 'POST', body: JSON.stringify(data) }),
@@ -1515,8 +1516,8 @@ export const api = {
       request<{ output: string }>('/api/utils/generate', { method: 'POST', body: JSON.stringify(data) }),
   },
   systemPrompts: {
-    list: (offset = 0, limit = 20) =>
-      request<SystemPrompt[]>(`/api/system-prompts?offset=${offset}&limit=${limit}`),
+    list: async (offset = 0, limit = 20) =>
+      (await request<{ prompts: SystemPrompt[] }>(`/api/system-prompts?offset=${offset}&limit=${limit}`)).prompts,
     get: (promptId: string) =>
       request<SystemPrompt>(`/api/system-prompts/${promptId}`),
     create: (data: { name: string; description?: string; content: string; tags?: string[] }) =>
@@ -1525,8 +1526,8 @@ export const api = {
       request<SystemPrompt>(`/api/system-prompts/${promptId}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (promptId: string) =>
       request<void>(`/api/system-prompts/${promptId}`, { method: 'DELETE' }),
-    versions: (promptId: string) =>
-      request<SystemPromptVersion[]>(`/api/system-prompts/${promptId}/versions`),
+    versions: async (promptId: string) =>
+      (await request<{ versions: SystemPromptVersion[] }>(`/api/system-prompts/${promptId}/versions`)).versions,
     getVersion: (promptId: string, version: number) =>
       request<SystemPrompt>(`/api/system-prompts/${promptId}/versions/${version}`),
     test: (promptId: string, data: { model: string; userMessage: string; variables?: Record<string, string> }) =>
@@ -1804,9 +1805,9 @@ export const api = {
       const qs = buildAnalyticsParams(params);
       return request<AnalyticsGlobal>(`/api/admin/analytics/global?${qs}`);
     },
-    trend: (params: AnalyticsParams) => {
+    trend: async (params: AnalyticsParams) => {
       const qs = buildAnalyticsParams(params);
-      return request<TrendPoint[]>(`/api/admin/analytics/trend?${qs}`);
+      return (await request<{ points: TrendPoint[] }>(`/api/admin/analytics/trend?${qs}`)).points;
     },
     bySource: (params: AnalyticsParams) => {
       const qs = buildAnalyticsParams(params);
@@ -1828,9 +1829,9 @@ export const api = {
       const qs = buildAnalyticsParams(params);
       return request<DimensionAnalytics>(`/api/admin/analytics/by-model?${qs}`);
     },
-    dimensionTrend: (dimension: AnalyticsDimension, params: AnalyticsParams & { keys: string }) => {
+    dimensionTrend: async (dimension: AnalyticsDimension, params: AnalyticsParams & { keys: string }) => {
       const qs = buildAnalyticsParams(params);
-      return request<DimensionTrendPoint[]>(`/api/admin/analytics/${dimension}/trend?${qs}&keys=${encodeURIComponent(params.keys)}`);
+      return (await request<{ points: DimensionTrendPoint[] }>(`/api/admin/analytics/${dimension}/trend?${qs}&keys=${encodeURIComponent(params.keys)}`)).points;
     },
   },
   artifacts: {

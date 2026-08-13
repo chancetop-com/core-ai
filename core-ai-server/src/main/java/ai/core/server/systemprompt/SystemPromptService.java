@@ -1,5 +1,10 @@
 package ai.core.server.systemprompt;
 
+import ai.core.api.server.systemprompt.SystemPromptRequest;
+import ai.core.api.server.systemprompt.SystemPromptTestRequest;
+import ai.core.api.server.systemprompt.SystemPromptTestResponse;
+import ai.core.api.server.systemprompt.SystemPromptVersionView;
+import ai.core.api.server.systemprompt.SystemPromptView;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;

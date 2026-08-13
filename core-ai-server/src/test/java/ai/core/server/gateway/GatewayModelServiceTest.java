@@ -1,5 +1,7 @@
 package ai.core.server.gateway;
 
+import ai.core.api.server.gateway.GatewayModelRequest;
+import ai.core.api.server.gateway.ImportGatewayModelsRequest;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.User;
@@ -12,7 +14,6 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -85,7 +86,7 @@ class GatewayModelServiceTest {
         when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
 
         var request = new GatewayModelRequest();
-        request.fields = Set.of("priority", "contextWindow", "inputPricePer1MTokens", "outputPricePer1MTokens");
+        request.fields = List.of("priority", "contextWindow", "inputPricePer1MTokens", "outputPricePer1MTokens");
 
         service.update("model-1", request, "admin-1");
 
@@ -140,7 +141,7 @@ class GatewayModelServiceTest {
         when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
 
         var request = new GatewayModelRequest();
-        request.fields = Set.of("responseFormat");
+        request.fields = List.of("responseFormat");
 
         service.update("model-1", request, "admin-1");
 

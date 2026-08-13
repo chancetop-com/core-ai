@@ -1,11 +1,13 @@
 package ai.core.server;
 
-import ai.core.server.channel.ChannelAdminController;
+import ai.core.api.server.channel.ChannelWebService;
+import ai.core.api.server.ocg.OcgConfigWebService;
 import ai.core.server.channel.ChannelController;
 import ai.core.server.channel.ChannelDispatcher;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.channel.ChannelSyncController;
-import ai.core.server.channel.openclaw.OcgConfigController;
+import ai.core.server.channel.ChannelWebServiceImpl;
+import ai.core.server.channel.openclaw.OcgConfigWebServiceImpl;
 import ai.core.server.channel.slack.SlackInboundAdapter;
 import ai.core.server.channel.slack.SlackOutboundAdapter;
 import ai.core.server.channel.telegram.TelegramInboundAdapter;
@@ -53,31 +55,12 @@ public class ChannelModule extends Module {
         http().route(HTTPMethod.POST, "/api/channels/:channelId", channelController);
         http().route(HTTPMethod.GET, "/api/channels/:channelId", channelController);
 
-        // Channel admin CRUD endpoints
-        var channelAdmin = bind(ChannelAdminController.class);
+        api().service(ChannelWebService.class, bind(ChannelWebServiceImpl.class));
 
         // OpenAI-compatible sync endpoint for all channels
         var channelSync = bind(ChannelSyncController.class);
         http().route(HTTPMethod.POST, "/api/channels/:channelId/v1/chat/completions", channelSync);
 
-        var ocgConfigController = bind(OcgConfigController.class);
-        http().route(HTTPMethod.GET, "/api/admin/ocg-configs", ocgConfigController::list);
-        http().route(HTTPMethod.POST, "/api/admin/ocg-configs", ocgConfigController::create);
-        http().route(HTTPMethod.GET, "/api/admin/ocg-configs/:id", ocgConfigController::get);
-        http().route(HTTPMethod.PUT, "/api/admin/ocg-configs/:id", ocgConfigController::update);
-        http().route(HTTPMethod.DELETE, "/api/admin/ocg-configs/:id", ocgConfigController::delete);
-        http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/start", ocgConfigController::start);
-        http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/stop", ocgConfigController::stop);
-        http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/restart", ocgConfigController::restart);
-        http().route(HTTPMethod.POST, "/api/admin/ocg-configs/:id/command", ocgConfigController::command);
-        http().route(HTTPMethod.GET, "/api/admin/ocg-configs/:id/logs", ocgConfigController::logs);
-        http().route(HTTPMethod.GET, "/api/admin/ocg-configs/:id/status", ocgConfigController::status);
-
-        http().route(HTTPMethod.GET, "/api/admin/channels", channelAdmin::list);
-        http().route(HTTPMethod.POST, "/api/admin/channels", channelAdmin::create);
-        http().route(HTTPMethod.GET, "/api/admin/channels/:channelId", channelAdmin::get);
-        http().route(HTTPMethod.PUT, "/api/admin/channels/:channelId", channelAdmin::update);
-        http().route(HTTPMethod.DELETE, "/api/admin/channels/:channelId", channelAdmin::delete);
-        http().route(HTTPMethod.GET, "/api/admin/channel-types", channelAdmin::types);
+        api().service(OcgConfigWebService.class, bind(OcgConfigWebServiceImpl.class));
     }
 }

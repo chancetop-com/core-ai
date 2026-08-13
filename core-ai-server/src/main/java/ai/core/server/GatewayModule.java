@@ -1,5 +1,7 @@
 package ai.core.server;
 
+import ai.core.api.server.gateway.GatewayModelWebService;
+import ai.core.api.server.gateway.GatewayProviderWebService;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
@@ -9,17 +11,17 @@ import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
 import ai.core.server.gateway.GatewayLLMProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
 import ai.core.server.gateway.GatewayModalityRegistry;
-import ai.core.server.gateway.MediaJobService;
-import ai.core.server.gateway.GatewayModelController;
 import ai.core.server.gateway.GatewayModelDiscoveryService;
 import ai.core.server.gateway.GatewayModelService;
-import ai.core.server.gateway.GatewayProviderController;
+import ai.core.server.gateway.GatewayModelWebServiceImpl;
 import ai.core.server.gateway.GatewayProviderService;
+import ai.core.server.gateway.GatewayProviderWebServiceImpl;
 import ai.core.server.gateway.GatewayProxyController;
 import ai.core.server.gateway.GatewayProxyService;
 import ai.core.server.gateway.GatewayResponsesChannelListener;
 import ai.core.server.gateway.GatewayResponsesSseEvent;
 import ai.core.server.gateway.GatewayRoutingEngine;
+import ai.core.server.gateway.MediaJobService;
 import ai.core.server.domain.GeminiFileRepository;
 import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.domain.GeminiFileService;
@@ -91,24 +93,11 @@ public class GatewayModule extends Module {
     }
 
     private void registerGatewayProviderRoutes() {
-        var gatewayProviderController = bind(GatewayProviderController.class);
-        http().route(HTTPMethod.GET, "/api/gateway/providers", gatewayProviderController::list);
-        http().route(HTTPMethod.POST, "/api/gateway/providers", gatewayProviderController::create);
-        http().route(HTTPMethod.PUT, "/api/gateway/providers/:id", gatewayProviderController::update);
-        http().route(HTTPMethod.DELETE, "/api/gateway/providers/:id", gatewayProviderController::delete);
-        http().route(HTTPMethod.POST, "/api/gateway/providers/:id/test", gatewayProviderController::test);
+        api().service(GatewayProviderWebService.class, bind(GatewayProviderWebServiceImpl.class));
     }
 
     private void registerGatewayModelRoutes() {
-        var gatewayModelController = bind(GatewayModelController.class);
-        http().route(HTTPMethod.GET, "/api/gateway/models", gatewayModelController::list);
-        http().route(HTTPMethod.GET, "/api/gateway/models/available", gatewayModelController::listAvailable);
-        http().route(HTTPMethod.POST, "/api/gateway/models", gatewayModelController::create);
-        http().route(HTTPMethod.PUT, "/api/gateway/models/:id", gatewayModelController::update);
-        http().route(HTTPMethod.DELETE, "/api/gateway/models/:id", gatewayModelController::delete);
-        http().route(HTTPMethod.POST, "/api/gateway/models/:id/set-default", gatewayModelController::markDefault);
-        http().route(HTTPMethod.POST, "/api/gateway/providers/:id/models/discover", gatewayModelController::discover);
-        http().route(HTTPMethod.POST, "/api/gateway/providers/:id/models/import", gatewayModelController::importModels);
+        api().service(GatewayModelWebService.class, bind(GatewayModelWebServiceImpl.class));
     }
 
     private void registerGatewayProxyRoutes() {

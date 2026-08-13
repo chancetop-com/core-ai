@@ -1,8 +1,9 @@
 package ai.core.server;
 
-import ai.core.server.web.CapabilitiesController;
-import ai.core.server.web.SpeechController;
-import core.framework.http.HTTPMethod;
+import ai.core.api.server.CapabilitiesWebService;
+import ai.core.api.server.speech.SpeechWebService;
+import ai.core.server.web.CapabilitiesWebServiceImpl;
+import ai.core.server.web.SpeechWebServiceImpl;
 import core.framework.module.Module;
 
 /**
@@ -16,13 +17,12 @@ public class PlatformApiModule extends Module {
     }
 
     private void configureSpeechToken() {
-        bind(SpeechController.class);
-        http().route(HTTPMethod.GET, "/api/speech/token", bean(SpeechController.class)::getToken);
+        api().service(SpeechWebService.class, bind(SpeechWebServiceImpl.class));
     }
 
     private void registerCapabilities() {
-        var controller = bind(CapabilitiesController.class);
-        controller.authDisabled = "true".equals(property("sys.auth.disabled").orElse("false"));
-        http().route(HTTPMethod.GET, "/api/capabilities", controller::get);
+        var impl = bind(CapabilitiesWebServiceImpl.class);
+        impl.authDisabled = "true".equals(property("sys.auth.disabled").orElse("false"));
+        api().service(CapabilitiesWebService.class, impl);
     }
 }
