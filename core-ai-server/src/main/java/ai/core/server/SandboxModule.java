@@ -17,6 +17,8 @@ import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import core.framework.module.Module;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import redis.clients.jedis.JedisPool;
 
 import java.nio.file.Files;
@@ -27,6 +29,7 @@ import java.nio.file.Path;
  */
 class SandboxModule extends Module {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(SandboxModule.class);
     private static final String DOCKER_SERVER_HOST = "host.docker.internal";
     private static final String KUBERNETES_SERVER_HOST = "core-ai-server";
 
@@ -127,12 +130,14 @@ class SandboxModule extends Module {
         var client = new AgentSandboxClient(apiServer, namespace, tokenResolver, 120);
         var useHostPort = "true".equalsIgnoreCase(property("sys.sandbox.kubernetes.hostPort").orElse("false"));
         KubernetesClient kubernetesClient = null;
-        if (useHostPort) {
+        try {
             if (token != null && !token.isBlank()) {
                 kubernetesClient = new KubernetesClient(apiServer, token, namespace, 60);
             } else {
                 kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
             }
+        } catch (Exception e) {
+            LOGGER.warn("failed to create kubernetes client for agent sandbox pod readiness checks, continuing without it", e);
         }
         // Warm pool mode: if template name is configured, use SandboxClaim via extensions API
         var templateName = property("sys.sandbox.agentSandbox.template").orElse("core-ai-sandbox");

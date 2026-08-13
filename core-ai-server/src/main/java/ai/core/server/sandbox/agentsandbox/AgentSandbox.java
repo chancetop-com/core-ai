@@ -45,7 +45,7 @@ public class AgentSandbox implements Sandbox {
     }
 
     public void waitForReady() {
-        runtimeClient.waitForReady(30_000);
+        runtimeClient.waitForReady(SandboxConstants.DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS * 1000);
     }
 
     @Override

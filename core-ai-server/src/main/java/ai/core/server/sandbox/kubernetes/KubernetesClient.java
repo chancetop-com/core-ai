@@ -102,6 +102,17 @@ public class KubernetesClient {
         throw new RuntimeException("Pod readiness timeout: " + podName);
     }
 
+    public PodInfo waitForReadyBySelector(String selector, int maxWaitMs) {
+        var startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < maxWaitMs) {
+            for (var pod : listPods(selector)) {
+                if (isPodReady(pod)) return pod;
+            }
+            sleep(2000);
+        }
+        throw new RuntimeException("Sandbox pod readiness timeout: selector=" + selector);
+    }
+
     public void deletePod(String podName) {
         var url = apiServer + "/api/v1/namespaces/" + namespace + "/pods/" + podName + "?gracePeriodSeconds=5";
         var response = delete(url);

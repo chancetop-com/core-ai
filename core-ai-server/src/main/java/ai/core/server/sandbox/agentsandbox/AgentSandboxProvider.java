@@ -180,6 +180,7 @@ public class AgentSandboxProvider implements SandboxProvider {
         client.createSandbox(crJson);
 
         var cr = client.waitForReady(crName, 120_000);
+        waitForSandboxPodReady(cr);
 
         var timeoutSeconds = effectiveConfig.timeoutSeconds != null
                 ? effectiveConfig.timeoutSeconds
@@ -204,6 +205,18 @@ public class AgentSandboxProvider implements SandboxProvider {
         var sandbox = new AgentSandbox(new AgentSandbox.Config(crName, null, host, port, timeoutSeconds, effectiveConfig.image, null));
         sandbox.waitForReady();
         return sandbox;
+    }
+
+    private void waitForSandboxPodReady(AgentSandboxClient.SandboxCR cr) {
+        if (kubernetesClient == null || cr.status == null || cr.status.selector == null || cr.status.selector.isBlank()) {
+            return;
+        }
+        try {
+            kubernetesClient.waitForReadyBySelector(cr.status.selector, 120_000);
+            LOGGER.info("agent sandbox pod ready: selector={}", cr.status.selector);
+        } catch (Exception e) {
+            LOGGER.warn("sandbox pod readiness wait failed, continuing to runtime health check: selector={}", cr.status.selector, e);
+        }
     }
 
     private Sandbox acquireWithNodePort(AgentSandboxClient.SandboxCR cr, String crName, int timeoutSeconds, String image) {

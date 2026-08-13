@@ -64,8 +64,11 @@ public class SandboxClient {
     private void pollUntilReady(HTTPClient pollClient, int maxWaitMs) {
         var url = baseUrl + "/health";
         var start = System.currentTimeMillis();
+        String lastError = null;
         while (System.currentTimeMillis() - start < maxWaitMs) {
-            if (healthCheckOnce(pollClient, url, start)) return;
+            var error = healthCheckOnce(pollClient, url, start);
+            if (error == null) return;
+            lastError = error;
             try {
                 Thread.sleep(500);
             } catch (InterruptedException e) {
@@ -73,21 +76,24 @@ public class SandboxClient {
                 return;
             }
         }
-        throw new RuntimeException("sandbox runtime health check timed out after " + maxWaitMs + "ms: url=" + baseUrl);
+        throw new RuntimeException("sandbox runtime health check timed out after " + maxWaitMs + "ms: url=" + baseUrl
+                + (lastError != null ? ", lastError=" + lastError : ""));
     }
 
-    private boolean healthCheckOnce(HTTPClient pollClient, String url, long start) {
+    private String healthCheckOnce(HTTPClient pollClient, String url, long start) {
         try {
             var req = new HTTPRequest(HTTPMethod.GET, url);
             var resp = pollClient.execute(req);
             if (resp.statusCode == 200) {
                 LOGGER.info("sandbox runtime ready: url={}, elapsed={}ms", baseUrl, System.currentTimeMillis() - start);
-                return true;
+                return null;
             }
+            LOGGER.warn("sandbox runtime health check failed: url={}, elapsed={}ms, status={}", baseUrl, System.currentTimeMillis() - start, resp.statusCode);
+            return "HTTP " + resp.statusCode;
         } catch (Exception e) {
             LOGGER.warn("sandbox runtime health check failed: url={}, elapsed={}ms, error={}", baseUrl, System.currentTimeMillis() - start, e.getMessage());
+            return e.getMessage();
         }
-        return false;
     }
 
     public String getIp() {
