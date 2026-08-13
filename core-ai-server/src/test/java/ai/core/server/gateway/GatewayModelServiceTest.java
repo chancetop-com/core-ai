@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -86,7 +87,7 @@ class GatewayModelServiceTest {
         when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
 
         var request = new GatewayModelRequest();
-        request.fields = List.of("priority", "contextWindow", "inputPricePer1MTokens", "outputPricePer1MTokens");
+        request.fields = Map.of("priority", Boolean.TRUE, "contextWindow", Boolean.TRUE, "inputPricePer1MTokens", Boolean.TRUE, "outputPricePer1MTokens", Boolean.TRUE);
 
         service.update("model-1", request, "admin-1");
 
@@ -141,7 +142,7 @@ class GatewayModelServiceTest {
         when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
 
         var request = new GatewayModelRequest();
-        request.fields = List.of("responseFormat");
+        request.fields = Map.of("responseFormat", Boolean.TRUE);
 
         service.update("model-1", request, "admin-1");
 

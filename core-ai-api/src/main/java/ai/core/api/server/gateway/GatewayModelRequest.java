@@ -4,6 +4,7 @@ import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -16,7 +17,7 @@ public class GatewayModelRequest {
      */
     @NotNull
     @Property(name = "fields")
-    public List<String> fields = List.of();
+    public Map<String, Boolean> fields = Map.of();
 
     @Property(name = "modelId")
     public String modelId;
@@ -79,6 +80,6 @@ public class GatewayModelRequest {
     public Double outputPricePer1MTokens;
 
     public boolean hasField(String field) {
-        return fields.contains(field);
+        return fields.containsKey(field);
     }
 }

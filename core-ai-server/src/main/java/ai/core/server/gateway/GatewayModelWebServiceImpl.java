@@ -14,7 +14,7 @@ import core.framework.inject.Inject;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 
-import java.util.ArrayList;
+import java.util.HashMap;
 
 /**
  * @author stephen
@@ -86,8 +86,8 @@ public class GatewayModelWebServiceImpl implements GatewayModelWebService {
             var body = webContext.request().body().orElseThrow(() -> new BadRequestException("body is required"));
             var node = GatewayJson.MAPPER.readTree(body);
             if (!node.isObject()) throw new BadRequestException("request body must be an object");
-            var fields = new ArrayList<String>();
-            node.fieldNames().forEachRemaining(fields::add);
+            var fields = new HashMap<String, Boolean>();
+            node.fieldNames().forEachRemaining(name -> fields.put(name, Boolean.TRUE));
             request.fields = fields;
         } catch (BadRequestException e) {
             throw e;
