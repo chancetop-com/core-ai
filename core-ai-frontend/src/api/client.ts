@@ -419,6 +419,7 @@ export interface AgentDefinition {
   published_at: string;
   created_at: string;
   updated_at: string;
+  updated_by?: string;
   subagent_ids?: string[];
   skill_ids?: string[];
   sub_agents?: { id: string; name: string }[];
@@ -1060,6 +1061,187 @@ export interface WorkflowRunGraphResponse {
   graph: string;
 }
 
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description?: string;
+  goal?: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface ListProjectsResponse {
+  projects: ProjectSummary[];
+  total: number;
+}
+
+export interface CreateProjectResponse {
+  id: string;
+}
+
+export interface ProjectSubject {
+  id: string;
+  name: string;
+  description?: string;
+  external_link?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectSubjectStatus {
+  subject_id: string;
+  phase?: string;
+  summary?: string;
+  updated_at: string;
+  updated_by?: string;
+}
+
+export interface ProjectKpi {
+  subject_id?: string;
+  key: string;
+  value: string;
+  unit?: string;
+  created_at: string;
+  created_by?: string;
+}
+
+export interface ProjectActionItem {
+  subject_id?: string;
+  id: string;
+  title: string;
+  status: string;
+  note?: string;
+  created_at: string;
+  updated_at: string;
+  updated_by?: string;
+}
+
+export interface ProjectNote {
+  subject_id?: string;
+  content: string;
+  created_at: string;
+  created_by?: string;
+}
+
+export interface ProjectReportSource {
+  type: 'agent' | 'workflow';
+  id: string;
+  name?: string;
+}
+
+export interface ProjectView {
+  id: string;
+  name: string;
+  description?: string;
+  goal?: string;
+  playbook?: string;
+  report_sources: ProjectReportSource[];
+  status: string;
+  last_analyzed_at?: string;
+  analysis_status?: string;
+  analysis_error?: string;
+  subjects: ProjectSubject[];
+  subject_statuses: ProjectSubjectStatus[];
+  kpis: ProjectKpi[];
+  action_items: ProjectActionItem[];
+  notes: ProjectNote[];
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface ProjectExecution {
+  id: string;
+  type: 'chat' | 'run' | 'workflow';
+  title?: string;
+  agent_name?: string;
+  status?: string;
+  started_at?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
+  trace_id?: string;
+  subject_id?: string;
+}
+
+export interface ListProjectExecutionsResponse {
+  executions: ProjectExecution[];
+  total: number;
+}
+
+export interface ProjectReport {
+  file_id: string;
+  file_name: string;
+  content_type?: string;
+  size?: number;
+  created_at: string;
+  subject_id?: string;
+  agent_id?: string;
+  agent_name?: string;
+}
+
+export interface ListProjectReportsResponse {
+  reports: ProjectReport[];
+}
+
+export interface ListProjectSubjectsResponse {
+  subjects: ProjectSubject[];
+  total?: number;
+}
+
+export interface CreateSubjectResponse {
+  id: string;
+}
+
+export interface ProjectAgentStat {
+  agent_id?: string;
+  agent_name?: string;
+  tokens?: number;
+  cost_usd?: number;
+  count?: number;
+}
+
+export interface ProjectSubjectStat {
+  subject_id?: string;
+  tokens?: number;
+  cost_usd?: number;
+  count?: number;
+}
+
+export interface ProjectStatsView {
+  trace_count?: number;
+  total_tokens?: number;
+  total_cost_usd?: number;
+  by_agent: ProjectAgentStat[];
+  by_subject: ProjectSubjectStat[];
+}
+
+export interface ProjectMember {
+  id: string;
+  name: string;
+}
+
+export interface ListProjectMembersResponse {
+  agents: ProjectMember[];
+  workflows: ProjectMember[];
+}
+
+export interface TimelineEntry {
+  type: string;
+  title?: string;
+  detail?: string;
+  subject_id?: string;
+  session_id?: string;
+  trace_id?: string;
+  at: string;
+}
+
+export interface ListTimelineResponse {
+  entries: TimelineEntry[];
+}
+
 export interface CreateRunResponse {
   run_id: string;
   status: string;
@@ -1510,6 +1692,56 @@ export const api = {
     export: (id: string) => request<ExportWorkflowResponse>(`/api/workflows/${id}/export`),
     import: (content: string, name?: string) =>
       request<ImportWorkflowResponse>('/api/workflows/import', { method: 'POST', body: JSON.stringify({ content, name }) }),
+  },
+  projects: {
+    list: (offset = 0, limit = 50, archived?: boolean) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (archived !== undefined) params.set('archived', String(archived));
+      return request<ListProjectsResponse>(`/api/projects?${params}`);
+    },
+    create: (data: { name: string; description?: string; goal?: string }) =>
+      request<CreateProjectResponse>('/api/projects', { method: 'POST', body: JSON.stringify(data) }),
+    get: (id: string, subjectId?: string) =>
+      request<ProjectView>(`/api/projects/${id}${subjectId ? `?subject_id=${encodeURIComponent(subjectId)}` : ''}`),
+    update: (id: string, data: { name?: string; description?: string; goal?: string; playbook?: string; report_sources?: { type: 'agent' | 'workflow'; id: string }[]; status?: string }) =>
+      request<void>(`/api/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    archive: (id: string) => request<void>(`/api/projects/${id}/archive`, { method: 'POST' }),
+    activate: (id: string) => request<void>(`/api/projects/${id}/activate`, { method: 'POST' }),
+    executions: (id: string, type?: string, offset = 0, limit = 50, subjectId?: string) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (type) params.set('type', type);
+      if (subjectId) params.set('subject_id', subjectId);
+      return request<ListProjectExecutionsResponse>(`/api/projects/${id}/executions?${params}`);
+    },
+    reports: (id: string, subjectId?: string, agentId?: string) => {
+      const params = new URLSearchParams();
+      if (subjectId) params.set('subject_id', subjectId);
+      if (agentId) params.set('agent_id', agentId);
+      const qs = params.toString();
+      return request<ListProjectReportsResponse>(`/api/projects/${id}/reports${qs ? `?${qs}` : ''}`);
+    },
+    analyze: (id: string) => request<void>(`/api/projects/${id}/analyze`, { method: 'POST' }),
+    subjects: (id: string, offset = 0, limit = 12, query?: string) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (query) params.set('query', query);
+      return request<ListProjectSubjectsResponse>(`/api/projects/${id}/subjects?${params}`);
+    },
+    createSubject: (id: string, data: { name: string; description?: string; external_link?: string }) =>
+      request<CreateSubjectResponse>(`/api/projects/${id}/subjects`, { method: 'POST', body: JSON.stringify(data) }),
+    updateSubject: (id: string, subjectId: string, data: { name?: string; description?: string; external_link?: string }) =>
+      request<void>(`/api/projects/${id}/subjects/${subjectId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteSubject: (id: string, subjectId: string) =>
+      request<void>(`/api/projects/${id}/subjects/${subjectId}`, { method: 'DELETE' }),
+    stats: (id: string, subjectId?: string) =>
+      request<ProjectStatsView>(`/api/projects/${id}/stats${subjectId ? `?subject_id=${encodeURIComponent(subjectId)}` : ''}`),
+    members: (id: string) => request<ListProjectMembersResponse>(`/api/projects/${id}/members`),
+    memberOptions: (id: string) => request<ListProjectMembersResponse>(`/api/projects/${id}/member-options`),
+    addMember: (id: string, type: 'agent' | 'workflow', memberId: string) =>
+      request<void>(`/api/projects/${id}/members`, { method: 'POST', body: JSON.stringify({ type, id: memberId }) }),
+    removeMember: (id: string, type: 'agent' | 'workflow', memberId: string) =>
+      request<void>(`/api/projects/${id}/members/${type}/${memberId}`, { method: 'DELETE' }),
+    timeline: (id: string, subjectId?: string) =>
+      request<ListTimelineResponse>(`/api/projects/${id}/timeline${subjectId ? `?subject_id=${encodeURIComponent(subjectId)}` : ''}`),
   },
   utils: {
     generate: (data: { system_prompt: string; user_prompt: string }) =>

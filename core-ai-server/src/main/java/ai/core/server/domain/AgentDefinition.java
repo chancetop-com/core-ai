@@ -109,4 +109,7 @@ public class AgentDefinition {
     @NotNull
     @Field(name = "updated_at")
     public ZonedDateTime updatedAt;
+
+    @Field(name = "updated_by")
+    public String updatedBy;
 }

@@ -419,7 +419,7 @@ export default function AgentList() {
                   <Brain size={13} /> Memory
                 </button>
                 <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                  {formatTime(a.updated_at)}
+                  Updated {formatTime(a.updated_at)}{a.updated_by ? ` by ${a.updated_by}` : ''}
                 </span>
               </div>
             </div>
@@ -429,7 +429,7 @@ export default function AgentList() {
             <div className="flex items-center gap-4 mt-2 ml-8 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               {a.model && <span>Model: {a.model}</span>}
               {a.max_turns && <span>Max turns: {a.max_turns}</span>}
-              {a.created_by && <span>By: {a.created_by}</span>}
+              {a.created_by && <span>Created by: {a.created_by}</span>}
             </div>
           </div>
         ))}

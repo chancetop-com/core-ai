@@ -394,16 +394,16 @@ class AgentDefinitionServiceTest {
     }
 
     @Test
-    void publishRejectsNonOwnerBeforeMutation() {
+    void publishAllowsNonOwnerAndRecordsLastModifier() {
         var collection = agentCollection();
-        var agent = definition("private-agent", "owner", DefinitionType.AGENT, AgentStatus.DRAFT);
+        var agent = definition("shared-agent", "owner", DefinitionType.AGENT, AgentStatus.DRAFT);
         when(collection.get(agent.id)).thenReturn(Optional.of(agent));
 
-        assertThrows(ForbiddenException.class, () -> service(collection).publish(agent.id, "attacker"));
+        service(collection).publish(agent.id, "collaborator");
 
-        assertEquals(AgentStatus.DRAFT, agent.status);
-        assertNull(agent.publishedConfig);
-        verify(collection, never()).replace(any());
+        assertEquals(AgentStatus.PUBLISHED, agent.status);
+        assertEquals("collaborator", agent.updatedBy);
+        verify(collection).replace(agent);
     }
 
     @Test

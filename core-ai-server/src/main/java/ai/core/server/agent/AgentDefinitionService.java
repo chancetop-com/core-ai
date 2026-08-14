@@ -98,6 +98,7 @@ public class AgentDefinitionService {
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
+        entity.updatedBy = userId;
 
         requireAccessibleSkills(entity.skillIds, userId);
         agentDefinitionCollection.insert(entity);
@@ -151,6 +152,7 @@ public class AgentDefinitionService {
         var userIds = new HashSet<String>();
         for (var entity : entities) {
             if (entity.userId != null) userIds.add(entity.userId);
+            if (entity.updatedBy != null) userIds.add(entity.updatedBy);
         }
         if (userIds.isEmpty()) return Map.of();
         var map = new HashMap<String, String>();
@@ -251,6 +253,7 @@ public class AgentDefinitionService {
             entity.systemDefault = request.systemDefault;
         }
         entity.updatedAt = ZonedDateTime.now();
+        entity.updatedBy = userId;
 
         agentDefinitionCollection.replace(entity);
         return toView(entity);
@@ -277,6 +280,7 @@ public class AgentDefinitionService {
         entity.status = AgentStatus.PUBLISHED;
         entity.publishedAt = ZonedDateTime.now();
         entity.updatedAt = entity.publishedAt;
+        entity.updatedBy = userId;
 
         agentDefinitionCollection.replace(entity);
         return toView(entity);
@@ -355,6 +359,7 @@ public class AgentDefinitionService {
     AgentDefinitionView toView(AgentDefinition entity) {
         var view = AgentViewHelper.buildView(entity, Map.of(), Map.of());
         view.createdBy = resolveUserName(entity.userId);
+        view.updatedBy = resolveUserName(lastModifiedBy(entity));
         if (view.subAgents != null) {
             view.subAgents = view.subAgents.stream().map(sa -> {
                 sa.name = resolveAgentName(sa.id);
@@ -373,7 +378,13 @@ public class AgentDefinitionService {
     AgentDefinitionView toView(AgentDefinition entity, Map<String, String> userNameMap, Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
         var view = AgentViewHelper.buildView(entity, subAgentNameMap, skillNameMap);
         view.createdBy = userNameMap.getOrDefault(entity.userId, entity.userId);
+        var updatedBy = lastModifiedBy(entity);
+        view.updatedBy = userNameMap.getOrDefault(updatedBy, updatedBy);
         return view;
+    }
+
+    private String lastModifiedBy(AgentDefinition entity) {
+        return entity.updatedBy != null ? entity.updatedBy : entity.userId;
     }
 
     private String resolveUserName(String userId) {
@@ -398,14 +409,9 @@ public class AgentDefinitionService {
     }
 
     private void requireAdminForSystemDefault(AgentDefinition entity, String userId) {
-        if (Boolean.TRUE.equals(entity.systemDefault)) {
-            if (userId == null || !isAdmin(userId)) {
-                throw new ForbiddenException("only admin can modify built-in agents");
-            }
-            return;
-        }
-        if (userId == null || !userId.equals(entity.userId)) {
-            throw new ForbiddenException("agent does not belong to the current user");
+        if (!Boolean.TRUE.equals(entity.systemDefault)) return;
+        if (userId == null || !isAdmin(userId)) {
+            throw new ForbiddenException("only admin can modify built-in agents");
         }
     }
 

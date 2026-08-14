@@ -14,7 +14,7 @@ const NEW_AGENT_SKELETON: AgentDefinition = {
   model: '', multi_modal_model: '', prefer_caption_path: false, temperature: 0.7, thinking_effort: null, max_turns: 100, timeout_seconds: 600,
   tools: [], input_template: '', variables: {},
   system_default: false, type: 'AGENT', response_schema: null,
-  created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',
+  created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '', updated_by: '',
   subagent_ids: [], skill_ids: [],
   dataset_config: [],
   enable_memory: false,
@@ -1863,6 +1863,8 @@ The system prompt should define how this agent behaves, its capabilities, and it
               <div className="flex justify-between"><dt>Created by</dt><dd>{agent.created_by || '-'}</dd></div>
               <div className="flex justify-between"><dt>Timeout</dt><dd>{agent.timeout_seconds || 600}s</dd></div>
               <div className="flex justify-between"><dt>Published</dt><dd>{agent.published_at ? new Date(agent.published_at).toLocaleString() : '-'}</dd></div>
+              <div className="flex justify-between"><dt>Updated</dt><dd>{agent.updated_at ? new Date(agent.updated_at).toLocaleString() : '-'}</dd></div>
+              <div className="flex justify-between"><dt>Updated by</dt><dd>{agent.updated_by || '-'}</dd></div>
               <div className="flex justify-between"><dt>System Default</dt><dd>{agent.system_default ? 'Yes' : 'No'}</dd></div>
             </dl>
           </div>
