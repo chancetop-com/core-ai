@@ -129,7 +129,7 @@ public class TraceWebServiceImpl implements TraceWebService {
         var facets = rows.stream().map(row -> {
             var view = new TraceFacetView();
             view.value = (String) row.get("value");
-            view.count = (Integer) row.get("count");
+            view.count = ((Number) row.get("count")).intValue();
             return view;
         }).toList();
         var response = new ListTraceFacetsResponse();

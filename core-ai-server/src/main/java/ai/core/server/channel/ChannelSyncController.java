@@ -7,6 +7,7 @@ import ai.core.server.channel.openclaw.OcgConfigStore;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.SessionCommand;
+import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.utils.JsonUtil;
@@ -39,6 +40,7 @@ import java.util.concurrent.ConcurrentMap;
  *
  * @author stephen
  */
+@PermissionsBypass
 public class ChannelSyncController implements Controller {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChannelSyncController.class);
     private static final long POLL_TIMEOUT_MS = 30 * 60 * 1000;

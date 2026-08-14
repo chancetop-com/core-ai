@@ -1,6 +1,7 @@
 package ai.core.server.file;
 
 import ai.core.api.server.file.FileView;
+import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.web.Controller;
@@ -12,6 +13,7 @@ import core.framework.web.exception.BadRequestException;
 /**
  * @author stephen
  */
+@PermissionsBypass
 public class FileUploadController implements Controller {
     @Inject
     FileService fileService;

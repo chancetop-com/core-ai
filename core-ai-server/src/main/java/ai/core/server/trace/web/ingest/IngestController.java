@@ -7,6 +7,7 @@ import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.WebContext;
 
+import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.trace.service.IngestService;
 import ai.core.server.web.auth.AuthContext;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -37,6 +38,7 @@ public class IngestController {
     }
 
     // Authenticated CLI/SDK path: userId resolved from Bearer by AuthInterceptor; source forced to "cli".
+    @PermissionsBypass
     @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     public Response ingestAuthed(Request request) {
         // Fail loud if this handler is ever reached without authentication (e.g. route whitelisted by mistake);
