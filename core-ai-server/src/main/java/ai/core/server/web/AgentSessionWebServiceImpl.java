@@ -30,7 +30,6 @@ import ai.core.server.web.auth.AuthContext;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
-import ai.core.api.server.session.Message;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionCommand;
@@ -207,45 +206,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
         readableSessionMeta(sessionId, userId, false);
-        var records = chatMessageService.history(sessionId);
-        var sessionArtifacts = chatMessageService.artifacts(sessionId);
-        var messages = new ArrayList<Message>(records.size());
-        for (var record : records) {
-            var msg = new Message();
-            msg.role = record.role;
-            msg.content = record.content;
-            msg.thinking = record.thinking;
-            msg.seq = record.seq;
-            msg.traceId = record.traceId;
-            msg.timestamp = record.createdAt != null ? record.createdAt.toInstant() : null;
-            if (record.tools != null) {
-                msg.tools = record.tools.stream().map(t -> {
-                    var r = new Message.ToolCallRecord();
-                    r.callId = t.callId;
-                    r.name = t.name;
-                    r.arguments = t.arguments;
-                    r.result = t.result;
-                    r.status = t.status;
-                    return r;
-                }).toList();
-            }
-            messages.add(msg);
-        }
-        var response = new SessionHistoryResponse();
-        response.messages = messages;
-        if (sessionArtifacts != null && !sessionArtifacts.isEmpty()) {
-            response.artifacts = sessionArtifacts.stream().map(a -> {
-                var v = new ai.core.api.server.session.SessionArtifact();
-                v.fileId = a.fileId;
-                v.fileName = a.fileName;
-                v.contentType = a.contentType;
-                v.size = a.size;
-                v.title = a.title;
-                v.description = a.description;
-                return v;
-            }).toList();
-        }
-        return response;
+        return SessionHistoryHelper.build(chatMessageService, sessionId);
     }
 
     @Override
