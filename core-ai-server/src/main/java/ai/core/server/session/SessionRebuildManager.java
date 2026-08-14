@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.domain.ReasoningEffort;
+import ai.core.media.MediaProvider;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.artifact.ChatArtifactSetup;
@@ -73,6 +74,7 @@ public class SessionRebuildManager {
     private final SessionOwnershipRegistry ownershipRegistry;
     private final SystemSettingsService systemSettingsService;
     private final MongoCollection<User> userCollection;
+    private final SessionContextBuilder contextBuilder;
 
     public SessionRebuildManager(Deps deps) {
         this.chatMessageService = deps.chatMessageService;
@@ -91,6 +93,8 @@ public class SessionRebuildManager {
         this.ownershipRegistry = deps.ownershipRegistry;
         this.systemSettingsService = deps.systemSettingsService;
         this.userCollection = deps.userCollection;
+        this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
+                systemSettingsService, deps.mediaProvider);
     }
 
     public SessionState buildStateFromDb(String sessionId) {
@@ -207,7 +211,7 @@ public class SessionRebuildManager {
     }
     private SandboxSetup setupSandboxContext(String sessionId, String userId, SandboxConfig sandboxConfig,
                                              boolean allowSandboxReattach) {
-        var context = userId != null ? SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService) : null;
+        var context = userId != null ? contextBuilder.build(sessionId, userId) : null;
         if (context != null) {
             context.setCaller(CallerContexts.fromUser(userCollection.get(userId).orElse(null)));
         }
@@ -435,9 +439,10 @@ public class SessionRebuildManager {
                         DatasetRecordService datasetRecordService,
                         FileService fileService,
                         PublicUrlConfiguration publicUrlConfiguration,
-                         EventPublisher eventPublisher,
-                         SessionOwnershipRegistry ownershipRegistry,
-                         SystemSettingsService systemSettingsService,
-                         MongoCollection<User> userCollection) {
+                        EventPublisher eventPublisher,
+                        SessionOwnershipRegistry ownershipRegistry,
+                        SystemSettingsService systemSettingsService,
+                        MongoCollection<User> userCollection,
+                        MediaProvider mediaProvider) {
     }
 }

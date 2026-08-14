@@ -1,11 +1,15 @@
 package ai.core.server.session;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.media.MediaProvider;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.artifact.ServerImageOutputSink;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
+import ai.core.server.gateway.ContextualMediaProvider;
+import ai.core.server.gateway.GatewayMediaProvider;
+import ai.core.server.gateway.MediaJobOwner;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GetVideoStatusTool;
@@ -15,16 +19,31 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Builds session execution contexts with file/media sinks and media model variables.
- * Shared by the session creation and rebuild paths.
+ * Single entry point for session execution contexts: file/media sinks, media model variables and
+ * media providers are all wired here, so session creation and session rebuild always produce
+ * equivalent contexts.
  *
  * @author stephen
  */
 public final class SessionContextBuilder {
-    public static ExecutionContext build(String sessionId, String userId, ChatArtifactSetup artifactSetup,
-                                         FileService fileService, PublicUrlConfiguration publicUrlConfiguration,
-                                         SystemSettingsService systemSettingsService) {
-        return ExecutionContext.builder().sessionId(sessionId).userId(userId)
+    private final ChatArtifactSetup artifactSetup;
+    private final FileService fileService;
+    private final PublicUrlConfiguration publicUrlConfiguration;
+    private final SystemSettingsService systemSettingsService;
+    private final MediaProvider mediaProvider;
+
+    public SessionContextBuilder(ChatArtifactSetup artifactSetup, FileService fileService,
+                                 PublicUrlConfiguration publicUrlConfiguration,
+                                 SystemSettingsService systemSettingsService, MediaProvider mediaProvider) {
+        this.artifactSetup = artifactSetup;
+        this.fileService = fileService;
+        this.publicUrlConfiguration = publicUrlConfiguration;
+        this.systemSettingsService = systemSettingsService;
+        this.mediaProvider = mediaProvider;
+    }
+
+    public ExecutionContext build(String sessionId, String userId) {
+        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(userId, fileService,
@@ -32,11 +51,20 @@ public final class SessionContextBuilder {
                 .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(userId, fileService,
                                 artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
-                .customVariables(mediaModelVariables(systemSettingsService))
+                .customVariables(mediaModelVariables())
                 .build();
+        if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
+            var contextualProvider = new ContextualMediaProvider(gatewayMediaProvider, new MediaJobOwner(userId, sessionId, null));
+            context.setImageMediaProvider(contextualProvider);
+            context.setVideoMediaProvider(contextualProvider);
+        } else if (mediaProvider != null) {
+            context.setImageMediaProvider(mediaProvider);
+            context.setVideoMediaProvider(mediaProvider);
+        }
+        return context;
     }
 
-    private static Map<String, Object> mediaModelVariables(SystemSettingsService systemSettingsService) {
+    private Map<String, Object> mediaModelVariables() {
         var variables = new HashMap<String, Object>();
         putModel(variables, "media.caption.model", systemSettingsService.captionImageModel());
         putModel(variables, "media.image.model", systemSettingsService.imageGenerationModel());
@@ -44,10 +72,7 @@ public final class SessionContextBuilder {
         return variables;
     }
 
-    private static void putModel(Map<String, Object> variables, String key, String model) {
+    private void putModel(Map<String, Object> variables, String key, String model) {
         if (model != null) variables.put(key, model);
-    }
-
-    private SessionContextBuilder() {
     }
 }

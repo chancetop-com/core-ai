@@ -1,15 +1,11 @@
 package ai.core.server.session;
 
-import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.media.MediaProvider;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
-import ai.core.server.gateway.ContextualMediaProvider;
-import ai.core.server.gateway.GatewayMediaProvider;
-import ai.core.server.gateway.MediaJobOwner;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import core.framework.inject.Inject;
 
@@ -45,17 +41,6 @@ public class SessionAgentHelper {
             config.datasetId = overrides.datasetId;
         }
         return datasetConfig;
-    }
-
-    void setMediaProvider(ExecutionContext context, String userId, String sessionId) {
-        if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
-            var contextualProvider = new ContextualMediaProvider(gatewayMediaProvider, new MediaJobOwner(userId, sessionId, null));
-            context.setImageMediaProvider(contextualProvider);
-            context.setVideoMediaProvider(contextualProvider);
-        } else {
-            context.setImageMediaProvider(mediaProvider);
-            context.setVideoMediaProvider(mediaProvider);
-        }
     }
 
     boolean claimOwnership(String sessionId) {

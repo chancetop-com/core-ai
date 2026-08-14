@@ -125,7 +125,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userCollection));
+                    ownershipRegistry, systemSettingsService, userCollection, sessionAgentHelper.mediaProvider));
         }
         return rebuildManager;
     }
@@ -151,9 +151,9 @@ public class AgentSessionManager {
     public String createSession(SessionConfig config, String userId, String source, String apiKeyId) {
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
-        var context = SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService);
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider)
+                .build(sessionId, userId);
         CallerContexts.attach(context, userCollection, userId);
-        sessionAgentHelper.setMediaProvider(context, userId, sessionId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
         var extraVars = buildExtraVars(effectiveConfig, sessionDatasetConfig(effectiveConfig));
@@ -246,10 +246,10 @@ public class AgentSessionManager {
         var toolRegistry = subAgentManager().resolveTopLevelToolsToRegistry(definition, sessionId, userId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
         var extraVars = buildExtraVars(config, datasetConfig);
-        var context = SessionContextBuilder.build(sessionId, userId, artifactSetup, fileService, publicUrlConfiguration, systemSettingsService);
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider)
+                .build(sessionId, userId);
         CallerContexts.attach(context, userCollection, userId);
         if (sandbox2 != null) context.sandbox(sandbox2);
-        sessionAgentHelper.setMediaProvider(context, userId, sessionId);
 
         var injectionResult = memoryExperimentService.prepareInjection(definition.id);
         var memoryInject = injectionResult.injected ? injectionResult.promptInject : null;

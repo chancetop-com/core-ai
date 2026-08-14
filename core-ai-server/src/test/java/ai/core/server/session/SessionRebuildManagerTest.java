@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.api.server.session.SessionConfig;
+import ai.core.media.MediaProvider;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
@@ -32,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -70,7 +72,7 @@ class SessionRebuildManagerTest {
         var skillManager = mock(SessionSkillManager.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null, users));
+                null, null, null, null, null, null, null, users, null));
 
         var state = manager.buildStateFromDb("session-1");
 
@@ -109,7 +111,7 @@ class SessionRebuildManagerTest {
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, users));
+            null, null, null, null, null, null, null, users, null));
 
         var state = manager.buildStateFromDb("session-1");
         var restored = SessionState.fromJson(state.toJson());
@@ -160,11 +162,12 @@ class SessionRebuildManagerTest {
         var artifactSetup = mock(ChatArtifactSetup.class);
         var publicUrlConfiguration = mock(PublicUrlConfiguration.class);
         var systemSettingsService = mock(SystemSettingsService.class);
+        var mediaProvider = mock(MediaProvider.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, mock(SessionSkillManager.class), subAgentManager,
             sandboxService, artifactSetup, mock(ToolRegistryService.class), mock(SystemPromptService.class),
             mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
-            publicUrlConfiguration, null, null, systemSettingsService, users));
+            publicUrlConfiguration, null, null, systemSettingsService, users, mediaProvider));
         var state = new SessionState();
         state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;
         state.sandboxBindingSecurityVersion = SessionState.CURRENT_SANDBOX_BINDING_SECURITY_VERSION;
@@ -178,6 +181,10 @@ class SessionRebuildManagerTest {
         var rebuilt = manager.rebuildSession("session-1", state, "user-1");
 
         assertNotNull(rebuilt);
+        var build = ArgumentCaptor.forClass(SessionSubAgentManager.BuildAgentParams.class);
+        verify(subAgentManager).buildAgent(build.capture());
+        assertSame(mediaProvider, build.getValue().context().getImageMediaProvider());
+        assertSame(mediaProvider, build.getValue().context().getVideoMediaProvider());
         verify(sandboxService).isSandboxEnabled(argThat(config ->
                 config != null && "hardened-image".equals(config.image) && Boolean.FALSE.equals(config.networkEnabled)));
         verify(sandboxService).createSessionSandbox(argThat(config ->
@@ -453,7 +460,7 @@ class SessionRebuildManagerTest {
                 .thenThrow(new ForbiddenException("skill is unavailable"));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null, users));
+                null, null, null, null, null, null, null, users, null));
 
         var error = assertThrows(ForbiddenException.class,
                 () -> manager.buildStateFromDb("session-1"));
@@ -557,7 +564,7 @@ class SessionRebuildManagerTest {
         var skillManager = mock(SessionSkillManager.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             mock(ChatMessageService.class), mock(), skillManager, null, null, null, toolRegistry, null,
-            null, null, null, null, null, null, null, users));
+            null, null, null, null, null, null, null, users, null));
         var ref = ToolRef.fromLegacyToolId("llm-call:published-llm");
         var state = new SessionState();
         state.userId = null;
@@ -679,7 +686,8 @@ class SessionRebuildManagerTest {
                 chatMessageService, agents, skillManager, subAgentManager, sandboxService,
                 mock(ChatArtifactSetup.class), toolRegistryService, mock(SystemPromptService.class),
                 mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
-                mock(PublicUrlConfiguration.class), null, null, mock(SystemSettingsService.class), users));
+                mock(PublicUrlConfiguration.class), null, null, mock(SystemSettingsService.class), users,
+                mock(MediaProvider.class)));
     }
 
     private SessionRebuildManager rebuildManager(ChatMessageService chatMessageService,
@@ -688,6 +696,6 @@ class SessionRebuildManagerTest {
         var users = (MongoCollection<User>) mock(MongoCollection.class);
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, users));
+            null, null, null, null, null, null, null, users, null));
     }
 }
