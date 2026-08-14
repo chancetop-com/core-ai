@@ -71,3 +71,4 @@ core-ai-benchmark/harbor/.harbor-jobs/
 .superpowers/
 docs/superpowers/
 .worktrees/
+tmp/
