@@ -73,11 +73,11 @@ public class SeoOpsQueryService {
         var filter = taskFilter(visibleIds, request);
         var query = new Query();
         query.filter = filter;
-        query.sort = Sorts.orderBy(Sorts.ascending("due_at"), Sorts.descending("updated_at"));
+        query.sort = Sorts.orderBy(Sorts.ascending("priority_rank"), Sorts.ascending("due_at"),
+            Sorts.descending("updated_at"));
         query.skip = page.offset();
         query.limit = page.limit();
-        var items = new ArrayList<>(taskCollection.find(query));
-        items.sort(taskComparator());
+        var items = taskCollection.find(query);
         return new Page<>(items, page.offset(), page.limit(), taskCollection.count(filter));
     }
 
@@ -232,13 +232,6 @@ public class SeoOpsQueryService {
         var from = Math.min(page.offset(), items.size());
         var to = Math.min(from + page.limit(), items.size());
         return new Page<>(items.subList(from, to), page.offset(), page.limit(), items.size());
-    }
-
-    private Comparator<SeoTask> taskComparator() {
-        var rank = Map.of("URGENT", 0, "HIGH", 1, "MEDIUM", 2, "LOW", 3);
-        return Comparator.comparingInt((SeoTask task) -> rank.getOrDefault(task.currentRevision.priority, 4))
-            .thenComparing(task -> task.dueAt, Comparator.nullsLast(Comparator.naturalOrder()))
-            .thenComparing(task -> task.updatedAt, Comparator.nullsLast(Comparator.reverseOrder()));
     }
 
     private String requireActor(String actorUserId) {

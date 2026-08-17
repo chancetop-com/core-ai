@@ -39,6 +39,10 @@ public class SeoTask {
     public ZonedDateTime dueAt;
 
     @NotNull
+    @Field(name = "priority_rank")
+    public Integer priorityRank;
+
+    @NotNull
     @Field(name = "task_revision")
     public Long taskRevision;
 

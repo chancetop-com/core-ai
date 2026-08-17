@@ -29,8 +29,8 @@ public class SchemaMigrationVSeoOpsIndexes implements SchemaMigration {
         mongo.createIndex("seo_locations", Indexes.compoundIndex(Indexes.ascending("merchant_id"), Indexes.ascending("readiness_status")), new IndexOptions());
 
         mongo.createIndex("seo_tasks", Indexes.compoundIndex(Indexes.ascending("merchant_id"), Indexes.ascending("creation_idempotency_key")), new IndexOptions().unique(true));
-        mongo.createIndex("seo_tasks", Indexes.compoundIndex(Indexes.ascending("merchant_id"), Indexes.ascending("status"), Indexes.ascending("due_at")), new IndexOptions());
-        mongo.createIndex("seo_tasks", Indexes.compoundIndex(Indexes.ascending("owner_id"), Indexes.ascending("status"), Indexes.ascending("due_at")), new IndexOptions());
+        mongo.createIndex("seo_tasks", Indexes.compoundIndex(Indexes.ascending("merchant_id"), Indexes.ascending("priority_rank"), Indexes.ascending("due_at"), Indexes.descending("updated_at")), new IndexOptions());
+        mongo.createIndex("seo_tasks", Indexes.compoundIndex(Indexes.ascending("owner_id"), Indexes.ascending("priority_rank"), Indexes.ascending("due_at"), Indexes.descending("updated_at")), new IndexOptions());
         mongo.createIndex("seo_tasks", Indexes.compoundIndex(Indexes.ascending("merchant_id"), Indexes.descending("updated_at")), new IndexOptions());
     }
 }

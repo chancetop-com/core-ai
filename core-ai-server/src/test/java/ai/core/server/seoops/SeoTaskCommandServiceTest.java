@@ -60,6 +60,7 @@ class SeoTaskCommandServiceTest {
         verify(tasks).insert(inserted.capture());
         assertEquals(1L, created.taskRevision);
         assertEquals(1L, created.stateVersion);
+        assertEquals(0, created.priorityRank);
         assertEquals(SeoTaskStatus.NEEDS_INPUT, created.status);
         assertEquals(SeoEvidenceState.NONE, created.evidenceState);
         assertEquals("{\"asset\":\"menu\",\"operation\":\"publish\"}", created.currentRevision.executionSpec);

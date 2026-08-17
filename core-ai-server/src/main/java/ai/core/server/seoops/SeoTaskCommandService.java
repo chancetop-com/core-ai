@@ -91,6 +91,7 @@ public class SeoTaskCommandService {
         task.locationId = location == null ? null : location.id;
         task.ownerId = definition.ownerId;
         task.dueAt = definition.dueAt;
+        task.priorityRank = priorityRank(definition.priority);
         task.taskRevision = 1L;
         task.stateVersion = 1L;
         task.creationIdempotencyKey = idempotencyKey;
@@ -302,6 +303,7 @@ public class SeoTaskCommandService {
         updates.add(Updates.set("current_revision", revision));
         updates.add(Updates.set("owner_id", revision.ownerId));
         updates.add(Updates.set("due_at", revision.dueAt));
+        updates.add(Updates.set("priority_rank", priorityRank(revision.priority)));
         updates.add(Updates.set("status", readiness.status()));
         updates.add(Updates.set("evidence_state", readiness.evidenceState()));
         updates.add(Updates.set("updated_at", now));
@@ -318,11 +320,22 @@ public class SeoTaskCommandService {
         task.currentRevision = revision;
         task.ownerId = revision.ownerId;
         task.dueAt = revision.dueAt;
+        task.priorityRank = priorityRank(revision.priority);
         task.taskRevision++;
         task.stateVersion++;
         task.status = readiness.status();
         task.evidenceState = readiness.evidenceState();
         task.updatedAt = now;
+    }
+
+    private int priorityRank(String priority) {
+        return switch (priority) {
+            case "URGENT" -> 0;
+            case "HIGH" -> 1;
+            case "MEDIUM" -> 2;
+            case "LOW" -> 3;
+            default -> 4;
+        };
     }
 
     private SeoTask.TaskRevision buildRevision(String actorUserId, SeoMerchant merchant,

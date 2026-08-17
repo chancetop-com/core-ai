@@ -43,8 +43,10 @@ class SchemaMigrationVSeoOpsIndexesTest {
 
         assertEquals(List.of("merchant_id", "creation_idempotency_key"), List.copyOf(taskIndexes.get(0).keySet()));
         assertTrue(options.getAllValues().get(0).isUnique());
-        assertEquals(List.of("merchant_id", "status", "due_at"), List.copyOf(taskIndexes.get(1).keySet()));
-        assertEquals(List.of("owner_id", "status", "due_at"), List.copyOf(taskIndexes.get(2).keySet()));
+        assertEquals(List.of("merchant_id", "priority_rank", "due_at", "updated_at"),
+            List.copyOf(taskIndexes.get(1).keySet()));
+        assertEquals(List.of("owner_id", "priority_rank", "due_at", "updated_at"),
+            List.copyOf(taskIndexes.get(2).keySet()));
         assertEquals(new BsonInt32(-1), taskIndexes.get(3).get("updated_at"));
         assertFalse(options.getAllValues().get(3).isUnique());
     }

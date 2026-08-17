@@ -3,9 +3,14 @@ package ai.core.server.seoops;
 import ai.core.api.server.seoops.SeoOpsApiModels.PageRequest;
 import ai.core.server.seoops.domain.SeoTask;
 import ai.core.server.seoops.domain.SeoTaskStatus;
+import com.mongodb.MongoClientSettings;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
+import org.bson.BsonDocument;
+import org.bson.BsonInt32;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 
@@ -45,6 +50,13 @@ class SeoOpsQueryServiceTest {
 
         assertEquals(100, page.limit());
         assertEquals(1, page.total());
+        var query = ArgumentCaptor.forClass(Query.class);
+        verify(service.taskCollection).find(query.capture());
+        var sort = query.getValue().sort.toBsonDocument(
+            BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
+        assertEquals(List.of("priority_rank", "due_at", "updated_at"), List.copyOf(sort.keySet()));
+        assertEquals(new BsonInt32(1), sort.get("priority_rank"));
+        assertEquals(new BsonInt32(-1), sort.get("updated_at"));
     }
 
     @Test
