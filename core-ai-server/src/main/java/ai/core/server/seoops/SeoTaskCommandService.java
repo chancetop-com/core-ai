@@ -1,9 +1,12 @@
 package ai.core.server.seoops;
 
 import ai.core.api.server.seoops.SeoOpsApiModels.AppendEvidenceRequest;
+import ai.core.api.server.seoops.SeoOpsApiModels.ApprovalDecisionRequest;
+import ai.core.api.server.seoops.SeoOpsApiModels.ApprovalPreviewRequest;
 import ai.core.api.server.seoops.SeoOpsApiModels.CreateRevisionRequest;
 import ai.core.api.server.seoops.SeoOpsApiModels.CreateTaskRequest;
 import ai.core.api.server.seoops.SeoOpsApiModels.TaskDefinitionRequest;
+import ai.core.server.seoops.domain.SeoApprovalAction;
 import ai.core.server.seoops.domain.SeoEvidenceVerification;
 import ai.core.server.seoops.domain.SeoLocation;
 import ai.core.server.seoops.domain.SeoMerchant;
@@ -48,6 +51,8 @@ public class SeoTaskCommandService {
     private static final int MAX_REVISIONS = 50;
     private static final int MAX_EVIDENCE = 200;
     private static final int MAX_EVENTS = 1000;
+    private static final int MAX_DECISIONS = 50;
+    private static final int MAX_REASON_CODE_POINTS = 2000;
 
     @Inject
     MongoCollection<SeoTask> taskCollection;
@@ -178,6 +183,60 @@ public class SeoTaskCommandService {
             if (!Objects.equals(task.taskRevision, evidence.taskRevision)) throw conflict("task revision changed");
         }
         throw conflict("task changed concurrently");
+    }
+
+    public ApprovalPreview preview(String actorUserId, String taskId, ApprovalPreviewRequest request) {
+        if (request == null) throw new BadRequestException("request is required");
+        var task = requireVisibleTask(actorUserId, taskId);
+        requireRevisionAndState(task, request.taskRevision, request.expectedStateVersion);
+        var blockers = new ArrayList<String>();
+        if (task.status != SeoTaskStatus.READY_FOR_APPROVAL) {
+            blockers.add("task status is " + task.status);
+        }
+        if (task.evidenceState != ai.core.server.seoops.domain.SeoEvidenceState.VERIFIED) {
+            blockers.add("evidence state is " + task.evidenceState);
+        }
+        return new ApprovalPreview(blockers.isEmpty(), blockers, task.taskRevision, task.stateVersion,
+            task.currentRevision.executionSpecHash, task.evidenceState, task.status);
+    }
+
+    public SeoTask decide(String actorUserId, String taskId, ApprovalDecisionRequest request) {
+        if (request == null) throw new BadRequestException("request is required");
+        var task = requireVisibleTask(actorUserId, taskId);
+        var key = requireText(request.idempotencyKey, "idempotency_key");
+        var action = parseApprovalAction(request.decision);
+        var reason = optionalText(request.reason);
+        validateDecisionReason(action, reason);
+        var fingerprint = fingerprint(action.name(), reason, String.valueOf(request.taskRevision),
+            request.executionSpecHash, String.valueOf(request.expectedStateVersion));
+        var replay = findDecisionByKey(task, key);
+        if (replay != null) return requireDecisionReplay(task, replay, fingerprint);
+        requireRevisionAndState(task, request.taskRevision, request.expectedStateVersion);
+        if (!Objects.equals(task.currentRevision.executionSpecHash, request.executionSpecHash)) {
+            throw conflict("execution_spec_hash is stale");
+        }
+        var nextStatus = approvalStatus(task.status, action);
+        requireCapacity(task.approvalDecisions, MAX_DECISIONS);
+        requireEventCapacity(task);
+        var now = ZonedDateTime.now();
+        var decision = approvalDecision(actorUserId, task, action, request, fingerprint, now);
+        var event = approvalEvent(actorUserId, task, nextStatus, decision.id, now);
+        var updated = taskCollection.update(Filters.and(
+            Filters.eq("_id", task.id), Filters.eq("task_revision", task.taskRevision),
+            Filters.eq("state_version", task.stateVersion),
+            Filters.eq("current_revision.execution_spec_hash", task.currentRevision.executionSpecHash),
+            Filters.eq("status", task.status), Filters.ne("approval_decisions.idempotency_key", key)),
+            Updates.combine(
+                Updates.push("approval_decisions", decision), Updates.push("events", event),
+                Updates.set("status", nextStatus), Updates.set("updated_at", now),
+                Updates.inc("state_version", 1L)));
+        if (updated == 0) return resolveDecisionConflict(actorUserId, task.id, key, fingerprint);
+        task.approvalDecisions.add(decision);
+        task.events.add(event);
+        task.status = nextStatus;
+        task.stateVersion++;
+        task.updatedAt = now;
+        return task;
     }
 
     SeoTask requireVisibleTask(String actorUserId, String taskId) {
@@ -335,6 +394,12 @@ public class SeoTaskCommandService {
             task.stateVersion + 1, evidenceId, now);
     }
 
+    private SeoTask.TaskEvent approvalEvent(String actorId, SeoTask task, SeoTaskStatus to,
+                                            String decisionId, ZonedDateTime now) {
+        return event("APPROVAL_DECIDED", actorId, task.status, to, task.taskRevision,
+            task.stateVersion + 1, decisionId, now);
+    }
+
     @SuppressWarnings("checkstyle:ParameterNumber")
     private SeoTask.TaskEvent event(String type, String actorId, SeoTaskStatus from, SeoTaskStatus to,
                                     Long revision, Long resultingVersion, String referenceId, ZonedDateTime now) {
@@ -378,6 +443,11 @@ public class SeoTaskCommandService {
         return task.evidenceRefs.stream().filter(evidence -> key.equals(evidence.idempotencyKey)).findFirst().orElse(null);
     }
 
+    private SeoTask.ApprovalDecision findDecisionByKey(SeoTask task, String key) {
+        return task.approvalDecisions.stream()
+            .filter(decision -> key.equals(decision.idempotencyKey)).findFirst().orElse(null);
+    }
+
     private SeoTask requireRevisionReplay(SeoTask task, SeoTask.TaskRevision existing, CreateRevisionRequest request) {
         var merchant = merchantService.requireVisibleMerchant(existing.createdBy, task.merchantId);
         var candidate = buildRevision(existing.createdBy, merchant, request.definition, existing.revision, existing.idempotencyKey);
@@ -394,9 +464,23 @@ public class SeoTaskCommandService {
         return task;
     }
 
+    private SeoTask requireDecisionReplay(SeoTask task, SeoTask.ApprovalDecision existing, String fingerprint) {
+        if (!Objects.equals(existing.requestFingerprint, fingerprint)) {
+            throw conflict("idempotency key was already used with different content");
+        }
+        return task;
+    }
+
     private SeoTask resolveRevisionConflict(String actorUserId, String taskId, String key, String fingerprint) {
         var latest = requireVisibleTask(actorUserId, taskId);
         var replay = findRevisionByKey(latest, key);
+        if (replay != null && Objects.equals(replay.requestFingerprint, fingerprint)) return latest;
+        throw conflict("task changed concurrently");
+    }
+
+    private SeoTask resolveDecisionConflict(String actorUserId, String taskId, String key, String fingerprint) {
+        var latest = requireVisibleTask(actorUserId, taskId);
+        var replay = findDecisionByKey(latest, key);
         if (replay != null && Objects.equals(replay.requestFingerprint, fingerprint)) return latest;
         throw conflict("task changed concurrently");
     }
@@ -405,6 +489,11 @@ public class SeoTaskCommandService {
         if (expectedStateVersion == null || !expectedStateVersion.equals(task.stateVersion)) {
             throw conflict("state_version is stale");
         }
+    }
+
+    private void requireRevisionAndState(SeoTask task, Long revision, Long expectedStateVersion) {
+        if (revision == null || !revision.equals(task.taskRevision)) throw conflict("task_revision is stale");
+        requireExpectedState(task, expectedStateVersion);
     }
 
     private void requireCapacity(List<?> items, int maximum) {
@@ -434,6 +523,52 @@ public class SeoTaskCommandService {
         } catch (IllegalArgumentException e) {
             throw new BadRequestException("verification_status is invalid", "INVALID_EVIDENCE_VERIFICATION", e);
         }
+    }
+
+    private SeoApprovalAction parseApprovalAction(String value) {
+        try {
+            return SeoApprovalAction.valueOf(requireText(value, "decision").toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("decision is invalid", "INVALID_APPROVAL_ACTION", e);
+        }
+    }
+
+    private void validateDecisionReason(SeoApprovalAction action, String reason) {
+        if ((action == SeoApprovalAction.REJECT || action == SeoApprovalAction.REVOKE) && reason == null) {
+            throw new BadRequestException(action + " requires reason");
+        }
+        if (reason != null) requireCodePointLimit(reason, MAX_REASON_CODE_POINTS, "reason");
+    }
+
+    private SeoTaskStatus approvalStatus(SeoTaskStatus status, SeoApprovalAction action) {
+        if (status == SeoTaskStatus.READY_FOR_APPROVAL && action == SeoApprovalAction.APPROVE) {
+            return SeoTaskStatus.APPROVED;
+        }
+        if (status == SeoTaskStatus.READY_FOR_APPROVAL && action == SeoApprovalAction.REJECT) {
+            return SeoTaskStatus.REVISION_REQUIRED;
+        }
+        if (status == SeoTaskStatus.APPROVED && action == SeoApprovalAction.REVOKE) {
+            return SeoTaskStatus.APPROVAL_REVOKED;
+        }
+        throw conflict("approval action is invalid for task status");
+    }
+
+    private SeoTask.ApprovalDecision approvalDecision(String actorUserId, SeoTask task, SeoApprovalAction action,
+                                                       ApprovalDecisionRequest request, String fingerprint,
+                                                       ZonedDateTime now) {
+        var decision = new SeoTask.ApprovalDecision();
+        decision.id = UUID.randomUUID().toString();
+        decision.decision = action;
+        decision.reason = optionalText(request.reason);
+        decision.taskRevision = task.taskRevision;
+        decision.executionSpecHash = task.currentRevision.executionSpecHash;
+        decision.expectedStateVersion = task.stateVersion;
+        decision.resultingStateVersion = task.stateVersion + 1;
+        decision.idempotencyKey = requireText(request.idempotencyKey, "idempotency_key");
+        decision.requestFingerprint = fingerprint;
+        decision.actorId = actorUserId;
+        decision.decidedAt = now;
+        return decision;
     }
 
     private ZonedDateTime parseOptionalTime(String value, String field) {
