@@ -43,6 +43,13 @@ public class CorsInterceptor implements Interceptor, ErrorHandler {
                 && e instanceof MethodNotAllowedException) {
             return Optional.of(preflightResponse());
         }
+        // gateway clients (e.g. CC Switch) probe connectivity with HEAD before POST, no route registers HEAD
+        if (request.method() == HTTPMethod.HEAD
+                && request.path().startsWith("/api/gateway/")
+                && e instanceof MethodNotAllowedException) {
+            return Optional.of(Response.empty().status(HTTPStatus.OK)
+                    .header("Access-Control-Allow-Origin", "*"));
+        }
         // Error responses need CORS headers too: without Access-Control-Allow-Origin the browser
         // blocks cross-origin reads of 401/403/429 bodies, so clients cannot see errorCode/message
         // (e.g. QUOTA_EXCEEDED vs UNAUTHORIZED) and cannot decide whether to refresh the token.
