@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -189,8 +190,8 @@ class GatewayProxyServiceTest {
 
     @Test
     void returnsNullWithoutUsage() {
-        assertEquals(null, GatewayProxyService.parseUsage(Map.of("id", "chatcmpl-1")));
-        assertEquals(null, GatewayProxyService.parseUsage(Map.of("usage", Map.of())));
+        assertNull(GatewayProxyService.parseUsage(Map.of("id", "chatcmpl-1")));
+        assertNull(GatewayProxyService.parseUsage(Map.of("usage", Map.of())));
     }
 
     @Test
