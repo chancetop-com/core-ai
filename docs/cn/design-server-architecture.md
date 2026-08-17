@@ -455,15 +455,6 @@ MCP 服务器由管理员注册，启动时加载，通过 `McpClientManager` �
 | `traces` | Trace 记录 | `trace_id` (唯一), `session_id`, `created_at` |
 | `spans` | Span 记录 | `trace_id`, `span_id` (唯一), `parent_span_id` |
 | `prompt_templates` | Prompt 版本 | `name`, `status`, `created_at` |
-| `seo_merchants` | SEO 代运营客户组合与操作员可见范围 | `slug`（唯一）、`operator_user_ids` |
-| `seo_locations` | 商户地点及接入就绪状态 | `merchant_id + slug`（唯一）、`merchant_id` |
-| `seo_tasks` | 带版本的执行任务、证据、审批、链接与事件 | 商户/状态/负责人/到期日、幂等键 |
-
-### SEO Operations 控制面
-
-SEO Ops 是 `/api/seo-ops` 下默认关闭的内部边界上下文。它保存客户范围、地点就绪状态、执行任务版本、证据引用、审批记录、聊天链接、Agent Run 引用及审计事件。所有读取都限定在 `operator_user_ids` 包含当前认证用户的商户；所有任务变更都使用 `state_version` 比较并交换，审批还会锁定 `task_revision` 与 `execution_spec_hash`。
-
-`APPROVED` 只代表授权记录。该模块不依赖 `AgentRunner`、命令发布器、GBP 写入或网站写入；真正的执行属于独立系统，只能显式关联。参见 [SEO Ops API](seo-ops-api.md)。
 
 ## 12. 部署
 

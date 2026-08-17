@@ -8,15 +8,6 @@ import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
 import type { AuthUser } from './api/auth';
 import { authApi } from './api/client';
-import { safeReturnTo } from './pages/login/returnTo';
-
-function ExternalReturn({ path }: { path: string }) {
-  useEffect(() => {
-    window.location.replace(path);
-  }, [path]);
-
-  return null;
-}
 
 const TraceList = lazy(() => import('./pages/traces/TraceList'));
 const TraceDetail = lazy(() => import('./pages/traces/TraceDetail'));
@@ -143,14 +134,8 @@ export default function App() {
                       user
                         ? (() => {
                             const cb = new URLSearchParams(window.location.search).get('callback');
-                            if (cb) {
-                              return <Navigate to={`/authorize?callback=${encodeURIComponent(cb)}`} replace />;
-                            }
-                            const returnTo = safeReturnTo(
-                              new URLSearchParams(window.location.search).get('return_to'),
-                            );
-                            return returnTo
-                              ? <ExternalReturn path={returnTo} />
+                            return cb
+                              ? <Navigate to={`/authorize?callback=${encodeURIComponent(cb)}`} replace />
                               : <Navigate to={defaultPath} replace />;
                           })()
                         : <Login />

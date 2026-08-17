@@ -7,6 +7,4 @@
     <suppress checks="FileLengthCheck" files=".*Test\.java"/>
     <suppress checks="MethodLength" files=".*Test\.java"/>
     <suppress checks="FileLengthCheck" files="LanguageSeparators\.java"/>
-    <suppress checks="FileLengthCheck" files="SeoOpsApiModels\.java"/>
-    <suppress checks="FileLengthCheck" files="SeoTaskCommandService\.java"/>
 </suppressions>
