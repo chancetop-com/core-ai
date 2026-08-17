@@ -160,6 +160,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        apiUserQuotaService.checkQuota(userId);
         var pendingFiles = AttachmentMessageHelper.collectPendingFiles(sessionId, request);
         var multimodalAttachments = AttachmentMessageHelper.collectMultimodalAttachments(request);
         var message = AttachmentMessageHelper.buildMessageWithAttachments(request);
