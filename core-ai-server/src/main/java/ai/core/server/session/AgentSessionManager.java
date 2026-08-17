@@ -17,7 +17,6 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.User;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
-import ai.core.server.sandbox.LazySandbox;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
@@ -370,7 +369,7 @@ public class AgentSessionManager {
         if (session != null) session.close();
         skillManager().removeSkillState(sessionId);
         sessionLastActivity.remove(sessionId);
-        captureSandboxSnapshot(sessionId);
+        SessionSandboxSnapshotHelper.captureBeforeRelease(sandboxService, sandboxSnapshotService, sessionId);
         sandboxService.releaseSandbox(sessionId);
         chatMessageService.onSessionClosed(sessionId);
         sessionChannelService.close(sessionId);
@@ -378,24 +377,6 @@ public class AgentSessionManager {
         sessionAgentHelper.releaseOwnership(sessionId);
     }
 
-    private void captureSandboxSnapshot(String sessionId) {
-        if (sandboxSnapshotService == null || !sandboxSnapshotService.enabled()) return;
-        try {
-            var sandbox = sandboxService.getSandbox(sessionId);
-            if (!(sandbox instanceof LazySandbox lazy)) return;
-            if (!lazy.snapshotDirty()) return;
-            var ip = lazy.ip();
-            var port = lazy.port();
-            if (ip == null || port == 0) return; // sandbox never materialized
-            if (!lazy.isDelegateTracked()) {
-                logger.info("skip snapshot capture, sandbox already released by ttl cleanup: sessionId={}", sessionId);
-                return;
-            }
-            sandboxSnapshotService.captureBeforeRelease(sessionId, lazy.userId(), lazy.snapshotEpochForCapture(), ip, port, lazy.image());
-        } catch (Exception e) {
-            logger.warn("sandbox snapshot capture failed, releasing anyway: sessionId={}", sessionId, e);
-        }
-    }
     public int cleanupIdleSessions(Duration maxIdle) {
         var threshold = System.currentTimeMillis() - maxIdle.toMillis();
         var closed = 0;
