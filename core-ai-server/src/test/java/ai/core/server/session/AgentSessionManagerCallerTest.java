@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.agent.SubAgentAssembler;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.dataset.DatasetRecordService;
@@ -365,6 +366,7 @@ class AgentSessionManagerCallerTest {
         manager.sessionChannelService = mock(SessionChannelService.class);
         manager.sessionRegistry = mock(SessionRegistry.class);
         manager.sessionAgentHelper = mock(SessionAgentHelper.class);
+        manager.apiUserQuotaService = mock(ApiUserQuotaService.class);
         when(manager.sessionAgentHelper.resolveDatasetConfig(any(AgentDefinition.class), any(), any())).thenReturn(null);
         when(manager.sessionAgentHelper.claimOwnership(anyString())).thenReturn(true);
         when(manager.sessionAgentHelper.claimOrConfirmOwnership(anyString())).thenReturn(true);

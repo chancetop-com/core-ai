@@ -67,8 +67,6 @@ public class IngestService {
     MongoCollection<Span> spanCollection;
     @Inject
     ModelPricingService modelPricingService;
-    @Inject
-    ai.core.server.apiuser.ApiUserQuotaService apiUserQuotaService;
 
     public void ingest(IngestRequest request) {
         ingest(request, null, null);
@@ -228,9 +226,9 @@ public class IngestService {
         // Incrementally roll up this span's tokens/cost onto the parent trace doc.
         // Replaces the previous full re-aggregation pass for O(1) per span instead of O(N).
         incrementTraceTotals(spanReq.traceId, span);
-        // User quota accounting: idempotent per span (span_id unique index guards double counting);
-        // conditional update keeps unconfigured users untouched.
-        apiUserQuotaService.recordUsage(span.userId, safeLong(span.inputTokens), safeLong(span.outputTokens));
+        // NOTE: quota accounting no longer happens here. Span-level user attribution is unreliable
+        // (LLM spans carry the tokens but no user.id), so usage is metered synchronously via the
+        // ExecutionContext tokenCostCallback wired in SessionContextBuilder / AgentRunBuilder instead.
     }
 
     private void backfillTraceIdentity(String traceId, String spanName, Map<String, String> attributes) {

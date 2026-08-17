@@ -2,6 +2,7 @@ package ai.core.server.web.sse;
 
 import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.sse.SseBaseEvent;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.session.SessionRegistry;
@@ -39,6 +40,8 @@ public class AgentMessageStreamChannelListener implements ChannelListener<SseBas
     WebContext webContext;
     @Inject
     SessionRegistry sessionRegistry;
+    @Inject
+    ApiUserQuotaService apiUserQuotaService;
 
     @Override
     public void onConnect(Request request, Channel<SseBaseEvent> channel, String lastEventId) {
@@ -49,6 +52,7 @@ public class AgentMessageStreamChannelListener implements ChannelListener<SseBas
         }
         var userId = AuthContext.userId(webContext);
         sessionRegistry.requireAccessible(sessionId, userId);
+        apiUserQuotaService.checkQuota(userId);
 
         var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
         var json = new String(body, StandardCharsets.UTF_8);

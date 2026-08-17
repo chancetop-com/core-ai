@@ -48,7 +48,10 @@ public class ApiUserQuotaService {
     }
 
     /**
-     * Records token consumption at the LLM trace write point (idempotent per span via span_id unique index).
+     * Records token consumption per LLM call. Invoked synchronously from the ExecutionContext
+     * tokenCostCallback (wired in SessionContextBuilder / AgentRunBuilder) and from the direct
+     * LLM_CALL paths (AgentRunService / AgentRunTracer), so usage is attributed to the user whose
+     * quota was checked — independent of trace span attribution.
      * Conditionally $inc only for users with a configured quota, so unconfigured users are untouched.
      * The window counter is lazily reset by {@link #checkQuota} on the next day boundary.
      */

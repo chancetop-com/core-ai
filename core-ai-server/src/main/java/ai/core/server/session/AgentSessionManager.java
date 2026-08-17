@@ -2,6 +2,7 @@ package ai.core.server.session;
 
 import ai.core.agent.Agent;
 import ai.core.api.server.session.SessionConfig;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.dataset.DatasetRecordService;
@@ -107,6 +108,8 @@ public class AgentSessionManager {
     SystemSettingsService systemSettingsService;
     @Inject
     SessionAgentHelper sessionAgentHelper;
+    @Inject
+    ApiUserQuotaService apiUserQuotaService;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -125,7 +128,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userCollection, sessionAgentHelper.mediaProvider));
+                    ownershipRegistry, systemSettingsService, userCollection, sessionAgentHelper.mediaProvider, apiUserQuotaService));
         }
         return rebuildManager;
     }
@@ -151,7 +154,7 @@ public class AgentSessionManager {
     public String createSession(SessionConfig config, String userId, String source, String apiKeyId) {
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
-        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider)
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService)
                 .build(sessionId, userId);
         CallerContexts.attach(context, userCollection, userId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
@@ -246,7 +249,7 @@ public class AgentSessionManager {
         var toolRegistry = subAgentManager().resolveTopLevelToolsToRegistry(definition, sessionId, userId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
         var extraVars = buildExtraVars(config, datasetConfig);
-        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider)
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService)
                 .build(sessionId, userId);
         CallerContexts.attach(context, userCollection, userId);
         if (sandbox2 != null) context.sandbox(sandbox2);

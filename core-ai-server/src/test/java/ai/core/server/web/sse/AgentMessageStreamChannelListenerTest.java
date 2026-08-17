@@ -1,6 +1,7 @@
 package ai.core.server.web.sse;
 
 import ai.core.api.server.session.sse.SseBaseEvent;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.session.SessionRegistry;
@@ -43,6 +44,7 @@ class AgentMessageStreamChannelListenerTest {
         ordered.verify(listener.commandPublisher).publish(command.capture());
         assertEquals("s-1", command.getValue().sessionId());
         assertEquals("user-1", command.getValue().userId());
+        verify(listener.apiUserQuotaService).checkQuota("user-1");
     }
 
     @Test
@@ -66,6 +68,7 @@ class AgentMessageStreamChannelListenerTest {
         listener.sessionChannelService = mock(SessionChannelService.class);
         listener.commandPublisher = mock(CommandPublisher.class);
         listener.webContext = mock(WebContext.class);
+        listener.apiUserQuotaService = mock(ApiUserQuotaService.class);
         when(listener.webContext.get(AuthContext.USER_ID_KEY)).thenReturn("user-1");
         return listener;
     }

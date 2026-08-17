@@ -103,6 +103,9 @@ public class AgentRunService {
             agentDefinitionCollection.get(id).orElse(null), callerUserId);
 
         var result = llmCallExecutor.execute(definition, request.input, request.attachments);
+        // direct LLM_CALL execution bypasses the agent node tree, so token usage never reaches the
+        // ExecutionContext quota callback — meter the caller here instead
+        apiUserQuotaService.recordUsage(callerUserId, result.inputTokens(), result.outputTokens());
 
         var response = new LLMCallResponse();
         response.output = result.output();
@@ -125,6 +128,9 @@ public class AgentRunService {
 
         if (definition.type == DefinitionType.LLM_CALL) {
             var result = llmCallExecutor.execute(definition, input);
+            // direct LLM_CALL execution bypasses the agent node tree, so token usage never reaches
+            // the ExecutionContext quota callback — meter the caller here instead
+            apiUserQuotaService.recordUsage(callerUserId, result.inputTokens(), result.outputTokens());
             var response = new AgentCallResponse();
             response.output = result.output();
             response.tokenUsage = Map.of("input", result.inputTokens(), "output", result.outputTokens());

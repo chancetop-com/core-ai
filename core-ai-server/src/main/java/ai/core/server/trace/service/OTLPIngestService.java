@@ -55,8 +55,6 @@ public class OTLPIngestService {
     MongoCollection<Span> spanCollection;
     @Inject
     ModelPricingService modelPricingService;
-    @Inject
-    ai.core.server.apiuser.ApiUserQuotaService apiUserQuotaService;
 
     public void ingest(ExportTraceServiceRequest request) {
         int spanCount = 0;
@@ -182,17 +180,9 @@ public class OTLPIngestService {
 
         // Increment trace token/cost totals atomically instead of reloading all spans
         incrementTraceTokens(traceId, span);
-        // User quota accounting: idempotent per span (span_id unique index guards double counting);
-        // conditional update keeps unconfigured users untouched.
-        apiUserQuotaService.recordUsage(span.userId, inputTokens(span), outputTokens(span));
-    }
-
-    private long inputTokens(Span span) {
-        return span.inputTokens != null ? span.inputTokens : 0;
-    }
-
-    private long outputTokens(Span span) {
-        return span.outputTokens != null ? span.outputTokens : 0;
+        // NOTE: quota accounting no longer happens here. Span-level user attribution is unreliable
+        // (LLM spans carry the tokens but no user.id), so usage is metered synchronously via the
+        // ExecutionContext tokenCostCallback wired in SessionContextBuilder / AgentRunBuilder instead.
     }
 
     private void upsertTrace(io.opentelemetry.proto.trace.v1.Span protoSpan,
@@ -210,7 +200,7 @@ public class OTLPIngestService {
     }
 
     private void updateExistingTrace(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
-                                    Map<String, String> attrs, long endMs) {
+                                     Map<String, String> attrs, long endMs) {
         trace.status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
         trace.errorMessage = trace.status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
         trace.output = resolveOutput(attrs);
@@ -246,8 +236,8 @@ public class OTLPIngestService {
     }
 
     private void createNewTrace(io.opentelemetry.proto.trace.v1.Span protoSpan, String traceId,
-                               Map<String, String> attrs, Map<String, String> resourceAttrs,
-                               long startMs, long endMs) {
+                                Map<String, String> attrs, Map<String, String> resourceAttrs,
+                                long startMs, long endMs) {
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
         trace.traceId = traceId;

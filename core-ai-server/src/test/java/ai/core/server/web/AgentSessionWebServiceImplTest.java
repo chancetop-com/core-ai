@@ -2,6 +2,7 @@ package ai.core.server.web;
 
 import ai.core.api.server.session.LoadSkillsRequest;
 import ai.core.api.server.session.CreateSessionRequest;
+import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.api.server.session.UnloadSkillsRequest;
 import ai.core.server.apiuser.ApiUserQuotaService;
@@ -10,6 +11,7 @@ import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
+import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.SessionState;
@@ -159,6 +161,22 @@ class AgentSessionWebServiceImplTest {
                 argThat(state -> state != null && state.agentConfig != null
                         && "agent-1".equals(state.agentConfig.agentId)),
                 org.mockito.ArgumentMatchers.eq("caller-1"));
+    }
+
+    @Test
+    void sendMessageChecksQuotaBeforePublishingCommand() {
+        var service = new AgentSessionWebServiceImpl();
+        service.webContext = mock(WebContext.class);
+        service.apiUserQuotaService = mock(ApiUserQuotaService.class);
+        service.commandPublisher = mock(CommandPublisher.class);
+        when(service.webContext.get(AuthContext.USER_ID_KEY)).thenReturn("user-1");
+        var request = new SendMessageRequest();
+        request.message = "hello";
+
+        service.sendMessage("s-1", request);
+
+        verify(service.apiUserQuotaService).checkQuota("user-1");
+        verify(service.commandPublisher).publish(any());
     }
 
     private AgentSessionWebServiceImpl createService() {

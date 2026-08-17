@@ -120,7 +120,6 @@ class OTLPIngestServiceTest {
         service.chatSessionCollection = chatSessionCollection();
         service.modelPricingService = new ModelPricingService();
         service.modelPricingService.gatewayModelCollection = gatewayModelCollection();
-        service.apiUserQuotaService = mock(ai.core.server.apiuser.ApiUserQuotaService.class);
         return service;
     }
 

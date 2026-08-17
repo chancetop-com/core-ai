@@ -1,6 +1,7 @@
 package ai.core.server.run;
 
 import ai.core.agent.Agent;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.TriggerType;
@@ -54,6 +55,8 @@ public class AgentRunTracer {
     TelemetryConfig telemetryConfig;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
+    @Inject
+    ApiUserQuotaService apiUserQuotaService;
 
     String runAgentWithTrace(AgentRun runEntity, AgentDefinition definition, Agent agent,
                             WorkflowTraceContext traceContext) {
@@ -70,6 +73,9 @@ public class AgentRunTracer {
         return runWithTrace(runEntity, definition, traceContext, "llm_call.run", span -> {
             var result = llmCallExecutor.execute(definition, runEntity.input);
             if (result.output() != null) span.setAttribute(OUTPUT_VALUE, result.output());
+            // LLM_CALL runs bypass the agent node tree, so token usage never reaches the
+            // ExecutionContext quota callback — meter the run initiator here instead
+            apiUserQuotaService.recordUsage(runEntity.userId, result.inputTokens(), result.outputTokens());
             return result;
         });
     }

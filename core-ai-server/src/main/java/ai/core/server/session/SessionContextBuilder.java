@@ -2,6 +2,7 @@ package ai.core.server.session;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.media.MediaProvider;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.artifact.ServerImageOutputSink;
@@ -31,15 +32,18 @@ public final class SessionContextBuilder {
     private final PublicUrlConfiguration publicUrlConfiguration;
     private final SystemSettingsService systemSettingsService;
     private final MediaProvider mediaProvider;
+    private final ApiUserQuotaService quotaService;
 
     public SessionContextBuilder(ChatArtifactSetup artifactSetup, FileService fileService,
                                  PublicUrlConfiguration publicUrlConfiguration,
-                                 SystemSettingsService systemSettingsService, MediaProvider mediaProvider) {
+                                 SystemSettingsService systemSettingsService, MediaProvider mediaProvider,
+                                 ApiUserQuotaService quotaService) {
         this.artifactSetup = artifactSetup;
         this.fileService = fileService;
         this.publicUrlConfiguration = publicUrlConfiguration;
         this.systemSettingsService = systemSettingsService;
         this.mediaProvider = mediaProvider;
+        this.quotaService = quotaService;
     }
 
     public ExecutionContext build(String sessionId, String userId) {
@@ -53,6 +57,9 @@ public final class SessionContextBuilder {
                                 artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
                 .customVariables(mediaModelVariables())
                 .build();
+        // quota metering fires per LLM call (main turns, sub-agents and tool-internal calls all
+        // share this context), so token usage is accounted against the session user synchronously
+        context.setTokenCostCallback(usage -> quotaService.recordUsage(userId, usage.getPromptTokens(), usage.getCompletionTokens()));
         if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
             var contextualProvider = new ContextualMediaProvider(gatewayMediaProvider, new MediaJobOwner(userId, sessionId, null));
             context.setImageMediaProvider(contextualProvider);

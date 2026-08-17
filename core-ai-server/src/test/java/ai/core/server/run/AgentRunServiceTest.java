@@ -183,6 +183,45 @@ class AgentRunServiceTest {
         verifyNoInteractions(service.llmCallExecutor);
     }
 
+    @Test
+    void llmCallMetersTokenUsageAgainstTheCaller() {
+        var definition = definition();
+        definition.type = DefinitionType.LLM_CALL;
+        definition.status = AgentStatus.PUBLISHED;
+        definition.publishedConfig = new AgentPublishedConfig();
+        var runner = mock(AgentRunner.class);
+        var service = service(definition, runner, null);
+        service.llmCallExecutor = mock(LLMCallExecutor.class);
+        var result = new LLMCallExecutor.Result("output", 120, 30);
+        when(service.llmCallExecutor.execute(any(AgentDefinition.class), eq("hello"), any()))
+                .thenReturn(result);
+        var request = new LLMCallRequest();
+        request.input = "hello";
+
+        service.llmCall(definition.id, request, "caller-1");
+
+        verify(service.apiUserQuotaService).recordUsage("caller-1", 120L, 30L);
+    }
+
+    @Test
+    void synchronousLlmCallMetersTokenUsageAgainstTheCaller() {
+        var definition = definition();
+        definition.type = DefinitionType.LLM_CALL;
+        definition.status = AgentStatus.PUBLISHED;
+        definition.publishedConfig = new AgentPublishedConfig();
+        var runner = mock(AgentRunner.class);
+        var service = service(definition, runner, null);
+        service.llmCallExecutor = mock(LLMCallExecutor.class);
+        var result = new LLMCallExecutor.Result("output", 200, 50);
+        when(service.llmCallExecutor.execute(any(AgentDefinition.class), eq("hello"))).thenReturn(result);
+        var request = new AgentCallRequest();
+        request.input = "hello";
+
+        service.call(definition.id, request, "caller-1");
+
+        verify(service.apiUserQuotaService).recordUsage("caller-1", 200L, 50L);
+    }
+
     @SuppressWarnings("unchecked")
     private AgentRunService service(AgentDefinition definition, AgentRunner runner,
                                     MongoCollection<AgentRun> runCollection) {

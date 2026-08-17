@@ -14,6 +14,7 @@ import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.User;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.file.FileService;
@@ -72,7 +73,7 @@ class SessionRebuildManagerTest {
         var skillManager = mock(SessionSkillManager.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null, users, null));
+                null, null, null, null, null, null, null, users, null, mock(ApiUserQuotaService.class)));
 
         var state = manager.buildStateFromDb("session-1");
 
@@ -111,7 +112,7 @@ class SessionRebuildManagerTest {
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, users, null));
+            null, null, null, null, null, null, null, users, null, mock(ApiUserQuotaService.class)));
 
         var state = manager.buildStateFromDb("session-1");
         var restored = SessionState.fromJson(state.toJson());
@@ -167,7 +168,8 @@ class SessionRebuildManagerTest {
             chatMessageService, agents, mock(SessionSkillManager.class), subAgentManager,
             sandboxService, artifactSetup, mock(ToolRegistryService.class), mock(SystemPromptService.class),
             mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
-            publicUrlConfiguration, null, null, systemSettingsService, users, mediaProvider));
+            publicUrlConfiguration, null, null, systemSettingsService, users, mediaProvider,
+            mock(ApiUserQuotaService.class)));
         var state = new SessionState();
         state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;
         state.sandboxBindingSecurityVersion = SessionState.CURRENT_SANDBOX_BINDING_SECURITY_VERSION;
@@ -460,7 +462,7 @@ class SessionRebuildManagerTest {
                 .thenThrow(new ForbiddenException("skill is unavailable"));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null, users, null));
+                null, null, null, null, null, null, null, users, null, mock(ApiUserQuotaService.class)));
 
         var error = assertThrows(ForbiddenException.class,
                 () -> manager.buildStateFromDb("session-1"));
@@ -564,7 +566,7 @@ class SessionRebuildManagerTest {
         var skillManager = mock(SessionSkillManager.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             mock(ChatMessageService.class), mock(), skillManager, null, null, null, toolRegistry, null,
-            null, null, null, null, null, null, null, users, null));
+            null, null, null, null, null, null, null, users, null, mock(ApiUserQuotaService.class)));
         var ref = ToolRef.fromLegacyToolId("llm-call:published-llm");
         var state = new SessionState();
         state.userId = null;
@@ -687,7 +689,7 @@ class SessionRebuildManagerTest {
                 mock(ChatArtifactSetup.class), toolRegistryService, mock(SystemPromptService.class),
                 mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
                 mock(PublicUrlConfiguration.class), null, null, mock(SystemSettingsService.class), users,
-                mock(MediaProvider.class)));
+                mock(MediaProvider.class), mock(ApiUserQuotaService.class)));
     }
 
     private SessionRebuildManager rebuildManager(ChatMessageService chatMessageService,
@@ -696,6 +698,6 @@ class SessionRebuildManagerTest {
         var users = (MongoCollection<User>) mock(MongoCollection.class);
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, users, null));
+            null, null, null, null, null, null, null, users, null, mock(ApiUserQuotaService.class)));
     }
 }

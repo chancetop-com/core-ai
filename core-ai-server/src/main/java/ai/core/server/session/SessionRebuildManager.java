@@ -9,6 +9,7 @@ import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetAccessRegistry;
@@ -94,7 +95,7 @@ public class SessionRebuildManager {
         this.systemSettingsService = deps.systemSettingsService;
         this.userCollection = deps.userCollection;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
-                systemSettingsService, deps.mediaProvider);
+                systemSettingsService, deps.mediaProvider, deps.quotaService);
     }
 
     public SessionState buildStateFromDb(String sessionId) {
@@ -443,6 +444,7 @@ public class SessionRebuildManager {
                         SessionOwnershipRegistry ownershipRegistry,
                         SystemSettingsService systemSettingsService,
                         MongoCollection<User> userCollection,
-                        MediaProvider mediaProvider) {
+                        MediaProvider mediaProvider,
+                        ApiUserQuotaService quotaService) {
     }
 }

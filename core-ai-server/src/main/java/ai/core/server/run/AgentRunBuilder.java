@@ -8,6 +8,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.media.MediaProvider;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.gateway.ContextualMediaProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
 import ai.core.server.gateway.GatewayRoutingEngine;
@@ -119,6 +120,8 @@ public class AgentRunBuilder {
     @Inject
     GatewayRoutingEngine gatewayRoutingEngine;
     @Inject
+    ApiUserQuotaService apiUserQuotaService;
+    @Inject
     LLMCallExecutor llmCallExecutor;
     @Inject
     AgentTracer agentTracer;
@@ -196,6 +199,10 @@ public class AgentRunBuilder {
                                 new AgentRunArtifactSink(runEntity.id, agentRunCollection), publicUrlConfiguration))
                 .customVariables(mediaModelVariables())
                 .build();
+        // quota metering per LLM call: sub-agents and tool-internal calls share this context, so the
+        // whole run's token usage is accounted against the run initiator (runEntity.userId) synchronously
+        context.setTokenCostCallback(usage -> apiUserQuotaService.recordUsage(runEntity.userId,
+                usage.getPromptTokens(), usage.getCompletionTokens()));
         // caller identity follows the run initiator (runEntity.userId), not the agent definition owner
         context.setCaller(CallerContexts.fromUser(userCollection.get(runEntity.userId).orElse(null)));
         if (sandbox != null) context.sandbox(sandbox);
