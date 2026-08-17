@@ -4,6 +4,7 @@ import ai.core.media.domain.VideoStatusResponse;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.MediaJob;
 import ai.core.sse.RawSseChannel;
+import ai.core.telemetry.TelemetryConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
@@ -15,6 +16,13 @@ import core.framework.http.HTTPResponse;
 import core.framework.inject.Inject;
 import core.framework.web.Response;
 import core.framework.web.exception.BadRequestException;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.StatusCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -28,12 +36,46 @@ import static ai.core.server.gateway.GatewaySupport.urlEncode;
 import static ai.core.server.gateway.GatewaySupport.valueOrDefault;
 
 public class GatewayProxyService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GatewayProxyService.class);
     private static final ContentType EVENT_STREAM = ContentType.create("text/event-stream", StandardCharsets.UTF_8);
     // shared client with a high ceiling; effective limits come from per-request timeouts set in applyTimeouts
     private static final HTTPClient CLIENT = HTTPClient.builder()
             .connectTimeout(Duration.ofSeconds(10))
             .timeout(Duration.ofMinutes(10))
             .build();
+    private static final AttributeKey<String> LANGFUSE_OBSERVATION_TYPE = AttributeKey.stringKey("langfuse.observation.type");
+    private static final AttributeKey<String> LANGFUSE_INPUT = AttributeKey.stringKey("langfuse.observation.input");
+    private static final AttributeKey<String> LANGFUSE_OUTPUT = AttributeKey.stringKey("langfuse.observation.output");
+    private static final AttributeKey<String> GEN_AI_OPERATION_NAME = AttributeKey.stringKey("gen_ai.operation.name");
+    private static final AttributeKey<String> GEN_AI_SYSTEM = AttributeKey.stringKey("gen_ai.system");
+    private static final AttributeKey<String> GEN_AI_REQUEST_MODEL = AttributeKey.stringKey("gen_ai.request.model");
+    private static final AttributeKey<Long> GEN_AI_USAGE_INPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.input_tokens");
+    private static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.output_tokens");
+    private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
+    private static final AttributeKey<String> USER_ID = AttributeKey.stringKey("user.id");
+
+    // OpenAI chat/completions uses prompt_tokens/completion_tokens, responses uses input_tokens/output_tokens
+    static Usage parseUsage(Map<String, Object> body) {
+        if (body == null || !(body.get("usage") instanceof Map<?, ?> usage)) return null;
+        long input = number(usage.get("prompt_tokens"), usage.get("input_tokens"));
+        long output = number(usage.get("completion_tokens"), usage.get("output_tokens"));
+        if (input == 0 && output == 0) return null;
+        Object cached = usage.get("cached_tokens");
+        if (cached == null) cached = detailValue(usage, "prompt_tokens_details");
+        if (cached == null) cached = detailValue(usage, "input_tokens_details");
+        return new Usage(input, output, number(cached, null));
+    }
+
+    private static long number(Object primary, Object fallback) {
+        if (primary instanceof Number value) return value.longValue();
+        if (fallback instanceof Number value) return value.longValue();
+        return 0;
+    }
+
+    private static Object detailValue(Map<?, ?> usage, String detailsKey) {
+        return usage.get(detailsKey) instanceof Map<?, ?> details ? details.get("cached_tokens") : null;
+    }
+
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -43,25 +85,27 @@ public class GatewayProxyService {
     GatewaySecretProtector secretProtector;
     @Inject
     MediaJobService mediaJobService;
+    @Inject
+    TelemetryConfig telemetryConfig;
 
-    public Response proxyChatCompletions(byte[] body) {
-        return proxy(body, GatewayEndpointType.CHAT_COMPLETIONS);
+    public Response proxyChatCompletions(byte[] body, String userId) {
+        return proxy(body, GatewayEndpointType.CHAT_COMPLETIONS, MediaJobOwner.UNKNOWN, userId);
     }
 
-    public Response proxyResponses(byte[] body) {
-        return proxy(body, GatewayEndpointType.RESPONSES);
+    public Response proxyResponses(byte[] body, String userId) {
+        return proxy(body, GatewayEndpointType.RESPONSES, MediaJobOwner.UNKNOWN, userId);
     }
 
-    public Response proxyImageGenerations(byte[] body) {
-        return proxy(body, GatewayEndpointType.IMAGE_GENERATION);
+    public Response proxyImageGenerations(byte[] body, String userId) {
+        return proxy(body, GatewayEndpointType.IMAGE_GENERATION, MediaJobOwner.UNKNOWN, userId);
     }
 
-    public Response proxyImageEdits(byte[] body) {
-        return proxy(body, GatewayEndpointType.IMAGE_EDIT);
+    public Response proxyImageEdits(byte[] body, String userId) {
+        return proxy(body, GatewayEndpointType.IMAGE_EDIT, MediaJobOwner.UNKNOWN, userId);
     }
 
     public Response proxyVideoGenerations(byte[] body, MediaJobOwner owner) {
-        return proxy(body, GatewayEndpointType.VIDEO_GENERATION, owner);
+        return proxy(body, GatewayEndpointType.VIDEO_GENERATION, owner, owner.userId());
     }
 
     public Response getVideoStatus(String videoId, String userId) {
@@ -104,36 +148,115 @@ public class GatewayProxyService {
         return jsonResponse(response);
     }
 
-    void streamToChannel(byte[] body, GatewayEndpointType endpoint, RawSseChannel<?> channel) {
+    void streamToChannel(byte[] body, GatewayEndpointType endpoint, RawSseChannel<?> channel, String userId) {
         var call = prepare(body, endpoint);
-        if (!call.stream()) {
-            var upstream = execute(call.request(), call.provider());
-            channel.sendRawData(new String(upstream.body == null ? new byte[0] : upstream.body, StandardCharsets.UTF_8));
-            return;
+        var span = startSpan(call, endpoint, userId, body);
+        try {
+            if (!call.stream()) {
+                var upstream = execute(call.request(), call.provider());
+                recordUsage(span, upstream.body);
+                span.setAttribute(LANGFUSE_OUTPUT, new String(upstream.body == null ? new byte[0] : upstream.body, StandardCharsets.UTF_8));
+                markUpstreamStatus(span, upstream.statusCode);
+                channel.sendRawData(new String(upstream.body == null ? new byte[0] : upstream.body, StandardCharsets.UTF_8));
+                return;
+            }
+            streamEvents(call, channel, span);
+            span.setStatus(StatusCode.OK);
+        } catch (RuntimeException e) {
+            span.setStatus(StatusCode.ERROR, e.getMessage());
+            throw e;
+        } finally {
+            span.end();
         }
+    }
+
+    private void streamEvents(GatewayUpstreamCall call, RawSseChannel<?> channel, Span span) {
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 channel.sendRawEvent(event.type(), event.data());
+                recordStreamUsage(span, event.data());
                 if ("[DONE]".equals(event.data())) break;
             }
         }
     }
 
-    private Response proxy(byte[] body, GatewayEndpointType endpoint) {
-        return proxy(body, endpoint, MediaJobOwner.UNKNOWN);
-    }
-
-    private Response proxy(byte[] body, GatewayEndpointType endpoint, MediaJobOwner owner) {
+    private Response proxy(byte[] body, GatewayEndpointType endpoint, MediaJobOwner owner, String userId) {
         var call = prepare(body, endpoint);
         if (endpoint == GatewayEndpointType.VIDEO_GENERATION && call.stream()) {
             throw new BadRequestException("streaming video generation is not supported by the gateway");
         }
-        if (call.stream()) return bufferedStream(call);
-        var upstream = execute(call.request(), call.provider());
-        if (endpoint == GatewayEndpointType.VIDEO_GENERATION && upstream.statusCode >= 200 && upstream.statusCode < 300) {
-            return gatewayVideoResponse(upstream, call, owner);
+        var span = startSpan(call, endpoint, userId, body);
+        try {
+            if (call.stream()) {
+                var response = bufferedStream(call, span);
+                span.setStatus(StatusCode.OK);
+                return response;
+            }
+            var upstream = execute(call.request(), call.provider());
+            recordUsage(span, upstream.body);
+            span.setAttribute(LANGFUSE_OUTPUT, new String(upstream.body == null ? new byte[0] : upstream.body, StandardCharsets.UTF_8));
+            markUpstreamStatus(span, upstream.statusCode);
+            if (endpoint == GatewayEndpointType.VIDEO_GENERATION && upstream.statusCode >= 200 && upstream.statusCode < 300) {
+                return gatewayVideoResponse(upstream, call, owner);
+            }
+            return response(upstream);
+        } catch (RuntimeException e) {
+            span.setStatus(StatusCode.ERROR, e.getMessage());
+            throw e;
+        } finally {
+            span.end();
         }
-        return response(upstream);
+    }
+
+    private Span startSpan(GatewayUpstreamCall call, GatewayEndpointType endpoint, String userId, byte[] body) {
+        var telemetry = telemetryConfig;
+        if (telemetry == null || !telemetry.isEnabled()) {
+            return OpenTelemetry.noop().getTracer("core-ai-server").spanBuilder("gateway").startSpan();
+        }
+        var spanBuilder = telemetry.getOpenTelemetry().getTracer("core-ai-server")
+                .spanBuilder("gateway" + endpoint.path.replace('/', '.'))
+                .setSpanKind(SpanKind.CLIENT)
+                .setAttribute(LANGFUSE_OBSERVATION_TYPE, "generation")
+                .setAttribute(GEN_AI_SYSTEM, call.provider().type)
+                .setAttribute(GEN_AI_REQUEST_MODEL, call.upstreamModel())
+                .setAttribute(LANGFUSE_INPUT, new String(body, StandardCharsets.UTF_8));
+        if (endpoint == GatewayEndpointType.CHAT_COMPLETIONS || endpoint == GatewayEndpointType.RESPONSES) {
+            spanBuilder.setAttribute(GEN_AI_OPERATION_NAME, "chat");
+        }
+        if (userId != null && !userId.isBlank()) {
+            spanBuilder.setAttribute(USER_ID, userId);
+        }
+        return spanBuilder.startSpan();
+    }
+
+    private void markUpstreamStatus(Span span, int statusCode) {
+        if (statusCode >= 400) span.setStatus(StatusCode.ERROR, "upstream returned " + statusCode);
+        else span.setStatus(StatusCode.OK);
+    }
+
+    private void recordUsage(Span span, byte[] body) {
+        if (body == null || body.length == 0) return;
+        try {
+            applyUsage(span, parseUsage(GatewayJson.MAPPER.readValue(body, MAP_TYPE)));
+        } catch (Exception e) {
+            LOGGER.debug("response body is not JSON with usage, usage stays unknown", e);
+        }
+    }
+
+    private void recordStreamUsage(Span span, String data) {
+        if (data == null || !data.contains("usage")) return;
+        try {
+            applyUsage(span, parseUsage(GatewayJson.MAPPER.readValue(data, MAP_TYPE)));
+        } catch (Exception e) {
+            LOGGER.debug("stream chunk is not a JSON usage payload", e);
+        }
+    }
+
+    private void applyUsage(Span span, Usage usage) {
+        if (usage == null) return;
+        span.setAttribute(GEN_AI_USAGE_INPUT_TOKENS, usage.inputTokens());
+        span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, usage.outputTokens());
+        if (usage.cachedTokens() > 0) span.setAttribute(GEN_AI_USAGE_CACHED_TOKENS, usage.cachedTokens());
     }
 
     private GatewayUpstreamCall prepare(byte[] body, GatewayEndpointType endpoint) {
@@ -175,11 +298,12 @@ public class GatewayProxyService {
         request.timeout = Duration.ofSeconds(valueOrDefault(provider.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS));
     }
 
-    private Response bufferedStream(GatewayUpstreamCall call) {
+    private Response bufferedStream(GatewayUpstreamCall call, Span span) {
         var builder = new StringBuilder();
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 appendEvent(builder, event);
+                recordStreamUsage(span, event.data());
                 if ("[DONE]".equals(event.data())) break;
             }
         }
@@ -274,5 +398,8 @@ public class GatewayProxyService {
 
     private String string(Object value) {
         return value instanceof String string ? string : null;
+    }
+
+    record Usage(long inputTokens, long outputTokens, long cachedTokens) {
     }
 }

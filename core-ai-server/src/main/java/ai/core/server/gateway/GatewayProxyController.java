@@ -16,19 +16,19 @@ public class GatewayProxyController {
     WebContext webContext;
 
     public Response chatCompletions(Request request) {
-        return gatewayProxyService.proxyChatCompletions(body(request));
+        return gatewayProxyService.proxyChatCompletions(body(request), currentUserId());
     }
 
     public Response responses(Request request) {
-        return gatewayProxyService.proxyResponses(body(request));
+        return gatewayProxyService.proxyResponses(body(request), currentUserId());
     }
 
     public Response imageGenerations(Request request) {
-        return gatewayProxyService.proxyImageGenerations(body(request));
+        return gatewayProxyService.proxyImageGenerations(body(request), currentUserId());
     }
 
     public Response imageEdits(Request request) {
-        return gatewayProxyService.proxyImageEdits(body(request));
+        return gatewayProxyService.proxyImageEdits(body(request), currentUserId());
     }
 
     public Response videoGenerations(Request request) {

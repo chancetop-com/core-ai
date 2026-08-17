@@ -2,6 +2,9 @@ package ai.core.server.gateway;
 
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.GatewayModelConfig;
+import ai.core.server.trace.service.OTLPIngestService;
+import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
+import ai.core.telemetry.TelemetryConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.http.HTTPRequest;
@@ -9,16 +12,23 @@ import core.framework.http.HTTPResponse;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
+import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +43,16 @@ class GatewayProxyServiceTest {
         }
     }
 
+    private static Map<String, String> spanAttributes(io.opentelemetry.proto.trace.v1.Span span) {
+        var attrs = new HashMap<String, String>();
+        for (var kv : span.getAttributesList()) {
+            var value = kv.getValue();
+            if (value.hasStringValue()) attrs.put(kv.getKey(), value.getStringValue());
+            else if (value.hasIntValue()) attrs.put(kv.getKey(), String.valueOf(value.getIntValue()));
+        }
+        return attrs;
+    }
+
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -43,7 +63,7 @@ class GatewayProxyServiceTest {
         service.proxyChatCompletions(json(Map.of(
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )));
+        )), "user-1");
 
         assertEquals("https://api.deepseek.com/v1/chat/completions", service.captured.uri);
         assertEquals("Bearer sk-test", service.captured.headers.get("Authorization"));
@@ -61,7 +81,7 @@ class GatewayProxyServiceTest {
         service.proxyChatCompletions(json(Map.of(
                 "model", "azure/my-deployment",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )));
+        )), "user-1");
 
         assertEquals("https://example.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2025-01-01-preview", service.captured.uri);
         assertEquals("sk-test", service.captured.headers.get("api-key"));
@@ -76,7 +96,7 @@ class GatewayProxyServiceTest {
         assertThrows(BadRequestException.class, () -> service.proxyChatCompletions(json(Map.of(
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        ))));
+        )), "user-1"));
     }
 
     @Test
@@ -87,7 +107,7 @@ class GatewayProxyServiceTest {
         service.proxyChatCompletions(json(Map.of(
                 "model", "fast-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )));
+        )), "user-1");
 
         assertEquals("https://litellm.example.com/chat/completions", service.captured.uri);
         var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
@@ -102,7 +122,7 @@ class GatewayProxyServiceTest {
         assertThrows(BadRequestException.class, () -> service.proxyChatCompletions(json(Map.of(
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        ))));
+        )), "user-1"));
     }
 
     @Test
@@ -132,11 +152,81 @@ class GatewayProxyServiceTest {
         service.proxyResponses(json(Map.of(
                 "model", "fast-response",
                 "input", "hi"
-        )));
+        )), "user-1");
 
         assertEquals("https://litellm.example.com/responses", service.captured.uri);
         var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
         assertEquals("deepseek/response-model", body.get("model"));
+    }
+
+    @Test
+    void parsesChatCompletionsUsage() {
+        var usage = GatewayProxyService.parseUsage(Map.of(
+                "usage", Map.of(
+                        "prompt_tokens", 12,
+                        "completion_tokens", 34,
+                        "prompt_tokens_details", Map.of("cached_tokens", 5)
+                )));
+
+        assertEquals(12, usage.inputTokens());
+        assertEquals(34, usage.outputTokens());
+        assertEquals(5, usage.cachedTokens());
+    }
+
+    @Test
+    void parsesResponsesUsage() {
+        var usage = GatewayProxyService.parseUsage(Map.of(
+                "usage", Map.of(
+                        "input_tokens", 12,
+                        "output_tokens", 34,
+                        "input_tokens_details", Map.of("cached_tokens", 5)
+                )));
+
+        assertEquals(12, usage.inputTokens());
+        assertEquals(34, usage.outputTokens());
+        assertEquals(5, usage.cachedTokens());
+    }
+
+    @Test
+    void returnsNullWithoutUsage() {
+        assertEquals(null, GatewayProxyService.parseUsage(Map.of("id", "chatcmpl-1")));
+        assertEquals(null, GatewayProxyService.parseUsage(Map.of("usage", Map.of())));
+    }
+
+    @Test
+    void recordsSpanWithModelAndUserAttribution() throws Exception {
+        var latch = new CountDownLatch(1);
+        var exportRequest = new AtomicReference<ExportTraceServiceRequest>();
+        var ingestService = mock(OTLPIngestService.class);
+        doAnswer(invocation -> {
+            exportRequest.set(invocation.getArgument(0));
+            latch.countDown();
+            return null;
+        }).when(ingestService).ingest(any(ExportTraceServiceRequest.class));
+        LocalSpanProcessorRegistry.register(ingestService);
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var service = new CapturingGatewayProxyService();
+        service.routingEngine = routingEngine(List.of(provider), List.of());
+        service.secretProtector = new GatewaySecretProtector("test-secret");
+        service.telemetryConfig = TelemetryConfig.builder().enabled(true).build();
+        try {
+            service.proxyChatCompletions(json(Map.of(
+                    "model", "deepseek/deepseek-chat",
+                    "messages", List.of(Map.of("role", "user", "content", "hi"))
+            )), "user-1");
+
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            var protoSpan = exportRequest.get().getResourceSpans(0).getScopeSpans(0).getSpans(0);
+            var recorded = spanAttributes(protoSpan);
+            assertEquals("gateway.chat.completions", protoSpan.getName());
+            assertEquals("deepseek-chat", recorded.get("gen_ai.request.model"));
+            assertEquals("deepseek", recorded.get("gen_ai.system"));
+            assertEquals("user-1", recorded.get("user.id"));
+            assertEquals("12", recorded.get("gen_ai.usage.input_tokens"));
+            assertEquals("34", recorded.get("gen_ai.usage.output_tokens"));
+        } finally {
+            LocalSpanProcessorRegistry.clear();
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -204,7 +294,8 @@ class GatewayProxyServiceTest {
         @Override
         HTTPResponse execute(HTTPRequest request, GatewayProviderConfig provider) {
             captured = request;
-            return new HTTPResponse(200, Map.of("Content-Type", "application/json"), "{\"ok\":true}".getBytes(StandardCharsets.UTF_8));
+            return new HTTPResponse(200, Map.of("Content-Type", "application/json"),
+                    "{\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":34}}".getBytes(StandardCharsets.UTF_8));
         }
     }
 }
