@@ -5,6 +5,7 @@ import ai.core.api.server.seoops.SeoOpsApiModels.ApprovalDecisionRequest;
 import ai.core.api.server.seoops.SeoOpsApiModels.ApprovalPreviewRequest;
 import ai.core.api.server.seoops.SeoOpsApiModels.CreateRevisionRequest;
 import ai.core.api.server.seoops.SeoOpsApiModels.CreateTaskRequest;
+import ai.core.api.server.seoops.SeoOpsApiModels.LinkConversationRequest;
 import ai.core.api.server.seoops.SeoOpsApiModels.TaskDefinitionRequest;
 import ai.core.server.seoops.domain.SeoApprovalAction;
 import ai.core.server.seoops.domain.SeoEvidenceVerification;
@@ -52,6 +53,7 @@ public class SeoTaskCommandService {
     private static final int MAX_EVIDENCE = 200;
     private static final int MAX_EVENTS = 1000;
     private static final int MAX_DECISIONS = 50;
+    private static final int MAX_CONVERSATION_LINKS = 50;
     private static final int MAX_REASON_CODE_POINTS = 2000;
 
     @Inject
@@ -68,6 +70,9 @@ public class SeoTaskCommandService {
 
     @Inject
     SeoConversationPolicy conversationPolicy;
+
+    @Inject
+    SeoCopilotPolicy copilotPolicy;
 
     public SeoTask createTask(String actorUserId, CreateTaskRequest request) {
         if (request == null) throw new BadRequestException("request is required");
@@ -239,6 +244,37 @@ public class SeoTaskCommandService {
         return task;
     }
 
+    public SeoTask linkConversation(String actorUserId, String taskId, LinkConversationRequest request) {
+        if (request == null) throw new BadRequestException("request is required");
+        var task = requireVisibleTask(actorUserId, taskId);
+        var key = requireText(request.idempotencyKey, "idempotency_key");
+        var conversationId = requireText(request.conversationId, "conversation_id");
+        var fingerprint = fingerprint(conversationId, "TASK_CHAT");
+        var replay = findConversationLinkByKey(task, key);
+        if (replay != null) return requireConversationReplay(task, replay, fingerprint);
+        requireExpectedState(task, request.expectedStateVersion);
+        var session = conversationPolicy.requireOwnedChatSession(actorUserId, conversationId);
+        var eligibleAgentId = copilotPolicy.eligibleAgentId().orElseThrow(
+            () -> conflict("SEO Copilot is not safely configured"));
+        if (!eligibleAgentId.equals(session.agentId)) throw conflict("conversation does not use the safe SEO Copilot");
+        requireCapacity(task.conversationLinks, MAX_CONVERSATION_LINKS);
+        requireEventCapacity(task);
+        var now = ZonedDateTime.now();
+        var link = conversationLink(actorUserId, session.id, key, fingerprint, now);
+        var event = conversationEvent(actorUserId, task, link.conversationId, now);
+        var updated = taskCollection.update(Filters.and(
+            Filters.eq("_id", task.id), Filters.eq("state_version", task.stateVersion),
+            Filters.ne("conversation_links.idempotency_key", key)),
+            Updates.combine(Updates.push("conversation_links", link), Updates.push("events", event),
+                Updates.set("updated_at", now), Updates.inc("state_version", 1L)));
+        if (updated == 0) return resolveConversationConflict(actorUserId, task.id, key, fingerprint);
+        task.conversationLinks.add(link);
+        task.events.add(event);
+        task.stateVersion++;
+        task.updatedAt = now;
+        return task;
+    }
+
     SeoTask requireVisibleTask(String actorUserId, String taskId) {
         var task = taskCollection.get(taskId).orElse(null);
         if (task == null) throw new NotFoundException("task not found");
@@ -400,6 +436,12 @@ public class SeoTaskCommandService {
             task.stateVersion + 1, decisionId, now);
     }
 
+    private SeoTask.TaskEvent conversationEvent(String actorId, SeoTask task, String conversationId,
+                                                 ZonedDateTime now) {
+        return event("CONVERSATION_LINKED", actorId, task.status, task.status, task.taskRevision,
+            task.stateVersion + 1, conversationId, now);
+    }
+
     @SuppressWarnings("checkstyle:ParameterNumber")
     private SeoTask.TaskEvent event(String type, String actorId, SeoTaskStatus from, SeoTaskStatus to,
                                     Long revision, Long resultingVersion, String referenceId, ZonedDateTime now) {
@@ -448,6 +490,11 @@ public class SeoTaskCommandService {
             .filter(decision -> key.equals(decision.idempotencyKey)).findFirst().orElse(null);
     }
 
+    private SeoTask.ConversationLink findConversationLinkByKey(SeoTask task, String key) {
+        return task.conversationLinks.stream()
+            .filter(link -> key.equals(link.idempotencyKey)).findFirst().orElse(null);
+    }
+
     private SeoTask requireRevisionReplay(SeoTask task, SeoTask.TaskRevision existing, CreateRevisionRequest request) {
         var merchant = merchantService.requireVisibleMerchant(existing.createdBy, task.merchantId);
         var candidate = buildRevision(existing.createdBy, merchant, request.definition, existing.revision, existing.idempotencyKey);
@@ -471,6 +518,13 @@ public class SeoTaskCommandService {
         return task;
     }
 
+    private SeoTask requireConversationReplay(SeoTask task, SeoTask.ConversationLink existing, String fingerprint) {
+        if (!Objects.equals(existing.requestFingerprint, fingerprint)) {
+            throw conflict("idempotency key was already used with different content");
+        }
+        return task;
+    }
+
     private SeoTask resolveRevisionConflict(String actorUserId, String taskId, String key, String fingerprint) {
         var latest = requireVisibleTask(actorUserId, taskId);
         var replay = findRevisionByKey(latest, key);
@@ -483,6 +537,25 @@ public class SeoTaskCommandService {
         var replay = findDecisionByKey(latest, key);
         if (replay != null && Objects.equals(replay.requestFingerprint, fingerprint)) return latest;
         throw conflict("task changed concurrently");
+    }
+
+    private SeoTask resolveConversationConflict(String actorUserId, String taskId, String key, String fingerprint) {
+        var latest = requireVisibleTask(actorUserId, taskId);
+        var replay = findConversationLinkByKey(latest, key);
+        if (replay != null && Objects.equals(replay.requestFingerprint, fingerprint)) return latest;
+        throw conflict("task changed concurrently");
+    }
+
+    private SeoTask.ConversationLink conversationLink(String actorUserId, String conversationId,
+                                                        String key, String fingerprint, ZonedDateTime now) {
+        var link = new SeoTask.ConversationLink();
+        link.conversationId = conversationId;
+        link.relationship = "TASK_CHAT";
+        link.idempotencyKey = key;
+        link.requestFingerprint = fingerprint;
+        link.linkedBy = actorUserId;
+        link.linkedAt = now;
+        return link;
     }
 
     private void requireExpectedState(SeoTask task, Long expectedStateVersion) {
