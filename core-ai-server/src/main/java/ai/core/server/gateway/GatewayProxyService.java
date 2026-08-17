@@ -53,6 +53,7 @@ public class GatewayProxyService {
     private static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.output_tokens");
     private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
     private static final AttributeKey<String> USER_ID = AttributeKey.stringKey("user.id");
+    private static final AttributeKey<String> CLIENT_TYPE = AttributeKey.stringKey("client.type");
 
     // OpenAI chat/completions uses prompt_tokens/completion_tokens, responses uses input_tokens/output_tokens
     static Usage parseUsage(Map<String, Object> body) {
@@ -216,6 +217,7 @@ public class GatewayProxyService {
         var spanBuilder = telemetry.getOpenTelemetry().getTracer("core-ai-server")
                 .spanBuilder("gateway" + endpoint.path.replace('/', '.'))
                 .setSpanKind(SpanKind.CLIENT)
+                .setAttribute(CLIENT_TYPE, "gateway")
                 .setAttribute(LANGFUSE_OBSERVATION_TYPE, "generation")
                 .setAttribute(GEN_AI_SYSTEM, call.provider().type)
                 .setAttribute(GEN_AI_REQUEST_MODEL, call.upstreamModel())

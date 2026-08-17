@@ -241,7 +241,7 @@ export interface Trace {
   traceId: string;
   name: string;
   type?: string;     // agent | llm_call | external
-  source?: string;   // chat | test | api | a2a | scheduled | workflow | llm_test | llm_api | external
+  source?: string;   // chat | test | api | a2a | scheduled | workflow | llm_test | llm_api | gateway | external
   agentName?: string;
   model?: string;
   sessionId: string;
@@ -293,7 +293,7 @@ export interface TraceFilter {
   q?: string;           // smart search: IDs, user account, trace name, or agent name
   name?: string;        // advanced raw regex on name
   type?: string;        // agent | llm_call | external
-  source?: string;      // chat | a2a | api | scheduled | workflow
+  source?: string;      // chat | a2a | api | scheduled | workflow | gateway
   agentName?: string;
   model?: string;
   status?: string;
@@ -665,11 +665,18 @@ export interface McpToolInfo {
   name: string;
   description: string;
   input_schema?: string;
+  group?: string;
 }
 
 export interface McpServerToolsResponse {
   server_id: string;
   server_name: string;
+  tools: McpToolInfo[];
+}
+
+export interface BuiltinGroupToolsResponse {
+  group_id: string;
+  group_name: string;
   tools: McpToolInfo[];
 }
 
@@ -1086,6 +1093,7 @@ export interface ProjectSubject {
   name: string;
   description?: string;
   external_link?: string;
+  analyzed_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -1720,7 +1728,10 @@ export const api = {
       const qs = params.toString();
       return request<ListProjectReportsResponse>(`/api/projects/${id}/reports${qs ? `?${qs}` : ''}`);
     },
-    analyze: (id: string) => request<void>(`/api/projects/${id}/analyze`, { method: 'POST' }),
+    analyze: (id: string, subjectId?: string) =>
+      request<void>(`/api/projects/${id}/analyze`, { method: 'POST', body: JSON.stringify({ subject_id: subjectId }) }),
+    resetBuiltinAgents: () =>
+      request<void>('/api/projects/builtin-agents/reset', { method: 'POST' }),
     subjects: (id: string, offset = 0, limit = 12, query?: string) => {
       const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
       if (query) params.set('query', query);
@@ -1845,6 +1856,8 @@ export const api = {
       request<ListApiAppServicesResponse>(`/api/tools/service-api/apps/${appName}/services`),
     listMcpServerTools: (serverId: string) =>
       request<McpServerToolsResponse>(`/api/tools/mcp-servers/${serverId}/tools`),
+    listBuiltinGroupTools: (groupId: string) =>
+      request<BuiltinGroupToolsResponse>(`/api/tools/builtin/${groupId}/tools`),
     getMcpServerStatus: (serverId: string) =>
       request<McpServerStatusResponse>(`/api/tools/mcp-servers/${serverId}/status`),
     connectMcpServer: (serverId: string) =>

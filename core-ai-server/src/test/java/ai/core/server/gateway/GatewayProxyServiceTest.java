@@ -220,6 +220,7 @@ class GatewayProxyServiceTest {
             var protoSpan = exportRequest.get().getResourceSpans(0).getScopeSpans(0).getSpans(0);
             var recorded = spanAttributes(protoSpan);
             assertEquals("gateway.chat.completions", protoSpan.getName());
+            assertEquals("gateway", recorded.get("client.type"));
             assertEquals("deepseek-chat", recorded.get("gen_ai.request.model"));
             assertEquals("deepseek", recorded.get("gen_ai.system"));
             assertEquals("user-1", recorded.get("user.id"));

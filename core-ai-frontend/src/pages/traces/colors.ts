@@ -36,6 +36,7 @@ export function sourceColors(source?: string): SourcePalette {
     case 'workflow': return { label: 'Workflow',  color: '#10b981' };
     case 'llm_test': return { label: 'LLM Test',  color: '#8b5cf6' };
     case 'llm_api':  return { label: 'LLM API',   color: '#f59e0b' };
+    case 'gateway':  return { label: 'Gateway',   color: '#0d9488' };
     case 'external': return { label: 'External',  color: '#64748b' };
     case 'cli':      return { label: 'CLI',       color: '#14b8a6' };
     case 'channel':  return { label: 'Channel',   color: '#f97316' };

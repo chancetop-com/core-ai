@@ -11,7 +11,7 @@ public class TraceListFilter {
     public String q;           // user-friendly search: ID fields, user account, trace name, or agent name
     public String name;        // advanced raw regex on name, evaluated after indexed filters
     public String type;        // agent | llm_call | external
-    public String source;      // chat | a2a | api | scheduled | workflow
+    public String source;      // chat | a2a | api | scheduled | workflow | gateway
     public String agentName;
     public String model;
     public String status;
