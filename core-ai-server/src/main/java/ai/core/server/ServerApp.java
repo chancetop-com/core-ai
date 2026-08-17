@@ -58,6 +58,7 @@ import ai.core.server.trigger.domain.Trigger;
 import ai.core.server.seoops.domain.SeoLocation;
 import ai.core.server.seoops.domain.SeoMerchant;
 import ai.core.server.seoops.domain.SeoTask;
+import ai.core.server.seoops.SeoOpsModule;
 import ai.core.server.rbac.RbacModule;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
@@ -128,6 +129,7 @@ public class ServerApp extends App {
         load(new MessagingRuntimeModule());
         load(new ChannelModule());
         load(new WorkflowModule());
+        load(new SeoOpsModule());
     }
 
     private void loadTransportModules() {
