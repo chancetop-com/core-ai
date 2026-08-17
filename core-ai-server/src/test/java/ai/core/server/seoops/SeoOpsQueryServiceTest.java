@@ -34,14 +34,14 @@ class SeoOpsQueryServiceTest {
         var page = service.inbox("user-1", new PageRequest());
 
         assertEquals(0, page.total());
-        verify(service.taskCollection, never()).find(any(core.framework.mongo.Query.class));
+        verify(service.taskCollection, never()).find(any(Query.class));
     }
 
     @Test
     void inboxClampsLimitAndFiltersVisibleMerchants() {
         var service = service();
         when(service.merchantService.visibleMerchantIds("user-1")).thenReturn(List.of("merchant-1"));
-        when(service.taskCollection.find(any(core.framework.mongo.Query.class))).thenReturn(List.of(task()));
+        when(service.taskCollection.find(any(Query.class))).thenReturn(List.of(task()));
         when(service.taskCollection.count(any(org.bson.conversions.Bson.class))).thenReturn(1L);
         var request = new PageRequest();
         request.limit = 500;
