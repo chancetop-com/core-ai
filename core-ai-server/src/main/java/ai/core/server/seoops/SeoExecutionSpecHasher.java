@@ -51,6 +51,6 @@ public class SeoExecutionSpecHasher {
             value.forEach(item -> sorted.add(sort(item)));
             return sorted;
         }
-        return value;
+        return value.deepCopy();
     }
 }
