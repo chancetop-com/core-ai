@@ -120,7 +120,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVArtifactListIndexes(),
             new SchemaMigrationVFileContentHashIndex(),
             new SchemaMigrationVCostAlertIndexes(),
-            new SchemaMigrationVRemoveLegacyMultimodalModelSetting()
+            new SchemaMigrationVRemoveLegacyMultimodalModelSetting(),
+            new SchemaMigrationVSeoOpsIndexes()
         );
     }
 }

@@ -55,6 +55,9 @@ import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trigger.domain.Trigger;
+import ai.core.server.seoops.domain.SeoLocation;
+import ai.core.server.seoops.domain.SeoMerchant;
+import ai.core.server.seoops.domain.SeoTask;
 import ai.core.server.rbac.RbacModule;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
@@ -178,6 +181,9 @@ public class ServerApp extends App {
         mongo.collection(Notification.class);
         mongo.collection(CostAlertRule.class);
         mongo.collection(CostAlertEvent.class);
+        mongo.collection(SeoMerchant.class);
+        mongo.collection(SeoLocation.class);
+        mongo.collection(SeoTask.class);
     }
 
     private void registerCoreCollections(MongoConfig mongo) {

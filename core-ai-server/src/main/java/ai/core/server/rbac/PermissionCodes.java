@@ -41,6 +41,9 @@ public final class PermissionCodes {
     public static final String USER_MANAGE = "user.manage";
     public static final String ANALYTICS_VIEW = "analytics.view";
     public static final String RBAC_MANAGE = "rbac.manage";
+    public static final String SEOOPS_VIEW = "seoops.view";
+    public static final String SEOOPS_MANAGE = "seoops.manage";
+    public static final String SEOOPS_APPROVE = "seoops.approve";
 
     /** Complete catalog, used for role config validation and admin UI checkboxes. */
     public static final List<String> ALL = List.of(
@@ -56,7 +59,8 @@ public final class PermissionCodes {
             DATASET_VIEW, DATASET_MANAGE,
             EXPERIMENT_VIEW, NOTIFICATION_VIEW,
             GATEWAY_MANAGE, SYSTEM_MANAGE, COSTALERT_MANAGE,
-            USER_MANAGE, ANALYTICS_VIEW, RBAC_MANAGE);
+            USER_MANAGE, ANALYTICS_VIEW, RBAC_MANAGE,
+            SEOOPS_VIEW, SEOOPS_MANAGE, SEOOPS_APPROVE);
 
     private PermissionCodes() {
     }
