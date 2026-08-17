@@ -13,13 +13,15 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SeoOpsApiContractTest {
     @Test
     void exposesTheControlPlaneEndpointSet() {
         var paths = Arrays.stream(SeoOpsWebService.class.getDeclaredMethods())
-            .collect(Collectors.toMap(method -> method.getName(), method -> method.getAnnotation(Path.class).value()));
+            .collect(Collectors.toMap(java.lang.reflect.Method::getName,
+                method -> method.getAnnotation(Path.class).value()));
 
         assertEquals(15, paths.size());
         assertEquals("/api/seo-ops/config", paths.get("config"));
@@ -44,7 +46,7 @@ class SeoOpsApiContractTest {
             "sys.seoops.copilot.agent-id", " agent-safe "));
 
         assertFalse(disabled.enabled());
-        assertEquals(null, disabled.copilotAgentId());
+        assertNull(disabled.copilotAgentId());
         assertTrue(enabled.enabled());
         assertEquals("agent-safe", enabled.copilotAgentId());
     }

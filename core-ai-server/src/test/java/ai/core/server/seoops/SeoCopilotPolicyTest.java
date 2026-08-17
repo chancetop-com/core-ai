@@ -31,7 +31,7 @@ class SeoCopilotPolicyTest {
         agent.publishedConfig.skillIds = List.of("seo-write");
         assertTrue(policy(agent).eligibleAgentId().isEmpty());
         agent.publishedConfig.skillIds = List.of();
-        agent.publishedConfig.enableMemory = true;
+        agent.publishedConfig.enableMemory = Boolean.TRUE;
         assertTrue(policy(agent).eligibleAgentId().isEmpty());
     }
 
@@ -54,7 +54,7 @@ class SeoCopilotPolicyTest {
         agent.publishedConfig.skillIds = List.of();
         agent.publishedConfig.subAgentIds = List.of();
         agent.publishedConfig.datasetConfig = List.of();
-        agent.publishedConfig.enableMemory = false;
+        agent.publishedConfig.enableMemory = Boolean.FALSE;
         return agent;
     }
 }
