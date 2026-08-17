@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -35,6 +36,8 @@ import static org.mockito.Mockito.when;
 
 class GatewayProxyServiceTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    // buildAndRegisterGlobal can only run once per JVM; all span tests share this instance
+    private static final TelemetryConfig TELEMETRY = TelemetryConfig.builder().enabled(true).build();
 
     private static byte[] json(Object value) {
         try {
@@ -64,7 +67,7 @@ class GatewayProxyServiceTest {
         service.proxyChatCompletions(json(Map.of(
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1");
+        )), "user-1", null);
 
         assertEquals("https://api.deepseek.com/v1/chat/completions", service.captured.uri);
         assertEquals("Bearer sk-test", service.captured.headers.get("Authorization"));
@@ -82,7 +85,7 @@ class GatewayProxyServiceTest {
         service.proxyChatCompletions(json(Map.of(
                 "model", "azure/my-deployment",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1");
+        )), "user-1", null);
 
         assertEquals("https://example.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2025-01-01-preview", service.captured.uri);
         assertEquals("sk-test", service.captured.headers.get("api-key"));
@@ -97,7 +100,7 @@ class GatewayProxyServiceTest {
         assertThrows(BadRequestException.class, () -> service.proxyChatCompletions(json(Map.of(
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1"));
+        )), "user-1", null));
     }
 
     @Test
@@ -108,7 +111,7 @@ class GatewayProxyServiceTest {
         service.proxyChatCompletions(json(Map.of(
                 "model", "fast-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1");
+        )), "user-1", null);
 
         assertEquals("https://litellm.example.com/chat/completions", service.captured.uri);
         var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
@@ -123,7 +126,7 @@ class GatewayProxyServiceTest {
         assertThrows(BadRequestException.class, () -> service.proxyChatCompletions(json(Map.of(
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1"));
+        )), "user-1", null));
     }
 
     @Test
@@ -153,7 +156,7 @@ class GatewayProxyServiceTest {
         service.proxyResponses(json(Map.of(
                 "model", "fast-response",
                 "input", "hi"
-        )), "user-1");
+        )), "user-1", null);
 
         assertEquals("https://litellm.example.com/responses", service.captured.uri);
         var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
@@ -209,14 +212,16 @@ class GatewayProxyServiceTest {
         var service = new CapturingGatewayProxyService();
         service.routingEngine = routingEngine(List.of(provider), List.of());
         service.secretProtector = new GatewaySecretProtector("test-secret");
-        service.telemetryConfig = TelemetryConfig.builder().enabled(true).build();
+        service.telemetryConfig = TELEMETRY;
         try {
             service.proxyChatCompletions(json(Map.of(
                     "model", "deepseek/deepseek-chat",
                     "messages", List.of(Map.of("role", "user", "content", "hi"))
-            )), "user-1");
+            )), "user-1", null);
 
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            // span export runs on LocalSpanProcessor's async executor; under full-suite load the
+            // single worker thread can be scheduled late, so allow a generous wait
+            assertTrue(latch.await(15, TimeUnit.SECONDS), "span export timed out");
             var protoSpan = exportRequest.get().getResourceSpans(0).getScopeSpans(0).getSpans(0);
             var recorded = spanAttributes(protoSpan);
             assertEquals("gateway.chat.completions", protoSpan.getName());
@@ -229,6 +234,52 @@ class GatewayProxyServiceTest {
         } finally {
             LocalSpanProcessorRegistry.clear();
         }
+    }
+
+    @Test
+    void stampsSessionIdFromClientSessionHeader() throws Exception {
+        var latch = new CountDownLatch(2);
+        var captured = new CopyOnWriteArrayList<ExportTraceServiceRequest>();
+        var service = spanCapturingService(captured, latch);
+        try {
+            service.proxyChatCompletions(json(Map.of(
+                    "model", "deepseek/deepseek-chat",
+                    "messages", List.of(Map.of("role", "user", "content", "hi"))
+            )), "user-1", "session-1");
+            service.proxyChatCompletions(json(Map.of(
+                    "model", "deepseek/deepseek-chat",
+                    "messages", List.of(Map.of("role", "user", "content", "again"))
+            )), "user-1", null);
+
+            // span export runs on LocalSpanProcessor's async executor; under full-suite load the
+            // single worker thread can be scheduled late, so allow a generous wait
+            assertTrue(latch.await(15, TimeUnit.SECONDS), "spans exported: " + captured.size() + "/2");
+            assertEquals(2, captured.size());
+            assertEquals("session-1", spanAttributes(protoSpan(captured.get(0))).get("session.id"));
+            assertNull(spanAttributes(protoSpan(captured.get(1))).get("session.id"));
+        } finally {
+            LocalSpanProcessorRegistry.clear();
+        }
+    }
+
+    private CapturingGatewayProxyService spanCapturingService(List<ExportTraceServiceRequest> captured, CountDownLatch latch) {
+        var ingestService = mock(OTLPIngestService.class);
+        doAnswer(invocation -> {
+            captured.add(invocation.getArgument(0));
+            latch.countDown();
+            return null;
+        }).when(ingestService).ingest(any(ExportTraceServiceRequest.class));
+        LocalSpanProcessorRegistry.register(ingestService);
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var service = new CapturingGatewayProxyService();
+        service.routingEngine = routingEngine(List.of(provider), List.of());
+        service.secretProtector = new GatewaySecretProtector("test-secret");
+        service.telemetryConfig = TELEMETRY;
+        return service;
+    }
+
+    private io.opentelemetry.proto.trace.v1.Span protoSpan(ExportTraceServiceRequest request) {
+        return request.getResourceSpans(0).getScopeSpans(0).getSpans(0);
     }
 
     @SuppressWarnings("unchecked")

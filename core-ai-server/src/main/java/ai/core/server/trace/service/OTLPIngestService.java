@@ -1,5 +1,6 @@
 package ai.core.server.trace.service;
 
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 
@@ -27,6 +28,7 @@ import ai.core.server.trace.domain.TraceStatus;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -77,10 +79,10 @@ public class OTLPIngestService {
     }
 
     private void processSpan(io.opentelemetry.proto.trace.v1.Span protoSpan, Map<String, String> resourceAttrs) {
-        var traceId = OTLPParseHelper.bytesToHex(protoSpan.getTraceId().toByteArray());
         var spanId = OTLPParseHelper.bytesToHex(protoSpan.getSpanId().toByteArray());
         var parentSpanId = protoSpan.getParentSpanId().isEmpty() ? null : OTLPParseHelper.bytesToHex(protoSpan.getParentSpanId().toByteArray());
         var attrs = OTLPParseHelper.extractAttributes(protoSpan.getAttributesList());
+        var traceId = OTLPParseHelper.resolveTraceId(protoSpan, attrs);
         linkAgentRun(traceId, attrs);
         ensureTraceExists(traceId, protoSpan, attrs, resourceAttrs);
         saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs);
@@ -130,7 +132,13 @@ public class OTLPIngestService {
         trace.totalTokens = 0L;
         trace.cachedTokens = 0L;
         trace.costUsd = 0.0;
-        traceCollection.insert(trace);
+        // race-safe: 11000 on the traces.trace_id unique index means a concurrent ingest (likely
+        // another request of the same merged gateway session) already created the trace
+        try {
+            traceCollection.insert(trace);
+        } catch (MongoWriteException e) {
+            if (e.getCode() != 11000) throw e;
+        }
     }
 
     private void saveSpan(io.opentelemetry.proto.trace.v1.Span protoSpan,
@@ -201,38 +209,54 @@ public class OTLPIngestService {
 
     private void updateExistingTrace(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
                                      Map<String, String> attrs, long endMs) {
-        trace.status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
-        trace.errorMessage = trace.status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
-        trace.output = resolveOutput(attrs);
-        trace.durationMs = endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
-        trace.completedAt = OTLPParseHelper.toZonedDateTime(endMs);
-        trace.updatedAt = ZonedDateTime.now();
+        // Targeted $set updates instead of full document replace: a merged gateway session trace
+        // has many root spans that can be ingested concurrently, and a replace would overwrite
+        // the atomic $inc token/cost counters with a stale snapshot.
+        var updates = new ArrayList<Bson>();
+        var status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
+        updates.add(Updates.set("status", status));
+        updates.add(Updates.set("error_message", status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null));
+        var output = resolveOutput(attrs);
+        if (output != null) updates.add(Updates.set("output", output));
+        updates.add(Updates.set("duration_ms", endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano())));
+        updates.add(Updates.set("completed_at", OTLPParseHelper.toZonedDateTime(endMs)));
+        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
         // Backfill model if this span carries it and trace.model is still empty
         var spanModel = attrs.get("gen_ai.request.model");
-        if (spanModel != null && (trace.model == null || trace.model.isEmpty())) {
-            trace.model = spanModel;
+        if (spanModel != null && !spanModel.isEmpty() && (trace.model == null || trace.model.isEmpty())) {
+            updates.add(Updates.set("model", spanModel));
         }
         // Prefer richer span info: if this span carries session/agent/user attributes,
         // upgrade the trace's identity fields (they may be null when the first-arrived
         // span was an external one without context)
         var hasRichContext = attrs.get("session.id") != null || attrs.get("gen_ai.agent.name") != null;
         if (hasRichContext) {
-            upgradeTraceWithSpanInfo(trace, protoSpan, attrs);
+            upgradeTraceWithSpanInfo(updates, trace, protoSpan, attrs);
         }
-        mergeTraceMetadata(trace, workflowMetadata(attrs));
-        traceCollection.replace(trace);
+        var workflow = workflowMetadata(attrs);
+        if (!workflow.isEmpty()) {
+            var merged = new LinkedHashMap<String, String>();
+            if (trace.metadata != null) merged.putAll(trace.metadata);
+            merged.putAll(workflow);
+            updates.add(Updates.set("metadata", merged));
+        }
+        traceCollection.update(Filters.eq("trace_id", trace.traceId), Updates.combine(updates));
     }
 
-    private void upgradeTraceWithSpanInfo(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
+    private void upgradeTraceWithSpanInfo(List<Bson> updates, Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
                                           Map<String, String> attrs) {
-        trace.name = IngestService.friendlyTraceName(protoSpan.getName(), attrs.get("gen_ai.agent.name"));
-        trace.sessionId = attrs.get("session.id");
-        trace.userId = attrs.get("user.id");
-        trace.agentName = attrs.get("gen_ai.agent.name");
-        trace.agentId = attrs.get("gen_ai.agent.id");
-        trace.source = resolveSource(attrs, trace.sessionId);
-        trace.type = resolveType(trace.source, attrs, Map.of());
-        if (trace.input == null || trace.input.isEmpty()) trace.input = resolveInput(attrs);
+        updates.add(Updates.set("name", IngestService.friendlyTraceName(protoSpan.getName(), attrs.get("gen_ai.agent.name"))));
+        updates.add(Updates.set("session_id", attrs.get("session.id")));
+        updates.add(Updates.set("user_id", attrs.get("user.id")));
+        updates.add(Updates.set("agent_name", attrs.get("gen_ai.agent.name")));
+        updates.add(Updates.set("agent_id", attrs.get("gen_ai.agent.id")));
+        var source = resolveSource(attrs, attrs.get("session.id"));
+        updates.add(Updates.set("source", source));
+        updates.add(Updates.set("type", resolveType(source, attrs, Map.of())));
+        if (trace.input == null || trace.input.isEmpty()) {
+            var input = resolveInput(attrs);
+            if (input != null) updates.add(Updates.set("input", input));
+        }
     }
 
     private void createNewTrace(io.opentelemetry.proto.trace.v1.Span protoSpan, String traceId,
@@ -300,14 +324,6 @@ public class OTLPIngestService {
     private void putAttr(Map<String, String> target, String targetKey, Map<String, String> attrs, String attrKey) {
         var value = attrs.get(attrKey);
         if (value != null && !value.isBlank()) target.put(targetKey, value);
-    }
-
-    private void mergeTraceMetadata(Trace trace, Map<String, String> metadata) {
-        if (metadata.isEmpty()) return;
-        var merged = new LinkedHashMap<String, String>();
-        if (trace.metadata != null) merged.putAll(trace.metadata);
-        merged.putAll(metadata);
-        trace.metadata = merged;
     }
 
     private void incrementTraceTokens(String traceId, Span span) {

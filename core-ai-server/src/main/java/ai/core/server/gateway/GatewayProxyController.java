@@ -16,11 +16,11 @@ public class GatewayProxyController {
     WebContext webContext;
 
     public Response chatCompletions(Request request) {
-        return gatewayProxyService.proxyChatCompletions(body(request), currentUserId());
+        return gatewayProxyService.proxyChatCompletions(body(request), currentUserId(), GatewaySupport.clientSessionId(request));
     }
 
     public Response responses(Request request) {
-        return gatewayProxyService.proxyResponses(body(request), currentUserId());
+        return gatewayProxyService.proxyResponses(body(request), currentUserId(), GatewaySupport.clientSessionId(request));
     }
 
     public Response imageGenerations(Request request) {

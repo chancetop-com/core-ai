@@ -18,7 +18,8 @@ public class GatewayResponsesChannelListener implements ChannelListener<GatewayR
     @Override
     public void onConnect(Request request, Channel<GatewayResponsesSseEvent> channel, String lastEventId) {
         var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
-        gatewayProxyService.streamToChannel(body, GatewayEndpointType.RESPONSES, (RawSseChannel<?>) channel, AuthContext.userId(webContext));
+        gatewayProxyService.streamToChannel(body, GatewayEndpointType.RESPONSES, (RawSseChannel<?>) channel,
+                AuthContext.userId(webContext), GatewaySupport.clientSessionId(request));
         channel.close();
     }
 }

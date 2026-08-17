@@ -53,6 +53,7 @@ public class GatewayProxyService {
     private static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.output_tokens");
     private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
     private static final AttributeKey<String> USER_ID = AttributeKey.stringKey("user.id");
+    private static final AttributeKey<String> SESSION_ID = AttributeKey.stringKey("session.id");
     private static final AttributeKey<String> CLIENT_TYPE = AttributeKey.stringKey("client.type");
 
     // OpenAI chat/completions uses prompt_tokens/completion_tokens, responses uses input_tokens/output_tokens
@@ -89,24 +90,24 @@ public class GatewayProxyService {
     @Inject
     TelemetryConfig telemetryConfig;
 
-    public Response proxyChatCompletions(byte[] body, String userId) {
-        return proxy(body, GatewayEndpointType.CHAT_COMPLETIONS, MediaJobOwner.UNKNOWN, userId);
+    public Response proxyChatCompletions(byte[] body, String userId, String sessionId) {
+        return proxy(body, GatewayEndpointType.CHAT_COMPLETIONS, MediaJobOwner.UNKNOWN, userId, sessionId);
     }
 
-    public Response proxyResponses(byte[] body, String userId) {
-        return proxy(body, GatewayEndpointType.RESPONSES, MediaJobOwner.UNKNOWN, userId);
+    public Response proxyResponses(byte[] body, String userId, String sessionId) {
+        return proxy(body, GatewayEndpointType.RESPONSES, MediaJobOwner.UNKNOWN, userId, sessionId);
     }
 
     public Response proxyImageGenerations(byte[] body, String userId) {
-        return proxy(body, GatewayEndpointType.IMAGE_GENERATION, MediaJobOwner.UNKNOWN, userId);
+        return proxy(body, GatewayEndpointType.IMAGE_GENERATION, MediaJobOwner.UNKNOWN, userId, null);
     }
 
     public Response proxyImageEdits(byte[] body, String userId) {
-        return proxy(body, GatewayEndpointType.IMAGE_EDIT, MediaJobOwner.UNKNOWN, userId);
+        return proxy(body, GatewayEndpointType.IMAGE_EDIT, MediaJobOwner.UNKNOWN, userId, null);
     }
 
     public Response proxyVideoGenerations(byte[] body, MediaJobOwner owner) {
-        return proxy(body, GatewayEndpointType.VIDEO_GENERATION, owner, owner.userId());
+        return proxy(body, GatewayEndpointType.VIDEO_GENERATION, owner, owner.userId(), null);
     }
 
     public Response getVideoStatus(String videoId, String userId) {
@@ -149,9 +150,9 @@ public class GatewayProxyService {
         return jsonResponse(response);
     }
 
-    void streamToChannel(byte[] body, GatewayEndpointType endpoint, RawSseChannel<?> channel, String userId) {
+    void streamToChannel(byte[] body, GatewayEndpointType endpoint, RawSseChannel<?> channel, String userId, String sessionId) {
         var call = prepare(body, endpoint);
-        var span = startSpan(call, endpoint, userId, body);
+        var span = startSpan(call, endpoint, userId, body, sessionId);
         try {
             if (!call.stream()) {
                 var upstream = execute(call.request(), call.provider());
@@ -181,12 +182,12 @@ public class GatewayProxyService {
         }
     }
 
-    private Response proxy(byte[] body, GatewayEndpointType endpoint, MediaJobOwner owner, String userId) {
+    private Response proxy(byte[] body, GatewayEndpointType endpoint, MediaJobOwner owner, String userId, String sessionId) {
         var call = prepare(body, endpoint);
         if (endpoint == GatewayEndpointType.VIDEO_GENERATION && call.stream()) {
             throw new BadRequestException("streaming video generation is not supported by the gateway");
         }
-        var span = startSpan(call, endpoint, userId, body);
+        var span = startSpan(call, endpoint, userId, body, sessionId);
         try {
             if (call.stream()) {
                 var response = bufferedStream(call, span);
@@ -209,7 +210,7 @@ public class GatewayProxyService {
         }
     }
 
-    private Span startSpan(GatewayUpstreamCall call, GatewayEndpointType endpoint, String userId, byte[] body) {
+    private Span startSpan(GatewayUpstreamCall call, GatewayEndpointType endpoint, String userId, byte[] body, String sessionId) {
         var telemetry = telemetryConfig;
         if (telemetry == null || !telemetry.isEnabled()) {
             return OpenTelemetry.noop().getTracer("core-ai-server").spanBuilder("gateway").startSpan();
@@ -227,6 +228,11 @@ public class GatewayProxyService {
         }
         if (userId != null && !userId.isBlank()) {
             spanBuilder.setAttribute(USER_ID, userId);
+        }
+        if (hasText(sessionId)) {
+            // session id is recorded so the ingest layer can merge all requests of one client
+            // conversation (e.g. Claude Code's X-Claude-Code-Session-Id) into a single trace
+            spanBuilder.setAttribute(SESSION_ID, sessionId);
         }
         return spanBuilder.startSpan();
     }

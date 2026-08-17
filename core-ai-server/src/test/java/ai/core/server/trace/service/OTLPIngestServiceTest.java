@@ -19,9 +19,11 @@ import org.mockito.ArgumentCaptor;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -110,6 +112,68 @@ class OTLPIngestServiceTest {
         verify(service.spanCollection).insert(inserted.capture());
         assertEquals(spanInput, inserted.getValue().input);
         assertEquals(attributeInput, inserted.getValue().attributes.get("langfuse.observation.input"));
+    }
+
+    @Test
+    void gatewaySpansWithSameSessionIdMergeIntoSameTrace() {
+        var service = service();
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        service.ingest(request(span("gateway.chat.completions",
+            attr("client.type", "gateway"),
+            attr("session.id", "session-1"),
+            attr("user.id", "user-1"))));
+        service.ingest(request(span("gateway.chat.completions",
+            attr("client.type", "gateway"),
+            attr("session.id", "session-1"),
+            attr("user.id", "user-1"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection, times(2)).insert(inserted.capture());
+        var spans = inserted.getAllValues();
+        assertEquals(spans.get(0).traceId, spans.get(1).traceId);
+        // derived trace id replaces the random proto trace id (16 zero bytes in this test)
+        assertNotEquals("0".repeat(32), spans.get(0).traceId);
+        // only one trace doc is created for the whole session
+        verify(service.traceCollection).insert(any(Trace.class));
+    }
+
+    @Test
+    void gatewaySpansWithDifferentSessionIdsKeepSeparateTraces() {
+        var service = service();
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        service.ingest(request(span("gateway.chat.completions",
+            attr("client.type", "gateway"),
+            attr("session.id", "session-1"),
+            attr("user.id", "user-1"))));
+        service.ingest(request(span("gateway.chat.completions",
+            attr("client.type", "gateway"),
+            attr("session.id", "session-2"),
+            attr("user.id", "user-1"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection, times(2)).insert(inserted.capture());
+        var spans = inserted.getAllValues();
+        assertNotEquals(spans.get(0).traceId, spans.get(1).traceId);
+    }
+
+    @Test
+    void nonGatewaySpansKeepProtoTraceId() {
+        var service = service();
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        service.ingest(request(span("agent.run",
+            attr("session.id", "chat-session-1"),
+            attr("user.id", "user-1"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection).insert(inserted.capture());
+        // agent spans with a session.id keep their real trace id (16 zero bytes in this test)
+        assertEquals("0".repeat(32), inserted.getValue().traceId);
     }
 
     private OTLPIngestService service() {
