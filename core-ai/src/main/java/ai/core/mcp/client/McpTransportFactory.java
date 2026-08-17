@@ -154,8 +154,14 @@ public final class McpTransportFactory {
 
     /**
      * Merges static server-config headers with per-request caller identity headers
-     * (configured per business account on the manager user; resolved from the current
-     * OutboundCallerContext on every request). Caller headers win on name collision.
+     * (configured per business account on the manager user). Caller headers win on name collision.
+     * <p>
+     * Caller headers come from two sources: (1) the calling thread, which resolves them right
+     * before the tool call and stores them on the config ({@link McpServerConfig#getCallerHeaders()}) —
+     * this survives the SDK building the HTTP request on a reactor thread where the
+     * OpenTelemetry context is not propagated; (2) a fallback to the current
+     * {@link OutboundCallerContext} for requests still issued on the calling thread
+     * (initialize, listTools).
      */
     private static Map<String, String> requestHeaders(McpServerConfig config) {
         var headers = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
@@ -166,6 +172,7 @@ public final class McpTransportFactory {
         if (caller != null) {
             headers.putAll(CallerHeaderProvider.get().headersFor(caller));
         }
+        headers.putAll(config.getCallerHeaders());
         return headers;
     }
 

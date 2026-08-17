@@ -1,5 +1,7 @@
 package ai.core.mcp.client;
 
+import ai.core.tool.CallerHeaderProvider;
+import ai.core.tool.OutboundCallerContext;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import ai.core.utils.SystemUtil;
@@ -107,7 +109,25 @@ public class McpClientService implements AutoCloseable {
         return callToolWithResult(name, JsonUtil.toMap(text));
     }
 
-    public ToolCallResult callToolWithResult(String name, Map<String, Object> arguments) {
+    /**
+     * Synchronized so the per-request caller headers on the shared config are never
+     * interleaved by concurrent tool calls on the same client, and to keep the SDK sync
+     * client safe from concurrent use. The caller is resolved here on the calling thread
+     * (where the OpenTelemetry context is valid) and read later by the transport's
+     * httpRequestCustomizer, which may run on a reactor thread.
+     */
+    public synchronized ToolCallResult callToolWithResult(String name, Map<String, Object> arguments) {
+        var caller = OutboundCallerContext.current();
+        Map<String, String> callerHeaders = caller == null ? Map.of() : CallerHeaderProvider.get().headersFor(caller);
+        config.setCallerHeaders(callerHeaders);
+        try {
+            return doCallToolWithResult(name, arguments);
+        } finally {
+            config.setCallerHeaders(Map.of());
+        }
+    }
+
+    private ToolCallResult doCallToolWithResult(String name, Map<String, Object> arguments) {
         var request = new McpSchema.CallToolRequest(name, arguments);
         try {
             var result = client.callTool(request);

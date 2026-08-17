@@ -216,6 +216,13 @@ public class McpServerConfig {
     String endpoint;
     Map<String, String> headers;
 
+    // Per-request caller identity headers. Set by the calling thread before each tool call
+    // (McpClientService.callToolWithResult) and read by the transport's httpRequestCustomizer.
+    // Instance-scoped (not static) so concurrent servers never interfere. The calling thread
+    // resolves them because the SDK may build the HTTP request on a reactor thread where the
+    // OpenTelemetry caller context is not propagated.
+    volatile Map<String, String> callerHeaders = Map.of();
+
     // Timeout configuration
     Duration connectTimeout = Duration.ofSeconds(10);
     Duration requestTimeout = Duration.ofSeconds(60);
@@ -254,6 +261,12 @@ public class McpServerConfig {
     }
     public Map<String, String> getHeaders() {
         return headers;
+    }
+    public Map<String, String> getCallerHeaders() {
+        return callerHeaders;
+    }
+    public void setCallerHeaders(Map<String, String> callerHeaders) {
+        this.callerHeaders = callerHeaders == null ? Map.of() : callerHeaders;
     }
     public Duration getConnectTimeout() {
         return connectTimeout;
