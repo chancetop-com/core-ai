@@ -47,7 +47,7 @@ public class SeoTaskPolicy {
             evidenceState = SeoEvidenceState.PARTIAL;
         }
 
-        if (location.readinessStatus != SeoLocationReadiness.READY) {
+        if (location != null && location.readinessStatus != SeoLocationReadiness.READY) {
             blockers.add("location readiness is " + location.readinessStatus);
             return new Readiness(evidenceState, SeoTaskStatus.BLOCKED, blockers);
         }

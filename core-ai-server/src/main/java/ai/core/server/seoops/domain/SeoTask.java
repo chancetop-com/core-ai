@@ -21,7 +21,6 @@ public class SeoTask {
     @Field(name = "merchant_id")
     public String merchantId;
 
-    @NotNull
     @Field(name = "location_id")
     public String locationId;
 
@@ -33,7 +32,6 @@ public class SeoTask {
     @Field(name = "evidence_state")
     public SeoEvidenceState evidenceState;
 
-    @NotNull
     @Field(name = "owner_id")
     public String ownerId;
 
@@ -121,7 +119,6 @@ public class SeoTask {
         @Field(name = "impact")
         public String impact;
 
-        @NotNull
         @Field(name = "owner_id")
         public String ownerId;
 
