@@ -4,6 +4,7 @@ import { LogIn } from 'lucide-react';
 import { authApi } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useTheme } from '../../hooks/useTheme';
+import { safeReturnTo } from './returnTo';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -17,6 +18,7 @@ export default function Login() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const callback = searchParams.get('callback');
+  const returnTo = safeReturnTo(searchParams.get('return_to'));
 
   useEffect(() => {
     if (location.state?.registered) {
@@ -35,6 +37,8 @@ export default function Login() {
       login(res.api_key, res.user_id, res.name, res.role, res.permissions);
       if (callback) {
         navigate(`/authorize?callback=${encodeURIComponent(callback)}`);
+      } else if (returnTo) {
+        window.location.assign(returnTo);
       } else {
         navigate('/');
       }
