@@ -457,6 +457,15 @@ MCP servers are registered by admins, loaded on startup, and shared across all a
 | `traces` | Trace records | `trace_id` (unique), `session_id`, `created_at` |
 | `spans` | Span records | `trace_id`, `span_id` (unique), `parent_span_id` |
 | `prompt_templates` | Prompt versions | `name`, `status`, `created_at` |
+| `seo_merchants` | SEO Ops customer portfolio and operator visibility | `slug` (unique), `operator_user_ids` |
+| `seo_locations` | Merchant locations and onboarding readiness | `merchant_id + slug` (unique), `merchant_id` |
+| `seo_tasks` | Revisioned execution tasks, evidence, approvals, links, and events | merchant/status/owner/due date, idempotency keys |
+
+### SEO Operations Control Plane
+
+SEO Ops is a feature-gated internal bounded context under `/api/seo-ops`. It stores customer scope, location readiness, execution-task revisions, evidence references, approval records, chat links, Agent Run references, and audit events. Every read is constrained to merchants whose `operator_user_ids` contains the authenticated user. Every task mutation uses `state_version` compare-and-set semantics; approval also pins `task_revision` and `execution_spec_hash`.
+
+`APPROVED` records authorization only. The module has no dependency on `AgentRunner`, command publishing, GBP writes, or website writes. Execution remains a separate, explicitly linked system. See [SEO Ops API](seo-ops-api.md).
 
 ## 12. Deployment
 
