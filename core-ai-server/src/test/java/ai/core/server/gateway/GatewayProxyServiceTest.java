@@ -289,7 +289,7 @@ class GatewayProxyServiceTest {
         try {
             service.proxyChatCompletions(json(Map.of(
                     "model", "deepseek/deepseek-chat",
-                    "stream", true,
+                    "stream", Boolean.TRUE,
                     "messages", List.of(Map.of("role", "user", "content", "hi"))
             )), "user-1", null);
 
