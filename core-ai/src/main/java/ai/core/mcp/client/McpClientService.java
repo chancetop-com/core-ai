@@ -116,14 +116,16 @@ public class McpClientService implements AutoCloseable {
      * (where the OpenTelemetry context is valid) and read later by the transport's
      * httpRequestCustomizer, which may run on a reactor thread.
      */
-    public synchronized ToolCallResult callToolWithResult(String name, Map<String, Object> arguments) {
-        var caller = OutboundCallerContext.current();
-        Map<String, String> callerHeaders = caller == null ? Map.of() : CallerHeaderProvider.get().headersFor(caller);
-        config.setCallerHeaders(callerHeaders);
-        try {
-            return doCallToolWithResult(name, arguments);
-        } finally {
-            config.setCallerHeaders(Map.of());
+    public ToolCallResult callToolWithResult(String name, Map<String, Object> arguments) {
+        synchronized (this) {
+            var caller = OutboundCallerContext.current();
+            Map<String, String> callerHeaders = caller == null ? Map.of() : CallerHeaderProvider.get().headersFor(caller);
+            config.setCallerHeaders(callerHeaders);
+            try {
+                return doCallToolWithResult(name, arguments);
+            } finally {
+                config.setCallerHeaders(Map.of());
+            }
         }
     }
 
