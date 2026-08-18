@@ -1349,6 +1349,7 @@ export interface GatewayModel {
   supportsFile?: boolean;
   responseFormat?: string | null;
   reasoningEfforts?: string[] | null;
+  supportsReasoningEffort?: boolean | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;
@@ -1371,6 +1372,7 @@ export interface GatewayModelRequest {
   supportsFile?: boolean | null;
   responseFormat?: string | null;
   reasoningEfforts?: string[] | null;
+  supportsReasoningEffort?: boolean | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;

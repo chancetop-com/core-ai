@@ -273,6 +273,7 @@ public class GatewayModelService {
         if (specified(request, "supportsFile", create)) entity.supportsFile = request.supportsFile;
         if (specified(request, "responseFormat", create)) entity.responseFormat = normalizeResponseFormat(request.responseFormat);
         if (specified(request, "reasoningEfforts", create)) entity.reasoningEfforts = normalizeReasoningEfforts(request.reasoningEfforts);
+        if (specified(request, "supportsReasoningEffort", create)) entity.supportsReasoningEffort = request.supportsReasoningEffort;
         if (specified(request, "maxVideoBytes", create)) entity.maxVideoBytes = request.maxVideoBytes;
         if (specified(request, "maxVideoSeconds", create)) entity.maxVideoSeconds = request.maxVideoSeconds;
         if (specified(request, "inputPricePer1MTokens", create)) entity.inputPricePer1MTokens = request.inputPricePer1MTokens;
@@ -382,6 +383,7 @@ public class GatewayModelService {
         view.supportsFile = entity.supportsFile;
         view.responseFormat = entity.responseFormat;
         view.reasoningEfforts = entity.reasoningEfforts;
+        view.supportsReasoningEffort = entity.supportsReasoningEffort;
         view.maxVideoBytes = entity.maxVideoBytes;
         view.maxVideoSeconds = entity.maxVideoSeconds;
         view.inputPricePer1MTokens = entity.inputPricePer1MTokens;

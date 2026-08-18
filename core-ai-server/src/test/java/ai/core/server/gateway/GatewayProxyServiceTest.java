@@ -17,6 +17,7 @@ import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -165,8 +167,78 @@ class GatewayProxyServiceTest {
     }
 
     @Test
+    void stripsReasoningEffortWhenModelDeclaresUnsupported() throws Exception {
+        var provider = provider("Azure", "azure", "https://example.openai.azure.com/openai/v1", "azure/", "gpt-5.6-luna");
+        var model = model("luna-chat", provider.id, "gpt-5.6-luna", List.of("chat.completions"));
+        model.supportsReasoningEffort = Boolean.FALSE;
+        var service = service(provider, model);
+
+        service.proxyChatCompletions(json(Map.of(
+                "model", "luna-chat",
+                "messages", List.of(Map.of("role", "user", "content", "hi")),
+                "reasoning_effort", "low"
+        )), "user-1", null);
+
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        assertFalse(body.containsKey("reasoning_effort"));
+        // a base url that already includes /openai/v1 still builds the deployment path
+        assertEquals("https://example.openai.azure.com/openai/deployments/gpt-5.6-luna/chat/completions?api-version=2024-10-21", service.captured.uri);
+    }
+
+    @Test
+    void azureResponsesUrlToleratesOpenAiV1Suffix() throws Exception {
+        var provider = provider("Azure", "azure", "https://example.openai.azure.com/openai/v1", "azure/", "gpt-5.6-luna");
+        provider.apiVersion = "2025-01-01-preview";
+        var service = service(provider, model("luna-resp", provider.id, "gpt-5.6-luna", List.of("responses")));
+
+        service.proxyResponses(json(Map.of("model", "luna-resp", "input", "hi")), "user-1", null);
+
+        assertEquals("https://example.openai.azure.com/openai/responses?api-version=2025-01-01-preview", service.captured.uri);
+    }
+
+    @Test
+    void keepsReasoningEffortWhenModelDoesNotDeclareSupport() throws Exception {
+        var provider = provider("OpenAI", "openai", "https://api.openai.com/v1", "openai/", "gpt-4o");
+        var service = service(provider, model("gpt-chat", provider.id, "gpt-4o", List.of("chat.completions")));
+
+        service.proxyChatCompletions(json(Map.of(
+                "model", "gpt-chat",
+                "messages", List.of(Map.of("role", "user", "content", "hi")),
+                "reasoning_effort", "low"
+        )), "user-1", null);
+
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        assertEquals("low", body.get("reasoning_effort"));
+    }
+
+    @Test
+    void fillsMissingToolResultsForInterruptedAssistantCalls() throws Exception {
+        var provider = provider("OpenAI", "openai", "https://api.openai.com/v1", "openai/", "gpt-4o");
+        var service = service(provider, model("gpt-chat", provider.id, "gpt-4o", List.of("chat.completions")));
+        var messages = new ArrayList<>(List.of(
+                Map.of("role", "user", "content", "run tools"),
+                Map.of("role", "assistant", "content", "",
+                        "tool_calls", List.of(
+                                Map.of("id", "call-1", "type", "function", "function", Map.of("name", "exec_command", "arguments", "{}")),
+                                Map.of("id", "call-2", "type", "function", "function", Map.of("name", "read_file", "arguments", "{}")))),
+                Map.of("role", "tool", "tool_call_id", "call-1", "content", "done"),
+                Map.of("role", "assistant", "content", "summary")
+        ));
+
+        service.proxyChatCompletions(json(Map.of("model", "gpt-chat", "messages", messages)), "user-1", null);
+
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        var forwarded = (List<?>) body.get("messages");
+        assertEquals(5, forwarded.size());
+        var stub = (Map<?, ?>) forwarded.get(2);
+        assertEquals("tool", stub.get("role"));
+        assertEquals("call-2", stub.get("tool_call_id"));
+        assertEquals("[Tool call was interrupted and produced no result]", stub.get("content"));
+    }
+
+    @Test
     void parsesChatCompletionsUsage() {
-        var usage = GatewayProxyService.parseUsage(Map.of(
+        var usage = GatewaySupport.parseUsage(Map.of(
                 "usage", Map.of(
                         "prompt_tokens", 12,
                         "completion_tokens", 34,
@@ -180,7 +252,7 @@ class GatewayProxyServiceTest {
 
     @Test
     void parsesResponsesUsage() {
-        var usage = GatewayProxyService.parseUsage(Map.of(
+        var usage = GatewaySupport.parseUsage(Map.of(
                 "usage", Map.of(
                         "input_tokens", 12,
                         "output_tokens", 34,
@@ -194,8 +266,8 @@ class GatewayProxyServiceTest {
 
     @Test
     void returnsNullWithoutUsage() {
-        assertNull(GatewayProxyService.parseUsage(Map.of("id", "chatcmpl-1")));
-        assertNull(GatewayProxyService.parseUsage(Map.of("usage", Map.of())));
+        assertNull(GatewaySupport.parseUsage(Map.of("id", "chatcmpl-1")));
+        assertNull(GatewaySupport.parseUsage(Map.of("usage", Map.of())));
     }
 
     @Test

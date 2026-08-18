@@ -6,7 +6,6 @@ import ai.core.server.domain.MediaJob;
 import ai.core.sse.RawSseChannel;
 import ai.core.telemetry.TelemetryConfig;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.http.EventSource;
@@ -59,31 +58,6 @@ public class GatewayProxyService {
     private static final AttributeKey<String> CLIENT_TYPE = AttributeKey.stringKey("client.type");
     // cap the span output so a very long streaming response cannot inflate the stored span
     private static final int MAX_SPAN_OUTPUT_LENGTH = 200_000;
-
-    // OpenAI chat/completions uses prompt_tokens/completion_tokens, responses uses input_tokens/output_tokens
-    static Usage parseUsage(Map<String, Object> body) {
-        if (body == null || !(body.get("usage") instanceof Map<?, ?> usage)) return null;
-        long input = number(usage.get("prompt_tokens"), usage.get("input_tokens"));
-        long output = number(usage.get("completion_tokens"), usage.get("output_tokens"));
-        if (input == 0 && output == 0) return null;
-        Object cached = usage.get("cached_tokens");
-        if (cached == null) cached = detailValue(usage, "prompt_tokens_details");
-        if (cached == null) cached = detailValue(usage, "input_tokens_details");
-        return new Usage(input, output, number(cached, null));
-    }
-
-    private static long number(Object primary, Object fallback) {
-        if (primary instanceof Number value) return value.longValue();
-        if (fallback instanceof Number value) return value.longValue();
-        return 0;
-    }
-
-    private static Object detailValue(Map<?, ?> usage, String detailsKey) {
-        return usage.get(detailsKey) instanceof Map<?, ?> details ? details.get("cached_tokens") : null;
-    }
-
-    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
-    };
 
     @Inject
     GatewayRoutingEngine routingEngine;
@@ -170,6 +144,7 @@ public class GatewayProxyService {
             span.setStatus(StatusCode.OK);
         } catch (RuntimeException e) {
             span.setStatus(StatusCode.ERROR, e.getMessage());
+            LOGGER.error("gateway {} upstream request failed, uri={}", endpoint.path, call.request().uri, e);
             throw e;
         } finally {
             span.end();
@@ -211,6 +186,7 @@ public class GatewayProxyService {
             return response(upstream);
         } catch (RuntimeException e) {
             span.setStatus(StatusCode.ERROR, e.getMessage());
+            LOGGER.error("gateway {} upstream request failed, uri={}", endpoint.path, call.request().uri, e);
             throw e;
         } finally {
             span.end();
@@ -252,7 +228,7 @@ public class GatewayProxyService {
     private void recordUsage(Span span, byte[] body) {
         if (body == null || body.length == 0) return;
         try {
-            applyUsage(span, parseUsage(GatewayJson.MAPPER.readValue(body, MAP_TYPE)));
+            applyUsage(span, GatewaySupport.parseUsage(GatewayJson.MAPPER.readValue(body, GatewaySupport.MAP_TYPE)));
         } catch (Exception e) {
             LOGGER.debug("response body is not JSON with usage, usage stays unknown", e);
         }
@@ -261,13 +237,13 @@ public class GatewayProxyService {
     private void recordStreamUsage(Span span, String data) {
         if (data == null || !data.contains("usage")) return;
         try {
-            applyUsage(span, parseUsage(GatewayJson.MAPPER.readValue(data, MAP_TYPE)));
+            applyUsage(span, GatewaySupport.parseUsage(GatewayJson.MAPPER.readValue(data, GatewaySupport.MAP_TYPE)));
         } catch (Exception e) {
             LOGGER.debug("stream chunk is not a JSON usage payload", e);
         }
     }
 
-    private void applyUsage(Span span, Usage usage) {
+    private void applyUsage(Span span, GatewayUsage usage) {
         if (usage == null) return;
         span.setAttribute(GEN_AI_USAGE_INPUT_TOKENS, usage.inputTokens());
         span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, usage.outputTokens());
@@ -281,6 +257,10 @@ public class GatewayProxyService {
         var outgoingBody = new LinkedHashMap<>(requestBody);
         mergeExtraBody(outgoingBody, provider.requestExtraBody);
         outgoingBody.put("model", selection.upstreamModel());
+        if (endpoint == GatewayEndpointType.CHAT_COMPLETIONS) {
+            var model = routingEngine.modelConfig(string(requestBody.get("model")));
+            GatewayChatRequestNormalizer.normalize(outgoingBody, model == null ? null : model.supportsReasoningEffort);
+        }
 
         var url = endpointUrl(provider, endpoint, selection.upstreamModel());
         GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(provider.allowPrivateNetwork));
@@ -296,6 +276,8 @@ public class GatewayProxyService {
     private String endpointUrl(GatewayProviderConfig provider, GatewayEndpointType endpoint, String model) {
         var baseUrl = stripTrailingSlash(provider.baseUrl);
         if (!"azure".equals(provider.type)) return baseUrl + endpoint.path;
+        // tolerate a base url that already includes the openai api path (e.g. https://xxx.openai.azure.com/openai/v1)
+        if (baseUrl.endsWith("/openai/v1")) baseUrl = baseUrl.substring(0, baseUrl.length() - "/openai/v1".length());
         var version = hasText(provider.apiVersion) ? provider.apiVersion : "2024-10-21";
         if (endpoint != GatewayEndpointType.CHAT_COMPLETIONS) {
             return baseUrl + "/openai/responses?api-version=" + urlEncode(version);
@@ -344,7 +326,7 @@ public class GatewayProxyService {
     private void appendStreamOutput(StringBuilder output, String data) {
         if (data == null || "[DONE]".equals(data) || output.length() >= MAX_SPAN_OUTPUT_LENGTH || !data.contains("content")) return;
         try {
-            var body = GatewayJson.MAPPER.readValue(data, MAP_TYPE);
+            var body = GatewayJson.MAPPER.readValue(data, GatewaySupport.MAP_TYPE);
             var choices = body.get("choices");
             if (!(choices instanceof List<?> list) || list.isEmpty()) return;
             var choice = list.getFirst();
@@ -410,7 +392,7 @@ public class GatewayProxyService {
     private void mergeExtraBody(Map<String, Object> body, String extraBody) {
         if (!hasText(extraBody)) return;
         try {
-            body.putAll(GatewayJson.MAPPER.readValue(extraBody, MAP_TYPE));
+            body.putAll(GatewayJson.MAPPER.readValue(extraBody, GatewaySupport.MAP_TYPE));
         } catch (Exception e) {
             throw new BadRequestException("invalid provider extra body JSON: " + e.getMessage(), "BAD_REQUEST", e);
         }
@@ -418,7 +400,7 @@ public class GatewayProxyService {
 
     private Map<String, Object> parseBody(byte[] body) {
         try {
-            return GatewayJson.MAPPER.readValue(body, MAP_TYPE);
+            return GatewayJson.MAPPER.readValue(body, GatewaySupport.MAP_TYPE);
         } catch (Exception e) {
             throw new BadRequestException("invalid JSON body: " + e.getMessage(), "BAD_REQUEST", e);
         }
@@ -442,8 +424,5 @@ public class GatewayProxyService {
 
     private String string(Object value) {
         return value instanceof String string ? string : null;
-    }
-
-    record Usage(long inputTokens, long outputTokens, long cachedTokens) {
     }
 }

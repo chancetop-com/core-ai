@@ -1,11 +1,13 @@
 package ai.core.server.gateway;
 
 import ai.core.server.domain.GatewayProviderConfig;
+import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.http.HTTPRequest;
 import core.framework.web.Request;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 final class GatewaySupport {
     static final long DEFAULT_TIMEOUT_SECONDS = 120;
@@ -72,6 +74,31 @@ final class GatewaySupport {
             request.headers.put("Authorization", "Bearer " + apiKey);
         }
     }
+
+    // OpenAI chat/completions uses prompt_tokens/completion_tokens, responses uses input_tokens/output_tokens
+    static GatewayUsage parseUsage(Map<String, Object> body) {
+        if (body == null || !(body.get("usage") instanceof Map<?, ?> usage)) return null;
+        long input = number(usage.get("prompt_tokens"), usage.get("input_tokens"));
+        long output = number(usage.get("completion_tokens"), usage.get("output_tokens"));
+        if (input == 0 && output == 0) return null;
+        Object cached = usage.get("cached_tokens");
+        if (cached == null) cached = detailValue(usage, "prompt_tokens_details");
+        if (cached == null) cached = detailValue(usage, "input_tokens_details");
+        return new GatewayUsage(input, output, number(cached, null));
+    }
+
+    private static long number(Object primary, Object fallback) {
+        if (primary instanceof Number value) return value.longValue();
+        if (fallback instanceof Number value) return value.longValue();
+        return 0;
+    }
+
+    private static Object detailValue(Map<?, ?> usage, String detailsKey) {
+        return usage.get(detailsKey) instanceof Map<?, ?> details ? details.get("cached_tokens") : null;
+    }
+
+    static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
     private GatewaySupport() {
     }

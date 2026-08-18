@@ -63,6 +63,9 @@ public class GatewayModelView {
     @Property(name = "reasoningEfforts")
     public List<String> reasoningEfforts;
 
+    @Property(name = "supportsReasoningEffort")
+    public Boolean supportsReasoningEffort;
+
     @Property(name = "maxVideoBytes")
     public Long maxVideoBytes;
 

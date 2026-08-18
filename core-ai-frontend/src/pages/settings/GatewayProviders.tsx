@@ -82,6 +82,7 @@ type ModelFormState = {
   supportsFile: string;
   responseFormat: string;  // '' = JSON Schema (default), 'json_object' = JSON mode only
   reasoningEfforts: string;
+  supportsReasoningEffort: string;  // '' = unknown (default), 'true' / 'false' = admin declaration
   maxVideoBytes: string;
   maxVideoSeconds: string;
   inputPricePer1MTokens: string;
@@ -129,6 +130,7 @@ const emptyModelForm: ModelFormState = {
   supportsFile: '',
   responseFormat: '',
   reasoningEfforts: '',
+  supportsReasoningEffort: '',
   maxVideoBytes: '',
   maxVideoSeconds: '',
   inputPricePer1MTokens: '',
@@ -152,7 +154,7 @@ export default function GatewayProviders() {
   const [selectedDiscoveredModels, setSelectedDiscoveredModels] = useState<Set<string>>(new Set());
   const [providerForm, setProviderForm] = useState<ProviderFormState>(emptyProviderForm);
   const [modelForm, setModelForm] = useState<ModelFormState>(emptyModelForm);
-  const [modalityBaseline, setModalityBaseline] = useState<{ supportsVision: string; supportsFile: string } | null>(null);
+  const [modalityBaseline, setModalityBaseline] = useState<{ supportsVision: string; supportsFile: string; supportsReasoningEffort: string } | null>(null);
 
   const selectedType = useMemo(
     () => PROVIDER_TYPES.find(type => type.value === providerForm.type) || PROVIDER_TYPES[0],
@@ -326,6 +328,7 @@ export default function GatewayProviders() {
       supportsFile: model.supportsFile == null ? '' : String(model.supportsFile),
       responseFormat: model.responseFormat || '',
       reasoningEfforts: model.reasoningEfforts?.join(', ') || '',
+      supportsReasoningEffort: model.supportsReasoningEffort == null ? '' : String(model.supportsReasoningEffort),
       maxVideoBytes: model.maxVideoBytes == null ? '' : String(model.maxVideoBytes),
       maxVideoSeconds: model.maxVideoSeconds == null ? '' : String(model.maxVideoSeconds),
       inputPricePer1MTokens: model.inputPricePer1MTokens == null ? '' : String(model.inputPricePer1MTokens),
@@ -334,6 +337,7 @@ export default function GatewayProviders() {
     setModalityBaseline({
       supportsVision: model.supportsVision == null ? '' : String(model.supportsVision),
       supportsFile: model.supportsFile == null ? '' : String(model.supportsFile),
+      supportsReasoningEffort: model.supportsReasoningEffort == null ? '' : String(model.supportsReasoningEffort),
     });
     setModelPanelOpen(true);
   };
@@ -343,7 +347,7 @@ export default function GatewayProviders() {
       ...emptyModelForm,
       providerId: providers[0]?.id || '',
     });
-    setModalityBaseline({ supportsVision: '', supportsFile: '' });
+    setModalityBaseline({ supportsVision: '', supportsFile: '', supportsReasoningEffort: '' });
     setModelPanelOpen(true);
   };
 
@@ -370,6 +374,9 @@ export default function GatewayProviders() {
       }
       if (!modalityBaseline || modelForm.supportsFile !== modalityBaseline.supportsFile) {
         payload.supportsFile = modelForm.supportsFile === '' ? null : modelForm.supportsFile === 'true';
+      }
+      if (!modalityBaseline || modelForm.supportsReasoningEffort !== modalityBaseline.supportsReasoningEffort) {
+        payload.supportsReasoningEffort = modelForm.supportsReasoningEffort === '' ? null : modelForm.supportsReasoningEffort === 'true';
       }
       const reasoningEfforts = modelForm.reasoningEfforts.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
       if (reasoningEfforts.length) payload.reasoningEfforts = reasoningEfforts;
@@ -986,6 +993,13 @@ function renderModelPanel(props: {
             reasoning_effort values this model accepts. The agent's thinking effort is mapped to the closest level here; leave empty to never send the parameter.
           </p>
           <ReasoningEffortMappingPreview values={form.reasoningEfforts.split(',').map(v => v.trim().toLowerCase()).filter(Boolean)} />
+          <div className="mt-2">
+            <ModalityDeclarationSelect label="Reasoning effort parameter" value={form.supportsReasoningEffort}
+              onChange={value => setForm({ ...form, supportsReasoningEffort: value })} />
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+              Set "Not supported" (e.g. Azure gpt-5.x chat deployments) to strip the reasoning_effort field before forwarding.
+            </p>
+          </div>
         </Field>
 
         <Field label="Response Format">

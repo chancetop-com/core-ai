@@ -61,6 +61,10 @@ public class GatewayModelConfig {
     @Field(name = "reasoning_efforts")
     public List<String> reasoningEfforts;
 
+    // whether the upstream accepts the reasoning_effort parameter; null/true = allowed, false = stripped before forwarding
+    @Field(name = "supports_reasoning_effort")
+    public Boolean supportsReasoningEffort;
+
     @Field(name = "max_video_bytes")
     public Long maxVideoBytes;
 
