@@ -5,6 +5,7 @@ import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.MediaJob;
 import ai.core.sse.RawSseChannel;
 import ai.core.telemetry.TelemetryConfig;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
@@ -27,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static ai.core.server.gateway.GatewaySupport.DEFAULT_TIMEOUT_SECONDS;
@@ -55,6 +57,8 @@ public class GatewayProxyService {
     private static final AttributeKey<String> USER_ID = AttributeKey.stringKey("user.id");
     private static final AttributeKey<String> SESSION_ID = AttributeKey.stringKey("session.id");
     private static final AttributeKey<String> CLIENT_TYPE = AttributeKey.stringKey("client.type");
+    // cap the span output so a very long streaming response cannot inflate the stored span
+    private static final int MAX_SPAN_OUTPUT_LENGTH = 200_000;
 
     // OpenAI chat/completions uses prompt_tokens/completion_tokens, responses uses input_tokens/output_tokens
     static Usage parseUsage(Map<String, Object> body) {
@@ -173,13 +177,16 @@ public class GatewayProxyService {
     }
 
     private void streamEvents(GatewayUpstreamCall call, RawSseChannel<?> channel, Span span) {
+        var output = new StringBuilder();
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 channel.sendRawEvent(event.type(), event.data());
                 recordStreamUsage(span, event.data());
+                appendStreamOutput(output, event.data());
                 if ("[DONE]".equals(event.data())) break;
             }
         }
+        if (output.length() > 0) span.setAttribute(LANGFUSE_OUTPUT, output.toString());
     }
 
     private Response proxy(byte[] body, GatewayEndpointType endpoint, MediaJobOwner owner, String userId, String sessionId) {
@@ -308,13 +315,16 @@ public class GatewayProxyService {
 
     private Response bufferedStream(GatewayUpstreamCall call, Span span) {
         var builder = new StringBuilder();
+        var output = new StringBuilder();
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 appendEvent(builder, event);
                 recordStreamUsage(span, event.data());
+                appendStreamOutput(output, event.data());
                 if ("[DONE]".equals(event.data())) break;
             }
         }
+        if (output.length() > 0) span.setAttribute(LANGFUSE_OUTPUT, output.toString());
         return Response.bytes(builder.toString().getBytes(StandardCharsets.UTF_8)).contentType(EVENT_STREAM);
     }
 
@@ -327,6 +337,32 @@ public class GatewayProxyService {
             }
         }
         builder.append('\n');
+    }
+
+    // Streaming chat chunks carry the assistant text in choices[].delta.content (or choices[].message.content);
+    // concatenate them so the span output holds the final assistant response instead of nothing.
+    private void appendStreamOutput(StringBuilder output, String data) {
+        if (data == null || "[DONE]".equals(data) || output.length() >= MAX_SPAN_OUTPUT_LENGTH || !data.contains("content")) return;
+        try {
+            var body = GatewayJson.MAPPER.readValue(data, MAP_TYPE);
+            var choices = body.get("choices");
+            if (!(choices instanceof List<?> list) || list.isEmpty()) return;
+            var choice = list.getFirst();
+            if (!(choice instanceof Map<?, ?> choiceMap)) return;
+            var content = contentText(choiceMap.get("delta"));
+            if (content == null) content = contentText(choiceMap.get("message"));
+            if (content != null && !content.isBlank()) {
+                output.append(content);
+            }
+        } catch (JsonProcessingException e) {
+            // non-JSON chunk (e.g. keepalive), nothing to record
+            LOGGER.debug("stream chunk is not a JSON payload, skipped from span output", e);
+        }
+    }
+
+    private String contentText(Object value) {
+        if (!(value instanceof Map<?, ?> map)) return null;
+        return map.get("content") instanceof String text ? text : null;
     }
 
     HTTPResponse execute(HTTPRequest request, GatewayProviderConfig provider) {

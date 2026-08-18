@@ -7,6 +7,7 @@ import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
 import ai.core.telemetry.TelemetryConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import core.framework.http.EventSource;
 import core.framework.http.HTTPRequest;
 import core.framework.http.HTTPResponse;
 import core.framework.mongo.MongoCollection;
@@ -262,6 +263,44 @@ class GatewayProxyServiceTest {
         }
     }
 
+    @Test
+    void streamingResponseRecordsAssistantOutput() throws Exception {
+        var latch = new CountDownLatch(1);
+        var exportRequest = new AtomicReference<ExportTraceServiceRequest>();
+        var ingestService = mock(OTLPIngestService.class);
+        doAnswer(invocation -> {
+            exportRequest.set(invocation.getArgument(0));
+            latch.countDown();
+            return null;
+        }).when(ingestService).ingest(any(ExportTraceServiceRequest.class));
+        LocalSpanProcessorRegistry.register(ingestService);
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var service = new CapturingStreamingGatewayProxyService();
+        service.routingEngine = routingEngine(List.of(provider), List.of());
+        service.secretProtector = new GatewaySecretProtector("test-secret");
+        service.telemetryConfig = TELEMETRY;
+        var source = mock(EventSource.class);
+        when(source.iterator()).thenReturn(List.of(
+                new EventSource.Event(null, null, "{\"choices\":[{\"delta\":{\"content\":\"hello \"}}]}"),
+                new EventSource.Event(null, null, "{\"choices\":[{\"delta\":{\"content\":\"world\"}}]}"),
+                new EventSource.Event(null, null, "[DONE]")
+        ).iterator());
+        service.source = source;
+        try {
+            service.proxyChatCompletions(json(Map.of(
+                    "model", "deepseek/deepseek-chat",
+                    "stream", true,
+                    "messages", List.of(Map.of("role", "user", "content", "hi"))
+            )), "user-1", null);
+
+            assertTrue(latch.await(15, TimeUnit.SECONDS), "span export timed out");
+            var recorded = spanAttributes(protoSpan(exportRequest.get()));
+            assertEquals("hello world", recorded.get("langfuse.observation.output"));
+        } finally {
+            LocalSpanProcessorRegistry.clear();
+        }
+    }
+
     private CapturingGatewayProxyService spanCapturingService(List<ExportTraceServiceRequest> captured, CountDownLatch latch) {
         var ingestService = mock(OTLPIngestService.class);
         doAnswer(invocation -> {
@@ -341,7 +380,7 @@ class GatewayProxyServiceTest {
         return model;
     }
 
-    private static final class CapturingGatewayProxyService extends GatewayProxyService {
+    private static class CapturingGatewayProxyService extends GatewayProxyService {
         HTTPRequest captured;
 
         @Override
@@ -349,6 +388,15 @@ class GatewayProxyServiceTest {
             captured = request;
             return new HTTPResponse(200, Map.of("Content-Type", "application/json"),
                     "{\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":34}}".getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private static final class CapturingStreamingGatewayProxyService extends CapturingGatewayProxyService {
+        EventSource source;
+
+        @Override
+        EventSource sse(HTTPRequest request, GatewayProviderConfig provider) {
+            return source;
         }
     }
 }
