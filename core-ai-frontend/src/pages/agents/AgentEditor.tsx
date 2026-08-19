@@ -20,6 +20,27 @@ const NEW_AGENT_SKELETON: AgentDefinition = {
   enable_memory: false,
 };
 
+// self-harness is a builtin tool group; individual tools are referenced as "builtin:self-harness:{toolName}"
+const SELF_HARNESS_GROUP_ID = 'builtin:self-harness';
+const selfHarnessToolId = (toolName: string) => `${SELF_HARNESS_GROUP_ID}:${toolName}`;
+const isSelfHarnessToolId = (id: string) => id.startsWith(`${SELF_HARNESS_GROUP_ID}:`);
+
+// legacy builtin group refs were stored without the "builtin:" prefix (e.g. "builtin-all"),
+// while the registry exposes them as "builtin:builtin-all"; normalize on load so the tool
+// sections' checkboxes match the selected chips and saving persists the canonical form
+const normalizeBuiltinToolRefs = (tools: ToolRef[] | undefined, registry: ToolRegistryView[]): ToolRef[] | undefined => {
+  if (!tools || tools.length === 0) return tools;
+  return tools.map(t => {
+    if (t.type === 'BUILTIN' && t.id && !t.id.startsWith('builtin:') && registry.some(r => r.id === `builtin:${t.id}`)) {
+      return { ...t, id: `builtin:${t.id}` };
+    }
+    return t;
+  });
+};
+
+const needsBuiltinToolRefNormalization = (tools: ToolRef[] | undefined, registry: ToolRegistryView[]): boolean =>
+  !!tools && tools.some(t => t.type === 'BUILTIN' && t.id && !t.id.startsWith('builtin:') && registry.some(r => r.id === `builtin:${t.id}`));
+
 export default function AgentEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -42,6 +63,8 @@ export default function AgentEditor() {
 
   // tools
   const [allTools, setAllTools] = useState<ToolRegistryView[]>([]);
+  // individual tools within the self-harness builtin group
+  const [selfHarnessTools, setSelfHarnessTools] = useState<McpToolInfo[]>([]);
 
   // subagents
   const [allAgents, setAllAgents] = useState<AgentDefinition[]>([]);
@@ -122,6 +145,7 @@ export default function AgentEditor() {
     // Load auxiliary data in both create and edit modes
     api.systemPrompts.list(0, 100).then(setSystemPrompts).catch(console.error);
     api.tools.list().then(res => setAllTools(res.tools || [])).catch(console.error);
+    api.tools.listBuiltinGroupTools(SELF_HARNESS_GROUP_ID).then(res => setSelfHarnessTools(res.tools || [])).catch(console.error);
     api.agents.list().then(res => {
       const published = (res.agents || []).filter(a =>
         a.id !== id &&
@@ -143,6 +167,15 @@ export default function AgentEditor() {
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
   }, [id, isNew]);
 
+  // legacy builtin refs (e.g. "builtin-all" without the prefix) exist in stored agents; normalize
+  // them to canonical registry ids whenever both the agent and the registry list are available
+  useEffect(() => {
+    if (!agent || allTools.length === 0) return;
+    if (needsBuiltinToolRefNormalization(agent.tools, allTools)) {
+      setAgent({ ...agent, tools: normalizeBuiltinToolRefs(agent.tools, allTools) } as AgentDefinition);
+    }
+  }, [agent, allTools]);
+
   const loadRuns = useCallback(async () => {
     if (!id || isNew) return;
     setRunsLoading(true);
@@ -159,6 +192,57 @@ export default function AgentEditor() {
 
   const update = (field: string, value: unknown) => {
     setAgent({ ...agent, [field]: value } as AgentDefinition);
+  };
+
+  // self-harness group tools as selectable items; a whole-group ref selects every tool
+  const selfHarnessToolItems: ToolRegistryView[] = selfHarnessTools.map(t => ({
+    id: selfHarnessToolId(t.name),
+    name: t.name,
+    description: t.description,
+    type: 'BUILTIN',
+    category: t.group || 'Self Harness',
+    config: {},
+    enabled: true,
+  }));
+  const selfHarnessGroupSelected = (agent.tools || []).some((t: ToolRef) => t.id === SELF_HARNESS_GROUP_ID);
+  const selfHarnessSelectedIds = selfHarnessGroupSelected
+    ? selfHarnessToolItems.map(t => t.id)
+    : (agent.tools || []).filter((t: ToolRef) => isSelfHarnessToolId(t.id)).map((t: ToolRef) => t.id);
+
+  const toggleSelfHarnessTool = (id: string, checked: boolean) => {
+    if (!checked) {
+      update('tools', [...(agent.tools || []), { id, type: 'BUILTIN', source: 'Self Harness' }]);
+      return;
+    }
+    if (selfHarnessGroupSelected) {
+      // whole group is selected: unchecking one tool converts to individual refs for the rest
+      const others = selfHarnessToolItems.filter(t => t.id !== id)
+        .map(t => ({ id: t.id, type: 'BUILTIN', source: 'Self Harness' }));
+      update('tools', [...(agent.tools || []).filter((t: ToolRef) => t.id !== SELF_HARNESS_GROUP_ID), ...others]);
+      return;
+    }
+    update('tools', (agent.tools || []).filter((t: ToolRef) => t.id !== id));
+  };
+
+  const toggleSelfHarnessGroup = (toolIds: string[], allSelected: boolean) => {
+    const current = agent.tools || [];
+    if (allSelected) {
+      // uncheck the whole subgroup; converts the whole-group ref into individual refs when present
+      const tools = current.filter((t: ToolRef) => !toolIds.includes(t.id) && t.id !== SELF_HARNESS_GROUP_ID);
+      if (selfHarnessGroupSelected) {
+        const existingIds = new Set(tools.map((t: ToolRef) => t.id));
+        const others = selfHarnessToolItems.filter(t => !toolIds.includes(t.id) && !existingIds.has(t.id))
+          .map(t => ({ id: t.id, type: 'BUILTIN', source: 'Self Harness' }));
+        update('tools', [...tools, ...others]);
+      } else {
+        update('tools', tools);
+      }
+      return;
+    }
+    if (selfHarnessGroupSelected) return; // everything is already selected via the group ref
+    const existing = new Set(current.map((t: ToolRef) => t.id));
+    const added = toolIds.filter(id => !existing.has(id)).map(id => ({ id, type: 'BUILTIN', source: 'Self Harness' }));
+    update('tools', [...current, ...added]);
   };
 
   const chatModels = gatewayModels.filter(m => !m.endpointTypes || m.endpointTypes.length === 0 || m.endpointTypes.includes('chat.completions'));
@@ -1331,12 +1415,14 @@ The system prompt should define how this agent behaves, its capabilities, and it
                   const isApiTool = toolRef.id.startsWith('api-app:') || toolRef.id.startsWith('api-service:') || toolRef.id.startsWith('api-operation:');
                   const isMcpTool = toolRef.id.startsWith('mcp-tool:');
                   const isLlmCall = toolRef.id.startsWith('llm-call:');
-                  const tool = (isApiTool || isMcpTool || isLlmCall) ? null : allTools.find(t => t.id === toolRef.id);
+                  const isSelfHarness = isSelfHarnessToolId(toolRef.id);
+                  const tool = (isApiTool || isMcpTool || isLlmCall || isSelfHarness) ? null : allTools.find(t => t.id === toolRef.id);
                   const displayName = isApiTool ? getApiToolDisplayName(toolRef)
                     : isMcpTool ? getMcpToolDisplayName(toolRef)
                     : isLlmCall ? (llmCallAgents.find(a => a.id === toolRef.id.substring('llm-call:'.length))?.name || toolRef.id)
+                    : isSelfHarness ? toolRef.id.substring(`${SELF_HARNESS_GROUP_ID}:`.length)
                     : (tool?.name || toolRef.id);
-                  const color = isLlmCall ? '#ec4899' : isApiTool ? '#10b981' : (toolRef.type || tool?.type) === 'MCP' ? '#8b5cf6' : '#f59e0b';
+                  const color = isLlmCall ? '#ec4899' : isApiTool ? '#10b981' : isSelfHarness ? '#06b6d4' : (toolRef.type || tool?.type) === 'MCP' ? '#8b5cf6' : '#f59e0b';
                   return (
                     <span key={`${toolRef.id}:${toolRef.source || ''}`}
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px]"
@@ -1378,16 +1464,11 @@ The system prompt should define how this agent behaves, its capabilities, and it
             <ToolSection
               title="Self Harness"
               color="#06b6d4"
-              items={allTools.filter(t => t.category === 'Self Harness')}
-              selectedIds={agent.tools?.map((t: ToolRef) => t.id) || []}
-              onToggle={(id, selected) => {
-                if (selected) {
-                  update('tools', agent.tools.filter((t: ToolRef) => t.id !== id));
-                } else {
-                  const tool = allTools.find(t => t.id === id);
-                  update('tools', [...(agent.tools || []), { id, type: 'BUILTIN', source: tool?.category }]);
-                }
-              }}
+              items={selfHarnessToolItems}
+              selectedIds={selfHarnessSelectedIds}
+              onToggle={(id, selected) => toggleSelfHarnessTool(id, selected)}
+              groupOf={t => t.category}
+              onGroupToggle={(ids, allSelected) => toggleSelfHarnessGroup(ids, allSelected)}
             />
 
             {/* LLM Call Tools */}
@@ -2200,15 +2281,69 @@ function tryFormatJson(str: string): string {
   try { return JSON.stringify(JSON.parse(str), null, 2); } catch { return str; }
 }
 
-function ToolSection({ title, color, items, selectedIds, onToggle }: {
+function ToolSection({ title, color, items, selectedIds, onToggle, groupOf, onGroupToggle }: {
   title: string;
   color: string;
   items: ToolRegistryView[];
   selectedIds: string[];
   onToggle: (id: string, selected: boolean) => void;
+  groupOf?: (item: ToolRegistryView) => string;
+  onGroupToggle?: (ids: string[], allSelected: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const selectedCount = items.filter(t => selectedIds.includes(t.id)).length;
+  const groups: { label: string; items: ToolRegistryView[] }[] = [];
+  if (groupOf) {
+    const groupIndex = new Map<string, number>();
+    for (const item of items) {
+      const label = groupOf(item) || 'Other';
+      const index = groupIndex.get(label);
+      if (index === undefined) {
+        groupIndex.set(label, groups.length);
+        groups.push({ label, items: [item] });
+      } else {
+        groups[index].items.push(item);
+      }
+    }
+  }
+
+  const renderItem = (t: ToolRegistryView) => {
+    const selected = selectedIds.includes(t.id);
+    return (
+      <label key={t.id}
+        className="flex items-center gap-2.5 px-3 py-1.5 text-xs cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+        style={{ borderBottom: '1px solid var(--color-border)' }}>
+        <input type="checkbox" checked={selected} onChange={() => onToggle(t.id, selected)}
+          className="accent-current" style={{ accentColor: color }} />
+        <span className="font-medium flex-1">{t.name}</span>
+        {t.description && (
+          <span className="text-[10px] truncate max-w-[200px]" style={{ color: 'var(--color-text-secondary)' }}>{t.description}</span>
+        )}
+      </label>
+    );
+  };
+
+  const renderGroup = (group: { label: string; items: ToolRegistryView[] }) => {
+    const selected = group.items.filter(t => selectedIds.includes(t.id)).length;
+    const allSelected = selected === group.items.length;
+    const partial = selected > 0 && !allSelected;
+    return (
+      <div key={group.label}>
+        <label className="flex items-center gap-2 px-3 pt-2 pb-1 cursor-pointer hover:bg-[var(--color-bg-tertiary)]">
+          <input type="checkbox"
+            checked={allSelected}
+            ref={el => { if (el) el.indeterminate = partial; }}
+            onChange={() => onGroupToggle?.(group.items.map(t => t.id), allSelected)}
+            className="accent-current" style={{ accentColor: color }} />
+          <span className="text-[10px] font-semibold uppercase tracking-wide"
+            style={{ color: 'var(--color-text-secondary)' }}>
+            {group.label}
+          </span>
+        </label>
+        {group.items.map(renderItem)}
+      </div>
+    );
+  };
 
   return (
     <div className="mt-2 rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
@@ -2233,22 +2368,10 @@ function ToolSection({ title, color, items, selectedIds, onToggle }: {
         <div className="border-t max-h-[300px] overflow-auto" style={{ borderColor: 'var(--color-border)' }}>
           {items.length === 0 ? (
             <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No {title.toLowerCase()} tools available</div>
+          ) : groups.length > 0 ? (
+            groups.map(renderGroup)
           ) : (
-            items.map(t => {
-              const selected = selectedIds.includes(t.id);
-              return (
-                <label key={t.id}
-                  className="flex items-center gap-2.5 px-3 py-1.5 text-xs cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
-                  style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <input type="checkbox" checked={selected} onChange={() => onToggle(t.id, selected)}
-                    className="accent-current" style={{ accentColor: color }} />
-                  <span className="font-medium flex-1">{t.name}</span>
-                  {t.description && (
-                    <span className="text-[10px] truncate max-w-[200px]" style={{ color: 'var(--color-text-secondary)' }}>{t.description}</span>
-                  )}
-                </label>
-              );
-            })
+            items.map(renderItem)
           )}
         </div>
       )}
