@@ -26,9 +26,10 @@ export default function GlobalSummaryCards({ summary, loading }: GlobalSummaryCa
       <Card label="Total Tokens" value={formatCompact(summary.totalTokens)}
         icon={<span className="text-sm font-bold">T</span>}
         tone="info"
-        sub={summary.totalCachedTokens > 0
-          ? `${formatCompact(summary.totalCachedTokens)} cached`
-          : `${formatCompact(summary.totalInputTokens)} in / ${formatCompact(summary.totalOutputTokens)} out`}
+        sub={[
+          `${formatCompact(summary.totalInputTokens)} in / ${formatCompact(summary.totalOutputTokens)} out`,
+          summary.totalCachedTokens > 0 ? `${formatCompact(summary.totalCachedTokens)} cached` : null,
+        ].filter(Boolean).join(' · ')}
         loading={loading}
         trend={tokenTrend} />
       <Card label="Total Cost" value={formatCostUsd(summary.totalCostUsd)}

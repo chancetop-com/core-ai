@@ -112,8 +112,11 @@ export default function DimensionTable({ items, dimension, sparklines, sort, onS
                   <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>—</span>
                 )}
               </td>
-              <td className="py-2 px-3 text-right font-mono tabular-nums">
-                {formatCompact(item.totalTokens)}
+              <td className="py-2 px-3 text-right font-mono tabular-nums whitespace-nowrap">
+                <span>{formatCompact(item.totalTokens)}</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {' '}· {formatCompact(item.inputTokens)} in / {formatCompact(item.outputTokens)} out
+                </span>
               </td>
               <td className="py-2 px-3 text-right font-mono tabular-nums" style={{ color: '#d97706' }}>
                 {formatCostUsd(item.costUsd)}
