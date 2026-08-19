@@ -35,6 +35,7 @@ public class RbacWebServiceImpl implements RbacWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.RBAC_MANAGE)
     public void updateRoles(RoleConfigView request) {
         var userId = AuthContext.userId(webContext);
         requireAdmin(userId);   // hard admin check so roles cannot self-escalate via rbac.manage
