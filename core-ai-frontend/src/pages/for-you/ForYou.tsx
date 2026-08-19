@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LineChart,
@@ -46,6 +46,18 @@ export default function ForYou() {
 
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [addingTodo, setAddingTodo] = useState(false);
+
+  const handleTokenRangeChange = (r: RangeMode) => {
+    setTokenRange(r);
+    if (r === 'custom') {
+      // default to the same window as the 7d preset so the date fields open pre-filled
+      setCustomFrom(dateInputValue(7));
+      setCustomTo(dateInputValue(1));
+    } else {
+      setCustomFrom('');
+      setCustomTo('');
+    }
+  };
 
   const loadDashboard = () => {
     setLoading(true);
@@ -168,7 +180,7 @@ export default function ForYou() {
         <TokenUsageSection
           tokenUsage={tokenUsage}
           tokenRange={tokenRange}
-          onRangeChange={setTokenRange}
+          onRangeChange={handleTokenRangeChange}
           customFrom={customFrom}
           customTo={customTo}
           onCustomFromChange={setCustomFrom}
@@ -427,6 +439,13 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// yyyy-mm-dd (local date) for the custom range date inputs
+function dateInputValue(daysAgo: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function TokenUsageSection({ tokenUsage, tokenRange, onRangeChange,
   customFrom, customTo, onCustomFromChange, onCustomToChange,
 }: {
@@ -572,6 +591,18 @@ function RangeSwitcher({ value, onChange, customFrom, customTo, onCustomFromChan
   onCustomFromChange: (v: string) => void;
   onCustomToChange: (v: string) => void;
 }) {
+  const fromRef = useRef<HTMLInputElement>(null);
+  const toRef = useRef<HTMLInputElement>(null);
+  // clicking the field doesn't open the native picker in every browser/window state;
+  // force it inside the click gesture so the calendar always pops up
+  const openPicker = (ref: RefObject<HTMLInputElement | null>) => () => {
+    try {
+      ref.current?.showPicker();
+    } catch {
+      // already open or showPicker unsupported — native behavior still applies
+    }
+  };
+
   return (
     <div className="flex items-center gap-2">
       <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
@@ -590,12 +621,14 @@ function RangeSwitcher({ value, onChange, customFrom, customTo, onCustomFromChan
       {value === 'custom' && (
         <div className="flex items-center gap-1.5">
           <Calendar size={14} style={{ color: 'var(--color-text-secondary)' }} />
-          <input type="date" value={customFrom} onChange={e => onCustomFromChange(e.target.value)}
+          <input ref={fromRef} type="date" value={customFrom} onChange={e => onCustomFromChange(e.target.value)}
+            onClick={openPicker(fromRef)}
             max={customTo || todayStr()}
             className="px-2 py-1.5 rounded border text-xs w-32"
             style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
           <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>to</span>
-          <input type="date" value={customTo} onChange={e => onCustomToChange(e.target.value)}
+          <input ref={toRef} type="date" value={customTo} onChange={e => onCustomToChange(e.target.value)}
+            onClick={openPicker(toRef)}
             min={customFrom} max={todayStr()}
             className="px-2 py-1.5 rounded border text-xs w-32"
             style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
