@@ -1,6 +1,6 @@
 import { Children, isValidElement, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, MessageCircle, Search, UserCircle, X, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, Loader2, MessageCircle, RotateCw, Search, UserCircle, X, Zap } from 'lucide-react';
 import { api, adminApi, type SessionSummary, type Trace, type TraceFacet, type TraceFilter, type UserStatus } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
@@ -108,6 +108,8 @@ export default function TraceList() {
   }, [isAdmin]);
 
   const [result, setResult] = useState<TraceListState>({ requestKey: '', traces: [], total: 0 });
+  // manual refresh: bumping re-runs the current query with the same filters and page
+  const [refreshKey, setRefreshKey] = useState(0);
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(PAGE_SIZES[0]);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
@@ -121,7 +123,7 @@ export default function TraceList() {
 
   const activeFilterCount = countActiveFilters(filters);
   const advancedFilterCount = countAdvancedFilters(filters, isAdmin);
-  const requestKey = JSON.stringify({ offset, limit, filters: normalizeFilters(filters) });
+  const requestKey = JSON.stringify({ offset, limit, filters: normalizeFilters(filters), refresh: refreshKey });
 
   useEffect(() => {
     let cancelled = false;
@@ -138,7 +140,7 @@ export default function TraceList() {
     return () => {
       cancelled = true;
     };
-  }, [offset, limit, filters, requestKey]);
+  }, [offset, limit, filters, requestKey, refreshKey]);
 
   // When the list is pinned to one session, show an aggregate summary bar — the page doubles as a session detail view
   const sessionFilterId = filters.sessionId || '';
@@ -233,11 +235,20 @@ export default function TraceList() {
   return (
     <div className="flex h-full min-h-0">
       <div className="p-6 flex-1 min-w-0 overflow-auto">
-        <div className="mb-5">
-          <h1 className="text-2xl font-semibold">Traces</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Execution records across agents, LLM calls, and external services
-          </p>
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">Traces</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+              Execution records across agents, LLM calls, and external services
+            </p>
+          </div>
+          <button onClick={() => setRefreshKey(key => key + 1)} disabled={loading}
+            className="px-3 py-1.5 rounded-md border text-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+            style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}
+            title="Refresh traces">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RotateCw size={14} />}
+            Refresh
+          </button>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-1 border-b" style={{ borderColor: 'var(--color-border)' }}>
