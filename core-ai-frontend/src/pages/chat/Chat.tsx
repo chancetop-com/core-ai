@@ -23,6 +23,10 @@ const ArtifactDrawer = lazy(() => import('./components/ArtifactDrawer'));
 const FeedbackModal = lazy(() => import('./components/FeedbackModal'));
 
 const DRAFT_CHAT_SESSION_ID = '__new_chat_draft__';
+// Poll interval for the pending-turn status watchdog (see Chat.tsx effect on pendingTurnSid).
+const TURN_WATCHDOG_INTERVAL_MS = 10000;
+// Max SSE re-attach attempts per turn before falling back to watchdog-only recovery.
+const MAX_TURN_RECONNECTS = 3;
 
 function toToolRef(id: string, availableTools: ToolRegistryView[] = []): ToolRef {
   const registeredTool = availableTools.find(t => t.id === id);
@@ -186,6 +190,17 @@ export default function Chat() {
   const autoSendProcessedRef = useRef<string | null>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
+  // Mirrors the sessionId state so non-reactive callbacks (SSE handlers, timers)
+  // can check which session the user is currently viewing without stale closures.
+  const sessionIdRef = useRef<string | null>(sessionId);
+  // Session whose turn is still awaiting a terminal SSE event (TURN_COMPLETE/ERROR).
+  // Authoritative copy for handlers (reads without re-render); pendingTurnSid below
+  // drives the status-watchdog effect. When the stream dies before the terminal
+  // event arrives, recovery re-attaches the stream and the watchdog re-syncs history.
+  const pendingTurnRef = useRef<string | null>(null);
+  const [pendingTurnSid, setPendingTurnSid] = useState<string | null>(null);
+  const turnReconnectsRef = useRef(0);
+  const recoverTurnRef = useRef<(sid: string) => void>(() => {});
 
   // Show a brief toast notification
   const showToast = useCallback((msg: string) => {
@@ -198,6 +213,21 @@ export default function Chat() {
     activeSseSessionIdRef.current = null;
     sseControllerRef.current?.abort();
     sseControllerRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  const markTurnPending = useCallback((sid: string) => {
+    pendingTurnRef.current = sid;
+    setPendingTurnSid(sid);
+    turnReconnectsRef.current = 0;
+  }, []);
+
+  const clearTurnPending = useCallback(() => {
+    pendingTurnRef.current = null;
+    setPendingTurnSid(null);
   }, []);
 
   const createDraftSession = useCallback(() => {
@@ -378,6 +408,9 @@ export default function Chat() {
     // This guarantees any pending SSE callbacks from the previous session can't
     // bleed into the next one, and any open drawer is closed.
     abortSSE();
+    // Any pending turn belonged to the previous session; stop its watchdog so a
+    // stale recovery cannot fire while the new session hydrates.
+    clearTurnPending();
     composerRef.current?.reset();
     setOptimisticSession(null);
     setSessionId(session.id);
@@ -456,6 +489,9 @@ export default function Chat() {
       }
       if (turnInProgress) {
         setStatus('running');
+        // Track the resumed turn so the watchdog recovers it if this connection
+        // also drops without a terminal event.
+        markTurnPending(session.id);
       }
       if (turnInProgress) {
         // Reconnect SSE so the backend replays any buffered in-progress events
@@ -829,6 +865,7 @@ export default function Chat() {
         } else if (completeEvent.sessionId) {
           cancelledSessionIdsRef.current.delete(completeEvent.sessionId);
         }
+        clearTurnPending();
         setIsThinking(false);
         setStatus('idle');
         setAwaitInfo(null);
@@ -841,13 +878,22 @@ export default function Chat() {
             return prev.slice(0, -1);
           }
           const updated = [...prev];
-          updated[updated.length - 1] = { ...last, timestamp: new Date().toISOString() };
+          // Streaming chunks may have been lost in transit (dropped connection or
+          // pub/sub gap) while the turn still completed server-side; TURN_COMPLETE
+          // carries the full output, so render it into an empty bubble instead of
+          // leaving a blank reply.
+          if (!completeEvent.cancelled && !hasAnySegments(last.segments) && completeEvent.output) {
+            updated[updated.length - 1] = { ...last, timestamp: new Date().toISOString(), segments: [{ type: 'text', content: completeEvent.output }] };
+          } else {
+            updated[updated.length - 1] = { ...last, timestamp: new Date().toISOString() };
+          }
           return updated;
         });
         break;
       }
       case 'ERROR':
       case 'error': {
+        clearTurnPending();
         setIsThinking(false);
         const errorEvent = event as SseErrorEvent;
         const errMsg = errorEvent.message || 'Unknown error';
@@ -977,7 +1023,7 @@ export default function Chat() {
         break;
       }
     }
-  }, []);
+  }, [clearTurnPending]);
 
   const doStreamMessage = useCallback((
     sid: string,
@@ -988,6 +1034,7 @@ export default function Chat() {
     abortSSE();
     const connectionSeq = ++sseConnectionSeqRef.current;
     activeSseSessionIdRef.current = sid;
+    markTurnPending(sid);
     const controller = sessionApi.sendMessageStream(
       sid,
       message,
@@ -1002,6 +1049,21 @@ export default function Chat() {
         if (sseConnectionSeqRef.current !== connectionSeq || activeSseSessionIdRef.current !== sid) return;
         console.error('SSE error:', err);
         const msg = err instanceof Error ? err.message : String(err);
+        if (msg.startsWith('SSE request rejected')) {
+          // The server refused the request (auth/quota/bad request) — no turn is
+          // running backend-side, so there is nothing to recover; fail the send.
+          clearTurnPending();
+          showToast(`Send failed: ${msg}`);
+          setStatus('idle');
+          return;
+        }
+        if (pendingTurnRef.current === sid) {
+          // Turn is still running server-side; the onClose below re-attaches the
+          // stream and the status watchdog re-syncs history, so stay in running
+          // state instead of telling the user to retry.
+          showToast('Connection lost — restoring the running turn…');
+          return;
+        }
         showToast(`Connection lost: ${msg}. Please retry.`);
         setStatus('idle');
       },
@@ -1009,14 +1071,21 @@ export default function Chat() {
         if (sseConnectionSeqRef.current === connectionSeq && sseControllerRef.current === controller) {
           sseControllerRef.current = null;
           activeSseSessionIdRef.current = null;
-          setStatus('idle');
-          setIsThinking(false);
-          setAwaitInfo(null);
+          if (pendingTurnRef.current === sid && sessionIdRef.current === sid) {
+            // Connection ended before the turn's terminal event arrived — the
+            // backend is still executing it (trace shows a normal run). Recover
+            // instead of silently giving up.
+            recoverTurnRef.current(sid);
+          } else {
+            setStatus('idle');
+            setIsThinking(false);
+            setAwaitInfo(null);
+          }
         }
       },
     );
     sseControllerRef.current = controller;
-  }, [abortSSE, handleSSEEvent, showToast]);
+  }, [abortSSE, clearTurnPending, handleSSEEvent, markTurnPending, showToast]);
 
   // Connect SSE only to resume an already-running turn.
   const doConnectSSE = useCallback((sid: string) => {
@@ -1033,11 +1102,19 @@ export default function Chat() {
       (err) => {
         if (sseConnectionSeqRef.current !== connectionSeq || activeSseSessionIdRef.current !== sid) return;
         console.error('SSE error:', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        const rejected = msg.startsWith('SSE request rejected');
+        if (pendingTurnRef.current === sid && !rejected) {
+          // Recovery mode: keep the controller refs intact so the onClose handler
+          // can still retry the re-attach (capped); the status watchdog owns the
+          // final history re-sync if reconnecting keeps failing.
+          return;
+        }
+        if (rejected) clearTurnPending();
         if (sseControllerRef.current === controller) {
           sseControllerRef.current = null;
           activeSseSessionIdRef.current = null;
         }
-        const msg = err instanceof Error ? err.message : String(err);
         showToast(`Connection lost: ${msg}. Please retry.`);
         setStatus('idle');
         setMessages(prev => {
@@ -1055,6 +1132,13 @@ export default function Chat() {
         if (sseConnectionSeqRef.current === connectionSeq && sseControllerRef.current === controller) {
           sseControllerRef.current = null;
           activeSseSessionIdRef.current = null;
+          if (pendingTurnRef.current === sid && sessionIdRef.current === sid) {
+            // This was a recovery connection and it died before the terminal
+            // event arrived — retry the re-attach (capped); the status watchdog
+            // still guarantees a history re-sync when the backend turn ends.
+            recoverTurnRef.current(sid);
+            return;
+          }
           setStatus('idle');
           setIsThinking(false);
           setAwaitInfo(null);
@@ -1062,7 +1146,100 @@ export default function Chat() {
       },
     );
     sseControllerRef.current = controller;
-  }, [abortSSE, handleSSEEvent, showToast]);
+  }, [abortSSE, clearTurnPending, handleSSEEvent, showToast]);
+
+  // Re-attach the SSE stream for a turn whose connection dropped before its
+  // terminal event arrived; the server replays buffered turn events and resumes
+  // live streaming. Capped so a persistently bad network falls through to the
+  // status watchdog below instead of reconnect-looping.
+  const recoverTurn = useCallback((sid: string) => {
+    if (sessionIdRef.current !== sid) return;
+    if (pendingTurnRef.current !== sid) return;
+    if (turnReconnectsRef.current >= MAX_TURN_RECONNECTS) return;
+    turnReconnectsRef.current += 1;
+    setStatus('running');
+    doConnectSSE(sid);
+  }, [doConnectSSE]);
+  useEffect(() => { recoverTurnRef.current = recoverTurn; }, [recoverTurn]);
+
+  // Fetch authoritative history and replace the local message list. Used by the
+  // status watchdog when a turn finished server-side without its terminal event
+  // reaching this browser (dropped connection or lost pub/sub events).
+  const syncFromHistory = useCallback(async (sid: string) => {
+    try {
+      const res = await sessionApi.history(sid);
+      if (sessionIdRef.current !== sid) return false;
+      const hydrated = historyToChatMessages(res.messages || []);
+      const lastMsg = hydrated[hydrated.length - 1];
+      if (lastMsg?.role === 'user') {
+        hydrated.push({ role: 'agent', segments: [], timestamp: new Date().toISOString() });
+      }
+      setMessages(hydrated);
+      setSessionArtifacts(res.artifacts || []);
+      clearTurnPending();
+      setStatus('idle');
+      setIsThinking(false);
+      setAwaitInfo(null);
+      setSidebarRefreshKey(k => k + 1);
+      return true;
+    } catch (e) {
+      console.warn('failed to sync history after stream loss', e);
+      return false;
+    }
+  }, [clearTurnPending]);
+
+  // Status watchdog: while a turn is pending, poll the backend session status.
+  // If the backend says the turn finished but no terminal SSE event ever arrived
+  // here — dropped connection, lost pub/sub events, or a silent LB idle cut —
+  // re-sync history so the completed reply still renders. This is the safety net
+  // behind the SSE re-attach recovery and also covers a live connection whose
+  // terminal event was lost in transit.
+  useEffect(() => {
+    if (!pendingTurnSid) return;
+    let stopped = false;
+    let timer: number | undefined;
+    let failures = 0;
+    const poll = async () => {
+      try {
+        const res = await sessionApi.status(pendingTurnSid);
+        if (stopped) return;
+        failures = 0;
+        const status = (res as { status?: string }).status;
+        if (status === 'running' || status === 'waiting') {
+          // turn still active (waiting = tool approval pending) — keep watching
+        } else if (status === 'error') {
+          await syncFromHistory(pendingTurnSid);
+          setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'agent' && !hasAnySegments(last.segments)) {
+              const updated = [...prev];
+              updated[updated.length - 1] = { ...last, segments: [{ type: 'text', content: 'Error: turn failed without a streamed error event' }] };
+              return updated;
+            }
+            return prev;
+          });
+          return;
+        } else {
+          await syncFromHistory(pendingTurnSid);
+          return;
+        }
+      } catch (e) {
+        failures += 1;
+        if (failures >= 5) {
+          // status/history endpoints unreachable for too long — stop watching and
+          // release the composer so the user can retry manually.
+          console.warn('status watchdog gave up', e);
+          clearTurnPending();
+          setStatus('idle');
+          setIsThinking(false);
+          return;
+        }
+      }
+      if (!stopped) timer = window.setTimeout(poll, TURN_WATCHDOG_INTERVAL_MS);
+    };
+    timer = window.setTimeout(poll, TURN_WATCHDOG_INTERVAL_MS);
+    return () => { stopped = true; if (timer) window.clearTimeout(timer); };
+  }, [pendingTurnSid, syncFromHistory, clearTurnPending]);
 
   // Cleanup SSE on unmount. Session changes are handled explicitly by
   // doConnectSSE() and handleNewChat(); aborting from this effect can cancel
@@ -1194,16 +1371,21 @@ export default function Chat() {
   const handleCancel = useCallback(() => {
     if (sessionId) cancelledSessionIdsRef.current.add(sessionId);
     abortSSE();
+    // User-intentional stop: no recovery wanted for this turn.
+    clearTurnPending();
     setStatus('idle');
     setIsThinking(false);
     setAwaitInfo(null);
     setPlanTodos(null);
     if (sessionId) sessionApi.cancel(sessionId).catch(() => {});
-  }, [abortSSE, sessionId]);
+  }, [abortSSE, clearTurnPending, sessionId]);
 
   const handleNewChat = useCallback(() => {
     hydrateRequestSeqRef.current += 1;
     abortSSE();
+    // The previous session's turn (if any) keeps running server-side but is no
+    // longer watched here; re-entering the session re-marks it if still running.
+    clearTurnPending();
     composerRef.current?.reset();
     // Intentionally NOT calling sessionApi.close(sessionId): the previous session
     // may still be streaming an agent reply. Closing it forcibly cancels the turn
@@ -1240,7 +1422,7 @@ export default function Chat() {
     sessionStorage.removeItem('chat_messages');
     sessionStorage.removeItem('chat_sessionId');
     sessionStorage.removeItem('chat_artifacts');
-  }, [abortSSE, createDraftSession]);
+  }, [abortSSE, clearTurnPending, createDraftSession]);
 
   const handleSelectAgent = useCallback((id: string, agent?: AgentDefinition) => {
     if (agent && !agents.find(a => a.id === agent.id)) {

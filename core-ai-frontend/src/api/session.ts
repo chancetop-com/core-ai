@@ -307,7 +307,7 @@ export const sessionApi = {
             // server-side auth/connection failures arrive as core-ng ErrorResponse without an `event` field;
             // route them to onError so callers surface the reason instead of silently dropping them
             if (parsed.errorCode) {
-              onError?.(new Error(`${parsed.errorCode}: ${parsed.message || 'SSE error'}`));
+              onError?.(new Error(`SSE request rejected: ${parsed.errorCode}: ${parsed.message || 'SSE error'}`));
               continue;
             }
             onEvent(parsed);
@@ -318,7 +318,7 @@ export const sessionApi = {
       }
       if (xhr.readyState === xhr.DONE) {
         if (xhr.status >= 400) {
-          onError?.(new Error(`SSE connection failed: ${xhr.status}`));
+          onError?.(new Error(`SSE request rejected: HTTP ${xhr.status}`));
         }
         onClose?.();
       }
@@ -435,7 +435,7 @@ export const sessionApi = {
                 // server-side auth/connection failures arrive as core-ng ErrorResponse without an `event` field;
                 // route them to onError so callers surface the reason instead of silently dropping them
                 if (parsed.errorCode) {
-                  onError?.(new Error(`${parsed.errorCode}: ${parsed.message || 'SSE error'}`));
+                  onError?.(new Error(`SSE request rejected: ${parsed.errorCode}: ${parsed.message || 'SSE error'}`));
                   continue;
                 }
                 onEvent(parsed);
@@ -448,7 +448,7 @@ export const sessionApi = {
       }
       if (xhr.readyState === xhr.DONE) {
         if (xhr.status >= 400) {
-          onError?.(new Error(`SSE connection failed: ${xhr.status}`));
+          onError?.(new Error(`SSE request rejected: HTTP ${xhr.status}`));
         }
         onClose?.();
       }
