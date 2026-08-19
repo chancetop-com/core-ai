@@ -15,7 +15,7 @@ import type {
   AnalyticsParams,
 } from '../../api/client';
 
-type Range = '7d' | '30d';
+type Range = '1d' | '7d' | '30d' | 'custom';
 
 interface DashboardState {
   globalSummary: AnalyticsGlobal | null;
@@ -38,6 +38,9 @@ const EMPTY_GLOBAL: AnalyticsGlobal = {
 export default function Dashboard() {
   const [mode, setMode] = useState<AnalyticsMode>('history');
   const [range, setRange] = useState<Range>('7d');
+  // custom range dates (yyyy-mm-dd); only sent to the API when range === 'custom'
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [activeTab, setActiveTab] = useState<AnalyticsDimension>('source');
   const [sort, setSort] = useState<string>('tokens');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -47,7 +50,10 @@ export default function Dashboard() {
     loading: true, error: null,
   });
 
-  const params = useMemo((): AnalyticsParams => ({ mode, range, sort }), [mode, range, sort]);
+  const params = useMemo((): AnalyticsParams => {
+    if (range === 'custom') return { mode, from: from || undefined, to: to || undefined, sort };
+    return { mode, range, sort };
+  }, [mode, range, from, to, sort]);
 
   // main fetch: global + trend + current tab dimension
   useEffect(() => {
@@ -139,12 +145,30 @@ export default function Dashboard() {
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
             {mode === 'realtime'
               ? 'Live token consumption · refreshed on load'
-              : `Last ${range === '7d' ? '7' : '30'} days · pre-aggregated stats`}
+              : range === 'custom'
+                ? 'Custom date range · pre-aggregated stats'
+                : `Last ${range === '1d' ? '1' : range === '7d' ? '7' : '30'} days · pre-aggregated stats`}
           </p>
         </div>
-        <ModeTimeSelector mode={mode} range={range}
+        <ModeTimeSelector mode={mode} range={range} from={from} to={to}
           onModeChange={m => { setMode(m); setSelectedKey(null); }}
-          onRangeChange={r => { setRange(r as Range); setSelectedKey(null); }} />
+          onRangeChange={r => {
+            setRange(r as Range);
+            if (r === 'custom') {
+              // default to the same window as the 7 days preset; history stats end at yesterday
+              setFrom(dateInputValue(7));
+              setTo(dateInputValue(1));
+            } else {
+              setFrom('');
+              setTo('');
+            }
+            setSelectedKey(null);
+          }}
+          onCustomChange={(f, t) => {
+            setFrom(f);
+            setTo(t);
+            setSelectedKey(null);
+          }} />
       </div>
 
       {state.error && (
@@ -239,4 +263,11 @@ async function fetchSparklines(dim: AnalyticsDimension, params: AnalyticsParams,
   } catch {
     return new Map();
   }
+}
+
+// yyyy-mm-dd (local date) for the custom range date inputs
+function dateInputValue(daysAgo: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
