@@ -278,7 +278,10 @@ public class GatewayModelService {
         if (specified(request, "maxVideoSeconds", create)) entity.maxVideoSeconds = request.maxVideoSeconds;
         if (specified(request, "inputPricePer1MTokens", create)) entity.inputPricePer1MTokens = request.inputPricePer1MTokens;
         if (specified(request, "outputPricePer1MTokens", create)) entity.outputPricePer1MTokens = request.outputPricePer1MTokens;
-        if (specified(request, "inputPricePer1MTokens", create) || specified(request, "outputPricePer1MTokens", create)) {
+        if (specified(request, "cacheReadInputPricePer1MTokens", create)) entity.cacheReadInputPricePer1MTokens = request.cacheReadInputPricePer1MTokens;
+        if (specified(request, "peakPriceMultiplier", create)) entity.peakPriceMultiplier = request.peakPriceMultiplier;
+        if (specified(request, "inputPricePer1MTokens", create) || specified(request, "outputPricePer1MTokens", create)
+                || specified(request, "cacheReadInputPricePer1MTokens", create) || specified(request, "peakPriceMultiplier", create)) {
             entity.pricingSource = "manual";
             entity.pricingUpdatedAt = ZonedDateTime.now();
         }
@@ -324,6 +327,12 @@ public class GatewayModelService {
         }
         if (request.outputPricePer1MTokens != null && request.outputPricePer1MTokens < 0) {
             throw new BadRequestException("outputPricePer1MTokens must not be negative");
+        }
+        if (request.cacheReadInputPricePer1MTokens != null && request.cacheReadInputPricePer1MTokens < 0) {
+            throw new BadRequestException("cacheReadInputPricePer1MTokens must not be negative");
+        }
+        if (request.peakPriceMultiplier != null && request.peakPriceMultiplier <= 0) {
+            throw new BadRequestException("peakPriceMultiplier must be positive");
         }
     }
 
@@ -388,6 +397,8 @@ public class GatewayModelService {
         view.maxVideoSeconds = entity.maxVideoSeconds;
         view.inputPricePer1MTokens = entity.inputPricePer1MTokens;
         view.outputPricePer1MTokens = entity.outputPricePer1MTokens;
+        view.cacheReadInputPricePer1MTokens = entity.cacheReadInputPricePer1MTokens;
+        view.peakPriceMultiplier = entity.peakPriceMultiplier;
         view.pricingSource = entity.pricingSource;
         view.pricingUpdatedAt = entity.pricingUpdatedAt;
         view.createdBy = entity.createdBy;

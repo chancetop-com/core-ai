@@ -16,6 +16,7 @@ import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -48,6 +49,55 @@ class OTLPIngestServiceTest {
         assertEquals(6D, inserted.getValue().costUsd);
         assertEquals("gateway_model", inserted.getValue().costSource);
         assertEquals("gpt-5.6-terra", inserted.getValue().pricingModelId);
+    }
+
+    @Test
+    void gatewayModelPriceSplitsCachedInputAndAppliesPeakMultiplier() {
+        var service = service();
+        var model = new GatewayModelConfig();
+        model.modelId = "deepseek-v4-pro";
+        model.inputPricePer1MTokens = 6.521739e-01D;
+        model.outputPricePer1MTokens = 1.956522D;
+        model.cacheReadInputPricePer1MTokens = 2.173913e-02D;
+        model.peakPriceMultiplier = 2D;
+        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+
+        // start time 2026-08-18T02:00:00Z = Beijing 10:00, peak hour
+        long startNanos = Instant.parse("2026-08-18T02:00:00Z").toEpochMilli() * 1_000_000L;
+        service.ingest(request(span(startNanos, "chat",
+            attr("gen_ai.request.model", "deepseek-v4-pro"),
+            attr("gen_ai.usage.input_tokens", "1000000"),
+            attr("gen_ai.usage.cached_tokens", "900000"),
+            attr("gen_ai.usage.output_tokens", "100000"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection).insert(inserted.capture());
+        // (100K uncached * 0.6521739 + 900K cached * 0.02173913 + 100K * 1.956522) * 2
+        assertEquals((0.06521739 + 0.019565217 + 0.1956522) * 2, inserted.getValue().costUsd, 1e-9);
+        assertEquals("gateway_model", inserted.getValue().costSource);
+    }
+
+    @Test
+    void gatewayModelPriceOverridesUpstreamCostAttribute() {
+        var service = service();
+        var model = new GatewayModelConfig();
+        model.modelId = "deepseek-v4-pro";
+        model.inputPricePer1MTokens = 1D;
+        model.outputPricePer1MTokens = 2D;
+        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+
+        service.ingest(request(span("chat",
+            attr("gen_ai.request.model", "deepseek-v4-pro"),
+            attr("gen_ai.usage.input_tokens", "1000000"),
+            attr("gen_ai.usage.output_tokens", "500000"),
+            attr("gen_ai.usage.cost_usd", "0.001"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection).insert(inserted.capture());
+        assertEquals(2D, inserted.getValue().costUsd);
+        assertEquals("gateway_model", inserted.getValue().costSource);
     }
 
     @Test
@@ -195,12 +245,16 @@ class OTLPIngestServiceTest {
     }
 
     private io.opentelemetry.proto.trace.v1.Span span(String name, KeyValue... attrs) {
+        return span(1_000_000L, name, attrs);
+    }
+
+    private io.opentelemetry.proto.trace.v1.Span span(long startNanos, String name, KeyValue... attrs) {
         var builder = io.opentelemetry.proto.trace.v1.Span.newBuilder()
             .setTraceId(ByteString.copyFrom(new byte[16]))
             .setSpanId(ByteString.copyFrom(new byte[8]))
             .setName(name)
-            .setStartTimeUnixNano(1_000_000L)
-            .setEndTimeUnixNano(2_000_000L);
+            .setStartTimeUnixNano(startNanos)
+            .setEndTimeUnixNano(startNanos + 1_000_000L);
         for (var attr : attrs) {
             builder.addAttributes(attr);
         }

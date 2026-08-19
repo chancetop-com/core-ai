@@ -13,6 +13,7 @@ import ai.core.server.trace.domain.Trace;
 
 import org.bson.conversions.Bson;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -192,7 +193,8 @@ final class TraceServiceHelper {
             var spanCostUsd = span.costUsd != null
                 ? span.costUsd
                 : LLMModelContextRegistry.getInstance().estimateCostUsd(span.model,
-                    safeLong(span.inputTokens), safeLong(span.outputTokens), safeLong(spanCachedTokens));
+                    safeLong(span.inputTokens), safeLong(span.outputTokens), safeLong(spanCachedTokens),
+                    span.startedAt != null ? span.startedAt.toInstant() : Instant.now());
             if (spanCostUsd != null) {
                 costUsd += spanCostUsd;
                 hasCost = true;

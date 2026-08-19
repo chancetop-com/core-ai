@@ -322,12 +322,7 @@ public class IngestService {
             "gen_ai.usage.cost_usd",
             "gen_ai.usage.cost",
             "langfuse.observation.total_cost");
-        if (attrCost != null) {
-            span.costUsd = attrCost;
-            span.costSource = "upstream";
-            return;
-        }
-        var price = modelPricingService.resolve(span.model, span.inputTokens, span.outputTokens, span.cachedTokens);
+        var price = modelPricingService.resolve(span.model, span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
         span.costUsd = price.costUsd();
         span.costSource = price.source();
         span.pricingModelId = price.modelId();

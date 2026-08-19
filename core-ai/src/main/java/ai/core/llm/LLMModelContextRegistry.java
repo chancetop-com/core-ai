@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -17,6 +19,7 @@ public final class LLMModelContextRegistry {
     private static final String RESOURCE_PATH = "/model_prices_and_context_window.json";
     private static final int DEFAULT_MAX_INPUT_TOKENS = 128000;
     private static final int DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+    private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
     private static final String[] MODEL_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/"};
     private static final String[] STRIP_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/", "deepseek/", "gemini/", "vertex_ai/", "openrouter/", "litellm/"};
 
@@ -67,12 +70,14 @@ public final class LLMModelContextRegistry {
                 var outputCostPerToken = getDoubleOrDefault(modelNode, "output_cost_per_token", 0.0);
                 var cacheReadInputTokenCost = getDoubleOrDefault(modelNode, "cache_read_input_token_cost",
                     getDoubleOrDefault(modelNode, "input_cost_per_token_cache_hit", inputCostPerToken));
+                // Optional peak-hour price multiplier (e.g. DeepSeek 2026-08 peak/off-peak pricing); 1.0 = no peak pricing.
+                var peakPriceMultiplier = getDoubleOrDefault(modelNode, "peak_price_multiplier", 1.0);
                 var supportsVision = getBooleanOrNull(modelNode, "supports_vision");
                 var supportsPdfInput = getBooleanOrNull(modelNode, "supports_pdf_input");
                 var supportsVideoInput = getBooleanOrNull(modelNode, "supports_video_input");
 
                 modelInfoMap.put(modelName, new ModelInfo(maxInputTokens, maxOutputTokens, provider, mode,
-                    inputCostPerToken, outputCostPerToken, cacheReadInputTokenCost,
+                    inputCostPerToken, outputCostPerToken, cacheReadInputTokenCost, peakPriceMultiplier,
                     supportsVision, supportsPdfInput, supportsVideoInput));
             }
 
@@ -179,6 +184,10 @@ public final class LLMModelContextRegistry {
     }
 
     public Double estimateCostUsd(String modelName, long inputTokens, long outputTokens, long cachedInputTokens) {
+        return estimateCostUsd(modelName, inputTokens, outputTokens, cachedInputTokens, Instant.now());
+    }
+
+    public Double estimateCostUsd(String modelName, long inputTokens, long outputTokens, long cachedInputTokens, Instant when) {
         var info = getModelInfo(modelName);
         if (info == null) return null;
 
@@ -186,10 +195,18 @@ public final class LLMModelContextRegistry {
         var safeOutputTokens = Math.max(outputTokens, 0);
         var safeCachedTokens = Math.min(Math.max(cachedInputTokens, 0), safeInputTokens);
         var uncachedInputTokens = safeInputTokens - safeCachedTokens;
+        var multiplier = info.peakPriceMultiplier() > 0 && isPeakHour(when) ? info.peakPriceMultiplier() : 1.0;
 
-        return uncachedInputTokens * info.inputCostPerToken()
+        return (uncachedInputTokens * info.inputCostPerToken()
             + safeCachedTokens * info.cacheReadInputTokenCost()
-            + safeOutputTokens * info.outputCostPerToken();
+            + safeOutputTokens * info.outputCostPerToken()) * multiplier;
+    }
+
+    // Peak hours follow the DeepSeek 2026-08 peak/off-peak scheme: Beijing time 9:00-12:00 and 14:00-18:00.
+    public static boolean isPeakHour(Instant when) {
+        var time = when.atZone(SHANGHAI);
+        var hour = time.getHour();
+        return (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18);
     }
 
     public int size() {
@@ -204,6 +221,7 @@ public final class LLMModelContextRegistry {
             double inputCostPerToken,
             double outputCostPerToken,
             double cacheReadInputTokenCost,
+            double peakPriceMultiplier,
             Boolean supportsVision,
             Boolean supportsPdfInput,
             Boolean supportsVideoInput) {

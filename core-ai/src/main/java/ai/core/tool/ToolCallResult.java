@@ -4,6 +4,7 @@ import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.domain.Usage;
 import core.framework.util.Strings;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -191,7 +192,7 @@ public final class ToolCallResult {
             var cachedTokens = usage.getPromptTokensDetails() != null
                     ? usage.getPromptTokensDetails().cachedTokens : 0;
             this.llmCostUsd = LLMModelContextRegistry.getInstance().estimateCostUsd(
-                    model, usage.getPromptTokens(), usage.getCompletionTokens(), cachedTokens);
+                    model, usage.getPromptTokens(), usage.getCompletionTokens(), cachedTokens, Instant.now());
         }
         return this;
     }

@@ -6,6 +6,8 @@ import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 
+import java.time.ZonedDateTime;
+
 /**
  * @author Stephen
  */
@@ -13,18 +15,45 @@ public class ModelPricingService {
     @Inject
     MongoCollection<GatewayModelConfig> gatewayModelCollection;
 
-    public Price resolve(String model, Long inputTokens, Long outputTokens, Long cachedTokens) {
+    // Gateway Model configuration price (cached input split + optional peak-hour multiplier); null when not configured.
+    Price resolveGatewayModel(String model, Long inputTokens, Long outputTokens, Long cachedTokens, ZonedDateTime startedAt) {
         var gatewayModel = gatewayModel(model);
-        if (gatewayModel != null && gatewayModel.inputPricePer1MTokens != null && gatewayModel.outputPricePer1MTokens != null) {
-            double inputCost = safeLong(inputTokens) * gatewayModel.inputPricePer1MTokens / 1_000_000D;
-            double outputCost = safeLong(outputTokens) * gatewayModel.outputPricePer1MTokens / 1_000_000D;
-            return new Price(inputCost + outputCost, "gateway_model", gatewayModel.modelId,
-                    gatewayModel.inputPricePer1MTokens, gatewayModel.outputPricePer1MTokens);
+        if (gatewayModel == null || gatewayModel.inputPricePer1MTokens == null || gatewayModel.outputPricePer1MTokens == null) {
+            return null;
         }
+        var cached = Math.min(Math.max(safeLong(cachedTokens), 0), safeLong(inputTokens));
+        var uncached = safeLong(inputTokens) - cached;
+        var cacheReadPrice = gatewayModel.cacheReadInputPricePer1MTokens != null
+                ? gatewayModel.cacheReadInputPricePer1MTokens
+                : gatewayModel.inputPricePer1MTokens;
+        double inputCost = (uncached * gatewayModel.inputPricePer1MTokens + cached * cacheReadPrice) / 1_000_000D;
+        double outputCost = safeLong(outputTokens) * gatewayModel.outputPricePer1MTokens / 1_000_000D;
+        var multiplier = peakMultiplier(gatewayModel.peakPriceMultiplier, startedAt);
+        return new Price((inputCost + outputCost) * multiplier, "gateway_model", gatewayModel.modelId,
+                gatewayModel.inputPricePer1MTokens, gatewayModel.outputPricePer1MTokens);
+    }
 
-        var costUsd = LLMModelContextRegistry.getInstance().estimateCostUsd(model,
-                safeLong(inputTokens), safeLong(outputTokens), safeLong(cachedTokens));
+    // Resolution order: explicit Gateway Model pricing > upstream-reported attribute cost > catalog estimate.
+    Price resolve(String model, Long inputTokens, Long outputTokens, Long cachedTokens, ZonedDateTime startedAt, Double upstreamCost) {
+        var gatewayPrice = resolveGatewayModel(model, inputTokens, outputTokens, cachedTokens, startedAt);
+        if (gatewayPrice != null) return gatewayPrice;
+        if (upstreamCost != null) return new Price(upstreamCost, "upstream", null, null, null);
+        return resolveCatalog(model, inputTokens, outputTokens, cachedTokens, startedAt);
+    }
+
+    Price resolveCatalog(String model, Long inputTokens, Long outputTokens, Long cachedTokens, ZonedDateTime startedAt) {
+        var when = startedAt == null ? null : startedAt.toInstant();
+        var costUsd = when == null
+                ? LLMModelContextRegistry.getInstance().estimateCostUsd(model,
+                        safeLong(inputTokens), safeLong(outputTokens), safeLong(cachedTokens))
+                : LLMModelContextRegistry.getInstance().estimateCostUsd(model,
+                        safeLong(inputTokens), safeLong(outputTokens), safeLong(cachedTokens), when);
         return costUsd == null ? Price.unavailable() : new Price(costUsd, "model_catalog", model, null, null);
+    }
+
+    private double peakMultiplier(Double configured, ZonedDateTime startedAt) {
+        if (configured == null || configured <= 0 || startedAt == null) return 1.0;
+        return LLMModelContextRegistry.isPeakHour(startedAt.toInstant()) ? configured : 1.0;
     }
 
     private GatewayModelConfig gatewayModel(String model) {

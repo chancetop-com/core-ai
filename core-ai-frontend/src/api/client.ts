@@ -1354,6 +1354,8 @@ export interface GatewayModel {
   maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
+  cacheReadInputPricePer1MTokens?: number | null;
+  peakPriceMultiplier?: number | null;
 }
 
 export interface GatewayModelRequest {
@@ -1377,6 +1379,8 @@ export interface GatewayModelRequest {
   maxVideoSeconds?: number | null;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
+  cacheReadInputPricePer1MTokens?: number | null;
+  peakPriceMultiplier?: number | null;
 }
 
 export interface ListGatewayModelsResponse {

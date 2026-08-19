@@ -77,6 +77,14 @@ public class GatewayModelConfig {
     @Field(name = "output_price_per_1m_tokens")
     public Double outputPricePer1MTokens;
 
+    // price per 1M cached input tokens; null = model has no cache pricing (all input billed at input_price_per_1m_tokens)
+    @Field(name = "cache_read_input_price_per_1m_tokens")
+    public Double cacheReadInputPricePer1MTokens;
+
+    // peak-hour multiplier applied to all prices (e.g. DeepSeek 2026-08 peak/off-peak pricing); null/1.0 = flat pricing
+    @Field(name = "peak_price_multiplier")
+    public Double peakPriceMultiplier;
+
     @Field(name = "pricing_source")
     public String pricingSource;
 

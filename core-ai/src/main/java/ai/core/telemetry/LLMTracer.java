@@ -12,6 +12,7 @@ import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -171,7 +172,7 @@ public class LLMTracer extends Tracer {
             span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens);
             span.setAttribute(GEN_AI_USAGE_CACHED_TOKENS, cachedTokens);
             var cost = LLMModelContextRegistry.getInstance().estimateCostUsd(
-                request.model, inputTokens, outputTokens, cachedTokens);
+                request.model, inputTokens, outputTokens, cachedTokens, Instant.now());
             if (cost != null) {
                 span.setAttribute(GEN_AI_USAGE_COST_USD, cost);
             }

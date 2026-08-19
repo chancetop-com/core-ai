@@ -78,6 +78,12 @@ public class GatewayModelView {
     @Property(name = "outputPricePer1MTokens")
     public Double outputPricePer1MTokens;
 
+    @Property(name = "cacheReadInputPricePer1MTokens")
+    public Double cacheReadInputPricePer1MTokens;
+
+    @Property(name = "peakPriceMultiplier")
+    public Double peakPriceMultiplier;
+
     @Property(name = "pricingSource")
     public String pricingSource;
 

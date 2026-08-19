@@ -87,6 +87,8 @@ type ModelFormState = {
   maxVideoSeconds: string;
   inputPricePer1MTokens: string;
   outputPricePer1MTokens: string;
+  cacheReadInputPricePer1MTokens: string;
+  peakPriceMultiplier: string;
 };
 
 const emptyProviderForm: ProviderFormState = {
@@ -135,6 +137,8 @@ const emptyModelForm: ModelFormState = {
   maxVideoSeconds: '',
   inputPricePer1MTokens: '',
   outputPricePer1MTokens: '',
+  cacheReadInputPricePer1MTokens: '',
+  peakPriceMultiplier: '',
 };
 
 export default function GatewayProviders() {
@@ -333,6 +337,8 @@ export default function GatewayProviders() {
       maxVideoSeconds: model.maxVideoSeconds == null ? '' : String(model.maxVideoSeconds),
       inputPricePer1MTokens: model.inputPricePer1MTokens == null ? '' : String(model.inputPricePer1MTokens),
       outputPricePer1MTokens: model.outputPricePer1MTokens == null ? '' : String(model.outputPricePer1MTokens),
+      cacheReadInputPricePer1MTokens: model.cacheReadInputPricePer1MTokens == null ? '' : String(model.cacheReadInputPricePer1MTokens),
+      peakPriceMultiplier: model.peakPriceMultiplier == null ? '' : String(model.peakPriceMultiplier),
     });
     setModalityBaseline({
       supportsVision: model.supportsVision == null ? '' : String(model.supportsVision),
@@ -383,6 +389,10 @@ export default function GatewayProviders() {
       else if (modelForm.id) payload.reasoningEfforts = [];
       if (modelForm.responseFormat) payload.responseFormat = modelForm.responseFormat;
       else if (modelForm.id) payload.responseFormat = null;
+      if (modelForm.inputPricePer1MTokens !== '') payload.inputPricePer1MTokens = optionalNumber(modelForm.inputPricePer1MTokens, 'Input price per 1M');
+      if (modelForm.outputPricePer1MTokens !== '') payload.outputPricePer1MTokens = optionalNumber(modelForm.outputPricePer1MTokens, 'Output price per 1M');
+      if (modelForm.cacheReadInputPricePer1MTokens !== '') payload.cacheReadInputPricePer1MTokens = optionalNumber(modelForm.cacheReadInputPricePer1MTokens, 'Cache read price per 1M');
+      if (modelForm.peakPriceMultiplier !== '') payload.peakPriceMultiplier = optionalNumber(modelForm.peakPriceMultiplier, 'Peak price multiplier');
       if (modelForm.id) {
         await api.gateway.updateModel(modelForm.id, payload);
       } else {
@@ -1027,9 +1037,41 @@ function renderModelPanel(props: {
               contextWindow: optionalDisplayNumber(form.contextWindow),
             })}
           </ReadOnlyField>
-          <ReadOnlyField label="Pricing">
-            {formatPricing(optionalDisplayNumber(form.inputPricePer1MTokens), optionalDisplayNumber(form.outputPricePer1MTokens))}
-          </ReadOnlyField>
+          <Field label="Pricing (USD per 1M tokens)">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                className={inputClass}
+                style={inputStyle}
+                value={form.inputPricePer1MTokens}
+                onChange={e => setForm({ ...form, inputPricePer1MTokens: e.target.value })}
+                placeholder="input (uncached)"
+              />
+              <input
+                className={inputClass}
+                style={inputStyle}
+                value={form.outputPricePer1MTokens}
+                onChange={e => setForm({ ...form, outputPricePer1MTokens: e.target.value })}
+                placeholder="output"
+              />
+              <input
+                className={inputClass}
+                style={inputStyle}
+                value={form.cacheReadInputPricePer1MTokens}
+                onChange={e => setForm({ ...form, cacheReadInputPricePer1MTokens: e.target.value })}
+                placeholder="cached input"
+              />
+              <input
+                className={inputClass}
+                style={inputStyle}
+                value={form.peakPriceMultiplier}
+                onChange={e => setForm({ ...form, peakPriceMultiplier: e.target.value })}
+                placeholder="peak multiplier"
+              />
+            </div>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+              Peak hours (Beijing 9:00-12:00, 14:00-18:00) multiply all prices by the peak multiplier, e.g. 2 for DeepSeek; empty = flat pricing. Cached input price optional; empty = cached input billed at the input price.
+            </p>
+          </Field>
         </div>
 
         <PanelActions close={close} save={save} saving={saving} disabled={!form.modelId || !form.providerId || !form.upstreamModel} />
@@ -1332,11 +1374,6 @@ function formatCapabilities(model: {
     model.supportsFile ? 'file' : null,
     model.contextWindow ? `${model.contextWindow} ctx` : null,
   ].filter(Boolean).join(', ') || '-';
-}
-
-function formatPricing(inputPrice: number | null, outputPrice: number | null) {
-  if (inputPrice == null && outputPrice == null) return '-';
-  return `in ${inputPrice ?? '-'} / out ${outputPrice ?? '-'} per 1M`;
 }
 
 const inputClass = 'w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none';

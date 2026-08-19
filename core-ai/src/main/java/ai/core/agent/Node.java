@@ -19,6 +19,7 @@ import core.framework.util.Lists;
 import core.framework.util.Maps;
 import core.framework.util.Strings;
 
+import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
@@ -402,7 +403,7 @@ public abstract class Node<T extends Node<T>> {
         var cachedTokens = usage.getPromptTokensDetails() != null
                 ? usage.getPromptTokensDetails().cachedTokens : 0;
         var cost = LLMModelContextRegistry.getInstance().estimateCostUsd(
-                model, usage.getPromptTokens(), usage.getCompletionTokens(), cachedTokens);
+                model, usage.getPromptTokens(), usage.getCompletionTokens(), cachedTokens, Instant.now());
         if (cost != null) this.currentCostUsd += cost;
     }
 

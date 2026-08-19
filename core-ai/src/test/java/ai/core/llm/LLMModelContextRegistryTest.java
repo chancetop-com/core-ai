@@ -3,6 +3,8 @@ package ai.core.llm;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -89,5 +91,34 @@ class LLMModelContextRegistryTest {
 
         assertNotNull(cost);
         assertEquals(0.004, cost, 0.0000001);
+    }
+
+    @Test
+    void testEstimateCostUsdDeepSeekOffPeakUsesBasePrice() {
+        // 2026-08-18T12:00:00Z = Beijing 20:00, off-peak
+        var cost = registry.estimateCostUsd("deepseek-v4-pro", 1_000_000, 0, 0, Instant.parse("2026-08-18T12:00:00Z"));
+
+        assertNotNull(cost);
+        assertEquals(6.521739e-07 * 1_000_000, cost, 1e-9);
+    }
+
+    @Test
+    void testEstimateCostUsdDeepSeekPeakAppliesMultiplier() {
+        // 2026-08-18T02:00:00Z = Beijing 10:00, peak hour
+        var cost = registry.estimateCostUsd("deepseek-v4-pro", 1_000_000, 0, 0, Instant.parse("2026-08-18T02:00:00Z"));
+
+        assertNotNull(cost);
+        assertEquals(6.521739e-07 * 1_000_000 * 2, cost, 1e-9);
+    }
+
+    @Test
+    void testIsPeakHourBoundaries() {
+        assertTrue(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T01:00:00Z")));   // Beijing 09:00
+        assertTrue(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T03:59:59Z")));   // Beijing 11:59
+        assertFalse(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T04:00:00Z")));  // Beijing 12:00
+        assertTrue(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T06:00:00Z")));   // Beijing 14:00
+        assertTrue(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T09:59:59Z")));   // Beijing 17:59
+        assertFalse(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T10:00:00Z")));  // Beijing 18:00
+        assertFalse(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T12:00:00Z")));  // Beijing 20:00
     }
 }
