@@ -4,6 +4,7 @@ import ai.core.server.apiuser.PermissionService;
 import ai.core.server.domain.User;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
+import core.framework.internal.web.session.ReadOnlySession;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.UnauthorizedException;
@@ -94,7 +95,12 @@ public class SessionIdentity {
     private UserIdentity refreshIfExpired(UserIdentity identity) {
         if (identity.expiredAt != null && identity.expiredAt.isBefore(ZonedDateTime.now())) {
             var refreshed = buildIdentity(identity.userId);
-            webContext.request().session().set(USER_IDENTITY, JsonUtil.toJson(refreshed));
+            var session = webContext.request().session();
+            // SSE/websocket requests expose a read-only session (no Set-Cookie possible after headers are sent),
+            // so the refreshed identity is served for this request only and persisted on the next regular HTTP request
+            if (!(session instanceof ReadOnlySession)) {
+                session.set(USER_IDENTITY, JsonUtil.toJson(refreshed));
+            }
             webContext.put(IDENTITY_CONTEXT_KEY, refreshed);
             return refreshed;
         }
