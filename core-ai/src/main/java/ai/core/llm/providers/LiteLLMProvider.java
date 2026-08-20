@@ -287,11 +287,6 @@ public class LiteLLMProvider extends LLMProvider {
                 if ("[DONE]".equals(data)) {
                     break;
                 }
-                if (data != null && data.contains("\"error\"")) {
-                    // OpenAI-style error event forwarded by the server-side proxy (upstream 4xx):
-                    // surface the real failure instead of a misleading "no data" fallback
-                    throw upstreamError(data);
-                }
 
                 var chunk = JsonUtil.fromJson(CompletionResponse.class, repairInvalidJsonEscapes(data));
                 if (chunk.usage != null && response != null) {
