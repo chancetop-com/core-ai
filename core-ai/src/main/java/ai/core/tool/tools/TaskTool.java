@@ -12,6 +12,7 @@ import ai.core.defaultagents.DefaultGeneralAgent;
 import ai.core.defaultagents.DeepResearchAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.ReasoningEffort;
+import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
 import ai.core.prompt.PromptInject;
 import ai.core.tool.ToolCall;
@@ -89,6 +90,18 @@ public class TaskTool extends ToolCall {
         return new Builder();
     }
 
+    private static String extractLastAssistantText(Agent agent) {
+        var messages = agent.getMessages();
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            var message = messages.get(i);
+            if (message.role == RoleType.ASSISTANT) {
+                var text = message.getTextContent();
+                return text != null ? text : "";
+            }
+        }
+        return "";
+    }
+
     @Override
     public Tool toTool(ExecutionContext context) {
         if (context != null && context.getAgentProfileRegistry() != null) {
@@ -132,15 +145,14 @@ public class TaskTool extends ToolCall {
                 var model = resolveModel(subagentType, context);
                 var handle = taskManager.submit(taskId, () -> {
                     subAgent.run(prompt, subContext);
-                    var lastContent = subAgent.getMessages().getLast().content;
-                    return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
+                    return extractLastAssistantText(subAgent);
                 }, context.getCancellationToken());
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), subContext));
                 return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, subagentType, model))
                         .withDuration(System.currentTimeMillis() - startTime);
             } else {
                 subAgent.run(prompt, subContext);
-                return ToolCallResult.completed(subAgent.getMessages().getLast().content.getFirst().text)
+                return ToolCallResult.completed(extractLastAssistantText(subAgent))
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 

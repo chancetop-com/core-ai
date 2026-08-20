@@ -4,6 +4,7 @@ import ai.core.agent.CancellationToken;
 import ai.core.agent.Task;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.TaskStatusEvent;
+import ai.core.sandbox.SandboxConstants;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.subagent.SubagentOutputSink;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
@@ -25,6 +26,8 @@ import java.util.function.Supplier;
 public class BackgroundTaskManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BackgroundTaskManager.class);
+
+    private static final int MAX_NOTIFICATION_RESULT_LENGTH = 30 * 1024;
 
     private static TaskRunResult runAgentWithSink(Supplier<String> agentRunner, SubagentOutputSink sink, String taskId) {
         String status;
@@ -152,10 +155,18 @@ public class BackgroundTaskManager {
 
     private String buildNotificationXml(String taskId, String status, String outputRef, String result, String error) {
         var resultXml = "completed".equals(status)
-                ? "<result>" + result + "</result>"
-                : "<error>" + error + "</error>";
+                ? "<result>" + truncateResult(result, outputRef) + "</result>"
+                : "<error>" + truncateResult(error, outputRef) + "</error>";
         var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
         return "<task-notification>%n<task-id>%s</task-id>%n<status>%s</status>%n%s%s%n</task-notification>%n".formatted(taskId, status, outputRefXml, resultXml);
+    }
+
+    private String truncateResult(String text, String outputRef) {
+        if (text == null || text.length() <= MAX_NOTIFICATION_RESULT_LENGTH) return text;
+        var truncated = text.substring(0, MAX_NOTIFICATION_RESULT_LENGTH);
+        var suffix = "\n\n[Output truncated: showing first " + MAX_NOTIFICATION_RESULT_LENGTH
+                + " characters. Full output is available at: " + outputRef + "]";
+        return truncated + suffix;
     }
 
     public record TaskHandle(String outputRef, Future<?> future) {

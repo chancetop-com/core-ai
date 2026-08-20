@@ -1,6 +1,7 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
+import ai.core.agent.CancellationToken;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.SubAgentConfig;
 import ai.core.agent.profile.AgentProfile;
@@ -23,12 +24,15 @@ import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.MockLLMProvider;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallParameters;
+import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.subagent.SubagentOutputSink;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.AsyncTaskOutputTool;
+import ai.core.tool.tools.ShellCommandTool;
 import ai.core.tool.tools.TaskTool;
 import org.junit.jupiter.api.Test;
 
@@ -75,6 +79,13 @@ class AsyncTaskFlowTest {
     private static CompletionResponse asyncTaskOutputCancelCallResponse(String taskId) {
         String json = """
                 {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","name":"assistant","tool_calls":[{"id":"call_cancel_1","type":"function","function":{"name":"async_task_output","arguments":"{\\"action\\":\\"cancel\\",\\"task_id\\":\\"%s\\"}"},"index":null}]}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}""".formatted(taskId);
+        return ai.core.utils.JsonUtil.fromJson(CompletionResponse.class, json);
+    }
+
+    private static CompletionResponse shellToolCallResponse() {
+        String json = """
+                {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","name":"assistant","tool_calls":[{"id":"call_shell_1","type":"function","function":{"name":"run_bash_command","arguments":"{\\"command\\":\\"ssh -L 16379:localhost:6379 host\\"}"},"index":null}]}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
+                """;
         return ai.core.utils.JsonUtil.fromJson(CompletionResponse.class, json);
     }
 
@@ -339,6 +350,52 @@ class AsyncTaskFlowTest {
         }
     }
 
+    /**
+     * Reproduces the reported bug: when the background subagent's run ends with the
+     * last message being a TOOL message (here the run is cancelled while the tool is
+     * blocked), the output file is written with the tool's raw output ("process logs")
+     * instead of the agent's final answer (Last.content).
+     */
+    @Test
+    void cancelledDuringToolWritesToolOutputInsteadOfLastContent() throws Exception {
+        var provider = new StreamingMockLLMProvider();
+        provider.addResponse(taskToolCallResponse("bg-logs"));          // main: launch task
+        provider.addResponse(simpleResponse("Launched in background")); // main: final text
+        provider.addResponse(simpleResponse("done"));                   // main: notification turn
+
+        var subProvider = new StreamingMockLLMProvider();
+        var written = new CopyOnWriteArrayList<String>();
+        var shellTool = new BlockingShellTool();
+        subProvider.addResponse(shellToolCallResponse());               // subagent: call run_bash_command
+
+        var agent = buildAgent(provider, new CapturingSinkFactory(written), testAgentProfile("You are a test agent", List.of(ShellCommandTool.TOOL_NAME)),
+                List.of(shellTool), subProvider);
+        var session = new InProcessAgentSession("async-test-session-logs", agent, true, new InMemoryToolPermissionStore());
+        var listener = new RecordingListener();
+        session.onEvent(listener);
+
+        try {
+            session.sendMessage("launch a background task");
+            assertTrue(listener.firstTurn.await(10, TimeUnit.SECONDS), "launch turn must complete");
+            assertTrue(shellTool.started.await(10, TimeUnit.SECONDS), "subagent tool must start");
+
+            // Cancel the subagent's run while the tool is still executing; the tool then
+            // completes and its result is the last message appended to the subagent.
+            shellTool.subToken.cancel();
+            shellTool.release.countDown();
+
+            var deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (written.isEmpty() && System.nanoTime() < deadline) {
+                Thread.sleep(50);
+            }
+            assertFalse(written.isEmpty(), "sink must be written");
+            assertFalse(written.getLast().contains("Forwarding from"),
+                    "the file must not contain the raw tool output (process logs), actual: " + written.getLast());
+        } finally {
+            session.close();
+        }
+    }
+
     /** Records events like the CLI listener does. */
     private static final class RecordingListener implements AgentEventListener {
         private final List<AgentEvent> events = new CopyOnWriteArrayList<>();
@@ -450,6 +507,77 @@ class AsyncTaskFlowTest {
         @Override
         public SubagentOutputSink create(String taskId) {
             return new InMemorySink(taskId);
+        }
+    }
+
+    /** Sink that records the content written by the background task, like FileSubagentOutputSink. */
+    private static final class CapturingSink implements SubagentOutputSink {
+        private final List<String> written;
+
+        private CapturingSink(List<String> written) {
+            this.written = written;
+        }
+
+        @Override
+        public void write(String content) {
+            written.add(content);
+        }
+
+        @Override
+        public String getReference() {
+            return "capture://";
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    private static final class CapturingSinkFactory implements SubagentOutputSinkFactory {
+        private final List<String> written;
+
+        private CapturingSinkFactory(List<String> written) {
+            this.written = written;
+        }
+
+        @Override
+        public SubagentOutputSink create(String taskId) {
+            return new CapturingSink(written);
+        }
+    }
+
+    /**
+     * Simulates the run_bash_command tool: blocks until released, then returns a shell
+     * output snippet that looks like process logs. Exposes the subagent's cancellation
+     * token so the test can interrupt the run while the tool is still executing.
+     */
+    private static final class BlockingShellTool extends ToolCall {
+        final CountDownLatch started = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+        volatile CancellationToken subToken;
+
+        BlockingShellTool() {
+            setName("run_bash_command");
+            setParameters(ToolCallParameters.of(
+                    ToolCallParameters.ParamSpec.of(String.class, "command", "The bash command").required()
+            ));
+        }
+
+        @Override
+        public ToolCallResult execute(String arguments, ExecutionContext context) {
+            subToken = context.getCancellationToken();
+            started.countDown();
+            try {
+                release.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return ToolCallResult.completed("Forwarding from 127.0.0.1:16379 -> 6379");
+        }
+
+        @Override
+        public ToolCallResult execute(String arguments) {
+            throw new UnsupportedOperationException();
         }
     }
 
