@@ -26,5 +26,8 @@ public class BuiltinGroupToolsResponse {
 
         @Property(name = "input_schema")
         public String inputSchema;
+
+        @Property(name = "group")
+        public String group;
     }
 }

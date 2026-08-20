@@ -51,17 +51,23 @@ public class LLMCallExecutor {
     GatewayRoutingEngine gatewayRoutingEngine;
 
     public Result execute(AgentDefinition definition, String input) {
-        return execute(definition, input, null);
+        return execute(definition, input, null, null);
     }
 
     public Result execute(AgentDefinition definition, String input, List<LLMCallRequest.Attachment> attachments) {
+        return execute(definition, input, attachments, null);
+    }
+
+    // timeoutOverrideSeconds: explicit per-call ceiling for long-running analyses (reasoning models
+    // can stay silent for minutes while thinking; the default 600s may not survive intermediate layers)
+    public Result execute(AgentDefinition definition, String input, List<LLMCallRequest.Attachment> attachments, Integer timeoutOverrideSeconds) {
         var config = definition.publishedConfig;
         var systemPrompt = resolveSystemPrompt(config, definition);
         var model = resolveModel(config, definition.model);
         var multiModalModel = resolveMultiModalModel(config, definition.multiModalModel);
         var temperature = resolveTemperature(config, definition.temperature);
         var reasoningEffort = resolveThinkingEffort(config, definition);
-        var timeoutSeconds = resolveTimeout(config, definition);
+        var timeoutSeconds = timeoutOverrideSeconds != null ? timeoutOverrideSeconds : resolveTimeout(config, definition);
         var responseSchemaJson = config != null ? config.responseSchema : definition.responseSchema;
 
         ResponseFormat responseFormat = null;

@@ -285,7 +285,10 @@ class ToolRefResolutionService {
         var dynamicTools = dynamicToolSets.get(ref.id);
         if (dynamicTools != null) {
             registry.registerProvider(new ListToolProvider("dynamic:" + ref.id, dynamicTools));
+            return;
         }
+        var matched = ToolRefResolver.resolveDynamicGroupTool(ref.id, dynamicToolSets);
+        if (!matched.isEmpty()) registry.registerProvider(new ListToolProvider("dynamic:" + ref.id, matched));
     }
 
     private void registerMcpProvider(ToolRegistry registry, ToolRef ref,
@@ -365,7 +368,11 @@ class ToolRefResolutionService {
         if (llmCallExecutor == null) {
             throw new IllegalStateException("LLM_CALL tool resolution requires LLMCallExecutor");
         }
-        var tool = LLMCallTool.create(definition, llmCallExecutor);
+        // the builtin project writers apply their structured output to the project instead of
+        // returning raw JSON (fallback = plain LLM_CALL tool when the project module is absent)
+        var tool = ai.core.server.project.ProjectWriterToolSupport.isProjectWriter(definitionId)
+            ? ai.core.server.project.ProjectWriterToolSupport.wrap(definitionId, definition, llmCallExecutor)
+            : LLMCallTool.create(definition, llmCallExecutor);
         registry.registerProvider(new ListToolProvider("llm-call:" + definitionId, List.of(tool)));
     }
 

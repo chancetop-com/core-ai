@@ -14,7 +14,9 @@ import ai.core.tool.ToolCallParameterType;
 import core.framework.inject.Inject;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Registers the {@code self-harness} builtin tool group. Each tool's
@@ -36,19 +38,21 @@ public class SelfHarnessTools {
     public void initialize() {
         var builder = new SelfHarnessToolBuilder(caller);
         var tools = new ArrayList<ToolCall>();
+        var groups = new LinkedHashMap<String, String>();
 
-        registerAgentTools(builder, tools);
-        registerSkillTools(builder, tools);
-        registerDatasetTools(builder, tools);
-        registerToolTools(builder, tools);
-        registerSessionTraceTools(builder, tools);
+        registerAgentTools(builder, tools, groups);
+        registerSkillTools(builder, tools, groups);
+        registerDatasetTools(builder, tools, groups);
+        registerToolTools(builder, tools, groups);
+        registerSessionTraceTools(builder, tools, groups);
+        registerProjectQueryTools(builder, tools, groups);
 
         toolRegistryService.registerBuiltinToolGroup(TOOL_ENTRY_ID, "Self Harness",
                 "Tools for managing agents, skills, datasets, tool registries, and inspecting session traces",
-                tools);
+                tools, groups);
     }
 
-    private void registerAgentTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
+    private void registerAgentTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
         tools.add(builder.build("list_agents", "List all agents with pagination and filtering.",
                 ListAgentsRequest.class, false));
         tools.add(builder.build("create_agent", "Create a new agent draft.",
@@ -59,9 +63,10 @@ public class SelfHarnessTools {
                 UpdateAgentRequest.class, true));
         tools.add(builder.buildWithPathParamOnly("publish_agent", "Publish an agent draft by ID.",
                 "id", "Agent ID"));
+        group("Agents", tools, groups);
     }
 
-    private void registerSkillTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
+    private void registerSkillTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
         tools.add(builder.build("list_skills", "List registered skills with filtering and search.",
                 ListSkillsRequest.class, false));
         tools.add(builder.buildWithPathParamOnly("get_skill", "Get skill detail by ID.",
@@ -72,9 +77,10 @@ public class SelfHarnessTools {
                 "id", "Skill ID"));
         tools.add(builder.buildWithPathParamOnly("download_skill", "Download skill content including all resources.",
                 "id", "Skill ID"));
+        group("Skills", tools, groups);
     }
 
-    private void registerDatasetTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
+    private void registerDatasetTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
         tools.add(builder.build("list_datasets", "List datasets with search and pagination.",
                 ListDatasetsRequest.class, false));
         tools.add(builder.buildWithPathParamOnly("get_dataset", "Get dataset detail by ID.",
@@ -87,14 +93,16 @@ public class SelfHarnessTools {
                         ToolCallParameter.builder().name("limit").description("Max records to return (default 100)").type(ToolCallParameterType.INTEGER).build(),
                         ToolCallParameter.builder().name("offset").description("Pagination offset").type(ToolCallParameterType.INTEGER).build()
                 )));
+        group("Datasets", tools, groups);
     }
 
-    private void registerToolTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
+    private void registerToolTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
         tools.add(builder.build("list_tools", "List tool registry entries, optionally filtered by category.",
                 ListToolsRequest.class, false));
+        group("Tools", tools, groups);
     }
 
-    private void registerSessionTraceTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
+    private void registerSessionTraceTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
         tools.add(builder.buildCustom("get_session_history",
                 "Get the full message history for a session, including content, thinking, tool calls, and trace IDs.",
                 List.of(
@@ -125,5 +133,74 @@ public class SelfHarnessTools {
                 List.of(
                         ToolCallParameter.builder().name("session_id").description("Session ID").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build()
                 )));
+        group("Sessions & Traces", tools, groups);
+    }
+
+    // ---- project material queries: combinable search conditions over the project's members,
+    // with subject attribution as a filter; scoped to the executing user via the execution context ----
+
+    private void registerProjectQueryTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
+        tools.add(builder.buildCustom("search_sessions",
+                "Search chat sessions of a project's member agents with combinable filters. project_id selects the project (owner-scoped); agent_ids narrows the members; since is an ISO-8601 timestamp; subject_id filters sessions attributed to that subject; attributed=true lists only attributed sessions, false only unattributed ones. Returns id/title/agent/time/message_count (max 20).",
+                List.of(
+                        string("project_id", "Project ID", Boolean.TRUE),
+                        list("agent_ids", "Member agent IDs (default: all members)"),
+                        string("since", "Only sessions with last_message_at after this ISO-8601 timestamp", null),
+                        string("subject_id", "Filter sessions attributed to this subject", null),
+                        bool("attributed", "true=only attributed, false=only unattributed, omitted=any", null)),
+                "searchSessions"));
+        tools.add(builder.buildCustom("search_runs",
+                "Search agent runs of a project's member agents with combinable filters (project_id, agent_ids, since, subject_id, attributed). Returns id/agent/status/input/output/time (max 20).",
+                List.of(
+                        string("project_id", "Project ID", Boolean.TRUE),
+                        list("agent_ids", "Member agent IDs (default: all members)"),
+                        string("since", "Only runs with started_at after this ISO-8601 timestamp", null),
+                        string("subject_id", "Filter runs attributed to this subject", null),
+                        bool("attributed", "true=only attributed, false=only unattributed, omitted=any", null)),
+                "searchRuns"));
+        tools.add(builder.buildCustom("search_workflow_runs",
+                "Search workflow runs of a project's member workflows with combinable filters (project_id, workflow_ids, since, subject_id, attributed). Returns id/workflow/status/input/time (max 20).",
+                List.of(
+                        string("project_id", "Project ID", Boolean.TRUE),
+                        list("workflow_ids", "Member workflow IDs (default: all members)"),
+                        string("since", "Only runs with started_at after this ISO-8601 timestamp", null),
+                        string("subject_id", "Filter runs attributed to this subject", null),
+                        bool("attributed", "true=only attributed, false=only unattributed, omitted=any", null)),
+                "searchWorkflowRuns"));
+        tools.add(builder.buildCustom("list_files",
+                "List the current user's files/artifacts (id, file_name, content_type, size, created_at), newest first.",
+                List.of(
+                        string("since", "Only files created after this ISO-8601 timestamp", null),
+                        string("content_type", "Filter by content type (e.g. text/html)", null),
+                        string("keyword", "Match file names containing this keyword", null),
+                        integer("limit", "Max results (default 20, max 50)", null)),
+                "listFiles"));
+        tools.add(builder.buildCustom("get_file_content",
+                "Read a file's content as text (HTML is converted to plain text, truncated). Only files owned by the current user are readable.",
+                List.of(
+                        string("file_id", "File ID", Boolean.TRUE)),
+                "getFileContent"));
+        group("Project Material", tools, groups);
+    }
+
+    /** Tags all tools added since the last group() call with the given subgroup label. */
+    private void group(String label, List<ToolCall> tools, Map<String, String> groups) {
+        for (var tool : tools) groups.putIfAbsent(tool.getName(), label);
+    }
+
+    private ToolCallParameter string(String name, String description, Boolean required) {
+        return ToolCallParameter.builder().name(name).description(description).type(ToolCallParameterType.STRING).required(required).build();
+    }
+
+    private ToolCallParameter bool(String name, String description, Boolean required) {
+        return ToolCallParameter.builder().name(name).description(description).type(ToolCallParameterType.BOOLEAN).required(required).build();
+    }
+
+    private ToolCallParameter integer(String name, String description, Boolean required) {
+        return ToolCallParameter.builder().name(name).description(description).type(ToolCallParameterType.INTEGER).required(required).build();
+    }
+
+    private ToolCallParameter list(String name, String description) {
+        return ToolCallParameter.builder().name(name).description(description).type(ToolCallParameterType.LIST).itemType(String.class).build();
     }
 }

@@ -9,6 +9,7 @@ import java.util.Objects;
  */
 public class ToolRef {
     private static final String MCP_TOOL_PREFIX = "mcp-tool:";
+    private static final String BUILTIN_PREFIX = "builtin:";
 
     /** Prefix of tool refs that wrap an LLM_CALL agent definition as a tool, e.g. "llm-call:{definitionId}". */
     public static final String LLM_CALL_PREFIX = "llm-call:";
@@ -28,6 +29,20 @@ public class ToolRef {
             return new McpToolId(remaining.substring(0, colonIdx), remaining.substring(colonIdx + 1));
         }
         return new McpToolId(source, remaining);
+    }
+
+    /**
+     * Parse an individual builtin group tool ref id of the form
+     * "builtin:{groupId}:{toolName}", e.g. "builtin:self-harness:list_agents".
+     * The group id may itself contain colons, so split on the LAST colon.
+     * Returns null when the id is not an individual builtin group tool ref.
+     */
+    public static BuiltinGroupToolId parseBuiltinGroupToolId(String id) {
+        if (id == null || !id.startsWith(BUILTIN_PREFIX)) return null;
+        var remaining = id.substring(BUILTIN_PREFIX.length());
+        var colonIdx = remaining.lastIndexOf(':');
+        if (colonIdx <= 0 || colonIdx == remaining.length() - 1) return null;
+        return new BuiltinGroupToolId(BUILTIN_PREFIX + remaining.substring(0, colonIdx), remaining.substring(colonIdx + 1));
     }
 
     public static ToolRef fromLegacyToolId(String toolId) {
@@ -70,7 +85,7 @@ public class ToolRef {
                 || id.startsWith("api-service:")
                 || id.startsWith("api-operation:")) {
             type = ToolSourceType.API;
-        } else if (id.startsWith("builtin-")) {
+        } else if (id.startsWith("builtin-") || id.startsWith("builtin:")) {
             type = ToolSourceType.BUILTIN;
         } else if (id.startsWith("mcp-tool:")) {
             type = ToolSourceType.MCP;
@@ -105,5 +120,9 @@ public class ToolRef {
 
     /** Parsed serverId and toolName of an individual MCP tool ref. */
     public record McpToolId(String serverId, String toolName) {
+    }
+
+    /** Parsed groupId and toolName of an individual builtin group tool ref. */
+    public record BuiltinGroupToolId(String groupId, String toolName) {
     }
 }

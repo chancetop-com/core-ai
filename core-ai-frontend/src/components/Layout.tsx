@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bell, Bot, Calendar, ChevronRight, Database, Files, FlaskConical, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bell, Bot, Calendar, ChevronRight, Database, Files, FlaskConical, FolderKanban, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -40,6 +40,7 @@ export default function Layout() {
       '/api-tools': 'API Tools',
       '/skills': 'Skills',
       '/datasets': 'Datasets',
+      '/projects': 'Projects',
       '/settings': 'Settings',
       '/notifications': 'Notifications',
       '/triggers': 'Triggers',
@@ -59,6 +60,9 @@ export default function Layout() {
       || (path.startsWith('/system-prompts/') ? 'System Prompt' : null)
       || (path.startsWith('/api-tools/') ? 'API Tool Detail' : null)
       || (path.startsWith('/datasets/') ? 'Dataset Detail' : null)
+      || (path.startsWith('/projects/') && path.endsWith('/playbook') ? 'Playbook' : null)
+      || (path.startsWith('/projects/') && path.includes('/subjects/') ? 'Subject Detail' : null)
+      || (path.startsWith('/projects/') ? 'Project Detail' : null)
       || (path.startsWith('/settings/') ? 'Settings' : null)
       || 'core-ai';
     document.title = `${title} - core-ai`;
@@ -74,6 +78,7 @@ export default function Layout() {
     if (to === '/api-tools') return pathname === '/api-tools' || pathname.startsWith('/api-tools/');
     if (to === '/skills') return pathname === '/skills' || pathname.startsWith('/skills/');
     if (to === '/datasets') return pathname === '/datasets' || pathname.startsWith('/datasets/');
+    if (to === '/projects') return pathname === '/projects' || pathname.startsWith('/projects/');
     if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
     if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
     if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule' || pathname === '/triggers/channels' || pathname === '/triggers/openclaw';
@@ -87,6 +92,7 @@ export default function Layout() {
       { to: '/for-you/artifacts', icon: Files, label: 'Artifacts', show: true, permission: 'dashboard.view' },
     ]},
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat, permission: 'chat.use' },
+    { to: '/projects', icon: FolderKanban, label: 'Projects', show: true, permission: 'project.view' },
     { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces, permission: 'trace.view' },
     { to: '/agents', icon: Bot, label: 'Agents', show: true, permission: 'agent.view' },
     { to: '/workflows', icon: Workflow, label: 'Workflows', show: true, permission: 'workflow.view' },

@@ -41,6 +41,8 @@ public class RoleRegistry {
                     PermissionCodes.APITOOL_VIEW, PermissionCodes.APITOOL_MANAGE,
                     PermissionCodes.SKILL_VIEW, PermissionCodes.SKILL_MANAGE,
                     PermissionCodes.DATASET_VIEW, PermissionCodes.DATASET_MANAGE,
+                    // projects are shared business containers: regular members can view and drive them
+                    PermissionCodes.PROJECT_VIEW, PermissionCodes.PROJECT_MANAGE,
                     PermissionCodes.EXPERIMENT_VIEW, PermissionCodes.NOTIFICATION_VIEW),
             ROLE_MEMBER, List.of(
                     PermissionCodes.DASHBOARD_VIEW, PermissionCodes.CHAT_USE, PermissionCodes.NOTIFICATION_VIEW));

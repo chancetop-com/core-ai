@@ -1093,9 +1093,23 @@ export interface ProjectSubject {
   name: string;
   description?: string;
   external_link?: string;
+  status?: string;
+  attributed_count?: number;
+  profile?: string;
   analyzed_at?: string;
+  report_file_id?: string;
+  report_share_token?: string;
+  report_generated_at?: string;
+  report_error?: string;
+  report_run_id?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface AnalyzeProjectResponse {
+  attributed?: number;
+  analyzed?: number;
+  updated?: number;
 }
 
 export interface ProjectSubjectStatus {
@@ -1148,6 +1162,7 @@ export interface ProjectView {
   report_sources: ProjectReportSource[];
   status: string;
   last_analyzed_at?: string;
+  attribution_backfilled_at?: string;
   analysis_status?: string;
   analysis_error?: string;
   subjects: ProjectSubject[];
@@ -1158,6 +1173,21 @@ export interface ProjectView {
   created_at: string;
   updated_at: string;
   archived_at?: string;
+}
+
+export interface ProjectEvent {
+  id: string;
+  subject_id?: string;
+  type: string;   // phase | summary | kpi | action_item | note | subject_status
+  key?: string;
+  value?: string;
+  meta?: string;
+  at: string;
+  created_by?: string;
+}
+
+export interface ListProjectEventsResponse {
+  events: ProjectEvent[];
 }
 
 export interface ProjectExecution {
@@ -1222,6 +1252,7 @@ export interface ProjectStatsView {
   trace_count?: number;
   total_tokens?: number;
   total_cost_usd?: number;
+  computed_at?: string;
   by_agent: ProjectAgentStat[];
   by_subject: ProjectSubjectStat[];
 }
@@ -1735,7 +1766,18 @@ export const api = {
       return request<ListProjectReportsResponse>(`/api/projects/${id}/reports${qs ? `?${qs}` : ''}`);
     },
     analyze: (id: string, subjectId?: string) =>
-      request<void>(`/api/projects/${id}/analyze`, { method: 'POST', body: JSON.stringify({ subject_id: subjectId }) }),
+      request<AnalyzeProjectResponse>(`/api/projects/${id}/analyze`, { method: 'POST', body: JSON.stringify({ subject_id: subjectId }) }),
+    report: (id: string, subjectId: string) =>
+      request<void>(`/api/projects/${id}/subjects/${subjectId}/report`, { method: 'POST' }),
+    resetAnalysis: (id: string, subjectId: string) =>
+      request<void>(`/api/projects/${id}/subjects/${subjectId}/reset-analysis`, { method: 'POST' }),
+    events: (id: string, subjectId?: string, type?: string) => {
+      const params = new URLSearchParams();
+      if (subjectId) params.set('subject_id', subjectId);
+      if (type) params.set('type', type);
+      const qs = params.toString();
+      return request<ListProjectEventsResponse>(`/api/projects/${id}/events${qs ? `?${qs}` : ''}`);
+    },
     resetBuiltinAgents: () =>
       request<void>('/api/projects/builtin-agents/reset', { method: 'POST' }),
     subjects: (id: string, offset = 0, limit = 12, query?: string) => {
@@ -1745,7 +1787,7 @@ export const api = {
     },
     createSubject: (id: string, data: { name: string; description?: string; external_link?: string }) =>
       request<CreateSubjectResponse>(`/api/projects/${id}/subjects`, { method: 'POST', body: JSON.stringify(data) }),
-    updateSubject: (id: string, subjectId: string, data: { name?: string; description?: string; external_link?: string }) =>
+    updateSubject: (id: string, subjectId: string, data: { name?: string; description?: string; external_link?: string; status?: string }) =>
       request<void>(`/api/projects/${id}/subjects/${subjectId}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteSubject: (id: string, subjectId: string) =>
       request<void>(`/api/projects/${id}/subjects/${subjectId}`, { method: 'DELETE' }),

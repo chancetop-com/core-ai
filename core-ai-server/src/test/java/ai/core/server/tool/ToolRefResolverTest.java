@@ -10,6 +10,8 @@ import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
 import ai.core.server.llmcall.LLMCallTool;
 import ai.core.server.run.LLMCallExecutor;
+import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -140,5 +142,36 @@ class ToolRefResolverTest {
 
         assertThrows(IllegalArgumentException.class, () -> resolver.resolve(List.of(ref)));
         verifyNoInteractions(service);
+    }
+
+    @Test
+    void resolvesIndividualToolInsideDynamicBuiltinGroup() {
+        var resolver = new ToolRefResolver(Map.of(), null,
+                Map.of("builtin:self-harness", List.of(tool("list_agents"), tool("get_trace"))), null, null, null);
+
+        var resolved = resolver.resolve(List.of(ToolRef.of("builtin:self-harness:get_trace", ToolSourceType.BUILTIN)));
+
+        assertEquals(1, resolved.size());
+        assertEquals("get_trace", resolved.getFirst().getName());
+    }
+
+    @Test
+    void unknownIndividualBuiltinGroupToolResolvesNothing() {
+        var resolver = new ToolRefResolver(Map.of(), null,
+                Map.of("builtin:self-harness", List.of(tool("list_agents"))), null, null, null);
+
+        assertTrue(resolver.resolve(List.of(ToolRef.of("builtin:self-harness:missing", ToolSourceType.BUILTIN))).isEmpty());
+    }
+
+    private ToolCall tool(String name) {
+        var tool = new ToolCall() {
+            @Override
+            public ToolCallResult execute(String arguments) {
+                return null;
+            }
+        };
+        tool.setName(name);
+        tool.setParameters(List.of());
+        return tool;
     }
 }

@@ -8,11 +8,14 @@ import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
 import ai.core.server.run.LLMCallExecutor;
+import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -97,16 +100,46 @@ class ToolRefResolutionServiceTest {
         verifyNoInteractions(definitions);
     }
 
+    @Test
+    void resolvesIndividualToolInsideDynamicBuiltinGroupProvider() {
+        var definitions = mock(AgentDefinitionService.class);
+        var service = service(definitions, Map.of(),
+                Map.of("builtin:self-harness", List.of(tool("list_agents"), tool("get_trace"))));
+
+        var registry = service.resolveToToolRegistry(
+                List.of(ToolRef.of("builtin:self-harness:list_agents", ToolSourceType.BUILTIN)), null);
+
+        assertEquals(List.of("list_agents"), registry.getToolCalls().stream().map(ToolCall::getName).toList());
+    }
+
     private ToolRefResolutionService service(AgentDefinitionService definitions) {
-        return service(definitions, Map.of());
+        return service(definitions, Map.of(), Map.of());
     }
 
     private ToolRefResolutionService service(AgentDefinitionService definitions,
                                              Map<String, ToolRegistryEntry> registry) {
+        return service(definitions, registry, Map.of());
+    }
+
+    private ToolRefResolutionService service(AgentDefinitionService definitions,
+                                             Map<String, ToolRegistryEntry> registry,
+                                             Map<String, List<ToolCall>> dynamicToolSets) {
         var dependencies = new McpResolutionDependencies(null, null, null);
-        var service = new ToolRefResolutionService(registry, Map.of(), dependencies, null, null, null);
+        var service = new ToolRefResolutionService(registry, dynamicToolSets, dependencies, null, null, null);
         service.setAgentDefinitionService(definitions);
         service.setLlmCallExecutor(mock(LLMCallExecutor.class));
         return service;
+    }
+
+    private ToolCall tool(String name) {
+        var tool = new ToolCall() {
+            @Override
+            public ToolCallResult execute(String arguments) {
+                return null;
+            }
+        };
+        tool.setName(name);
+        tool.setParameters(List.of());
+        return tool;
     }
 }

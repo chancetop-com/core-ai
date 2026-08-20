@@ -100,6 +100,42 @@ public class SelfHarnessToolBuilder {
                 .build();
     }
 
+    /**
+     * Builds a tool backed by a dedicated dispatcher method whose signature mirrors the parameter
+     * list plus a trailing {@code ExecutionContext} (auto-injected by the Function executor), so the
+     * implementation can scope data to the executing user.
+     */
+    public ToolCall buildCustom(String name, String description, List<ToolCallParameter> params, String methodName) {
+        return Function.builder()
+                .namespace("self-harness")
+                .sourceType("self-harness")
+                .name(name)
+                .description(description)
+                .object(caller)
+                .method(findMethod(methodName, params))
+                .parameters(params)
+                .build();
+    }
+
+    private Method findMethod(String methodName, List<ToolCallParameter> params) {
+        var types = new Class<?>[params.size() + 1];
+        for (var i = 0; i < params.size(); i++) {
+            types[i] = javaType(params.get(i));
+        }
+        types[params.size()] = ai.core.agent.ExecutionContext.class;
+        try {
+            return SelfHarnessApiCaller.class.getMethod(methodName, types);
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException("self-harness method not found: " + methodName, e);
+        }
+    }
+
+    private Class<?> javaType(ToolCallParameter param) {
+        var type = param.getType().getType();
+        if (type == null) return java.util.Map.class;
+        return type;
+    }
+
     // ---- parameter derivation from annotations ----
 
     private List<ToolCallParameter> buildParameters(Class<?> requestType, boolean hasPathParamId) {

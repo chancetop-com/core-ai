@@ -41,6 +41,19 @@ public class ToolRefResolver {
         return authoritativeType != null ? authoritativeType : toolRef.type;
     }
 
+    /**
+     * Resolves an individual tool inside a dynamically registered builtin group,
+     * e.g. "builtin:self-harness:list_agents". Returns an empty list when the id
+     * is not an individual group tool ref or when the group or tool is unknown.
+     */
+    static List<ToolCall> resolveDynamicGroupTool(String id, Map<String, List<ToolCall>> dynamicToolSets) {
+        var parsed = ToolRef.parseBuiltinGroupToolId(id);
+        if (parsed == null) return List.of();
+        var groupTools = dynamicToolSets.get(parsed.groupId());
+        if (groupTools == null) return List.of();
+        return groupTools.stream().filter(tool -> parsed.toolName().equals(tool.getName())).toList();
+    }
+
     private final Map<String, ToolRegistryEntry> toolRegistry;
     private final InternalApiToolLoader apiToolLoader;
     private final Map<String, List<ToolCall>> dynamicToolSets;
@@ -168,7 +181,12 @@ public class ToolRefResolver {
         }
         // fallback for dynamically registered builtin tool sets
         var dynamicTools = dynamicToolSets.get(toolRef.id);
-        if (dynamicTools != null) result.addAll(dynamicTools);
+        if (dynamicTools != null) {
+            result.addAll(dynamicTools);
+            return;
+        }
+        // individual tool inside a dynamic builtin group, e.g. "builtin:self-harness:list_agents"
+        result.addAll(resolveDynamicGroupTool(toolRef.id, dynamicToolSets));
     }
 
     private ToolRegistryEntry lookupBuiltinEntry(String id) {

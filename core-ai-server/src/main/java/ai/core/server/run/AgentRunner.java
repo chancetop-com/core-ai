@@ -161,6 +161,15 @@ public class AgentRunner {
         return run(new RunParams(definition, input, trigger, callerUserId, null, null, null, null, null));
     }
 
+    // run attributed to the caller user with runtime variables injected into tool arguments
+    // (used by the project agent: project_id is auto-injected into every tool call)
+    public String runAs(AgentDefinition definition, String input, TriggerType trigger, String callerUserId, Map<String, String> runtimeVariables) {
+        if (callerUserId == null || callerUserId.isBlank()) {
+            throw new IllegalArgumentException("caller user id is required");
+        }
+        return run(new RunParams(definition, input, trigger, callerUserId, null, runtimeVariables, null, null, null));
+    }
+
     private void executeAsync(ExecuteAsyncParams params) {
         try {
             if (params.staged && params.sandbox != null) {

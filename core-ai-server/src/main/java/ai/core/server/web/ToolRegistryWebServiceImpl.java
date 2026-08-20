@@ -159,7 +159,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     }
 
     @Override
-    @PermissionsRequired(PermissionCodes.TOOL_VIEW)
+    @PermissionsBypass
     public BuiltinGroupToolsResponse listBuiltinGroupTools(String id) {
         var entity = toolRegistryService.getTool(id);
         var tools = toolRegistryService.listBuiltinGroupTools(id);
@@ -171,6 +171,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
             info.name = t.name();
             info.description = t.description();
             info.inputSchema = t.inputSchema();
+            info.group = toolRegistryService.builtinGroupToolGroup(id, t.name());
             return info;
         }).toList();
         return response;

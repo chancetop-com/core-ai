@@ -38,6 +38,10 @@ public class LoadedToolRefNames {
         if (mcpTool != null && mcpTool.toolName() != null && !mcpTool.toolName().isBlank()) {
             return mcpTool.toolName();
         }
+        var builtinGroupTool = ToolRef.parseBuiltinGroupToolId(ref.id);
+        if (builtinGroupTool != null && !builtinGroupTool.toolName().isBlank()) {
+            return builtinGroupTool.toolName();
+        }
         if (ref.id.startsWith("api-operation:")) return suffixAfterLastColon(ref.id);
         if (ref.id.startsWith("api-service:")) return ref.id.substring("api-service:".length());
         if (ref.id.startsWith("api-app:")) return ref.id.substring("api-app:".length());

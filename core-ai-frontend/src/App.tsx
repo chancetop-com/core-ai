@@ -46,6 +46,10 @@ const MarketplaceRepoDetail = lazy(() => import('./pages/skills/MarketplaceRepoD
 const DatasetList = lazy(() => import('./pages/datasets/DatasetList'));
 const DatasetEditor = lazy(() => import('./pages/datasets/DatasetEditor'));
 const DatasetRecords = lazy(() => import('./pages/datasets/DatasetRecords'));
+const ProjectList = lazy(() => import('./pages/projects/ProjectList'));
+const ProjectDetail = lazy(() => import('./pages/projects/ProjectDetail'));
+const SubjectDetail = lazy(() => import('./pages/projects/SubjectDetail'));
+const PlaybookPage = lazy(() => import('./pages/projects/PlaybookPage'));
 const TriggersWebhook = lazy(() => import('./pages/triggers/TriggersWebhook'));
 const Channels = lazy(() => import('./pages/channels/Channels'));
 const CostAlerts = lazy(() => import('./pages/cost-alerts/CostAlerts'));
@@ -189,6 +193,10 @@ export default function App() {
                     <Route path="/datasets" element={<RequirePermission permission="dataset.view"><DatasetList /></RequirePermission>} />
                     <Route path="/datasets/:id" element={<RequirePermission permission="dataset.view"><DatasetEditor /></RequirePermission>} />
                     <Route path="/datasets/:id/records" element={<RequirePermission permission="dataset.view"><DatasetRecords /></RequirePermission>} />
+                    <Route path="/projects" element={<RequirePermission permission="project.view"><ProjectList /></RequirePermission>} />
+                    <Route path="/projects/:id/subjects/:subjectId" element={<RequirePermission permission="project.view"><SubjectDetail /></RequirePermission>} />
+                    <Route path="/projects/:id/playbook" element={<RequirePermission permission="project.view"><PlaybookPage /></RequirePermission>} />
+                    <Route path="/projects/:id" element={<RequirePermission permission="project.view"><ProjectDetail /></RequirePermission>} />
                     <Route path="/settings" element={<SettingsPage />}>
                       <Route path="api-keys" element={<ApiKeysPage />} />
                       <Route path="gateway" element={<RequirePermission permission="gateway.manage"><GatewayProvidersPage /></RequirePermission>} />

@@ -30,6 +30,12 @@ import ai.core.server.domain.GeminiFile;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.Notification;
+import ai.core.server.domain.Project;
+import ai.core.server.domain.ProjectReportDraft;
+import ai.core.server.domain.ProjectStatsEntity;
+import ai.core.server.domain.ProjectSubject;
+import ai.core.server.domain.ProjectSubjectAttribution;
+import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.MediaJob;
@@ -125,6 +131,9 @@ public class ServerApp extends App {
         load(new MessagingRuntimeModule());
         load(new ChannelModule());
         load(new WorkflowModule());
+        // ProjectModule loads last: the analysis pipeline injects AgentRunner (AgentRunnerModule)
+        // and ToolRegistryService (ToolRegistryModule); core-ng bind() resolves dependencies eagerly.
+        load(new ProjectModule());
     }
 
     private void loadTransportModules() {
@@ -156,6 +165,13 @@ public class ServerApp extends App {
 
         mongo.collection(Dataset.class);
         mongo.collection(DatasetRecord.class);
+
+        mongo.collection(Project.class);
+        mongo.collection(ProjectSubject.class);
+        mongo.collection(ProjectSubjectAttribution.class);
+        mongo.collection(ProjectSubjectEvent.class);
+        mongo.collection(ProjectReportDraft.class);
+        mongo.collection(ProjectStatsEntity.class);
 
         mongo.collection(UserReport.class);
         mongo.collection(UserTodo.class);

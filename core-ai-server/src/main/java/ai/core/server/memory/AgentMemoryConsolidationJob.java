@@ -42,7 +42,6 @@ import java.util.stream.Collectors;
 
 /**
  * V2 memory consolidation: append-only extraction, no REFINE/MERGE.
- * <p>
  * Key changes from V1:
  * <ul>
  *   <li>Layer 2 (methods): extracted patterns are appended, never merged/refined.</li>
@@ -69,22 +68,16 @@ public class AgentMemoryConsolidationJob implements Job {
 
     @Inject
     LLMProviders llmProviders;
-
     @Inject
     MongoCollection<Trace> traceCollection;
-
     @Inject
     MongoCollection<ChatMessage> chatMessageCollection;
-
     @Inject
     MongoCollection<Span> spanCollection;
-
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
-
     @Inject
     AgentMemoryService agentMemoryService;
-
     @Inject
     SystemSettingsService systemSettingsService;
 

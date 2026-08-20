@@ -1,8 +1,16 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.Notification;
+import ai.core.server.domain.Project;
+import ai.core.server.domain.ProjectSubject;
+import ai.core.server.domain.ProjectSubjectAttribution;
+import ai.core.server.domain.ProjectSubjectEvent;
+import ai.core.server.domain.SystemSettings;
+import ai.core.server.domain.User;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
@@ -12,6 +20,7 @@ import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.notification.NotificationEventPublisher;
 import ai.core.server.notification.NotificationService;
+import ai.core.server.project.ProjectService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.SessionRegistry;
 import ai.core.server.skill.SkillService;
@@ -46,6 +55,14 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(ToolRegistryEntry.class);      // injected by WorkflowPortService for MCP reference resolution
         mongo.collection(Notification.class);            // injected by NotificationService (bound below)
         mongo.collection(ChatSession.class);             // shared by SessionRegistry Mongo integration tests
+        mongo.collection(Project.class);                 // project feature: SessionRegistry/WorkflowRunService injections
+        mongo.collection(ProjectSubject.class);
+        mongo.collection(ProjectSubjectAttribution.class);
+        mongo.collection(ProjectSubjectEvent.class);
+        mongo.collection(User.class);                    // project feature: ProjectService/ProjectAccess permission checks
+        mongo.collection(SystemSettings.class);          // project feature: RoleRegistry permission resolution
+        mongo.collection(AgentRun.class);
+        mongo.collection(FileRecord.class);
         mongo.view(ToolRef.class);                        // partial updates persist loaded ToolRef values
 
         bindWorkflowServices();
@@ -87,6 +104,11 @@ public class WorkflowTestModule extends AbstractTestModule {
     }
 
     private void bindWorkflowServices() {
+        // ProjectService's permission deps must be bound BEFORE it (core-ng bind() resolves eagerly)
+        bind(ai.core.server.rbac.RoleRegistry.class);
+        bind(ai.core.server.apiuser.PermissionService.class);
+        bind(ai.core.server.project.ProjectStateService.class);   // injected by ProjectService
+        bind(ProjectService.class);          // SessionRegistry/WorkflowRunService inject it eagerly at bind() time
         bind(SessionRegistry.class);
         bind(WorkflowDefinitionService.class);
         bind(WorkflowAgentOptionService.class);

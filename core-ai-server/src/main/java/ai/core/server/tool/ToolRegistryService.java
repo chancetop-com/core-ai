@@ -43,6 +43,8 @@ public class ToolRegistryService {
 
     private final Map<String, ToolRegistryEntry> tools = new ConcurrentHashMap<>();
     private final Map<String, List<ToolCall>> dynamicToolSets = new ConcurrentHashMap<>();
+    // groupId -> (toolName -> subgroup label), for builtin groups that organize tools into subcategories
+    private final Map<String, Map<String, String>> builtinGroupToolGroups = new ConcurrentHashMap<>();
     private McpServerConnectionManager mcpConnectionManager;
     private ToolRefResolutionService resolutionService;
     private McpServerOperationService mcpOperationService;
@@ -270,6 +272,15 @@ public class ToolRegistryService {
      * dynamically configured for agents.
      */
     public void registerBuiltinToolGroup(String name, String category, String description, List<ToolCall> toolCalls) {
+        registerBuiltinToolGroup(name, category, description, toolCalls, Map.of());
+    }
+
+    /**
+     * Registers a builtin tool group with optional subgroup labels per tool, used by the UI
+     * to render tools grouped by subcategory (e.g. agent tools vs skill tools).
+     */
+    public void registerBuiltinToolGroup(String name, String category, String description, List<ToolCall> toolCalls,
+                                         Map<String, String> toolGroups) {
         dynamicToolSets.put(name, toolCalls);
         var registry = new ToolRegistryEntry();
         registry.id = name;
@@ -281,7 +292,14 @@ public class ToolRegistryService {
         registry.config = Map.of();
         registry.createdAt = ZonedDateTime.now();
         tools.put(registry.id, registry);
+        if (!toolGroups.isEmpty()) builtinGroupToolGroups.put(name, toolGroups);
         LOGGER.info("registered builtin tool group, name={}, category={}, tools={}", name, category, toolCalls.size());
+    }
+
+    /** Returns the subgroup label of a tool inside a builtin group, or null when the group has no subgroups. */
+    public String builtinGroupToolGroup(String groupId, String toolName) {
+        var groups = builtinGroupToolGroups.get(groupId);
+        return groups != null ? groups.get(toolName) : null;
     }
 
     // ── Delegates to ToolRefResolutionService ──────────────────────────────────
