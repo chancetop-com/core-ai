@@ -16,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
 * author cyril
@@ -42,16 +44,29 @@ public class LiteLLMProxyChannelListener implements ChannelListener<Object> {
 
         var rawChannel = (RawSseChannel<Object>) channel;
 
-        llmProviders.getProvider().completionStream(completionRequest, new StreamingCallback() {
-            @Override
-            public void onChunk(String chunk) {
-            }
+        try {
+            llmProviders.getProvider().completionStream(completionRequest, new StreamingCallback() {
+                @Override
+                public void onChunk(String chunk) {
+                }
 
-            @Override
-            public void onRawData(String sseData) {
-                rawChannel.sendRawData(sseData);
-            }
-        }, null, false);
+                @Override
+                public void onRawData(String sseData) {
+                    rawChannel.sendRawData(sseData);
+                }
+            }, null, false);
+        } catch (RuntimeException e) {
+            // The upstream rejected the request (e.g. 400 context-length exceeded). The SSE response is
+            // already committed as 200, so surface the real error to the client as an OpenAI-style error
+            // event instead of closing the stream silently — the client otherwise reports a misleading
+            // "LLM stream returned no data" and the actual failure never reaches its trace.
+            var errorBody = new LinkedHashMap<String, Object>();
+            errorBody.put("error", Map.of(
+                    "message", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(),
+                    "type", "invalid_request_error"));
+            rawChannel.sendRawData(JsonUtil.toJson(errorBody));
+            throw e;
+        }
         var userId = AuthContext.userId(webContext);
         LOGGER.info(userId);
         rawChannel.sendRawData("[DONE]");

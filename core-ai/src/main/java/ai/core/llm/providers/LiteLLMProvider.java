@@ -235,6 +235,9 @@ public class LiteLLMProvider extends LLMProvider {
             } catch (Exception e) {
                 if (callback.isCancelled()) break;
                 lastError = e;
+                // an explicit upstream error event (e.g. 400 context-length exceeded) is deterministic:
+                // retrying the same payload cannot succeed, so fail fast with the real message
+                if (e instanceof UpstreamErrorException) break;
                 if (attempt < MAX_RETRIES && !retrySleep()) break;
             }
         }
@@ -284,6 +287,11 @@ public class LiteLLMProvider extends LLMProvider {
                 if ("[DONE]".equals(data)) {
                     break;
                 }
+                if (data != null && data.contains("\"error\"")) {
+                    // OpenAI-style error event forwarded by the server-side proxy (upstream 4xx):
+                    // surface the real failure instead of a misleading "no data" fallback
+                    throw upstreamError(data);
+                }
 
                 var chunk = JsonUtil.fromJson(CompletionResponse.class, repairInvalidJsonEscapes(data));
                 if (chunk.usage != null && response != null) {
@@ -326,6 +334,18 @@ public class LiteLLMProvider extends LLMProvider {
             Thread.currentThread().interrupt();
             return false;
         }
+    }
+
+    private RuntimeException upstreamError(String data) {
+        try {
+            var body = JsonUtil.toMap(data);
+            if (body.get("error") instanceof Map<?, ?> error && error.get("message") != null) {
+                return new UpstreamErrorException(String.valueOf(error.get("message")));
+            }
+        } catch (RuntimeException ignored) {
+            // fall through to the generic error below
+        }
+        return new UpstreamErrorException("upstream returned an error: " + data);
     }
 
     private boolean hasPartialContent(CompletionResponse response) {
@@ -440,6 +460,14 @@ public class LiteLLMProvider extends LLMProvider {
                     existingToolCall.function.appendArguments(deltaToolCall.function.arguments);
                 }
             }
+        }
+    }
+
+    private static final class UpstreamErrorException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        private UpstreamErrorException(String message) {
+            super(message);
         }
     }
 }

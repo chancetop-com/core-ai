@@ -122,6 +122,11 @@ public class IngestService {
         // trace that has a model (backfilled from an LLM child span), mislabeling agent runs as LLM calls.
         trace.type = mapTraceType(rootSpan.type);
         trace.status = mapTraceStatus(rootSpan.status, rootSpan.attributes);
+        // CLI spans carry the failure text in output (no OTLP status message); mirror it into
+        // error_message so the trace detail/list surfaces the real error instead of a blank field.
+        if (trace.status == TraceStatus.ERROR && rootSpan.output != null) {
+            trace.errorMessage = rootSpan.output;
+        }
         trace.input = rootSpan.input;
         trace.output = rootSpan.output;
         trace.metadata = Map.of("service", request.serviceName != null ? request.serviceName : "unknown",
@@ -161,7 +166,13 @@ public class IngestService {
         // Use targeted $set updates instead of full document replace so concurrent $inc
         // operations on token/cost counters aren't overwritten with a stale snapshot.
         List<Bson> updates = new ArrayList<>();
-        updates.add(Updates.set("status", mapTraceStatus(rootSpan.status, rootSpan.attributes)));
+        var status = mapTraceStatus(rootSpan.status, rootSpan.attributes);
+        updates.add(Updates.set("status", status));
+        // CLI spans carry the failure text in output (no OTLP status message); mirror it into
+        // error_message so the trace detail/list surfaces the real error instead of a blank field.
+        if (status == TraceStatus.ERROR && rootSpan.output != null) {
+            updates.add(Updates.set("error_message", rootSpan.output));
+        }
         updates.add(Updates.set("updated_at", ZonedDateTime.now()));
         if (rootSpan.output != null) updates.add(Updates.set("output", rootSpan.output));
         if (rootSpan.input != null) updates.add(Updates.set("input", rootSpan.input));
@@ -197,6 +208,11 @@ public class IngestService {
         applyCost(span, spanReq.costUsd, spanReq.attributes);
         span.durationMs = spanReq.durationMs;
         span.status = mapSpanStatus(spanReq.status, spanReq.attributes);
+        // CLI spans carry the failure text in output (no OTLP status message); mirror it into
+        // errorMessage so the trace detail shows the real error, not a blank field.
+        if (span.status == SpanStatus.ERROR && spanReq.output != null) {
+            span.errorMessage = spanReq.output;
+        }
         span.attributes = spanReq.attributes;
         // Defensive: drop attribute copies that duplicate the payload fields (clients may mirror
         // the OTLP tracer convention and send both); keeps spans small.
