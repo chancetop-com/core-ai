@@ -2,11 +2,13 @@ package ai.core.server.trace.maintenance;
 
 import ai.core.server.task.TaskRunner;
 import core.framework.inject.Inject;
+import core.framework.log.ActionLogContext;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
@@ -31,6 +33,8 @@ public class TraceArchivingJob implements Job {
 
     @Override
     public void execute(JobContext context) {
+        // archiving moves large trace batches and takes longer than the 10s scheduler default
+        ActionLogContext.maxProcessTime(Duration.ofMinutes(5));
         var today = LocalDate.now(UTC);
         String taskId = TraceArchivingTask.TYPE + ":" + today;
 

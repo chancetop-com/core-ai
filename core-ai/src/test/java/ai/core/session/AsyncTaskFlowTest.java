@@ -61,8 +61,7 @@ class AsyncTaskFlowTest {
 
     private static CompletionResponse taskToolCallResponse(String taskId) {
         String json = """
-                {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","name":"assistant","tool_calls":[{"id":"call_task_1","type":"function","function":{"name":"task","arguments":"{\\"task_id\\":\\"%s\\",\\"description\\":\\"test task\\",\\"prompt\\":\\"do the work\\",\\"subagent_type\\":\\"test-agent\\",\\"run_in_background\\":true}"},"index":null}]}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
-                """.formatted(taskId);
+                {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","name":"assistant","tool_calls":[{"id":"call_task_1","type":"function","function":{"name":"task","arguments":"{\\"task_id\\":\\"%s\\",\\"description\\":\\"test task\\",\\"prompt\\":\\"do the work\\",\\"subagent_type\\":\\"test-agent\\",\\"run_in_background\\":true}"},"index":null}]}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}""".formatted(taskId);
         return ai.core.utils.JsonUtil.fromJson(CompletionResponse.class, json);
     }
 
@@ -75,8 +74,7 @@ class AsyncTaskFlowTest {
 
     private static CompletionResponse asyncTaskOutputCancelCallResponse(String taskId) {
         String json = """
-                {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","name":"assistant","tool_calls":[{"id":"call_cancel_1","type":"function","function":{"name":"async_task_output","arguments":"{\\"action\\":\\"cancel\\",\\"task_id\\":\\"%s\\"}"},"index":null}]}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
-                """.formatted(taskId);
+                {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","name":"assistant","tool_calls":[{"id":"call_cancel_1","type":"function","function":{"name":"async_task_output","arguments":"{\\"action\\":\\"cancel\\",\\"task_id\\":\\"%s\\"}"},"index":null}]}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}""".formatted(taskId);
         return ai.core.utils.JsonUtil.fromJson(CompletionResponse.class, json);
     }
 

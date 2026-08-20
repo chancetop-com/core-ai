@@ -243,7 +243,11 @@ public class GatewayLLMProvider extends LLMProvider {
     LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider, String upstreamModel) {
         // fresh config: the static provider's extra-body/model settings must not leak to gateway upstreams
         var upstreamConfig = new LLMProviderConfig(null, config.getTemperature(), null);
-        if (provider.timeoutSeconds != null) upstreamConfig.setTimeout(provider.timeoutSeconds);
+        // reasoning models stay silent for minutes while thinking: enforce a floor on the upstream
+        // timeout — a small value (e.g. legacy 30s) makes okhttp's callTimeout (connect+timeout+2s)
+        // cut the SSE stream after ~42s, which survives retries into a "3 minute failure"
+        var timeout = provider.timeoutSeconds != null ? Math.max(provider.timeoutSeconds, 600L) : 900L;
+        upstreamConfig.setTimeout(timeout);
         if (provider.connectTimeoutSeconds != null) upstreamConfig.setConnectTimeout(provider.connectTimeoutSeconds);
         if (hasText(provider.requestExtraBody)) upstreamConfig.setRequestExtraBody(provider.requestExtraBody);
         var apiKey = secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);

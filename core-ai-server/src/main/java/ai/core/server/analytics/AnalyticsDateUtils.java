@@ -24,6 +24,8 @@ final class AnalyticsDateUtils {
             end = LocalDate.parse(to);
         } else if ("7d".equals(range)) {
             start = today.minusDays(7);
+        } else if ("1d".equals(range)) {
+            start = today.minusDays(1);
         } else {
             start = today.minusDays(30);
         }

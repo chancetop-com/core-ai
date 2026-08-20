@@ -1,5 +1,6 @@
 package ai.core.server.trace.maintenance;
 
+import ai.core.server.analytics.AnalyticsMappingService;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
@@ -19,7 +20,6 @@ import org.slf4j.LoggerFactory;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -159,31 +159,11 @@ public class TraceDailyMaintenanceService {
     }
 
     private Document buildProviderAddFields(Map<String, String> modelToProvider) {
-        var branches = new ArrayList<Document>();
-        for (var entry : modelToProvider.entrySet()) {
-            branches.add(new Document("case",
-                new Document("$eq", List.of("$model", entry.getKey())))
-                .append("then", entry.getValue()));
-        }
-        return new Document("$addFields",
-            new Document("provider_id",
-                new Document("$switch",
-                    new Document("branches", branches)
-                        .append("default", "unknown"))));
+        return AnalyticsMappingService.buildProviderAddFields(modelToProvider);
     }
 
     private Document buildProviderNameAddFields(Map<String, String> providerIdToName) {
-        var branches = new ArrayList<Document>();
-        for (var entry : providerIdToName.entrySet()) {
-            branches.add(new Document("case",
-                new Document("$eq", List.of("$provider_id", entry.getKey())))
-                .append("then", entry.getValue()));
-        }
-        return new Document("$addFields",
-            new Document("provider_name",
-                new Document("$switch",
-                    new Document("branches", branches)
-                        .append("default", "unknown"))));
+        return AnalyticsMappingService.buildProviderNameAddFields(providerIdToName);
     }
 
     private int upsertAnalyticsStats(List<Document> rows, LocalDate date) {

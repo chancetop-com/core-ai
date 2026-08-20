@@ -33,10 +33,11 @@ public class AnalyticsMappingService {
                 new Document("$eq", List.of(inputRef, entry.getKey())))
                 .append("then", entry.getValue()));
         }
-        return new Document("$addFields",
-            new Document(field,
-                new Document("$switch",
-                    new Document("branches", branches).append("default", defaultVal))));
+        Object value = branches.isEmpty()
+            ? defaultVal
+            : new Document("$switch",
+                new Document("branches", branches).append("default", defaultVal));
+        return new Document("$addFields", new Document(field, value));
     }
 
     @Inject
