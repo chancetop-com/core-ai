@@ -2,6 +2,7 @@ package ai.core.api.server;
 
 import ai.core.api.server.artifact.ListMyArtifactsRequest;
 import ai.core.api.server.artifact.ListMyArtifactsResponse;
+import ai.core.api.server.artifact.ListSharedArtifactUsersResponse;
 import ai.core.api.server.artifact.ListSharedArtifactsRequest;
 import ai.core.api.server.artifact.ListSharedArtifactsResponse;
 import core.framework.api.web.service.GET;
@@ -15,4 +16,8 @@ public interface ArtifactWebService {
     @GET
     @Path("/api/artifacts/shared")
     ListSharedArtifactsResponse listShared(ListSharedArtifactsRequest request);
+
+    @GET
+    @Path("/api/artifacts/shared/users")
+    ListSharedArtifactUsersResponse listSharedUsers();
 }

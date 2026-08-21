@@ -11,7 +11,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, MyArtifactView, SharedArtifactView } from '../../api/client';
+import type { AgentDefinition, MyArtifactView, SharedArtifactUserView, SharedArtifactView } from '../../api/client';
 import type { ArtifactSpec } from '../chat/components/artifactTypes';
 
 const ArtifactDrawer = lazy(() => import('../chat/components/ArtifactDrawer'));
@@ -73,12 +73,17 @@ export default function ArtifactList() {
   const [searchName, setSearchName] = useState('');
   const [filterUserId, setFilterUserId] = useState('');
   const [sharedFilterAgentId, setSharedFilterAgentId] = useState('');
+  const [sharedUsers, setSharedUsers] = useState<SharedArtifactUserView[]>([]);
 
   // Agent options for the filter dropdown (shared by both tabs); summary mode avoids pulling full definitions
   useEffect(() => {
     api.agents.list(false, undefined, 200, undefined, undefined, undefined, undefined, true)
       .then(res => setAgents(res.agents))
       .catch(() => setAgents([]));
+    // Users who have shared artifacts, for the shared tab user filter
+    api.artifacts.listSharedUsers()
+      .then(res => setSharedUsers(res.users || []))
+      .catch(() => setSharedUsers([]));
   }, []);
 
   // Load my artifacts
@@ -146,6 +151,11 @@ export default function ArtifactList() {
   const handleSharedAgentFilterChange = (agentId: string) => {
     setSharedFilterAgentId(agentId);
     loadSharedArtifacts(0, sharedLimit, searchName, filterUserId, agentId);
+  };
+
+  const handleSharedUserFilterChange = (userId: string) => {
+    setFilterUserId(userId);
+    loadSharedArtifacts(0, sharedLimit, searchName, userId, sharedFilterAgentId);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -221,17 +231,14 @@ export default function ArtifactList() {
                 />
               </div>
               <div className="relative w-48">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
-                  style={{ color: 'var(--color-text-secondary)' }} />
-                <input
-                  type="text"
+                <select
                   value={filterUserId}
-                  onChange={e => setFilterUserId(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Filter by user ID..."
-                  className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
-                  style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                />
+                  onChange={e => handleSharedUserFilterChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none cursor-pointer"
+                  style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                  <option value="">All users</option>
+                  {sharedUsers.map(u => <option key={u.user_id} value={u.user_id}>{u.name}</option>)}
+                </select>
               </div>
               <button
                 onClick={handleSharedSearch}

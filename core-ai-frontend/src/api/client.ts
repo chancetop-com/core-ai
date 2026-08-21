@@ -2140,6 +2140,8 @@ export const api = {
       if (agentId) params.set('agent_id', agentId);
       return request<ListSharedArtifactsResponse>(`/api/artifacts/shared?${params}`);
     },
+    listSharedUsers: () =>
+      request<ListSharedArtifactUsersResponse>('/api/artifacts/shared/users'),
   },
   notifications: {
     list: (category?: string, status?: string, offset = 0, limit = 20) => {
@@ -2450,6 +2452,15 @@ export interface SharedArtifactView {
 export interface ListSharedArtifactsResponse {
   total: number;
   artifacts: SharedArtifactView[];
+}
+
+export interface SharedArtifactUserView {
+  user_id: string;
+  name: string;
+}
+
+export interface ListSharedArtifactUsersResponse {
+  users: SharedArtifactUserView[];
 }
 
 // Channel types

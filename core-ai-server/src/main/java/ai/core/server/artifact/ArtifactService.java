@@ -2,18 +2,24 @@ package ai.core.server.artifact;
 
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
+import ai.core.server.domain.User;
+import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
+import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import org.bson.Document;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 public class ArtifactService {
@@ -30,6 +36,9 @@ public class ArtifactService {
 
     @Inject
     MongoCollection<ChatSession> chatSessionCollection;
+
+    @Inject
+    MongoCollection<User> userCollection;
 
     public MyArtifactResult listMy(String userId, Integer offset, Integer limit, String agentId) {
         int skip = offset != null && offset >= 0 ? offset : 0;
@@ -188,6 +197,35 @@ public class ArtifactService {
         return result;
     }
 
+    public List<SharedArtifactUser> listSharedUsers() {
+        var pipeline = List.of(
+            Aggregates.match(Filters.type("share_token", "string")),
+            Aggregates.group("$user_id"),
+            Aggregates.sort(Sorts.ascending("_id"))
+        );
+        var aggregate = new Aggregate<Document>();
+        aggregate.resultClass = Document.class;
+        aggregate.pipeline = pipeline;
+        var docs = fileRecordCollection.aggregate(aggregate);
+
+        var userIds = docs.stream().map(doc -> doc.getString("_id")).filter(Objects::nonNull).toList();
+        if (userIds.isEmpty()) return List.of();
+
+        var userMap = new HashMap<String, String>();
+        var query = new Query();
+        query.filter = Filters.in("_id", userIds.toArray(new String[0]));
+        query.projection = Projections.include("_id", "name");
+        for (var user : userCollection.find(query)) {
+            if (user.id != null && user.name != null) userMap.put(user.id, user.name);
+        }
+
+        var result = new ArrayList<SharedArtifactUser>(userIds.size());
+        for (var userId : userIds) {
+            result.add(new SharedArtifactUser(userId, userMap.getOrDefault(userId, userId)));
+        }
+        return result;
+    }
+
     public static class MyArtifactResult {
         public long total;
         public List<MyArtifactItem> artifacts;
@@ -219,5 +257,8 @@ public class ArtifactService {
     }
 
     private record SessionInfo(String id, String title) {
+    }
+
+    public record SharedArtifactUser(String userId, String name) {
     }
 }

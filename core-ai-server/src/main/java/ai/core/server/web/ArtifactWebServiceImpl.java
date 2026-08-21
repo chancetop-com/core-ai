@@ -3,9 +3,11 @@ package ai.core.server.web;
 import ai.core.api.server.ArtifactWebService;
 import ai.core.api.server.artifact.ListMyArtifactsRequest;
 import ai.core.api.server.artifact.ListMyArtifactsResponse;
+import ai.core.api.server.artifact.ListSharedArtifactUsersResponse;
 import ai.core.api.server.artifact.ListSharedArtifactsRequest;
 import ai.core.api.server.artifact.ListSharedArtifactsResponse;
 import ai.core.api.server.artifact.MyArtifactView;
+import ai.core.api.server.artifact.SharedArtifactUserView;
 import ai.core.api.server.artifact.SharedArtifactView;
 import ai.core.server.artifact.ArtifactService;
 import ai.core.server.rbac.PermissionCodes;
@@ -64,6 +66,20 @@ public class ArtifactWebServiceImpl implements ArtifactWebService {
             view.createdAt = item.createdAt;
             view.sharedAt = item.sharedAt;
             response.artifacts.add(view);
+        }
+        return response;
+    }
+
+    @Override
+    public ListSharedArtifactUsersResponse listSharedUsers() {
+        var result = artifactService.listSharedUsers();
+        var response = new ListSharedArtifactUsersResponse();
+        response.users = new ArrayList<>(result.size());
+        for (var item : result) {
+            var view = new SharedArtifactUserView();
+            view.userId = item.userId();
+            view.name = item.name();
+            response.users.add(view);
         }
         return response;
     }
