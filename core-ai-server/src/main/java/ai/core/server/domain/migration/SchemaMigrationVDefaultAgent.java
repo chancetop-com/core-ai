@@ -4,6 +4,7 @@ import core.framework.mongo.Mongo;
 import org.bson.Document;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -103,11 +104,11 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
                  - YES: UI design review, screenshot analysis, diagram interpretation, OCR, any task where users may upload images
                  - NO: code generation, text analysis, data processing, Q&A, translation (unless image input is expected)
 
-            3. **Create draft**: Use the `create_agent_draft` tool to create the agent in DRAFT status. Show the user the draft details.
+            3. **Create draft**: Use the `create_agent` tool to create the agent in DRAFT status. Show the user the draft details.
 
-            4. **Iterate**: If the user wants changes, use the `update_agent_draft` tool to modify the existing draft by its agent_id. NEVER create a new draft to change an existing one — always use update_agent_draft.
+            4. **Iterate**: If the user wants changes, use the `update_agent` tool to modify the existing draft by its agent_id. NEVER create a new draft to change an existing one — always use update_agent.
 
-            5. **Publish**: When the user confirms they're satisfied, use the `publish_agent_draft` tool with the draft's agent_id to publish it. Tell the user the agent is available and can be tested in the Chat page.
+            5. **Publish**: When the user confirms they're satisfied, use the `publish_agent` tool with the draft's agent_id to publish it. Tell the user the agent is available and can be tested in the Chat page.
 
             ## Agent Naming Guidelines
             - Use clear, descriptive names that reflect the agent's purpose
@@ -135,7 +136,9 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
     public String version() {
         // 20260611001 is recorded on deployed envs by SchemaMigrationVAgentRunTraceIndex (version collision);
         // renumbered so this migration actually runs — agent upserts are idempotent, re-running is safe
-        return "20260611002";
+        // 20260821001: agent-builder tools switched from legacy "builtin-agent-builder" (no longer resolves)
+        // to individual "builtin:self-harness:*" refs; system prompt tool names aligned (create/update/publish_agent)
+        return "20260821001";
     }
 
     @Override
@@ -206,17 +209,12 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
     }
 
     private void createAgentBuilder(Mongo mongo, Date now) {
+        var toolRefs = agentBuilderToolRefs();
         var publishedConfig = new Document()
             .append("system_prompt", AGENT_BUILDER_SYSTEM_PROMPT)
-            .append("tools", List.of(
-                new Document("id", "builtin-agent-builder").append("type", "BUILTIN"),
-                new Document("id", "builtin-all").append("type", "BUILTIN")))
+            .append("tools", toolRefs)
             .append("max_turns", 50)
             .append("timeout_seconds", 600);
-
-        var toolRefs = List.of(
-            new Document("id", "builtin-agent-builder").append("type", "BUILTIN"),
-            new Document("id", "builtin-all").append("type", "BUILTIN"));
 
         var filter = new Document("_id", AGENT_BUILDER_ID);
         var update = new Document("$set", new Document()
@@ -240,6 +238,21 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
 
         mongo.runCommand(new Document("update", "agents")
             .append("updates", List.of(new Document("q", filter).append("u", update).append("upsert", Boolean.TRUE))));
+    }
+
+    /**
+     * Agent management tools come from the dynamically registered "self-harness" builtin
+     * group (see SelfHarnessTools), referenced individually since builtin-all does not
+     * include them. The legacy "builtin-agent-builder" toolset no longer exists.
+     */
+    private List<Document> agentBuilderToolRefs() {
+        var toolRefs = new ArrayList<Document>();
+        toolRefs.add(new Document("id", "builtin:builtin-all").append("type", "BUILTIN"));
+        for (var toolName : List.of("list_agents", "create_agent", "get_agent", "update_agent", "publish_agent",
+                "list_skills", "get_skill", "list_datasets", "get_dataset", "list_dataset_records", "list_tools")) {
+            toolRefs.add(new Document("id", "builtin:self-harness:" + toolName).append("type", "BUILTIN").append("source", "Self Harness"));
+        }
+        return toolRefs;
     }
 
     private void upsert(Mongo mongo, String id, Document doc) {
