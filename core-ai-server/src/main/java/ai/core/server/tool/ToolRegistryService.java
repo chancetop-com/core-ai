@@ -72,6 +72,8 @@ public class ToolRegistryService {
 
     private GitHubTokenProvider gitHubTokenProvider;
 
+    private ai.core.schedule.ScheduledTaskStore scheduledTaskStore;
+
     @Inject
     private ai.core.tool.tools.UnderstandVideoTool.VideoUnderstandingService videoUnderstandingService;
 
@@ -84,6 +86,7 @@ public class ToolRegistryService {
         var mcpDependencies = new McpResolutionDependencies(mcpConnectionManager, sandboxService, applicationMcpManager);
         resolutionService = new ToolRefResolutionService(tools, dynamicToolSets, mcpDependencies, mediaProvider, gitHubTokenProvider, videoUnderstandingService);
         resolutionService.setMediaModelHintsProvider(gatewayRoutingEngine::mediaModelHints);
+        resolutionService.setScheduledTaskStore(scheduledTaskStore);
         resolutionService.setAgentDefinitionService(agentDefinitionService);
         resolutionService.setLlmCallExecutor(llmCallExecutor);
         mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager, applicationMcpManager);
@@ -91,6 +94,10 @@ public class ToolRegistryService {
 
     public void setGitHubTokenProvider(GitHubTokenProvider gitHubTokenProvider) {
         this.gitHubTokenProvider = gitHubTokenProvider;
+    }
+
+    public void setScheduledTaskStore(ai.core.schedule.ScheduledTaskStore scheduledTaskStore) {
+        this.scheduledTaskStore = scheduledTaskStore;
     }
 
     public void initialize(String mcpServersJson) {

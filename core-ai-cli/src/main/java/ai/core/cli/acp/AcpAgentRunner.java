@@ -206,7 +206,7 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                    Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel);
+                    Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -246,7 +246,7 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel);
+                Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {

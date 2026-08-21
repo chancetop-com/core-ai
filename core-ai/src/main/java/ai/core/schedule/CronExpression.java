@@ -1,4 +1,4 @@
-package ai.core.server.schedule;
+package ai.core.schedule;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;

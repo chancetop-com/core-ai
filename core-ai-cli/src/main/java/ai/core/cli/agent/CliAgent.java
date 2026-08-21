@@ -136,9 +136,13 @@ public class CliAgent {
     }
 
     private static List<ToolCall> cliUserTools(Config config) {
-        return List.of(
-                AskUserTool.builder().questionHandler(config.askUserHandler()).build(),
-                AddMcpServerTool.builder().build());
+        var tools = new ArrayList<ToolCall>();
+        tools.add(AskUserTool.builder().questionHandler(config.askUserHandler()).build());
+        tools.add(AddMcpServerTool.builder().build());
+        if (config.scheduledTaskStore() != null) {
+            tools.add(ai.core.tool.tools.ScheduledTaskTool.builder(config.scheduledTaskStore()).build());
+        }
+        return List.copyOf(tools);
     }
 
     private static List<ToolCall> mediaTools(MediaProvider imageMediaProvider, MediaProvider videoMediaProvider, MediaProvider mediaProvider) {
@@ -212,6 +216,7 @@ public class CliAgent {
                              MediaProvider imageMediaProvider,
                              MediaProvider videoMediaProvider,
                              String defaultImageModel,
-                            String defaultVideoModel) {
+                            String defaultVideoModel,
+                            ai.core.schedule.ScheduledTaskStore scheduledTaskStore) {
     }
 }

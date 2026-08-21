@@ -4,6 +4,7 @@ import ai.core.api.server.schedule.AgentScheduleView;
 import ai.core.api.server.schedule.CreateScheduleRequest;
 import ai.core.api.server.schedule.ListSchedulesResponse;
 import ai.core.api.server.schedule.UpdateScheduleRequest;
+import ai.core.schedule.CronExpression;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ConcurrencyPolicy;
 import com.mongodb.client.model.Filters;

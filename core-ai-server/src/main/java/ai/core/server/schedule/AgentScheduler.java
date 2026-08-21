@@ -1,5 +1,6 @@
 package ai.core.server.schedule;
 
+import ai.core.schedule.CronExpression;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;

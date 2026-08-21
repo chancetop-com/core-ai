@@ -20,13 +20,17 @@ import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.upgrade.VersionUtil;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
+import ai.core.schedule.CronExpression;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence;
 import ai.core.session.ToolPermissionStore;
+import ai.core.tool.tools.ScheduledTaskTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -61,6 +65,8 @@ public class AgentSessionRunner {
     private final ModelPicker modelPicker;
     private ReplCommandHandler commands;
     private final String defaultServerUrl;
+    private final ai.core.schedule.ScheduledTaskStore scheduledTaskStore;
+    private java.util.concurrent.ScheduledExecutorService scheduleTicker;
 
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
         this.ui = ui;
@@ -85,6 +91,7 @@ public class AgentSessionRunner {
         this.upgradeHandler = new SessionUpgradeHandler(ui);
         this.modelPicker = new ModelPicker(ui, agent, llmProviders, modelRegistry);
         this.defaultServerUrl = config.defaultServerUrl;
+        this.scheduledTaskStore = config.scheduledTaskStore;
     }
 
     public String run() {
@@ -105,7 +112,9 @@ public class AgentSessionRunner {
         upgradeHandler.checkAndHintUpgrade();
         printSessionHistory();
         startSenderThread(messageQueue, listener, session, readyForInput);
+        startScheduleTicker(messageQueue);
         readInputLoop(messageQueue, readyForInput);
+        stopScheduleTicker();
         listener.getPanel().stopSpinnerIfActive();
         saveSessionIfPersistable();
         ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Organizing memories..." + AnsiTheme.RESET + "\n");
@@ -217,6 +226,43 @@ public class AgentSessionRunner {
         }
         if (hasHistory) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  ↑ restored " + sessionId + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    // Fires due session-bound scheduled tasks while the session is open: the trigger
+    // message is enqueued through the same queue as user input, so the sender thread
+    // renders it exactly like a user turn. Claiming always advances next_run_at, so
+    // occurrences missed while the CLI was closed are not caught up.
+    private void startScheduleTicker(BlockingQueue<String> messageQueue) {
+        if (scheduledTaskStore == null) return;
+        scheduleTicker = Executors.newSingleThreadScheduledExecutor(r -> {
+            var t = new Thread(r, "schedule-ticker");
+            t.setDaemon(true);
+            return t;
+        });
+        scheduleTicker.scheduleAtFixedRate(() -> tickSchedules(messageQueue), 30, 30, TimeUnit.SECONDS);
+    }
+
+    private void tickSchedules(BlockingQueue<String> messageQueue) {
+        try {
+            var now = ZonedDateTime.now();
+            for (var task : scheduledTaskStore.findDue(now)) {
+                if (!task.sessionId.equals(sessionId)) continue;
+                var zone = ZoneId.of(task.timezone);
+                var nextRunAt = new CronExpression(task.cronExpression).nextAfter(now, zone);
+                if (!scheduledTaskStore.claim(task.id, task.nextRunAt, nextRunAt)) continue;
+                messageQueue.offer(ScheduledTaskTool.buildTriggerMessage(task));
+                LOGGER.info("fired scheduled task, id={}, sessionId={}", task.id, task.sessionId);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("schedule tick failed", e);
+        }
+    }
+
+    private void stopScheduleTicker() {
+        if (scheduleTicker != null) {
+            scheduleTicker.shutdownNow();
+            scheduleTicker = null;
         }
     }
 
@@ -335,6 +381,6 @@ public class AgentSessionRunner {
                          SessionPersistence sessionPersistence,
                          boolean memoryEnabled, boolean dailyLogsEnabled,
                          boolean promptExtractionEnabled, Integer timeLimitSeconds,
-                         String defaultServerUrl) {
+                         String defaultServerUrl, ai.core.schedule.ScheduledTaskStore scheduledTaskStore) {
     }
 }

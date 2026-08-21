@@ -267,17 +267,19 @@ public class CliApp {
     }
 
     private AgentSessionRunner createLocalRunner(TerminalUI ui, SessionContext ctx, String sessionId) {
+        var scheduledTaskStore = new ai.core.cli.schedule.FileScheduledTaskStore(
+                Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"));
         var agentConfig = new CliAgent.Config(ctx.result().llmProviders, modelOverride, ctx.maxTurn(), ctx.sessionPersistence(), workspace, question -> {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
         }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.a2aAutoDiscover(),
-                ctx.mediaProvider(), ctx.imageMediaProvider(), ctx.videoMediaProvider(), ctx.defaultImageModel(), ctx.defaultVideoModel());
+                ctx.mediaProvider(), ctx.imageMediaProvider(), ctx.videoMediaProvider(), ctx.defaultImageModel(), ctx.defaultVideoModel(), scheduledTaskStore);
         var agent = CliAgent.of(agentConfig);
         var registry = agent.getExecutionContext().getAgentProfileRegistry();
         if (registry != null) {
             ui.setAgentProfiles(registry.listAll().stream().map(AgentProfile::name).toList());
         }
         var defaultServerUrl = ctx.props().property("core.server.url").orElse(null);
-        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds(), defaultServerUrl);
+        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds(), defaultServerUrl, scheduledTaskStore);
         return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);
     }
 
@@ -310,7 +312,7 @@ public class CliApp {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
         }, bc.memoryEnabled(), bc.dailyLogsEnabled(), bc.coding(), bc.todoV2Enabled(), currentSessionId, bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), bc.a2aAutoDiscover(),
-                bc.mediaProvider(), bc.imageMediaProvider(), bc.videoMediaProvider(), bc.defaultImageModel(), bc.defaultVideoModel());
+                bc.mediaProvider(), bc.imageMediaProvider(), bc.videoMediaProvider(), bc.defaultImageModel(), bc.defaultVideoModel(), null);
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, bc.permissionStore(), currentSessionId);
         var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, bc.permissionStore(), sessionManager, bc.sessionPersistence(), workspace);
         var server = new A2AServer(port, runManager, chatSessionManager, bc.sessionPersistence(), webDir);

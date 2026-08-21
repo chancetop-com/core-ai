@@ -62,6 +62,7 @@ class ToolRefResolutionService {
     private java.util.function.Function<ai.core.server.gateway.GatewayEndpointType, List<ai.core.tool.tools.MediaModelHint>> mediaModelHintsProvider;
     private AgentDefinitionService agentDefinitionService;
     private LLMCallExecutor llmCallExecutor;
+    private ai.core.schedule.ScheduledTaskStore scheduledTaskStore;
 
     // ── Constructor ──────────────────────────────────────────────────────────────
 
@@ -95,6 +96,10 @@ class ToolRefResolutionService {
 
     void setMediaModelHintsProvider(java.util.function.Function<ai.core.server.gateway.GatewayEndpointType, List<ai.core.tool.tools.MediaModelHint>> mediaModelHintsProvider) {
         this.mediaModelHintsProvider = mediaModelHintsProvider;
+    }
+
+    void setScheduledTaskStore(ai.core.schedule.ScheduledTaskStore scheduledTaskStore) {
+        this.scheduledTaskStore = scheduledTaskStore;
     }
 
     // ── Public API ───────────────────────────────────────────────────────────────
@@ -143,26 +148,23 @@ class ToolRefResolutionService {
         return resolver.resolve(toolRefs, sessionMgr, callerUserId);
     }
 
-    // replaces generate_image / generate_video with gateway-aware descriptions listing the configured
-    // media models and their model-specific parameters; runs per resolution so gateway changes take effect quickly
+    // replaces media tools with gateway-aware descriptions; runs per resolution so gateway changes take effect quickly
     private List<ToolCall> enhanceMediaToolDescription(List<ToolCall> tools) {
-        var imageHints = mediaModelHintsProvider == null ? List.<ai.core.tool.tools.MediaModelHint>of()
-                : mediaModelHintsProvider.apply(ai.core.server.gateway.GatewayEndpointType.IMAGE_GENERATION);
-        var videoHints = mediaModelHintsProvider == null ? List.<ai.core.tool.tools.MediaModelHint>of()
-                : mediaModelHintsProvider.apply(ai.core.server.gateway.GatewayEndpointType.VIDEO_GENERATION);
-        return tools.stream().map(tool -> {
-            if (tool instanceof ai.core.tool.tools.GenerateImageTool) {
-                return ai.core.tool.tools.GenerateImageTool.builder()
-                        .description(ai.core.tool.tools.GenerateImageTool.buildDescription(imageHints))
-                        .build();
-            }
-            if (tool instanceof ai.core.tool.tools.GenerateVideoTool) {
-                return ai.core.tool.tools.GenerateVideoTool.builder(mediaProvider)
-                        .description(ai.core.tool.tools.GenerateVideoTool.buildDescription(videoHints))
-                        .build();
-            }
-            return tool;
-        }).toList();
+        var imageHints = mediaModelHints(ai.core.server.gateway.GatewayEndpointType.IMAGE_GENERATION);
+        var videoHints = mediaModelHints(ai.core.server.gateway.GatewayEndpointType.VIDEO_GENERATION);
+        var enhanced = new ArrayList<>(tools.stream().map(tool -> enhanceMediaTool(tool, imageHints, videoHints)).toList());
+        if (scheduledTaskStore != null) enhanced.add(ai.core.tool.tools.ScheduledTaskTool.builder(scheduledTaskStore).build());
+        return enhanced;
+    }
+
+    private List<ai.core.tool.tools.MediaModelHint> mediaModelHints(ai.core.server.gateway.GatewayEndpointType endpoint) {
+        return mediaModelHintsProvider == null ? List.of() : mediaModelHintsProvider.apply(endpoint);
+    }
+
+    private ToolCall enhanceMediaTool(ToolCall tool, List<ai.core.tool.tools.MediaModelHint> imageHints, List<ai.core.tool.tools.MediaModelHint> videoHints) {
+        if (tool instanceof ai.core.tool.tools.GenerateImageTool) return ai.core.tool.tools.GenerateImageTool.builder().description(ai.core.tool.tools.GenerateImageTool.buildDescription(imageHints)).build();
+        if (tool instanceof ai.core.tool.tools.GenerateVideoTool) return ai.core.tool.tools.GenerateVideoTool.builder(mediaProvider).description(ai.core.tool.tools.GenerateVideoTool.buildDescription(videoHints)).build();
+        return tool;
     }
 
     /**

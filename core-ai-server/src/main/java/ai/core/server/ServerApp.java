@@ -40,6 +40,7 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.MediaJob;
 import ai.core.server.domain.SessionAttachmentRef;
+import ai.core.server.domain.SessionSchedule;
 import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.ToolRef;
@@ -129,6 +130,7 @@ public class ServerApp extends App {
         load(new AgentRunnerModule());
         load(new TriggerModule());
         load(new MessagingRuntimeModule());
+        load(new SessionSchedulerModule());
         load(new ChannelModule());
         load(new WorkflowModule());
         // ProjectModule loads last: the analysis pipeline injects AgentRunner (AgentRunnerModule)
@@ -194,6 +196,8 @@ public class ServerApp extends App {
         mongo.collection(Notification.class);
         mongo.collection(CostAlertRule.class);
         mongo.collection(CostAlertEvent.class);
+
+        mongo.collection(SessionSchedule.class);
     }
 
     private void registerCoreCollections(MongoConfig mongo) {
