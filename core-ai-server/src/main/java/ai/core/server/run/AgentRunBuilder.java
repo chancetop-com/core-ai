@@ -22,8 +22,6 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
-import ai.core.server.dataset.tool.DatasetAccessRegistry;
-import ai.core.server.dataset.tool.DatasetToolProvider;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
@@ -43,8 +41,7 @@ import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.CallerContexts;
 import ai.core.server.tool.ToolRegistryService;
-import ai.core.prompt.Prompts;
-import ai.core.prompt.SystemVariables;
+import ai.core.server.session.SessionDatasetHelper;
 import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.GenerateImageTool;
@@ -130,6 +127,13 @@ public class AgentRunBuilder {
     @Inject
     MongoCollection<User> userCollection;
 
+    private SessionDatasetHelper datasetHelper;
+
+    private SessionDatasetHelper datasetHelper() {
+        if (datasetHelper == null) datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
+        return datasetHelper;
+    }
+
     Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,
                      List<LLMCallRequest.Attachment> attachments) {
         var config = definition.publishedConfig;
@@ -161,7 +165,10 @@ public class AgentRunBuilder {
         if (temperature != null) builder.temperature(temperature);
         if (thinkingEffort != null) builder.reasoningEffort(thinkingEffort);
         if (maxTurns != null) builder.maxTurn(maxTurns);
-        injectDatasetSystemVars(builder, definition);
+        var datasetVars = datasetHelper().buildDatasetSystemVars(AgentDefinitionService.resolveDatasetConfig(definition));
+        if (datasetVars != null) {
+            datasetVars.forEach(builder::extraSystemVariable);
+        }
         if (AgentMemoryService.memoryEnabled(enableMemory)) {
             attachMemoryExperiment(builder, definition, runEntity.id);
         }
@@ -370,38 +377,6 @@ public class AgentRunBuilder {
         return config != null ? config.systemPrompt : definition.systemPrompt;
     }
 
-    private void addDatasetTools(ToolRegistry registry, AgentDefinition definition, String runId) {
-        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
-        if (datasetConfig == null || datasetConfig.isEmpty()) return;
-        var accessRegistry = DatasetAccessRegistry.from(datasetConfig, datasetService);
-        registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, definition.id, runId));
-    }
-
-    private String appendDatasetInstructions(String systemPrompt, AgentDefinition definition) {
-        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
-        if (datasetConfig == null || datasetConfig.isEmpty()) return systemPrompt;
-        if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
-        return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
-    }
-
-    private void injectDatasetSystemVars(AgentBuilder builder, AgentDefinition definition) {
-        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
-        if (datasetConfig == null || datasetConfig.isEmpty()) return;
-        var names = new ArrayList<String>();
-        var desc = new StringBuilder();
-        for (var cfg : datasetConfig) {
-            var dataset = datasetService.get(cfg.datasetId);
-            if (dataset == null) continue;
-            names.add(dataset.name);
-            desc.append("\n- \"").append(dataset.name).append("\" (").append(cfg.permission.name()).append(')');
-            if (dataset.description != null && !dataset.description.isBlank()) {
-                desc.append(": ").append(dataset.description);
-            }
-        }
-        builder.extraSystemVariable(SystemVariables.AGENT_DATASET_NAME, String.join(", ", names));
-        builder.extraSystemVariable(SystemVariables.AGENT_DATASET_DESC, desc.toString());
-    }
-
     ToolRegistry resolveToolRegistry(AgentPublishedConfig config, AgentDefinition definition, AgentRun runEntity) {
         List<ToolRef> toolRefs;
         if (config != null) {
@@ -412,13 +387,17 @@ public class AgentRunBuilder {
             toolRefs = List.of();
         }
         var registry = toolRegistryService.resolveToToolRegistry(toolRefs, runEntity.id, runEntity.userId);
-        addDatasetTools(registry, definition, runEntity.id);
+        datasetHelper().addDatasetToolsToRegistry(registry,
+                AgentDefinitionService.resolveDatasetConfig(definition), definition.id, runEntity.id);
         return registry;
     }
 
     private String resolveSystemPromptWithPriority(AgentPublishedConfig config, AgentDefinition definition, Boolean enableMemory) {
         var systemPrompt = resolveSystemPrompt(config, definition);
-        systemPrompt = appendDatasetInstructions(systemPrompt, definition);
+        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
+        if (datasetConfig != null && !datasetConfig.isEmpty()) {
+            systemPrompt = datasetHelper().appendDatasetInstructions(systemPrompt, datasetConfig);
+        }
         if (AgentMemoryService.memoryEnabled(enableMemory)) {
             systemPrompt = appendSopPriorityDeclaration(systemPrompt);
         }

@@ -10,8 +10,11 @@ import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.telemetry.AgentTracer;
+import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
+import ai.core.server.session.SessionDatasetHelper;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.systemprompt.SystemPromptService;
@@ -63,6 +66,17 @@ public class SubAgentAssembler {
     SystemSettingsService systemSettingsService;
     @Inject
     AgentTracer agentTracer;
+    @Inject
+    DatasetService datasetService;
+    @Inject
+    DatasetRecordService datasetRecordService;
+
+    private SessionDatasetHelper datasetHelper;
+
+    private SessionDatasetHelper datasetHelper() {
+        if (datasetHelper == null) datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
+        return datasetHelper;
+    }
 
     /**
      * Loads sub-agent definitions by id and wraps each as a callable tool.
@@ -98,8 +112,15 @@ public class SubAgentAssembler {
         requireUsablePublishedSubAgent(definition);
         var config = toSessionConfig(definition);
         var toolRegistry = resolveToolsToRegistry(definition, sessionId, callerUserId);
+        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
+        Map<String, Object> extraVars = null;
+        if (datasetConfig != null && !datasetConfig.isEmpty()) {
+            datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
+            config.systemPrompt = datasetHelper().appendDatasetInstructions(config.systemPrompt, datasetConfig);
+            extraVars = datasetHelper().buildDatasetSystemVars(datasetConfig);
+        }
         skillToolAssembler.attach(resolveSkillIds(definition), toolRegistry);
-        var bc = new BuildAgentConfig(config, toolRegistry, null, definition.name, null, definition.id, null, null, null);
+        var bc = new BuildAgentConfig(config, toolRegistry, null, definition.name, extraVars, definition.id, null, null, null);
         return buildAgent(bc);
     }
 

@@ -15,13 +15,21 @@ import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.persistence.PersistenceProviders;
+import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetService;
+import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
+import ai.core.server.domain.Dataset;
+import ai.core.server.domain.DatasetPermission;
+import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolRegistryFactory;
 import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -56,6 +66,9 @@ class SubAgentAssemblerTest {
         assembler.persistenceProviders = new PersistenceProviders();
         systemSettingsService = mock(SystemSettingsService.class);
         assembler.systemSettingsService = systemSettingsService;
+        assembler.skillToolAssembler = mock(SkillToolAssembler.class);
+        assembler.datasetService = mock(DatasetService.class);
+        assembler.datasetRecordService = mock(DatasetRecordService.class);
     }
 
     @Test
@@ -177,6 +190,59 @@ class SubAgentAssemblerTest {
         var actual = assembler.resolveTopLevelToolsToRegistry(definition, "session-1", "owner-1");
 
         assertSame(expected, actual);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void subAgentWiresDatasetToolsInstructionsAndVars() {
+        var definition = definition("dataset-sub", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        var published = new AgentPublishedConfig();
+        published.systemPrompt = "You are the dataset manager agent.";
+        var datasetConfig = new AgentDatasetConfig();
+        datasetConfig.datasetId = "dataset-1";
+        datasetConfig.permission = DatasetPermission.FULL;
+        published.datasetConfig = List.of(datasetConfig);
+        definition.publishedConfig = published;
+
+        var dataset = new Dataset();
+        dataset.id = "dataset-1";
+        dataset.name = "meta_ai_data";
+        dataset.description = "Meta ads workspace data";
+        dataset.type = DatasetType.GENERAL;
+        when(assembler.datasetService.get("dataset-1")).thenReturn(dataset);
+
+        var registry = ToolRegistryFactory.createEmpty();
+        var registryService = mock(ToolRegistryService.class);
+        when(registryService.resolveToToolRegistry(any(), eq("session-1"), eq("caller-1"))).thenReturn(registry);
+        assembler.toolRegistryService = registryService;
+
+        var agent = assembler.buildSubAgent(definition, "session-1", "caller-1");
+
+        var toolNames = agent.getExecutionContext().getToolRegistry().getToolCalls().stream()
+                .map(ToolCall::getName)
+                .toList();
+        assertTrue(toolNames.contains("query_dataset_records"));
+        assertTrue(toolNames.contains("insert_dataset_record"));
+        assertTrue(toolNames.contains("update_dataset_record"));
+        assertTrue(toolNames.contains("delete_dataset_record"));
+        assertTrue(agent.getSystemPrompt().contains("## Dataset Management"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void subAgentWithoutDatasetConfigStaysUnchanged() {
+        var definition = definition("plain-sub", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        definition.publishedConfig = new AgentPublishedConfig();
+
+        var registry = ToolRegistryFactory.createEmpty();
+        var registryService = mock(ToolRegistryService.class);
+        when(registryService.resolveToToolRegistry(any(), eq("session-1"), eq("caller-1"))).thenReturn(registry);
+        assembler.toolRegistryService = registryService;
+
+        var agent = assembler.buildSubAgent(definition, "session-1", "caller-1");
+
+        assertTrue(agent.getExecutionContext().getToolRegistry().getToolCalls().isEmpty());
+        verifyNoInteractions(assembler.datasetService);
     }
 
     private AgentDefinition definition(String id, DefinitionType type, AgentStatus status) {

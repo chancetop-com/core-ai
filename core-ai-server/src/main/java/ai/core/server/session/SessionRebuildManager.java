@@ -5,18 +5,11 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.media.MediaProvider;
-import ai.core.prompt.Prompts;
-import ai.core.prompt.SystemVariables;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
-import ai.core.server.dataset.tool.DatasetAccessRegistry;
-import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
-import ai.core.server.dataset.tool.InsertDatasetRecordTool;
-import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
-import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDatasetConfig;
@@ -76,6 +69,7 @@ public class SessionRebuildManager {
     private final SystemSettingsService systemSettingsService;
     private final MongoCollection<User> userCollection;
     private final SessionContextBuilder contextBuilder;
+    private SessionDatasetHelper datasetHelper;
 
     public SessionRebuildManager(Deps deps) {
         this.chatMessageService = deps.chatMessageService;
@@ -96,6 +90,11 @@ public class SessionRebuildManager {
         this.userCollection = deps.userCollection;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
                 systemSettingsService, deps.mediaProvider, deps.quotaService);
+    }
+
+    private SessionDatasetHelper datasetHelper() {
+        if (datasetHelper == null) datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
+        return datasetHelper;
     }
 
     public SessionState buildStateFromDb(String sessionId) {
@@ -268,16 +267,18 @@ public class SessionRebuildManager {
         List<ToolCall> tools = (params.toolRefs != null && !params.toolRefs.isEmpty())
                 ? toolRegistryService.resolveToolRefs(params.toolRefs, params.sessionId, params.userId)
                 : new ArrayList<>();
-        tools = addDatasetTools(tools, params.datasetConfig, agentId, params.sessionId);
+        var toolRegistry = SessionSubAgentManager.toolsToRegistry(tools);
+        datasetHelper().addDatasetToolsToRegistry(toolRegistry, params.datasetConfig,
+                hasText(agentId) ? agentId : "default", params.sessionId);
         Map<String, Object> extraVars = null;
         if (params.datasetConfig != null && !params.datasetConfig.isEmpty()) {
-            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt);
-            extraVars = buildDatasetSystemVars(params.datasetConfig);
+            effectiveConfig.systemPrompt = datasetHelper().appendDatasetInstructions(effectiveConfig.systemPrompt, params.datasetConfig);
+            extraVars = datasetHelper().buildDatasetSystemVars(params.datasetConfig);
         }
         extraVars = injectConfigVars(extraVars, params.configVars);
         logRebuildStart(params, tools);
         var agent = subAgentManager.buildAgent(new SessionSubAgentManager.BuildAgentParams(
-                effectiveConfig, SessionSubAgentManager.toolsToRegistry(tools),
+                effectiveConfig, toolRegistry,
                 sandbox.context, params.agentName, extraVars, agentId,
                 sandbox.sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(params.sessionId), publicUrlConfiguration)) : null,
                 null, null));
@@ -365,43 +366,6 @@ public class SessionRebuildManager {
         } catch (Exception e) {
             logger.warn("failed to restore agent history, sessionId={}", sessionId, e);
         }
-    }
-    private List<ToolCall> addDatasetTools(List<ToolCall> tools, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
-        if (datasetConfig == null || datasetConfig.isEmpty()) return tools;
-        var registry = DatasetAccessRegistry.from(datasetConfig, datasetService);
-        var mutable = new ArrayList<ToolCall>(tools != null ? tools : List.of());
-        mutable.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
-        if (registry.hasAnyWrite()) {
-            var effectiveAgentId = hasText(agentId) ? agentId : "default";
-            mutable.add(InsertDatasetRecordTool.create(effectiveAgentId, sessionId, datasetService, datasetRecordService, registry));
-            mutable.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
-        }
-        if (registry.hasAnyFull()) {
-            mutable.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, registry));
-        }
-        return mutable;
-    }
-    private String appendDatasetInstructions(String systemPrompt) {
-        if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
-        return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
-    }
-    private Map<String, Object> buildDatasetSystemVars(List<AgentDatasetConfig> datasetConfig) {
-        if (datasetConfig == null || datasetConfig.isEmpty()) return null;
-        var names = new ArrayList<String>();
-        var desc = new StringBuilder();
-        for (var cfg : datasetConfig) {
-            var dataset = datasetService.get(cfg.datasetId);
-            if (dataset == null) continue;
-            names.add(dataset.name);
-            desc.append("\n- \"").append(dataset.name).append("\" (").append(cfg.permission.name()).append(')');
-            if (dataset.description != null && !dataset.description.isBlank()) {
-                desc.append(": ").append(dataset.description);
-            }
-        }
-        var vars = new HashMap<String, Object>();
-        vars.put(SystemVariables.AGENT_DATASET_NAME, String.join(", ", names));
-        vars.put(SystemVariables.AGENT_DATASET_DESC, desc.toString());
-        return vars;
     }
     private AgentDatasetConfig createConfig(String datasetId, DatasetPermission permission) {
         var c = new AgentDatasetConfig();

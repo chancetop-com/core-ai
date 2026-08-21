@@ -19,27 +19,34 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-final class SessionDatasetHelper {
+/**
+ * Shared dataset assembly for every agent build path (top-level session agent, session rebuild, run agent,
+ * sub-agent). All paths must wire dataset tools, dataset instructions and dataset system variables through
+ * this single helper so no path can silently miss dataset support.
+ *
+ * @author Lim Chen
+ */
+public class SessionDatasetHelper {
     private final DatasetService datasetService;
     private final DatasetRecordService datasetRecordService;
 
-    SessionDatasetHelper(DatasetService datasetService, DatasetRecordService datasetRecordService) {
+    public SessionDatasetHelper(DatasetService datasetService, DatasetRecordService datasetRecordService) {
         this.datasetService = datasetService;
         this.datasetRecordService = datasetRecordService;
     }
 
-    void addDatasetToolsToRegistry(ToolRegistry registry, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
+    public void addDatasetToolsToRegistry(ToolRegistry registry, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
         if (datasetConfig == null || datasetConfig.isEmpty()) return;
         var accessRegistry = DatasetAccessRegistry.from(datasetConfig, datasetService);
         registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, agentId, sessionId));
     }
 
-    String appendDatasetInstructions(String systemPrompt, List<AgentDatasetConfig> datasetConfig) {
+    public String appendDatasetInstructions(String systemPrompt, List<AgentDatasetConfig> datasetConfig) {
         if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
         return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
     }
 
-    Map<String, Object> buildDatasetSystemVars(List<AgentDatasetConfig> datasetConfig) {
+    public Map<String, Object> buildDatasetSystemVars(List<AgentDatasetConfig> datasetConfig) {
         if (datasetConfig == null || datasetConfig.isEmpty()) return null;
         var first = datasetConfig.getFirst();
         var dataset = datasetService.get(first.datasetId);
