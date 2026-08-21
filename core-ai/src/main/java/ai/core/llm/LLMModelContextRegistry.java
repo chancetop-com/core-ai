@@ -36,6 +36,13 @@ public final class LLMModelContextRegistry {
         return instance;
     }
 
+    // Peak hours follow the DeepSeek 2026-08 peak/off-peak scheme: Beijing time 9:00-12:00 and 14:00-18:00.
+    public static boolean isPeakHour(Instant when) {
+        var time = when.atZone(SHANGHAI);
+        var hour = time.getHour();
+        return hour >= 9 && hour < 12 || hour >= 14 && hour < 18;
+    }
+
     private final Map<String, ModelInfo> modelInfoMap = new ConcurrentHashMap<>();
 
     private LLMModelContextRegistry() {
@@ -200,13 +207,6 @@ public final class LLMModelContextRegistry {
         return (uncachedInputTokens * info.inputCostPerToken()
             + safeCachedTokens * info.cacheReadInputTokenCost()
             + safeOutputTokens * info.outputCostPerToken()) * multiplier;
-    }
-
-    // Peak hours follow the DeepSeek 2026-08 peak/off-peak scheme: Beijing time 9:00-12:00 and 14:00-18:00.
-    public static boolean isPeakHour(Instant when) {
-        var time = when.atZone(SHANGHAI);
-        var hour = time.getHour();
-        return (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18);
     }
 
     public int size() {

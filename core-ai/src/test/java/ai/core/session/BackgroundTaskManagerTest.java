@@ -57,27 +57,6 @@ class BackgroundTaskManagerTest {
         }
     }
 
-    private static final class InMemorySink implements SubagentOutputSink {
-        private final String taskId;
-
-        private InMemorySink(String taskId) {
-            this.taskId = taskId;
-        }
-
-        @Override
-        public void write(String content) {
-        }
-
-        @Override
-        public String getReference() {
-            return "memory://" + taskId;
-        }
-
-        @Override
-        public void close() {
-        }
-    }
-
     @Test
     void largeTaskResultIsTruncatedInNotificationButSinkKeepsFullContent() throws Exception {
         var big = "x".repeat(200_000);
@@ -97,6 +76,27 @@ class BackgroundTaskManagerTest {
 
         // The sink keeps the full output so the agent can read parts on demand via the output-ref file.
         assertEquals(big, sink.content);
+    }
+
+    private static final class InMemorySink implements SubagentOutputSink {
+        private final String taskId;
+
+        private InMemorySink(String taskId) {
+            this.taskId = taskId;
+        }
+
+        @Override
+        public void write(String content) {
+        }
+
+        @Override
+        public String getReference() {
+            return "memory://" + taskId;
+        }
+
+        @Override
+        public void close() {
+        }
     }
 
     private static final class CapturingSink implements SubagentOutputSink {
