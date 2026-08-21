@@ -34,6 +34,8 @@ import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.messaging.TurnStateRegistry;
+import ai.core.server.messaging.TurnStatusResolver;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
@@ -90,6 +92,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     CommandPublisher commandPublisher;
     @Inject
     SessionOwnershipRegistry ownershipRegistry;
+    @Inject
+    TurnStateRegistry turnStateRegistry;
     @Inject
     RpcClient rpcClient;
     @Inject
@@ -218,7 +222,9 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var meta = readableSessionMeta(sessionId, userId, false);
         var response = new SessionStatusResponse();
         response.sessionId = sessionId;
-        response.status = sessionChannelService.status(sessionId);
+        // The Redis turn registry is the cross-pod source of truth for turn liveness;
+        // the pod-local channel view only refines the answer (error nuance, Redis-down fallback).
+        response.status = TurnStatusResolver.resolve(turnStateRegistry.liveness(sessionId), sessionChannelService.status(sessionId));
         if (meta != null) {
             response.createdAt = meta.createdAt != null ? meta.createdAt.toInstant() : null;
             response.lastActiveAt = meta.lastMessageAt != null ? meta.lastMessageAt.toInstant() : null;

@@ -19,6 +19,7 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.User;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.messaging.TurnStateRegistry;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.sandbox.Sandbox;
@@ -69,6 +70,7 @@ public class SessionRebuildManager {
     private final SystemSettingsService systemSettingsService;
     private final MongoCollection<User> userCollection;
     private final SessionContextBuilder contextBuilder;
+    private final TurnStateRegistry turnStateRegistry;
     private SessionDatasetHelper datasetHelper;
 
     public SessionRebuildManager(Deps deps) {
@@ -88,6 +90,7 @@ public class SessionRebuildManager {
         this.ownershipRegistry = deps.ownershipRegistry;
         this.systemSettingsService = deps.systemSettingsService;
         this.userCollection = deps.userCollection;
+        this.turnStateRegistry = deps.turnStateRegistry;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
                 systemSettingsService, deps.mediaProvider, deps.quotaService);
     }
@@ -285,6 +288,11 @@ public class SessionRebuildManager {
         var session = new InProcessAgentSession(params.sessionId, agent, true, new InMemoryToolPermissionStore());
         sandbox.sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(params.sessionId));
+        // Turn-state listener goes first so the Redis turn key is written before the
+        // RUNNING event is published to other pods.
+        if (turnStateRegistry != null) {
+            session.onEvent(turnStateRegistry.listener(params.sessionId));
+        }
         session.onEvent(chatMessageService.listener(params.sessionId));
         if (eventPublisher != null) {
             session.onEvent(new SseEventBridge(params.sessionId, eventPublisher));
@@ -409,6 +417,7 @@ public class SessionRebuildManager {
                         SystemSettingsService systemSettingsService,
                         MongoCollection<User> userCollection,
                         MediaProvider mediaProvider,
-                        ApiUserQuotaService quotaService) {
+                        ApiUserQuotaService quotaService,
+                        TurnStateRegistry turnStateRegistry) {
     }
 }

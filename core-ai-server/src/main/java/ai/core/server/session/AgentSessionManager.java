@@ -17,6 +17,7 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.User;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.messaging.TurnStateRegistry;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
@@ -98,6 +99,8 @@ public class AgentSessionManager {
     @Inject
     SessionOwnershipRegistry ownershipRegistry;
     @Inject
+    TurnStateRegistry turnStateRegistry;
+    @Inject
     ChannelRegistry channelRegistry;
     @Inject
     SubAgentAssembler subAgentAssembler;
@@ -127,7 +130,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userCollection, sessionAgentHelper.mediaProvider, apiUserQuotaService));
+                    ownershipRegistry, systemSettingsService, userCollection, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry));
         }
         return rebuildManager;
     }
@@ -140,6 +143,11 @@ public class AgentSessionManager {
         return () -> "You are communicating with the user through the " + config.channelType + " channel.";
     }
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
+        // Turn-state listener goes first so the Redis turn key is written before the
+        // RUNNING event is published to other pods.
+        if (turnStateRegistry != null) {
+            session.onEvent(turnStateRegistry.listener(sessionId));
+        }
         session.onEvent(chatMessageService.listener(sessionId));
         session.onEvent(new SseEventBridge(sessionId, eventPublisher));
     }

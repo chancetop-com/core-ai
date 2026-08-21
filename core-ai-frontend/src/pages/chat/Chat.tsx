@@ -16,6 +16,7 @@ import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages } from './utils';
+import { clearActiveAgentBubble, mergeHistoryWithLive } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 
 const VoiceTranscriberSidebar = lazy(() => import('./components/VoiceTranscriberSidebar'));
@@ -922,6 +923,12 @@ export default function Chat() {
         } else if (statusEvent.status === 'running') {
           if (statusEvent.sessionId && cancelledSessionIdsRef.current.has(statusEvent.sessionId)) break;
           setStatus('running');
+          // Turn-begin marker: reset the active bubble so replayed events after an
+          // SSE reconnect rebuild it instead of duplicating thinking/tool entries.
+          // Mirrors the server clearing its replay buffer on the RUNNING event.
+          if (statusEvent.sessionId && pendingTurnRef.current === statusEvent.sessionId) {
+            setMessages(prev => clearActiveAgentBubble(prev));
+          }
         }
         break;
       }
@@ -1170,11 +1177,9 @@ export default function Chat() {
       const res = await sessionApi.history(sid);
       if (sessionIdRef.current !== sid) return false;
       const hydrated = historyToChatMessages(res.messages || []);
-      const lastMsg = hydrated[hydrated.length - 1];
-      if (lastMsg?.role === 'user') {
-        hydrated.push({ role: 'agent', segments: [], timestamp: new Date().toISOString() });
-      }
-      setMessages(hydrated);
+      // Never let a re-sync wipe locally streamed content the history has not
+      // persisted yet — agent replies are only persisted at turn end.
+      setMessages(prev => mergeHistoryWithLive(hydrated, prev));
       setSessionArtifacts(res.artifacts || []);
       clearTurnPending();
       setStatus('idle');
@@ -1199,14 +1204,20 @@ export default function Chat() {
     let stopped = false;
     let timer: number | undefined;
     let failures = 0;
+    let nonRunningPolls = 0;
     const poll = async () => {
       try {
         const res = await sessionApi.status(pendingTurnSid);
         if (stopped) return;
         failures = 0;
         const status = (res as { status?: string }).status;
-        if (status === 'running' || status === 'waiting') {
-          // turn still active (waiting = tool approval pending) — keep watching
+        if (status === 'running') {
+          // turn still active (approval waits also report running) — keep watching
+          nonRunningPolls = 0;
+        } else if (nonRunningPolls < 1) {
+          // Require two consecutive non-running answers before the destructive
+          // history re-sync — a single reading may be a transient misreport.
+          nonRunningPolls += 1;
         } else if (status === 'error') {
           await syncFromHistory(pendingTurnSid);
           setMessages(prev => {
