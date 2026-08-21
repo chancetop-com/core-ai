@@ -2,6 +2,7 @@ package ai.core.server.analytics;
 
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.server.domain.User;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -44,6 +45,8 @@ public class AnalyticsMappingService {
     MongoCollection<GatewayModelConfig> gatewayModelCollection;
     @Inject
     MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    @Inject
+    MongoCollection<User> userCollection;
 
     public Map<String, String> loadModelToProviderMapping() {
         var models = gatewayModelCollection.find(new Query());
@@ -62,6 +65,17 @@ public class AnalyticsMappingService {
         for (var provider : providers) {
             if (provider.id != null && provider.name != null) {
                 mapping.put(provider.id, provider.name);
+            }
+        }
+        return mapping;
+    }
+
+    public Map<String, String> loadUserIdToNameMapping() {
+        var users = userCollection.find(new Query());
+        Map<String, String> mapping = new LinkedHashMap<>();
+        for (var user : users) {
+            if (user.id != null && user.name != null) {
+                mapping.put(user.id, user.name);
             }
         }
         return mapping;

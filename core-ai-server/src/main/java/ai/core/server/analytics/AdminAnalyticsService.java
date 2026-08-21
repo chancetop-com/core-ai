@@ -152,7 +152,8 @@ public class AdminAnalyticsService {
             rows = aggregateStats(bounds, dim);
         }
         var totals = buildGlobalSummary(rows);
-        var items = buildDimensionItems(rows, dim, sort);
+        Map<String, String> userIdToName = dim == USER ? mappingService.loadUserIdToNameMapping() : Map.of();
+        var items = buildDimensionItems(rows, dim, sort, userIdToName);
         return new AnalyticsModels.DimensionAnalytics(items, totals);
     }
 
@@ -304,7 +305,7 @@ public class AdminAnalyticsService {
         );
     }
 
-    private List<AnalyticsModels.DimensionItem> buildDimensionItems(List<Document> rows, Dimension dim, String sort) {
+    private List<AnalyticsModels.DimensionItem> buildDimensionItems(List<Document> rows, Dimension dim, String sort, Map<String, String> userIdToName) {
         long globalTokens = rows.stream().mapToLong(r -> getLong(r, "total_tokens")).sum();
         double globalCost = rows.stream().mapToDouble(r -> getDouble(r, "cost_usd")).sum();
 
@@ -315,7 +316,7 @@ public class AdminAnalyticsService {
             long totalTokens = getLong(row, "total_tokens");
             double costUsd = getDouble(row, "cost_usd");
             items.add(new AnalyticsModels.DimensionItem(
-                key, resolveLabel(dim, row), getLong(row, "input_tokens"), getLong(row, "output_tokens"),
+                key, resolveLabel(dim, row, userIdToName), getLong(row, "input_tokens"), getLong(row, "output_tokens"),
                 totalTokens, getLong(row, "cached_tokens"), costUsd, getLong(row, "call_count"),
                 0, 0, getDouble(row, "avg_total_tokens"), getDouble(row, "avg_cost_usd"),
                 getLong(row, "max_total_tokens"), getDouble(row, "max_cost_usd"),
@@ -333,13 +334,17 @@ public class AdminAnalyticsService {
         return items;
     }
 
-    private String resolveLabel(Dimension dim, Document row) {
+    private String resolveLabel(Dimension dim, Document row, Map<String, String> userIdToName) {
         if (dim == AGENT) {
             String name = row.getString("agent_name");
             return name != null ? name : row.getString("_id");
         }
         if (dim == PROVIDER) {
             String name = row.getString("provider_name");
+            return name != null ? name : row.getString("_id");
+        }
+        if (dim == USER) {
+            String name = userIdToName.get(row.getString("_id"));
             return name != null ? name : row.getString("_id");
         }
         return row.getString("_id");
