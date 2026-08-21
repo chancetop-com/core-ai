@@ -47,6 +47,52 @@ class PluginFormatDetectorTest {
     }
 
     @Test
+    void detectsAllSkillDirsFromRootSourceMarketplace(@TempDir Path repoDir) throws IOException {
+        // MiniMax-AI/skills layout: plugin.json without a skills field,
+        // marketplace.json pointing to the repo root, skills in both .claude/skills and skills/
+        Files.createDirectories(repoDir.resolve(".claude-plugin"));
+        Files.writeString(repoDir.resolve(".claude-plugin").resolve("plugin.json"),
+            "{\"name\": \"minimax-skills\", \"version\": \"1.0.0\"}");
+        Files.writeString(repoDir.resolve(".claude-plugin").resolve("marketplace.json"),
+            "{\"plugins\": [{\"name\": \"minimax-skills\", \"source\": \"./\"}]}");
+        Files.createDirectories(repoDir.resolve(".claude").resolve("skills").resolve("pr-review"));
+        Files.writeString(repoDir.resolve(".claude").resolve("skills").resolve("pr-review").resolve("SKILL.md"),
+            "---\nname: pr-review\ndescription: Review pull requests\n---\n");
+        Files.createDirectories(repoDir.resolve("skills").resolve("minimax-pdf"));
+        Files.writeString(repoDir.resolve("skills").resolve("minimax-pdf").resolve("SKILL.md"),
+            "---\nname: minimax-pdf\ndescription: Generate PDF documents\n---\n");
+        Files.createDirectories(repoDir.resolve("skills").resolve("minimax-docx"));
+        Files.writeString(repoDir.resolve("skills").resolve("minimax-docx").resolve("SKILL.md"),
+            "---\nname: minimax-docx\ndescription: Generate DOCX documents\n---\n");
+
+        var paths = detector.detectSkillPaths(repoDir);
+        assertEquals(List.of(".claude/skills", "skills"), paths);
+
+        var loader = new SkillLoader(10 * 1024 * 1024);
+        var skills = new ArrayList<SkillMetadata>();
+        for (var path : paths) {
+            skills.addAll(loader.loadFromSource(repoDir.resolve(path).toString()));
+        }
+        assertEquals(3, skills.size());
+        assertTrue(skills.stream().anyMatch(s -> "minimax-pdf".equals(s.getName())));
+        assertTrue(skills.stream().anyMatch(s -> "minimax-docx".equals(s.getName())));
+        assertTrue(skills.stream().anyMatch(s -> "pr-review".equals(s.getName())));
+    }
+
+    @Test
+    void detectsSkillsDirFromRootSourceMarketplace(@TempDir Path repoDir) throws IOException {
+        // A root-source marketplace repo whose only skill container is skills/
+        Files.createDirectories(repoDir.resolve(".claude-plugin"));
+        Files.writeString(repoDir.resolve(".claude-plugin").resolve("marketplace.json"),
+            "{\"plugins\": [{\"name\": \"demo\", \"source\": \"./\"}]}");
+        Files.createDirectories(repoDir.resolve("skills").resolve("demo-skill"));
+        Files.writeString(repoDir.resolve("skills").resolve("demo-skill").resolve("SKILL.md"),
+            "---\nname: demo-skill\ndescription: Demo skill\n---\n");
+
+        assertEquals(List.of("skills"), detector.detectSkillPaths(repoDir));
+    }
+
+    @Test
     void returnsEmptyForPlainRepo(@TempDir Path repoDir) {
         assertTrue(detector.detectSkillPaths(repoDir).isEmpty());
         assertFalse(detector.hasPluginFormat(repoDir));

@@ -115,18 +115,15 @@ public class SkillService {
 
             List<SkillMetadata> skills;
             var loader = new SkillLoader(MAX_SKILL_FILE_SIZE);
-            if (effectiveSkillPath != null && !effectiveSkillPath.isBlank() && !effectiveSkillPath.equals(skillPath)) {
-                // Auto-detected: scan each detected path separately
+            if (effectiveSkillPath != null && !effectiveSkillPath.isBlank()) {
+                // skillPath may be comma-joined (auto-detected multiple locations), scan each separately
                 skills = new ArrayList<>();
                 for (String path : effectiveSkillPath.split(",")) {
                     Path scanDir = tempDir.resolve(path.trim());
                     skills.addAll(loader.loadFromSource(scanDir.toString()));
                 }
             } else {
-                Path scanDir = effectiveSkillPath != null && !effectiveSkillPath.isBlank()
-                    ? tempDir.resolve(effectiveSkillPath)
-                    : tempDir;
-                skills = loader.loadFromSource(scanDir.toString());
+                skills = loader.loadFromSource(tempDir.toString());
             }
 
             var results = new ArrayList<SkillDefinition>();

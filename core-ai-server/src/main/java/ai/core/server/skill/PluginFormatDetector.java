@@ -133,10 +133,10 @@ public class PluginFormatDetector {
                     String source = getTextValue(plugin, "source");
                     if (source != null && !source.isBlank()) {
                         // Check if this plugin directory itself has a plugin.json with skill path
-                        resolvePluginSkillPath(repoDir, source).ifPresent(dirs::add);
+                        dirs.addAll(resolvePluginSkillPath(repoDir, source));
                     }
                 }
-                if (!dirs.isEmpty()) return dirs;
+                if (!dirs.isEmpty()) return distinct(dirs);
             }
         } catch (IOException e) {
             LOGGER.warn("Failed to parse .claude-plugin/marketplace.json", e);
@@ -159,10 +159,10 @@ public class PluginFormatDetector {
                 for (JsonNode plugin : plugins) {
                     String source = getTextValue(plugin, "source");
                     if (source != null && !source.isBlank()) {
-                        resolvePluginSkillPath(repoDir, source).ifPresent(dirs::add);
+                        dirs.addAll(resolvePluginSkillPath(repoDir, source));
                     }
                 }
-                if (!dirs.isEmpty()) return dirs;
+                if (!dirs.isEmpty()) return distinct(dirs);
             }
         } catch (IOException e) {
             LOGGER.warn("Failed to parse .agents/plugins/marketplace.json", e);
@@ -171,14 +171,15 @@ public class PluginFormatDetector {
     }
 
     /**
-     * Resolve a plugin source directory to find its skill path.
+     * Resolve a plugin source directory to find its skill paths.
      * Checks for nested plugin.json, then common conventions.
      */
-    private Optional<String> resolvePluginSkillPath(Path repoDir, String source) {
+    private List<String> resolvePluginSkillPath(Path repoDir, String source) {
         Path pluginDir = repoDir.resolve(source).normalize();
-        Optional<String> result = tryResolveFromPluginJson(repoDir, pluginDir);
-        if (result.isPresent()) return result;
-        return resolveConventionDirs(repoDir, pluginDir);
+        List<String> paths = new ArrayList<>();
+        tryResolveFromPluginJson(repoDir, pluginDir).ifPresent(paths::add);
+        paths.addAll(resolveConventionDirs(repoDir, pluginDir));
+        return paths;
     }
 
     private Optional<String> tryResolveFromPluginJson(Path repoDir, Path pluginDir) {
@@ -190,22 +191,37 @@ public class PluginFormatDetector {
             if (skillsPath == null || skillsPath.isBlank()) return Optional.empty();
             Path resolved = pluginDir.resolve(skillsPath).normalize();
             if (!Files.isDirectory(resolved)) return Optional.empty();
-            return Optional.of(repoDir.relativize(resolved).toString());
+            return Optional.of(relativePath(repoDir, resolved));
         } catch (IOException e) {
             LOGGER.warn("Failed to parse plugin.json in {}", pluginDir, e);
             return Optional.empty();
         }
     }
 
-    private Optional<String> resolveConventionDirs(Path repoDir, Path pluginDir) {
+    /**
+     * Collect all conventional skill directories under a plugin directory.
+     * A plugin can hold skills in multiple locations (e.g. MiniMax-AI/skills keeps
+     * skills in both .claude/skills and skills/), so every match is returned.
+     */
+    private List<String> resolveConventionDirs(Path repoDir, Path pluginDir) {
+        List<String> paths = new ArrayList<>();
         Path claudeSkills = pluginDir.resolve(".claude").resolve("skills");
         if (Files.isDirectory(claudeSkills)) {
-            return Optional.of(repoDir.relativize(claudeSkills).toString());
+            paths.add(relativePath(repoDir, claudeSkills));
         }
         Path skills = pluginDir.resolve("skills");
         if (Files.isDirectory(skills)) {
-            return Optional.of(repoDir.relativize(skills).toString());
+            paths.add(relativePath(repoDir, skills));
         }
-        return Optional.empty();
+        return paths;
+    }
+
+    private String relativePath(Path repoDir, Path target) {
+        // Normalize separators so persisted skill paths are portable across platforms
+        return repoDir.relativize(target).toString().replace('\\', '/');
+    }
+
+    private List<String> distinct(List<String> paths) {
+        return paths.stream().distinct().toList();
     }
 }
