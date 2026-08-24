@@ -45,8 +45,6 @@ import static ai.core.server.gateway.GatewaySupport.urlEncode;
 public class GatewayLLMProvider extends LLMProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(GatewayLLMProvider.class);
     private static final int MAX_CACHED_UPSTREAM_PROVIDERS = 32;
-    // model prefix that makes LiteLLMProvider pick the /responses transport; stripped before sending upstream
-    private static final String RESPONSES_MODEL_PREFIX = "responses/";
     private static final List<String> REASONING_EFFORT_ORDER = List.of("minimal", "low", "medium", "high", "xhigh", "max");
 
     private static String resolveReasoningEffort(ReasoningEffort effort, List<String> supported) {
@@ -104,11 +102,17 @@ public class GatewayLLMProvider extends LLMProvider {
         // fast path: gateway unconfigured deployments go straight to the static provider,
         // without exception-driven routing attempts or log noise on every call
         if (!routingEngine.hasEnabledProviders()) return fallbackCompletionStream(request, callback);
-        var resolved = resolveRoute(request.model);
+        // FILE content (PDF attachments) is only expressible through the responses transport;
+        // derive the endpoint when the caller did not specify one
+        var endpoint = request.getEndpoint();
+        if (endpoint == null && CompletionRequest.containsFileContent(request.messages)) {
+            endpoint = GatewayModelService.ENDPOINT_RESPONSES;
+        }
+        var resolved = resolveRoute(request.model, endpoint);
         if (resolved == null) return fallbackCompletionStream(request, callback);
         var provider = resolved.route().provider();
         var upstreamModel = upstreamModel(resolved);
-        var upstream = upstreamProvider(provider, upstreamModel);
+        var upstream = upstreamProvider(provider, upstreamModel, endpoint);
         var originalModel = request.model;
         request.model = upstreamModel;
         var modelConfig = routingEngine.modelConfig(originalModel);
@@ -186,11 +190,22 @@ public class GatewayLLMProvider extends LLMProvider {
         request.messages.addFirst(Message.of(RoleType.SYSTEM, instruction));
     }
 
-    private ResolvedRoute resolveRoute(String model) {
+    private ResolvedRoute resolveRoute(String model, String endpoint) {
         // a registered-but-disabled model must stay blocked; without this check it could still be
         // served by legacy prefix routing or the static fallback, bypassing the admin's disable
         if (routingEngine.knowsModel(model) && !routingEngine.isRoutable(model)) {
             throw new BadRequestException("gateway model is disabled: " + model);
+        }
+        if (GatewayModelService.ENDPOINT_RESPONSES.equals(endpoint)) {
+            var responsesRoute = responsesRoute(model);
+            if (responsesRoute != null) return responsesRoute;
+            if (routingEngine.knowsModel(model)) {
+                throw new BadRequestException("gateway model does not support the responses endpoint, "
+                        + "enable it on the model or use a responses-capable model: " + model);
+            }
+            // model unknown to the gateway — let the static provider decide, the request
+            // endpoint drives its transport
+            return null;
         }
         try {
             return new ResolvedRoute(routingEngine.route(model, GatewayEndpointType.CHAT_COMPLETIONS), false);
@@ -212,9 +227,9 @@ public class GatewayLLMProvider extends LLMProvider {
     }
 
     private String upstreamModel(ResolvedRoute resolved) {
-        var upstreamModel = resolved.route().upstreamModel();
-        if (!resolved.responses() || LiteLLMProvider.isResponsesModel(upstreamModel)) return upstreamModel;
-        return RESPONSES_MODEL_PREFIX + upstreamModel;
+        // transport is driven by the request endpoint, so the upstream model name is always the
+        // real model/deployment name; the responses/ routing-convention prefix is only a static-provider fallback
+        return resolved.route().upstreamModel();
     }
 
     private CompletionResponse fallbackCompletionStream(CompletionRequest request, StreamingCallback callback) {
@@ -228,19 +243,19 @@ public class GatewayLLMProvider extends LLMProvider {
         throw new IllegalStateException("unsupported fallback LLM provider: " + fallback.name());
     }
 
-    private LiteLLMProvider upstreamProvider(GatewayProviderConfig provider, String upstreamModel) {
+    private LiteLLMProvider upstreamProvider(GatewayProviderConfig provider, String upstreamModel, String endpoint) {
         // updatedAt is part of the key, so config changes naturally invalidate cached upstream clients;
-        // for azure, the upstreamModel must be in the cache key because the deployment URL is model-specific
+        // for azure, the upstreamModel and endpoint must be in the cache key because the URL is model/endpoint-specific
         var key = "azure".equals(provider.type)
-                ? provider.id + ":" + upstreamModel + ":" + provider.updatedAt
-                : provider.id + ":" + provider.updatedAt;
+                ? provider.id + ":" + upstreamModel + ":" + endpoint + ":" + provider.updatedAt
+                : provider.id + ":" + endpoint + ":" + provider.updatedAt;
         var cached = upstreamProviders.get(key);
         if (cached != null) return cached;
         if (upstreamProviders.size() >= MAX_CACHED_UPSTREAM_PROVIDERS) upstreamProviders.clear();
-        return upstreamProviders.computeIfAbsent(key, ignored -> createUpstreamProvider(provider, upstreamModel));
+        return upstreamProviders.computeIfAbsent(key, ignored -> createUpstreamProvider(provider, upstreamModel, endpoint));
     }
 
-    LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider, String upstreamModel) {
+    LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider, String upstreamModel, String endpoint) {
         // fresh config: the static provider's extra-body/model settings must not leak to gateway upstreams
         var upstreamConfig = new LLMProviderConfig(null, config.getTemperature(), null);
         // reasoning models stay silent for minutes while thinking: enforce a floor on the upstream
@@ -257,6 +272,11 @@ public class GatewayLLMProvider extends LLMProvider {
             // azure provider baseUrl typically ends with /openai/v1, strip /v1 to get resource root
             if (resourceBase.endsWith("/v1")) resourceBase = resourceBase.substring(0, resourceBase.length() - 3);
             var version = hasText(provider.apiVersion) ? provider.apiVersion : "2024-10-21";
+            if (GatewayModelService.ENDPOINT_RESPONSES.equals(endpoint)) {
+                // the responses endpoint is resource-level on azure: /openai/responses, model in the body
+                var responsesUrl = resourceBase + "/responses?api-version=" + urlEncode(version);
+                return new LiteLLMProvider(upstreamConfig, responsesUrl, key, "api-key", "");
+            }
             var azureUrl = resourceBase + "/deployments/" + urlEncode(upstreamModel) + "/chat/completions?api-version=" + urlEncode(version);
             return new LiteLLMProvider(upstreamConfig, azureUrl, key, "api-key", "");
         }

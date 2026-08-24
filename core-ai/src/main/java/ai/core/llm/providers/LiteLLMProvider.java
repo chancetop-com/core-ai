@@ -121,7 +121,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     @Override
     protected CompletionResponse doCompletionStream(CompletionRequest dto, StreamingCallback callback) {
-        if (LiteLLMResponsesBridge.isResponsesModel(dto.model)) {
+        if (LiteLLMResponsesBridge.isResponsesRequest(dto)) {
             return new LiteLLMResponsesBridge(client, url, token, config).completionStream(dto, callback);
         }
         return chatCompletionStream(dto, callback);

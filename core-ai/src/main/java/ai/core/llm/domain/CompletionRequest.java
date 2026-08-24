@@ -26,9 +26,24 @@ public class CompletionRequest {
         request.tools = options.tools;
         request.stream = options.stream;
         request.responseFormat = options.responseFormat;
-        // NONE means "no reasoning effort" — omit the field so providers that do not accept "none" fall back to their default
         request.reasoningEffort = options.reasoningEffort == ReasoningEffort.NONE ? null : options.reasoningEffort;
         return request;
+    }
+
+    /**
+     * Whether any message carries FILE content (e.g. a PDF attachment). FILE input is only
+     * expressible through the responses transport, so such requests must route to a
+     * responses-capable model.
+     */
+    public static boolean containsFileContent(List<Message> messages) {
+        if (messages == null) return false;
+        for (var message : messages) {
+            if (message.content == null) continue;
+            for (var content : message.content) {
+                if (content != null && content.type == Content.ContentType.FILE) return true;
+            }
+        }
+        return false;
     }
 
     @Property(name = "model")
@@ -59,11 +74,22 @@ public class CompletionRequest {
     private String name;
     private Object extraBody;
     private Integer timeoutSeconds;
+    // transport endpoint hint: "chat.completions" or "responses" (null = default routing);
+    // internal signal only, never serialized to the upstream request body
+    private String endpoint;
     // set for OpenAI-compatible proxy traffic: the request is forwarded verbatim, no modality enforcement
     private boolean passthrough;
     // resolved per-model reasoning effort value (e.g. "xhigh" mapped from internal MAX),
     // takes precedence over the reasoningEffort enum when serializing to upstream
     private String reasoningEffortValue;
+
+    public String getEndpoint() {
+        return endpoint;
+    }
+
+    public void setEndpoint(String endpoint) {
+        this.endpoint = endpoint;
+    }
 
     public String getName() {
         return name;

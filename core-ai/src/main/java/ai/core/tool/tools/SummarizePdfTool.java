@@ -35,7 +35,9 @@ public class SummarizePdfTool extends ToolCall {
             IMPORTANT: You MUST use this tool (NOT read_file) whenever the user provides a PDF file or URL, or asks about a PDF document.
             read_file can only display PDF bytes but cannot actually understand PDF content. Only summarize_pdf sends the PDF to a model that can read and analyze it.
             The query parameter specifies what you want to know about the PDF (e.g., "summarize this document", "extract key points", "what is this about?").
-            The url parameter supports HTTP/HTTPS URLs and local file paths.
+            The url parameter must be an HTTP/HTTPS URL (or data: URI) that the LLM provider can access directly.
+            Do NOT pass local file paths (e.g. /tmp/xxx.pdf) — the model service cannot reach local files, and the call will fail.
+            For a user-uploaded PDF, use the exact attachment URL from the user message. Do NOT use sandbox file paths or submit_artifacts download URLs — the model service cannot access them.
             """;
 
     public static Builder builder() {
@@ -54,7 +56,11 @@ public class SummarizePdfTool extends ToolCall {
                 List.of(Content.of(params.query()), fileContent),
                 null, null, null, null)));
         var targetModel = resolveModel(context);
-        var rsp = llmProvider.completion(CompletionRequest.of(messages, List.of(), null, targetModel, null));
+        var request = CompletionRequest.of(messages, List.of(), null, targetModel, null);
+        // PDF file input is only expressible through the responses transport; an explicit
+        // endpoint makes the gateway route to a responses-capable model instead of chat.completions
+        request.setEndpoint("responses");
+        var rsp = llmProvider.completion(request);
         return ToolCallResult.completed(rsp.choices.getFirst().message.content)
                 .withLlmUsage(targetModel, rsp.usage);
     }
@@ -66,6 +72,10 @@ public class SummarizePdfTool extends ToolCall {
 
     private String resolveModel(ExecutionContext context) {
         if (model != null) return model;
+        // system-configured summarize_pdf model wins over the agent vision model so the
+        // configured model (e.g. a Responses-capable GPT model) is actually used
+        var pdfModel = context.getCustomVariable("media.summarize_pdf.model");
+        if (pdfModel instanceof String value && !value.isBlank()) return value;
         if (context.getMultiModalModel() != null) return context.getMultiModalModel();
         if (context.getModel() != null) return context.getModel();
         return context.getLlmProvider().config.getModel();
@@ -78,7 +88,7 @@ public class SummarizePdfTool extends ToolCall {
         Path path = Paths.get(url);
         if (!Files.isRegularFile(path)) {
             throw new AgentRuntimeException("SUMMARIZE_PDF_TOOL_FAILED",
-                    "PDF file not found: " + url + ". Provide a valid HTTP URL or local file path.");
+                    "PDF file not found: " + url + ". Provide a valid HTTP/HTTPS URL that the LLM provider can access; local file paths are not supported.");
         }
         try {
             byte[] bytes = Files.readAllBytes(path);
@@ -111,7 +121,7 @@ public class SummarizePdfTool extends ToolCall {
             this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "query", "The question or instruction about the PDF content").required(),
-                    ToolCallParameters.ParamSpec.of(String.class, "url", "URL of the PDF document").required()
+                    ToolCallParameters.ParamSpec.of(String.class, "url", "HTTP/HTTPS URL of the PDF document that the LLM provider can access (use the exact attachment URL from the user message; never a local file path, sandbox path, or submit_artifacts download_url)").required()
             ));
             var tool = new SummarizePdfTool();
             tool.model = this.model;

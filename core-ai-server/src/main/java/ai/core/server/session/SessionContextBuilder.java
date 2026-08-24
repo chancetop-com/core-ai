@@ -74,6 +74,7 @@ public final class SessionContextBuilder {
     private Map<String, Object> mediaModelVariables() {
         var variables = new HashMap<String, Object>();
         putModel(variables, "media.caption.model", systemSettingsService.captionImageModel());
+        putModel(variables, "media.summarize_pdf.model", systemSettingsService.summarizePdfModel());
         putModel(variables, "media.image.model", systemSettingsService.imageGenerationModel());
         putModel(variables, "media.video.model", systemSettingsService.videoGenerationModel());
         return variables;

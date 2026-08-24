@@ -20,6 +20,7 @@ import ai.core.tool.registry.ToolRegistryFactory;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.ForbiddenException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -42,6 +43,7 @@ import static org.mockito.Mockito.when;
 
 class AgentRunnerTest {
     @Test
+    @Timeout(30)
     void successfulAgentExecutionMarksRunCompletedOnce() throws InterruptedException {
         var harness = executionHarness();
         when(harness.tracer.runAgentWithTrace(any(), any(), any(), any())).thenReturn("output");
@@ -49,7 +51,7 @@ class AgentRunnerTest {
         try {
             harness.runner.run(executableDefinition(30), "input", TriggerType.WORKFLOW);
 
-            assertTrue(harness.builder.terminalUpdate.await(2, TimeUnit.SECONDS));
+            assertTrue(harness.builder.terminalUpdate.await(10, TimeUnit.SECONDS));
             assertEquals(List.of(RunStatus.COMPLETED), harness.builder.statuses);
             assertEquals(RunStatus.COMPLETED, harness.builder.run.status);
             assertEquals("output", harness.builder.run.output);
@@ -59,6 +61,7 @@ class AgentRunnerTest {
     }
 
     @Test
+    @Timeout(30)
     void thrownAgentExecutionMarksRunFailed() throws InterruptedException {
         var harness = executionHarness();
         when(harness.tracer.runAgentWithTrace(any(), any(), any(), any()))
@@ -67,7 +70,7 @@ class AgentRunnerTest {
         try {
             harness.runner.run(executableDefinition(30), "input", TriggerType.WORKFLOW);
 
-            assertTrue(harness.builder.terminalUpdate.await(2, TimeUnit.SECONDS));
+            assertTrue(harness.builder.terminalUpdate.await(10, TimeUnit.SECONDS));
             assertEquals(List.of(RunStatus.FAILED), harness.builder.statuses);
             assertEquals(RunStatus.FAILED, harness.builder.run.status);
             assertEquals("sse timeout", harness.builder.run.error);
@@ -77,21 +80,22 @@ class AgentRunnerTest {
     }
 
     @Test
+    @Timeout(30)
     void timeoutWinsWhenAgentReturnsAfterDeadline() throws InterruptedException {
         var harness = executionHarness();
         var executionStarted = new CountDownLatch(1);
         var releaseExecution = new CountDownLatch(1);
         when(harness.tracer.runAgentWithTrace(any(), any(), any(), any())).thenAnswer(invocation -> {
             executionStarted.countDown();
-            releaseExecution.await(5, TimeUnit.SECONDS);
+            releaseExecution.await(10, TimeUnit.SECONDS);
             return "late output";
         });
 
         try {
             harness.runner.run(executableDefinition(1), "input", TriggerType.WORKFLOW);
 
-            assertTrue(executionStarted.await(1, TimeUnit.SECONDS));
-            assertTrue(harness.builder.terminalUpdate.await(2, TimeUnit.SECONDS));
+            assertTrue(executionStarted.await(10, TimeUnit.SECONDS));
+            assertTrue(harness.builder.terminalUpdate.await(10, TimeUnit.SECONDS));
             assertEquals(RunStatus.TIMEOUT, harness.builder.run.status);
 
             releaseExecution.countDown();

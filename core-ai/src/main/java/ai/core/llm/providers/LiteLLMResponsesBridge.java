@@ -27,6 +27,17 @@ final class LiteLLMResponsesBridge {
         return LiteLLMResponsesRequestMapper.isResponsesModel(model);
     }
 
+    /**
+     * Selects the /responses transport when the request asks for it explicitly, the model name
+     * carries the routing-convention responses/ marker, or any message contains FILE content
+     * (PDF attachments are only expressible through the responses transport).
+     */
+    static boolean isResponsesRequest(CompletionRequest request) {
+        if ("responses".equals(request.getEndpoint())) return true;
+        if (isResponsesModel(request.model)) return true;
+        return CompletionRequest.containsFileContent(request.messages);
+    }
+
     static Map<String, Object> toResponsesBody(CompletionRequest request) {
         return LiteLLMResponsesRequestMapper.toResponsesBody(request);
     }
@@ -45,7 +56,8 @@ final class LiteLLMResponsesBridge {
 
     CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback) {
         var extraBody = request.getExtraBody() != null ? request.getExtraBody() : config.resolveExtraBody(request.model);
-        var req = new HTTPRequest(HTTPMethod.POST, url + "/responses");
+        var reqUrl = url.contains("/responses") ? url : url + "/responses";
+        var req = new HTTPRequest(HTTPMethod.POST, reqUrl);
         if (request.getTimeoutSeconds() != null) {
             req.timeout = Duration.ofSeconds(request.getTimeoutSeconds());
         }

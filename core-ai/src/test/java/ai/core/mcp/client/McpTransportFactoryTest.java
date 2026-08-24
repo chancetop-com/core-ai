@@ -57,7 +57,7 @@ class McpTransportFactoryTest {
     }
 
     @Test
-    @Timeout(10)
+    @Timeout(30)
     void streamableHttpSupportsPostOnlyServerThatRejectsStandaloneSse() throws Exception {
         var transportFailure = new AtomicReference<Throwable>();
         var transportFailureReceived = new CountDownLatch(1);
@@ -88,7 +88,7 @@ class McpTransportFactoryTest {
     }
 
     @Test
-    @Timeout(10)
+    @Timeout(30)
     void factoryInitializesCustomEndpointAndListsToolsWithConfiguredHeaders() {
         var builder = McpServerConfig.http(serverUrl())
             .name("post-only-mcp")
@@ -105,7 +105,7 @@ class McpTransportFactoryTest {
     }
 
     @Test
-    @Timeout(10)
+    @Timeout(30)
     void configuredAcceptHeaderHandlesEmptySseInitializedResponse() {
         returnEmptySseForInitializedNotification = true;
         var builder = McpServerConfig.http(serverUrl())
@@ -123,7 +123,7 @@ class McpTransportFactoryTest {
     }
 
     @Test
-    @Timeout(10)
+    @Timeout(30)
     void callerHeadersOverrideConfiguredHeadersCaseInsensitively() {
         CallerHeaderProvider.set(caller -> java.util.Map.of("x-manager-id", "caller-value"));
         var builder = McpServerConfig.http(serverUrl())
@@ -144,7 +144,7 @@ class McpTransportFactoryTest {
     }
 
     @Test
-    @Timeout(10)
+    @Timeout(30)
     void factoryDoesNotDuplicateDefaultMcpEndpointFromFullUrl() {
         var builder = McpServerConfig.http(serverUrl() + "/mcp").name("default-mcp");
         useShortTimeouts(builder);
@@ -220,10 +220,13 @@ class McpTransportFactoryTest {
         return "http://127.0.0.1:" + server.getAddress().getPort();
     }
 
+    // Short enough to fail fast on a real hang, long enough to survive a loaded
+    // test machine: the client handshake performs two sequential localhost POSTs
+    // (initialize + notifications/initialized) inside the initialization timeout.
     private void useShortTimeouts(HttpServerConfigBuilder builder) {
         builder.connectTimeout(Duration.ofSeconds(2));
-        builder.requestTimeout(Duration.ofSeconds(2));
-        builder.initializationTimeout(Duration.ofSeconds(2));
+        builder.requestTimeout(Duration.ofSeconds(10));
+        builder.initializationTimeout(Duration.ofSeconds(10));
     }
 
     private void writeJson(HttpExchange exchange, int status, String json) throws IOException {

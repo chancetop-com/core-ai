@@ -4,6 +4,7 @@ import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.Content;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
@@ -63,7 +64,50 @@ class GatewayLLMProviderTest {
 
         gateway.completion(request("deep-research"));
 
-        assertEquals("responses/gpt-5.2-pro", gateway.upstream.capturedModel);
+        // transport is request-endpoint driven: the upstream model keeps its real name
+        assertEquals("gpt-5.2-pro", gateway.upstream.capturedModel);
+    }
+
+    @Test
+    void routesExplicitResponsesRequestEvenWhenModelAlsoSupportsChat() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var model = model("gpt-mini", provider.id, "gpt-5-mini");
+        model.endpointTypes = List.of("chat.completions", "responses");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+
+        var request = request("gpt-mini");
+        request.setEndpoint("responses");
+        gateway.completion(request);
+
+        assertEquals("gpt-5-mini", gateway.upstream.capturedModel);
+    }
+
+    @Test
+    void throwsWhenResponsesRequestRoutesToModelWithoutResponsesEndpoint() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var model = model("chat-only", provider.id, "deepseek/deepseek-chat");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+
+        var request = request("chat-only");
+        request.setEndpoint("responses");
+
+        assertThrows(BadRequestException.class, () -> gateway.completion(request));
+    }
+
+    @Test
+    void derivesResponsesEndpointFromFileContent() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var model = model("gpt-mini", provider.id, "gpt-5-mini");
+        model.endpointTypes = List.of("chat.completions", "responses");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+
+        var request = CompletionRequest.of(List.of(Message.of(new Message.MessageRecord(RoleType.USER,
+                        List.of(Content.of("read this"), Content.ofFileUrl("https://example.com/a.pdf")),
+                        null, null, null, null))),
+                null, null, "gpt-mini", null);
+        gateway.completion(request);
+
+        assertEquals("gpt-5-mini", gateway.upstream.capturedModel);
     }
 
     @Test
@@ -118,6 +162,21 @@ class GatewayLLMProviderTest {
         assertEquals("ok", response.choices.getFirst().message.content);
         assertEquals("my-deployment", gateway.upstream.capturedModel);
         assertEquals("https://example.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2024-10-21", gateway.upstreamBaseUrl);
+    }
+
+    @Test
+    void azureResponsesRouteUsesResourceLevelUrlWithRealModelName() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com/openai/v1");
+        var responsesModel = model("azure-resp", provider.id, "gpt-5-mini");
+        responsesModel.endpointTypes = List.of("responses");
+        var gateway = gateway(List.of(provider), List.of(responsesModel), null);
+
+        var request = request("azure-resp");
+        request.setEndpoint("responses");
+        gateway.completion(request);
+
+        assertEquals("https://example.openai.azure.com/openai/responses?api-version=2024-10-21", gateway.upstreamBaseUrl);
+        assertEquals("gpt-5-mini", gateway.upstream.capturedModel);
     }
 
     @Test
@@ -214,9 +273,11 @@ class GatewayLLMProviderTest {
         }
 
         @Override
-        LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider, String upstreamModel) {
+        LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider, String upstreamModel, String endpoint) {
             upstreamBaseUrl = "azure".equals(provider.type)
-                    ? "https://example.openai.azure.com/openai/deployments/" + upstreamModel + "/chat/completions?api-version=2024-10-21"
+                    ? GatewayModelService.ENDPOINT_RESPONSES.equals(endpoint)
+                        ? "https://example.openai.azure.com/openai/responses?api-version=2024-10-21"
+                        : "https://example.openai.azure.com/openai/deployments/" + upstreamModel + "/chat/completions?api-version=2024-10-21"
                     : provider.baseUrl;
             upstream = new CapturingLiteLLMProvider(new LLMProviderConfig(null, null, null), upstreamBaseUrl, "ok");
             return upstream;

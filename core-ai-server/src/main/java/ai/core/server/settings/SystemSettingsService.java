@@ -76,6 +76,8 @@ public class SystemSettingsService {
         validateChatModel(llmModel);
         var captionImageModel = normalizeModel(request.captionImageModel);
         validateChatModel(captionImageModel);
+        var summarizePdfModel = normalizeModel(request.summarizePdfModel);
+        validateModelExists(summarizePdfModel, "summarizePdfModel");
         var imageGenerationModel = normalizeModel(request.imageGenerationModel);
         validateModelExists(imageGenerationModel, "imageGenerationModel");
         var videoGenerationModel = normalizeModel(request.videoGenerationModel);
@@ -83,13 +85,14 @@ public class SystemSettingsService {
         var videoUnderstandingModel = normalizeModel(request.videoUnderstandingModel);
         validateModelExists(videoUnderstandingModel, "videoUnderstandingModel");
         return new NormalizedSettings(memoryExtractionModel, llmModel, captionImageModel,
-                imageGenerationModel, videoGenerationModel, videoUnderstandingModel);
+                summarizePdfModel, imageGenerationModel, videoGenerationModel, videoUnderstandingModel);
     }
 
     private void applyModels(SystemSettings entity, NormalizedSettings models) {
         entity.memoryExtractionModel = models.memoryExtractionModel();
         entity.llmModel = models.llmModel();
         entity.captionImageModel = models.captionImageModel();
+        entity.summarizePdfModel = models.summarizePdfModel();
         entity.imageGenerationModel = models.imageGenerationModel();
         entity.videoGenerationModel = models.videoGenerationModel();
         entity.videoUnderstandingModel = models.videoUnderstandingModel();
@@ -160,6 +163,11 @@ public class SystemSettingsService {
     public String captionImageModel() {
         var entity = entity();
         return entity == null ? null : normalizeModel(entity.captionImageModel);
+    }
+
+    public String summarizePdfModel() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.summarizePdfModel);
     }
 
     public String imageGenerationModel() {
@@ -310,6 +318,7 @@ public class SystemSettingsService {
         view.llmModel = entity == null ? null : normalizeModel(entity.llmModel);
         view.defaultLlmModel = defaultLlmModel;
         view.captionImageModel = entity == null ? null : normalizeModel(entity.captionImageModel);
+        view.summarizePdfModel = entity == null ? null : normalizeModel(entity.summarizePdfModel);
         view.imageGenerationModel = entity == null ? null : normalizeModel(entity.imageGenerationModel);
         view.videoGenerationModel = entity == null ? null : normalizeModel(entity.videoGenerationModel);
         view.videoUnderstandingModel = entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
@@ -347,7 +356,7 @@ public class SystemSettingsService {
     }
 
     private record NormalizedSettings(String memoryExtractionModel, String llmModel,
-                                       String captionImageModel, String imageGenerationModel, String videoGenerationModel,
-                                       String videoUnderstandingModel) {
+                                       String captionImageModel, String summarizePdfModel, String imageGenerationModel,
+                                       String videoGenerationModel, String videoUnderstandingModel) {
     }
 }

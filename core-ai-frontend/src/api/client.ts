@@ -1470,6 +1470,7 @@ export interface SystemSettings {
   default_llm_model?: string;
   caption_image_model?: string | null;
   default_caption_image_model?: string;
+  summarize_pdf_model?: string | null;
   image_generation_model?: string | null;
   default_image_generation_model?: string;
   video_generation_model?: string | null;
@@ -1503,6 +1504,7 @@ export interface SystemSettingsRequest {
   memory_extraction_model?: string | null;
   llm_model?: string | null;
   caption_image_model?: string | null;
+  summarize_pdf_model?: string | null;
   image_generation_model?: string | null;
   video_generation_model?: string | null;
   video_understanding_model?: string | null;

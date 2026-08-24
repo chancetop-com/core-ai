@@ -26,6 +26,9 @@ public class SystemSettingsView {
     @Property(name = "default_caption_image_model")
     public String defaultCaptionImageModel;
 
+    @Property(name = "summarize_pdf_model")
+    public String summarizePdfModel;
+
     @Property(name = "image_generation_model")
     public String imageGenerationModel;
 

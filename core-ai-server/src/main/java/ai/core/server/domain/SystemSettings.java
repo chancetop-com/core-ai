@@ -23,6 +23,9 @@ public class SystemSettings {
     @Field(name = "caption_image_model")
     public String captionImageModel;
 
+    @Field(name = "summarize_pdf_model")
+    public String summarizePdfModel;
+
     @Field(name = "image_generation_model")
     public String imageGenerationModel;
 

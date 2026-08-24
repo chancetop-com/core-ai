@@ -8,6 +8,7 @@ export default function SystemSettings() {
   const [memoryExtractionModel, setMemoryExtractionModel] = useState('');
   const [llmModel, setLlmModel] = useState('');
   const [captionImageModel, setCaptionImageModel] = useState('');
+  const [summarizePdfModel, setSummarizePdfModel] = useState('');
   const [imageGenerationModel, setImageGenerationModel] = useState('');
   const [videoGenerationModel, setVideoGenerationModel] = useState('');
   const [videoUnderstandingModel, setVideoUnderstandingModel] = useState('');
@@ -69,6 +70,7 @@ export default function SystemSettings() {
       setMemoryExtractionModel(settingsResponse.memory_extraction_model || '');
       setLlmModel(settingsResponse.llm_model || '');
       setCaptionImageModel(settingsResponse.caption_image_model || '');
+      setSummarizePdfModel(settingsResponse.summarize_pdf_model || '');
       setImageGenerationModel(settingsResponse.image_generation_model || '');
       setVideoGenerationModel(settingsResponse.video_generation_model || '');
       setVideoUnderstandingModel(settingsResponse.video_understanding_model || '');
@@ -106,6 +108,7 @@ export default function SystemSettings() {
         memory_extraction_model: memoryExtractionModel.trim() || null,
         llm_model: llmModel.trim() || null,
         caption_image_model: captionImageModel.trim() || null,
+        summarize_pdf_model: summarizePdfModel.trim() || null,
         image_generation_model: imageGenerationModel.trim() || null,
         video_generation_model: videoGenerationModel.trim() || null,
         video_understanding_model: videoUnderstandingModel.trim() || null,
@@ -128,6 +131,7 @@ export default function SystemSettings() {
       setMemoryExtractionModel(response.memory_extraction_model || '');
       setLlmModel(response.llm_model || '');
       setCaptionImageModel(response.caption_image_model || '');
+      setSummarizePdfModel(response.summarize_pdf_model || '');
       setImageGenerationModel(response.image_generation_model || '');
       setVideoGenerationModel(response.video_generation_model || '');
       setVideoUnderstandingModel(response.video_understanding_model || '');
@@ -252,7 +256,7 @@ export default function SystemSettings() {
         <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
           <h2 className="font-semibold">Default Media &amp; Tool Models</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Default models used by caption_image, image generation, video generation and video understanding
+            Default models used by caption_image, summarize_pdf, image generation, video generation and video understanding
             when no model is specified on the agent. Leave empty to fall back to gateway routing.
           </p>
         </div>
@@ -292,6 +296,18 @@ export default function SystemSettings() {
               defaultModel={settings?.default_video_understanding_model}
               onChange={setVideoUnderstandingModel}
             />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Summarize PDF model</span>
+            <ModelSelect
+              value={summarizePdfModel}
+              models={chatModels}
+              onChange={setSummarizePdfModel}
+            />
+            <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+              Model used by summarize_pdf to read PDF documents. Must support file/document input
+              (e.g. GPT-series models via the responses endpoint).
+            </span>
           </label>
         </div>
       </section>

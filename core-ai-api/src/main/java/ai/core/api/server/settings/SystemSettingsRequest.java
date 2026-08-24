@@ -15,6 +15,9 @@ public class SystemSettingsRequest {
     @Property(name = "caption_image_model")
     public String captionImageModel;
 
+    @Property(name = "summarize_pdf_model")
+    public String summarizePdfModel;
+
     @Property(name = "image_generation_model")
     public String imageGenerationModel;
 

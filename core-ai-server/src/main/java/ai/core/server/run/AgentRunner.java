@@ -282,16 +282,23 @@ public class AgentRunner {
 
     public void shutdown() {
         executorService.shutdown();
-        timeoutScheduler.shutdown();
         try {
             if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
                 executorService.shutdownNow();
             }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        // Only stop the scheduler after in-flight runs finished: they still submit
+        // timeout and sandbox-release tasks, and a terminated scheduler would reject
+        // them (RejectedExecutionException) and mark otherwise-fine runs FAILED.
+        timeoutScheduler.shutdown();
+        try {
             if (!timeoutScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
                 timeoutScheduler.shutdownNow();
             }
         } catch (InterruptedException e) {
-            executorService.shutdownNow();
             timeoutScheduler.shutdownNow();
             Thread.currentThread().interrupt();
         }
