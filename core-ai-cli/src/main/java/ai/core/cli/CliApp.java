@@ -25,6 +25,7 @@ import ai.core.cli.remote.A2ARemoteConnector;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.remote.RemoteSessionRunner;
 import ai.core.cli.session.LocalChatSessionManager;
+import ai.core.cli.skill.ManagedSkillProvisioner;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.utils.PathUtils;
@@ -204,6 +205,7 @@ public class CliApp {
         PluginManager.getInstance(configDir).initializeIfNeeded(jarPath);
         var ui = new TerminalUI();
         InteractiveConfigSetup.setupIfNeeded(ui);
+        ManagedSkillProvisioner.provision();
         var sessionContext = initializeSession(ui);
         var shutdownResources = sessionContext.result().shutdownResources();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -304,6 +306,7 @@ public class CliApp {
     public void startServe(int port, boolean openBrowser, Path webDir) {
         System.setProperty("core.appName", "core-ai-cli");
         var bc = bootstrapCore();
+        ManagedSkillProvisioner.provision();
         var sessionManager = bc.sessionManager();
         var currentSessionId = resolveSessionIdForServe(sessionManager);
         if (currentSessionId == null) currentSessionId = CliAppHelper.defaultSessionId("serve-");
