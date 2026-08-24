@@ -116,8 +116,15 @@ reference_name: 图片1
 - `message`：供 Agent 使用的增强文本。
 - `displayMessage`：用户输入框序列化出的原始可读文本。
 
-处理 Pod 用 `displayMessage` 写入 `ChatMessageService`，用 `message` 调用 Agent。旧命令缺少
-`displayMessage` 时回退到 `message`，保证滚动发布期间兼容。
+处理 Pod 用 `displayMessage` 作为显示内容、用 `message` 作为 Agent 内容写入
+`ChatMessageService`，并用 `message` 调用 Agent。`ChatMessage` 增加可选字段 `agent_content`：
+
+- `content`：聊天历史接口和会话标题使用的用户原文。
+- `agent_content`：包含附件映射的 Agent 文本。
+
+会话重建时优先恢复 `agent_content`，旧消息没有该字段时回退到 `content`。旧命令缺少
+`displayMessage` 时同样回退到 `message`，保证滚动发布与历史数据兼容。新增字段为可选字符串，
+不需要数据迁移或新索引。
 
 ## 7. 数据流
 
@@ -132,8 +139,8 @@ reference_name: 图片1
   -> Agent 同时收到文案、引用映射与实际多模态/文件内容
 ```
 
-引用信息不写入新的 Mongo 集合。用户消息历史只保存可读的 `@图片1` 文案，不保存服务端形成的
-机器映射；本次不要求重新打开历史消息后继续编辑原引用。
+引用信息不写入新的 Mongo 集合。用户消息的 `content` 只保存可读的 `@图片1` 文案，机器映射
+保存在同一消息的 `agent_content`；本次不要求重新打开历史消息后继续编辑原引用。
 
 ## 8. 错误处理与边界
 
@@ -161,7 +168,7 @@ reference_name: 图片1
 3. API 与命令链路回归
    - `reference_name` 跨 SSE 请求和跨 Pod 命令负载后仍与附件一致。
    - 多模态附件顺序不因映射生成而改变。
-   - 历史消息保存 `displayMessage`，Agent 接收增强后的 `message`；旧命令仍可回退。
+   - 历史接口读取 `content`，Agent 重建优先读取 `agent_content`；旧消息和旧命令仍可回退。
 4. 验证命令
    - Frontend 目标测试、完整测试、lint 和 build。
    - Server 目标测试及 `:core-ai-server:check`。
