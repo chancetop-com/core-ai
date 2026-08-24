@@ -15,6 +15,8 @@ import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 
+import java.util.Locale;
+
 /**
  * Tracing infrastructure for agent runs — span creation, workflow trace attribute propagation,
  * and run-to-trace-id linkage.
@@ -38,6 +40,8 @@ public class AgentRunTracer {
     static final AttributeKey<String> CORE_AI_WORKFLOW_RUN_ID = AttributeKey.stringKey("core_ai.workflow_run_id");
     static final AttributeKey<String> CORE_AI_WORKFLOW_NODE_ID = AttributeKey.stringKey("core_ai.workflow_node_id");
     static final AttributeKey<String> CORE_AI_WORKFLOW_NODE_TYPE = AttributeKey.stringKey("core_ai.workflow_node_type");
+    static final AttributeKey<Boolean> CORE_AI_CANCELLED = AttributeKey.booleanKey("core_ai.cancelled");
+    static final AttributeKey<String> CORE_AI_CANCEL_REASON = AttributeKey.stringKey("core_ai.cancel.reason");
 
     static TriggerType triggerFor(AgentRun runEntity) {
         return runEntity.triggeredBy != null ? runEntity.triggeredBy : TriggerType.MANUAL;
@@ -64,6 +68,14 @@ public class AgentRunTracer {
             var output = agent.run(runEntity.input);
             if (output != null) span.setAttribute(OUTPUT_VALUE, output);
             if (agent.getNodeStatus() != null) span.setAttribute(AGENT_STATUS, agent.getNodeStatus().name());
+            // Collaborative cancellation (e.g. run timeout) returns normally instead of throwing,
+            // so the span would otherwise be ingested as OK and mask the interrupted run.
+            if (agent.isCancelled()) {
+                span.setAttribute(CORE_AI_CANCELLED, Boolean.TRUE);
+                var reason = agent.getCancellationToken().getReason();
+                if (reason != null) span.setAttribute(CORE_AI_CANCEL_REASON, reason.name().toLowerCase(Locale.ENGLISH));
+                span.setAttribute(AGENT_STATUS, "CANCELLED");
+            }
             return output;
         });
     }

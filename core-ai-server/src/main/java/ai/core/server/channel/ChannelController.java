@@ -43,6 +43,9 @@ public class ChannelController implements Controller {
         if (Boolean.FALSE.equals(channel.enabled)) {
             throw new ForbiddenException("channel is disabled: " + channelId);
         }
+        if ("output".equals(channel.mode)) {
+            throw new ForbiddenException("channel is output-only, cannot receive inbound events: " + channelId);
+        }
 
         var inbound = channelRegistry.inbound(channel.channelType);
 

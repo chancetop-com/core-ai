@@ -32,10 +32,14 @@ final class AgentInterruptionHandler {
     }
 
     static void cancel(Agent agent) {
+        cancel(agent, CancelReason.USER_CANCELLED);
+    }
+
+    static void cancel(Agent agent, CancelReason reason) {
         boolean alreadyCancelled = getCancellationToken(agent).isCancelled();
-        getCancellationToken(agent).cancel();
+        getCancellationToken(agent).cancel(reason);
         if (!alreadyCancelled) {
-            injectInterruptionMarker(agent);
+            injectInterruptionMarker(agent, reason);
             persistInterruptionMarkerIfExists(agent);
         }
     }

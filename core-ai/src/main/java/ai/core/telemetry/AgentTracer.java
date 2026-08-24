@@ -80,7 +80,7 @@ public class AgentTracer extends Tracer {
                 span.setAttribute(AGENT_STATUS, context.getStatus());
             }
             if (isCancelled(cancellationSupplier)) {
-                markCancelled(span);
+                markCancelled(span, context.getCancelReason());
                 span.setAttribute(AGENT_STATUS, "CANCELLED");
             }
             if (context.getMessageCount() > 0) {
@@ -90,7 +90,7 @@ public class AgentTracer extends Tracer {
             return result;
         } catch (Exception e) {
             if (isCancelled(cancellationSupplier)) {
-                markCancelled(span);
+                markCancelled(span, context.getCancelReason());
                 span.setAttribute(AGENT_STATUS, "CANCELLED");
                 throw e;
             }

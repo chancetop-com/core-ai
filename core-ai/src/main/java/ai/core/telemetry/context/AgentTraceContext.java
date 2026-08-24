@@ -22,6 +22,7 @@ public final class AgentTraceContext {
     private String output;
     private String status;
     private int messageCount;
+    private String cancelReason;
 
     private AgentTraceContext(Builder builder) {
         this.name = builder.name;
@@ -83,6 +84,14 @@ public final class AgentTraceContext {
 
     public void setMessageCount(int messageCount) {
         this.messageCount = messageCount;
+    }
+
+    public String getCancelReason() {
+        return cancelReason;
+    }
+
+    public void setCancelReason(String cancelReason) {
+        this.cancelReason = cancelReason;
     }
 
     public String getSessionId() {

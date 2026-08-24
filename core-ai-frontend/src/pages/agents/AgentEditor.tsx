@@ -1120,7 +1120,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                     <label className="block text-sm font-medium mb-1 flex items-center gap-1">
                       Timeout (s)
                       <span className="cursor-help flex items-center"
-                        title="Maximum time in seconds for one run before it is aborted.">
+                        title="Maximum run duration in seconds before the run is aborted. Only applies to scheduled, API, webhook and workflow runs — chat conversations are not subject to this timeout.">
                         <HelpCircle size={12} style={{ color: 'var(--color-text-tertiary)' }} />
                       </span>
                     </label>
@@ -1129,6 +1129,9 @@ The system prompt should define how this agent behaves, its capabilities, and it
                       className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
                       style={inputStyle}
                       placeholder="600" />
+                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                      Applies to runs only (schedules, API runs, webhooks, workflows). Chat conversations are not timed out.
+                    </p>
                   </div>
                 </div>
 
@@ -2054,13 +2057,13 @@ The system prompt should define how this agent behaves, its capabilities, and it
                     <button onClick={handleTest} disabled={!testInput.trim()}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
                       style={{ background: 'var(--color-success)' }}>
-                      <Play size={14} /> Test
+                      <Play size={14} /> Test Chat
                     </button>
                     {agent.status === 'PUBLISHED' && (
                       <button onClick={handleTriggerRun} disabled={!testInput.trim()}
                         className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 border"
                         style={{ borderColor: 'var(--color-border)' }}>
-                        Run
+                        Trigger Run
                       </button>
                     )}
                   </>
@@ -2073,7 +2076,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                 )}
               </div>
               <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                Test uses current config directly. Run uses published config.
+                Test Chat runs in a chat session (no timeout). Trigger Run executes as a scheduled-style run (subject to timeout, uses published config).
               </p>
 
               {/* Test output */}
@@ -2891,6 +2894,9 @@ function SandboxConfigSection({ config, onChange, onEnvChange, inputStyle }: {
                       className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
                       style={inputStyle}
                     />
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                      Runs only (schedule/API/webhook/workflow); chat is not timed out
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

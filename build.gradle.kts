@@ -96,6 +96,9 @@ project(":core-ai") {
         implementation("io.opentelemetry:opentelemetry-sdk:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-exporter-otlp:${Versions.OPENTELEMETRY_VERSION}")
         compileOnly("io.opentelemetry:opentelemetry-api-incubator:${Versions.OPENTELEMETRY_VERSION}-alpha")
+        // mirror the incubator on the test compile classpath so spotbugsTest can resolve
+        // otel classes referencing incubator types during analysis
+        testCompileOnly("io.opentelemetry:opentelemetry-api-incubator:${Versions.OPENTELEMETRY_VERSION}-alpha")
         // MCP SDK — keep the Jackson 2 adapter explicit because the `mcp` convenience
         // artifact switched its default JSON implementation to Jackson 3 in SDK 1.x.
         api("io.modelcontextprotocol.sdk:mcp-core:${Versions.MCP_SDK_VERSION}")

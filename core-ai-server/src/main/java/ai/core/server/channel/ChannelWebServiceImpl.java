@@ -110,6 +110,7 @@ public class ChannelWebServiceImpl implements ChannelWebService {
         var view = new ai.core.server.channel.ChannelConfigView();
         view.channelId = channelId;
         view.channelType = request.channelType != null ? request.channelType : "slack";
+        view.mode = request.mode != null ? request.mode : "conversation";
         view.enabled = request.enabled == null || Boolean.TRUE.equals(request.enabled);
         view.agentId = request.agentId;
         view.userId = request.userId;
@@ -132,6 +133,7 @@ public class ChannelWebServiceImpl implements ChannelWebService {
         var view = new ChannelConfigView();
         view.channelId = channel.channelId;
         view.channelType = channel.channelType;
+        view.mode = channel.mode != null ? channel.mode : "conversation";
         view.enabled = channel.enabled;
         view.requireAuth = channel.requireAuth;
         view.agentId = channel.agentId;

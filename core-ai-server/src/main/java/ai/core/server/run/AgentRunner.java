@@ -1,6 +1,7 @@
 package ai.core.server.run;
 
 import ai.core.agent.Agent;
+import ai.core.agent.CancelReason;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.channel.ChannelConfigStore;
@@ -324,7 +325,7 @@ public class AgentRunner {
     private ScheduledFuture<?> scheduleTimeout(AgentRun runEntity, Agent agent, int timeoutSeconds, AtomicBoolean completed) {
         return timeoutScheduler.schedule(() -> {
             if (!completed.compareAndSet(false, true)) return;
-            agent.cancel();
+            agent.cancel(CancelReason.TIMEOUT);
             builder.updateRunStatus(runEntity, RunStatus.TIMEOUT, null, "execution timed out after " + timeoutSeconds + "s", agent);
         }, timeoutSeconds, TimeUnit.SECONDS);
     }

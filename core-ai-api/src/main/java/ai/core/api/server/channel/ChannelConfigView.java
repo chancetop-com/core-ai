@@ -14,6 +14,9 @@ public class ChannelConfigView {
     @Property(name = "channelType")
     public String channelType;
 
+    @Property(name = "mode")
+    public String mode;
+
     @Property(name = "enabled")
     public Boolean enabled;
 

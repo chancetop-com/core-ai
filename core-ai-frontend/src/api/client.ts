@@ -2468,6 +2468,7 @@ export interface ListSharedArtifactUsersResponse {
 export interface ChannelView {
   channelId: string;
   channelType: string;
+  mode: string;
   enabled: boolean;
   requireAuth: boolean;
   agentId: string;

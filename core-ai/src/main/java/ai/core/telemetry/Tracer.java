@@ -104,7 +104,11 @@ public abstract class Tracer {
     }
 
     protected void markCancelled(Span span) {
+        markCancelled(span, null);
+    }
+
+    protected void markCancelled(Span span, String reason) {
         span.setAttribute(CORE_AI_CANCELLED, Boolean.TRUE);
-        span.setAttribute(CORE_AI_CANCEL_REASON, "user");
+        span.setAttribute(CORE_AI_CANCEL_REASON, reason != null && !reason.isBlank() ? reason : "user");
     }
 }

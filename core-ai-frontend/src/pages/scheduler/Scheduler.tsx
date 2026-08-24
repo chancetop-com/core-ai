@@ -424,7 +424,7 @@ export default function Scheduler() {
                   <option value="">No channel (output saved to run history)</option>
                   {channels.filter(c => c.enabled).map(c => (
                     <option key={c.channelId} value={c.channelId}>
-                      {c.channelId} ({c.channelType})
+                      {c.channelId} ({c.channelType}{(c.mode || 'conversation') === 'output' ? ' · output' : ''})
                     </option>
                   ))}
                 </select>

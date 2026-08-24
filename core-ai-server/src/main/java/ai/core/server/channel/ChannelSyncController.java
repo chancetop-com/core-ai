@@ -161,6 +161,9 @@ public class ChannelSyncController implements Controller {
         if (callbackUrl != null && !callbackUrl.isBlank() && !"openclaw".equals(channel.channelType)) {
             throw new BadRequestException("OCG async callback is only supported for openclaw channels");
         }
+        if ("output".equals(channel.mode)) {
+            throw new BadRequestException("channel " + channelId + " is output-only, cannot receive messages");
+        }
         if (channel.agentId == null || channel.agentId.isBlank())
             throw new BadRequestException("channel " + channelId + " has no agent configured");
         return channel;

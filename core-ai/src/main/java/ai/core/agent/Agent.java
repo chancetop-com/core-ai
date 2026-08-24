@@ -34,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
@@ -91,6 +92,9 @@ public class Agent extends Node<Agent> {
                 context.setOutput(getOutput());
                 context.setStatus(getNodeStatus().name());
                 context.setMessageCount(getMessages().size());
+                var token = getExecutionContext().getCancellationToken();
+                context.setCancelReason(token != null && token.getReason() != null
+                        ? token.getReason().name().toLowerCase(Locale.ENGLISH) : null);
                 return result;
             }, this::isCancelled);
         }
@@ -364,6 +368,10 @@ public class Agent extends Node<Agent> {
 
     public void cancel() {
         AgentInterruptionHandler.cancel(this);
+    }
+
+    public void cancel(CancelReason reason) {
+        AgentInterruptionHandler.cancel(this, reason);
     }
 
     /**

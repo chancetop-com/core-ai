@@ -147,12 +147,29 @@ class ScheduledTaskToolTest {
 
         @Override
         public ScheduledTask create(ScheduledTask task) {
+            var copy = copyOf(task);
             var now = ZonedDateTime.now();
-            task.nextRunAt = now.plusDays(1);
-            task.createdAt = now;
-            task.updatedAt = now;
-            tasks.put(task.id, task);
-            return task;
+            copy.nextRunAt = now.plusDays(1);
+            copy.createdAt = now;
+            copy.updatedAt = now;
+            tasks.put(copy.id, copy);
+            return copy;
+        }
+
+        private ScheduledTask copyOf(ScheduledTask task) {
+            var copy = new ScheduledTask();
+            copy.id = task.id;
+            copy.sessionId = task.sessionId;
+            copy.userId = task.userId;
+            copy.name = task.name;
+            copy.cronExpression = task.cronExpression;
+            copy.timezone = task.timezone;
+            copy.input = task.input;
+            copy.enabled = task.enabled;
+            copy.nextRunAt = task.nextRunAt;
+            copy.createdAt = task.createdAt;
+            copy.updatedAt = task.updatedAt;
+            return copy;
         }
 
         @Override

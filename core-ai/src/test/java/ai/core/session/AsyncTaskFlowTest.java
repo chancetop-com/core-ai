@@ -458,6 +458,10 @@ class AsyncTaskFlowTest {
                 if (text != null && !text.isEmpty()) {
                     callback.onChunk(text);
                 }
+                // Real providers signal completion after streaming all chunks; the async
+                // callback wrapper drains pending chunks on onComplete, so listeners see
+                // the text before the completion call returns (deterministic turn order).
+                callback.onComplete();
             }
             return response;
         }

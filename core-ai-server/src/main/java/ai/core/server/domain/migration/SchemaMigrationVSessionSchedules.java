@@ -10,7 +10,7 @@ import core.framework.mongo.Mongo;
 public class SchemaMigrationVSessionSchedules implements SchemaMigration {
     @Override
     public String version() {
-        return "20260821001";
+        return "20260824001";
     }
 
     @Override

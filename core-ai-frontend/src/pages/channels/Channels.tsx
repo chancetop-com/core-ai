@@ -10,6 +10,7 @@ interface EditorState {
   editing: ChannelView | null;
   channelId: string;
   channelType: string;
+  mode: string;
   agentId: string;
   enabled: boolean;
   requireAuth: boolean;
@@ -24,6 +25,7 @@ function emptyEditor(): EditorState {
     editing: null,
     channelId: '',
     channelType: 'slack',
+    mode: 'conversation',
     agentId: '',
     enabled: true,
     requireAuth: true,
@@ -77,6 +79,7 @@ export default function Channels() {
       editing: c,
       channelId: c.channelId,
       channelType: c.channelType,
+      mode: c.mode || 'conversation',
       agentId: c.agentId || '',
       enabled: c.enabled,
       requireAuth: c.requireAuth ?? true,
@@ -91,17 +94,19 @@ export default function Channels() {
   const save = async () => {
     if (!editor.channelId.trim()) { alert('Channel ID is required'); return; }
     if (!editor.channelType) { alert('Channel type is required'); return; }
-    if (!editor.agentId) { alert('Please select an agent'); return; }
+    const isOutput = editor.mode === 'output';
+    if (!isOutput && !editor.agentId) { alert('Please select an agent'); return; }
 
     const data: Record<string, unknown> = {
       channelId: editor.channelId.trim(),
       channelType: editor.channelType,
-      agentId: editor.agentId,
+      mode: editor.mode,
       enabled: editor.enabled,
-      requireAuth: editor.requireAuth,
-      sessionTtlMinutes: editor.sessionTtlMinutes,
+      requireAuth: isOutput ? true : editor.requireAuth,
+      agentId: isOutput ? null : editor.agentId,
+      sessionTtlMinutes: isOutput ? null : editor.sessionTtlMinutes,
       config: editor.config,
-      filterConfig: Object.keys(editor.filterConfig).length > 0 ? editor.filterConfig : null,
+      filterConfig: isOutput ? null : (Object.keys(editor.filterConfig).length > 0 ? editor.filterConfig : null),
     };
 
     try {
@@ -124,15 +129,17 @@ export default function Channels() {
   };
 
   const toggleEnabled = async (c: ChannelView) => {
+    const isOutput = (c.mode || 'conversation') === 'output';
     await api.channels.update(c.channelId, {
       channelId: c.channelId,
       channelType: c.channelType,
-      agentId: c.agentId || '',
+      mode: c.mode || 'conversation',
+      agentId: isOutput ? null : (c.agentId || ''),
       enabled: !c.enabled,
-      requireAuth: c.requireAuth ?? true,
-      sessionTtlMinutes: c.sessionTtlMinutes || 60,
+      requireAuth: isOutput ? true : (c.requireAuth ?? true),
+      sessionTtlMinutes: isOutput ? null : (c.sessionTtlMinutes || 60),
       config: c.config,
-      filterConfig: c.filterConfig,
+      filterConfig: isOutput ? null : c.filterConfig,
     });
     load();
   };
@@ -171,6 +178,7 @@ export default function Channels() {
                 <th className="text-left px-4 py-3 font-medium">Channel</th>
                 <th className="text-left px-4 py-3 font-medium">Webhook URL</th>
                 <th className="text-left px-4 py-3 font-medium">Type</th>
+                <th className="text-left px-4 py-3 font-medium">Mode</th>
                 <th className="text-left px-4 py-3 font-medium">Agent</th>
                 <th className="text-left px-4 py-3 font-medium">Session TTL</th>
                 <th className="text-left px-4 py-3 font-medium">Enabled</th>
@@ -206,6 +214,14 @@ export default function Channels() {
                     <span className="inline-block px-2 py-0.5 rounded text-xs font-medium"
                       style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
                       {typeLabel(c.channelType)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-block px-2 py-0.5 rounded text-xs font-medium"
+                      style={(c.mode || 'conversation') === 'output'
+                        ? { background: '#fef2cd', color: '#946800' }
+                        : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                      {(c.mode || 'conversation') === 'output' ? 'Output' : 'Conversation'}
                     </span>
                   </td>
                   <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
@@ -291,33 +307,66 @@ export default function Channels() {
 
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  Agent
+                  Mode
                 </label>
-                <select value={editor.agentId}
-                  onChange={e => setEditor({ ...editor, agentId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border text-sm"
-                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
-                  <option value="">Select agent</option>
-                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setEditor({ ...editor, mode: 'conversation' })}
+                    className="flex-1 px-3 py-2 rounded-lg border text-xs cursor-pointer"
+                    style={{
+                      borderColor: editor.mode !== 'output' ? 'var(--color-primary)' : 'var(--color-border)',
+                      background: editor.mode !== 'output' ? 'var(--color-primary)' : 'transparent',
+                      color: editor.mode !== 'output' ? '#fff' : 'var(--color-text)',
+                    }}>
+                    Conversation
+                  </button>
+                  <button type="button" onClick={() => setEditor({ ...editor, mode: 'output' })}
+                    className="flex-1 px-3 py-2 rounded-lg border text-xs cursor-pointer"
+                    style={{
+                      borderColor: editor.mode === 'output' ? 'var(--color-primary)' : 'var(--color-border)',
+                      background: editor.mode === 'output' ? 'var(--color-primary)' : 'transparent',
+                      color: editor.mode === 'output' ? '#fff' : 'var(--color-text)',
+                    }}>
+                    Output
+                  </button>
+                </div>
                 <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  AI agent that responds to messages from this channel.
+                  Conversation: two-way chat (requires an agent). Output: push-only channel for schedule/cost alert delivery, no agent needed.
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  Session TTL (minutes)
-                </label>
-                <input type="number" value={editor.sessionTtlMinutes}
-                  onChange={e => setEditor({ ...editor, sessionTtlMinutes: parseInt(e.target.value) || 60 })}
-                  min={1} max={1440}
-                  className="w-full px-3 py-2 rounded-lg border text-sm"
-                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
-                <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  Conversation session expires after this many idle minutes.
-                </p>
-              </div>
+              {editor.mode !== 'output' && (
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    Agent
+                  </label>
+                  <select value={editor.agentId}
+                    onChange={e => setEditor({ ...editor, agentId: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border text-sm"
+                    style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+                    <option value="">Select agent</option>
+                    {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    AI agent that responds to messages from this channel.
+                  </p>
+                </div>
+              )}
+
+              {editor.mode !== 'output' && (
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    Session TTL (minutes)
+                  </label>
+                  <input type="number" value={editor.sessionTtlMinutes}
+                    onChange={e => setEditor({ ...editor, sessionTtlMinutes: parseInt(e.target.value) || 60 })}
+                    min={1} max={1440}
+                    className="w-full px-3 py-2 rounded-lg border text-sm"
+                    style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    Conversation session expires after this many idle minutes.
+                  </p>
+                </div>
+              )}
 
               <div className="pt-2 pb-1">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -329,15 +378,23 @@ export default function Channels() {
               </div>
 
               <div className="pb-1">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={editor.requireAuth}
-                    onChange={e => setEditor({ ...editor, requireAuth: e.target.checked })}
-                    className="w-4 h-4 rounded" style={{ accentColor: 'var(--color-primary)' }} />
-                  <span className="text-sm font-medium">Require Authentication</span>
-                </label>
-                <p className="text-xs mt-1 ml-6" style={{ color: 'var(--color-text-secondary)' }}>
-                  If disabled, requests to this channel bypass API key auth. Turn off for platforms like WeClaw that call directly.
-                </p>
+                {editor.mode === 'output' ? (
+                  <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    Output channels accept no inbound messages; they are used by schedules and cost alerts to deliver output directly.
+                  </p>
+                ) : (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={editor.requireAuth}
+                      onChange={e => setEditor({ ...editor, requireAuth: e.target.checked })}
+                      className="w-4 h-4 rounded" style={{ accentColor: 'var(--color-primary)' }} />
+                    <span className="text-sm font-medium">Require Authentication</span>
+                  </label>
+                )}
+                {editor.mode !== 'output' && (
+                  <p className="text-xs mt-1 ml-6" style={{ color: 'var(--color-text-secondary)' }}>
+                    If disabled, requests to this channel bypass API key auth. Turn off for platforms like WeClaw that call directly.
+                  </p>
+                )}
               </div>
 
               <div className="pt-3">
@@ -356,20 +413,22 @@ export default function Channels() {
                 />
               </div>
 
-              <div className="pt-3">
-                <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-secondary)' }}>
-                  Event Filters
+              {editor.mode !== 'output' && (
+                <div className="pt-3">
+                  <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                    Event Filters
+                  </div>
+                  <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+                    Optional: skip events that don't match. For Slack: <code className="text-[11px] px-1 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>filter_channels</code> (comma-separated channel IDs).
+                  </p>
+                  <KeyValueVariablesEditor
+                    value={editor.filterConfig}
+                    onChange={(v) => setEditor({ ...editor, filterConfig: v || {} })}
+                    keyPlaceholder="e.g. filter_channels"
+                    valuePlaceholder="e.g. C123, C456"
+                  />
                 </div>
-                <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
-                  Optional: skip events that don't match. For Slack: <code className="text-[11px] px-1 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>filter_channels</code> (comma-separated channel IDs).
-                </p>
-                <KeyValueVariablesEditor
-                  value={editor.filterConfig}
-                  onChange={(v) => setEditor({ ...editor, filterConfig: v || {} })}
-                  keyPlaceholder="e.g. filter_channels"
-                  valuePlaceholder="e.g. C123, C456"
-                />
-              </div>
+              )}
             </div>
 
             <div className="flex gap-2 mt-6">

@@ -512,7 +512,15 @@ function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?:
               <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{span.type}</div>
             </div>
           </div>
-          <StatusBadge status={span.status} />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <StatusBadge status={span.status} />
+            {span.status === 'CANCELLED' && span.attributes?.['core_ai.cancel.reason'] === 'timeout' && (
+              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium"
+                style={{ background: '#fef2cd', color: '#946800' }}>
+                Timed out
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
           {span.model && <NeutralChip mono>{span.model}</NeutralChip>}

@@ -16,6 +16,8 @@ public class ChannelConfigView {
     public String channelId;
     @Field(name = "channel_type")
     public String channelType;
+    @Field(name = "mode")
+    public String mode;
     @Field(name = "enabled")
     public Boolean enabled;
     @Field(name = "agent_id")
