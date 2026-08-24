@@ -14,6 +14,7 @@ import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
+import ai.core.server.gateway.GatewayRoutingEngine;
 import ai.core.server.session.SessionDatasetHelper;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.skill.SkillToolAssembler;
@@ -64,6 +65,8 @@ public class SubAgentAssembler {
     SkillToolAssembler skillToolAssembler;
     @Inject
     SystemSettingsService systemSettingsService;
+    @Inject
+    GatewayRoutingEngine gatewayRoutingEngine;
     @Inject
     AgentTracer agentTracer;
     @Inject
@@ -197,19 +200,24 @@ public class SubAgentAssembler {
         if (c.agentId != null && !c.agentId.isBlank()) {
             builder.id(c.agentId);
         }
+        // mirrors AgentRunBuilder.resolveModel: a blank configured model must not leak into the LLM
+        // request (it would fall back to the static provider default), so resolve the gateway default
+        var model = c.config != null && c.config.model != null && !c.config.model.isBlank()
+                ? c.config.model : resolveDefaultModel();
         if (c.config != null) {
             if (c.config.systemPrompt != null) {
                 builder.systemPrompt(c.config.systemPrompt);
             } else {
                 builder.systemPrompt("You are a helpful AI assistant.");
             }
-            if (c.config.model != null) builder.model(c.config.model);
+            if (model != null) builder.model(model);
             configureMultiModalModel(builder, c.config, llmProvider);
             if (Boolean.TRUE.equals(c.config.preferCaptionPath)) builder.preferCaptionPath(true);
             if (c.config.reasoningEffort != null) builder.reasoningEffort(ReasoningEffort.fromString(c.config.reasoningEffort));
             if (c.config.maxTurns != null) builder.maxTurn(c.config.maxTurns);
         } else {
             builder.systemPrompt("You are a helpful AI assistant.");
+            if (model != null) builder.model(model);
             var mmModel = resolveMultiModalModel(null, llmProvider);
             if (mmModel != null) builder.multiModalModel(mmModel);
         }
@@ -229,6 +237,14 @@ public class SubAgentAssembler {
             builder.systemPromptSection(c.channelInject);
         }
         return builder.build();
+    }
+
+    // mirrors AgentRunBuilder.resolveModel: gateway default wins over the legacy system setting,
+    // and the system setting wins over the static provider default (which is a legacy prefixed name)
+    private String resolveDefaultModel() {
+        var model = gatewayRoutingEngine.defaultChatModelId();
+        if (model == null || model.isBlank()) model = systemSettingsService.llmModel();
+        return model;
     }
 
     private void configureMultiModalModel(AgentBuilder builder, SessionConfig config, LLMProvider llmProvider) {

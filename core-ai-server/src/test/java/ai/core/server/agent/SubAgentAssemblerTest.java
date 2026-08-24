@@ -26,6 +26,7 @@ import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
+import ai.core.server.gateway.GatewayRoutingEngine;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.tool.ToolRegistryService;
@@ -66,9 +67,53 @@ class SubAgentAssemblerTest {
         assembler.persistenceProviders = new PersistenceProviders();
         systemSettingsService = mock(SystemSettingsService.class);
         assembler.systemSettingsService = systemSettingsService;
+        assembler.gatewayRoutingEngine = mock(GatewayRoutingEngine.class);
         assembler.skillToolAssembler = mock(SkillToolAssembler.class);
         assembler.datasetService = mock(DatasetService.class);
         assembler.datasetRecordService = mock(DatasetRecordService.class);
+    }
+
+    @Test
+    void blankModelFallsBackToGatewayDefault() {
+        when(assembler.gatewayRoutingEngine.defaultChatModelId()).thenReturn("deepseek-v4-flash");
+        var config = new SessionConfig();
+        config.model = "";
+
+        var agent = assembler.buildAgent(buildConfig(config));
+
+        assertEquals("deepseek-v4-flash", agent.getModel());
+    }
+
+    @Test
+    void blankModelFallsBackToSystemLlmModelWhenNoGatewayDefault() {
+        when(assembler.gatewayRoutingEngine.defaultChatModelId()).thenReturn(null);
+        when(systemSettingsService.llmModel()).thenReturn("deepseek-v4-flash");
+        var config = new SessionConfig();
+        config.model = "   ";
+
+        var agent = assembler.buildAgent(buildConfig(config));
+
+        assertEquals("deepseek-v4-flash", agent.getModel());
+    }
+
+    @Test
+    void explicitModelStillWins() {
+        when(assembler.gatewayRoutingEngine.defaultChatModelId()).thenReturn("default-model");
+        var config = new SessionConfig();
+        config.model = "deepseek-v4-flash";
+
+        var agent = assembler.buildAgent(buildConfig(config));
+
+        assertEquals("deepseek-v4-flash", agent.getModel());
+    }
+
+    @Test
+    void nullConfigAlsoResolvesDefaultModel() {
+        when(assembler.gatewayRoutingEngine.defaultChatModelId()).thenReturn("deepseek-v4-flash");
+
+        var agent = assembler.buildAgent(buildConfig(null));
+
+        assertEquals("deepseek-v4-flash", agent.getModel());
     }
 
     @Test

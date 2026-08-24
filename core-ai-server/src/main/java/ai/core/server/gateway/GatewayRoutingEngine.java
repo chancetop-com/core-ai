@@ -91,6 +91,17 @@ public class GatewayRoutingEngine {
                 var route = modelRoute.get();
                 return new GatewayRoute(route.provider, route.model.upstreamModel);
             }
+            // "provider/model" prefixed format (e.g. deepseek/deepseek-v4-flash): resolve the registered
+            // model whose provider prefix + modelId matches, so legacy-style requests still route through
+            // gateway models instead of being rejected or falling back to the static provider
+            var prefixedRoute = endpointModels.stream()
+                    .filter(route -> hasText(route.provider.modelPrefix)
+                            && requestedModel.equals(route.provider.modelPrefix + route.model.modelId))
+                    .findFirst();
+            if (prefixedRoute.isPresent()) {
+                var route = prefixedRoute.get();
+                return new GatewayRoute(route.provider, route.model.upstreamModel);
+            }
             var modelExists = !registeredModels.isEmpty()
                     && registeredModels.stream().anyMatch(route -> requestedModel.equals(route.model.modelId));
             if (modelExists) throw new BadRequestException("gateway model does not support endpoint: " + requestedModel);
@@ -150,9 +161,23 @@ public class GatewayRoutingEngine {
 
     /**
      * Whether this modelId currently resolves to an enabled model on an enabled provider.
+     * Accepts the "provider/model" prefixed format too, so per-model config (reasoning effort,
+     * response format, pricing) applies to legacy-style request model names as well.
      */
     public GatewayModelConfig modelConfig(String modelId) {
-        return snapshot().models.stream().filter(model -> modelId.equals(model.modelId)).findFirst().orElse(null);
+        if (!hasText(modelId)) return null;
+        var snapshot = snapshot();
+        var providersById = providersById(snapshot.providers);
+        return snapshot.models.stream()
+                .filter(model -> modelId.equals(model.modelId)
+                        || prefixedModelId(model, providersById.get(model.providerId), modelId))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean prefixedModelId(GatewayModelConfig model, GatewayProviderConfig provider, String modelId) {
+        return provider != null && hasText(provider.modelPrefix)
+                && modelId.equals(provider.modelPrefix + model.modelId);
     }
 
     /**
