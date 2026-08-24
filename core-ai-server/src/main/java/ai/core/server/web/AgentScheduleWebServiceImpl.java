@@ -89,7 +89,9 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
         var publishedConfig = definition.publishedConfig;
         var input = schedule.input != null && !schedule.input.isBlank() ? schedule.input : publishedConfig.inputTemplate;
 
-        var runId = agentRunner.run(definition, input, TriggerType.MANUAL, schedule.id, schedule.variables);
+        // manual trigger behaves like the cron fire: deliver output to the configured channel
+        var runId = agentRunner.run(definition, input, TriggerType.MANUAL, schedule.id, schedule.variables,
+                schedule.channelTarget());
 
         var response = new TriggerRunResponse();
         response.runId = runId;

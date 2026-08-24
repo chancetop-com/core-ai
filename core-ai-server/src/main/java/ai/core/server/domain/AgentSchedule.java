@@ -67,4 +67,12 @@ public class AgentSchedule {
     @NotNull
     @Field(name = "updated_at")
     public ZonedDateTime updatedAt;
+
+    /**
+     * Delivery target for run output — shared by the cron fire and manual trigger
+     * so both paths behave identically.
+     */
+    public ChannelTarget channelTarget() {
+        return new ChannelTarget(channelId, channelRecipientId);
+    }
 }

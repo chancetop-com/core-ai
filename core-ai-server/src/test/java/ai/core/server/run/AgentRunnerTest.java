@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
+import ai.core.server.domain.ChannelTarget;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.ToolRef;
@@ -250,7 +251,7 @@ class AgentRunnerTest {
 
     private String runScheduledWithChannel(AgentRunner runner, AgentDefinition definition) {
         return runner.run(definition, "scheduled input", TriggerType.SCHEDULE, "schedule-1", Map.of(),
-            new AgentRunner.ChannelTarget("channel-1", "recipient-1"));
+            new ChannelTarget("channel-1", "recipient-1"));
     }
 
     private AgentDefinition rawDefinition(String skillId) {

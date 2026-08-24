@@ -11,6 +11,7 @@ import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.api.server.run.LLMCallRequest;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
+import ai.core.server.domain.ChannelTarget;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
@@ -350,8 +351,8 @@ public class AgentRunner {
     }
 
     private void sendToChannelIfConfigured(AgentRun runEntity, ChannelTarget channel) {
-        var channelId = channel.id;
-        var channelRecipientId = channel.recipientId;
+        var channelId = channel.id();
+        var channelRecipientId = channel.recipientId();
         if (channelId == null || channelId.isBlank()) return;
         if (channelRecipientId == null || channelRecipientId.isBlank()) return;
 
@@ -365,9 +366,6 @@ public class AgentRunner {
         } catch (Exception e) {
             LOGGER.debug("channel delivery failed for run {}, ignored", runEntity.id, e);
         }
-    }
-
-    public record ChannelTarget(String id, String recipientId) {
     }
 
     record RunParams(AgentDefinition definition, String input, TriggerType trigger, String callerUserId,
