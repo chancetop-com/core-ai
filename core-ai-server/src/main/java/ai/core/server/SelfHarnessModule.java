@@ -11,8 +11,9 @@ import core.framework.module.Module;
 public class SelfHarnessModule extends Module {
     @Override
     protected void initialize() {
-        bind(SelfHarnessApiCaller.class);
+        // bind() resolves @Inject immediately, so SelfHarnessDispatcher must be bound before SelfHarnessApiCaller
         bind(SelfHarnessDispatcher.class);
+        bind(SelfHarnessApiCaller.class);
         var selfHarnessTools = bind(SelfHarnessTools.class);
         onStartup(selfHarnessTools::initialize);
     }
