@@ -69,6 +69,20 @@ public class SelfHarnessTools {
     private void registerSkillTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
         tools.add(builder.build("list_skills", "List registered skills with filtering and search.",
                 ListSkillsRequest.class, false));
+        tools.add(builder.buildCustom("create_skill",
+                "Create a new skill in the skill catalog from SKILL.md content. "
+                        + "Creating a good skill is a complex workflow — do NOT write SKILL.md directly. "
+                        + "Delegate the research and drafting to a sub-agent via the `task` tool first: launch subagent_type=general-purpose-agent (or deep-research-agent for broader research) with a prompt that requires it to "
+                        + "use web_search/web_fetch to research how well-crafted skills of this kind are structured — collect SOPs, best practices and common pitfalls from public skill collections (e.g. skills.sh, awesome-claude-skills, GitHub) and from existing skills in this catalog (list_skills/get_skill) — "
+                        + "then design the skill and return the final SKILL.md content (YAML frontmatter with name and description, then step-by-step instructions) plus any resource files. "
+                        + "Review the sub-agent's output, then call this tool with the produced content. "
+                        + "content must be markdown with YAML frontmatter containing name and description (e.g. ---\\nname: my-skill\\ndescription: what it does\\n---\\ninstructions); qualified name becomes namespace/name. "
+                        + "After creating, attach the returned id via skill_ids in create_agent/update_agent so agents can use it.",
+                List.of(
+                        ToolCallParameter.builder().name("namespace").description("Skill namespace (e.g. org/team name)").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
+                        ToolCallParameter.builder().name("content").description("Full SKILL.md content with YAML frontmatter (name, description required)").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
+                        ToolCallParameter.builder().name("resources").description("Optional resource files referenced by the skill, each {path, content}").type(ToolCallParameterType.LIST).itemType(Map.class).build()
+                )));
         tools.add(builder.buildWithPathParamOnly("get_skill", "Get skill detail by ID.",
                 "id", "Skill ID"));
         tools.add(builder.build("update_skill", "Update a skill's description, content, or allowed tools.",
@@ -83,6 +97,19 @@ public class SelfHarnessTools {
     private void registerDatasetTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
         tools.add(builder.build("list_datasets", "List datasets with search and pagination.",
                 ListDatasetsRequest.class, false));
+        tools.add(builder.buildCustom("create_dataset",
+                "Create a new dataset. Use when the agent needs to persist data across sessions and share it among all users of the agent — "
+                        + "e.g. a resume/talent pool database, reviewed resume evaluations, interview results, product catalogs, ticket lists. "
+                        + "Use type=SESSION for long conversations: each session gets its own state document (accessed via get_session_state/set_session_state/update_session_state) "
+                        + "so the agent can persist progress, decisions and intermediate conclusions and does not forget key information in very long conversations. "
+                        + "Otherwise GENERAL datasets hold records accessed via query/insert/update/delete_dataset_record. "
+                        + "After creating, attach the returned id to the agent via dataset_config in create_agent/update_agent so the agent (and every user of it) can access the dataset.",
+                List.of(
+                        ToolCallParameter.builder().name("name").description("Dataset name").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
+                        ToolCallParameter.builder().name("description").description("What data this dataset holds").type(ToolCallParameterType.STRING).build(),
+                        ToolCallParameter.builder().name("type").description("GENERAL (default) or SESSION").type(ToolCallParameterType.STRING).build(),
+                        ToolCallParameter.builder().name("schema").description("Optional field definitions, each {name, type: STRING|NUMBER|BOOLEAN, label}").type(ToolCallParameterType.LIST).itemType(ai.core.api.server.dataset.SchemaFieldView.class).build()
+                )));
         tools.add(builder.buildWithPathParamOnly("get_dataset", "Get dataset detail by ID.",
                 "id", "Dataset ID"));
         tools.add(builder.buildCustom("list_dataset_records",

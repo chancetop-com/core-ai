@@ -100,15 +100,19 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
                  - 20-30 turns: code generation, debugging, review
                  - 30-50 turns: research, analysis, report writing
                  - 50-100 turns: complex multi-step workflows, heavy tool usage
-               - Multimodal model. Set a multimodal model (e.g. "gpt-4o") when the agent needs to understand images:
-                 - YES: UI design review, screenshot analysis, diagram interpretation, OCR, any task where users may upload images
-                 - NO: code generation, text analysis, data processing, Q&A, translation (unless image input is expected)
+                - Multimodal model. Set a multimodal model (e.g. "gpt-4o") when the agent needs to understand images:
+                  - YES: UI design review, screenshot analysis, diagram interpretation, OCR, any task where users may upload images
+                  - NO: code generation, text analysis, data processing, Q&A, translation (unless image input is expected)
+                - Shared data (datasets). If the agent needs to persist data across sessions and share it with all its users (e.g. a resume/talent pool database, reviewed resume evaluations, interview results, product catalogs, ticket lists), it needs a dataset — determine which datasets it needs and the permission level (READ to query, WRITE to also insert/update, FULL to also delete).
+                - Reusable capability packs (skills). If the agent needs a reusable skill that is not in the catalog, create it with `create_skill` (SKILL.md content with name/description frontmatter), then attach its id via `skill_ids` in `create_agent` or `update_agent`.
 
-            3. **Create draft**: Use the `create_agent` tool to create the agent in DRAFT status. Show the user the draft details.
+            3. **Create datasets**: If the agent needs shared data, use the `create_dataset` tool to create the dataset(s) (e.g. a "talent pool" dataset for an HR assistant), then attach the returned dataset id via `dataset_config` in `create_agent` or `update_agent`. The dataset is then visible to every user who talks to the agent through its dataset tools — access follows the agent, not the individual user. For very long conversations, create a type=SESSION dataset so the agent can persist per-session state (progress, decisions, intermediate conclusions) via get_session_state/set_session_state and does not forget key information.
 
-            4. **Iterate**: If the user wants changes, use the `update_agent` tool to modify the existing draft by its agent_id. NEVER create a new draft to change an existing one — always use update_agent.
+            4. **Create draft**: Use the `create_agent` tool to create the agent in DRAFT status. Show the user the draft details.
 
-            5. **Publish**: When the user confirms they're satisfied, use the `publish_agent` tool with the draft's agent_id to publish it. Tell the user the agent is available and can be tested in the Chat page.
+            5. **Iterate**: If the user wants changes, use the `update_agent` tool to modify the existing draft by its agent_id. NEVER create a new draft to change an existing one — always use update_agent.
+
+            6. **Publish**: When the user confirms they're satisfied, use the `publish_agent` tool with the draft's agent_id to publish it. Tell the user the agent is available and can be tested in the Chat page.
 
             ## Agent Naming Guidelines
             - Use clear, descriptive names that reflect the agent's purpose
@@ -129,7 +133,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             - Default to `builtin-all` tools unless the user specifies otherwise
             - Always recommend an appropriate max_turns value based on the agent's task type
             - Always recommend whether the agent needs a multimodal model based on whether it will process images
-            - If the user mentions needing sub-agents, MCP tools, service APIs, skills, or custom tool sets, tell them: "These advanced features are available in the agent configuration page. You can configure sub-agents, MCP servers, service APIs, skills, and more there. This wizard focuses on the core setup — for advanced configuration, visit the agent edit page after publishing."
+            - If the user mentions needing sub-agents, MCP tools, service APIs, or custom tool sets, tell them: "These advanced features are available in the agent configuration page. You can configure sub-agents, MCP servers, service APIs, and more there. This wizard focuses on the core setup — for advanced configuration, visit the agent edit page after publishing."
             """;
 
     @Override
@@ -138,7 +142,11 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         // renumbered so this migration actually runs — agent upserts are idempotent, re-running is safe
         // 20260821001: agent-builder tools switched from legacy "builtin-agent-builder" (no longer resolves)
         // to individual "builtin:self-harness:*" refs; system prompt tool names aligned (create/update/publish_agent)
-        return "20260821001";
+        // 20260824001: add create_dataset self-harness tool so the builder can create shared datasets
+        // (e.g. a talent pool) and attach them to agents via dataset_config
+        // 20260824002: add create_skill self-harness tool so the builder can create catalog skills
+        // from SKILL.md content and attach them to agents via skill_ids
+        return "20260824002";
     }
 
     @Override
@@ -249,7 +257,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         var toolRefs = new ArrayList<Document>();
         toolRefs.add(new Document("id", "builtin:builtin-all").append("type", "BUILTIN"));
         for (var toolName : List.of("list_agents", "create_agent", "get_agent", "update_agent", "publish_agent",
-                "list_skills", "get_skill", "list_datasets", "get_dataset", "list_dataset_records", "list_tools")) {
+                "list_skills", "get_skill", "create_skill", "list_datasets", "create_dataset", "get_dataset", "list_dataset_records", "list_tools")) {
             toolRefs.add(new Document("id", "builtin:self-harness:" + toolName).append("type", "BUILTIN").append("source", "Self Harness"));
         }
         return toolRefs;
