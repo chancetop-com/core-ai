@@ -1,5 +1,6 @@
 package ai.core.api.server;
 
+import ai.core.api.server.file.DownloadUrlView;
 import ai.core.api.server.file.FileView;
 import ai.core.api.server.file.FileShareView;
 import ai.core.api.server.file.SharedFileView;
@@ -16,6 +17,10 @@ public interface FileWebService {
     @GET
     @Path("/api/files/:id")
     FileView get(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/files/:id/download-url")
+    DownloadUrlView getDownloadUrl(@PathParam("id") String id);
 
     @DELETE
     @Path("/api/files/:id")

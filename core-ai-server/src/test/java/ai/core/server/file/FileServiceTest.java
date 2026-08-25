@@ -182,6 +182,24 @@ class FileServiceTest {
     }
 
     @Test
+    void downloadCredentialReturnsFullCredentialForMigratedContent() {
+        var record = file("file-1");
+        record.storagePath = "uploads/artifacts/file-1.mp4";
+        when(storage.generateDownloadCredential("uploads", "artifacts/file-1.mp4"))
+                .thenReturn(new ObjectStorageService.DownloadCredential("https://presigned/url", "uploads", "artifacts/file-1.mp4", "exp"));
+
+        var credential = service.downloadCredential(record);
+
+        assertEquals("https://presigned/url", credential.downloadUrl());
+        assertEquals("exp", credential.expiresAt());
+    }
+
+    @Test
+    void downloadCredentialReturnsNullForLegacyContent() {
+        assertNull(service.downloadCredential(file("file-1")));
+    }
+
+    @Test
     void deleteRemovesObjectWhenMigrated() {
         var record = file("file-1");
         record.storagePath = "uploads/artifacts/file-1.zip";

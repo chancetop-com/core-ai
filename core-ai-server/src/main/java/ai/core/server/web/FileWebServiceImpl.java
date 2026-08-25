@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.api.server.FileWebService;
+import ai.core.api.server.file.DownloadUrlView;
 import ai.core.api.server.file.FileShareView;
 import ai.core.api.server.file.FileView;
 import ai.core.api.server.file.SharedFileView;
@@ -11,6 +12,7 @@ import ai.core.server.rbac.PermissionsRequired;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.WebContext;
+import core.framework.web.exception.NotFoundException;
 
 /**
  * @author stephen
@@ -31,6 +33,20 @@ public class FileWebServiceImpl implements FileWebService {
         view.contentType = record.contentType;
         view.size = record.size;
         view.createdAt = record.createdAt;
+        return view;
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DASHBOARD_VIEW)
+    public DownloadUrlView getDownloadUrl(String id) {
+        var record = fileService.get(id);
+        var credential = fileService.downloadCredential(record);
+        if (credential == null) {
+            throw new NotFoundException("file content is not stored in object storage, id=" + id);
+        }
+        var view = new DownloadUrlView();
+        view.downloadUrl = credential.downloadUrl();
+        view.expiresAt = credential.expiresAt();
         return view;
     }
 

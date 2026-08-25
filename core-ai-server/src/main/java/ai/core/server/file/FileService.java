@@ -1,5 +1,6 @@
 package ai.core.server.file;
 
+import ai.core.server.blob.ObjectStorageService.DownloadCredential;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.FileRecord;
 import com.mongodb.client.model.Filters;
@@ -230,13 +231,21 @@ public class FileService {
     }
 
     /**
-     * Pre-signed download URL for direct browser access, or null when content is still in Mongo.
+     * Pre-signed download credential for direct access, or null when content is still in Mongo.
      */
-    public String downloadUrl(FileRecord record) {
+    public DownloadCredential downloadCredential(FileRecord record) {
         if (record.storagePath == null) return null;
         var storage = storageResolver.resolve();
         if (storage == null) return null;
-        return storage.generateDownloadCredential(containerOf(record.storagePath), blobOf(record.storagePath)).downloadUrl();
+        return storage.generateDownloadCredential(containerOf(record.storagePath), blobOf(record.storagePath));
+    }
+
+    /**
+     * Pre-signed download URL for direct browser access, or null when content is still in Mongo.
+     */
+    public String downloadUrl(FileRecord record) {
+        var credential = downloadCredential(record);
+        return credential == null ? null : credential.downloadUrl();
     }
 
     public void delete(String id) {
