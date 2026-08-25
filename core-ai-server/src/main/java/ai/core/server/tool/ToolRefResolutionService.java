@@ -152,9 +152,7 @@ class ToolRefResolutionService {
     private List<ToolCall> enhanceMediaToolDescription(List<ToolCall> tools) {
         var imageHints = mediaModelHints(ai.core.server.gateway.GatewayEndpointType.IMAGE_GENERATION);
         var videoHints = mediaModelHints(ai.core.server.gateway.GatewayEndpointType.VIDEO_GENERATION);
-        var enhanced = new ArrayList<>(tools.stream().map(tool -> enhanceMediaTool(tool, imageHints, videoHints)).toList());
-        if (scheduledTaskStore != null) enhanced.add(ai.core.tool.tools.ScheduledTaskTool.builder(scheduledTaskStore).build());
-        return enhanced;
+        return tools.stream().map(tool -> enhanceMediaTool(tool, imageHints, videoHints)).toList();
     }
 
     private List<ai.core.tool.tools.MediaModelHint> mediaModelHints(ai.core.server.gateway.GatewayEndpointType endpoint) {
@@ -164,6 +162,7 @@ class ToolRefResolutionService {
     private ToolCall enhanceMediaTool(ToolCall tool, List<ai.core.tool.tools.MediaModelHint> imageHints, List<ai.core.tool.tools.MediaModelHint> videoHints) {
         if (tool instanceof ai.core.tool.tools.GenerateImageTool) return ai.core.tool.tools.GenerateImageTool.builder().description(ai.core.tool.tools.GenerateImageTool.buildDescription(imageHints)).build();
         if (tool instanceof ai.core.tool.tools.GenerateVideoTool) return ai.core.tool.tools.GenerateVideoTool.builder(mediaProvider).description(ai.core.tool.tools.GenerateVideoTool.buildDescription(videoHints)).build();
+        if (tool instanceof ai.core.tool.tools.ScheduledTaskTool && scheduledTaskStore != null) return ai.core.tool.tools.ScheduledTaskTool.builder(scheduledTaskStore).build();
         return tool;
     }
 

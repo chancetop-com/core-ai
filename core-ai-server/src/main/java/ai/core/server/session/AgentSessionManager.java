@@ -112,6 +112,8 @@ public class AgentSessionManager {
     SessionAgentHelper sessionAgentHelper;
     @Inject
     ApiUserQuotaService apiUserQuotaService;
+    @Inject
+    ai.core.schedule.ScheduledTaskStore scheduledTaskStore;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -165,7 +167,7 @@ public class AgentSessionManager {
                 .build(sessionId, userId);
         CallerContexts.attach(context, userCollection, userId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
-        var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId);
+        var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId, scheduledTaskStore);
         var extraVars = buildExtraVars(effectiveConfig, sessionDatasetConfig(effectiveConfig));
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry, context, null, extraVars, null,

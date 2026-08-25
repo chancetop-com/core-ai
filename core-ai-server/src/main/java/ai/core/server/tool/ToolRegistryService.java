@@ -14,6 +14,7 @@ import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.github.GitHubTokenProvider;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
@@ -147,6 +148,9 @@ public class ToolRegistryService {
             registry.description = "Built-in tool set: " + entry.getKey();
             registry.config = Map.of("set", entry.getKey());
             tools.put(registry.id, registry);
+            if (ToolProvider.BUILTIN_ALL.equals(entry.getKey())) {
+                builtinGroupToolGroups.put(registry.id, BuiltinTools.ALL_GROUP_LABELS);
+            }
             LOGGER.debug("loaded builtin toolset: {}", entry.getKey());
         }
     }

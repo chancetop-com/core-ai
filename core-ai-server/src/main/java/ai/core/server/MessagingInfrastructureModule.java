@@ -7,6 +7,7 @@ import ai.core.server.messaging.JedisConfig;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
+import ai.core.server.schedule.MongoScheduledTaskStore;
 import core.framework.module.Module;
 import redis.clients.jedis.JedisPool;
 
@@ -29,5 +30,8 @@ class MessagingInfrastructureModule extends Module {
         bind(new RpcClient(jedisPool, ownershipRegistry));
         bind(JedisPool.class, jedisPool);
         onShutdown(jedisPool::close);
+        // bound early so session/tool assembly paths (AgentSessionManager, ToolRegistryService)
+        // can @Inject the store before SessionSchedulerModule loads
+        bind(MongoScheduledTaskStore.class);
     }
 }

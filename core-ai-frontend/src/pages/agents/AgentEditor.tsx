@@ -25,6 +25,11 @@ const SELF_HARNESS_GROUP_ID = 'builtin:self-harness';
 const selfHarnessToolId = (toolName: string) => `${SELF_HARNESS_GROUP_ID}:${toolName}`;
 const isSelfHarnessToolId = (id: string) => id.startsWith(`${SELF_HARNESS_GROUP_ID}:`);
 
+// builtin-all is a builtin tool group selected as a whole; the group detail is loaded
+// from the registry so its tools render grouped by subcategory (e.g. "Scheduling")
+const BUILTIN_ALL_GROUP_ID = 'builtin:builtin-all';
+const builtinAllToolId = (toolName: string) => `${BUILTIN_ALL_GROUP_ID}:${toolName}`;
+
 // legacy builtin group refs were stored without the "builtin:" prefix (e.g. "builtin-all"),
 // while the registry exposes them as "builtin:builtin-all"; normalize on load so the tool
 // sections' checkboxes match the selected chips and saving persists the canonical form
@@ -63,6 +68,7 @@ export default function AgentEditor() {
 
   // tools
   const [allTools, setAllTools] = useState<ToolRegistryView[]>([]);
+  const [builtinAllTools, setBuiltinAllTools] = useState<ToolRegistryView[]>([]);
   // individual tools within the self-harness builtin group
   const [selfHarnessTools, setSelfHarnessTools] = useState<McpToolInfo[]>([]);
 
@@ -146,6 +152,17 @@ export default function AgentEditor() {
     api.systemPrompts.list(0, 100).then(setSystemPrompts).catch(console.error);
     api.tools.list().then(res => setAllTools(res.tools || [])).catch(console.error);
     api.tools.listBuiltinGroupTools(SELF_HARNESS_GROUP_ID).then(res => setSelfHarnessTools(res.tools || [])).catch(console.error);
+    api.tools.listBuiltinGroupTools(BUILTIN_ALL_GROUP_ID).then(res => {
+      setBuiltinAllTools((res.tools || []).map(t => ({
+        id: builtinAllToolId(t.name),
+        name: t.name,
+        description: t.description,
+        type: 'BUILTIN' as const,
+        category: t.group || 'builtin',
+        config: {},
+        enabled: true,
+      })));
+    }).catch(console.error);
     api.agents.list().then(res => {
       const published = (res.agents || []).filter(a =>
         a.id !== id &&
@@ -1447,20 +1464,37 @@ The system prompt should define how this agent behaves, its capabilities, and it
               </div>
             )}
 
-            {/* Builtin Tools */}
+            {/* Builtin Tools: group refs (builtin-files etc.) selectable as-is; the builtin-all
+                group detail renders its tools grouped by subcategory so users see what is inside */}
             <ToolSection
               title="Builtin"
               color="#f59e0b"
-              items={allTools.filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api' && t.category !== 'Self Harness')}
-              selectedIds={agent.tools?.map((t: ToolRef) => t.id) || []}
+              items={[
+                ...allTools.filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api' && t.category !== 'Self Harness' && t.id !== BUILTIN_ALL_GROUP_ID),
+                ...builtinAllTools,
+              ]}
+              selectedIds={[
+                ...(agent.tools || []).filter((t: ToolRef) => t.id !== BUILTIN_ALL_GROUP_ID).map((t: ToolRef) => t.id),
+                ...((agent.tools || []).some((t: ToolRef) => t.id === BUILTIN_ALL_GROUP_ID) ? builtinAllTools.map(t => t.id) : []),
+              ]}
               onToggle={(id, selected) => {
+                if (id.startsWith(`${BUILTIN_ALL_GROUP_ID}:`)) {
+                  // a builtin-all inner tool toggles the whole group ref
+                  if (selected) {
+                    update('tools', (agent.tools || []).filter((t: ToolRef) => t.id !== BUILTIN_ALL_GROUP_ID));
+                  } else {
+                    update('tools', [...(agent.tools || []), { id: BUILTIN_ALL_GROUP_ID, type: 'BUILTIN', source: 'builtin' }]);
+                  }
+                  return;
+                }
                 if (selected) {
-                  update('tools', agent.tools.filter((t: ToolRef) => t.id !== id));
+                  update('tools', (agent.tools || []).filter((t: ToolRef) => t.id !== id));
                 } else {
                   const tool = allTools.find(t => t.id === id);
                   update('tools', [...(agent.tools || []), { id, type: 'BUILTIN', source: tool?.category }]);
                 }
               }}
+              groupOf={t => t.category}
             />
 
             {/* Self Harness Tools */}

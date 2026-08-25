@@ -14,6 +14,7 @@ import ai.core.tool.tools.PowershellCommandTool;
 import ai.core.tool.tools.PythonScriptTool;
 import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.RequireGithubInstallationTokenTool;
+import ai.core.tool.tools.ScheduledTaskTool;
 import ai.core.tool.tools.ShellCommandTool;
 import ai.core.tool.tools.SummarizePdfTool;
 import ai.core.tool.tools.TaskTool;
@@ -57,7 +58,9 @@ public final class BuiltinTools {
             // Media generation
             GenerateImageTool.builder().build(),
             GenerateVideoTool.builder().build(),
-            GetVideoStatusTool.builder().build()
+            GetVideoStatusTool.builder().build(),
+            // Session scheduling
+            ScheduledTaskTool.builder().build()
     );
 
     public static final List<ToolCall> PLANNING = List.of(
@@ -127,6 +130,14 @@ public final class BuiltinTools {
             Map.entry(ToolProvider.BUILTIN_CODE_EXECUTION, CODE_EXECUTION),
             Map.entry(ToolProvider.BUILTIN_GITHUB, GITHUB),
             Map.entry(ToolProvider.BUILTIN_MEDIA_GENERATION, MEDIA_GENERATION)
+    );
+
+    /**
+     * Subgroup labels per tool inside the {@link ToolProvider#BUILTIN_ALL} set, used by the
+     * server tool registry UI to render builtin-all tools grouped by subcategory.
+     */
+    public static final Map<String, String> ALL_GROUP_LABELS = Map.of(
+            ScheduledTaskTool.TOOL_NAME, "Scheduling"
     );
 
     public static List<ToolCall> multimodal(UnderstandVideoTool.VideoUnderstandingService service) {

@@ -79,9 +79,9 @@ public class SessionDatasetHelper {
         return sb.toString();
     }
 
-    ToolRegistry buildSessionToolRegistry(SessionConfig config, String sessionId) {
+    ToolRegistry buildSessionToolRegistry(SessionConfig config, String sessionId, ai.core.schedule.ScheduledTaskStore scheduledTaskStore) {
         var registry = ToolRegistryFactory.createEmpty();
-        registry.registerProvider(BuiltinToolProvider.fromSet(ToolProvider.BUILTIN_ALL));
+        registry.registerProvider(builtinAllProvider(scheduledTaskStore));
         if (config == null || !hasText(config.datasetId)) return registry;
         var dataset = datasetService.get(config.datasetId);
         if (dataset == null) return registry;
@@ -91,6 +91,17 @@ public class SessionDatasetHelper {
         var accessRegistry = DatasetAccessRegistry.from(List.of(dp), datasetService);
         registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, "default", sessionId));
         return registry;
+    }
+
+    private ToolProvider builtinAllProvider(ai.core.schedule.ScheduledTaskStore scheduledTaskStore) {
+        if (scheduledTaskStore == null) return BuiltinToolProvider.fromSet(ToolProvider.BUILTIN_ALL);
+        // the builtin-all placeholder carries no store; swap in the store-bound tool
+        return BuiltinToolProvider.fromSet(ToolProvider.BUILTIN_ALL, null, null, null,
+                tools -> tools.stream()
+                        .map(tool -> tool instanceof ai.core.tool.tools.ScheduledTaskTool
+                                ? ai.core.tool.tools.ScheduledTaskTool.builder(scheduledTaskStore).build()
+                                : tool)
+                        .toList());
     }
 
     private boolean hasText(String value) {

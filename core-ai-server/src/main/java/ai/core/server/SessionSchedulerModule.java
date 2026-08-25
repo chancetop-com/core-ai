@@ -1,6 +1,5 @@
 package ai.core.server;
 
-import ai.core.schedule.ScheduledTaskStore;
 import ai.core.server.schedule.MongoScheduledTaskStore;
 import ai.core.server.schedule.SessionScheduler;
 import ai.core.server.schedule.SessionSchedulerJob;
@@ -22,9 +21,6 @@ public class SessionSchedulerModule extends Module {
 
     @Override
     protected void initialize() {
-        bind(MongoScheduledTaskStore.class);
-        // register the same instance under the interface so @Inject ScheduledTaskStore fields resolve
-        bind(ScheduledTaskStore.class, bean(MongoScheduledTaskStore.class));
         bind(SessionScheduler.class);
         // wire the store into the tool registry so every session gets the scheduled_task tool
         bean(ToolRegistryService.class).setScheduledTaskStore(bean(MongoScheduledTaskStore.class));
