@@ -224,11 +224,14 @@ public class DockerSandboxProvider implements SandboxProvider {
         return hostConfig;
     }
 
-    private List<String> buildEnvList(SandboxConfig config) {
+    List<String> buildEnvList(SandboxConfig config) {
         var maxAsync = config.maxAsyncTasks != null ? config.maxAsyncTasks : SandboxConstants.DEFAULT_MAX_ASYNC_TASKS;
         var envList = new java.util.ArrayList<String>();
         envList.add("WORKSPACE_DIR=/workspace");
         envList.add("MAX_ASYNC_TASKS=" + maxAsync);
+        for (var entry : SandboxConstants.SANDBOX_GIT_ENV.entrySet()) {
+            envList.add(entry.getKey() + "=" + entry.getValue());
+        }
         if (config.env != null) {
             for (var entry : config.env.entrySet()) {
                 envList.add(entry.getKey() + "=" + entry.getValue());

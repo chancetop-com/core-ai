@@ -175,6 +175,9 @@ export const adminApi = {
   }) =>
     requestWithAuth<void>(`/api/auth/users/${encodeURIComponent(userId)}/config`,
       { method: 'PUT', body: JSON.stringify(config) }),
+  resetUserQuota: (userId: string) =>
+    requestWithAuth<void>(`/api/auth/users/${encodeURIComponent(userId)}/quota/reset`,
+      { method: 'POST' }),
   updateUserStatus: (email: string, status: string) =>
     requestWithAuth<void>('/api/auth/users/update-status', { method: 'POST', body: JSON.stringify({ email, status }) }),
   deleteUser: (email: string) =>

@@ -107,6 +107,9 @@ public class SandboxCRSpecBuilder {
         var env = new ArrayList<Map<String, String>>();
         env.add(Map.of("name", "HOME", "value", "/tmp"));
         env.add(Map.of("name", "MAX_ASYNC_TASKS", "value", String.valueOf(maxAsync)));
+        for (var entry : SandboxConstants.SANDBOX_GIT_ENV.entrySet()) {
+            env.add(Map.of("name", entry.getKey(), "value", entry.getValue()));
+        }
         if (config.env != null) {
             for (var entry : config.env.entrySet()) {
                 env.add(Map.of("name", entry.getKey(), "value", entry.getValue()));

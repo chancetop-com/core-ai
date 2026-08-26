@@ -45,6 +45,11 @@ public interface AuthWebService {
     void updateUserConfig(@PathParam("userId") String userId, UpdateApiUserConfigRequest request);
 
     @POST
+    @Path("/api/auth/users/:userId/quota/reset")
+    @ResponseStatus(HTTPStatus.OK)
+    void resetUserQuota(@PathParam("userId") String userId);
+
+    @POST
     @Path("/api/auth/users/update-status")
     void updateUserStatus(UpdateUserStatusRequest request);
 

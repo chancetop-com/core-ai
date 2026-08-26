@@ -1089,13 +1089,19 @@ func truncateOutput(output string) string {
 	return output
 }
 
-// isAsync checks if the arguments JSON contains "async": true
+// isAsync checks if the arguments JSON requests async execution.
+// Both tool contract flags are recognized: "async" (run_python_script) and
+// "run_in_background" (run_bash_command). Missing either flag means synchronous.
 func isAsync(args string) bool {
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(args), &raw); err != nil {
 		return false
 	}
-	v, ok := raw["async"]
+	return asyncFlag(raw, "async") || asyncFlag(raw, "run_in_background")
+}
+
+func asyncFlag(raw map[string]interface{}, key string) bool {
+	v, ok := raw[key]
 	if !ok {
 		return false
 	}

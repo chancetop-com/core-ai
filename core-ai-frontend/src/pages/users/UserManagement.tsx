@@ -51,6 +51,8 @@ export default function UserManagement() {
   const [configDraft, setConfigDraft] = useState<ConfigDraft | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
+  const [quotaResetting, setQuotaResetting] = useState(false);
+  const [quotaReset, setQuotaReset] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [callerHeadersDraft, setCallerHeadersDraft] = useState<CallerHeaderDraft[]>([]);
   const [callerHeadersSaving, setCallerHeadersSaving] = useState(false);
@@ -81,6 +83,7 @@ export default function UserManagement() {
         permissions: (selectedUser.permissions || []).map(p => ({ resourceType: p.resource_type, resourceId: p.resource_id })),
       });
       setConfigSaved(false);
+      setQuotaReset(false);
       setCallerHeadersDraft((selectedUser.outbound_caller_headers || []).map(h => {
         const isMetadata = h.value_source.startsWith('metadata.');
         return {
@@ -323,6 +326,22 @@ export default function UserManagement() {
       setError(err instanceof Error ? err.message : 'Failed to save config');
     } finally {
       setConfigSaving(false);
+    }
+  };
+
+  const handleResetQuota = async () => {
+    if (!selectedUser) return;
+    if (!confirm(`Reset daily quota usage for "${selectedUser.name}"? Consumed input and output tokens will be set to 0.`)) return;
+    setQuotaResetting(true);
+    setError('');
+    try {
+      await adminApi.resetUserQuota(selectedUser.key);
+      setQuotaReset(true);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset quota');
+    } finally {
+      setQuotaResetting(false);
     }
   };
 
@@ -657,9 +676,12 @@ export default function UserManagement() {
                     draft={configDraft}
                     saved={configSaved}
                     saving={configSaving}
+                    quotaResetting={quotaResetting}
+                    quotaReset={quotaReset}
                     agents={agents}
                     onChange={setConfigDraft}
                     onSave={handleSaveConfig}
+                    onResetQuota={handleResetQuota}
                   />
                 )}
 
@@ -793,9 +815,12 @@ export default function UserManagement() {
                     draft={configDraft}
                     saved={configSaved}
                     saving={configSaving}
+                    quotaResetting={quotaResetting}
+                    quotaReset={quotaReset}
                     agents={agents}
                     onChange={setConfigDraft}
                     onSave={handleSaveConfig}
+                    onResetQuota={handleResetQuota}
                   />
                 )}
 
@@ -1007,16 +1032,22 @@ function CallerHeadersSection({
 }
 
 function PermissionsQuotaSection({
-  user, draft, saved, saving, agents, onChange, onSave,
+  user, draft, saved, saving, quotaResetting, quotaReset, agents, onChange, onSave, onResetQuota,
 }: {
   user: ManagedUser;
   draft: ConfigDraft;
   saved: boolean;
   saving: boolean;
+  quotaResetting: boolean;
+  quotaReset: boolean;
   agents: { id: string; name: string }[];
   onChange: (draft: ConfigDraft) => void;
   onSave: () => void;
+  onResetQuota: () => void;
 }) {
+  const remaining = (quota: number | undefined, consumed: number | undefined) =>
+    quota != null && quota > 0 ? Math.max(0, quota - (consumed || 0)) : undefined;
+
   return (
     <section>
       <h3 className="text-xs font-medium uppercase tracking-wider mb-3"
@@ -1036,9 +1067,13 @@ function PermissionsQuotaSection({
             className="w-full mt-1 px-3 py-2 rounded-lg text-sm border-0 outline-none"
             style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
           />
-          {user.input_token_quota != null && user.input_token_quota > 0 && (
+          {user.input_token_quota != null && user.input_token_quota > 0 ? (
             <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-              Used today: {toM(user.quota_consumed_input_tokens)}M / {toM(user.input_token_quota)}M input
+              Consumed: {toM(user.quota_consumed_input_tokens)}M · Remaining: {toM(remaining(user.input_token_quota, user.quota_consumed_input_tokens))}M of {toM(user.input_token_quota)}M
+            </div>
+          ) : (
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+              Unlimited — no daily quota configured
             </div>
           )}
         </div>
@@ -1056,9 +1091,13 @@ function PermissionsQuotaSection({
             className="w-full mt-1 px-3 py-2 rounded-lg text-sm border-0 outline-none"
             style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
           />
-          {user.output_token_quota != null && user.output_token_quota > 0 && (
+          {user.output_token_quota != null && user.output_token_quota > 0 ? (
             <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-              Used today: {toM(user.quota_consumed_output_tokens)}M / {toM(user.output_token_quota)}M output
+              Consumed: {toM(user.quota_consumed_output_tokens)}M · Remaining: {toM(remaining(user.output_token_quota, user.quota_consumed_output_tokens))}M of {toM(user.output_token_quota)}M
+            </div>
+          ) : (
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+              Unlimited — no daily quota configured
             </div>
           )}
         </div>
@@ -1114,6 +1153,14 @@ function PermissionsQuotaSection({
             </button>
           </div>
         </div>
+        <button
+          onClick={onResetQuota}
+          disabled={quotaResetting}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-colors disabled:opacity-50"
+          style={{ background: quotaReset ? '#22c55e20' : 'var(--color-bg-tertiary)', color: quotaReset ? '#22c55e' : 'var(--color-text)' }}>
+          <RefreshCw size={14} />
+          {quotaReset ? 'Usage Reset' : quotaResetting ? 'Resetting...' : 'Reset Daily Usage'}
+        </button>
         <button
           onClick={onSave}
           disabled={saving}

@@ -16,6 +16,7 @@ import ai.core.api.server.auth.UpdateUserStatusRequest;
 import ai.core.api.server.auth.UserProfileView;
 import ai.core.api.server.apiuser.request.UpdateApiUserConfigRequest;
 import ai.core.api.server.user.GenerateApiKeyResponse;
+import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.apiuser.ApiUserService;
 import ai.core.server.apiuser.PermissionService;
 import ai.core.server.auth.AuthService;
@@ -41,6 +42,8 @@ public class AuthWebServiceImpl implements AuthWebService {
     AuthService authService;
     @Inject
     ApiUserService apiUserService;
+    @Inject
+    ApiUserQuotaService apiUserQuotaService;
     @Inject
     PermissionService permissionService;
     @Inject
@@ -112,6 +115,17 @@ public class AuthWebServiceImpl implements AuthWebService {
         var adminUserId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         apiUserService.updateConfigByAdmin(adminUserId, userId, request);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.USER_MANAGE)
+    public void resetUserQuota(String userId) {
+        AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        if (userCollection.get(userId).isEmpty()) {
+            throw new NotFoundException("user not found, userId=" + userId);
+        }
+        apiUserQuotaService.resetQuota(userId);
     }
 
     @Override

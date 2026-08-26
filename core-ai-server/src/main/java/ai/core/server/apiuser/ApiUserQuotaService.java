@@ -77,6 +77,20 @@ public class ApiUserQuotaService {
         }
     }
 
+    /**
+     * Manually resets the current quota window (admin action): consumed counters back to zero
+     * and the window start moved to now, so the user immediately gets a fresh allowance.
+     * Targeted $set so a concurrent quota $inc is not overwritten (same pattern as the lazy
+     * day-boundary reset in {@link #checkQuota}).
+     */
+    public void resetQuota(String userId) {
+        var now = ZonedDateTime.now();
+        userCollection.update(Filters.eq("_id", userId), Updates.combine(
+                Updates.set("quota_consumed_input_tokens", 0L),
+                Updates.set("quota_consumed_output_tokens", 0L),
+                Updates.set("quota_window_start", now)));
+    }
+
     private boolean windowResetDue(User user, ZonedDateTime now) {
         if (user.quotaWindowStart == null) return true;
         return !user.quotaWindowStart.toLocalDate().equals(now.toLocalDate());

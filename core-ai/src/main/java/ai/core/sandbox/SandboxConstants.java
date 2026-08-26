@@ -8,6 +8,7 @@ import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.ShellCommandTool;
 import ai.core.tool.tools.WriteFileTool;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -22,6 +23,14 @@ public final class SandboxConstants {
             WriteFileTool.TOOL_NAME,
             GlobFileTool.TOOL_NAME,
             GrepFileTool.TOOL_NAME
+    );
+
+    // Fail-fast environment for git/gh inside sandboxes: missing credentials must error
+    // immediately so the agent can self-correct instead of hanging on an interactive prompt.
+    public static final Map<String, String> SANDBOX_GIT_ENV = Map.of(
+            "GIT_TERMINAL_PROMPT", "0",
+            "GH_PROMPT", "disabled",
+            "GH_NO_UPDATE_NOTIFIER", "1"
     );
 
     public static final String DEFAULT_IMAGE = "chancetop/core-ai-sandbox-runtime:latest";
