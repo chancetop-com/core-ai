@@ -10,6 +10,7 @@ import org.bson.conversions.Bson;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * List query helpers for {@link AgentDefinitionService} to keep the service file under the length limit.
@@ -33,6 +34,10 @@ final class AgentListHelper {
         view.id = entity.id;
         view.name = entity.name;
         return view;
+    }
+
+    private static boolean contains(String text, String lowerKeyword) {
+        return text != null && text.toLowerCase(Locale.ROOT).contains(lowerKeyword);
     }
 
     private final MongoCollection<AgentDefinition> agentDefinitionCollection;
@@ -67,6 +72,18 @@ final class AgentListHelper {
         if (limit != null) query.limit = limit;
         if (projection != null) query.projection = projection;
         return agentDefinitionCollection.find(query);
+    }
+
+    // Mongo cannot use an index for an unanchored case-insensitive regex, so keyword search is rejected by
+    // notablescan. Fetch the index-backed access matches and filter in Java instead, like TraceService does.
+    List<AgentDefinition> searchAgents(Bson filter, String keyword, String sortField) {
+        var lower = keyword.toLowerCase(Locale.ROOT);
+        var matches = new ArrayList<AgentDefinition>();
+        for (var agent : findAgents(filter, sortField, null, null, null)) {
+            if (contains(agent.name, lower) || contains(agent.description, lower)) matches.add(agent);
+        }
+        prioritizeDefaultAssistant(matches);
+        return matches;
     }
 
     private Bson excludeDefaultAssistant(Bson filter) {

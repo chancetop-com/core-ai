@@ -113,10 +113,8 @@ public class AgentDefinitionService {
         var effectiveRequest = request != null ? request : new ListAgentsRequest();
         boolean summary = Boolean.TRUE.equals(effectiveRequest.summary);
         var accessFilter = AgentQueryHelper.buildAccessFilter(userId, effectiveRequest);
-        var searchFilter = AgentQueryHelper.buildSearchFilter(effectiveRequest.query);
         var typeFilter = AgentQueryHelper.buildTypeFilter(effectiveRequest.type);
-        var combinedFilter = AgentQueryHelper.combineFilters(accessFilter, searchFilter);
-        combinedFilter = AgentQueryHelper.combineFilters(combinedFilter, typeFilter);
+        var combinedFilter = AgentQueryHelper.combineFilters(accessFilter, typeFilter);
         combinedFilter = AgentQueryHelper.combineFilters(combinedFilter, AgentQueryHelper.buildIdsFilter(effectiveRequest.ids));
 
         boolean paginated = effectiveRequest.page != null || effectiveRequest.limit != null;
@@ -124,14 +122,27 @@ public class AgentDefinitionService {
         int pageSize = effectiveRequest.limit != null && effectiveRequest.limit > 0 ? Math.min(effectiveRequest.limit, 200) : 20;
         Integer skip = paginated ? (pageNum - 1) * pageSize : null;
         Integer limit = paginated ? pageSize : null;
-        Bson projection = summary ? AgentQueryHelper.SUMMARY_PROJECTION : null;
         String sortField = AgentQueryHelper.sortField(effectiveRequest.sort);
 
         var listHelper = new AgentListHelper(agentDefinitionCollection);
-        var defaultAssistant = listHelper.findDefaultAssistant(combinedFilter);
-        var paged = defaultAssistant != null
-            ? listHelper.listWithDefaultAssistantFirst(combinedFilter, sortField, skip, limit, defaultAssistant, projection)
-            : listHelper.findAgents(combinedFilter, sortField, skip, limit, projection);
+        String keyword = AgentQueryHelper.trimToNull(effectiveRequest.query);
+        List<AgentDefinition> paged;
+        long total;
+        if (keyword != null) {
+            paged = listHelper.searchAgents(combinedFilter, keyword, sortField);
+            total = paged.size();
+            if (skip != null) {
+                int from = Math.min(skip, paged.size());
+                paged = paged.subList(from, Math.min(from + limit, paged.size()));
+            }
+        } else {
+            Bson projection = summary ? AgentQueryHelper.SUMMARY_PROJECTION : null;
+            var defaultAssistant = listHelper.findDefaultAssistant(combinedFilter);
+            paged = defaultAssistant != null
+                ? listHelper.listWithDefaultAssistantFirst(combinedFilter, sortField, skip, limit, defaultAssistant, projection)
+                : listHelper.findAgents(combinedFilter, sortField, skip, limit, projection);
+            total = agentDefinitionCollection.count(combinedFilter);
+        }
 
         var response = new ListAgentsResponse();
         if (summary) {
@@ -142,7 +153,7 @@ public class AgentDefinitionService {
             var skillNameMap = resolveSkillNames(paged);
             response.agents = paged.stream().map(e -> toView(e, userNameMap, subAgentNameMap, skillNameMap)).toList();
         }
-        response.total = agentDefinitionCollection.count(combinedFilter);
+        response.total = total;
         response.page = paginated ? pageNum : null;
         response.limit = paginated ? pageSize : null;
         return response;

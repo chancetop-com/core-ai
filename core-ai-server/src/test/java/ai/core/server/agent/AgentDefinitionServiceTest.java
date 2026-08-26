@@ -1,6 +1,7 @@
 package ai.core.server.agent;
 
 import ai.core.api.server.agent.CreateAgentRequest;
+import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentDatasetConfig;
@@ -14,6 +15,7 @@ import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.skill.SkillMetadata;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import org.junit.jupiter.api.Test;
@@ -168,6 +170,54 @@ class AgentDefinitionServiceTest {
         AgentListHelper.prioritizeDefaultAssistant(agents);
 
         assertEquals(List.of(recent, old), agents);
+    }
+
+    @Test
+    void listWithQueryMatchesNameAndDescriptionCaseInsensitively() {
+        var collection = agentCollection();
+        var nameMatch = definition("hr-agent", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        nameMatch.name = "HR Policy Agent";
+        var descriptionMatch = definition("onboarding-agent", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        descriptionMatch.name = "Onboarding";
+        descriptionMatch.description = "handles HR onboarding";
+        var noMatch = definition("sales-agent", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        noMatch.name = "Sales Bot";
+        when(collection.find(any(Query.class))).thenReturn(List.of(nameMatch, descriptionMatch, noMatch));
+        var service = service(collection);
+        when(service.userCollection.find(any(org.bson.Document.class))).thenReturn(List.of());
+
+        var request = new ListAgentsRequest();
+        request.query = "hr";
+        var response = service.list("user-1", request);
+
+        assertEquals(2, response.total);
+        assertEquals(List.of("HR Policy Agent", "Onboarding"), response.agents.stream().map(a -> a.name).toList());
+    }
+
+    @Test
+    void listWithQueryPaginatesFilteredMatches() {
+        var collection = agentCollection();
+        var agents = new ArrayList<AgentDefinition>();
+        for (int i = 1; i <= 5; i++) {
+            var entity = definition("agent-" + i, "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+            entity.name = "HR Agent " + entity.id;
+            agents.add(entity);
+        }
+        when(collection.find(any(Query.class))).thenReturn(agents);
+        var service = service(collection);
+        when(service.userCollection.find(any(org.bson.Document.class))).thenReturn(List.of());
+
+        var request = new ListAgentsRequest();
+        request.query = "hr";
+        request.page = 2;
+        request.limit = 2;
+        var response = service.list("user-1", request);
+
+        assertEquals(5, response.total);
+        assertEquals(2, response.agents.size());
+        assertEquals(List.of("HR Agent agent-3", "HR Agent agent-4"), response.agents.stream().map(a -> a.name).toList());
+        assertEquals(2, response.page);
+        assertEquals(2, response.limit);
     }
 
     @Test

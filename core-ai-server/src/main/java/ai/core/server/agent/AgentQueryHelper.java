@@ -6,7 +6,6 @@ import com.mongodb.client.model.Projections;
 import org.bson.conversions.Bson;
 
 import java.util.ArrayList;
-import java.util.regex.Pattern;
 
 /**
  * Static query/filter helpers extracted from {@link AgentDefinitionService}
@@ -52,13 +51,8 @@ final class AgentQueryHelper {
         return "updated_at";
     }
 
-    static Bson buildSearchFilter(String query) {
-        if (query == null || query.isBlank()) return Filters.empty();
-        var pattern = "(?i)" + Pattern.quote(query.trim());
-        return Filters.or(
-            Filters.regex("name", pattern),
-            Filters.regex("description", pattern)
-        );
+    static String trimToNull(String query) {
+        return query == null || query.isBlank() ? null : query.trim();
     }
 
     static Bson buildTypeFilter(String type) {
