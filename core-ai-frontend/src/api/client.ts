@@ -292,6 +292,15 @@ export interface Span {
   completedAt: string;
 }
 
+export interface StopTraceResponse {
+  trace_id: string;
+  status: Trace['status'];
+  // "session" | "run" | "none" — what the cancel signal was routed to
+  target: string;
+  // false when no live execution was found and the trace was only marked cancelled
+  signalled: boolean;
+}
+
 export interface TraceFilter {
   q?: string;           // smart search: IDs, user account, trace name, or agent name
   name?: string;        // advanced raw regex on name
@@ -1569,6 +1578,7 @@ export const api = {
       return request<TraceListResponse>(`/api/traces?${params}`);
     },
     get: (id: string) => request<Trace>(`/api/traces/${id}`),
+    stop: (id: string) => request<StopTraceResponse>(`/api/traces/${encodeURIComponent(id)}/stop`, { method: 'POST' }),
     spans: async (id: string) =>
       (await request<{ spans: Span[] }>(`/api/traces/${id}/spans`)).spans,
     span: (traceId: string, spanId: string) => request<Span>(`/api/traces/${traceId}/spans/${spanId}`),

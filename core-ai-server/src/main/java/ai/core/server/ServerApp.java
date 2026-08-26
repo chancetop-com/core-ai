@@ -130,6 +130,7 @@ public class ServerApp extends App {
         load(new AgentRunnerModule());
         load(new TriggerModule());
         load(new MessagingRuntimeModule());
+        load(new TraceControlModule());
         load(new SessionSchedulerModule());
         load(new ChannelModule());
         load(new WorkflowModule());
