@@ -41,6 +41,7 @@ public abstract class Node<T extends Node<T>> {
     private NodeStatus nodeStatus;
     private Persistence<T> persistence;
     private PersistenceProvider persistenceProvider;
+    private final Object saveLock = new Object();
     private LongQueryHandler longQueryHandler;
     private String input;
     private String output;
@@ -208,10 +209,14 @@ public abstract class Node<T extends Node<T>> {
         });
     }
 
+    // cancelTurn() saves from the caller thread while the session thread saves the cancelled turn;
+    // snapshot + write must not interleave or a stale snapshot overwrites the newer one.
     @SuppressWarnings("unchecked")
     public String save(String id) {
         if (persistenceProvider == null) throw new RuntimeException("PersistenceProvider is not set");
-        persistenceProvider.save(id, persistence.serialization((T) this));
+        synchronized (saveLock) {
+            persistenceProvider.save(id, persistence.serialization((T) this));
+        }
         return id;
     }
 
