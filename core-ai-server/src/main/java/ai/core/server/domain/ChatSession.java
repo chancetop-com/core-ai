@@ -59,6 +59,10 @@ public class ChatSession {
     @Field(name = "loaded_sub_agent_ids")
     public List<String> loadedSubAgentIds;
 
+    // dataset config snapshot applied when the session was created
+    @Field(name = "dataset_config")
+    public List<AgentDatasetConfig> datasetConfig;
+
     @Field(name = "deleted_at")
     public ZonedDateTime deletedAt;
 }

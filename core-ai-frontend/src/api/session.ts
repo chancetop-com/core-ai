@@ -193,6 +193,7 @@ export interface SessionInfo {
   loaded_tools?: { id: string; type?: string; source?: string }[];
   loaded_skill_ids?: string[];
   loaded_sub_agent_ids?: string[];
+  dataset_config?: { dataset_id: string; permission: string; is_output?: boolean }[];
 }
 
 export interface SessionStatusResponse {

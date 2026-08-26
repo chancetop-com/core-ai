@@ -44,7 +44,7 @@ class SessionRegistryMongoTest {
     void createdSessionStoresArraysThatAcceptSkillUpdates() {
         var sessionId = "created-" + UUID.randomUUID();
         registry.create(new SessionRegistry.SessionRegistration(
-                sessionId, "user-1", "agent-1", "chat", null, null));
+                sessionId, "user-1", "agent-1", "chat", null, null, null));
 
         registry.addLoadedSkillIds(sessionId, List.of("skill-1", "skill-1"));
 
@@ -58,7 +58,7 @@ class SessionRegistryMongoTest {
     void toolRefsArePersistedByAtomicSessionUpdate() {
         var sessionId = "tool-ref-" + UUID.randomUUID();
         registry.create(new SessionRegistry.SessionRegistration(
-                sessionId, "user-1", "agent-1", "chat", null, null));
+                sessionId, "user-1", "agent-1", "chat", null, null, null));
         var toolRef = ToolRef.of("mcp-tool:server:search", ToolSourceType.MCP, "server");
 
         registry.addLoadedTools(sessionId, List.of(toolRef));

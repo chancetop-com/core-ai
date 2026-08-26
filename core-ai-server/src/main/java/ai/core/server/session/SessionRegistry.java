@@ -1,5 +1,6 @@
 package ai.core.server.session;
 
+import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.util.IdLists;
@@ -44,6 +45,7 @@ public class SessionRegistry {
         session.loadedTools = new ArrayList<>();
         session.loadedSkillIds = new ArrayList<>();
         session.loadedSubAgentIds = new ArrayList<>();
+        session.datasetConfig = registration.datasetConfig;
         try {
             chatSessionCollection.insert(session);
             return session;
@@ -247,5 +249,5 @@ public class SessionRegistry {
     }
 
     public record SessionRegistration(String sessionId, String userId, String agentId, String source,
-                                      String scheduleId, String apiKeyId) { }
+                                      String scheduleId, String apiKeyId, List<AgentDatasetConfig> datasetConfig) { }
 }

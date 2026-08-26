@@ -5,6 +5,7 @@ import ai.core.api.server.agent.GenerateAgentDraftResponse;
 import ai.core.api.server.session.ApproveToolCallRequest;
 import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.session.CreateSessionResponse;
+import ai.core.api.server.session.DatasetConfigEntry;
 import ai.core.api.server.session.IdName;
 import ai.core.api.server.session.LoadSkillsRequest;
 import ai.core.api.server.session.LoadSkillsResponse;
@@ -202,6 +203,15 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         }
         response.loadedSkillIds = IdLists.clean(meta.loadedSkillIds);
         response.loadedSubAgentIds = IdLists.clean(meta.loadedSubAgentIds);
+        if (meta.datasetConfig != null && !meta.datasetConfig.isEmpty()) {
+            response.datasetConfig = meta.datasetConfig.stream().map(config -> {
+                var entry = new DatasetConfigEntry();
+                entry.datasetId = config.datasetId;
+                entry.permission = config.permission != null ? config.permission.name() : null;
+                entry.isOutput = config.isOutput;
+                return entry;
+            }).toList();
+        }
         return response;
     }
 

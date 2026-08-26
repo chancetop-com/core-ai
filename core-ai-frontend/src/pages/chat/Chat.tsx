@@ -383,11 +383,10 @@ export default function Chat() {
       setLoadedNames(prev => { const m = new Map(prev); for (const a of subAgents) m.set(a.id, a.name); return m; });
     }
 
-    // Initialize dataset draft from agent definition
-    if (sessionId) {
-      setDraftDatasetConfigs([]);
-      return;
-    }
+    // For an existing session, dataset config is restored from the session
+    // snapshot during hydration; only initialize from the agent definition
+    // for a fresh chat.
+    if (sessionId) return;
     const dsConfig = agent.dataset_config;
     if (dsConfig && dsConfig.length > 0) {
       setDraftDatasetConfigs(dsConfig.map(c => ({
@@ -459,6 +458,11 @@ export default function Chat() {
               if (prev.find(a => a.id === fetched.id)) return prev;
               return [...prev, fetched];
             });
+            // Legacy session without persisted dataset snapshot: fall back to
+            // the fetched agent definition.
+            if (!sessionInfo?.dataset_config?.length && fetched.dataset_config && fetched.dataset_config.length > 0) {
+              setDraftDatasetConfigs(fetched.dataset_config.map(c => ({ ...c, _key: crypto.randomUUID() })));
+            }
           }
         }).catch(() => {
           // Agent may have been deleted; fall through to "Select Agent" placeholder.
@@ -472,6 +476,19 @@ export default function Chat() {
       setLoadedToolIds(loadedToolIdsFromInfo);
       setLoadedSkillIds(unionIdSets(defaultSkillIds, loadedSkillIdsFromInfo));
       setLoadedSubAgentIds(unionIdSets(defaultSubAgentIds, loadedSubAgentIdsFromInfo));
+      // Restore dataset config from the session snapshot; legacy sessions
+      // created before the snapshot existed fall back to the agent definition.
+      const snapshotDatasetConfig = sessionInfo?.dataset_config;
+      if (snapshotDatasetConfig && snapshotDatasetConfig.length > 0) {
+        setDraftDatasetConfigs(snapshotDatasetConfig.map(c => ({
+          dataset_id: c.dataset_id,
+          permission: c.permission as DatasetConfigDraft['permission'],
+          is_output: c.is_output,
+          _key: crypto.randomUUID(),
+        })));
+      } else if (sessionAgent?.dataset_config && sessionAgent.dataset_config.length > 0) {
+        setDraftDatasetConfigs(sessionAgent.dataset_config.map(c => ({ ...c, _key: crypto.randomUUID() })));
+      }
       const hydrated = historyToChatMessages(res.messages || []);
       // A trailing user message means the agent reply may not be persisted yet. Keep
       // a hidden placeholder so future/replayed SSE chunks have a slot to fill, but

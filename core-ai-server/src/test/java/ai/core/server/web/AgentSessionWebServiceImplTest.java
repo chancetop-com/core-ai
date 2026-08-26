@@ -8,7 +8,9 @@ import ai.core.api.server.session.UnloadSkillsRequest;
 import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.apiuser.PermissionService;
 import ai.core.server.agent.AgentDraftGenerator;
+import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.messaging.CommandPublisher;
@@ -79,6 +81,11 @@ class AgentSessionWebServiceImplTest {
         session.loadedTools = List.of(ToolRef.of("mcp-tool:server:search", ToolSourceType.MCP, "server"));
         session.loadedSkillIds = List.of(" skill-1 ", "", "skill-1", "skill-2");
         session.loadedSubAgentIds = List.of("sub-1", "sub-1", " sub-2 ");
+        var datasetConfig = new AgentDatasetConfig();
+        datasetConfig.datasetId = "dataset-1";
+        datasetConfig.permission = DatasetPermission.WRITE;
+        datasetConfig.isOutput = Boolean.TRUE;
+        session.datasetConfig = List.of(datasetConfig);
         when(service.chatMessageService.getSessionMeta("s-1")).thenReturn(session);
 
         var info = service.getInfo("s-1");
@@ -91,6 +98,10 @@ class AgentSessionWebServiceImplTest {
         assertEquals("server", info.loadedTools.getFirst().source);
         assertEquals(List.of("skill-1", "skill-2"), info.loadedSkillIds);
         assertEquals(List.of("sub-1", "sub-2"), info.loadedSubAgentIds);
+        assertEquals(1, info.datasetConfig.size());
+        assertEquals("dataset-1", info.datasetConfig.getFirst().datasetId);
+        assertEquals("WRITE", info.datasetConfig.getFirst().permission);
+        assertEquals(Boolean.TRUE, info.datasetConfig.getFirst().isOutput);
     }
 
     @Test

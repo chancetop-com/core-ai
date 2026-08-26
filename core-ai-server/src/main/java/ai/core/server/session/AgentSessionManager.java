@@ -168,7 +168,8 @@ public class AgentSessionManager {
         CallerContexts.attach(context, userCollection, userId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId, scheduledTaskStore);
-        var extraVars = buildExtraVars(effectiveConfig, sessionDatasetConfig(effectiveConfig));
+        var sessionDatasetConfig = sessionDatasetConfig(effectiveConfig);
+        var extraVars = buildExtraVars(effectiveConfig, sessionDatasetConfig);
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry, context, null, extraVars, null,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
@@ -179,7 +180,7 @@ public class AgentSessionManager {
         var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent);
         if (sandbox != null) context.sandbox(sandbox);
         initializeSession(session, new SessionRegistry.SessionRegistration(
-                sessionId, userId, null, source, null, apiKeyId));
+                sessionId, userId, null, source, null, apiKeyId, sessionDatasetConfig));
         return sessionId;
     }
     private List<AgentDatasetConfig> sessionDatasetConfig(SessionConfig config) {
@@ -230,7 +231,7 @@ public class AgentSessionManager {
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
         initializeSession(session, new SessionRegistry.SessionRegistration(
-                sessionId, userId, executableDefinition.id, source, null, apiKeyId));
+                sessionId, userId, executableDefinition.id, source, null, apiKeyId, datasetConfig));
         var executableConfig = executableDefinition.publishedConfig;
         var loadedSkillIds = executableConfig != null ? executableConfig.skillIds : executableDefinition.skillIds;
         var loadedSubAgentIds = executableConfig != null ? executableConfig.subAgentIds : executableDefinition.subAgentIds;

@@ -1,6 +1,8 @@
 package ai.core.server.session;
 
+import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import com.mongodb.MongoWriteException;
@@ -45,8 +47,12 @@ class SessionRegistryTest {
     @Test
     void createPersistsCompleteSessionIdentityBeforeReturning() {
         var registry = registry();
+        var datasetConfig = new AgentDatasetConfig();
+        datasetConfig.datasetId = "dataset-1";
+        datasetConfig.permission = DatasetPermission.WRITE;
+        datasetConfig.isOutput = Boolean.TRUE;
         var registration = new SessionRegistry.SessionRegistration(
-                "s-1", "user-1", "agent-1", "a2a", "schedule-1", "key-1");
+                "s-1", "user-1", "agent-1", "a2a", "schedule-1", "key-1", List.of(datasetConfig));
 
         var created = registry.create(registration);
 
@@ -65,6 +71,7 @@ class SessionRegistryTest {
         assertEquals(List.of(), persisted.loadedTools);
         assertEquals(List.of(), persisted.loadedSkillIds);
         assertEquals(List.of(), persisted.loadedSubAgentIds);
+        assertEquals(List.of(datasetConfig), persisted.datasetConfig);
     }
 
     @Test
@@ -73,7 +80,7 @@ class SessionRegistryTest {
         var duplicate = mock(MongoWriteException.class);
         when(duplicate.getCode()).thenReturn(11000);
         var registration = new SessionRegistry.SessionRegistration(
-                "s-1", "user-1", "agent-1", "chat", null, null);
+                "s-1", "user-1", "agent-1", "chat", null, null, null);
         var existing = session("s-1", "user-1", "agent-1");
         existing.source = "chat";
         when(registry.chatSessionCollection.get("s-1")).thenReturn(Optional.of(existing));
@@ -88,7 +95,7 @@ class SessionRegistryTest {
         var duplicate = mock(MongoWriteException.class);
         when(duplicate.getCode()).thenReturn(11000);
         var registration = new SessionRegistry.SessionRegistration(
-                "s-1", "user-1", "agent-1", "chat", null, null);
+                "s-1", "user-1", "agent-1", "chat", null, null, null);
         when(registry.chatSessionCollection.get("s-1"))
                 .thenReturn(Optional.of(session("s-1", "another-user", "agent-1")));
         org.mockito.Mockito.doThrow(duplicate).when(registry.chatSessionCollection).insert(any(ChatSession.class));
@@ -104,7 +111,7 @@ class SessionRegistryTest {
         org.mockito.Mockito.doThrow(failure).when(registry.chatSessionCollection).insert(any(ChatSession.class));
 
         assertThrows(MongoWriteException.class, () -> registry.create(
-                new SessionRegistry.SessionRegistration("s-1", "user-1", null, "chat", null, null)));
+                new SessionRegistry.SessionRegistration("s-1", "user-1", null, "chat", null, null, null)));
     }
 
     @Test

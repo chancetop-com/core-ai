@@ -25,4 +25,7 @@ public class SessionInfo {
 
     @Property(name = "loaded_sub_agent_ids")
     public List<String> loadedSubAgentIds;
+
+    @Property(name = "dataset_config")
+    public List<DatasetConfigEntry> datasetConfig;
 }
