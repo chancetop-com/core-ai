@@ -557,10 +557,13 @@ func executeBash(args string) (string, string) {
 	return result, "completed"
 }
 
+// executePython mirrors the run_python_script tool contract (PythonScriptTool):
+// inline "code" wins over "script_path"; "script" is a legacy alias for "code".
 func executePython(args string) (string, string) {
 	var parsed struct {
 		Code         string `json:"code"`
 		Script       string `json:"script"`
+		ScriptPath   string `json:"script_path"`
 		WorkspaceDir string `json:"workspace"`
 		Timeout      int    `json:"timeout"`
 	}
@@ -572,8 +575,19 @@ func executePython(args string) (string, string) {
 	if code == "" {
 		code = parsed.Script
 	}
-	if code == "" {
-		return "code is empty", "failed"
+
+	var pythonArgs []string
+	switch {
+	case code != "":
+		pythonArgs = []string{"-u", "-c", code}
+	case parsed.ScriptPath != "":
+		scriptPath := resolvePath(parsed.ScriptPath)
+		if _, err := os.Stat(scriptPath); err != nil {
+			return fmt.Sprintf("script file does not exist: %s", scriptPath), "failed"
+		}
+		pythonArgs = []string{"-u", scriptPath}
+	default:
+		return "either 'code' or 'script_path' is required", "failed"
 	}
 
 	timeout := 60 * time.Second
@@ -584,7 +598,7 @@ func executePython(args string) (string, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, findPython(), "-u", "-c", code)
+	cmd := exec.CommandContext(ctx, findPython(), pythonArgs...)
 	cmd.Dir = sanitizePath(parsed.WorkspaceDir, workspaceDir)
 	cmd.Env = minimalEnv()
 
