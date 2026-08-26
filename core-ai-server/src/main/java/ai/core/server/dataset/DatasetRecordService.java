@@ -100,7 +100,13 @@ public class DatasetRecordService {
     public boolean update(String id, Map<String, Object> data, String updatedBy) {
         var record = datasetRecordCollection.get(id).orElse(null);
         if (record == null) return false;
-        record.data = JsonUtil.toJson(data);
+        Map<String, Object> merged;
+        if (record.data != null && !record.data.isBlank()) {
+            merged = merge(JsonUtil.toMap(record.data), data);
+        } else {
+            merged = new LinkedHashMap<>(data);
+        }
+        record.data = JsonUtil.toJson(merged);
         record.updatedAt = ZonedDateTime.now();
         record.updatedBy = updatedBy;
         datasetRecordCollection.replace(record);

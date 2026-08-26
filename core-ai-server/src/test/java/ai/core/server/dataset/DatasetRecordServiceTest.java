@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -130,6 +131,69 @@ class DatasetRecordServiceTest {
         var filters = doc.getArray("$and");
         assertTrue(filters.stream().anyMatch(value -> value.asDocument().containsKey("dataset_id")));
         assertTrue(filters.stream().anyMatch(value -> value.asDocument().containsKey("session_id")));
+    }
+
+    @Test
+    void updateMergesSubsetFieldsIntoExistingData() {
+        var existing = new DatasetRecord();
+        existing.id = "r1";
+        existing.datasetId = "ds1";
+        existing.data = "{\"name\":\"卢锦锦\",\"status\":\"已评估\",\"evaluation_result\":\"推荐面试\"}";
+        when(collection.get("r1")).thenReturn(Optional.of(existing));
+
+        var updated = service.update("r1", Map.of("status", "已面试"), "u1");
+
+        assertTrue(updated);
+        var merged = JsonUtil.toMap(existing.data);
+        assertEquals("卢锦锦", merged.get("name"));
+        assertEquals("推荐面试", merged.get("evaluation_result"));
+        assertEquals("已面试", merged.get("status"));
+        assertEquals("u1", existing.updatedBy);
+        verify(collection).replace(existing);
+    }
+
+    @Test
+    void updateOverwritesProvidedFieldsAndPreservesOthers() {
+        var existing = new DatasetRecord();
+        existing.id = "r1";
+        existing.datasetId = "ds1";
+        existing.data = "{\"name\":\"old\",\"status\":\"已评估\"}";
+        when(collection.get("r1")).thenReturn(Optional.of(existing));
+
+        var updated = service.update("r1", Map.of("name", "new"), "u1");
+
+        assertTrue(updated);
+        var merged = JsonUtil.toMap(existing.data);
+        assertEquals("new", merged.get("name"));
+        assertEquals("已评估", merged.get("status"));
+    }
+
+    @Test
+    void updateReturnsFalseWhenRecordAbsent() {
+        when(collection.get("missing")).thenReturn(Optional.empty());
+
+        var updated = service.update("missing", Map.of("status", "x"), "u1");
+
+        assertFalse(updated);
+        verify(collection, never()).replace(any());
+    }
+
+    @Test
+    void updateWithNullDeletesField() {
+        var existing = new DatasetRecord();
+        existing.id = "r1";
+        existing.datasetId = "ds1";
+        existing.data = "{\"name\":\"卢锦锦\",\"status\":\"已评估\"}";
+        when(collection.get("r1")).thenReturn(Optional.of(existing));
+        var patch = new java.util.HashMap<String, Object>();
+        patch.put("status", null);
+
+        var updated = service.update("r1", patch, "u1");
+
+        assertTrue(updated);
+        var merged = JsonUtil.toMap(existing.data);
+        assertEquals(1, merged.size());
+        assertEquals("卢锦锦", merged.get("name"));
     }
 
     @Test
