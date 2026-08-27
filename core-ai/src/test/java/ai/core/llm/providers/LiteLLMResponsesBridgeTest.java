@@ -175,6 +175,68 @@ class LiteLLMResponsesBridgeTest {
         assertTrue(callback.rawData.getLast().contains("\"finish_reason\":\"tool_calls\""));
     }
 
+    @Test
+    void streamsReasoningSummaryDelta() {
+        var state = new LiteLLMResponsesStreamState();
+        var callback = new CapturingCallback();
+
+        state.accept(event("""
+                {"type":"response.reasoning_summary_text.delta","delta":"Thinking"}
+                """), callback);
+        state.accept(event("""
+                {"type":"response.reasoning_summary_text.delta","delta":" hard"}
+                """), callback);
+
+        var response = state.response();
+
+        assertEquals("Thinking hard", response.choices.getFirst().message.reasoningContent);
+        assertEquals(List.of("Thinking", " hard"), callback.reasoningChunks);
+        assertTrue(callback.rawData.getFirst().contains("\"reasoning_content\":\"Thinking\""));
+    }
+
+    @Test
+    void capturesReasoningOutputItemSummaryText() {
+        var state = new LiteLLMResponsesStreamState();
+        var callback = new CapturingCallback();
+
+        state.accept(event("""
+                {
+                  "type": "response.output_item.added",
+                  "output_index": 0,
+                  "item": {"type":"reasoning","id":"rs_1","summary":[],"content":[]}
+                }
+                """), callback);
+        state.accept(event("""
+                {
+                  "type": "response.output_item.done",
+                  "output_index": 0,
+                  "item": {
+                    "type":"reasoning",
+                    "id":"rs_1",
+                    "summary":[{"type":"summary_text","text":"Let me think step by step"}],
+                    "content":[{"type":"reasoning_text","text":" detailed chain of thought"}]
+                  }
+                }
+                """), callback);
+        state.accept(event("""
+                {
+                  "type": "response.completed",
+                  "response": {
+                    "status": "completed",
+                    "output": [
+                      {"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"Let me think step by step"}],"content":[{"type":"reasoning_text","text":" detailed chain of thought"}]},
+                      {"type":"message","content":[{"type":"output_text","text":"Final answer"}]}
+                    ]
+                  }
+                }
+                """), callback);
+
+        var response = state.response();
+
+        assertEquals("Let me think step by step detailed chain of thought", response.choices.getFirst().message.reasoningContent);
+        assertEquals("Final answer", response.choices.getFirst().message.content);
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> event(String json) {
         return JsonUtil.fromJson(Map.class, json);
@@ -210,12 +272,18 @@ class LiteLLMResponsesBridgeTest {
 
     private static final class CapturingCallback implements StreamingCallback {
         final List<String> chunks = new ArrayList<>();
+        final List<String> reasoningChunks = new ArrayList<>();
         final List<String> rawData = new ArrayList<>();
         final List<List<FunctionCall>> toolDeltas = new ArrayList<>();
 
         @Override
         public void onChunk(String chunk) {
             chunks.add(chunk);
+        }
+
+        @Override
+        public void onReasoningChunk(String chunk) {
+            reasoningChunks.add(chunk);
         }
 
         @Override

@@ -155,6 +155,8 @@ final class LiteLLMResponsesStreamState {
             updateToolFromDoneItem(item, outputIndex);
         } else if ("message".equals(type)) {
             setFinalTextFromMessageItem(item);
+        } else if ("reasoning".equals(type)) {
+            setFinalReasoningFromItem(item);
         }
     }
 
@@ -195,6 +197,10 @@ final class LiteLLMResponsesStreamState {
         }
         if ("message".equals(LiteLLMResponsesUtil.string(mappedItem.get("type")))) {
             setFinalTextFromMessageItem(mappedItem);
+            return;
+        }
+        if ("reasoning".equals(LiteLLMResponsesUtil.string(mappedItem.get("type")))) {
+            setFinalReasoningFromItem(mappedItem);
         }
     }
 
@@ -208,6 +214,32 @@ final class LiteLLMResponsesStreamState {
         if (text == null) return;
         content.setLength(0);
         content.append(text);
+    }
+
+    private void setFinalReasoningFromItem(Map<String, Object> item) {
+        var reasoning = reasoningText(item);
+        if (reasoning == null) return;
+        reasoningContent.setLength(0);
+        reasoningContent.append(reasoning);
+    }
+
+    private String reasoningText(Map<String, Object> item) {
+        var text = new StringBuilder();
+        appendReasoningPartText(text, item.get("summary"));
+        appendReasoningPartText(text, item.get("content"));
+        return text.isEmpty() ? null : text.toString();
+    }
+
+    private void appendReasoningPartText(StringBuilder text, Object parts) {
+        if (!(parts instanceof List<?> list)) return;
+        for (var part : list) {
+            if (!(part instanceof Map<?, ?> rawPart)) continue;
+            var partMap = LiteLLMResponsesUtil.asStringObjectMap(rawPart);
+            var type = LiteLLMResponsesUtil.string(partMap.get("type"));
+            if (!"summary_text".equals(type) && !"reasoning_text".equals(type)) continue;
+            var partText = LiteLLMResponsesUtil.string(partMap.get("text"));
+            if (partText != null) text.append(partText);
+        }
     }
 
     private ToolState toolState(Integer outputIndex, String itemId) {

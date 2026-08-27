@@ -285,7 +285,7 @@ public class LiteLLMProvider extends LLMProvider {
                     break;
                 }
 
-                var chunk = JsonUtil.fromJson(CompletionResponse.class, repairInvalidJsonEscapes(data));
+                var chunk = LiteLLMCompletionChunkParser.parse(data);
                 if (chunk.usage != null && response != null) {
                     response.usage = chunk.usage;
                 }

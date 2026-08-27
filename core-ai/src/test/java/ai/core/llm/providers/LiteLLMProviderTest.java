@@ -15,6 +15,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * @author stephen
@@ -97,6 +98,43 @@ class LiteLLMProviderTest {
         String repaired = LiteLLMProvider.repairInvalidJsonEscapes(json);
 
         assertEquals(json, repaired);
+    }
+
+    @Test
+    void parsesReasoningAliasFromStreamingDelta() {
+        String json = "{\"choices\":[{\"delta\":{\"role\":\"assistant\",\"reasoning\":\"thinking step by step\"}}]}";
+
+        var chunk = LiteLLMCompletionChunkParser.parse(json);
+
+        assertEquals("thinking step by step", chunk.choices.getFirst().delta.reasoningContent);
+    }
+
+    @Test
+    void parsesReasoningAliasFromNonStreamingMessage() {
+        String json = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"reasoning\":\"analysis\",\"content\":\"answer\"}}]}";
+
+        var chunk = LiteLLMCompletionChunkParser.parse(json);
+
+        assertEquals("analysis", chunk.choices.getFirst().message.reasoningContent);
+        assertEquals("answer", chunk.choices.getFirst().message.content);
+    }
+
+    @Test
+    void reasoningContentKeyTakesPrecedenceOverReasoningAlias() {
+        String json = "{\"choices\":[{\"delta\":{\"reasoning\":\"alias\",\"reasoning_content\":\"canonical\"}}]}";
+
+        var chunk = LiteLLMCompletionChunkParser.parse(json);
+
+        assertEquals("canonical", chunk.choices.getFirst().delta.reasoningContent);
+    }
+
+    @Test
+    void objectValuedReasoningKeyIgnored() {
+        String json = "{\"choices\":[{\"delta\":{\"reasoning\":{\"summary\":\"structured\"}}}]}";
+
+        var chunk = LiteLLMCompletionChunkParser.parse(json);
+
+        assertNull(chunk.choices.getFirst().delta.reasoningContent);
     }
 
     @Test

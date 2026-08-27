@@ -35,8 +35,13 @@ public class Tokenizer {
         return ENCODING_CACHE.computeIfAbsent(type, getRegistry()::getEncoding);
     }
 
+    // use the ordinary variants: text here is arbitrary user/tool content, special token literals like <|endoftext|> must be
+    // treated as plain text instead of making jtokkit throw UnsupportedOperationException
     public static int tokenCount(String text, EncodingType type) {
-        return getEncoding(type).countTokens(text);
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        return getEncoding(type).countTokensOrdinary(text);
     }
 
     public static int tokenCount(String text) {
@@ -44,7 +49,10 @@ public class Tokenizer {
     }
 
     public static List<Integer> encode(String text, EncodingType type) {
-        return getEncoding(type).encode(text).boxed();
+        if (text == null || text.isEmpty()) {
+            return List.of();
+        }
+        return getEncoding(type).encodeOrdinary(text).boxed();
     }
 
     public static List<Integer> encode(String text) {

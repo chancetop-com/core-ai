@@ -52,10 +52,15 @@ public class CompressionLifecycle extends AbstractLifecycle {
         String sessionId = executionContext != null ? executionContext.getSessionId() : null;
         String toolName = functionCall.function != null ? functionCall.function.name : "unknown";
 
-        String compressed = compression.compressToolResult(toolName, result, sessionId);
-        if (!compressed.equals(result)) {
-            toolResult.withResult(compressed);
-            LOGGER.debug("Tool result compressed for {}", toolName);
+        try {
+            String compressed = compression.compressToolResult(toolName, result, sessionId);
+            if (!compressed.equals(result)) {
+                toolResult.withResult(compressed);
+                LOGGER.debug("Tool result compressed for {}", toolName);
+            }
+        } catch (RuntimeException e) {
+            // compression is best-effort, never fail the turn because of it, keep the original result
+            LOGGER.warn("Failed to compress tool result for {}, keeping original", toolName, e);
         }
     }
 }
