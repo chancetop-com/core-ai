@@ -32,3 +32,25 @@ export function mergeHistoryWithLive(hydrated: ChatMessage[], live: ChatMessage[
   }
   return [...hydrated, { role: 'agent', segments: [], timestamp: new Date().toISOString() }];
 }
+
+export type RestoredTurnAction = 'resume' | 'resync' | 'none';
+
+/**
+ * Decide what a page reload has to do for the session restored from sessionStorage.
+ * `status` only lives in memory, so a turn that was running before the reload would
+ * otherwise come back as idle (Send button, no stream) while the backend keeps executing.
+ */
+export function resolveRestoredTurn(status: string | null | undefined, messages: ChatMessage[]): RestoredTurnAction {
+  if (!status) return 'none';
+  if (status === 'running') return 'resume';
+  const last = messages[messages.length - 1];
+  const awaitingReply = last?.role === 'user' || (last?.role === 'agent' && last.segments.length === 0);
+  return awaitingReply ? 'resync' : 'none';
+}
+
+/** Give a resumed turn a bubble to stream into when the restored list ends with the user message. */
+export function ensureTrailingAgentBubble(messages: ChatMessage[]): ChatMessage[] {
+  const last = messages[messages.length - 1];
+  if (last?.role === 'agent') return messages;
+  return [...messages, { role: 'agent', segments: [], timestamp: new Date().toISOString() }];
+}

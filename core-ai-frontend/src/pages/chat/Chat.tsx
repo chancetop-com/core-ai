@@ -16,7 +16,7 @@ import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages } from './utils';
-import { clearActiveAgentBubble, mergeHistoryWithLive } from './streamRecovery';
+import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 
 const VoiceTranscriberSidebar = lazy(() => import('./components/VoiceTranscriberSidebar'));
@@ -1209,6 +1209,32 @@ export default function Chat() {
       return false;
     }
   }, [clearTurnPending]);
+
+  // Page-reload recovery: sessionId/messages come back from sessionStorage but `status`
+  // does not, so a turn that was running before the reload would show the Send button
+  // and stream nowhere. Ask the backend once on mount and resume (or re-sync) accordingly.
+  // The ?sessionId= URL path hydrates on its own and already performs this check.
+  useEffect(() => {
+    const sid = sessionIdRef.current;
+    if (!sid || searchParams.get('sessionId')) return;
+    let cancelled = false;
+    sessionApi.status(sid)
+      .then(res => {
+        if (cancelled || sessionIdRef.current !== sid) return;
+        const action = resolveRestoredTurn(res.status, messages);
+        if (action === 'resume') {
+          setMessages(prev => ensureTrailingAgentBubble(prev));
+          setStatus('running');
+          markTurnPending(sid);
+          doConnectSSE(sid);
+        } else if (action === 'resync') {
+          void syncFromHistory(sid);
+        }
+      })
+      .catch(e => console.warn('failed to check restored session status', e));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Status watchdog: while a turn is pending, poll the backend session status.
   // If the backend says the turn finished but no terminal SSE event ever arrived

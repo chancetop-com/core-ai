@@ -6,7 +6,6 @@ import {
   Brain,
   ChevronDown,
   ChevronRight,
-  CircleStop,
   Clock,
   Copy,
   Database,
@@ -23,8 +22,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { useAuth } from '../../api/auth';
-import type { Span, StopTraceResponse, Trace } from '../../api/client';
+import type { Span, Trace } from '../../api/client';
 import { api } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import { sourceColors, typeColors } from './colors';
@@ -81,13 +79,7 @@ const SPAN_ICONS: Record<string, ComponentType<{ size?: number; style?: CSSPrope
   GROUP: Users,
 };
 
-export default function TraceInspector({ trace: traceProp, spans, mode = 'panel', onBack, onClose }: TraceInspectorProps) {
-  // An admin stop updates the trace locally so page/panel reflect CANCELLED without a refetch.
-  const [stoppedTrace, setStoppedTrace] = useState<Trace | null>(null);
-  const trace = stoppedTrace && stoppedTrace.traceId === traceProp.traceId ? stoppedTrace : traceProp;
-  const handleStopped = (response: StopTraceResponse) => {
-    setStoppedTrace({ ...trace, status: response.status, errorMessage: stopNote(response), completedAt: new Date().toISOString() });
-  };
+export default function TraceInspector({ trace, spans, mode = 'panel', onBack, onClose }: TraceInspectorProps) {
   const [tabState, setTabState] = useState<{ traceId: string; tab: TraceTab }>({ traceId: trace.traceId, tab: 'timeline' });
   const tab = tabState.traceId === trace.traceId ? tabState.tab : 'timeline';
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
@@ -137,7 +129,7 @@ export default function TraceInspector({ trace: traceProp, spans, mode = 'panel'
 
   const content = (
     <>
-      <TraceHeader trace={trace} spans={spans} mode={mode} onClose={onClose} onStopped={handleStopped} />
+      <TraceHeader trace={trace} spans={spans} mode={mode} onClose={onClose} />
       <div className="flex border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
         <TraceTabButton active={tab === 'timeline'} icon={<ListTree size={14} />} onClick={() => setTraceTab('timeline')}>
           Timeline
@@ -180,12 +172,11 @@ export default function TraceInspector({ trace: traceProp, spans, mode = 'panel'
   return <div className={containerClass}>{content}</div>;
 }
 
-function TraceHeader({ trace, spans, mode, onClose, onStopped }: {
+function TraceHeader({ trace, spans, mode, onClose }: {
   trace: Trace;
   spans: Span[];
   mode: InspectorMode;
   onClose?: () => void;
-  onStopped: (response: StopTraceResponse) => void;
 }) {
   const traceType = typeColors(resolveTraceType(trace));
   const source = sourceColors(resolveTraceSource(trace));
@@ -249,7 +240,6 @@ function TraceHeader({ trace, spans, mode, onClose, onStopped }: {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <StopTraceButton trace={trace} onStopped={onStopped} />
           {trace.sessionId && (
             <a href={`/chat?sessionId=${encodeURIComponent(trace.sessionId)}`}
               className="px-2 py-1.5 rounded-md text-xs inline-flex items-center gap-1 cursor-pointer"
@@ -281,52 +271,8 @@ function TraceHeader({ trace, spans, mode, onClose, onStopped }: {
           <ErrorBlock message={trace.errorMessage} />
         </div>
       )}
-      {trace.status === 'CANCELLED' && trace.errorMessage && (
-        <div className="mt-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{trace.errorMessage}</div>
-      )}
     </div>
   );
-}
-
-// Rendered only for admins on a RUNNING trace; the server enforces the same admin check.
-function StopTraceButton({ trace, onStopped }: { trace: Trace; onStopped: (response: StopTraceResponse) => void }) {
-  const { user } = useAuth();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (user?.role !== 'admin' || trace.status !== 'RUNNING') return null;
-
-  const stop = async () => {
-    const confirmed = window.confirm(
-      `Stop this running trace?\n\n${traceDisplayName(trace)}\n\nThe live execution will be cancelled (best-effort for API/scheduled runs) and the trace marked as CANCELLED.`,
-    );
-    if (!confirmed) return;
-    setBusy(true);
-    setError(null);
-    try {
-      onStopped(await api.traces.stop(trace.traceId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'stop failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      {error && <span className="text-xs" style={{ color: 'var(--color-error)' }}>{error}</span>}
-      <button type="button" onClick={stop} disabled={busy} aria-label="Stop trace" title="Stop trace (admin)"
-        className="px-2 py-1.5 rounded-md text-xs inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
-        style={{ color: 'var(--color-error)', background: 'color-mix(in srgb, var(--color-error) 12%, transparent)' }}>
-        <CircleStop size={13} /> {busy ? 'Stopping…' : 'Stop'}
-      </button>
-    </>
-  );
-}
-
-function stopNote(response: StopTraceResponse): string {
-  if (!response.signalled) return 'Stopped by admin — no live execution was found, trace marked as cancelled.';
-  const target = response.target === 'run' ? 'the agent run (best-effort across replicas)' : 'the session turn';
-  return `Stopped by admin — cancel signal sent to ${target}.`;
 }
 
 function accountLabel(trace: Trace): string {

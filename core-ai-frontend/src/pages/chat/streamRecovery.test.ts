@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clearActiveAgentBubble, mergeHistoryWithLive } from './streamRecovery';
+import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn } from './streamRecovery';
 import type { ChatMessage } from './types';
 
 const user = (content: string): ChatMessage => ({
@@ -104,5 +104,41 @@ describe('mergeHistoryWithLive', () => {
     const live = [user('hi'), streamingBubble()];
 
     expect(mergeHistoryWithLive(hydrated, live)).toBe(hydrated);
+  });
+});
+
+describe('resolveRestoredTurn', () => {
+  it('resumes when the backend still reports the turn as running', () => {
+    expect(resolveRestoredTurn('running', [user('q')])).toBe('resume');
+    expect(resolveRestoredTurn('running', [user('q'), agentWith([{ type: 'text', content: 'partial' }])])).toBe('resume');
+  });
+
+  it('re-syncs history when the turn ended but the restored list still awaits the reply', () => {
+    expect(resolveRestoredTurn('idle', [user('q')])).toBe('resync');
+    expect(resolveRestoredTurn('idle', [user('q'), agentWith([])])).toBe('resync');
+    expect(resolveRestoredTurn('error', [user('q')])).toBe('resync');
+  });
+
+  it('does nothing when the restored list already ends with a persisted reply', () => {
+    expect(resolveRestoredTurn('idle', [user('q'), agentWith([{ type: 'text', content: 'a' }])])).toBe('none');
+    expect(resolveRestoredTurn('idle', [])).toBe('none');
+  });
+
+  it('does nothing when the status could not be read', () => {
+    expect(resolveRestoredTurn(null, [user('q')])).toBe('none');
+  });
+});
+
+describe('ensureTrailingAgentBubble', () => {
+  it('appends an empty agent bubble after a trailing user message', () => {
+    const result = ensureTrailingAgentBubble([user('q')]);
+    expect(result).toHaveLength(2);
+    expect(result[1].role).toBe('agent');
+    expect(result[1].segments).toEqual([]);
+  });
+
+  it('keeps the list unchanged when it already ends with an agent bubble', () => {
+    const list = [user('q'), agentWith([])];
+    expect(ensureTrailingAgentBubble(list)).toBe(list);
   });
 });
