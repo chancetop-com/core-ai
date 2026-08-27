@@ -164,7 +164,8 @@ public class SelfHarnessDispatcher {
                         null, null, null,
                         params.get("limit") != null ? ((Number) params.get("limit")).intValue() : null,
                         params.get("offset") != null ? ((Number) params.get("offset")).intValue() : null,
-                        (String) params.get("agent_id")
+                        (String) params.get("agent_id"),
+                        null
                 );
                 var result = datasetRecordService.query(queryReq);
                 yield Map.of("records", result.records(), "total", result.total());

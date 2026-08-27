@@ -118,7 +118,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
 
         List<String> fields = fieldsStr != null ? Arrays.asList(fieldsStr.split(",")) : null;
 
-        var result = datasetRecordService.query(new DatasetRecordService.QueryRequest(id, from, to, fields, limit, offset, agentId));
+        var result = datasetRecordService.query(new DatasetRecordService.QueryRequest(id, from, to, fields, limit, offset, agentId, null));
 
         var response = new ListDatasetRecordsResponse();
         response.records = result.records().stream().map(this::toRecordView).toList();

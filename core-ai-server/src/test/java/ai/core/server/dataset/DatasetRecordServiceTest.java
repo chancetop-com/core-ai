@@ -6,13 +6,16 @@ import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoWriteException;
 import com.mongodb.WriteError;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import org.bson.BsonDocument;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,6 +40,148 @@ class DatasetRecordServiceTest {
         var s = new DatasetRecordService();
         s.datasetRecordCollection = collection;
         return s;
+    }
+
+    private DatasetRecord datasetRecord(String id, String data) {
+        var record = new DatasetRecord();
+        record.id = id;
+        record.datasetId = "ds1";
+        record.data = data;
+        return record;
+    }
+
+    @Test
+    void queryWithoutDataFilterDelegatesPaginationToMongo() {
+        when(collection.find(any(Query.class))).thenReturn(List.of());
+        when(collection.count(any(Bson.class))).thenReturn(0L);
+
+        service.query(new DatasetRecordService.QueryRequest("ds1", null, null, null, 10, 5, null, null));
+
+        var captor = ArgumentCaptor.forClass(Query.class);
+        verify(collection).find(captor.capture());
+        assertEquals(10, captor.getValue().limit);
+        assertEquals(5, captor.getValue().skip);
+        assertNull(captor.getValue().projection);
+    }
+
+    @Test
+    void queryWithDataFilterMatchesInMemoryAndPaginatesAfterFilter() {
+        when(collection.find(any(Query.class))).thenReturn(List.of(
+                datasetRecord("r1", "{\"status\":\"done\",\"priority\":3}"),
+                datasetRecord("r2", "{\"status\":\"pending\",\"priority\":3}"),
+                datasetRecord("r3", "{\"status\":\"done\",\"priority\":1}")));
+
+        var result = service.query(new DatasetRecordService.QueryRequest("ds1", null, null, null, 1, 1, null,
+                Map.of("status", "done")));
+
+        assertEquals(2L, result.total());
+        assertEquals(1, result.records().size());
+        assertEquals("r3", result.records().get(0).id);
+        verify(collection, never()).count(any(Bson.class));
+    }
+
+    @Test
+    void queryWithDataFilterMatchesNestedDotPath() {
+        when(collection.find(any(Query.class))).thenReturn(List.of(
+                datasetRecord("r1", "{\"meta\":{\"priority\":3}}"),
+                datasetRecord("r2", "{\"meta\":{\"priority\":1}}")));
+
+        var result = service.query(new DatasetRecordService.QueryRequest("ds1", null, null, null, null, null, null,
+                Map.of("meta.priority", 3)));
+
+        assertEquals(1L, result.total());
+        assertEquals("r1", result.records().get(0).id);
+    }
+
+    @Test
+    void queryWithDataFilterMatchesNumbersAcrossTypes() {
+        when(collection.find(any(Query.class))).thenReturn(List.of(
+                datasetRecord("r1", "{\"priority\":3}"),
+                datasetRecord("r2", "{\"priority\":3.0}"),
+                datasetRecord("r3", "{\"priority\":4}")));
+
+        var result = service.query(new DatasetRecordService.QueryRequest("ds1", null, null, null, null, null, null,
+                Map.of("priority", 3.0)));
+
+        assertEquals(2L, result.total());
+    }
+
+    @Test
+    void queryClampsLimitToMaxPageSize() {
+        when(collection.find(any(Query.class))).thenReturn(List.of());
+        when(collection.count(any(Bson.class))).thenReturn(0L);
+
+        service.query(new DatasetRecordService.QueryRequest("ds1", null, null, null, 5000, null, null, null));
+
+        var captor = ArgumentCaptor.forClass(Query.class);
+        verify(collection).find(captor.capture());
+        assertEquals(DatasetRecordService.MAX_PAGE_SIZE, captor.getValue().limit);
+    }
+
+    @Test
+    void queryWithDataFilterCapsScanAndReportsTruncation() {
+        var scanned = IntStream.range(0, DatasetRecordService.MAX_FILTER_SCAN_RECORDS)
+                .mapToObj(i -> datasetRecord("r" + i, "{\"status\":\"done\"}"))
+                .toList();
+        when(collection.find(any(Query.class))).thenReturn(scanned);
+
+        var result = service.query(new DatasetRecordService.QueryRequest("ds1", null, null, null, 10, null, null,
+                Map.of("status", "done")));
+
+        assertTrue(result.truncated());
+        assertEquals(10, result.records().size());
+        var captor = ArgumentCaptor.forClass(Query.class);
+        verify(collection).find(captor.capture());
+        assertEquals(DatasetRecordService.MAX_FILTER_SCAN_RECORDS, captor.getValue().limit);
+        assertNull(captor.getValue().skip);
+    }
+
+    @Test
+    void queryWithDataFilterNotTruncatedWhenScanUnderCap() {
+        when(collection.find(any(Query.class))).thenReturn(List.of(
+                datasetRecord("r1", "{\"status\":\"done\"}")));
+
+        var result = service.query(new DatasetRecordService.QueryRequest("ds1", null, null, null, null, null, null,
+                Map.of("status", "done")));
+
+        assertFalse(result.truncated());
+    }
+
+    @Test
+    void queryWithDataFilterSkipsRecordsWithInvalidData() {
+        when(collection.find(any(Query.class))).thenReturn(List.of(
+                datasetRecord("r1", "not-json"),
+                datasetRecord("r2", "[1,2]"),
+                datasetRecord("r3", "{\"status\":\"done\"}")));
+
+        var result = service.query(new DatasetRecordService.QueryRequest("ds1", null, null, null, null, null, null,
+                Map.of("status", "done")));
+
+        assertEquals(1L, result.total());
+        assertEquals("r3", result.records().get(0).id);
+    }
+
+    @Test
+    void queryWithFieldsKeepsInvalidDataUntouched() {
+        when(collection.find(any(Query.class))).thenReturn(List.of(
+                datasetRecord("r1", "not-json")));
+        when(collection.count(any(Bson.class))).thenReturn(1L);
+
+        var result = service.query(new DatasetRecordService.QueryRequest("ds1", null, null, List.of("status"), null, null, null, null));
+
+        assertEquals("not-json", result.records().get(0).data);
+    }
+
+    @Test
+    void queryWithFieldsTrimsDataKeys() {
+        when(collection.find(any(Query.class))).thenReturn(List.of(
+                datasetRecord("r1", "{\"status\":\"done\",\"priority\":3}")));
+
+        var result = service.query(new DatasetRecordService.QueryRequest("ds1", null, null, List.of("status"), null, null, null, null));
+
+        var data = JsonUtil.toMap(result.records().get(0).data);
+        assertEquals(1, data.size());
+        assertEquals("done", data.get("status"));
     }
 
     @Test

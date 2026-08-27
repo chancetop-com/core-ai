@@ -16,6 +16,7 @@ import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -36,7 +37,8 @@ public final class QueryDatasetRecordsTool extends ToolCall {
     }
 
     private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
-        return "Query records from a dataset by dataset_id.\nUse this tool to search, filter, and retrieve records by time range and field projection.\n"
+        return "Query records from a dataset by dataset_id.\nUse this tool to search, filter, and retrieve records by time range, field-value conditions, and field projection.\n"
+                + "Records are sorted by run_started_at desc, up to limit records per page (default 100); use offset to page through more results.\n"
                 + buildAvailableDatasetsSection(datasetService, registry);
     }
 
@@ -74,10 +76,21 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         return null;
     }
 
+    // visible for testing; JsonUtil.fromJson throws Error (not RuntimeException) for the literal "null", which LLMs do send
+    static Map<String, Object> parseFilter(String filterStr) {
+        if (filterStr == null || filterStr.isBlank() || "null".equals(filterStr.strip())) return null;
+        try {
+            return JsonUtil.toMap(filterStr);
+        } catch (RuntimeException | Error e) {
+            throw new IllegalArgumentException("invalid filter, must be a JSON object like {\"status\": \"done\"}: " + e.getMessage(), e);
+        }
+    }
+
     private static List<ToolCallParameter> parameters() {
         return ToolCallParameters.of(
             ToolCallParameters.ParamSpec.of(String.class, "dataset_id", "The ID of the dataset to query. Required — choose from available datasets listed above.").required(),
-            ToolCallParameters.ParamSpec.of(String.class, "fields", "Comma-separated field names to include in results. If not specified, all fields are returned."),
+            ToolCallParameters.ParamSpec.of(String.class, "filter", "JSON object with field-value conditions, e.g. {\"status\": \"done\"}. Records must match ALL conditions (AND, exact match). Keys are dataset schema field names; nested fields via dot path like \"meta.priority\"."),
+            ToolCallParameters.ParamSpec.of(String.class, "fields", "Comma-separated schema field names to include in the data of each record. Metadata (id, run_id, agent_id, run_started_at) is always included."),
             ToolCallParameters.ParamSpec.of(String.class, "from", "ISO 8601 datetime string for the lower bound of run_started_at. e.g. 2026-01-01T00:00:00Z"),
             ToolCallParameters.ParamSpec.of(String.class, "to", "ISO 8601 datetime string for the upper bound of run_started_at."),
             ToolCallParameters.ParamSpec.of(Integer.class, "limit", "Maximum number of records to return. Default 100."),
@@ -130,9 +143,20 @@ public final class QueryDatasetRecordsTool extends ToolCall {
             return ToolCallResult.failed("invalid date format, use ISO 8601: " + e.getMessage());
         }
 
+        Map<String, Object> filter;
+        try {
+            filter = parseFilter(getStringValue(args, "filter"));
+        } catch (IllegalArgumentException e) {
+            return ToolCallResult.failed(e.getMessage());
+        }
+
         List<String> fields = fieldsStr != null ? List.of(fieldsStr.split(",")) : null;
 
-        var result = recordService.query(new DatasetRecordService.QueryRequest(datasetId, from, to, fields, limit, offset, null));
+        var result = recordService.query(new DatasetRecordService.QueryRequest(datasetId, from, to, fields, limit, offset, null, filter));
+        return ToolCallResult.completed(buildResponse(datasetId, result));
+    }
+
+    private String buildResponse(String datasetId, DatasetRecordService.QueryResult result) {
         var response = new LinkedHashMap<String, Object>();
         response.put("records", result.records().stream().map(r -> {
             var record = new LinkedHashMap<String, Object>();
@@ -145,6 +169,10 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         }).toList());
         response.put("total", result.total());
         response.put("dataset_id", datasetId);
-        return ToolCallResult.completed(JsonUtil.toJson(response));
+        if (result.truncated()) {
+            response.put("warning", "filter only scanned the most recent " + DatasetRecordService.MAX_FILTER_SCAN_RECORDS
+                    + " records, results may be incomplete; narrow the search with from/to time range");
+        }
+        return JsonUtil.toJson(response);
     }
 }

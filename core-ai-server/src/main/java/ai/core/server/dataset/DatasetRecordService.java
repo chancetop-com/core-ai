@@ -8,11 +8,10 @@ import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
-import org.bson.BsonDocument;
-import org.bson.BsonInt32;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,6 +27,8 @@ public class DatasetRecordService {
     private static final Logger LOGGER = LoggerFactory.getLogger(DatasetRecordService.class);
 
     public static final int MAX_STATE_BYTES = 256 * 1024;
+    public static final int MAX_PAGE_SIZE = 1000;
+    public static final int MAX_FILTER_SCAN_RECORDS = 10_000;
 
     static Map<String, Object> merge(Map<String, Object> current, Map<String, Object> patch) {
         var result = new LinkedHashMap<>(current);
@@ -43,6 +44,72 @@ public class DatasetRecordService {
             } else {
                 result.put(key, value);
             }
+        }
+        return result;
+    }
+
+    private static boolean matches(DatasetRecord record, Map<String, Object> conditions) {
+        Map<String, Object> data = parseData(record);
+        if (data == null) return false;
+        for (var entry : conditions.entrySet()) {
+            Object actual = resolvePath(data, entry.getKey());
+            if (!valueEquals(actual, entry.getValue())) return false;
+        }
+        return true;
+    }
+
+    // returns null when data is not a valid JSON object, so callers can skip the record instead of failing the whole query
+    private static Map<String, Object> parseData(DatasetRecord record) {
+        if (record.data == null || record.data.isBlank()) return Map.of();
+        try {
+            return JsonUtil.toMap(record.data);
+        } catch (RuntimeException | Error e) {
+            LOGGER.warn("invalid dataset record data, id={}", record.id, e);
+            return null;
+        }
+    }
+
+    private static Object resolvePath(Map<String, Object> data, String path) {
+        Object current = data;
+        for (var part : path.split("\\.")) {
+            if (!(current instanceof Map<?, ?> map)) return null;
+            current = map.get(part);
+        }
+        return current;
+    }
+
+    private static boolean valueEquals(Object actual, Object expected) {
+        if (expected == null) return actual == null;
+        if (actual instanceof Number actualNumber && expected instanceof Number expectedNumber) {
+            // JSON numbers may parse as Integer/Long/Double, compare decimal values exactly
+            return new BigDecimal(actualNumber.toString()).compareTo(new BigDecimal(expectedNumber.toString())) == 0;
+        }
+        return actual != null && actual.equals(expected);
+    }
+
+    private static List<DatasetRecord> paginate(List<DatasetRecord> records, int limit, int offset) {
+        if (offset >= records.size()) return List.of();
+        int end = Math.min(records.size(), offset + limit);
+        return records.subList(offset, end);
+    }
+
+    private static List<DatasetRecord> trimFields(List<DatasetRecord> records, List<String> fields) {
+        if (fields == null || fields.isEmpty()) return records;
+        var result = new ArrayList<DatasetRecord>(records.size());
+        for (var record : records) {
+            Map<String, Object> data = record.data == null || record.data.isBlank() ? null : parseData(record);
+            if (data == null) {     // blank or invalid data, keep the record untouched
+                result.add(record);
+                continue;
+            }
+            var trimmed = new LinkedHashMap<String, Object>();
+            for (var field : fields) {
+                var name = field.trim();
+                if (name.isEmpty() || !data.containsKey(name)) continue;
+                trimmed.put(name, data.get(name));
+            }
+            record.data = JsonUtil.toJson(trimmed);
+            result.add(record);
         }
         return result;
     }
@@ -79,22 +146,29 @@ public class DatasetRecordService {
         var query = new Query();
         query.filter = filter;
         query.sort = Sorts.descending("run_started_at");
-        query.limit = request.limit != null ? request.limit : 100;
-        query.skip = request.offset != null ? request.offset : 0;
 
-        if (request.fields != null && !request.fields.isEmpty()) {
-            var projection = new BsonDocument();
-            projection.append("_id", new BsonInt32(1));
-            projection.append("run_id", new BsonInt32(1));
-            projection.append("agent_id", new BsonInt32(1));
-            projection.append("run_started_at", new BsonInt32(1));
-            projection.append("data", new BsonInt32(1));
-            query.projection = projection;
+        int limit = request.limit != null ? Math.min(Math.max(request.limit, 1), MAX_PAGE_SIZE) : 100;
+        int offset = request.offset != null ? Math.max(request.offset, 0) : 0;
+
+        if (request.filter != null && !request.filter.isEmpty()) {
+            // data is stored as a JSON string, field-value matching must happen in memory;
+            // cap the scan so one query cannot load an unbounded dataset into memory,
+            // truncated=true tells the caller to narrow the time range
+            query.limit = MAX_FILTER_SCAN_RECORDS;
+            var scanned = datasetRecordCollection.find(query);
+            boolean truncated = scanned.size() >= MAX_FILTER_SCAN_RECORDS;
+            var matched = scanned.stream()
+                    .filter(record -> matches(record, request.filter))
+                    .toList();
+            return new QueryResult(trimFields(paginate(matched, limit, offset), request.fields), matched.size(), truncated);
         }
+
+        query.limit = limit;
+        query.skip = offset;
 
         var records = datasetRecordCollection.find(query);
         var total = datasetRecordCollection.count(filter);
-        return new QueryResult(records, total);
+        return new QueryResult(trimFields(records, request.fields), total, false);
     }
 
     public boolean update(String id, Map<String, Object> data, String updatedBy) {
@@ -195,8 +269,8 @@ public class DatasetRecordService {
         return Filters.and(Filters.eq("dataset_id", datasetId), Filters.eq("session_id", sessionId));
     }
 
-    public record QueryResult(List<DatasetRecord> records, long total) { }
+    public record QueryResult(List<DatasetRecord> records, long total, boolean truncated) { }
 
     public record InsertRequest(String datasetId, String agentId, String runId, ZonedDateTime runStartedAt, Map<String, Object> data, String userId, String createdBy) { }
-    public record QueryRequest(String datasetId, ZonedDateTime from, ZonedDateTime to, List<String> fields, Integer limit, Integer offset, String agentId) { }
+    public record QueryRequest(String datasetId, ZonedDateTime from, ZonedDateTime to, List<String> fields, Integer limit, Integer offset, String agentId, Map<String, Object> filter) { }
 }
