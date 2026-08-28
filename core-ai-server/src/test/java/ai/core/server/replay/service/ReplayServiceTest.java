@@ -201,7 +201,7 @@ class ReplayServiceTest {
 
         var captor = org.mockito.ArgumentCaptor.forClass(Query.class);
         verify(experimentCollection).find(captor.capture());
-        assertTrue(captor.getValue().filter.toString().contains("trace_id"));
+        assertTrue(captor.getValue().filter.toString().contains("origin"));
     }
 
     @Test

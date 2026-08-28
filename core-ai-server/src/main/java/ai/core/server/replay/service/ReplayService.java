@@ -290,10 +290,10 @@ public class ReplayService {
         var filters = new ArrayList<Bson>();
         if (!admin) filters.add(Filters.eq("user_id", userId));
         if (agentId != null && !agentId.isBlank()) filters.add(Filters.eq("agent_id", agentId));
-        // trace_id presence is the origin discriminator; it also covers records written
-        // before the explicit origin field existed
-        if (origin == ReplayExperimentOrigin.SPAN) filters.add(Filters.ne("trace_id", null));
-        if (origin == ReplayExperimentOrigin.BLANK) filters.add(Filters.eq("trace_id", null));
+        // origin equality is index-backed via (origin, created_at); trace_id presence
+        // checks ($ne null / $eq null) have no index path and fail 291 on admin counts
+        if (origin == ReplayExperimentOrigin.SPAN) filters.add(Filters.eq("origin", "span"));
+        if (origin == ReplayExperimentOrigin.BLANK) filters.add(Filters.eq("origin", "blank"));
         if (filters.isEmpty()) return Filters.empty();
         return filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
     }

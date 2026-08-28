@@ -11,7 +11,7 @@ import core.framework.mongo.Mongo;
  * - (user_id, created_at): non-admin list
  * - (user_id, agent_id, created_at): non-admin list filtered by agent
  * - (created_at): admin unfiltered list (sort only)
- * - (origin, created_at): abandoned blank (playground) cleanup filter
+ * - (origin, created_at): list origin filter + abandoned blank (playground) cleanup
  * - (experiment_id, created_at): runs of one experiment
  *
  * @author stephen
