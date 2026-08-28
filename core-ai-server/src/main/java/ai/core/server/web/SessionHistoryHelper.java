@@ -37,6 +37,9 @@ final class SessionHistoryHelper {
                     return r;
                 }).toList();
             }
+            if (record.sandbox != null) {
+                msg.sandbox = toSandboxRecord(record.sandbox);
+            }
             messages.add(msg);
         }
         var response = new SessionHistoryResponse();
@@ -54,6 +57,19 @@ final class SessionHistoryHelper {
             }).toList();
         }
         return response;
+    }
+
+    private static Message.SandboxRecord toSandboxRecord(
+            ai.core.server.domain.ChatMessage.SandboxRecord record) {
+        var sandbox = new Message.SandboxRecord();
+        sandbox.sandboxId = record.sandboxId;
+        sandbox.sandboxType = record.sandboxType;
+        sandbox.message = record.message;
+        sandbox.durationMs = record.durationMs;
+        sandbox.hostname = record.hostname;
+        sandbox.ip = record.ip;
+        sandbox.image = record.image;
+        return sandbox;
     }
 
     private SessionHistoryHelper() {

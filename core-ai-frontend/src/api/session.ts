@@ -130,6 +130,16 @@ export interface HistoryToolCall {
   status?: string;
 }
 
+export interface HistorySandbox {
+  sandbox_id?: string;
+  sandbox_type?: string;
+  message?: string;
+  duration_ms?: number;
+  hostname?: string;
+  ip?: string;
+  image?: string;
+}
+
 export interface ChatSessionSummary {
   id: string;
   user_id?: string;
@@ -157,6 +167,7 @@ export interface HistoryMessage {
   content: string;
   thinking?: string;
   tools?: HistoryToolCall[];
+  sandbox?: HistorySandbox;
   seq?: number;
   trace_id?: string;
   timestamp?: string;

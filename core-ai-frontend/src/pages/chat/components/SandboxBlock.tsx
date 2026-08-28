@@ -8,8 +8,10 @@ interface Props {
 }
 
 export default function SandboxBlock({ seg, onOpenTerminal }: Props) {
-  const { sandboxType, message, sandboxId, hostname, ip, image, durationMs } = seg;
+  const { sandboxType, message, sandboxId, historical, hostname, ip, image, durationMs } = seg;
   const isPending = sandboxType === 'creating' || sandboxType === 'replacing';
+  const canOpenTerminal = !historical && sandboxType === 'ready'
+    && Boolean(sandboxId) && sandboxId !== 'pending';
 
   const [expanded, setExpanded] = useState(false);
 
@@ -34,12 +36,14 @@ export default function SandboxBlock({ seg, onOpenTerminal }: Props) {
             <span style={{ color: 'var(--color-text-muted)' }}>{durationMs}ms</span>
           )}
         </button>
-        <button onClick={handleOpenTerminal}
-          className="ml-2 p-1 rounded-md cursor-pointer hover:opacity-80 shrink-0"
-          style={{ color: 'var(--color-text-secondary)' }}
-          title="Open terminal">
-          <Terminal size={14} />
-        </button>
+        {canOpenTerminal && (
+          <button onClick={handleOpenTerminal}
+            className="ml-2 p-1 rounded-md cursor-pointer hover:opacity-80 shrink-0"
+            style={{ color: 'var(--color-text-secondary)' }}
+            title="Open terminal">
+            <Terminal size={14} />
+          </button>
+        )}
       </div>
       {expanded && (hostname || ip || image) && (
         <div className="px-3 pb-2 border-t" style={{ borderColor: 'var(--color-border)' }}>

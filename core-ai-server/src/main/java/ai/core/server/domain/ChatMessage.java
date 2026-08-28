@@ -34,6 +34,9 @@ public class ChatMessage {
     @Field(name = "tools")
     public List<ToolCallRecord> tools;
 
+    @Field(name = "sandbox")
+    public SandboxRecord sandbox;
+
     // optional pointer for debug jump, not indexed
     @Field(name = "trace_id")
     public String traceId;
@@ -56,5 +59,28 @@ public class ChatMessage {
 
         @Field(name = "status")
         public String status;
+    }
+
+    public static class SandboxRecord {
+        @Field(name = "sandbox_id")
+        public String sandboxId;
+
+        @Field(name = "sandbox_type")
+        public String sandboxType;
+
+        @Field(name = "message")
+        public String message;
+
+        @Field(name = "duration_ms")
+        public Long durationMs;
+
+        @Field(name = "hostname")
+        public String hostname;
+
+        @Field(name = "ip")
+        public String ip;
+
+        @Field(name = "image")
+        public String image;
     }
 }

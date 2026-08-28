@@ -15,7 +15,7 @@ import type { ChatComposerHandle, ComposerAttachment } from './components/ChatCo
 import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, SandboxTerminalSpec } from './types';
-import { historyToChatMessages } from './utils';
+import { historyToChatMessages, restoreCachedChatMessages } from './utils';
 import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 
@@ -98,9 +98,9 @@ function configuredSubAgentIds(agent?: AgentDefinition): string[] {
 
 export default function Chat() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try { const s = sessionStorage.getItem('chat_messages'); return s ? JSON.parse(s) : []; } catch { return []; }
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    () => restoreCachedChatMessages(sessionStorage.getItem('chat_messages')),
+  );
   const [optimisticSession, setOptimisticSession] = useState<ChatSessionSummary | null>(null);
   const [visibleMessageLimit, setVisibleMessageLimit] = useState(INITIAL_VISIBLE_MESSAGES);
   const [status, setStatus] = useState<'idle' | 'running'>('idle');

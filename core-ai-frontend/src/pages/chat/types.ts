@@ -44,6 +44,7 @@ export interface SandboxSegment {
   sandboxType: string;  // creating | ready | error | replacing | terminated
   sandboxId: string;
   message: string;
+  historical?: boolean;
   hostname?: string;
   ip?: string;
   image?: string;

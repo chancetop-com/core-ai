@@ -35,6 +35,19 @@ export function getArgsPreview(argsJson: string | undefined): string | null {
 
 function buildSegments(m: HistoryMessage): MessageSegment[] {
   const segments: MessageSegment[] = [];
+  if (m.sandbox) {
+    segments.push({
+      type: 'sandbox',
+      historical: true,
+      sandboxType: m.sandbox.sandbox_type || '',
+      sandboxId: m.sandbox.sandbox_id || '',
+      message: m.sandbox.message || '',
+      hostname: m.sandbox.hostname,
+      ip: m.sandbox.ip,
+      image: m.sandbox.image,
+      durationMs: m.sandbox.duration_ms,
+    });
+  }
   if (m.thinking) {
     segments.push({ type: 'thinking', content: m.thinking });
   }
@@ -63,6 +76,24 @@ export function historyToChatMessages(messages: HistoryMessage[]): ChatMessage[]
     segments: buildSegments(m),
     timestamp: m.timestamp,
   }));
+}
+
+export function restoreCachedChatMessages(serialized: string | null): ChatMessage[] {
+  if (!serialized) return [];
+  try {
+    const parsed: unknown = JSON.parse(serialized);
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as ChatMessage[]).map(message => ({
+      ...message,
+      segments: Array.isArray(message.segments)
+        ? message.segments.map(segment => segment.type === 'sandbox'
+          ? { ...segment, historical: true }
+          : segment)
+        : [],
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /** Extract concatenated text from all text segments (for copy) */

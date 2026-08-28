@@ -2,6 +2,7 @@ package ai.core.server.session;
 
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.ReasoningCompleteEvent;
+import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -216,6 +218,19 @@ public class ChatMessageService {
         }
 
         @Override
+        public void onSandbox(SandboxEvent event) {
+            var sandbox = new ChatMessage.SandboxRecord();
+            sandbox.sandboxId = event.sandboxId;
+            sandbox.sandboxType = event.type != null ? event.type.name().toLowerCase(Locale.ROOT) : null;
+            sandbox.message = event.message;
+            sandbox.durationMs = event.durationMs;
+            sandbox.hostname = event.hostname;
+            sandbox.ip = event.ip;
+            sandbox.image = event.image;
+            buffer(sessionId).sandbox = sandbox;
+        }
+
+        @Override
         public void onTurnComplete(TurnCompleteEvent event) {
             var buf = bufferBySession.remove(sessionId);
             try {
@@ -227,6 +242,7 @@ public class ChatMessageService {
                 msg.content = event.output;
                 msg.thinking = buf != null ? buf.thinking : null;
                 msg.tools = buf != null && !buf.tools.isEmpty() ? List.copyOf(buf.tools.values()) : null;
+                msg.sandbox = buf != null ? buf.sandbox : null;
                 msg.traceId = ActionLogContext.id();
                 msg.createdAt = ZonedDateTime.now();
                 insertWithRetry(msg, sessionId);
@@ -240,6 +256,7 @@ public class ChatMessageService {
     private static final class TurnBuffer {
         String thinking;
         final Map<String, ChatMessage.ToolCallRecord> tools = new LinkedHashMap<>();
+        ChatMessage.SandboxRecord sandbox;
     }
 
 }
