@@ -269,6 +269,9 @@ public class LLMTracer extends Tracer {
             if (request.responseFormat != null) {
                 params.put("response_format", request.responseFormat);
             }
+            if (request.reasoningEffort != null) {
+                params.put("reasoning_effort", request.reasoningEffort);
+            }
 
             return JsonUtil.toJson(params);
         } catch (RuntimeException e) {

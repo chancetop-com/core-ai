@@ -61,6 +61,8 @@ const NotificationsPage = lazy(() => import('./pages/notifications/Notifications
 const MemoryExperiment = lazy(() => import('./pages/experiments/MemoryExperimentList'));
 const MemoryExperimentRunDetail = lazy(() => import('./pages/experiments/MemoryExperimentRunDetail'));
 const MemoryExperimentConfigDetail = lazy(() => import('./pages/experiments/MemoryExperimentConfigDetail'));
+const ReplayExperimentList = lazy(() => import('./pages/experiments/ReplayExperimentList'));
+const ReplayWorkbench = lazy(() => import('./pages/experiments/ReplayWorkbench'));
 
 function PageFallback() {
   return (
@@ -164,6 +166,10 @@ export default function App() {
                     <Route path="/agents/:id" element={<RequirePermission permission="agent.view"><AgentEditor /></RequirePermission>} />
                     <Route path="/agents/:id/memories" element={<RequirePermission permission="agent.view"><AgentMemory /></RequirePermission>} />
                     <Route path="/runs/:id" element={<RequirePermission permission="agent.view"><RunDetail /></RequirePermission>} />
+                    <Route path="/experiments" element={<RequirePermission permission="experiment.view"><ReplayExperimentList origin="BLANK" /></RequirePermission>} />
+                    <Route path="/experiments/playground" element={<RequirePermission permission="experiment.view"><ReplayExperimentList origin="BLANK" /></RequirePermission>} />
+                    <Route path="/experiments/replay" element={<RequirePermission permission="experiment.view"><ReplayExperimentList /></RequirePermission>} />
+                    <Route path="/experiments/replay/:id" element={<RequirePermission permission="experiment.view"><ReplayWorkbench /></RequirePermission>} />
                     <Route path="/experiments/memory" element={<RequirePermission permission="experiment.view"><MemoryExperiment /></RequirePermission>} />
                     <Route path="/experiments/memory/runs/:id" element={<RequirePermission permission="experiment.view"><MemoryExperimentRunDetail /></RequirePermission>} />
                     <Route path="/experiments/memory/configs/:id" element={<RequirePermission permission="experiment.view"><MemoryExperimentConfigDetail /></RequirePermission>} />

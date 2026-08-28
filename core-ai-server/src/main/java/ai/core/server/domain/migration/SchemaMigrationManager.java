@@ -128,7 +128,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVProjectEvents(),
             new SchemaMigrationVProjectReportRenderer(),
             new SchemaMigrationVProjectReportAgent(),
-            new SchemaMigrationVSessionSchedules()
+            new SchemaMigrationVSessionSchedules(),
+            new SchemaMigrationVReplayIndexes()
         );
     }
 }

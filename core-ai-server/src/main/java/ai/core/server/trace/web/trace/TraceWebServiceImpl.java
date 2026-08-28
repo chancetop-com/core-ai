@@ -16,16 +16,15 @@ import ai.core.api.server.trace.TraceStatusView;
 import ai.core.api.server.trace.TraceView;
 import ai.core.api.server.trace.TraceWebService;
 import ai.core.server.domain.User;
-import ai.core.server.domain.WorkflowRun;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.service.TraceAccessControl;
 import ai.core.server.trace.service.TraceListFilter;
 import ai.core.server.trace.service.TracePreviewExtractor;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.web.auth.AuthContext;
-import ai.core.server.workflow.WorkflowRunService;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
@@ -84,9 +83,9 @@ public class TraceWebServiceImpl implements TraceWebService {
     @Inject
     TraceService traceService;
     @Inject
-    MongoCollection<User> userCollection;
+    TraceAccessControl traceAccessControl;
     @Inject
-    MongoCollection<WorkflowRun> workflowRunCollection;
+    MongoCollection<User> userCollection;
     @Inject
     WebContext webContext;
 
@@ -280,16 +279,7 @@ public class TraceWebServiceImpl implements TraceWebService {
     }
 
     private boolean canRead(Trace trace, TraceScope scope) {
-        if (trace == null) return false;
-        if (scope.admin) return true;
-        if (scope.userId == null) return false;
-        if (scope.userId.equals(trace.userId)) return true;
-        if (trace.metadata == null) return false;
-        var workflowRunId = trace.metadata.get("workflow_run_id");
-        if (workflowRunId == null || workflowRunId.isBlank()) return false;
-        return workflowRunCollection.get(workflowRunId)
-            .map(run -> WorkflowRunService.canRead(run, scope.userId))
-            .orElse(Boolean.FALSE);
+        return traceAccessControl.canRead(trace, scope.userId, scope.admin);
     }
 
     private List<TraceView> toTraceViews(List<Trace> traces) {

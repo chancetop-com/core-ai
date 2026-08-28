@@ -35,6 +35,7 @@ public final class PermissionCodes {
     public static final String PROJECT_VIEW = "project.view";
     public static final String PROJECT_MANAGE = "project.manage";
     public static final String EXPERIMENT_VIEW = "experiment.view";
+    public static final String EXPERIMENT_REPLAY = "experiment.replay";
     public static final String NOTIFICATION_VIEW = "notification.view";
 
     public static final String GATEWAY_MANAGE = "gateway.manage";
@@ -57,7 +58,7 @@ public final class PermissionCodes {
             SKILL_VIEW, SKILL_MANAGE,
             DATASET_VIEW, DATASET_MANAGE,
             PROJECT_VIEW, PROJECT_MANAGE,
-            EXPERIMENT_VIEW, NOTIFICATION_VIEW,
+            EXPERIMENT_VIEW, EXPERIMENT_REPLAY, NOTIFICATION_VIEW,
             GATEWAY_MANAGE, SYSTEM_MANAGE, COSTALERT_MANAGE,
             USER_MANAGE, ANALYTICS_VIEW, RBAC_MANAGE);
 

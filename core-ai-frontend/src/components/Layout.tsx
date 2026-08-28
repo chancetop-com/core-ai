@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bell, Bot, Calendar, ChevronRight, Database, Files, FlaskConical, FolderKanban, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bell, Bot, Brain, Calendar, ChevronRight, Database, Files, FlaskConical, FolderKanban, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -83,7 +83,7 @@ export default function Layout() {
     if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
     if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule' || pathname === '/triggers/channels' || pathname === '/triggers/openclaw';
     if (to === '/for-you') return pathname === '/for-you' || pathname.startsWith('/for-you/');
-    if (to === '/experiments') return pathname.startsWith('/experiments/');
+    if (to === '/experiments') return pathname === '/experiments' || pathname.startsWith('/experiments/');
     return pathname === to;
   };
 
@@ -112,7 +112,9 @@ export default function Layout() {
     { to: '/skills', icon: Sparkles, label: 'Skills', show: true, permission: 'skill.view' },
     { to: '/datasets', icon: Database, label: 'Datasets', show: true, permission: 'dataset.view' },
     { to: '/experiments', icon: FlaskConical, label: 'Experiments', show: true, permission: 'experiment.view', children: [
-      { to: '/experiments/memory', icon: FlaskConical, label: 'Agent Memory', show: true, permission: 'experiment.view' },
+      { to: '/experiments/playground', icon: Play, label: 'Playground', show: true, permission: 'experiment.view' },
+      { to: '/experiments/replay', icon: RotateCcw, label: 'Replay Debug', show: true, permission: 'experiment.view' },
+      { to: '/experiments/memory', icon: Brain, label: 'Agent Memory', show: true, permission: 'experiment.view' },
     ]},
   ].filter(item => item.show && (!item.permission || hasPermission(user?.permissions, item.permission)));
 
@@ -148,10 +150,12 @@ export default function Layout() {
         <nav className="flex-1 p-2 flex flex-col gap-1 overflow-y-auto">
           {navItems.map(({ to, icon: Icon, label, children }) => {
             const hasChildren = children && children.length > 0;
-            const isExpanded = expandedNav === to;
             const anyChildActive = hasChildren && children.some(c => isRouteActive(c.to, location.pathname));
             const selfActive = !hasChildren && isRouteActive(to, location.pathname);
             const active = selfActive || anyChildActive;
+            // Auto-expand when landing directly on a child route (e.g. /experiments/replay); once the
+            // user manually toggles a group, expandedNav takes over.
+            const isExpanded = expandedNav === to || (expandedNav === null && anyChildActive);
             return (
               <div key={to}>
                 <div

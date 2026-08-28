@@ -63,6 +63,7 @@ import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trigger.domain.Trigger;
 import ai.core.server.rbac.RbacModule;
+import ai.core.server.replay.ReplayModule;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
 import core.framework.mongo.module.MongoConfig;
@@ -102,6 +103,7 @@ public class ServerApp extends App {
         load(new ApiUserModule());
         load(new RbacModule());
         load(new TraceModule());
+        load(new ReplayModule());
         load(new MemoryModule());
         load(new MessagingInfrastructureModule());
         load(new SandboxModule());
@@ -218,6 +220,8 @@ public class ServerApp extends App {
         mongo.collection(SkillDefinition.class);
         mongo.collection(MarketplaceRepo.class);
         mongo.collection(SchemaVersion.class);
+        mongo.collection(ai.core.server.replay.domain.ReplayExperiment.class);
+        mongo.collection(ai.core.server.replay.domain.ReplayRun.class);
     }
 
     private void registerWorkflowCollections(MongoConfig mongo) {

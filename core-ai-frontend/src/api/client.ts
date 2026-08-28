@@ -527,6 +527,95 @@ export interface ListExperimentConfigsResponse {
   total: number;
 }
 
+export interface ReplayUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_tokens?: number;
+  cost_usd?: number;
+  duration_ms?: number;
+}
+
+export interface ReplaySample {
+  index: number;
+  status: string;
+  output?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
+  duration_ms?: number;
+  error_message?: string;
+  replay_trace_id?: string;
+}
+
+export interface ReplayRunSummary {
+  id: string;
+  label?: string;
+  status?: string;
+  sample_count?: number;
+  created_at?: string;
+}
+
+export interface ReplayExperiment {
+  id: string;
+  user_id?: string;
+  origin?: 'SPAN' | 'BLANK';
+  trace_id?: string;
+  span_id?: string;
+  agent_id?: string;
+  agent_name?: string;
+  session_id?: string;
+  trace_source?: string;
+  span_name?: string;
+  original_model?: string;
+  original_input?: string;
+  original_output?: string;
+  original_params?: string;
+  original_usage?: ReplayUsage;
+  trace_snapshot?: string;
+  draft_request?: string;
+  note?: string;
+  run_count?: number;
+  runs?: ReplayRunSummary[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ReplayExperimentListItem {
+  id: string;
+  origin?: 'SPAN' | 'BLANK';
+  span_name?: string;
+  agent_id?: string;
+  agent_name?: string;
+  original_model?: string;
+  run_count?: number;
+  created_at?: string;
+}
+
+export interface ListReplayExperimentsResponse {
+  experiments: ReplayExperimentListItem[];
+  total: number;
+}
+
+export interface ReplayRun {
+  id: string;
+  experiment_id?: string;
+  label?: string;
+  request?: string;
+  model?: string;
+  temperature?: number;
+  reasoning_effort?: string;
+  sample_count?: number;
+  samples?: ReplaySample[];
+  status?: string;
+  created_at?: string;
+  completed_at?: string;
+}
+
+export interface CreateReplayRunResponse {
+  run_id: string;
+  status: string;
+}
+
 export interface AgentMemoryExperimentConfig {
   id: string;
   agent_id: string;
@@ -1609,6 +1698,8 @@ export const api = {
   gateway: {
     listProviders: () =>
       request<ListGatewayProvidersResponse>('/api/gateway/providers'),
+    routingModels: () =>
+      request<{ object: string; data: { id: string; object: string; owned_by?: string }[] }>('/api/gateway/v1/models'),
     createProvider: (data: GatewayProviderRequest) =>
       request<GatewayProvider>('/api/gateway/providers', { method: 'POST', body: JSON.stringify(data) }),
     updateProvider: (id: string, data: GatewayProviderRequest) =>
@@ -2181,6 +2272,37 @@ export const api = {
       }),
     deleteConfig: (agentId: string) =>
       request<{ ok: true }>(`/api/agents/${agentId}/memory-experiment-config`, { method: 'DELETE' }),
+  },
+  replay: {
+    // omit both ids to create a blank (playground) experiment
+    create: (traceId?: string, spanId?: string) =>
+      request<ReplayExperiment>('/api/replay-experiments', {
+        method: 'POST',
+        body: JSON.stringify({ trace_id: traceId, span_id: spanId }),
+      }),
+    list: (agentId?: string, offset = 0, limit = 20, origin?: 'SPAN' | 'BLANK') => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (agentId) params.set('agentId', agentId);
+      if (origin) params.set('origin', origin);
+      return request<ListReplayExperimentsResponse>(`/api/replay-experiments?${params}`);
+    },
+    get: (id: string) => request<ReplayExperiment>(`/api/replay-experiments/${id}`),
+    update: (id: string, data: { draft_request?: string; note?: string }) =>
+      request<ReplayExperiment>(`/api/replay-experiments/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      request<void>(`/api/replay-experiments/${id}`, { method: 'DELETE' }),
+    createRun: (id: string, data: { request: string; model?: string; temperature?: number; reasoning_effort?: string; sample_count?: number; label?: string }) =>
+      request<CreateReplayRunResponse>(`/api/replay-experiments/${id}/runs`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getRun: (id: string, runId: string) =>
+      request<ReplayRun>(`/api/replay-experiments/${id}/runs/${runId}`),
+    cancelRun: (id: string, runId: string) =>
+      request<void>(`/api/replay-experiments/${id}/runs/${runId}/cancel`, { method: 'POST' }),
   },
 };
 

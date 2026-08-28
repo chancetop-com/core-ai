@@ -34,7 +34,7 @@ public class ModelPricingService {
     }
 
     // Resolution order: explicit Gateway Model pricing > upstream-reported attribute cost > catalog estimate.
-    Price resolve(String model, Long inputTokens, Long outputTokens, Long cachedTokens, ZonedDateTime startedAt, Double upstreamCost) {
+    public Price resolve(String model, Long inputTokens, Long outputTokens, Long cachedTokens, ZonedDateTime startedAt, Double upstreamCost) {
         var gatewayPrice = resolveGatewayModel(model, inputTokens, outputTokens, cachedTokens, startedAt);
         if (gatewayPrice != null) return gatewayPrice;
         if (upstreamCost != null) return new Price(upstreamCost, "upstream", null, null, null);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowLeft,
@@ -16,6 +17,7 @@ import {
   ListTree,
   MessageCircle,
   PanelTop,
+  Play,
   UserCircle,
   Users,
   Wrench,
@@ -24,6 +26,7 @@ import {
 } from 'lucide-react';
 import type { Span, Trace } from '../../api/client';
 import { api } from '../../api/client';
+import { usePermission } from '../../api/permissions';
 import StatusBadge from '../../components/StatusBadge';
 import { sourceColors, typeColors } from './colors';
 import {
@@ -485,6 +488,7 @@ function SpanTimelineRow({ span, bounds, selected, collapsed, onSelect, onToggle
 }
 
 function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?: Span; loading?: boolean }) {
+  const navigate = useNavigate();
   const [tabState, setTabState] = useState<{ spanId: string; tab: SpanTab }>({ spanId: span.spanId, tab: 'summary' });
   const tab = tabState.spanId === span.spanId ? tabState.tab : 'summary';
   const messages = useMemo(() => extractMessages(span.input), [span.input]);
@@ -493,9 +497,29 @@ function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?:
   const attributeCount = span.attributes ? Object.keys(span.attributes).length : 0;
   const color = SPAN_COLORS[span.type] || '#64748b';
   const Icon = SPAN_ICONS[span.type] || Bot;
+  const canReplay = usePermission('experiment.replay');
+  const [creatingReplay, setCreatingReplay] = useState(false);
+  const [replayError, setReplayError] = useState('');
+  // the payload arrives via lazy fetch: keep the button visible (disabled) meanwhile
+  const isLlm = span.type === 'LLM';
+  const replayable = isLlm && messages.length > 0;
 
   const setTab = (nextTab: SpanTab) => {
     setTabState({ spanId: span.spanId, tab: nextTab });
+  };
+
+  const startReplay = async () => {
+    if (creatingReplay || !replayable) return;
+    setCreatingReplay(true);
+    setReplayError('');
+    try {
+      const experiment = await api.replay.create(span.traceId, span.spanId);
+      navigate(`/experiments/replay/${experiment.id}`);
+    } catch (e) {
+      setReplayError(e instanceof Error ? e.message : 'replay create failed');
+    } finally {
+      setCreatingReplay(false);
+    }
   };
 
   return (
@@ -513,6 +537,18 @@ function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?:
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            {isLlm && (
+              <button
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium disabled:opacity-50"
+                style={{ background: 'var(--color-primary)', color: '#fff' }}
+                onClick={startReplay}
+                disabled={creatingReplay || !canReplay || !replayable}
+                title={!canReplay ? 'Missing experiment.replay permission'
+                  : !replayable ? (loading ? 'Loading span payload...' : 'Span input is not a replayable ChatML request')
+                  : 'Create a replay experiment from this LLM call'}>
+                <Play size={12} /> {creatingReplay ? 'Creating...' : 'Replay'}
+              </button>
+            )}
             <StatusBadge status={span.status} />
             {span.status === 'CANCELLED' && span.attributes?.['core_ai.cancel.reason'] === 'timeout' && (
               <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium"
@@ -522,6 +558,9 @@ function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?:
             )}
           </div>
         </div>
+        {replayError && (
+          <div className="mt-2 text-xs" style={{ color: '#dc2626' }}>{replayError}</div>
+        )}
         <div className="flex flex-wrap gap-2 mt-3">
           {span.model && <NeutralChip mono>{span.model}</NeutralChip>}
           <NeutralChip><Clock size={11} /> {formatDuration(span.durationMs)}</NeutralChip>
