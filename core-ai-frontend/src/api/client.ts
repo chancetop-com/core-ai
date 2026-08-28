@@ -977,6 +977,25 @@ export interface ListSchedulesResponse {
   schedules: AgentScheduleView[];
 }
 
+export interface SessionScheduleView {
+  id: string;
+  session_id: string;
+  user_id: string;
+  name?: string;
+  cron_expression: string;
+  timezone: string;
+  input?: string;
+  enabled: boolean;
+  next_run_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListSessionSchedulesResponse {
+  session_schedules: SessionScheduleView[];
+  total?: number;
+}
+
 export interface CreateScheduleRequest {
   agent_id: string;
   name?: string;
@@ -2042,6 +2061,10 @@ export const api = {
       request<ListSchedulesResponse>('/api/schedules'),
     listByAgent: (agentId: string) =>
       request<ListSchedulesResponse>(`/api/schedules/agent/${agentId}/list`),
+    listSessionSchedules: (offset = 0, limit = 50) =>
+      request<ListSessionSchedulesResponse>(`/api/schedules/sessions?offset=${offset}&limit=${limit}`),
+    updateSessionSchedule: (id: string, data: { enabled: boolean }) =>
+      request<SessionScheduleView>(`/api/schedules/sessions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     create: (data: CreateScheduleRequest) =>
       request<AgentScheduleView>('/api/schedules', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: UpdateScheduleRequest) =>

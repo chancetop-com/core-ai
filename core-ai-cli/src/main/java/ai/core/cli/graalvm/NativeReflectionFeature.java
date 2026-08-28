@@ -58,6 +58,8 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.tool.tools.WriteTodoTaskTool.TaskEntity",
         "ai.core.tool.tools.CaptionImageTool$CaptionImageToolParams",
         "ai.core.tool.tools.SummarizePdfTool$SummarizePdfToolParams",
+        // Scheduled task tool domain for file-backed JSON persistence
+        "ai.core.schedule.ScheduledTask",
         // Vendor management classes for GraalVM reflection
         "ai.core.vender.Vendor",
         "ai.core.vender.VendorConfig",

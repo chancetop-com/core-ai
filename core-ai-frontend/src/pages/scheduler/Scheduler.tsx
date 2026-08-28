@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Calendar, Edit2, Trash2, X, Play } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, AgentScheduleView, ChannelView, CreateScheduleRequest, UpdateScheduleRequest } from '../../api/client';
+import type { AgentDefinition, AgentScheduleView, ChannelView, CreateScheduleRequest, SessionScheduleView, UpdateScheduleRequest } from '../../api/client';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
 import CronEditor, { describeCron, isOnceCron } from './CronEditor';
 
@@ -24,6 +24,8 @@ interface EditorState {
 }
 
 const TIMEZONES = ['UTC', 'Asia/Shanghai', 'Asia/Tokyo', 'America/New_York', 'America/Los_Angeles', 'Europe/London'];
+
+const SESSION_PAGE_SIZE = 50;
 
 function emptyEditor(): EditorState {
   return {
@@ -56,10 +58,15 @@ function formatTime(iso: string) {
 }
 
 export default function Scheduler() {
+  const [tab, setTab] = useState<'agent' | 'session'>('agent');
   const [schedules, setSchedules] = useState<AgentScheduleView[]>([]);
+  const [sessionSchedules, setSessionSchedules] = useState<SessionScheduleView[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [channels, setChannels] = useState<ChannelView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionOffset, setSessionOffset] = useState(0);
+  const [sessionHasMore, setSessionHasMore] = useState(false);
   const [filterAgentId, setFilterAgentId] = useState<string>('');
   const [filterEnabled, setFilterEnabled] = useState<'all' | 'enabled' | 'disabled'>('all');
   const [editor, setEditor] = useState<EditorState>(emptyEditor());
@@ -76,6 +83,32 @@ export default function Scheduler() {
   };
 
   useEffect(load, []);
+
+  const loadSessionSchedules = (reset = false) => {
+    setSessionLoading(true);
+    const offset = reset ? 0 : sessionOffset;
+    api.schedules.listSessionSchedules(offset, SESSION_PAGE_SIZE)
+      .then(res => {
+        const items = res.session_schedules || [];
+        setSessionSchedules(prev => reset ? items : [...prev, ...items]);
+        setSessionOffset(offset + items.length);
+        setSessionHasMore((res.total ?? 0) > offset + items.length);
+      })
+      .finally(() => setSessionLoading(false));
+  };
+
+  useEffect(() => {
+    if (tab === 'session') loadSessionSchedules(true);
+  }, [tab]);
+
+  const toggleSessionEnabled = async (s: SessionScheduleView) => {
+    try {
+      const updated = await api.schedules.updateSessionSchedule(s.id, { enabled: !s.enabled });
+      setSessionSchedules(prev => prev.map(x => x.id === updated.id ? updated : x));
+    } catch (e) {
+      alert(`Failed to update: ${e instanceof Error ? e.message : e}`);
+    }
+  };
 
   const agentMap = useMemo(() => {
     const m: Record<string, AgentDefinition> = {};
@@ -195,30 +228,52 @@ export default function Scheduler() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select value={filterAgentId} onChange={e => setFilterAgentId(e.target.value)}
-            className="px-3 py-2 rounded-lg border text-sm"
-            style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
-            <option value="">All agents</option>
-            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-          <select value={filterEnabled} onChange={e => setFilterEnabled(e.target.value as 'all' | 'enabled' | 'disabled')}
-            className="px-3 py-2 rounded-lg border text-sm"
-            style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
-            <option value="all">All status</option>
-            <option value="enabled">Enabled</option>
-            <option value="disabled">Disabled</option>
-          </select>
-          <button onClick={openNew} disabled={agents.length === 0}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
-            style={{ background: 'var(--color-primary)' }}>
-            <Plus size={16} /> New Schedule
-          </button>
+          {tab === 'agent' && (
+            <>
+              <select value={filterAgentId} onChange={e => setFilterAgentId(e.target.value)}
+                className="px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+                <option value="">All agents</option>
+                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+              <select value={filterEnabled} onChange={e => setFilterEnabled(e.target.value as 'all' | 'enabled' | 'disabled')}
+                className="px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+                <option value="all">All status</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+              </select>
+              <button onClick={openNew} disabled={agents.length === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
+                style={{ background: 'var(--color-primary)' }}>
+                <Plus size={16} /> New Schedule
+              </button>
+            </>
+          )}
         </div>
+      </div>
+
+      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit"
+        style={{ background: 'var(--color-bg-tertiary)' }}>
+        <button onClick={() => setTab('agent')}
+          className="px-4 py-1.5 rounded-md text-sm cursor-pointer"
+          style={tab === 'agent'
+            ? { background: 'var(--color-bg)', color: 'var(--color-text)', fontWeight: 500 }
+            : { color: 'var(--color-text-secondary)' }}>
+          Agent schedules
+        </button>
+        <button onClick={() => setTab('session')}
+          className="px-4 py-1.5 rounded-md text-sm cursor-pointer"
+          style={tab === 'session'
+            ? { background: 'var(--color-bg)', color: 'var(--color-text)', fontWeight: 500 }
+            : { color: 'var(--color-text-secondary)' }}>
+          Session schedules
+        </button>
       </div>
 
       <div className="rounded-xl border overflow-hidden"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-        {loading ? (
+        {tab === 'agent' && (loading ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>
@@ -317,7 +372,78 @@ export default function Scheduler() {
               ))}
             </tbody>
           </table>
+        ))}
+      {tab === 'session' && (sessionLoading ? (
+        <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
+      ) : sessionSchedules.length === 0 ? (
+        <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>
+          No session scheduled tasks yet. Ask an agent in a chat session to call the scheduled_task tool.
+        </div>
+      ) : (
+        <>
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+              <th className="text-left px-4 py-3 font-medium">Name</th>
+              <th className="text-left px-4 py-3 font-medium">Cron</th>
+              <th className="text-left px-4 py-3 font-medium">Timezone</th>
+              <th className="text-left px-4 py-3 font-medium">Session</th>
+              <th className="text-left px-4 py-3 font-medium">User</th>
+              <th className="text-left px-4 py-3 font-medium">Next Run</th>
+              <th className="text-left px-4 py-3 font-medium">Created</th>
+              <th className="text-left px-4 py-3 font-medium">Enabled</th>
+              <th className="text-left px-4 py-3 font-medium">Input</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessionSchedules.map(s => (
+              <tr key={s.id} style={{ borderTop: '1px solid var(--color-border)' }}>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={14} style={{ color: 'var(--color-primary)' }} />
+                    <div className="font-medium truncate max-w-[200px]" title={s.name}>
+                      {s.name || s.id.slice(0, 8)}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3"><span className="font-mono text-xs">{s.cron_expression}</span></td>
+                <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{s.timezone}</td>
+                <td className="px-4 py-3">
+                  <span className="font-mono text-xs block truncate max-w-[180px]" title={s.session_id}>
+                    {s.session_id}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-xs truncate max-w-[160px]" title={s.user_id}
+                  style={{ color: 'var(--color-text-secondary)' }}>{s.user_id}</td>
+                <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.next_run_at)}</td>
+                <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {new Date(s.created_at).toLocaleString()}
+                </td>
+                <td className="px-4 py-3">
+                  <button onClick={() => toggleSessionEnabled(s)}
+                    className="relative inline-flex items-center w-10 h-5 rounded-full cursor-pointer transition-colors"
+                    style={{ background: s.enabled ? 'var(--color-primary)' : 'var(--color-bg-tertiary)' }}>
+                    <span className="absolute w-4 h-4 bg-white rounded-full transition-transform"
+                      style={{ transform: s.enabled ? 'translateX(22px)' : 'translateX(2px)' }} />
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-xs truncate max-w-[240px]" title={s.input}
+                  style={{ color: 'var(--color-text-secondary)' }}>{s.input || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {sessionHasMore && (
+          <div className="p-4 text-center">
+            <button onClick={() => loadSessionSchedules(false)} disabled={sessionLoading}
+              className="px-4 py-2 rounded-lg border text-sm cursor-pointer disabled:opacity-40"
+              style={{ borderColor: 'var(--color-border)' }}>
+              Load more
+            </button>
+          </div>
         )}
+        </>
+      ))}
       </div>
 
       {editor.open && (
