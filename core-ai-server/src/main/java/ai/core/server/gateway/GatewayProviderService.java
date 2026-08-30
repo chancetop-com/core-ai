@@ -285,6 +285,7 @@ public class GatewayProviderService {
         if (request.requestExtraBody != null) entity.requestExtraBody = trimToNull(request.requestExtraBody);
         if (request.timeoutSeconds != null) entity.timeoutSeconds = request.timeoutSeconds;
         if (request.connectTimeoutSeconds != null) entity.connectTimeoutSeconds = request.connectTimeoutSeconds;
+        if (request.creditUsdRate != null) entity.creditUsdRate = request.creditUsdRate;
         if (entity.timeoutSeconds == null) entity.timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
         if (entity.connectTimeoutSeconds == null) entity.connectTimeoutSeconds = 10L;
     }
@@ -306,6 +307,9 @@ public class GatewayProviderService {
         }
         if (request.connectTimeoutSeconds != null && request.connectTimeoutSeconds <= 0) {
             throw new BadRequestException("connectTimeoutSeconds must be positive");
+        }
+        if (request.creditUsdRate != null && request.creditUsdRate < 0) {
+            throw new BadRequestException("creditUsdRate must not be negative");
         }
     }
 
@@ -335,6 +339,7 @@ public class GatewayProviderService {
         view.requestExtraBody = entity.requestExtraBody;
         view.timeoutSeconds = entity.timeoutSeconds;
         view.connectTimeoutSeconds = entity.connectTimeoutSeconds;
+        view.creditUsdRate = entity.creditUsdRate;
         view.createdBy = entity.createdBy;
         view.updatedBy = entity.updatedBy;
         view.createdAt = entity.createdAt;

@@ -292,6 +292,30 @@ export interface Span {
   completedAt: string;
 }
 
+export interface MediaJob {
+  id: string;
+  userId?: string;
+  providerId?: string;
+  requestedModel?: string;
+  resolvedModel?: string;
+  mediaType?: string;
+  state?: string;
+  requestedSeconds?: number;
+  mediaUnits?: number;
+  mediaUnitType?: string;
+  creditsConsumed?: number;
+  costUsd?: number;
+  costSource?: string;
+  pricingModelId?: string;
+  progress?: number;
+  error?: string;
+  fileId?: string;
+  fileName?: string;
+  contentType?: string;
+  createdAt?: string;
+  completedAt?: string;
+}
+
 export interface TraceFilter {
   q?: string;           // smart search: IDs, user account, trace name, or agent name
   name?: string;        // advanced raw regex on name
@@ -1494,6 +1518,12 @@ export interface GatewayModel {
   supportsReasoningEffort?: boolean | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
+  maxImageReferences?: number | null;
+  maxVideoReferences?: number | null;
+  maxAudioReferences?: number | null;
+  maxMixedReferences?: number | null;
+  addressingSyntax?: string | null;
+  acceptsAudioReference?: boolean | null;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
   cacheReadInputPricePer1MTokens?: number | null;
@@ -1519,6 +1549,12 @@ export interface GatewayModelRequest {
   supportsReasoningEffort?: boolean | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
+  maxImageReferences?: number | null;
+  maxVideoReferences?: number | null;
+  maxAudioReferences?: number | null;
+  maxMixedReferences?: number | null;
+  addressingSyntax?: string | null;
+  acceptsAudioReference?: boolean | null;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
   cacheReadInputPricePer1MTokens?: number | null;
@@ -1680,11 +1716,6 @@ export const api = {
     spans: async (id: string) =>
       (await request<{ spans: Span[] }>(`/api/traces/${id}/spans`)).spans,
     span: (traceId: string, spanId: string) => request<Span>(`/api/traces/${traceId}/spans/${spanId}`),
-    generations: async (offset = 0, limit = 20, model?: string) => {
-      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-      if (model) params.set('model', model);
-      return (await request<{ spans: Span[] }>(`/api/traces/generations?${params}`)).spans;
-    },
     sessionSummary: (sessionId: string) =>
       request<SessionSummary>(`/api/traces/sessions/${encodeURIComponent(sessionId)}/summary`),
     facets: async (field: 'model' | 'agentName' | 'source', filters?: TraceFilter) => {
@@ -1693,6 +1724,15 @@ export const api = {
         Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
       }
       return (await request<{ facets: TraceFacet[] }>(`/api/traces/facets?${params}`)).facets;
+    },
+  },
+  mediaJobs: {
+    list: async (offset = 0, limit = 20, filters?: { mediaType?: string; costSource?: string; userId?: string }) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+      }
+      return request<{ total: number; jobs: MediaJob[] }>(`/api/media-jobs?${params}`);
     },
   },
   prompts: {

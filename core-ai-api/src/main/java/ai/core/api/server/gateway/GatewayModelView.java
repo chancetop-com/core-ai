@@ -72,6 +72,25 @@ public class GatewayModelView {
     @Property(name = "maxVideoSeconds")
     public Long maxVideoSeconds;
 
+    // reference capability registry: null keeps the code-level model-family default
+    @Property(name = "maxImageReferences")
+    public Integer maxImageReferences;
+
+    @Property(name = "maxVideoReferences")
+    public Integer maxVideoReferences;
+
+    @Property(name = "maxAudioReferences")
+    public Integer maxAudioReferences;
+
+    @Property(name = "maxMixedReferences")
+    public Integer maxMixedReferences;
+
+    @Property(name = "addressingSyntax")
+    public String addressingSyntax;
+
+    @Property(name = "acceptsAudioReference")
+    public Boolean acceptsAudioReference;
+
     @Property(name = "inputPricePer1MTokens")
     public Double inputPricePer1MTokens;
 
@@ -83,6 +102,12 @@ public class GatewayModelView {
 
     @Property(name = "peakPriceMultiplier")
     public Double peakPriceMultiplier;
+
+    @Property(name = "imagePricePerImage")
+    public Double imagePricePerImage;
+
+    @Property(name = "videoPricePerSecond")
+    public Double videoPricePerSecond;
 
     @Property(name = "pricingSource")
     public String pricingSource;

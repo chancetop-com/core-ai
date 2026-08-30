@@ -123,7 +123,12 @@ public class GeminiImageMediaProvider implements MediaProvider {
         var metadata = (Map<String, Object>) response.get("usageMetadata");
         if (metadata == null) return null;
         var total = metadata.get("totalTokenCount");
-        return new Usage(total instanceof Number number ? number.intValue() : null, null, null);
+        var input = metadata.get("promptTokenCount");
+        var output = metadata.get("candidatesTokenCount");
+        return new Usage(total instanceof Number number ? number.intValue() : null, null, null,
+                input instanceof Number number ? number.intValue() : null,
+                output instanceof Number number ? number.intValue() : null,
+                null, null, null);
     }
 
     @SuppressWarnings("unchecked")

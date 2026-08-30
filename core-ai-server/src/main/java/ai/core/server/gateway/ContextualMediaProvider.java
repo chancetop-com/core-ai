@@ -6,11 +6,12 @@ import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
+import ai.core.media.reference.ManagedReferenceProvider;
 
 /**
  * @author Stephen
  */
-public final class ContextualMediaProvider implements MediaProvider {
+public final class ContextualMediaProvider implements MediaProvider, ManagedReferenceProvider {
     private final GatewayMediaProvider delegate;
     private final MediaJobOwner owner;
 
@@ -21,7 +22,7 @@ public final class ContextualMediaProvider implements MediaProvider {
 
     @Override
     public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
-        return delegate.generateImage(request);
+        return delegate.generateImage(request, owner);
     }
 
     @Override

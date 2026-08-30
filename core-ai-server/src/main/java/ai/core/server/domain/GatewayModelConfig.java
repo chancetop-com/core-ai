@@ -65,6 +65,28 @@ public class GatewayModelConfig {
     @Field(name = "supports_reasoning_effort")
     public Boolean supportsReasoningEffort;
 
+    // reference capability registry (media models): how many references of each modality the model
+    // takes, and how its prompt addresses them. Seeded from the code-level family table; a null field
+    // keeps the family default, so adding a model stays one admin row.
+    @Field(name = "max_image_references")
+    public Integer maxImageReferences;
+
+    @Field(name = "max_video_references")
+    public Integer maxVideoReferences;
+
+    @Field(name = "max_audio_references")
+    public Integer maxAudioReferences;
+
+    @Field(name = "max_mixed_references")
+    public Integer maxMixedReferences;
+
+    // AT_TOKEN | BRACKET | ANGLE_SUBJECT | NONE
+    @Field(name = "addressing_syntax")
+    public String addressingSyntax;
+
+    @Field(name = "accepts_audio_reference")
+    public Boolean acceptsAudioReference;
+
     @Field(name = "max_video_bytes")
     public Long maxVideoBytes;
 
@@ -84,6 +106,12 @@ public class GatewayModelConfig {
     // peak-hour multiplier applied to all prices (e.g. DeepSeek 2026-08 peak/off-peak pricing); null/1.0 = flat pricing
     @Field(name = "peak_price_multiplier")
     public Double peakPriceMultiplier;
+
+    @Field(name = "image_price_per_image")
+    public Double imagePricePerImage;
+
+    @Field(name = "video_price_per_second")
+    public Double videoPricePerSecond;
 
     @Field(name = "pricing_source")
     public String pricingSource;

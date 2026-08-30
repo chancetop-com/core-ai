@@ -36,7 +36,7 @@ public class FileService {
     private static final String ARTIFACT_PREFIX = "artifacts/";
 
     @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
-    static String extension(String contentType) {
+    public static String extension(String contentType) {
         if (contentType == null) return "";
         return switch (contentType) {
             case "image/jpeg" -> ".jpg";

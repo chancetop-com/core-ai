@@ -85,6 +85,12 @@ type ModelFormState = {
   supportsReasoningEffort: string;  // '' = unknown (default), 'true' / 'false' = admin declaration
   maxVideoBytes: string;
   maxVideoSeconds: string;
+  maxImageReferences: string;
+  maxVideoReferences: string;
+  maxAudioReferences: string;
+  maxMixedReferences: string;
+  addressingSyntax: string;   // '' = model-family default from the code-level registry
+  acceptsAudioReference: string;  // '' = family default, 'true' / 'false' = admin declaration
   inputPricePer1MTokens: string;
   outputPricePer1MTokens: string;
   cacheReadInputPricePer1MTokens: string;
@@ -135,6 +141,12 @@ const emptyModelForm: ModelFormState = {
   supportsReasoningEffort: '',
   maxVideoBytes: '',
   maxVideoSeconds: '',
+  maxImageReferences: '',
+  maxVideoReferences: '',
+  maxAudioReferences: '',
+  maxMixedReferences: '',
+  addressingSyntax: '',
+  acceptsAudioReference: '',
   inputPricePer1MTokens: '',
   outputPricePer1MTokens: '',
   cacheReadInputPricePer1MTokens: '',
@@ -335,6 +347,12 @@ export default function GatewayProviders() {
       supportsReasoningEffort: model.supportsReasoningEffort == null ? '' : String(model.supportsReasoningEffort),
       maxVideoBytes: model.maxVideoBytes == null ? '' : String(model.maxVideoBytes),
       maxVideoSeconds: model.maxVideoSeconds == null ? '' : String(model.maxVideoSeconds),
+      maxImageReferences: model.maxImageReferences == null ? '' : String(model.maxImageReferences),
+      maxVideoReferences: model.maxVideoReferences == null ? '' : String(model.maxVideoReferences),
+      maxAudioReferences: model.maxAudioReferences == null ? '' : String(model.maxAudioReferences),
+      maxMixedReferences: model.maxMixedReferences == null ? '' : String(model.maxMixedReferences),
+      addressingSyntax: model.addressingSyntax || '',
+      acceptsAudioReference: model.acceptsAudioReference == null ? '' : String(model.acceptsAudioReference),
       inputPricePer1MTokens: model.inputPricePer1MTokens == null ? '' : String(model.inputPricePer1MTokens),
       outputPricePer1MTokens: model.outputPricePer1MTokens == null ? '' : String(model.outputPricePer1MTokens),
       cacheReadInputPricePer1MTokens: model.cacheReadInputPricePer1MTokens == null ? '' : String(model.cacheReadInputPricePer1MTokens),
@@ -372,6 +390,12 @@ export default function GatewayProviders() {
         supportsVideo: modelForm.supportsVideo,
         maxVideoBytes: optionalNumber(modelForm.maxVideoBytes, 'Max video bytes'),
         maxVideoSeconds: optionalNumber(modelForm.maxVideoSeconds, 'Max video seconds'),
+        maxImageReferences: optionalNumber(modelForm.maxImageReferences, 'Max image references'),
+        maxVideoReferences: optionalNumber(modelForm.maxVideoReferences, 'Max video references'),
+        maxAudioReferences: optionalNumber(modelForm.maxAudioReferences, 'Max audio references'),
+        maxMixedReferences: optionalNumber(modelForm.maxMixedReferences, 'Max mixed references'),
+        addressingSyntax: modelForm.addressingSyntax || null,
+        acceptsAudioReference: modelForm.acceptsAudioReference === '' ? null : modelForm.acceptsAudioReference === 'true',
       };
       // modality declarations drive routing; only send fields the admin actually touched,
       // otherwise a null (unknown, resolved via seed) would be silently rewritten on every save
@@ -991,6 +1015,29 @@ function renderModelPanel(props: {
           </Field>
         </div>
 
+        <Field label="Reference capabilities" hint="Leave blank to use the built-in model-family defaults. Drives reference trimming and how @name mentions are rendered into the model's own token syntax.">
+          <div className="grid grid-cols-4 gap-2">
+            <input className={inputClass} style={inputStyle} type="number" min={0} placeholder="Max images" value={form.maxImageReferences} onChange={e => setForm({ ...form, maxImageReferences: e.target.value })} />
+            <input className={inputClass} style={inputStyle} type="number" min={0} placeholder="Max videos" value={form.maxVideoReferences} onChange={e => setForm({ ...form, maxVideoReferences: e.target.value })} />
+            <input className={inputClass} style={inputStyle} type="number" min={0} placeholder="Max audios" value={form.maxAudioReferences} onChange={e => setForm({ ...form, maxAudioReferences: e.target.value })} />
+            <input className={inputClass} style={inputStyle} type="number" min={0} placeholder="Max mixed" value={form.maxMixedReferences} onChange={e => setForm({ ...form, maxMixedReferences: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <select className={inputClass} style={inputStyle} value={form.addressingSyntax} onChange={e => setForm({ ...form, addressingSyntax: e.target.value })}>
+              <option value="">Addressing: family default</option>
+              <option value="AT_TOKEN">AT_TOKEN (@Image1)</option>
+              <option value="BRACKET">BRACKET ([Image1])</option>
+              <option value="ANGLE_SUBJECT">ANGLE_SUBJECT (&lt;Picture 1&gt;)</option>
+              <option value="NONE">NONE (no addressing syntax)</option>
+            </select>
+            <select className={inputClass} style={inputStyle} value={form.acceptsAudioReference} onChange={e => setForm({ ...form, acceptsAudioReference: e.target.value })}>
+              <option value="">Audio references: family default</option>
+              <option value="true">Accepts audio references</option>
+              <option value="false">No audio references</option>
+            </select>
+          </div>
+        </Field>
+
         <Field label="Reasoning Efforts">
           <input
             className={inputClass}
@@ -1265,10 +1312,11 @@ function EmptyRow({ colSpan, children }: { colSpan: number; children: ReactNode 
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+      {hint && <span className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>{hint}</span>}
       {children}
     </label>
   );

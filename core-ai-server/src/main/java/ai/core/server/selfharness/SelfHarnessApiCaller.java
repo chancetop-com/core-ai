@@ -59,11 +59,11 @@ public class SelfHarnessApiCaller {
     @Inject
     MongoCollection<ProjectSubjectAttribution> attributionCollection;
 
-    public String callApi(String name, String args) {
+    public String callApi(String name, String args, ExecutionContext context) {
         ActionLogContext.put("self-harness-call", name);
         LOGGER.info("self-harness call, name={}, args={}", name, args);
         try {
-            var result = dispatcher.dispatch(name, args);
+            var result = dispatcher.dispatch(name, args, context);
             return JSON.toJSON(result);
         } catch (Exception e) {
             LOGGER.error("self-harness call failed, name={}, args={}", name, args, e);

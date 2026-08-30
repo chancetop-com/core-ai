@@ -151,16 +151,18 @@ class ToolRefResolutionService {
     // replaces media tools with gateway-aware descriptions; runs per resolution so gateway changes take effect quickly
     private List<ToolCall> enhanceMediaToolDescription(List<ToolCall> tools) {
         var imageHints = mediaModelHints(ai.core.server.gateway.GatewayEndpointType.IMAGE_GENERATION);
+        // image.edits models must be listed too, otherwise the agent cannot name an image-to-image model
+        var imageEditHints = mediaModelHints(ai.core.server.gateway.GatewayEndpointType.IMAGE_EDIT);
         var videoHints = mediaModelHints(ai.core.server.gateway.GatewayEndpointType.VIDEO_GENERATION);
-        return tools.stream().map(tool -> enhanceMediaTool(tool, imageHints, videoHints)).toList();
+        return tools.stream().map(tool -> enhanceMediaTool(tool, imageHints, imageEditHints, videoHints)).toList();
     }
 
     private List<ai.core.tool.tools.MediaModelHint> mediaModelHints(ai.core.server.gateway.GatewayEndpointType endpoint) {
         return mediaModelHintsProvider == null ? List.of() : mediaModelHintsProvider.apply(endpoint);
     }
 
-    private ToolCall enhanceMediaTool(ToolCall tool, List<ai.core.tool.tools.MediaModelHint> imageHints, List<ai.core.tool.tools.MediaModelHint> videoHints) {
-        if (tool instanceof ai.core.tool.tools.GenerateImageTool) return ai.core.tool.tools.GenerateImageTool.builder().description(ai.core.tool.tools.GenerateImageTool.buildDescription(imageHints)).build();
+    private ToolCall enhanceMediaTool(ToolCall tool, List<ai.core.tool.tools.MediaModelHint> imageHints, List<ai.core.tool.tools.MediaModelHint> imageEditHints, List<ai.core.tool.tools.MediaModelHint> videoHints) {
+        if (tool instanceof ai.core.tool.tools.GenerateImageTool) return ai.core.tool.tools.GenerateImageTool.builder().description(ai.core.tool.tools.GenerateImageTool.buildDescription(imageHints, imageEditHints)).build();
         if (tool instanceof ai.core.tool.tools.GenerateVideoTool) return ai.core.tool.tools.GenerateVideoTool.builder(mediaProvider).description(ai.core.tool.tools.GenerateVideoTool.buildDescription(videoHints)).build();
         if (tool instanceof ai.core.tool.tools.ScheduledTaskTool && scheduledTaskStore != null) return ai.core.tool.tools.ScheduledTaskTool.builder(scheduledTaskStore).build();
         return tool;

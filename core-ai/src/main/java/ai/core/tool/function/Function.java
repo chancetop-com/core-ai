@@ -13,12 +13,13 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.List;
 
 /**
  * @author stephen
  */
 public class Function extends ToolCall {
+    static final int MAX_ERROR_PARAMS_LENGTH = 500;
+
     public static Builder builder() {
         return new Builder();
     }
@@ -45,8 +46,13 @@ public class Function extends ToolCall {
             });
         }
         if (dynamicArguments != null && dynamicArguments) {
-            // args convert by method itself
-            var rst = method.invoke(object, List.of(this.getName(), JsonUtil.toJson(argsMap)).toArray());
+            // args convert by method itself; a trailing ExecutionContext parameter is auto-injected like
+            // the non-dynamic path does, so dispatchers can scope their work to the calling user
+            var json = JsonUtil.toJson(argsMap);
+            var parameterTypes = method.getParameterTypes();
+            var rst = parameterTypes.length == 3 && parameterTypes[2] == ExecutionContext.class
+                    ? method.invoke(object, this.getName(), json, context)
+                    : method.invoke(object, this.getName(), json);
             return responseConverter.convert(rst);
         }
         var methodParams = method.getParameters();
@@ -90,7 +96,9 @@ public class Function extends ToolCall {
             // InvocationTargetException.getMessage() is null; surface the underlying cause so the trace shows a real error
             var cause = e instanceof InvocationTargetException invocation && invocation.getCause() != null ? invocation.getCause() : e;
             logger.error(Markers.errorCode("FUNCTION_EXECUTE_FAILED"), "function<{}.{}> execute failed, params: {}", object.toString(), getName(), text, e);
-            return ToolCallResult.failed(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), text, cause.toString()), e)
+            // truncate the params echo: the failed result lives in conversation history for the rest of the
+            // run — a large batch payload echoed verbatim (e.g. a 15KB shotlist) bloats every later turn
+            return ToolCallResult.failed(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), truncate(text), cause.toString()), e)
                     .withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
         }
     }
@@ -98,6 +106,11 @@ public class Function extends ToolCall {
     @Override
     public ToolCallResult execute(String text) {
         return execute(text, null);
+    }
+
+    private String truncate(String text) {
+        if (text == null || text.length() <= MAX_ERROR_PARAMS_LENGTH) return text;
+        return text.substring(0, MAX_ERROR_PARAMS_LENGTH) + "... (" + (text.length() - MAX_ERROR_PARAMS_LENGTH) + " chars truncated)";
     }
 
     // Builder for manual Function creation (when annotations cannot be used)

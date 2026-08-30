@@ -14,7 +14,10 @@ import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
+import core.framework.http.HTTPResponse;
 import core.framework.util.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -27,6 +30,7 @@ import java.util.Map;
  * @author stephen
  */
 public class LiteLLMMediaProvider implements MediaProvider {
+    private static final Logger LOGGER = LoggerFactory.getLogger(LiteLLMMediaProvider.class);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration TIMEOUT = Duration.ofMinutes(5);
 
@@ -74,7 +78,9 @@ public class LiteLLMMediaProvider implements MediaProvider {
         var usage = usageMap == null ? null : new Usage(
                 intValue(usageMap, "total_tokens"),
                 intValue(usageMap, "image_count"),
-                intValue(usageMap, "video_seconds"));
+                intValue(usageMap, "video_seconds"),
+                null, null, null, null,
+                responseCost(httpResponse));
         return new ImageGenerationResponse(images, usage);
     }
 
@@ -98,7 +104,9 @@ public class LiteLLMMediaProvider implements MediaProvider {
         var usage = usageMap == null ? null : new Usage(
                 intValue(usageMap, "total_tokens"),
                 intValue(usageMap, "image_count"),
-                intValue(usageMap, "video_seconds"));
+                intValue(usageMap, "video_seconds"),
+                null, null, null, null,
+                responseCost(httpResponse));
         return new VideoGenerationResponse(
                 (String) responseMap.get("id"),
                 (String) responseMap.get("status"),
@@ -123,7 +131,9 @@ public class LiteLLMMediaProvider implements MediaProvider {
                 (String) responseMap.get("status"),
                 intValue(responseMap, "progress"),
                 (String) responseMap.get("error"),
-                longValue(responseMap, "completed_at"));
+                longValue(responseMap, "completed_at"),
+                null,
+                responseCost(httpResponse));
     }
 
     @Override
@@ -181,6 +191,26 @@ public class LiteLLMMediaProvider implements MediaProvider {
     private Long longValue(Map<String, Object> map, String key) {
         var value = map.get(key);
         return value instanceof Number number ? number.longValue() : null;
+    }
+
+    private Double responseCost(HTTPResponse response) {
+        if (response == null || response.headers == null) return null;
+        var value = response.headers.get("x-litellm-response-cost");
+        if (value == null) {
+            for (var entry : response.headers.entrySet()) {
+                if ("x-litellm-response-cost".equalsIgnoreCase(entry.getKey())) {
+                    value = entry.getValue();
+                    break;
+                }
+            }
+        }
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Double.valueOf(value.trim());
+        } catch (NumberFormatException e) {
+            LOGGER.debug("invalid x-litellm-response-cost header: {}", value);
+            return null;
+        }
     }
 
     private String stripTrailingSlashes(String url) {

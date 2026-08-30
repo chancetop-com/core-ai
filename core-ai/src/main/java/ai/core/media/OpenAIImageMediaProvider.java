@@ -111,7 +111,16 @@ public class OpenAIImageMediaProvider implements MediaProvider {
         var images = new ArrayList<ImageData>();
         if (data != null) for (var item : data) images.add(new ImageData((String) item.get("b64_json"), (String) item.get("url"), (String) item.get("revised_prompt")));
         var usageMap = (Map<String, Object>) response.get("usage");
-        var usage = usageMap == null ? null : new Usage(intValue(usageMap, "total_tokens"), intValue(usageMap, "image_count"), null);
+        Usage usage = null;
+        if (usageMap != null) {
+            var details = usageMap.get("input_tokens_details") instanceof Map<?, ?> detailMap
+                    ? (Map<String, Object>) detailMap : Map.<String, Object>of();
+            usage = new Usage(
+                    intValue(usageMap, "total_tokens"), intValue(usageMap, "image_count"), null,
+                    intValue(usageMap, "input_tokens"), intValue(usageMap, "output_tokens"),
+                    intValue(details, "text_tokens"), intValue(details, "image_tokens"),
+                    null);
+        }
         return new ImageGenerationResponse(images, usage);
     }
 

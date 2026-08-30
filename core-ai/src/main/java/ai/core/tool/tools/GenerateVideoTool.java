@@ -1,15 +1,14 @@
 package ai.core.tool.tools;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-
 import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
 import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.media.MediaProvider;
 import ai.core.media.MediaModelParameterHints;
 import ai.core.media.domain.MediaReference;
+import ai.core.media.reference.ManagedReferenceProvider;
+import ai.core.media.reference.MediaReferenceParser;
 import ai.core.media.domain.VideoGenerationRequest;
-import ai.core.utils.JsonUtil;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -18,6 +17,7 @@ import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.util.Strings;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +41,7 @@ public final class GenerateVideoTool extends ToolCall {
     static final String PENDING_VIDEO_TASK_CONTEXT_KEY = "__pending_video_task_id";
     static final String VIDEO_SUBMIT_FAIL_COUNT_CONTEXT_KEY = "__video_submit_fail_count";
     private static final int MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
+    private static final int MAX_REFERENCE_IMAGE_REDIRECTS = 5;
     private static final int MAX_ERROR_MESSAGE_LENGTH = 500;
 
     private static final String TOOL_DESC = buildToolDescription();
@@ -72,17 +73,21 @@ public final class GenerateVideoTool extends ToolCall {
                   values are clamped to 10.
                 - size: Optional, e.g. "1280x720" or "720x1280". The provider renders video at
                   most 720p; aspect ratio is derived from the width/height.
-                - input_references: Optional JSON array of reference images. Each item must be
-                  an object with exactly one of:
-                    - {"b64Json": "data:image/jpeg;base64,..."} — a full data URL. The
-                      "data:<mime>;base64," prefix is REQUIRED; raw base64 without the prefix is
-                      REJECTED.
-                    - {"url": "https://..."} — an http(s) image URL; the server downloads the
-                      image automatically.
-                  If omitted, the images attached to the current chat message are used
-                  automatically.
-                  NEVER embed huge base64 blobs in the tool arguments — prefer passing an image
-                  url or relying on the attached images; the server converts them.
+                - input_references: Optional JSON array of reference assets. Each item is an object:
+                    - {"media_id": "gateway-media-v1.img....", "name": "char_lin", "role": "subject"}
+                      — media an earlier generate_image / generate_video call produced. PREFERRED:
+                      never copy a URL out of an earlier tool result, and never embed a base64 blob.
+                      "last" (a bare string) means the most recent image generated in this session.
+                    - {"url": "https://..."} / {"b64Json": "data:image/jpeg;base64,..."} — external
+                      content only. For b64Json the "data:<mime>;base64," prefix is REQUIRED.
+                  role is one of subject, scene, camera, style, prop, audio and decides which
+                  references survive when the model accepts fewer than you passed. If omitted
+                  entirely, the images attached to the current chat message are used automatically.
+                  With more than one reference, name each one and say in the prompt what it
+                  contributes, e.g. "@char_lin defines the woman's face only. @scene_cafe defines the
+                  counter and window light only." The server rewrites @char_lin into whatever token
+                  the target model actually understands. Multi-reference models do not infer what
+                  each asset is for — an unexplained reference is applied wrongly, with no error.
                 - previous_video_id: A video_id from this gateway to edit conversationally. Supported by Gemini Omni.
                 - provider_extra: JSON string with model-specific input parameters, merged into the
                   upstream request. Format: {"input": {...}} puts the keys into the model input, any
@@ -184,7 +189,7 @@ public final class GenerateVideoTool extends ToolCall {
                     prompt,
                     parseInteger(args, "seconds"),
                     getStringValue(args, "size"),
-                    inputReferences(args, context),
+                    inputReferences(args, context, provider),
                     getStringValue(args, "provider_extra"),
                     getStringValue(args, "previous_video_id"));
 
@@ -194,12 +199,13 @@ public final class GenerateVideoTool extends ToolCall {
             context.getCustomVariables().put(PENDING_VIDEO_TASK_CONTEXT_KEY, videoId);
             resetFailCount(context);
 
-            var result = "Video generation submitted.\n"
-                    + "video_id: " + videoId + "\n"
-                    + "Videos typically take 1–10 minutes.\n"
-                    + "Poll get_video_status with this video_id until it reports 'completed' or 'failed' — do not submit another video task before then.";
+            var result = new StringBuilder(384)
+                    .append("Video generation submitted.\nvideo_id: ").append(videoId)
+                    .append("\nVideos typically take 1–10 minutes.\n"
+                            + "Poll get_video_status with this video_id until it reports 'completed' or 'failed' — do not submit another video task before then.");
+            GenerateImageTool.appendNotes(result, response.notes());
 
-            return ToolCallResult.pending(videoId, result)
+            return ToolCallResult.pending(videoId, result.toString())
                     .withDuration(System.currentTimeMillis() - startTime)
                     .withStats("video_id", videoId);
         } catch (Exception e) {
@@ -230,15 +236,12 @@ public final class GenerateVideoTool extends ToolCall {
         return sanitized;
     }
 
-    private List<MediaReference> inputReferences(Map<String, Object> args, ExecutionContext context) {
+    private List<MediaReference> inputReferences(Map<String, Object> args, ExecutionContext context, MediaProvider provider) {
         var references = getStringValue(args, "input_references");
         if (!Strings.isBlank(references)) {
-            try {
-                List<MediaReference> parsed = JsonUtil.fromJson(new TypeReference<>() { }, references);
-                return parsed.stream().map(this::resolveReference).toList();
-            } catch (Exception e) {
-                throw new IllegalArgumentException("input_references must be a JSON array of reference images", e);
-            }
+            return MediaReferenceParser.parse(references, "input_references").stream()
+                    .map(reference -> resolveReference(reference, provider))
+                    .toList();
         }
         var attachedContents = context.getAttachedContents();
         if (attachedContents == null) return null;
@@ -248,8 +251,16 @@ public final class GenerateVideoTool extends ToolCall {
                 .toList();
     }
 
-    // server-side conversion so the LLM never has to embed base64: any http(s) url is downloaded and turned into a data URL
-    private MediaReference resolveReference(MediaReference reference) {
+    /**
+     * With a gateway-backed provider the representation is chosen after routing, where the destination
+     * provider is known — this stays a no-op. Talking to a provider directly there is no such stage, so
+     * the URL is downloaded here and a media_id cannot be honoured at all.
+     */
+    private MediaReference resolveReference(MediaReference reference, MediaProvider provider) {
+        if (provider instanceof ManagedReferenceProvider) return reference;
+        if (reference.isSymbolic()) {
+            throw new IllegalArgumentException("media_id references need the gateway media provider; pass a url or b64Json instead");
+        }
         if (reference.b64Json() != null && !reference.b64Json().isBlank()) return reference;
         if (reference.url() != null && !reference.url().isBlank()) {
             var loaded = referenceImageLoader.load(reference.url());
@@ -333,17 +344,50 @@ public final class GenerateVideoTool extends ToolCall {
                 .trustAll()
                 .build();
 
+        /**
+         * Follows redirects manually: the shared HTTP client is built with followRedirects(false), while
+         * this platform's own artifact/file URLs answer with a 307 to a short-lived pre-signed object
+         * storage URL. Without this, re-editing an image the agent generated a turn earlier always fails.
+         */
         @Override
         public LoadedImage load(String url) {
-            var response = client.execute(new HTTPRequest(HTTPMethod.GET, url));
-            if (response.statusCode < 200 || response.statusCode >= 300) {
-                throw new IllegalArgumentException("failed to download reference image: HTTP " + response.statusCode);
+            var target = url;
+            for (var hop = 0; ; hop++) {
+                var response = client.execute(new HTTPRequest(HTTPMethod.GET, target));
+                if (response.statusCode < 300 || response.statusCode >= 400) {
+                    if (response.statusCode < 200 || response.statusCode >= 400) {
+                        throw new IllegalArgumentException("failed to download reference image: HTTP " + response.statusCode);
+                    }
+                    if (response.body.length > MAX_REFERENCE_IMAGE_BYTES) {
+                        throw new IllegalArgumentException("reference image too large: " + response.body.length + " bytes (max " + MAX_REFERENCE_IMAGE_BYTES + ")");
+                    }
+                    return new LoadedImage(response.body, header(response, "Content-Type"));
+                }
+                if (hop >= MAX_REFERENCE_IMAGE_REDIRECTS) {
+                    throw new IllegalArgumentException("too many redirects while downloading reference image: " + url);
+                }
+                target = redirectTarget(target, header(response, "Location"), response.statusCode);
             }
-            if (response.body.length > MAX_REFERENCE_IMAGE_BYTES) {
-                throw new IllegalArgumentException("reference image too large: " + response.body.length + " bytes (max " + MAX_REFERENCE_IMAGE_BYTES + ")");
+        }
+
+        private String redirectTarget(String from, String location, int statusCode) {
+            if (location == null || location.isBlank()) {
+                throw new IllegalArgumentException("reference image redirect is missing a Location header: HTTP " + statusCode);
             }
-            var contentType = response.headers == null ? null : response.headers.get("Content-Type");
-            return new LoadedImage(response.body, contentType);
+            try {
+                return URI.create(from).resolve(location).toString();
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("reference image redirect has an invalid Location: " + location, e);
+            }
+        }
+
+        // response headers preserve the origin's casing, so never match them case-sensitively
+        private String header(core.framework.http.HTTPResponse response, String name) {
+            if (response.headers == null) return null;
+            for (var entry : response.headers.entrySet()) {
+                if (name.equalsIgnoreCase(entry.getKey())) return entry.getValue();
+            }
+            return null;
         }
     }
 
@@ -385,7 +429,7 @@ public final class GenerateVideoTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "model_scope", "once (default) or session; session sets the model as the conversation default for subsequent calls, empty model clears it"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; defaults to 10, provider maximum is 10)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720"),
-                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON array of reference images; each item is {\"b64Json\":\"data:image/jpeg;base64,...\"} (full data URL) or {\"url\":\"https://...\"} (server downloads it); omit to use attached images"),
+                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON array of references; each item is {\"media_id\":\"gateway-media-v1...\",\"name\":\"char_lin\",\"role\":\"subject\"} or \"last\" (preferred, for media this gateway produced) or {\"url\":\"https://...\"} / {\"b64Json\":\"data:image/jpeg;base64,...\"} (external content only); omit to use attached images"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_video_id", "A gateway video ID to edit conversationally with a supported provider"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));

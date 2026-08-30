@@ -22,6 +22,7 @@ public final class LLMModelContextRegistry {
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
     private static final String[] MODEL_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/"};
     private static final String[] STRIP_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/", "deepseek/", "gemini/", "vertex_ai/", "openrouter/", "litellm/"};
+    private static final String[] MEDIA_PREFIXES = {"gemini/", "vertex_ai/", "azure/", "openai/"};
 
     private static volatile LLMModelContextRegistry instance;
 
@@ -82,10 +83,17 @@ public final class LLMModelContextRegistry {
                 var supportsVision = getBooleanOrNull(modelNode, "supports_vision");
                 var supportsPdfInput = getBooleanOrNull(modelNode, "supports_pdf_input");
                 var supportsVideoInput = getBooleanOrNull(modelNode, "supports_video_input");
+                var mediaMode = "video_generation".equals(mode) || "image_generation".equals(mode);
+                var outputCostPerImage = getDoubleOrNull(modelNode, "output_cost_per_image");
+                // bedrock chat models carry a compute output_cost_per_second that is not media pricing — only read for media modes
+                var outputCostPerSecond = mediaMode ? getDoubleOrNull(modelNode, "output_cost_per_second") : null;
+                var inputCostPerImageToken = getDoubleOrNull(modelNode, "input_cost_per_image_token");
+                var outputCostPerImageToken = getDoubleOrNull(modelNode, "output_cost_per_image_token");
 
                 modelInfoMap.put(modelName, new ModelInfo(maxInputTokens, maxOutputTokens, provider, mode,
                     inputCostPerToken, outputCostPerToken, cacheReadInputTokenCost, peakPriceMultiplier,
-                    supportsVision, supportsPdfInput, supportsVideoInput));
+                    supportsVision, supportsPdfInput, supportsVideoInput,
+                    outputCostPerImage, outputCostPerSecond, inputCostPerImageToken, outputCostPerImageToken));
             }
 
             LOGGER.debug("Loaded {} model entries from context registry", modelInfoMap.size());
@@ -108,6 +116,11 @@ public final class LLMModelContextRegistry {
             return fieldNode.asDouble();
         }
         return defaultValue;
+    }
+
+    private Double getDoubleOrNull(JsonNode node, String field) {
+        var fieldNode = node.get(field);
+        return fieldNode != null && fieldNode.isNumber() ? fieldNode.asDouble() : null;
     }
 
     private Boolean getBooleanOrNull(JsonNode node, String field) {
@@ -213,6 +226,79 @@ public final class LLMModelContextRegistry {
         return modelInfoMap.size();
     }
 
+    /**
+     * Image generation estimate. Token detail path first (gpt-image style):
+     *   textInput x input_cost_per_token + imageInput x input_cost_per_image_token + output x output_cost_per_image_token.
+     * Falls back to per-image pricing when token details or token prices are unavailable:
+     *   imageCount x output_cost_per_image. Null when neither path can price the request.
+     */
+    public MediaCostEstimate estimateImageCost(String modelName, Integer inputTextTokens, Integer inputImageTokens,
+                                               Integer outputTokens, Integer imageCount) {
+        var entry = findMediaEntry(modelName);
+        if (entry == null) return null;
+        var info = entry.info();
+        if (info.inputCostPerImageToken() != null && info.outputCostPerImageToken() != null
+                && (inputTextTokens != null || inputImageTokens != null || outputTokens != null)) {
+            var textIn = safeInt(inputTextTokens);
+            var imageIn = safeInt(inputImageTokens);
+            var output = safeInt(outputTokens);
+            var cost = textIn * info.inputCostPerToken()
+                    + imageIn * info.inputCostPerImageToken()
+                    + output * info.outputCostPerImageToken();
+            return new MediaCostEstimate(cost, entry.key(), outputTokens == null ? null : (double) outputTokens, "token");
+        }
+        if (imageCount != null && imageCount > 0 && info.outputCostPerImage() != null) {
+            return new MediaCostEstimate(info.outputCostPerImage() * imageCount, entry.key(), (double) imageCount, "image");
+        }
+        return null;
+    }
+
+    public Double estimateImageCostUsd(String modelName, Integer inputTextTokens, Integer inputImageTokens,
+                                       Integer outputTokens, Integer imageCount) {
+        var estimate = estimateImageCost(modelName, inputTextTokens, inputImageTokens, outputTokens, imageCount);
+        return estimate == null ? null : estimate.costUsd();
+    }
+
+    /** Video generation estimate: seconds x output_cost_per_second; null when the model or price is unavailable. */
+    public MediaCostEstimate estimateVideoCost(String modelName, Integer seconds) {
+        if (seconds == null || seconds <= 0) return null;
+        var entry = findMediaEntry(modelName);
+        if (entry == null || entry.info().outputCostPerSecond() == null) return null;
+        return new MediaCostEstimate(entry.info().outputCostPerSecond() * seconds, entry.key(), (double) seconds, "second");
+    }
+
+    public Double estimateVideoCostUsd(String modelName, Integer seconds) {
+        var estimate = estimateVideoCost(modelName, seconds);
+        return estimate == null ? null : estimate.costUsd();
+    }
+
+    // Media catalogs are keyed with provider prefixes (gemini/veo-3.1-generate-001, azure/gpt-image-2) while
+    // upstream model names are usually bare (veo-3.1-generate-001, gpt-image-2).
+    private MediaEntry findMediaEntry(String modelName) {
+        if (modelName == null || modelName.isBlank()) return null;
+        var info = modelInfoMap.get(modelName);
+        if (info != null) return new MediaEntry(modelName, info);
+        for (var prefix : MEDIA_PREFIXES) {
+            if (modelName.startsWith(prefix)) {
+                var bare = modelName.substring(prefix.length());
+                info = modelInfoMap.get(bare);
+                if (info != null) return new MediaEntry(bare, info);
+                break;
+            }
+        }
+        for (var prefix : MEDIA_PREFIXES) {
+            var prefixed = prefix + modelName;
+            info = modelInfoMap.get(prefixed);
+            if (info != null) return new MediaEntry(prefixed, info);
+        }
+        info = getModelInfo(modelName);
+        return info == null ? null : new MediaEntry(modelName, info);
+    }
+
+    private int safeInt(Integer value) {
+        return value == null ? 0 : Math.max(value, 0);
+    }
+
     public record ModelInfo(
             int maxInputTokens,
             int maxOutputTokens,
@@ -224,9 +310,19 @@ public final class LLMModelContextRegistry {
             double peakPriceMultiplier,
             Boolean supportsVision,
             Boolean supportsPdfInput,
-            Boolean supportsVideoInput) {
+            Boolean supportsVideoInput,
+            Double outputCostPerImage,
+            Double outputCostPerSecond,
+            Double inputCostPerImageToken,
+            Double outputCostPerImageToken) {
         public int contextWindow() {
             return maxInputTokens;
         }
+    }
+
+    public record MediaCostEstimate(Double costUsd, String pricingModelId, Double units, String unitType) {
+    }
+
+    private record MediaEntry(String key, ModelInfo info) {
     }
 }

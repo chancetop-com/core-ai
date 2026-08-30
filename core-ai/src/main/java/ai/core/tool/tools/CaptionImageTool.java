@@ -108,12 +108,40 @@ public class CaptionImageTool extends ToolCall {
     }
 
     private Content.ImageUrl resolveImageUrl(String url, ExecutionContext context) {
-        if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            // server-local URLs (e.g. http://localhost:8080/api/public/artifacts/...) are unreachable
+            // from the upstream vision provider — resolve them internally into a data URI first
+            var internal = resolveInternalUrl(url, context);
+            if (internal != null) return internal;
+            return Content.ImageUrl.of(url, null);
+        }
+        if (url.startsWith("data:")) {
             return Content.ImageUrl.of(url, null);
         }
         // If a sandbox is available, try to download the file from the sandbox first.
         // The file may reside in the sandbox filesystem (e.g., /tmp/screenshot.png) rather than
         // on the server filesystem.
+        return resolveFileImageUrl(url, context);
+    }
+
+    private Content.ImageUrl resolveInternalUrl(String url, ExecutionContext context) {
+        if (context == null) return null;
+        var resolverValue = context.getCustomVariable(InternalUrlResolver.CONTEXT_KEY);
+        if (!(resolverValue instanceof InternalUrlResolver resolver)) return null;
+        try {
+            var result = resolver.resolve(url, "GET");
+            if (result == null || result.statusCode() != 200 || result.body() == null) return null;
+            var mimeType = result.contentType() == null ? "image/png" : result.contentType();
+            var dataUri = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(result.body());
+            LOGGER.info("caption_image resolved internal url [{}] to data uri, mimeType=[{}], size=[{}] bytes", url, mimeType, result.body().length);
+            return Content.ImageUrl.of(dataUri, mimeType);
+        } catch (RuntimeException e) {
+            LOGGER.warn("caption_image internal url resolution failed, passing through: url={}, error={}", url, e.getMessage());
+            return null;
+        }
+    }
+
+    private Content.ImageUrl resolveFileImageUrl(String url, ExecutionContext context) {
         var sandbox = context.getSandbox();
         if (sandbox != null) {
             try {

@@ -1,46 +1,26 @@
 package ai.core.server.gateway;
 
+import ai.core.media.reference.MediaModality;
 import core.framework.web.exception.BadRequestException;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-
 /**
+ * Video-flavoured view of {@link GatewayMediaHandle}, kept as the entry point the video endpoints and
+ * the {@code previous_video_id} argument already use.
+ *
  * @author Stephen
  */
-final class GatewayVideoHandle {
-    private static final String PREFIX = "gateway-video-v1";
-
-    static String encode(String jobId) {
-        if (isBlank(jobId)) throw new BadRequestException("gateway media job ID is required");
-        return PREFIX + "." + encodePart(jobId);
+public final class GatewayVideoHandle {
+    public static String encode(String jobId) {
+        return GatewayMediaHandle.encodeVideo(jobId);
     }
 
-    static String decode(String videoId) {
-        if (isBlank(videoId)) throw new BadRequestException("video ID is required");
-        var parts = videoId.split("\\.", -1);
-        if (parts.length != 2 || !PREFIX.equals(parts[0])) {
-            throw new BadRequestException("video ID was not created by this gateway");
+    public static String decode(String videoId) {
+        if (videoId == null || videoId.isBlank()) throw new BadRequestException("video ID is required");
+        var handle = GatewayMediaHandle.decode(videoId);
+        if (handle.modality() != MediaModality.VIDEO) {
+            throw new BadRequestException("media ID is not a video: " + videoId);
         }
-        try {
-            var jobId = decodePart(parts[1]);
-            if (isBlank(jobId)) throw new BadRequestException("invalid gateway video ID");
-            return jobId;
-        } catch (IllegalArgumentException e) {
-            throw new BadRequestException("invalid gateway video ID", "BAD_REQUEST", e);
-        }
-    }
-
-    private static String encodePart(String value) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String decodePart(String value) {
-        return new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
+        return handle.jobId();
     }
 
     private GatewayVideoHandle() {

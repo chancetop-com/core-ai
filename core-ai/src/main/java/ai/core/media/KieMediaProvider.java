@@ -1,37 +1,29 @@
 package ai.core.media;
 
-import ai.core.internal.http.PatchedHTTPClientBuilder;
+import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
+import ai.core.media.reference.MediaModality;
+import ai.core.media.domain.Usage;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
 import ai.core.utils.JsonUtil;
-import core.framework.http.ContentType;
-import core.framework.http.HTTPClient;
-import core.framework.http.HTTPMethod;
-import core.framework.http.HTTPRequest;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * @author Stephen
  */
 public class KieMediaProvider implements MediaProvider {
-    private static final String DEFAULT_MARKET_URL = "https://api.kie.ai";
     private static final String DEFAULT_UPLOAD_URL = "https://kieai.redpandaai.co";
-    private static final String CREATE_TASK_PATH = "/api/v1/jobs/createTask";
-    private static final String RECORD_INFO_PATH = "/api/v1/jobs/recordInfo";
-    private static final String FILE_BASE64_UPLOAD_PATH = "/api/file-base64-upload";
 
     private static final ModelFamily DEFAULT_FAMILY =
             new ModelFamily("", ReferenceMode.ARRAY, "image_urls", DurationType.STRING);
@@ -58,12 +50,23 @@ public class KieMediaProvider implements MediaProvider {
             new ModelFamily("happyhorse", ReferenceMode.ARRAY, "image_urls", DurationType.INT)
     );
 
-    private final String createTaskUrl;
-    private final String recordInfoUrl;
-    private final String uploadUrl;
-    private final String token;
+    // KIE image models take a fixed aspect_ratio enum instead of a pixel size; the widest ratio first
+    // only matters for readability, the nearest match is picked by log distance
+    private static final List<String> IMAGE_ASPECT_RATIOS = List.of("21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16");
+    // seedream/nano-banana/flux image editing on KIE all take the references as an image_urls array
+    private static final String IMAGE_REFERENCE_FIELD = "image_urls";
+    private static final int MAX_IMAGE_REFERENCES = 10;
+    private static final String DEFAULT_IMAGE_ASPECT_RATIO = "1:1";
+    private static final String DEFAULT_IMAGE_QUALITY = "basic";
+    // consecutive transient poll failures tolerated before giving up on a running task
+    private static final int MAX_IMAGE_POLL_FAILURES = 3;
+
     private final Map<String, Object> defaultInputParams;
-    private final HTTPClient client;
+    private final KieTaskClient client;
+    // image tasks are async on KIE but the MediaProvider contract is synchronous, so generateImage polls;
+    // package-private so tests do not have to wait on the production cadence
+    Duration imagePollInterval = Duration.ofSeconds(2);
+    Duration imagePollTimeout = Duration.ofMinutes(5);
 
     public KieMediaProvider(String baseUrl, String token) {
         this(baseUrl, DEFAULT_UPLOAD_URL, token, null);
@@ -74,16 +77,8 @@ public class KieMediaProvider implements MediaProvider {
     }
 
     public KieMediaProvider(String baseUrl, String uploadBaseUrl, String token, String requestExtraBody) {
-        this.createTaskUrl = rootUrl(baseUrl) + CREATE_TASK_PATH;
-        this.recordInfoUrl = rootUrl(baseUrl) + RECORD_INFO_PATH;
-        this.uploadUrl = rootUrl(uploadBaseUrl) + FILE_BASE64_UPLOAD_PATH;
-        this.token = token;
         this.defaultInputParams = defaultInputParams(requestExtraBody);
-        this.client = new PatchedHTTPClientBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .timeout(Duration.ofMinutes(5))
-                .trustAll()
-                .build();
+        this.client = new KieTaskClient(baseUrl, uploadBaseUrl, token);
     }
 
     /**
@@ -103,7 +98,163 @@ public class KieMediaProvider implements MediaProvider {
 
     @Override
     public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
-        throw new UnsupportedOperationException("KIE image generation is not supported by this media provider");
+        if (request.model() == null || request.model().isBlank()) throw new IllegalArgumentException("image model is required");
+        if (request.prompt() == null || request.prompt().isBlank()) throw new IllegalArgumentException("image prompt is required");
+        if (request.mask() != null) throw new IllegalArgumentException("KIE image generation does not support masks");
+        if (request.previousInteractionId() != null && !request.previousInteractionId().isBlank())
+            throw new IllegalArgumentException("KIE image generation does not support previous_interaction_id");
+        if (request.n() != null && request.n() > 1)
+            throw new IllegalArgumentException("KIE image models generate one image per task, got n=" + request.n());
+
+        var body = new LinkedHashMap<String, Object>();
+        body.put("model", request.model());
+        var input = imageInput(request);
+        body.put("input", input);
+        mergeProviderExtra(body, input, request.providerExtra());
+
+        var task = client.createTask(body, request.model(), MediaModelParameterHints.imageHint(request.model()), "image generation");
+        var taskId = KieTaskClient.stringValue(task, "taskId");
+        if (taskId == null || taskId.isBlank()) throw new IllegalStateException("KIE image task response is missing taskId");
+        var images = awaitImages(taskId, request.model());
+        return new ImageGenerationResponse(images, new Usage(null, images.size(), null));
+    }
+
+    private Map<String, Object> imageInput(ImageGenerationRequest request) {
+        var input = new LinkedHashMap<>(defaultInputParams);
+        input.put("prompt", request.prompt());
+        if (request.inputImages() != null && !request.inputImages().isEmpty()) {
+            if (request.model().contains("text-to-image"))
+                throw new IllegalArgumentException(request.model() + " does not accept input images, use the image-to-image model instead");
+            var urls = referenceUrls(request.inputImages());
+            if (urls.size() > MAX_IMAGE_REFERENCES)
+                throw new IllegalArgumentException(request.model() + " accepts at most " + MAX_IMAGE_REFERENCES + " input images, got " + urls.size());
+            input.put(IMAGE_REFERENCE_FIELD, urls);
+        }
+        var aspectRatio = imageAspectRatio(request.size());
+        if (aspectRatio != null) input.put("aspect_ratio", aspectRatio);
+        var quality = imageQuality(request.quality());
+        if (quality != null) input.put("quality", quality);
+        if (request.outputFormat() != null && !request.outputFormat().isBlank())
+            input.put("output_format", request.outputFormat().trim().toLowerCase(Locale.ROOT));
+        // KIE marks both as required; fall back only when neither the request nor the provider defaults set them
+        input.putIfAbsent("aspect_ratio", DEFAULT_IMAGE_ASPECT_RATIO);
+        input.putIfAbsent("quality", DEFAULT_IMAGE_QUALITY);
+        return input;
+    }
+
+    /**
+     * KIE image models accept an aspect_ratio enum, not a pixel size. Callers speak the OpenAI
+     * "1024x1536" dialect, so map to the nearest supported ratio; an aspect ratio passed through
+     * verbatim is accepted as-is.
+     */
+    private String imageAspectRatio(String size) {
+        var ratio = ratio(size);
+        if (ratio == null) return null;
+        String nearest = null;
+        var nearestDistance = Double.MAX_VALUE;
+        for (var candidate : IMAGE_ASPECT_RATIOS) {
+            var candidateRatio = ratio(candidate);
+            var distance = Math.abs(Math.log(ratio) - Math.log(candidateRatio));
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearest = candidate;
+            }
+        }
+        return nearest;
+    }
+
+    // accepts both the OpenAI "1024x1536" pixel size and a bare "3:2" aspect ratio
+    private Double ratio(String value) {
+        if (value == null || value.isBlank()) return null;
+        var dimensions = value.trim().toLowerCase(Locale.ROOT).split(value.indexOf(':') >= 0 ? ":" : "x");
+        if (dimensions.length != 2) return null;
+        try {
+            var width = Double.parseDouble(dimensions[0].trim());
+            var height = Double.parseDouble(dimensions[1].trim());
+            return width <= 0 || height <= 0 ? null : width / height;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * KIE grades images as basic/high (Seedream 5.0 Pro) or basic/high/ultra (Seedream 5.0 Lite).
+     * The OpenAI-style low/medium/high/auto values are folded onto that scale; "ultra" is only
+     * reachable by asking for it explicitly so a plain "high" never silently upgrades the tier.
+     */
+    private String imageQuality(String quality) {
+        if (quality == null || quality.isBlank()) return null;
+        return switch (quality.trim().toLowerCase(Locale.ROOT)) {
+            case "basic", "low", "medium" -> "basic";
+            case "high" -> "high";
+            case "ultra" -> "ultra";
+            case "auto" -> null;
+            default -> throw new IllegalArgumentException("unsupported image quality: " + quality + ", expected basic/high/ultra");
+        };
+    }
+
+    private List<ImageData> awaitImages(String taskId, String model) {
+        var deadline = System.nanoTime() + imagePollTimeout.toNanos();
+        var failures = 0;
+        while (true) {
+            // always wait first: the task was created milliseconds ago and is never ready yet, and KIE
+            // drops the pooled connection after createTask, so an immediate poll reuses a stale one
+            sleep(imagePollInterval);
+            Map<String, Object> task = null;
+            try {
+                task = client.recordInfo(taskId, "image status");
+                failures = 0;
+            } catch (RuntimeException e) {
+                failures++;
+                // the HTTP client runs with retryOnConnectionFailure(false) by design, so transient
+                // faults are ours to absorb — dropping a task that is already running (and billed)
+                // over one failed poll is far worse than polling again
+                if (failures > MAX_IMAGE_POLL_FAILURES) throw e;
+            }
+            if (task != null) {
+                var images = terminalImages(task, taskId, model);
+                if (images != null) return images;
+            }
+            if (System.nanoTime() >= deadline) {
+                throw new IllegalStateException("KIE image task did not complete within " + imagePollTimeout + ", taskId=" + taskId);
+            }
+        }
+    }
+
+    /** Images once the task succeeded, null while it is still running; throws when it ended in failure. */
+    private List<ImageData> terminalImages(Map<String, Object> task, String taskId, String model) {
+        var state = normalizeStatus(KieTaskClient.stringValue(task, "state"));
+        if ("failed".equals(state)) {
+            var failMsg = KieTaskClient.stringValue(task, "failMsg");
+            throw new IllegalStateException("KIE image task failed, taskId=" + taskId
+                    + (failMsg == null || failMsg.isBlank() ? "" : ": " + failMsg)
+                    + KieTaskClient.parameterHint(model, MediaModelParameterHints.imageHint(model), failMsg));
+        }
+        if (!"completed".equals(state)) return null;
+        var urls = client.resultUrls(task);
+        if (urls.isEmpty()) throw new IllegalStateException("completed KIE image task did not include result URLs");
+        return downloadImages(urls);
+    }
+
+    // KIE result URLs expire; download eagerly so callers that persist artifacts or inline the image
+    // (media jobs, GenerateImageTool) keep working after the link goes away
+    private List<ImageData> downloadImages(List<String> urls) {
+        var images = new ArrayList<ImageData>();
+        for (var url : urls) {
+            var bytes = client.download(url, "image download");
+            if (bytes.length == 0) throw new IllegalStateException("downloaded KIE image is empty, url=" + url);
+            images.add(new ImageData(Base64.getEncoder().encodeToString(bytes), url, null));
+        }
+        return images;
+    }
+
+    private void sleep(Duration duration) {
+        try {
+            Thread.sleep(duration.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while waiting for KIE image task", e);
+        }
     }
 
     @Override
@@ -119,17 +270,18 @@ public class KieMediaProvider implements MediaProvider {
         body.put("input", input);
         mergeProviderExtra(body, input, request.providerExtra());
 
-        var response = execute(HTTPMethod.POST, createTaskUrl, body, "video generation");
-        var taskId = stringValue(taskData(response, request.model()), "taskId");
+        var task = client.createTask(body, request.model(), MediaModelParameterHints.videoHint(request.model()), "video generation");
+        var taskId = KieTaskClient.stringValue(task, "taskId");
         if (taskId == null || taskId.isBlank()) throw new IllegalStateException("KIE video task response is missing taskId");
         return new VideoGenerationResponse(taskId, "pending", null, null);
     }
 
     @Override
     public VideoStatusResponse getVideoStatus(String videoId) {
-        var task = taskData(execute(HTTPMethod.GET, recordInfoUrl(videoId), null, "video status"));
-        var state = stringValue(task, "state");
-        return new VideoStatusResponse(videoId, normalizeStatus(state), intValue(task, "progress"), stringValue(task, "failMsg"), null);
+        var task = client.recordInfo(videoId, "video status");
+        var state = KieTaskClient.stringValue(task, "state");
+        return new VideoStatusResponse(videoId, normalizeStatus(state), KieTaskClient.intValue(task, "progress"),
+                KieTaskClient.stringValue(task, "failMsg"), null, KieTaskClient.doubleValue(task, "creditsConsumed"), null);
     }
 
     @Override
@@ -140,11 +292,11 @@ public class KieMediaProvider implements MediaProvider {
         }
         var resultUrl = firstResultUrl(videoId);
         if (resultUrl == null) throw new IllegalStateException("completed KIE task did not include result URLs");
-        var response = execute(HTTPMethod.GET, resultUrl, null, "video download");
-        if (response.body.length == 0) {
+        var bytes = client.download(resultUrl, "video download");
+        if (bytes.length == 0) {
             throw new IllegalStateException("downloaded KIE video is empty");
         }
-        return response.body;
+        return bytes;
     }
 
     private Map<String, Object> input(VideoGenerationRequest request) {
@@ -152,23 +304,7 @@ public class KieMediaProvider implements MediaProvider {
         input.put("prompt", request.prompt());
         var family = modelFamily(request.model());
         if (request.inputReferences() != null && !request.inputReferences().isEmpty()) {
-            var urls = referenceUrls(request.inputReferences());
-            switch (family.referenceMode()) {
-                case ARRAY -> input.put(family.referenceField(), urls);
-                case SINGLE -> {
-                    if (urls.size() > 1)
-                        throw new IllegalArgumentException(request.model() + " accepts exactly one reference image, got " + urls.size());
-                    input.put(family.referenceField(), urls.getFirst());
-                }
-                case FIRST_LAST -> {
-                    if (urls.size() > 2)
-                        throw new IllegalArgumentException(request.model() + " accepts at most two reference images (first and last frame), got " + urls.size());
-                    input.put("first_frame_url", urls.getFirst());
-                    if (urls.size() == 2) input.put("last_frame_url", urls.get(1));
-                }
-                case NONE -> throw new IllegalArgumentException(request.model() + " does not accept reference images");
-                default -> throw new IllegalArgumentException("unexpected reference mode: " + family.referenceMode());
-            }
+            applyReferences(input, request, family);
         }
         var aspectRatio = aspectRatio(request.size());
         if (aspectRatio != null) input.put("aspect_ratio", aspectRatio);
@@ -176,8 +312,43 @@ public class KieMediaProvider implements MediaProvider {
         return input;
     }
 
+    /**
+     * The reference arrays are the only token/asset binding the KIE API documents, so the array order
+     * here must stay exactly the order the prompt tokens were compiled against — never reorder. Video
+     * and audio references ride on their own arrays; putting them into the image array would silently
+     * hand the model the wrong kind of asset.
+     */
+    private void applyReferences(Map<String, Object> input, VideoGenerationRequest request, ModelFamily family) {
+        var imageUrls = referenceUrls(request.inputReferences(), MediaModality.IMAGE);
+        var videoUrls = referenceUrls(request.inputReferences(), MediaModality.VIDEO);
+        var audioUrls = referenceUrls(request.inputReferences(), MediaModality.AUDIO);
+        if (!videoUrls.isEmpty()) input.put("reference_video_urls", videoUrls);
+        if (!audioUrls.isEmpty()) input.put("reference_audio_urls", audioUrls);
+        if (imageUrls.isEmpty()) return;
+        switch (family.referenceMode()) {
+            case ARRAY -> input.put(family.referenceField(), imageUrls);
+            case SINGLE -> {
+                if (imageUrls.size() > 1)
+                    throw new IllegalArgumentException(request.model() + " accepts exactly one reference image, got " + imageUrls.size());
+                input.put(family.referenceField(), imageUrls.getFirst());
+            }
+            case FIRST_LAST -> {
+                if (imageUrls.size() > 2)
+                    throw new IllegalArgumentException(request.model() + " accepts at most two reference images (first and last frame), got " + imageUrls.size());
+                input.put("first_frame_url", imageUrls.getFirst());
+                if (imageUrls.size() == 2) input.put("last_frame_url", imageUrls.get(1));
+            }
+            case NONE -> throw new IllegalArgumentException(request.model() + " does not accept reference images");
+            default -> throw new IllegalArgumentException("unexpected reference mode: " + family.referenceMode());
+        }
+    }
+
     private Object duration(VideoGenerationRequest request, ModelFamily family) {
         return family.durationType() == DurationType.INT ? request.seconds() : request.seconds().toString();
+    }
+
+    private List<String> referenceUrls(List<MediaReference> references, MediaModality modality) {
+        return referenceUrls(references.stream().filter(reference -> reference.modalityOrImage() == modality).toList());
     }
 
     private List<String> referenceUrls(List<MediaReference> references) {
@@ -186,7 +357,7 @@ public class KieMediaProvider implements MediaProvider {
             if (reference.url() != null && !reference.url().isBlank()) {
                 urls.add(reference.url());
             } else if (reference.b64Json() != null && !reference.b64Json().isBlank()) {
-                urls.add(uploadReferenceImage(reference.b64Json()));
+                urls.add(client.uploadReferenceImage(reference.b64Json()));
             } else {
                 throw new IllegalArgumentException("video reference image requires base64 data or a URL");
             }
@@ -194,34 +365,9 @@ public class KieMediaProvider implements MediaProvider {
         return urls;
     }
 
-    private String uploadReferenceImage(String base64Data) {
-        var body = new LinkedHashMap<String, Object>();
-        body.put("base64Data", base64Data);
-        body.put("uploadPath", "images");
-        body.put("fileName", "reference-" + UUID.randomUUID());
-        var response = execute(HTTPMethod.POST, uploadUrl, body, "reference image upload");
-        var data = taskData(response);
-        var url = stringValue(data, "downloadUrl");
-        if (url == null || url.isBlank()) throw new IllegalStateException("KIE reference image upload did not return a download URL");
-        return url;
-    }
-
-    @SuppressWarnings("unchecked")
     private String firstResultUrl(String videoId) {
-        var task = taskData(execute(HTTPMethod.GET, recordInfoUrl(videoId), null, "video status"));
-        var resultJson = stringValue(task, "resultJson");
-        if (resultJson == null || resultJson.isBlank()) return null;
-        try {
-            var result = (Map<String, Object>) JsonUtil.fromJson(Map.class, resultJson);
-            var urls = result.get("resultUrls");
-            if (urls instanceof List<?> list && !list.isEmpty()) {
-                var url = list.get(0);
-                return url instanceof String value && !value.isBlank() ? value : null;
-            }
-            return null;
-        } catch (RuntimeException e) {
-            throw new IllegalStateException("failed to parse KIE task result JSON", e);
-        }
+        var urls = client.resultUrls(client.recordInfo(videoId, "video status"));
+        return urls.isEmpty() ? null : urls.getFirst();
     }
 
     private String aspectRatio(String size) {
@@ -245,52 +391,6 @@ public class KieMediaProvider implements MediaProvider {
             case "fail", "failed", "error", "cancelled", "canceled" -> "failed";
             default -> "processing";
         };
-    }
-
-    private String recordInfoUrl(String videoId) {
-        if (videoId == null || videoId.isBlank()) throw new IllegalArgumentException("video ID is required");
-        return recordInfoUrl + "?taskId=" + URLEncoder.encode(videoId, StandardCharsets.UTF_8);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> taskData(core.framework.http.HTTPResponse response) {
-        var map = (Map<String, Object>) JsonUtil.fromJson(Map.class, response.text());
-        if (!successCode(map.get("code"))) {
-            throw new IllegalStateException("KIE API error: code=" + map.get("code") + ", msg=" + map.get("msg"));
-        }
-        var data = map.get("data");
-        if (!(data instanceof Map<?, ?> task)) throw new IllegalStateException("KIE task response is missing data, msg=" + map.get("msg"));
-        return (Map<String, Object>) task;
-    }
-
-    // KIE wraps parameter validation failures as business errors (HTTP 200 + code 422, sometimes
-    // code 500 with a parameter message); append the model hint so the agent can retry with valid values
-    private Map<String, Object> taskData(core.framework.http.HTTPResponse response, String model) {
-        try {
-            return taskData(response);
-        } catch (IllegalStateException e) {
-            if (isParameterError(e.getMessage())) {
-                var hint = MediaModelParameterHints.videoHint(model);
-                if (hint != null) {
-                    throw new IllegalStateException(e.getMessage() + " Allowed parameters for " + model + ": " + hint, e);
-                }
-            }
-            throw e;
-        }
-    }
-
-    private boolean isParameterError(String message) {
-        return message.contains("code=422")
-                || message.contains("not within the range of allowed options")
-                || message.contains("is not supported")
-                || message.contains("is required")
-                || message.contains("must be");
-    }
-
-    private boolean successCode(Object code) {
-        if (code instanceof Number number) return number.intValue() == 200;
-        if (code instanceof String string) return "200".equals(string);
-        return false;
     }
 
     @SuppressWarnings("unchecked")
@@ -324,36 +424,6 @@ public class KieMediaProvider implements MediaProvider {
         } catch (RuntimeException e) {
             throw new RuntimeException("invalid request extra body JSON: " + e.getMessage(), e);
         }
-    }
-
-    private core.framework.http.HTTPResponse execute(HTTPMethod method, String url, Map<String, Object> body, String operation) {
-        var request = new HTTPRequest(method, url);
-        if (token != null && !token.isBlank()) {
-            request.headers.put("Authorization", "Bearer " + token);
-        }
-        if (body != null) {
-            request.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
-            request.body(JsonUtil.toJson(body).getBytes(StandardCharsets.UTF_8), ContentType.APPLICATION_JSON);
-        }
-        var response = client.execute(request);
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-            throw new RuntimeException(operation + " failed: HTTP " + response.statusCode + ": " + response.text());
-        }
-        return response;
-    }
-
-    private String rootUrl(String baseUrl) {
-        return baseUrl == null || baseUrl.isBlank() ? DEFAULT_MARKET_URL : baseUrl.replaceAll("/+$", "");
-    }
-
-    private String stringValue(Map<String, Object> map, String name) {
-        var value = map.get(name);
-        return value instanceof String string ? string : null;
-    }
-
-    private Integer intValue(Map<String, Object> map, String name) {
-        var value = map.get(name);
-        return value instanceof Number number ? number.intValue() : null;
     }
 
     private enum DurationType { INT, STRING }

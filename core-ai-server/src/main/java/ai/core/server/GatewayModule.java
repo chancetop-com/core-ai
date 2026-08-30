@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.api.server.gateway.GatewayModelWebService;
 import ai.core.api.server.gateway.GatewayProviderWebService;
+import ai.core.api.server.media.MediaJobWebService;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
@@ -21,7 +22,11 @@ import ai.core.server.gateway.GatewayProxyService;
 import ai.core.server.gateway.GatewayResponsesChannelListener;
 import ai.core.server.gateway.GatewayResponsesSseEvent;
 import ai.core.server.gateway.GatewayRoutingEngine;
+import ai.core.server.gateway.MediaCostSettler;
+import ai.core.server.gateway.MediaJobContentController;
 import ai.core.server.gateway.MediaJobService;
+import ai.core.server.gateway.MediaJobWebServiceImpl;
+import ai.core.server.trace.service.MediaPricingService;
 import ai.core.server.domain.GeminiFileRepository;
 import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.domain.GeminiFileService;
@@ -62,6 +67,10 @@ public class GatewayModule extends Module {
         bind(GatewayModelDiscoveryService.class);
         bind(GatewayModelService.class);
         bind(GatewayProviderService.class);
+        // media pricing must be bound before MediaJobService: core-ng bind() resolves @Inject eagerly and
+        // GatewayModule loads before TraceModule (which owns ModelPricingService)
+        bind(MediaPricingService.class);
+        var costSettler = bind(MediaCostSettler.class);
         var mediaJobService = bind(MediaJobService.class);
         bind(GatewayProxyService.class);
         registerGatewayProviderRoutes();
@@ -84,11 +93,14 @@ public class GatewayModule extends Module {
         bind(gatewayLLMProvider);
         llmProviders.addProvider(LLMProviderType.GATEWAY, gatewayLLMProvider);
         llmProviders.setDefaultProvider(LLMProviderType.GATEWAY);
-        bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector, mediaJobService);
+        bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector, mediaJobService, costSettler);
+        api().service(MediaJobWebService.class, bind(MediaJobWebServiceImpl.class));
+        http().route(HTTPMethod.GET, "/api/media-jobs/:id/content", bind(MediaJobContentController.class)::content);
     }
 
-    private void bindGatewayMediaProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector, MediaJobService mediaJobService) {
-        var mediaProvider = new GatewayMediaProvider(routingEngine, secretProtector, mediaJobService);
+    private void bindGatewayMediaProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector,
+                                          MediaJobService mediaJobService, MediaCostSettler costSettler) {
+        var mediaProvider = new GatewayMediaProvider(routingEngine, secretProtector, mediaJobService, costSettler);
         bind(MediaProvider.class, mediaProvider);
     }
 

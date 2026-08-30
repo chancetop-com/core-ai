@@ -8,6 +8,7 @@ import java.time.Instant;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -120,5 +121,71 @@ class LLMModelContextRegistryTest {
         assertTrue(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T09:59:59Z")));   // Beijing 17:59
         assertFalse(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T10:00:00Z")));  // Beijing 18:00
         assertFalse(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T12:00:00Z")));  // Beijing 20:00
+    }
+
+    @Test
+    void testEstimateImageCostUsdGptImage2TokenDetails() {
+        // azure/gpt-image-2: input_cost_per_token=5e-6, input_cost_per_image_token=8e-6, output_cost_per_image_token=3e-5
+        var cost = registry.estimateImageCostUsd("gpt-image-2", 100, 50, 200, 1);
+
+        assertNotNull(cost);
+        assertEquals(100 * 5e-6 + 50 * 8e-6 + 200 * 3e-5, cost, 1e-12);
+    }
+
+    @Test
+    void testEstimateImageCostGptImage2RecordsTokenUnits() {
+        var estimate = registry.estimateImageCost("azure/gpt-image-2", 100, 50, 200, 1);
+
+        assertNotNull(estimate);
+        assertEquals("azure/gpt-image-2", estimate.pricingModelId());
+        assertEquals(200.0, estimate.units());
+        assertEquals("token", estimate.unitType());
+    }
+
+    @Test
+    void testEstimateImageCostFallsBackToPerImage() {
+        // aiml/dall-e-3 has no image-token prices but output_cost_per_image=0.052
+        var cost = registry.estimateImageCostUsd("aiml/dall-e-3", null, null, null, 2);
+
+        assertNotNull(cost);
+        assertEquals(0.104, cost, 1e-12);
+    }
+
+    @Test
+    void testEstimateImageCostUnknownModelReturnsNull() {
+        assertNull(registry.estimateImageCostUsd("no-such-image-model", 100, 50, 200, 1));
+        assertNull(registry.estimateImageCostUsd("gpt-image-2", null, null, null, 0));
+    }
+
+    @Test
+    void testEstimateVideoCostVeoPreviewKey() {
+        var cost = registry.estimateVideoCostUsd("gemini/veo-3.1-generate-preview", 8);
+
+        assertNotNull(cost);
+        assertEquals(3.2, cost, 1e-12);
+    }
+
+    @Test
+    void testEstimateVideoCostVertexGaIdMapsToCatalogKey() {
+        // Vertex GA id veo-3.1-generate-001 must resolve to the catalog key gemini/veo-3.1-generate-001 (0.4/s)
+        var estimate = registry.estimateVideoCost("veo-3.1-generate-001", 8);
+
+        assertNotNull(estimate);
+        assertEquals("gemini/veo-3.1-generate-001", estimate.pricingModelId());
+        assertEquals(3.2, estimate.costUsd(), 1e-12);
+        assertEquals(8.0, estimate.units());
+        assertEquals("second", estimate.unitType());
+    }
+
+    @Test
+    void testEstimateVideoCostIgnoresChatModelPerSecondPrice() {
+        // bedrock commitment chat models carry a compute output_cost_per_second that must not be used as media pricing
+        assertNull(registry.estimateVideoCostUsd("bedrock/*/1-month-commitment/cohere.command-light-text-v14", 8));
+    }
+
+    @Test
+    void testEstimateVideoCostUnknownModelOrMissingSecondsReturnsNull() {
+        assertNull(registry.estimateVideoCostUsd("no-such-video-model", 8));
+        assertNull(registry.estimateVideoCostUsd("gemini/veo-3.1-generate-preview", null));
     }
 }

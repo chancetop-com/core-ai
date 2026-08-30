@@ -125,6 +125,42 @@ class CaptionImageToolTest {
         assertEquals("CAPTION_IMAGE_NO_VISION_MODEL", exception.errorCode());
     }
 
+    @Test
+    void serverLocalUrlsResolveToDataUriBeforeUpstream() {
+        var context = ExecutionContext.builder()
+                .sessionId("test-session")
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, (InternalUrlResolver) (url, method) ->
+                    url.contains("/api/public/artifacts/")
+                        ? new InternalUrlResolver.InternalUrlResult(200, "image/png", new byte[]{1, 2, 3})
+                        : null)
+                .build();
+        context.setLlmProvider(llmProvider);
+        context.setMultiModalModel("vision-model");
+
+        tool.execute("{\"query\": \"describe\", \"url\": \"http://localhost:8080/api/public/artifacts/tok/content\"}", context);
+
+        var message = llmProvider.lastRequest.messages.getLast();
+        var image = message.content.stream().filter(content -> content.imageUrl != null).findFirst().orElseThrow();
+        assertTrue(image.imageUrl.url.startsWith("data:image/png;base64,"),
+            "server-local urls must be inlined — the upstream vision provider cannot reach localhost");
+    }
+
+    @Test
+    void externalUrlsPassThroughUnchanged() {
+        var context = ExecutionContext.builder()
+                .sessionId("test-session")
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, (InternalUrlResolver) (url, method) -> null)
+                .build();
+        context.setLlmProvider(llmProvider);
+        context.setMultiModalModel("vision-model");
+
+        tool.execute("{\"query\": \"describe\", \"url\": \"https://example.com/image.png\"}", context);
+
+        var message = llmProvider.lastRequest.messages.getLast();
+        var image = message.content.stream().filter(content -> content.imageUrl != null).findFirst().orElseThrow();
+        assertEquals("https://example.com/image.png", image.imageUrl.url);
+    }
+
     private ExecutionContext contextWithProvider() {
         var context = ExecutionContext.builder().sessionId("test-session").build();
         context.setLlmProvider(llmProvider);

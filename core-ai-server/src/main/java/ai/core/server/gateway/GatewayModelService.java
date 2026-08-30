@@ -276,12 +276,16 @@ public class GatewayModelService {
         if (specified(request, "supportsReasoningEffort", create)) entity.supportsReasoningEffort = request.supportsReasoningEffort;
         if (specified(request, "maxVideoBytes", create)) entity.maxVideoBytes = request.maxVideoBytes;
         if (specified(request, "maxVideoSeconds", create)) entity.maxVideoSeconds = request.maxVideoSeconds;
+        GatewayModelReferenceCapabilities.apply(entity, request, (field, isCreate) -> specified(request, field, isCreate), create);
         if (specified(request, "inputPricePer1MTokens", create)) entity.inputPricePer1MTokens = request.inputPricePer1MTokens;
         if (specified(request, "outputPricePer1MTokens", create)) entity.outputPricePer1MTokens = request.outputPricePer1MTokens;
         if (specified(request, "cacheReadInputPricePer1MTokens", create)) entity.cacheReadInputPricePer1MTokens = request.cacheReadInputPricePer1MTokens;
         if (specified(request, "peakPriceMultiplier", create)) entity.peakPriceMultiplier = request.peakPriceMultiplier;
+        if (specified(request, "imagePricePerImage", create)) entity.imagePricePerImage = request.imagePricePerImage;
+        if (specified(request, "videoPricePerSecond", create)) entity.videoPricePerSecond = request.videoPricePerSecond;
         if (specified(request, "inputPricePer1MTokens", create) || specified(request, "outputPricePer1MTokens", create)
-                || specified(request, "cacheReadInputPricePer1MTokens", create) || specified(request, "peakPriceMultiplier", create)) {
+                || specified(request, "cacheReadInputPricePer1MTokens", create) || specified(request, "peakPriceMultiplier", create)
+                || specified(request, "imagePricePerImage", create) || specified(request, "videoPricePerSecond", create)) {
             entity.pricingSource = "manual";
             entity.pricingUpdatedAt = ZonedDateTime.now();
         }
@@ -322,6 +326,7 @@ public class GatewayModelService {
         if (request.contextWindow != null && request.contextWindow <= 0) throw new BadRequestException("contextWindow must be positive");
         if (request.maxVideoBytes != null && request.maxVideoBytes <= 0) throw new BadRequestException("maxVideoBytes must be positive");
         if (request.maxVideoSeconds != null && request.maxVideoSeconds <= 0) throw new BadRequestException("maxVideoSeconds must be positive");
+        GatewayModelReferenceCapabilities.validate(request);
         if (request.inputPricePer1MTokens != null && request.inputPricePer1MTokens < 0) {
             throw new BadRequestException("inputPricePer1MTokens must not be negative");
         }
@@ -333,6 +338,12 @@ public class GatewayModelService {
         }
         if (request.peakPriceMultiplier != null && request.peakPriceMultiplier <= 0) {
             throw new BadRequestException("peakPriceMultiplier must be positive");
+        }
+        if (request.imagePricePerImage != null && request.imagePricePerImage < 0) {
+            throw new BadRequestException("imagePricePerImage must not be negative");
+        }
+        if (request.videoPricePerSecond != null && request.videoPricePerSecond < 0) {
+            throw new BadRequestException("videoPricePerSecond must not be negative");
         }
     }
 
@@ -395,10 +406,13 @@ public class GatewayModelService {
         view.supportsReasoningEffort = entity.supportsReasoningEffort;
         view.maxVideoBytes = entity.maxVideoBytes;
         view.maxVideoSeconds = entity.maxVideoSeconds;
+        GatewayModelReferenceCapabilities.view(view, entity);
         view.inputPricePer1MTokens = entity.inputPricePer1MTokens;
         view.outputPricePer1MTokens = entity.outputPricePer1MTokens;
         view.cacheReadInputPricePer1MTokens = entity.cacheReadInputPricePer1MTokens;
         view.peakPriceMultiplier = entity.peakPriceMultiplier;
+        view.imagePricePerImage = entity.imagePricePerImage;
+        view.videoPricePerSecond = entity.videoPricePerSecond;
         view.pricingSource = entity.pricingSource;
         view.pricingUpdatedAt = entity.pricingUpdatedAt;
         view.createdBy = entity.createdBy;

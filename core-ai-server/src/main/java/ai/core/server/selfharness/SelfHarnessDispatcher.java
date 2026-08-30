@@ -1,5 +1,6 @@
 package ai.core.server.selfharness;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.UpdateAgentRequest;
@@ -8,8 +9,11 @@ import ai.core.api.server.dataset.ListDatasetsRequest;
 import ai.core.api.server.dataset.SchemaFieldView;
 import ai.core.api.server.skill.ListSkillsRequest;
 import ai.core.api.server.skill.UpdateSkillRequest;
+import ai.core.api.server.gateway.GatewayAvailableModelView;
 import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.gateway.GatewayRoutingEngine;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.DatasetType;
@@ -28,6 +32,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -54,35 +59,42 @@ public class SelfHarnessDispatcher {
     ChatMessageService chatMessageService;
     @Inject
     TraceService traceService;
+    @Inject
+    GatewayRoutingEngine gatewayRoutingEngine;
+    @Inject
+    SystemSettingsService systemSettingsService;
 
     @SuppressWarnings("unchecked")
     @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
-    Object dispatch(String name, String args) {
+    Object dispatch(String name, String args, ExecutionContext context) {
+        var userId = callerUserId(context);
         return switch (name) {
             case "list_agents", "create_agent", "get_agent", "update_agent", "publish_agent" ->
-                dispatchAgent(name, args);
+                dispatchAgent(name, args, userId);
             case "list_skills", "get_skill", "create_skill", "update_skill", "delete_skill", "download_skill" ->
-                dispatchSkill(name, args);
+                dispatchSkill(name, args, userId);
             case "list_datasets", "get_dataset", "list_dataset_records", "create_dataset" ->
-                dispatchDataset(name, args);
+                dispatchDataset(name, args, userId);
             case "list_tools" ->
                 dispatchTool(args);
+            case "list_models" ->
+                dispatchModel(args);
             case "get_session_history", "list_traces", "get_trace", "get_trace_spans", "get_session_trace_summary" ->
-                dispatchSessionTrace(name, args);
+                dispatchSessionTrace(name, args, userId);
             default -> throw new IllegalArgumentException("Unknown self-harness operation: " + name);
         };
     }
 
     @SuppressWarnings("unchecked")
-    private Object dispatchAgent(String name, String args) {
+    private Object dispatchAgent(String name, String args, String userId) {
         return switch (name) {
             case "list_agents" -> {
                 var req = JSON.fromJSON(ListAgentsRequest.class, args);
-                yield agentService.list(INTERNAL_USER, req);
+                yield agentService.list(userId, req);
             }
             case "create_agent" -> {
                 var req = JSON.fromJSON(CreateAgentRequest.class, args);
-                yield agentService.create(req, INTERNAL_USER);
+                yield agentService.create(req, userId);
             }
             case "get_agent" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
@@ -92,18 +104,18 @@ public class SelfHarnessDispatcher {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
                 var id = (String) params.remove("id");
                 var req = JSON.fromJSON(UpdateAgentRequest.class, JSON.toJSON(params));
-                yield agentService.update(id, req, INTERNAL_USER);
+                yield agentService.update(id, req, userId);
             }
             case "publish_agent" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                yield agentService.publish((String) params.get("id"), INTERNAL_USER);
+                yield agentService.publish((String) params.get("id"), userId);
             }
             default -> throw new IllegalArgumentException("Unknown agent operation: " + name);
         };
     }
 
     @SuppressWarnings("unchecked")
-    private Object dispatchSkill(String name, String args) {
+    private Object dispatchSkill(String name, String args, String userId) {
         return switch (name) {
             case "list_skills" -> {
                 var req = JSON.fromJSON(ListSkillsRequest.class, args);
@@ -119,7 +131,7 @@ public class SelfHarnessDispatcher {
                 if (namespace == null || namespace.isBlank()) throw new IllegalArgumentException("namespace is required");
                 var content = (String) params.get("content");
                 if (content == null || content.isBlank()) throw new IllegalArgumentException("content is required");
-                yield skillService.upload(INTERNAL_USER, namespace, content.getBytes(StandardCharsets.UTF_8), toResourceBytes(params.get("resources")));
+                yield skillService.upload(userId, namespace, content.getBytes(StandardCharsets.UTF_8), toResourceBytes(params.get("resources")));
             }
             case "update_skill" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
@@ -141,7 +153,7 @@ public class SelfHarnessDispatcher {
     }
 
     @SuppressWarnings("unchecked")
-    private Object dispatchDataset(String name, String args) {
+    private Object dispatchDataset(String name, String args, String userId) {
         return switch (name) {
             case "list_datasets" -> {
                 var req = JSON.fromJSON(ListDatasetsRequest.class, args);
@@ -151,7 +163,7 @@ public class SelfHarnessDispatcher {
             }
             case "create_dataset" -> {
                 var req = JSON.fromJSON(CreateDatasetRequest.class, args);
-                yield datasetService.create(req.name, req.description, INTERNAL_USER, toSchemaFields(req.schema), resolveDatasetType(req.type));
+                yield datasetService.create(req.name, req.description, userId, toSchemaFields(req.schema), resolveDatasetType(req.type));
             }
             case "get_dataset" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
@@ -205,13 +217,91 @@ public class SelfHarnessDispatcher {
         return result.isEmpty() ? null : result;
     }
 
+    /**
+     * Agents, skills and datasets created through the builder must belong to the person driving it —
+     * owning them as a phantom "internal" user leaves the caller unable to open their own draft
+     * ({@code AgentDependencyAccessPolicy} grants access to the owner or to a published config only).
+     */
+    private String callerUserId(ExecutionContext context) {
+        var caller = context != null ? context.getCaller() : null;
+        var userId = caller != null ? caller.userId() : null;
+        return userId != null && !userId.isBlank() ? userId : INTERNAL_USER;
+    }
+
     private Object dispatchTool(String args) {
         var req = JSON.fromJSON(ListToolsRequest.class, args);
         return toolRegistryService.listTools(req.category);
     }
 
+    /**
+     * The gateway model catalog is the only source of valid model names: without it the builder has to
+     * guess when a user asks for "gemini omni 1.1", and silently writes an unroutable model onto the agent.
+     */
     @SuppressWarnings("unchecked")
-    private Object dispatchSessionTrace(String name, String args) {
+    private Object dispatchModel(String args) {
+        var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
+        var endpointType = stringParam(params, "endpoint_type");
+        var keyword = stringParam(params, "keyword");
+        var models = gatewayRoutingEngine.availableModels().stream()
+                .filter(model -> matchesEndpoint(model, endpointType) && matchesKeyword(model, keyword))
+                .map(this::modelRow)
+                .toList();
+        var result = new LinkedHashMap<String, Object>();
+        result.put("models", models);
+        result.put("defaults", defaultModels());
+        return result;
+    }
+
+    private Map<String, Object> defaultModels() {
+        var defaults = new LinkedHashMap<String, Object>();
+        defaults.put("chat", gatewayRoutingEngine.defaultChatModelId());
+        defaults.put("caption_image", systemSettingsService.captionImageModel());
+        defaults.put("image_generation", systemSettingsService.imageGenerationModel());
+        defaults.put("video_generation", systemSettingsService.videoGenerationModel());
+        return defaults;
+    }
+
+    private Map<String, Object> modelRow(GatewayAvailableModelView model) {
+        var row = new LinkedHashMap<String, Object>();
+        row.put("model_id", model.modelId);
+        row.put("display_name", model.displayName);
+        row.put("provider", model.providerName);
+        row.put("endpoint_types", model.endpointTypes);
+        row.put("supports_vision", model.supportsVision);
+        row.put("supports_video", model.supportsVideo);
+        row.put("supports_file", model.supportsFile);
+        return row;
+    }
+
+    private boolean matchesEndpoint(GatewayAvailableModelView model, String endpointType) {
+        if (endpointType == null) return true;
+        var types = model.endpointTypes == null ? List.<String>of() : model.endpointTypes;
+        return switch (endpointType.toLowerCase(Locale.ROOT)) {
+            case "chat", "chat.completion", "chat.completions" -> types.contains("chat.completions");
+            case "response", "responses" -> types.contains("responses");
+            case "image" -> types.stream().anyMatch(type -> type.startsWith("image."));
+            case "video", "video.generation", "video.generations" -> types.contains("video.generations");
+            default -> types.contains(endpointType.toLowerCase(Locale.ROOT));
+        };
+    }
+
+    private boolean matchesKeyword(GatewayAvailableModelView model, String keyword) {
+        if (keyword == null) return true;
+        var value = keyword.toLowerCase(Locale.ROOT);
+        return contains(model.modelId, value) || contains(model.displayName, value) || contains(model.providerName, value);
+    }
+
+    private boolean contains(String field, String keyword) {
+        return field != null && field.toLowerCase(Locale.ROOT).contains(keyword);
+    }
+
+    private String stringParam(Map<String, Object> params, String name) {
+        var value = params.get(name);
+        return value instanceof String string && !string.isBlank() ? string.trim() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object dispatchSessionTrace(String name, String args, String userId) {
         return switch (name) {
             case "get_session_history" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
@@ -240,7 +330,7 @@ public class SelfHarnessDispatcher {
             }
             case "get_session_trace_summary" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                yield traceService.sessionSummary((String) params.get("session_id"), INTERNAL_USER);
+                yield traceService.sessionSummary((String) params.get("session_id"), userId);
             }
             default -> throw new IllegalArgumentException("Unknown session/trace operation: " + name);
         };

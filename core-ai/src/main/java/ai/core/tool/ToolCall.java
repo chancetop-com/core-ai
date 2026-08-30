@@ -298,7 +298,9 @@ public abstract class ToolCall {
     public enum ConcurrencyGroupType {
         FILE_SEARCH("FileSearch"),
         WEB_QUERY("WebQuery"),
-        SHELL_COMMAND("BatchBash");
+        SHELL_COMMAND("BatchBash"),
+        // submit-and-wait media generation calls (image generation): no shared session state, safe to fan out
+        MEDIA_GENERATION("MediaGeneration");
         private final String typeName;
 
         ConcurrencyGroupType(String name) {

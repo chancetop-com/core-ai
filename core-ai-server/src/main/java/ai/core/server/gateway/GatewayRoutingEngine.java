@@ -89,7 +89,7 @@ public class GatewayRoutingEngine {
                     .findFirst();
             if (modelRoute.isPresent()) {
                 var route = modelRoute.get();
-                return new GatewayRoute(route.provider, route.model.upstreamModel);
+                return new GatewayRoute(route.provider, route.model.upstreamModel, route.model);
             }
             // "provider/model" prefixed format (e.g. deepseek/deepseek-v4-flash): resolve the registered
             // model whose provider prefix + modelId matches, so legacy-style requests still route through
@@ -100,18 +100,21 @@ public class GatewayRoutingEngine {
                     .findFirst();
             if (prefixedRoute.isPresent()) {
                 var route = prefixedRoute.get();
-                return new GatewayRoute(route.provider, route.model.upstreamModel);
+                return new GatewayRoute(route.provider, route.model.upstreamModel, route.model);
             }
             var modelExists = !registeredModels.isEmpty()
                     && registeredModels.stream().anyMatch(route -> requestedModel.equals(route.model.modelId));
-            if (modelExists) throw new BadRequestException("gateway model does not support endpoint: " + requestedModel);
+            // name the endpoint too: "does not support endpoint: <model>" reads as if the model were the
+            // endpoint and hides which endpoint_types registration is actually missing
+            if (modelExists) throw new BadRequestException("gateway model does not support endpoint, model=" + requestedModel
+                    + ", endpoint=" + endpoint.id + ", registered=" + registeredEndpoints(registeredModels, requestedModel));
             if (!registeredModels.isEmpty()) throw new BadRequestException("no enabled gateway model matches model: " + requestedModel);
             return legacyRoute(requestedModel, endpoint, snapshot.providers);
         }
 
         if (!endpointModels.isEmpty()) {
             var route = endpointModels.get(0);
-            return new GatewayRoute(route.provider, route.model.upstreamModel);
+            return new GatewayRoute(route.provider, route.model.upstreamModel, route.model);
         }
         if (!registeredModels.isEmpty()) throw new BadRequestException("no enabled gateway model configured for endpoint: " + endpoint.id);
         return legacyRoute(null, endpoint, snapshot.providers);
@@ -208,6 +211,14 @@ public class GatewayRoutingEngine {
         return refreshed;
     }
 
+    private List<String> registeredEndpoints(List<RegisteredGatewayModel> registeredModels, String modelId) {
+        return registeredModels.stream()
+                .filter(route -> modelId.equals(route.model.modelId))
+                .findFirst()
+                .map(route -> route.model.endpointTypes)
+                .orElse(List.of());
+    }
+
     private List<RegisteredGatewayModel> registeredModels(Snapshot snapshot, GatewayEndpointType endpoint) {
         var providersById = providersById(snapshot.providers);
         return snapshot.models.stream()
@@ -254,12 +265,12 @@ public class GatewayRoutingEngine {
         var models = registeredModels(snapshot(), endpoint);
         for (var model : models) {
             if (Boolean.TRUE.equals(model.model.isDefault)) {
-                return new GatewayRoute(model.provider, model.model.upstreamModel);
+                return new GatewayRoute(model.provider, model.model.upstreamModel, model.model);
             }
         }
         if (!models.isEmpty()) {
             var first = models.get(0);
-            return new GatewayRoute(first.provider, first.model.upstreamModel);
+            return new GatewayRoute(first.provider, first.model.upstreamModel, first.model);
         }
         throw new BadRequestException("model is required");
     }

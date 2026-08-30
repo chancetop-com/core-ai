@@ -77,6 +77,10 @@ public class GatewayProviderConfig {
     @Field(name = "connect_timeout_seconds")
     public Long connectTimeoutSeconds;
 
+    // USD per upstream credit (e.g. KIE credits); null = not configured, credits are recorded but not converted
+    @Field(name = "credit_usd_rate")
+    public Double creditUsdRate;
+
     @Field(name = "created_by")
     public String createdBy;
 

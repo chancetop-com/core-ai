@@ -41,6 +41,7 @@ public class SelfHarnessTools {
         var groups = new LinkedHashMap<String, String>();
 
         registerAgentTools(builder, tools, groups);
+        registerModelTools(builder, tools, groups);
         registerSkillTools(builder, tools, groups);
         registerDatasetTools(builder, tools, groups);
         registerToolTools(builder, tools, groups);
@@ -55,15 +56,32 @@ public class SelfHarnessTools {
     private void registerAgentTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
         tools.add(builder.build("list_agents", "List all agents with pagination and filtering.",
                 ListAgentsRequest.class, false));
-        tools.add(builder.build("create_agent", "Create a new agent draft.",
+        tools.add(builder.build("create_agent", "Create a new agent draft. The model and multi_modal_model fields must be exact "
+                        + "model_id values taken from list_models — call it first instead of guessing a model name.",
                 CreateAgentRequest.class, false));
         tools.add(builder.buildWithPathParamOnly("get_agent", "Get agent detail by ID.",
                 "id", "Agent ID"));
-        tools.add(builder.build("update_agent", "Update an existing agent draft.",
+        tools.add(builder.build("update_agent", "Update an existing agent draft. When changing model or multi_modal_model, "
+                        + "call list_models first and use an exact model_id from it.",
                 UpdateAgentRequest.class, true));
         tools.add(builder.buildWithPathParamOnly("publish_agent", "Publish an agent draft by ID.",
                 "id", "Agent ID"));
         group("Agents", tools, groups);
+    }
+
+    private void registerModelTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {
+        tools.add(builder.buildCustom("list_models",
+                "List every model registered in the gateway with the endpoints each one serves "
+                        + "(chat.completions, responses, image.generations, image.edits, video.generations), its provider, "
+                        + "its vision/video/file support, and the current system default models. "
+                        + "ALWAYS call this before setting a model on an agent: the model and multi_modal_model fields of "
+                        + "create_agent/update_agent must be an exact model_id from this list. Never guess or invent a model "
+                        + "name — when the user names a model informally (e.g. \"gemini omni 1.1\", \"the seedream one\"), look "
+                        + "it up here and use the exact model_id. If nothing matches, say so instead of picking something close.",
+                List.of(
+                        string("endpoint_type", "Filter by endpoint: chat, responses, image, video, or a full endpoint id such as image.edits", null),
+                        string("keyword", "Case-insensitive match against model_id, display name or provider name", null))));
+        group("Models", tools, groups);
     }
 
     private void registerSkillTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {

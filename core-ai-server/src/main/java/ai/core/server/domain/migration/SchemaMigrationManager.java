@@ -105,7 +105,7 @@ public class SchemaMigrationManager {
             new SchemaMigrationVMemoryLayerIndex(), new SchemaMigrationVSandboxSnapshotIndexes(), new SchemaMigrationVTraceMemoryConsolidationIndexes(),
             new SchemaMigrationVBackgroundTasks(), new SchemaMigrationVTraceDailyStats(), new SchemaMigrationVTraceDailyStatsAgent(),
             new SchemaMigrationVSessionFeedbackIndexes(), new SchemaMigrationVMemoryExperimentIndexes(), new SchemaMigrationVTraceDailyStatsDateIndex(),
-            new SchemaMigrationVAnalyticsDailyStats(), new SchemaMigrationVMediaJobIndexes(), new SchemaMigrationVSharedArtifactIndexes(), new SchemaMigrationVGeminiVideoIndexes(),
+            new SchemaMigrationVAnalyticsDailyStats(), new SchemaMigrationVMediaJobIndexes(), new SchemaMigrationVMediaJobCostIndexes(), new SchemaMigrationVSharedArtifactIndexes(), new SchemaMigrationVGeminiVideoIndexes(),
             new SchemaMigrationVDatasetRecordSessionIndex(),
             new SchemaMigrationVAgentNameSearch(),
             new SchemaMigrationVApiKeys(),
@@ -130,7 +130,9 @@ public class SchemaMigrationManager {
             new SchemaMigrationVProjectReportAgent(),
             new SchemaMigrationVSessionSchedules(),
             new SchemaMigrationVSessionScheduleList(),
-            new SchemaMigrationVReplayIndexes()
+            new SchemaMigrationVReplayIndexes(),
+            new SchemaMigrationVMediaJobReferenceIndex(),
+            new SchemaMigrationVPresetSkills()
         );
     }
 }

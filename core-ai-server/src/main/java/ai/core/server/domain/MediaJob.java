@@ -29,6 +29,18 @@ public class MediaJob {
     @Field(name = "upstream_video_id")
     public String upstreamVideoId;
 
+    // provider-native continuation handle (tier 1): images have no upstream_video_id equivalent
+    @Field(name = "upstream_interaction_id")
+    public String upstreamInteractionId;
+
+    // upstream-side asset still reachable by the producing provider (tier 2), e.g. a KIE result URL
+    // or an asset://{assetId} handle — reusing it moves zero bytes and outlives a signed URL
+    @Field(name = "upstream_asset_url")
+    public String upstreamAssetUrl;
+
+    @Field(name = "upstream_asset_expires_at")
+    public ZonedDateTime upstreamAssetExpiresAt;
+
     @Field(name = "parent_job_id")
     public String parentJobId;
 
@@ -64,4 +76,28 @@ public class MediaJob {
 
     @Field(name = "completed_at")
     public ZonedDateTime completedAt;
+
+    @Field(name = "media_type")
+    public String mediaType;
+
+    @Field(name = "requested_seconds")
+    public Integer requestedSeconds;
+
+    @Field(name = "media_units")
+    public Double mediaUnits;
+
+    @Field(name = "media_unit_type")
+    public String mediaUnitType;
+
+    @Field(name = "credits_consumed")
+    public Double creditsConsumed;
+
+    @Field(name = "cost_usd")
+    public Double costUsd;
+
+    @Field(name = "cost_source")
+    public String costSource;
+
+    @Field(name = "pricing_model_id")
+    public String pricingModelId;
 }

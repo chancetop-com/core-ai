@@ -77,6 +77,9 @@ public class GatewayProviderView {
     @Property(name = "connectTimeoutSeconds")
     public Long connectTimeoutSeconds;
 
+    @Property(name = "creditUsdRate")
+    public Double creditUsdRate;
+
     @Property(name = "createdBy")
     public String createdBy;
 

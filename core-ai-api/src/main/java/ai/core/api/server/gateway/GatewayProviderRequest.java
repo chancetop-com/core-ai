@@ -68,4 +68,7 @@ public class GatewayProviderRequest {
 
     @Property(name = "connectTimeoutSeconds")
     public Long connectTimeoutSeconds;
+
+    @Property(name = "creditUsdRate")
+    public Double creditUsdRate;
 }

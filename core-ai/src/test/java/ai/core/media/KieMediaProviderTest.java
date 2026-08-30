@@ -14,6 +14,8 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -41,7 +44,11 @@ class KieMediaProviderTest {
     private final AtomicReference<String> failMsg = new AtomicReference<>("");
     private final AtomicReference<String> taskRejectMsg = new AtomicReference<>();
     private final AtomicReference<Integer> taskRejectCode = new AtomicReference<>(422);
+    private final AtomicReference<Double> creditsConsumed = new AtomicReference<>();
+    private final AtomicReference<String> resultPath = new AtomicReference<>("/video.mp4");
     private final AtomicInteger recordInfoCalls = new AtomicInteger();
+    private final AtomicInteger successAfterCalls = new AtomicInteger();
+    private final AtomicInteger recordInfoFailures = new AtomicInteger();
 
     @BeforeEach
     void setUp() throws IOException {
@@ -59,11 +66,21 @@ class KieMediaProviderTest {
             }
         });
         server.createContext("/api/v1/jobs/recordInfo", exchange -> {
-            recordInfoCalls.incrementAndGet();
+            var calls = recordInfoCalls.incrementAndGet();
+            if (recordInfoFailures.getAndUpdate(remaining -> remaining > 0 ? remaining - 1 : 0) > 0) {
+                exchange.sendResponseHeaders(503, -1);
+                exchange.close();
+                return;
+            }
+            if (successAfterCalls.get() > 0 && calls >= successAfterCalls.get()) taskState.set("success");
             if ("success".equals(taskState.get())) {
-                var resultJson = "{\"resultUrls\":[\"" + baseUrl() + "/video.mp4\"]}";
-                json(exchange, 200, Map.of("code", 200, "msg", "success",
-                        "data", Map.of("taskId", TASK_ID, "state", "success", "resultJson", resultJson)));
+                var resultJson = "{\"resultUrls\":[\"" + baseUrl() + resultPath.get() + "\"]}";
+                var data = new LinkedHashMap<String, Object>();
+                data.put("taskId", TASK_ID);
+                data.put("state", "success");
+                data.put("resultJson", resultJson);
+                if (creditsConsumed.get() != null) data.put("creditsConsumed", creditsConsumed.get());
+                json(exchange, 200, Map.of("code", 200, "msg", "success", "data", data));
             } else if ("fail".equals(taskState.get())) {
                 json(exchange, 200, Map.of("code", 200, "msg", "success",
                         "data", Map.of("taskId", TASK_ID, "state", "fail", "failCode", "422", "failMsg", failMsg.get())));
@@ -85,8 +102,17 @@ class KieMediaProviderTest {
                 out.write(bytes);
             }
         });
+        server.createContext("/image.png", exchange -> {
+            var bytes = "image-bytes".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "image/png");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(bytes);
+            }
+        });
         server.start();
         provider = new KieMediaProvider(baseUrl(), baseUrl(), "test-token", null);
+        provider.imagePollInterval = Duration.ofMillis(10);
     }
 
     @AfterEach
@@ -227,6 +253,27 @@ class KieMediaProviderTest {
     }
 
     @Test
+    void getVideoStatusMapsCreditsConsumed() {
+        taskState.set("success");
+        creditsConsumed.set(12.5);
+
+        var status = provider.getVideoStatus(TASK_ID);
+
+        assertEquals(12.5, status.creditsConsumed());
+        assertNull(status.upstreamCostUsd());
+    }
+
+    @Test
+    void getVideoStatusLeavesCreditsConsumedNullWhenAbsent() {
+        taskState.set("success");
+        creditsConsumed.set(null);
+
+        var status = provider.getVideoStatus(TASK_ID);
+
+        assertNull(status.creditsConsumed());
+    }
+
+    @Test
     void getVideoStatusMapsFailureWithMessage() {
         taskState.set("fail");
         failMsg.set("prompt contains prohibited content");
@@ -282,10 +329,175 @@ class KieMediaProviderTest {
     }
 
     @Test
-    void generateImageIsUnsupported() {
-        assertThrows(UnsupportedOperationException.class,
-                () -> provider.generateImage(new ImageGenerationRequest("model", "prompt", null, null, null,
-                        null, null, null, null, null, null, null)));
+    void generateImageMapsSizeAndQualityAndReturnsDownloadedImage() {
+        imageTask();
+
+        var response = provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", "1024x1536", "high", null));
+
+        var input = createTaskInput();
+        assertEquals("a cafe", input.get("prompt"));
+        assertEquals("2:3", input.get("aspect_ratio"));
+        assertEquals("high", input.get("quality"));
+        assertEquals(1, response.data().size());
+        var image = response.data().getFirst();
+        assertEquals(baseUrl() + "/image.png", image.url());
+        assertArrayEquals("image-bytes".getBytes(StandardCharsets.UTF_8), Base64.getDecoder().decode(image.b64Json()));
+        assertEquals(1, response.usage().imageCount());
+    }
+
+    @Test
+    void generateImageDefaultsRequiredAspectRatioAndQuality() {
+        imageTask();
+
+        provider.generateImage(imageRequest("seedream/5-lite-text-to-image", "a cafe", null, null, null));
+
+        assertEquals("1:1", createTaskInput().get("aspect_ratio"));
+        assertEquals("basic", createTaskInput().get("quality"));
+    }
+
+    @Test
+    void generateImageFoldsOpenAIQualityOntoKieScale() {
+        imageTask();
+
+        provider.generateImage(imageRequest("seedream/5-lite-text-to-image", "a cafe", null, "medium", null));
+
+        assertEquals("basic", createTaskInput().get("quality"));
+    }
+
+    @Test
+    void generateImageRejectsUnknownQuality() {
+        assertThrows(IllegalArgumentException.class,
+                () -> provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, "cinematic", null)));
+    }
+
+    @Test
+    void generateImageUploadsBase64InputImageToImageUrls() {
+        imageTask();
+        var reference = new MediaReference(null, "aGVsbG8=");
+
+        provider.generateImage(imageRequest("seedream/5-pro-image-to-image", "make it glass", "1024x1024", null, List.of(reference)));
+
+        assertEquals(1, uploadBodies.size());
+        assertEquals(List.of(baseUrl() + "/uploads/reference.png"), createTaskInput().get("image_urls"));
+    }
+
+    @Test
+    void generateImageRejectsInputImagesForTextToImageModel() {
+        var reference = new MediaReference("https://example.com/ref.png", null);
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "edit", null, null, List.of(reference))));
+
+        assertTrue(error.getMessage().contains("does not accept input images"));
+    }
+
+    @Test
+    void generateImageRejectsMultipleImagesPerTask() {
+        var request = new ImageGenerationRequest("seedream/5-pro-text-to-image", "a cafe", 2, null, null,
+                null, null, null, null, null, null, null);
+
+        assertThrows(IllegalArgumentException.class, () -> provider.generateImage(request));
+    }
+
+    @Test
+    void generateImagePollsUntilTaskCompletes() {
+        resultPath.set("/image.png");
+        taskState.set("generating");
+        successAfterCalls.set(3);
+
+        var response = provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, null, null));
+
+        assertEquals(3, recordInfoCalls.get());
+        assertEquals(1, response.data().size());
+    }
+
+    @Test
+    void generateImageRetriesTransientPollFailures() {
+        imageTask();
+        recordInfoFailures.set(2);
+
+        var response = provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, null, null));
+
+        assertEquals(1, response.data().size());
+        assertEquals(3, recordInfoCalls.get(), "two failed polls must be retried, not abort the running task");
+    }
+
+    @Test
+    void generateImageGivesUpAfterRepeatedPollFailures() {
+        imageTask();
+        recordInfoFailures.set(99);
+
+        assertThrows(RuntimeException.class,
+                () -> provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, null, null)));
+    }
+
+    @Test
+    void generateImageUploadsBase64WithAFileExtension() {
+        imageTask();
+        var reference = new MediaReference(null, "data:image/jpeg;base64,aGVsbG8=");
+
+        provider.generateImage(imageRequest("seedream/5-pro-image-to-image", "edit", null, null, List.of(reference)));
+
+        assertEquals("jpg", fileExtension(uploadBodies.getFirst().get("fileName")));
+    }
+
+    @Test
+    void generateImageUploadDefaultsToPngWithoutAMimeType() {
+        imageTask();
+        var reference = new MediaReference(null, "aGVsbG8=");
+
+        provider.generateImage(imageRequest("seedream/5-pro-image-to-image", "edit", null, null, List.of(reference)));
+
+        assertEquals("png", fileExtension(uploadBodies.getFirst().get("fileName")));
+    }
+
+    @Test
+    void generateImageFailsWhenTaskFails() {
+        resultPath.set("/image.png");
+        taskState.set("fail");
+        failMsg.set("prompt contains prohibited content");
+
+        var error = assertThrows(IllegalStateException.class,
+                () -> provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, null, null)));
+
+        assertTrue(error.getMessage().contains("prompt contains prohibited content"));
+    }
+
+    @Test
+    void generateImageTimesOutWhileTaskIsStillRunning() {
+        taskState.set("generating");
+        provider.imagePollTimeout = Duration.ZERO;
+
+        var error = assertThrows(IllegalStateException.class,
+                () -> provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, null, null)));
+
+        assertTrue(error.getMessage().contains("did not complete within"));
+    }
+
+    @Test
+    void generateImageAppendsSeedreamHintToParameterError() {
+        taskRejectMsg.set("aspect_ratio is not within the range of allowed options");
+
+        var error = assertThrows(IllegalStateException.class,
+                () -> provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, null, null)));
+
+        assertTrue(error.getMessage().contains("Allowed parameters for seedream/5-pro-text-to-image"));
+        assertTrue(error.getMessage().contains("quality (basic/high"));
+    }
+
+    private String fileExtension(Object fileName) {
+        var value = String.valueOf(fileName);
+        var dot = value.lastIndexOf('.');
+        return dot < 0 ? "" : value.substring(dot + 1);
+    }
+
+    private void imageTask() {
+        resultPath.set("/image.png");
+        taskState.set("success");
+    }
+
+    private ImageGenerationRequest imageRequest(String model, String prompt, String size, String quality, List<MediaReference> inputImages) {
+        return new ImageGenerationRequest(model, prompt, null, size, quality, null, null, null, inputImages, null, null, null);
     }
 
     private VideoGenerationRequest videoRequest(String model, String prompt, Integer seconds, String size, List<MediaReference> references) {
