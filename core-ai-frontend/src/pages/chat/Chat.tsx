@@ -112,6 +112,7 @@ export default function Chat() {
   // Agent selection
   const [myAgents, setMyAgents] = useState<AgentDefinition[]>([]);
   const [otherAgents, setOtherAgents] = useState<AgentDefinition[]>([]);
+  const [favoriteAgents, setFavoriteAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>(() => sessionStorage.getItem('chat_agentId') || '');
   const [sessionId, setSessionId] = useState<string | null>(() => sessionStorage.getItem('chat_sessionId'));
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
@@ -552,6 +553,34 @@ export default function Chat() {
       }
     }).catch(console.error);
   }, []);
+
+  // Load favorited agents for the top section of the selector
+  useEffect(() => {
+    api.agents.favorites().then(res => {
+      setFavoriteAgents((res.agents || []).filter(a => a.type !== 'LLM_CALL'));
+    }).catch(console.error);
+  }, []);
+
+  const handleToggleFavorite = useCallback(async (agentId: string) => {
+    const alreadyFavorite = favoriteAgents.some(a => a.id === agentId);
+    try {
+      if (alreadyFavorite) {
+        await api.agents.unfavorite(agentId);
+        setFavoriteAgents(prev => prev.filter(a => a.id !== agentId));
+      } else {
+        await api.agents.favorite(agentId);
+        const known = agents.find(a => a.id === agentId);
+        if (known) {
+          setFavoriteAgents(prev => prev.some(a => a.id === agentId) ? prev : [...prev, known]);
+        } else {
+          const fetched = await api.agents.get(agentId);
+          setFavoriteAgents(prev => prev.some(a => a.id === agentId) ? prev : [...prev, fetched]);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err);
+    }
+  }, [favoriteAgents, agents]);
 
   // Handle ?agent=...&auto=help query params for auto-creating agents
   useEffect(() => {
@@ -1815,9 +1844,11 @@ export default function Chat() {
       <AgentSelector
         status={status}
         myAgents={myAgents}
+        favoriteAgents={favoriteAgents}
         selectedAgentId={selectedAgentId}
         selectedAgent={selectedAgent}
         onSelectAgent={handleSelectAgent}
+        onToggleFavorite={handleToggleFavorite}
       />
 
       {/* Chat messages */}

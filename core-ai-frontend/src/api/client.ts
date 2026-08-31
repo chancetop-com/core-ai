@@ -454,6 +454,7 @@ export interface AgentDefinition {
   sandbox_config?: SandboxConfig;
   dataset_config?: AgentDatasetConfig[];
   enable_memory?: boolean;
+  favorite?: boolean;
 }
 
 export interface AgentMemoryView {
@@ -1808,6 +1809,12 @@ export const api = {
       request<void>(`/api/agents/${id}`, { method: 'DELETE' }),
     publish: (id: string) =>
       request<AgentDefinition>(`/api/agents/${id}/publish`, { method: 'POST' }),
+    favorites: () =>
+      request<ListAgentsResponse>('/api/agents/favorites'),
+    favorite: (id: string) =>
+      request<void>(`/api/agents/${id}/favorite`, { method: 'POST' }),
+    unfavorite: (id: string) =>
+      request<void>(`/api/agents/${id}/favorite`, { method: 'DELETE' }),
     trigger: (agentId: string, input: string) =>
       request<TriggerRunResponse>(`/api/runs/agent/${agentId}/trigger`, { method: 'POST', body: JSON.stringify({ input }) }),
     runs: (agentId: string) =>

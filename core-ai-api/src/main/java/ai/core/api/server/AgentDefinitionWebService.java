@@ -32,6 +32,18 @@ public interface AgentDefinitionWebService {
     ListAgentsResponse list(ListAgentsRequest request);
 
     @GET
+    @Path("/api/agents/favorites")
+    ListAgentsResponse favorites();
+
+    @POST
+    @Path("/api/agents/:id/favorite")
+    void favorite(@PathParam("id") String id);
+
+    @DELETE
+    @Path("/api/agents/:id/favorite")
+    void unfavorite(@PathParam("id") String id);
+
+    @GET
     @Path("/api/agents/:id")
     AgentDefinitionView get(@PathParam("id") String id);
 

@@ -124,7 +124,7 @@ public class AgentDefinitionService {
         Integer limit = paginated ? pageSize : null;
         String sortField = AgentQueryHelper.sortField(effectiveRequest.sort);
 
-        var listHelper = new AgentListHelper(agentDefinitionCollection);
+        var listHelper = new AgentListHelper(agentDefinitionCollection, userCollection);
         String keyword = AgentQueryHelper.trimToNull(effectiveRequest.query);
         List<AgentDefinition> paged;
         long total;
@@ -148,29 +148,31 @@ public class AgentDefinitionService {
         if (summary) {
             response.agents = paged.stream().map(AgentListHelper::toSummaryView).toList();
         } else {
-            var userNameMap = resolveUserNames(paged);
+            var userNameMap = listHelper.resolveUserNames(paged);
             var subAgentNameMap = resolveSubAgentNames(paged);
             var skillNameMap = resolveSkillNames(paged);
             response.agents = paged.stream().map(e -> toView(e, userNameMap, subAgentNameMap, skillNameMap)).toList();
         }
+        listHelper.markFavorites(response, userId);
         response.total = total;
         response.page = paginated ? pageNum : null;
         response.limit = paginated ? pageSize : null;
         return response;
     }
 
-    private Map<String, String> resolveUserNames(List<AgentDefinition> entities) {
-        var userIds = new HashSet<String>();
-        for (var entity : entities) {
-            if (entity.userId != null) userIds.add(entity.userId);
-            if (entity.updatedBy != null) userIds.add(entity.updatedBy);
-        }
-        if (userIds.isEmpty()) return Map.of();
-        var map = new HashMap<String, String>();
-        for (var u : userCollection.find(new org.bson.Document("_id", new org.bson.Document("$in", new ArrayList<>(userIds))))) {
-            map.put(u.id, u.name);
-        }
-        return map;
+    public void favorite(String agentId, String userId) {
+        var listHelper = new AgentListHelper(agentDefinitionCollection, userCollection);
+        listHelper.favorite(agentId, userId);
+    }
+
+    public void unfavorite(String agentId, String userId) {
+        var listHelper = new AgentListHelper(agentDefinitionCollection, userCollection);
+        listHelper.unfavorite(agentId, userId);
+    }
+
+    public ListAgentsResponse favorites(String userId) {
+        var listHelper = new AgentListHelper(agentDefinitionCollection, userCollection);
+        return listHelper.listFavorites(userId);
     }
 
     private Map<String, String> resolveSubAgentNames(List<AgentDefinition> entities) {

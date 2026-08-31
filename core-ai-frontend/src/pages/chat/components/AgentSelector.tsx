@@ -8,9 +8,11 @@ type ChatStatus = 'idle' | 'running';
 interface AgentSelectorProps {
   status: ChatStatus;
   myAgents: AgentDefinition[];
+  favoriteAgents: AgentDefinition[];
   selectedAgentId: string;
   selectedAgent?: AgentDefinition;
   onSelectAgent: (id: string, agent?: AgentDefinition) => void;
+  onToggleFavorite: (id: string) => void;
 }
 
 function canChatWithAgent(agent: AgentDefinition): boolean {
@@ -20,9 +22,11 @@ function canChatWithAgent(agent: AgentDefinition): boolean {
 const AgentSelector = memo(function AgentSelector({
   status,
   myAgents,
+  favoriteAgents,
   selectedAgentId,
   selectedAgent,
   onSelectAgent,
+  onToggleFavorite,
 }: AgentSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,6 +41,11 @@ const AgentSelector = memo(function AgentSelector({
     () => myAgents.filter(agent => !agent.system_default && canChatWithAgent(agent)),
     [myAgents],
   );
+  const favorites = useMemo(
+    () => favoriteAgents.filter(agent => canChatWithAgent(agent)),
+    [favoriteAgents],
+  );
+  const favoriteIds = useMemo(() => new Set(favoriteAgents.map(agent => agent.id)), [favoriteAgents]);
 
   // Debounced server-side search for shared agents
   useEffect(() => {
@@ -85,27 +94,39 @@ const AgentSelector = memo(function AgentSelector({
     setSearchedAgents([]);
   };
 
-  const renderAgentButton = (agent: AgentDefinition, icon: 'bot' | 'star') => (
-    <button key={agent.id}
-      onClick={() => handleSelect(agent.id)}
-      className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
+  const renderAgentRow = (agent: AgentDefinition, icon: 'bot' | 'star', showCreatedBy: boolean, favorited: boolean) => (
+    <div key={agent.id}
+      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors"
       style={{
         background: selectedAgentId === agent.id ? 'var(--color-bg-tertiary)' : 'transparent',
-        color: 'var(--color-text)',
       }}
       onMouseEnter={event => { if (selectedAgentId !== agent.id) event.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
       onMouseLeave={event => { if (selectedAgentId !== agent.id) event.currentTarget.style.background = 'transparent'; }}>
-      {icon === 'bot' ? (
-        <Bot size={14} style={{ color: 'var(--color-primary)' }} />
-      ) : (
-        <Star size={14} style={{ color: 'var(--color-text-secondary)' }} />
-      )}
-      <span className="flex-1 truncate">{agent.name}</span>
-      {icon === 'star' && (
-        <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{agent.created_by}</span>
-      )}
-      {selectedAgentId === agent.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
-    </button>
+      <button
+        onClick={() => handleSelect(agent.id)}
+        className="flex items-center gap-2 flex-1 min-w-0 text-left text-sm cursor-pointer"
+        style={{ color: 'var(--color-text)', background: 'transparent' }}>
+        {icon === 'bot' ? (
+          <Bot size={14} style={{ color: 'var(--color-primary)' }} />
+        ) : (
+          <Star size={14} style={{ color: 'var(--color-primary)' }} fill={favorited ? 'var(--color-primary)' : 'none'} />
+        )}
+        <span className="flex-1 truncate">{agent.name}</span>
+        {showCreatedBy && (
+          <span className="text-xs truncate max-w-[90px]" style={{ color: 'var(--color-text-muted)' }}>{agent.created_by}</span>
+        )}
+        {selectedAgentId === agent.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
+      </button>
+      <button
+        title={favorited ? 'Remove favorite' : 'Add favorite'}
+        className="p-1 rounded cursor-pointer transition-colors shrink-0"
+        style={{ color: favorited ? 'var(--color-primary)' : 'var(--color-text-muted)' }}
+        onMouseEnter={event => { event.currentTarget.style.color = 'var(--color-primary)'; }}
+        onMouseLeave={event => { event.currentTarget.style.color = favorited ? 'var(--color-primary)' : 'var(--color-text-muted)'; }}
+        onClick={() => onToggleFavorite(agent.id)}>
+        <Star size={14} fill={favorited ? 'currentColor' : 'none'} />
+      </button>
+    </div>
   );
 
   return (
@@ -126,14 +147,26 @@ const AgentSelector = memo(function AgentSelector({
           {open && (
             <div className="absolute left-0 top-11 z-50 w-[380px] rounded-xl border shadow-lg"
               style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
-              {defaultAgents.length > 0 && (
+              {favorites.length > 0 && (
                 <div className="p-2">
+                  <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium"
+                    style={{ color: 'var(--color-text-secondary)' }}>
+                    <Star size={12} /> Favorites
+                  </div>
+                  <div className="max-h-[200px] overflow-auto">
+                    {favorites.map(agent => renderAgentRow(agent, 'star', true, true))}
+                  </div>
+                </div>
+              )}
+
+              {defaultAgents.length > 0 && (
+                <div className="p-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
                   <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium"
                     style={{ color: 'var(--color-text-secondary)' }}>
                     <Bot size={12} /> Default
                   </div>
                   <div className="max-h-[200px] overflow-auto">
-                    {defaultAgents.map(agent => renderAgentButton(agent, 'bot'))}
+                    {defaultAgents.map(agent => renderAgentRow(agent, 'bot', false, favoriteIds.has(agent.id)))}
                   </div>
                 </div>
               )}
@@ -145,7 +178,7 @@ const AgentSelector = memo(function AgentSelector({
                     <Bot size={12} /> My Agents
                   </div>
                   <div className="max-h-[200px] overflow-auto">
-                    {ownedAgents.map(agent => renderAgentButton(agent, 'bot'))}
+                    {ownedAgents.map(agent => renderAgentRow(agent, 'bot', false, favoriteIds.has(agent.id)))}
                   </div>
                 </div>
               )}
@@ -174,22 +207,7 @@ const AgentSelector = memo(function AgentSelector({
                         No agents found
                       </div>
                     ) : (
-                      searchedAgents.map(agent => (
-                        <button key={agent.id}
-                          onClick={() => handleSelect(agent.id, agent)}
-                          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
-                          style={{
-                            background: selectedAgentId === agent.id ? 'var(--color-bg-tertiary)' : 'transparent',
-                            color: 'var(--color-text)',
-                          }}
-                          onMouseEnter={event => { if (selectedAgentId !== agent.id) event.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
-                          onMouseLeave={event => { if (selectedAgentId !== agent.id) event.currentTarget.style.background = 'transparent'; }}>
-                          <Star size={14} style={{ color: 'var(--color-text-secondary)' }} />
-                          <span className="flex-1 truncate">{agent.name}</span>
-                          <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{agent.created_by}</span>
-                          {selectedAgentId === agent.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
-                        </button>
-                      ))
+                      searchedAgents.map(agent => renderAgentRow(agent, 'star', true, favoriteIds.has(agent.id)))
                     )}
                   </div>
                 )}

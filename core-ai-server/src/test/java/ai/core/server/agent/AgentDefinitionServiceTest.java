@@ -11,6 +11,7 @@ import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
+import ai.core.server.domain.User;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.skill.SkillMetadata;
@@ -18,7 +19,9 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
+import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -35,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -218,6 +222,95 @@ class AgentDefinitionServiceTest {
         assertEquals(List.of("HR Agent agent-3", "HR Agent agent-4"), response.agents.stream().map(a -> a.name).toList());
         assertEquals(2, response.page);
         assertEquals(2, response.limit);
+    }
+
+    @Test
+    void favoriteInitializesNullFieldThenAddsAgentId() {
+        var collection = agentCollection();
+        var agent = definition("agent-1", "owner", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        when(collection.get(agent.id)).thenReturn(Optional.of(agent));
+        var service = service(collection);
+
+        service.favorite(agent.id, "user-1");
+
+        var updates = ArgumentCaptor.forClass(Bson.class);
+        verify(service.userCollection, times(2)).update(any(Bson.class), updates.capture());
+        var values = updates.getAllValues();
+        assertTrue(values.get(0).toBsonDocument().containsKey("$set"));
+        assertTrue(values.get(1).toBsonDocument().containsKey("$addToSet"));
+    }
+
+    @Test
+    void favoriteRejectsMissingAgent() {
+        var collection = agentCollection();
+        when(collection.get("missing")).thenReturn(Optional.empty());
+        var service = service(collection);
+
+        assertThrows(RuntimeException.class, () -> service.favorite("missing", "user-1"));
+
+        verifyNoMoreInteractions(service.userCollection);
+    }
+
+    @Test
+    void unfavoriteInitializesNullFieldThenPullsAgentId() {
+        var service = service(agentCollection());
+
+        service.unfavorite("agent-1", "user-1");
+
+        var updates = ArgumentCaptor.forClass(Bson.class);
+        verify(service.userCollection, times(2)).update(any(Bson.class), updates.capture());
+        var values = updates.getAllValues();
+        assertTrue(values.get(0).toBsonDocument().containsKey("$set"));
+        assertTrue(values.get(1).toBsonDocument().containsKey("$pull"));
+    }
+
+    @Test
+    void favoritesReturnsFavoritedAgentsNewestFirstWithFlag() {
+        var collection = agentCollection();
+        var first = definition("agent-first", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        var second = definition("agent-second", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        when(collection.find(any(Bson.class))).thenReturn(List.of(first, second));
+        var service = service(collection);
+        var user = new User();
+        user.id = "user-1";
+        user.favoriteAgentIds = List.of("agent-first", "agent-second");
+        when(service.userCollection.get("user-1")).thenReturn(Optional.of(user));
+
+        var response = service.favorites("user-1");
+
+        assertEquals(2, response.total);
+        assertEquals(List.of("agent-second", "agent-first"), response.agents.stream().map(a -> a.id).toList());
+        assertTrue(response.agents.stream().allMatch(a -> Boolean.TRUE.equals(a.favorite)));
+    }
+
+    @Test
+    void favoritesReturnsEmptyWhenUserHasNone() {
+        var service = service(agentCollection());
+        var user = new User();
+        user.id = "user-1";
+        when(service.userCollection.get("user-1")).thenReturn(Optional.of(user));
+
+        var response = service.favorites("user-1");
+
+        assertEquals(0, response.total);
+        assertTrue(response.agents.isEmpty());
+    }
+
+    @Test
+    void listMarksFavoritedAgents() {
+        var collection = agentCollection();
+        var agent = definition("agent-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        when(collection.find(any(Query.class))).thenReturn(List.of(agent));
+        var service = service(collection);
+        when(service.userCollection.find(any(org.bson.Document.class))).thenReturn(List.of());
+        var user = new User();
+        user.id = "user-1";
+        user.favoriteAgentIds = List.of("agent-1");
+        when(service.userCollection.get("user-1")).thenReturn(Optional.of(user));
+
+        var response = service.list("user-1", new ListAgentsRequest());
+
+        assertEquals(Boolean.TRUE, response.agents.get(0).favorite);
     }
 
     @Test
@@ -515,7 +608,7 @@ class AgentDefinitionServiceTest {
 
     private void assertCreateSkillUnavailable(String skillId) {
         var collection = agentCollection();
-        when(collection.findOne(any(org.bson.conversions.Bson.class))).thenReturn(Optional.empty());
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
         var service = service(collection);
         when(service.skillService.resolveAccessibleSkills(List.of(skillId), "owner"))
                 .thenThrow(new ForbiddenException("skill is unavailable"));

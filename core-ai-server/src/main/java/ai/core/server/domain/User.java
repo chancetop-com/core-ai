@@ -57,6 +57,9 @@ public class User {
     @Field(name = "outbound_caller_headers")
     public List<OutboundCallerHeaderConfig> outboundCallerHeaders;
 
+    @Field(name = "favorite_agent_ids")
+    public List<String> favoriteAgentIds;
+
     @Field(name = "created_by")
     public String createdBy;
 

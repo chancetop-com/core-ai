@@ -50,6 +50,27 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_VIEW)
+    public ListAgentsResponse favorites() {
+        var userId = AuthContext.userId(webContext);
+        return agentDefinitionService.favorites(userId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
+    public void favorite(String id) {
+        var userId = AuthContext.userId(webContext);
+        agentDefinitionService.favorite(id, userId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
+    public void unfavorite(String id) {
+        var userId = AuthContext.userId(webContext);
+        agentDefinitionService.unfavorite(id, userId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public AgentDefinitionView get(String id) {
         return agentDefinitionService.get(id);
     }

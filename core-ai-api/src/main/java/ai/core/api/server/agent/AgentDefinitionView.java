@@ -107,4 +107,7 @@ public class AgentDefinitionView {
 
     @Property(name = "dataset_config")
     public List<AgentDatasetConfigView> datasetConfig;
+
+    @Property(name = "favorite")
+    public Boolean favorite;
 }
