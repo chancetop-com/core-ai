@@ -94,7 +94,6 @@ public class ServerApp extends App {
         load(new ObjectStorageModule());
         load(new SseTransportModule());
         load(new GatewayModule());
-        load(new RenderModule());
         load(new PromptModule());
         load(new AnalyticsModule());
         load(new SandboxSnapshotModule());
@@ -108,6 +107,8 @@ public class ServerApp extends App {
         load(new MemoryModule());
         load(new MessagingInfrastructureModule());
         load(new SandboxModule());
+        // after SandboxModule: SandboxFfmpegRunner injects SandboxService and bind() resolves eagerly
+        load(new RenderModule());
         load(new AuthModule());
         load(new UserModule());
         load(new ArtifactModule());
