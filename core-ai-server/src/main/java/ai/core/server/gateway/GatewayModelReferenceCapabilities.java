@@ -9,7 +9,7 @@ import core.framework.web.exception.BadRequestException;
 import java.util.function.BiPredicate;
 
 /**
- * Admin-editable per-model reference facts. Every field is nullable and a null keeps the code-level
+ * Admin-editable per-model reference and video-render facts. Every field is nullable and a null keeps the code-level
  * model-family default, so registering a new media model stays one row rather than a code change.
  *
  * @author Stephen
@@ -22,6 +22,8 @@ final class GatewayModelReferenceCapabilities {
         if (specified.test("maxMixedReferences", create)) entity.maxMixedReferences = request.maxMixedReferences;
         if (specified.test("addressingSyntax", create)) entity.addressingSyntax = normalizeAddressingSyntax(request.addressingSyntax);
         if (specified.test("acceptsAudioReference", create)) entity.acceptsAudioReference = request.acceptsAudioReference;
+        if (specified.test("nativeAudio", create)) entity.nativeAudio = request.nativeAudio;
+        if (specified.test("maxOutputDurationSec", create)) entity.maxOutputDurationSec = request.maxOutputDurationSec;
     }
 
     static void view(GatewayModelView view, GatewayModelConfig entity) {
@@ -31,6 +33,8 @@ final class GatewayModelReferenceCapabilities {
         view.maxMixedReferences = entity.maxMixedReferences;
         view.addressingSyntax = entity.addressingSyntax;
         view.acceptsAudioReference = entity.acceptsAudioReference;
+        view.nativeAudio = entity.nativeAudio;
+        view.maxOutputDurationSec = entity.maxOutputDurationSec;
     }
 
     static void validate(GatewayModelRequest request) {
@@ -39,6 +43,8 @@ final class GatewayModelReferenceCapabilities {
         rejectNegative("maxAudioReferences", request.maxAudioReferences);
         rejectNegative("maxMixedReferences", request.maxMixedReferences);
         normalizeAddressingSyntax(request.addressingSyntax);
+        if (request.maxOutputDurationSec != null && request.maxOutputDurationSec <= 0)
+            throw new BadRequestException("maxOutputDurationSec must be positive");
     }
 
     private static void rejectNegative(String field, Integer value) {

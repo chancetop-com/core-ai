@@ -91,6 +91,8 @@ type ModelFormState = {
   maxMixedReferences: string;
   addressingSyntax: string;   // '' = model-family default from the code-level registry
   acceptsAudioReference: string;  // '' = family default, 'true' / 'false' = admin declaration
+  nativeAudio: string;            // video render: does the model emit its own audio track
+  maxOutputDurationSec: string;   // video render: longest clip the model can produce
   inputPricePer1MTokens: string;
   outputPricePer1MTokens: string;
   cacheReadInputPricePer1MTokens: string;
@@ -147,6 +149,8 @@ const emptyModelForm: ModelFormState = {
   maxMixedReferences: '',
   addressingSyntax: '',
   acceptsAudioReference: '',
+  nativeAudio: '',
+  maxOutputDurationSec: '',
   inputPricePer1MTokens: '',
   outputPricePer1MTokens: '',
   cacheReadInputPricePer1MTokens: '',
@@ -353,6 +357,8 @@ export default function GatewayProviders() {
       maxMixedReferences: model.maxMixedReferences == null ? '' : String(model.maxMixedReferences),
       addressingSyntax: model.addressingSyntax || '',
       acceptsAudioReference: model.acceptsAudioReference == null ? '' : String(model.acceptsAudioReference),
+      nativeAudio: model.nativeAudio == null ? '' : String(model.nativeAudio),
+      maxOutputDurationSec: model.maxOutputDurationSec == null ? '' : String(model.maxOutputDurationSec),
       inputPricePer1MTokens: model.inputPricePer1MTokens == null ? '' : String(model.inputPricePer1MTokens),
       outputPricePer1MTokens: model.outputPricePer1MTokens == null ? '' : String(model.outputPricePer1MTokens),
       cacheReadInputPricePer1MTokens: model.cacheReadInputPricePer1MTokens == null ? '' : String(model.cacheReadInputPricePer1MTokens),
@@ -396,6 +402,8 @@ export default function GatewayProviders() {
         maxMixedReferences: optionalNumber(modelForm.maxMixedReferences, 'Max mixed references'),
         addressingSyntax: modelForm.addressingSyntax || null,
         acceptsAudioReference: modelForm.acceptsAudioReference === '' ? null : modelForm.acceptsAudioReference === 'true',
+        nativeAudio: modelForm.nativeAudio === '' ? null : modelForm.nativeAudio === 'true',
+        maxOutputDurationSec: modelForm.maxOutputDurationSec === '' ? null : optionalNumber(modelForm.maxOutputDurationSec, 'Max output duration'),
       };
       // modality declarations drive routing; only send fields the admin actually touched,
       // otherwise a null (unknown, resolved via seed) would be silently rewritten on every save
@@ -1035,6 +1043,18 @@ function renderModelPanel(props: {
               <option value="true">Accepts audio references</option>
               <option value="false">No audio references</option>
             </select>
+          </div>
+        </Field>
+
+        <Field label="Video render facts" hint="Read by the short-drama pipeline (drama_studio_status). A video model with max images 0 is never offered for shot rendering, because no character sheet could be attached.">
+          <div className="grid grid-cols-2 gap-2">
+            <select className={inputClass} style={inputStyle} value={form.nativeAudio} onChange={e => setForm({ ...form, nativeAudio: e.target.value })}>
+              <option value="">Native audio: unknown</option>
+              <option value="true">Emits its own audio track</option>
+              <option value="false">Silent output (TTS route)</option>
+            </select>
+            <input className={inputClass} style={inputStyle} type="number" min={0} step="0.5" placeholder="Max output duration (sec)"
+              value={form.maxOutputDurationSec} onChange={e => setForm({ ...form, maxOutputDurationSec: e.target.value })} />
           </div>
         </Field>
 

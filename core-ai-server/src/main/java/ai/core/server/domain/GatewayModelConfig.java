@@ -87,6 +87,14 @@ public class GatewayModelConfig {
     @Field(name = "accepts_audio_reference")
     public Boolean acceptsAudioReference;
 
+    // video render facts the drama pipeline reports to its agent (design §9.1): whether the model
+    // emits its own audio track, and the longest clip it can produce
+    @Field(name = "native_audio")
+    public Boolean nativeAudio;
+
+    @Field(name = "max_output_duration_sec")
+    public Double maxOutputDurationSec;
+
     @Field(name = "max_video_bytes")
     public Long maxVideoBytes;
 

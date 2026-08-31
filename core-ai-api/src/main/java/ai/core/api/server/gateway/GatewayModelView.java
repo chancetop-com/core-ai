@@ -91,6 +91,12 @@ public class GatewayModelView {
     @Property(name = "acceptsAudioReference")
     public Boolean acceptsAudioReference;
 
+    @Property(name = "nativeAudio")
+    public Boolean nativeAudio;
+
+    @Property(name = "maxOutputDurationSec")
+    public Double maxOutputDurationSec;
+
     @Property(name = "inputPricePer1MTokens")
     public Double inputPricePer1MTokens;
 

@@ -31,9 +31,10 @@ import java.util.Map;
 public class GatewayReferenceCompiler {
     /**
      * Code-level family defaults, overlaid with the admin-editable gateway_model row: adding a model
-     * stays a registry row, never code.
+     * stays a registry row, never code. Public because the drama render path resolves the same facts
+     * from the same row (design §9.1 v2.4) instead of keeping its own registry.
      */
-    static MediaModelCapabilities capabilities(String upstreamModel, GatewayModelConfig modelConfig) {
+    public static MediaModelCapabilities capabilities(String upstreamModel, GatewayModelConfig modelConfig) {
         var caps = MediaCapabilityRegistry.lookup(upstreamModel);
         if (modelConfig == null) return caps;
         return caps.merge(modelConfig.maxImageReferences, modelConfig.maxVideoReferences, modelConfig.maxAudioReferences,

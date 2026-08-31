@@ -1525,6 +1525,8 @@ export interface GatewayModel {
   maxMixedReferences?: number | null;
   addressingSyntax?: string | null;
   acceptsAudioReference?: boolean | null;
+  nativeAudio?: boolean | null;
+  maxOutputDurationSec?: number | null;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
   cacheReadInputPricePer1MTokens?: number | null;
@@ -1556,6 +1558,8 @@ export interface GatewayModelRequest {
   maxMixedReferences?: number | null;
   addressingSyntax?: string | null;
   acceptsAudioReference?: boolean | null;
+  nativeAudio?: boolean | null;
+  maxOutputDurationSec?: number | null;
   inputPricePer1MTokens?: number | null;
   outputPricePer1MTokens?: number | null;
   cacheReadInputPricePer1MTokens?: number | null;
