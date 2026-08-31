@@ -47,8 +47,11 @@ public final class MediaCapabilityRegistry {
             new Entry("gpt-image", new MediaModelCapabilities("gpt-image", 16, 0, 0, 16, NONE, false)),
             new Entry("dall-e", new MediaModelCapabilities("dall-e", 1, 0, 0, 1, NONE, false)),
             new Entry("imagen", new MediaModelCapabilities("imagen", 4, 0, 0, 4, NONE, false)),
-            // gemini-omni continues a video by interaction id rather than by video reference
-            new Entry("gemini-omni", new MediaModelCapabilities("gemini-omni", 4, 0, 0, 4, NONE, false)),
+            // gemini-omni 1.1: video references are a separate capability from continuing a video by
+            // interaction id — 3 clips of up to 3s each. Audio references are documented as unsupported,
+            // and the <IMAGE_REF_N> / <VIDEO_REF_N> tokens match no syntax here yet, so references ride
+            // positionally with the tokens stripped.
+            new Entry("gemini-omni", new MediaModelCapabilities("gemini-omni", 4, 3, 0, 4, NONE, false)),
             new Entry("gemini-", new MediaModelCapabilities("gemini", 8, 0, 0, 8, NONE, false)));
 
     public static MediaModelCapabilities lookup(String upstreamModel) {

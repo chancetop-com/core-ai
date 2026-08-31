@@ -119,7 +119,8 @@ public final class MediaModelParameterHints {
         if (upstreamModel.startsWith("happyhorse")) return HAPPYHORSE_HINT;
         if (upstreamModel.startsWith("bytedance/v1-")) return BYTEDANCE_V1_HINT;
         if (upstreamModel.startsWith("gemini-omni")) {
-            return "conversational video editing via previous_video_id; 10s duration cap; 720p max";
+            return "conversational video editing via previous_video_id; 3 video refs of up to 3s each; "
+                + "10s per turn, extendable to 40s cumulative; 360p/720p/1080p/4k; native audio in every output";
         }
         return null;
     }

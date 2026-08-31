@@ -54,7 +54,10 @@ class MediaModelParameterHintsTest {
         assertNotNull(MediaModelParameterHints.videoHint("pixverse/v6-text-to-video"));
         assertNotNull(MediaModelParameterHints.videoHint("happyhorse/text-to-video"));
         assertNotNull(MediaModelParameterHints.videoHint("bytedance/v1-pro-image-to-video"));
-        assertNotNull(MediaModelParameterHints.videoHint("gemini-omni"));
+        var omniHint = MediaModelParameterHints.videoHint("gemini-omni");
+        assertNotNull(omniHint);
+        // the docs allow 1080p and 4k; an outdated "720p max" hint quietly caps what callers ask for
+        assertTrue(omniHint.contains("1080p"), omniHint);
     }
 
     @Test
