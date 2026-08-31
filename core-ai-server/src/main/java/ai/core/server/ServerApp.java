@@ -94,6 +94,7 @@ public class ServerApp extends App {
         load(new ObjectStorageModule());
         load(new SseTransportModule());
         load(new GatewayModule());
+        load(new RenderModule());
         load(new PromptModule());
         load(new AnalyticsModule());
         load(new SandboxSnapshotModule());
