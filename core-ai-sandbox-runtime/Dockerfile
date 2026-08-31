@@ -59,6 +59,24 @@ RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_li
     chmod +x /usr/local/bin/gh && \
     rm -rf /tmp/gh*
 
+# Layer 6: ffmpeg — the drama assembly pipeline runs in this image (design §9.4), and its normalize/
+# assemble cache keys pin the MAJOR version (DramaAssemblyService.FFMPEG_MAJOR_VERSION). A distro
+# package would follow the base image's Debian release and drift silently under an unchanged cache
+# key, so the build pins a static release and FAILS when the major is not the expected one.
+# Deliberately the last layer, and it installs its own xz-utils rather than touching layer 1: an
+# ffmpeg bump must not invalidate the python / node / uv / gh layers above it.
+ARG FFMPEG_MAJOR=8
+ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-linux64-gpl-8.0.tar.xz
+RUN apt-get update && apt-get install -y --no-install-recommends xz-utils \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL "${FFMPEG_URL}" -o /tmp/ffmpeg.tar.xz \
+    && tar xJf /tmp/ffmpeg.tar.xz -C /tmp \
+    && mv /tmp/ffmpeg-*/bin/ffmpeg /tmp/ffmpeg-*/bin/ffprobe /usr/local/bin/ \
+    && chmod 755 /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
+    && rm -rf /tmp/ffmpeg* \
+    && { ffmpeg -version | head -1 | grep -qE "^ffmpeg version n?${FFMPEG_MAJOR}[.]" \
+         || { echo "ffmpeg major mismatch: want ${FFMPEG_MAJOR}, got $(ffmpeg -version | head -1)"; exit 1; }; }
+
 COPY --from=builder /core-ai-sandbox-runtime /usr/local/bin/core-ai-sandbox-runtime
 
 # python:3.12-slim has pyvenv.cfg which makes pip refuse --user installs

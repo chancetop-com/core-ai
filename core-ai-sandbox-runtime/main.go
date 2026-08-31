@@ -20,13 +20,26 @@ import (
 	"time"
 )
 
-const maxOutputSize = 30 * 1024       // 30KB
-const skillBaseDir = "/skill"         // sandbox-side mount target for materialized skills
-const maxSkillArchiveSize = 5 << 20   // 5 MB
-const maxDownloadFileSize = 100 << 20 // 100 MB
-const maxUploadFileSize = 20 << 20    // 20 MB
+const maxOutputSize = 30 * 1024              // 30KB
+const skillBaseDir = "/skill"                // sandbox-side mount target for materialized skills
+const maxSkillArchiveSize = 5 << 20          // 5 MB
+const defaultMaxDownloadFileSize = 100 << 20 // 100 MB
+
+// raisable per deployment via MAX_DOWNLOAD_FILE_SIZE (bytes): an assembled episode collected by the
+// drama dispatcher is far bigger than anything an agent hands back (design §9.4)
+var maxDownloadFileSize int64 = defaultMaxDownloadFileSize
+
+const maxUploadFileSize = 20 << 20 // 20 MB
 
 // ---- Request / Response ----
+
+type HealthResponse struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+	// empty / 0 when the image ships no ffmpeg — assembly jobs are then not routed here
+	FfmpegVersion string `json:"ffmpeg_version,omitempty"`
+	FfmpegMajor   int    `json:"ffmpeg_major,omitempty"`
+}
 
 type ExecuteRequest struct {
 	Tool      string `json:"tool"`
@@ -158,6 +171,12 @@ func main() {
 		workspaceDir = ws
 	}
 	maxAsync, _ := strconv.Atoi(envOrDefault("MAX_ASYNC_TASKS", "5"))
+	if capMs, err := strconv.Atoi(envOrDefault("MAX_BASH_TIMEOUT_MS", strconv.Itoa(maxBashTimeoutMs))); err == nil && capMs > 0 {
+		maxBashTimeout = time.Duration(capMs) * time.Millisecond
+	}
+	if capBytes, err := strconv.ParseInt(envOrDefault("MAX_DOWNLOAD_FILE_SIZE", strconv.Itoa(defaultMaxDownloadFileSize)), 10, 64); err == nil && capBytes > 0 {
+		maxDownloadFileSize = capBytes
+	}
 	taskRegistry = NewTaskRegistry(maxAsync)
 
 	// Periodic cleanup of completed tasks older than 30 minutes
@@ -190,8 +209,11 @@ func main() {
 	http.HandleFunc("/snapshot", handleSnapshot)
 	http.HandleFunc("/snapshot/restore", handleSnapshotRestore)
 
+	probeFfmpeg()
+
 	log.Printf("runtime version: %s", runtimeVersion)
-	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d", port, workspaceDir, maxAsync)
+	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d, maxBashTimeout=%s, maxDownload=%dMB",
+		port, workspaceDir, maxAsync, maxBashTimeout, maxDownloadFileSize>>20)
 	if err := http.ListenAndServe(":"+port, loggingMiddleware(http.DefaultServeMux)); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
@@ -251,7 +273,12 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": runtimeVersion})
+	json.NewEncoder(w).Encode(HealthResponse{
+		Status:        "ok",
+		Version:       runtimeVersion,
+		FfmpegVersion: ffmpegVersion,
+		FfmpegMajor:   ffmpegMajor,
+	})
 }
 
 func handleOcgCallbackProxy(w http.ResponseWriter, r *http.Request) {
@@ -512,13 +539,24 @@ func writeFileUploadError(w http.ResponseWriter, status int, msg string) {
 
 // ---- Code execution tools ----
 
-// Timeout contract for run_bash_command, aligned with ShellCommandTool:
-// timeout is expressed in milliseconds, defaults to 120000ms (2 minutes)
-// and is capped at 600000ms (10 minutes).
+// Timeout contract for run_bash_command, aligned with ShellCommandTool: milliseconds, default
+// 120000ms (2 minutes), capped at 600000ms (10 minutes). The cap is raisable per deployment via
+// MAX_BASH_TIMEOUT_MS because drama assembly runs multi-minute ffmpeg steps in this same image
+// (design §9.4) — the default is unchanged, so nothing gets a longer leash unless it asks for one.
 const (
 	defaultBashTimeoutMs = 120_000
 	maxBashTimeoutMs     = 600_000
 )
+
+var maxBashTimeout = maxBashTimeoutMs * time.Millisecond
+
+// bashTimeout resolves the requested timeout against the deployment cap.
+func bashTimeout(requestedMs int) time.Duration {
+	if requestedMs <= 0 {
+		return defaultBashTimeoutMs * time.Millisecond
+	}
+	return min(time.Duration(requestedMs)*time.Millisecond, maxBashTimeout)
+}
 
 func executeBash(args string) (string, string) {
 	var parsed struct {
@@ -533,12 +571,7 @@ func executeBash(args string) (string, string) {
 		return "command is empty", "failed"
 	}
 
-	timeout := defaultBashTimeoutMs * time.Millisecond
-	if parsed.Timeout > 0 {
-		timeout = time.Duration(min(parsed.Timeout, maxBashTimeoutMs)) * time.Millisecond
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), bashTimeout(parsed.Timeout))
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", parsed.Command)
