@@ -427,8 +427,8 @@ public final class GenerateVideoTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "A detailed text description of the video scene").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "model", "The video generation model to use (uses the default if omitted); must be a model configured in the gateway — do not guess"),
                     ToolCallParameters.ParamSpec.of(String.class, "model_scope", "once (default) or session; session sets the model as the conversation default for subsequent calls, empty model clears it"),
-                    ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; defaults to 10, provider maximum is 10)"),
-                    ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720"),
+                    ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; the per-model range is in the model list above — e.g. seedance 2.5 takes 4-30s and rejects 3s, gemini-omni does 10s per turn)"),
+                    ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720; both the aspect ratio and the resolution tier are derived from it"),
                     ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON array of references; each item is {\"media_id\":\"gateway-media-v1...\",\"name\":\"char_lin\",\"role\":\"subject\"} or \"last\" (preferred, for media this gateway produced) or {\"url\":\"https://...\"} / {\"b64Json\":\"data:image/jpeg;base64,...\"} (external content only); omit to use attached images"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_video_id", "A gateway video ID to edit conversationally with a supported provider"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")

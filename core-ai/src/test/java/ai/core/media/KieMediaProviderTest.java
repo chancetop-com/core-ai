@@ -151,6 +151,36 @@ class KieMediaProviderTest {
     }
 
     @Test
+    void generateVideoSendsTheResolutionTierTheSizeCovers() {
+        provider.generateVideo(videoRequest("bytedance/seedance-2-5", "vertical", 5, "1080x1920", null));
+        provider.generateVideo(videoRequest("bytedance/seedance-2-5", "small", 5, "640x360", null));
+        provider.generateVideo(videoRequest("wan/2-7-text-to-video", "wan has no 480 tier", 5, "854x480", null));
+
+        // without this the model silently used its own default (720p) whatever size was asked for
+        assertEquals("1080p", createTaskInput(0).get("resolution"));
+        assertEquals("9:16", createTaskInput(0).get("aspect_ratio"), "the tier sits next to the ratio, it does not replace it");
+        assertEquals("480p", createTaskInput(1).get("resolution"), "a size below every tier gets the smallest one");
+        assertEquals("720p", createTaskInput(2).get("resolution"), "wan documents 720p/1080p only");
+    }
+
+    @Test
+    void generateVideoOmitsResolutionWithoutASizeOrAVerifiedVocabulary() {
+        provider.generateVideo(videoRequest("bytedance/seedance-2-5", "no size", 5, null, null));
+        provider.generateVideo(videoRequest("kling-2.6/text-to-video", "unverified family", 5, "1280x720", null));
+
+        assertFalse(createTaskInput(0).containsKey("resolution"), "no size means no tier to pick");
+        assertFalse(createTaskInput(1).containsKey("resolution"), "families we have not verified keep their own default");
+    }
+
+    @Test
+    void generateVideoLetsProviderExtraOverrideTheResolution() {
+        provider.generateVideo(new VideoGenerationRequest("bytedance/seedance-2-5", "explicit", 5, "1080x1920",
+            null, "{\"input\":{\"resolution\":\"480p\"}}"));
+
+        assertEquals("480p", createTaskInput().get("resolution"), "an explicit caller wins over the derived tier");
+    }
+
+    @Test
     void generateVideoMapsMinimaxH3ReferenceToVideoReferencesAndDuration() {
         var reference = new MediaReference("https://example.com/ref.png", null);
 

@@ -25,6 +25,10 @@ import java.util.Map;
 public class KieMediaProvider implements MediaProvider {
     private static final String DEFAULT_UPLOAD_URL = "https://kieai.redpandaai.co";
 
+    // docs.kie.ai model pages: seedance takes 480p/720p/1080p, wan 2.7 takes 720p/1080p
+    private static final List<Integer> SEEDANCE_RESOLUTIONS = List.of(480, 720, 1080);
+    private static final List<Integer> WAN_RESOLUTIONS = List.of(720, 1080);
+
     private static final ModelFamily DEFAULT_FAMILY =
             new ModelFamily("", ReferenceMode.ARRAY, "image_urls", DurationType.STRING);
 
@@ -33,12 +37,12 @@ public class KieMediaProvider implements MediaProvider {
             new ModelFamily("minimax-h3/reference-to-video", ReferenceMode.ARRAY, "reference_image_urls", DurationType.INT),
             new ModelFamily("minimax-h3/image-to-video", ReferenceMode.FIRST_LAST, "first_frame_url", DurationType.INT),
             new ModelFamily("minimax-h3/text-to-video", ReferenceMode.NONE, null, DurationType.INT),
-            new ModelFamily("wan/2-7-image-to-video", ReferenceMode.FIRST_LAST, "first_frame_url", DurationType.INT),
-            new ModelFamily("wan/2-7-r2v", ReferenceMode.ARRAY, "reference_image", DurationType.INT),
-            new ModelFamily("wan/2-7-", ReferenceMode.NONE, null, DurationType.INT),
+            new ModelFamily("wan/2-7-image-to-video", ReferenceMode.FIRST_LAST, "first_frame_url", DurationType.INT, WAN_RESOLUTIONS),
+            new ModelFamily("wan/2-7-r2v", ReferenceMode.ARRAY, "reference_image", DurationType.INT, WAN_RESOLUTIONS),
+            new ModelFamily("wan/2-7-", ReferenceMode.NONE, null, DurationType.INT, WAN_RESOLUTIONS),
             new ModelFamily("wan/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
-            new ModelFamily("bytedance/seedance-2", ReferenceMode.ARRAY, "reference_image_urls", DurationType.INT),
-            new ModelFamily("bytedance/seedance-1", ReferenceMode.ARRAY, "input_urls", DurationType.INT),
+            new ModelFamily("bytedance/seedance-2", ReferenceMode.ARRAY, "reference_image_urls", DurationType.INT, SEEDANCE_RESOLUTIONS),
+            new ModelFamily("bytedance/seedance-1", ReferenceMode.ARRAY, "input_urls", DurationType.INT, SEEDANCE_RESOLUTIONS),
             new ModelFamily("bytedance/v1-", ReferenceMode.SINGLE, "image_url", DurationType.STRING),
             new ModelFamily("kling-2.6/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
             new ModelFamily("kling-3.0/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
@@ -306,8 +310,10 @@ public class KieMediaProvider implements MediaProvider {
         if (request.inputReferences() != null && !request.inputReferences().isEmpty()) {
             applyReferences(input, request, family);
         }
-        var aspectRatio = aspectRatio(request.size());
+        var aspectRatio = KieOutputSize.aspectRatio(request.size());
         if (aspectRatio != null) input.put("aspect_ratio", aspectRatio);
+        var resolution = KieOutputSize.resolution(request.size(), family.resolutions());
+        if (resolution != null) input.put("resolution", resolution);
         if (request.seconds() != null) input.put("duration", duration(request, family));
         return input;
     }
@@ -370,20 +376,6 @@ public class KieMediaProvider implements MediaProvider {
         return urls.isEmpty() ? null : urls.getFirst();
     }
 
-    private String aspectRatio(String size) {
-        if (size == null || size.isBlank()) return null;
-        var dimensions = size.toLowerCase(Locale.ROOT).split("x");
-        if (dimensions.length != 2) return null;
-        try {
-            var width = Integer.parseInt(dimensions[0].trim());
-            var height = Integer.parseInt(dimensions[1].trim());
-            if (width == height) return "1:1";
-            return width > height ? "16:9" : "9:16";
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
-    }
-
     private String normalizeStatus(String state) {
         if (state == null) return "processing";
         return switch (state.toLowerCase(Locale.ROOT)) {
@@ -430,6 +422,15 @@ public class KieMediaProvider implements MediaProvider {
 
     private enum ReferenceMode { ARRAY, SINGLE, FIRST_LAST, NONE }
 
-    private record ModelFamily(String prefix, ReferenceMode referenceMode, String referenceField, DurationType durationType) {
+    /**
+     * @param resolutions short-side tiers this family accepts, largest-wins against the requested size.
+     *                    Empty means "not verified against the model page": no resolution is sent and the
+     *                    model uses its own default, which is what happened for every family before.
+     */
+    private record ModelFamily(String prefix, ReferenceMode referenceMode, String referenceField, DurationType durationType,
+                               List<Integer> resolutions) {
+        ModelFamily(String prefix, ReferenceMode referenceMode, String referenceField, DurationType durationType) {
+            this(prefix, referenceMode, referenceField, durationType, List.of());
+        }
     }
 }
