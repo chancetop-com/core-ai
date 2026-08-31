@@ -17,7 +17,11 @@ import static ai.core.media.reference.MediaAddressingSyntax.NONE;
 public final class MediaCapabilityRegistry {
     // longest matching prefix wins, so ordering inside the list is irrelevant
     private static final List<Entry> ENTRIES = List.of(
-            // Seedance 2.x addresses references as @Image1 / @Video1 / @Audio1 over a mixed reference set
+            // Seedance 2.x addresses references as @Image1 / @Video1 / @Audio1 over a mixed reference set.
+            // 2.5 documents its own array caps (docs.kie.ai/market/bytedance/seedance-2-5): 30 images,
+            // 10 videos, 10 audios, with no documented cross-modality total — the real limits are the
+            // per-file ones (video 2-30s each and <=30s total, audio 2-30s each) which live upstream.
+            new Entry("bytedance/seedance-2-5", new MediaModelCapabilities("bytedance/seedance-2-5", 30, 10, 10, null, AT_TOKEN, true)),
             new Entry("bytedance/seedance-2", new MediaModelCapabilities("bytedance/seedance-2", 4, 2, 1, 4, AT_TOKEN, true)),
             new Entry("bytedance/seedance-1", new MediaModelCapabilities("bytedance/seedance-1", 2, 0, 0, 2, NONE, false)),
             // MiniMax H3 reference-to-video addresses as <Picture 1> / <Video 1>

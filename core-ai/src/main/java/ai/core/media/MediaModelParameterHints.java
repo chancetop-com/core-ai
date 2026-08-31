@@ -22,8 +22,10 @@ public final class MediaModelParameterHints {
             + "first_frame_url/last_frame_url, do NOT attach images or pass input_references, "
             + "and do NOT pass size (first/last-frame mode requires adaptive aspect ratio derived "
             + "from the frame image); "
-            + "generate_audio (bool), resolution (480p/720p/1080p/4k), web_search (bool); "
-            + "duration 4-15s (2.5 up to 30s); aspect_ratio 1:1/4:3/3:4/16:9/9:16/21:9/adaptive";
+            + "generate_audio (bool, default true), resolution (480p/720p/1080p, default 720p — pass it or "
+            + "the output is 720p whatever size you ask for), return_last_frame (bool), web_search (bool); "
+            + "duration is an integer >= 4 (2.5: from 4s up to 30s, -1 for auto, default 5) — a 3s clip is rejected; "
+            + "aspect_ratio 1:1/4:3/3:4/16:9/9:16/21:9/adaptive";
 
     private static final String SEEDANCE_1_5_HINT = "input_urls (image-to-video, up to 2 images); "
             + "aspect_ratio 1:1/21:9/4:3/3:4/16:9/9:16 (required); "
