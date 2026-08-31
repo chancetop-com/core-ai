@@ -51,12 +51,16 @@ public final class SandboxConstants {
 
     public static final long DEFAULT_TOOL_TIMEOUT_MS = 120_000;
 
+    // advisory only — the enforced cap is the runtime's MAX_BASH_TIMEOUT_MS, this constant has no callers
     public static final long MAX_TOOL_TIMEOUT_MS = 600_000;
 
     // Per-request timeout for /execute HTTP calls, independent of sandbox container TTL.
     // A long-running command (e.g. sleep 300) should not be killed by the HTTP client
-    // timeout when the sandbox container itself has a short lifetime TTL.
-    public static final int REQUEST_TIMEOUT_SECONDS = 600;
+    // timeout when the sandbox container itself has a short lifetime TTL. It is a ceiling,
+    // not a wait: the runtime answers as soon as the command ends, so this only has to sit
+    // above the runtime's own bash cap (MAX_BASH_TIMEOUT_MS, raisable for assembly pods) —
+    // otherwise the client gives up while ffmpeg is still working and the job is lost.
+    public static final int REQUEST_TIMEOUT_SECONDS = 1800;
 
     public static final int MAX_OUTPUT_SIZE = 30 * 1024;
 
