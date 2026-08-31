@@ -72,7 +72,7 @@ Blob：私有 container，key = `{user_id}/{session_id}/{snapshot_id}.tar.gz`；
 
 ### 2.1 目标
 
-- release 前 capture sandbox 白名单可写目录，v1 默认为 `/tmp` 和 `/skill`。
+- release 前 capture sandbox 白名单可写目录，v1 实际实现为 `/tmp`、`/skill`、`/workspace`（`/workspace` 2026-07-06 起纳入，见顶部实施范围章节；本章早期草案写的 `/tmp` + `/skill` 已过时）。
 - release 后同一 session 继续执行 sandbox 工具时，自动创建新 sandbox，并在 `READY` 前 restore 最新 eligible AVAILABLE generation。
 - snapshot 存储在 Azure Blob 的私有 container 中，Mongo 只保存 metadata 和 blob pointer。
 - 对 Docker、Kubernetes Pod、AgentSandbox CRD / SandboxClaim warm pool 共用同一套 runtime API。
