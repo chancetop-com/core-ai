@@ -39,13 +39,15 @@ public class SessionModule extends Module {
     @Override
     protected void initialize() {
         bindSessionRuntime();
-        registerSseEndpoints();
-        schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
-        api().service(ChatSessionWebService.class, bind(ChatSessionWebServiceImpl.class));
         // Bound here (not SandboxModule) because SandboxService's own module loads
         // before this one in ServerApp, but SessionRegistry/AgentSessionManager are
         // bound in this module -- bean() cannot resolve a not-yet-bound type.
+        // Must run BEFORE registerSseEndpoints: the terminal SSE listener @Injects
+        // SandboxTerminalService, and bind() resolves injected fields eagerly.
         registerSandboxTerminal();
+        registerSseEndpoints();
+        schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
+        api().service(ChatSessionWebService.class, bind(ChatSessionWebServiceImpl.class));
     }
 
     private void bindSessionRuntime() {

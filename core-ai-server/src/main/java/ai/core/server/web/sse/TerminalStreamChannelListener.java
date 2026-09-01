@@ -63,12 +63,10 @@ public class TerminalStreamChannelListener implements ChannelListener<Object> {
     @Inject
     WebContext webContext;
 
+    // CoreNG's BeanFactory requires bound classes to declare exactly one constructor,
+    // so the per-pod cap is fixed here rather than constructor-injected.
     public TerminalStreamChannelListener() {
-        this(DEFAULT_MAX_STREAMS);
-    }
-
-    TerminalStreamChannelListener(int maxStreams) {
-        this.slots = new StreamSlots(maxStreams);
+        this.slots = new StreamSlots(DEFAULT_MAX_STREAMS);
     }
 
     @Override
