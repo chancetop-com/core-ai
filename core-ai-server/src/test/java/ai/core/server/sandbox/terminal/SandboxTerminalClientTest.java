@@ -53,8 +53,8 @@ class SandboxTerminalClientTest {
         assertTrue(result.recovered());
         var sentJson = parseJsonObject(receivedBody.get());
         assertEquals("client-1", sentJson.get("client_id"));
-        assertEquals(24.0, ((Number) sentJson.get("rows")).doubleValue());
-        assertEquals(80.0, ((Number) sentJson.get("cols")).doubleValue());
+        assertEquals(24, ((Number) sentJson.get("rows")).intValue());
+        assertEquals(80, ((Number) sentJson.get("cols")).intValue());
     }
 
     @Test
@@ -110,8 +110,8 @@ class SandboxTerminalClientTest {
         assertEquals("PUT", receivedMethod.get());
         assertEquals("/terminal/term-1/size", receivedPath.get());
         var sentJson = parseJsonObject(receivedBody.get());
-        assertEquals(30.0, ((Number) sentJson.get("rows")).doubleValue());
-        assertEquals(100.0, ((Number) sentJson.get("cols")).doubleValue());
+        assertEquals(30, ((Number) sentJson.get("rows")).intValue());
+        assertEquals(100, ((Number) sentJson.get("cols")).intValue());
     }
 
     @Test
