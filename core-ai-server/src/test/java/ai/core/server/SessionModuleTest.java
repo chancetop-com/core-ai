@@ -41,11 +41,6 @@ class SessionModuleTest {
             return mock(instanceClass);
         }
 
-        @Override
-        public <T> T bean(Class<T> instanceClass) {
-            return mock(instanceClass);
-        }
-
         // SessionModule also binds pre-built instances (e.g. new SessionActivityRegistry(...),
         // the SandboxTerminalService) rather than only class tokens; record the runtime type so
         // the ordering assertion still sees a harmless entry for them.
@@ -53,6 +48,11 @@ class SessionModuleTest {
         public <T> T bind(T instance) {
             boundClasses.add(instance.getClass());
             return instance;
+        }
+
+        @Override
+        public <T> T bean(Class<T> instanceClass) {
+            return mock(instanceClass);
         }
 
         // registerSandboxTerminal() reads sys.sandbox.terminal.enabled; no real ModuleContext

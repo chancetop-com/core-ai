@@ -66,7 +66,7 @@ RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_li
 # Deliberately the last layer, and it installs its own xz-utils rather than touching layer 1: an
 # ffmpeg bump must not invalidate the python / node / uv / gh layers above it.
 ARG FFMPEG_MAJOR=8
-ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-linux64-gpl-8.0.tar.xz
+ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz
 RUN apt-get update && apt-get install -y --no-install-recommends xz-utils \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL "${FFMPEG_URL}" -o /tmp/ffmpeg.tar.xz \
