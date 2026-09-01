@@ -17,15 +17,11 @@ public class McpServerModule extends Module {
         bind(McpServerService.class, holder);
         onShutdown(holder::close);
 
-        // MCP endpoint with CORS support
-        http().route(HTTPMethod.OPTIONS, "/api-tools/mcp", (LambdaController) request -> Response.empty()
-                .header("Access-Control-Allow-Origin", "*")
-                .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                .header("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id")
-                .header("Access-Control-Max-Age", "86400"));
-        http().route(HTTPMethod.GET, "/api-tools/mcp", (LambdaController) request -> Response.text("{\"name\":\"" + holder.getServerName() + "\",\"version\":\"" + holder.getServerVersion() + "\"}")
+        // under /api/ prefix so server auth interceptors (session cookie / bearer key) apply;
+        // OPTIONS preflight is served by the server's CORS error handler, no explicit route needed
+        http().route(HTTPMethod.GET, "/api/api-tools/mcp", (LambdaController) request -> Response.text("{\"name\":\"" + holder.getServerName() + "\",\"version\":\"" + holder.getServerVersion() + "\"}")
                 .contentType(core.framework.http.ContentType.APPLICATION_JSON)
                 .header("Access-Control-Allow-Origin", "*"));
-        http().route(HTTPMethod.POST, "/api-tools/mcp", bind(McpStreamableHttpController.class));
+        http().route(HTTPMethod.POST, "/api/api-tools/mcp", bind(McpStreamableHttpController.class));
     }
 }

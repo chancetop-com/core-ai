@@ -44,6 +44,11 @@ public class PermissionInterceptor implements Interceptor {
             // api-user management surface is already scoped by AuthInterceptor (cmk_ manage key branch)
             return invocation.proceed();
         }
+        if (path.startsWith("/api/api-tools/mcp")) {
+            // MCP transport routes are bound in the core-ai module, so they cannot carry
+            // @PermissionsRequired; authentication is enforced by AuthInterceptor
+            return invocation.proceed();
+        }
         var required = invocation.annotation(PermissionsRequired.class);
         if (required != null) {
             var userId = AuthContext.userId(invocation.context());
