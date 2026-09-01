@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -43,6 +44,22 @@ class SessionModuleTest {
         @Override
         public <T> T bean(Class<T> instanceClass) {
             return mock(instanceClass);
+        }
+
+        // SessionModule also binds pre-built instances (e.g. new SessionActivityRegistry(...),
+        // the SandboxTerminalService) rather than only class tokens; record the runtime type so
+        // the ordering assertion still sees a harmless entry for them.
+        @Override
+        public <T> T bind(T instance) {
+            boundClasses.add(instance.getClass());
+            return instance;
+        }
+
+        // registerSandboxTerminal() reads sys.sandbox.terminal.enabled; no real ModuleContext
+        // exists in this test, so report the property as absent (gate stays disabled).
+        @Override
+        public Optional<String> property(String key) {
+            return Optional.empty();
         }
 
         @Override

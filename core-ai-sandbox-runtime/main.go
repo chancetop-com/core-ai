@@ -186,6 +186,13 @@ func main() {
 		}
 	}()
 
+	terminalRegistry := NewTerminalRegistry(10 * time.Minute)
+	go func() {
+		for range time.Tick(time.Minute) {
+			terminalRegistry.ReclaimDisconnected()
+		}
+	}()
+
 	if err := os.MkdirAll(skillBaseDir, 0755); err != nil {
 		log.Printf("warning: failed to create skill base dir %s: %v", skillBaseDir, err)
 	}
@@ -208,6 +215,7 @@ func main() {
 	http.HandleFunc("/mcp", handleMcp)
 	http.HandleFunc("/snapshot", handleSnapshot)
 	http.HandleFunc("/snapshot/restore", handleSnapshotRestore)
+	registerTerminalHandlers(http.DefaultServeMux, terminalRegistry)
 
 	probeFfmpeg()
 

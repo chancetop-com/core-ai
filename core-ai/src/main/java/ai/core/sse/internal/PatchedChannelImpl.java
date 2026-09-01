@@ -28,6 +28,21 @@ import java.util.concurrent.locks.ReentrantLock;
 class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<T>, Channel.Context {
     private static final Logger LOGGER = LoggerFactory.getLogger(PatchedChannelImpl.class);
 
+    // extracted so the framing logic (id:/event:/data: line construction) is unit-testable
+    // without standing up the Undertow exchange/sink this class otherwise requires
+    static String frame(String id, String event, String data) {
+        var builder = new StringBuilder();
+        if (id != null && !id.isBlank()) builder.append("id: ").append(id).append('\n');
+        if (event != null && !event.isBlank()) builder.append("event: ").append(event).append('\n');
+        if (data != null) {
+            for (String line : data.split("\\R", -1)) {
+                builder.append("data: ").append(line).append('\n');
+            }
+        }
+        builder.append('\n');
+        return builder.toString();
+    }
+
     final String id = UUID.randomUUID().toString();
     final Set<String> groups = Sets.newConcurrentHashSet();
     final String refId;
@@ -101,15 +116,12 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
 
     @Override
     public boolean sendRawEvent(String event, String data) {
-        var builder = new StringBuilder();
-        if (event != null && !event.isBlank()) builder.append("event: ").append(event).append('\n');
-        if (data != null) {
-            for (String line : data.split("\\R", -1)) {
-                builder.append("data: ").append(line).append('\n');
-            }
-        }
-        builder.append('\n');
-        return sendBytes(Strings.bytes(builder.toString()));
+        return sendBytes(Strings.bytes(frame(null, event, data)));
+    }
+
+    @Override
+    public boolean sendRawEvent(String id, String event, String data) {
+        return sendBytes(Strings.bytes(frame(id, event, data)));
     }
 
     @Override

@@ -114,6 +114,7 @@ public class AgentSessionManager {
     ApiUserQuotaService apiUserQuotaService;
     @Inject
     ai.core.schedule.ScheduledTaskStore scheduledTaskStore;
+    @Inject SessionActivityRegistry sessionActivityRegistry;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -398,13 +399,17 @@ public class AgentSessionManager {
                 sessionLastActivity.remove(sessionId);
                 continue;
             }
-            try {
-                logger.info("closing idle session, sessionId={}, idleMs={}", sessionId, System.currentTimeMillis() - entry.getValue());
-                closeSession(sessionId);
-                closed++;
-            } catch (Exception e) {
-                logger.warn("failed to close idle session, sessionId={}", sessionId, e);
-            }
+            var durableActivity = sessionActivityRegistry != null ? sessionActivityRegistry.lastActivity(sessionId) : 0L;
+            if (durableActivity >= threshold) { // cross-pod terminal activity keeps this session alive; treat it as local.
+                sessionLastActivity.put(sessionId, durableActivity);
+                sandboxService.renewSandbox(sessionId);
+            } else try {
+                    logger.info("closing idle session, sessionId={}, idleMs={}", sessionId, System.currentTimeMillis() - entry.getValue());
+                    closeSession(sessionId);
+                    closed++;
+                } catch (Exception e) {
+                    logger.warn("failed to close idle session, sessionId={}", sessionId, e);
+                }
         }
         return closed;
     }

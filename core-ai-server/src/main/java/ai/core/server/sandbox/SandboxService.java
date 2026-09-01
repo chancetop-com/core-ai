@@ -41,7 +41,6 @@ public class SandboxService {
         config.timeoutSeconds = 3900;
         return config;
     }
-
     private static SandboxConfig createDiscoveryConfig() {
         var config = new SandboxConfig();
         config.enabled = Boolean.TRUE;
@@ -62,9 +61,7 @@ public class SandboxService {
     private final SandboxFileService sandboxFileService = new SandboxFileService(this);
     private final Map<String, McpClientManager> sessionMcpManagers = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> sessionMcpServerIds = new ConcurrentHashMap<>();
-
     private volatile LazySandbox discoverySandbox;
-
     @SuppressFBWarnings("PME_POOR_MANS_ENUM")
     private final boolean enabled;
     ObjectStorageServiceResolver storageResolver;
@@ -189,6 +186,9 @@ public class SandboxService {
     }
     Sandbox sessionSandbox(String sessionId) {
         return sessionSandboxes.get(sessionId);
+    }
+    SandboxManager sandboxManager() {
+        return sandboxManager;
     }
     public String serverUrlFromSandbox() {
         return serverUrlFromSandbox;

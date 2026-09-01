@@ -53,6 +53,7 @@ export interface SandboxSegment {
 
 export interface SandboxTerminalSpec {
   sandboxId: string;
+  sessionId: string;
   hostname?: string;
   ip?: string;
   image?: string;

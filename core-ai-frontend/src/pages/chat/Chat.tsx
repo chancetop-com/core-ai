@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
+import { useCapabilities } from '../../api/capabilities';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact, SessionFeedback } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
@@ -97,6 +98,7 @@ function configuredSubAgentIds(agent?: AgentDefinition): string[] {
 }
 
 export default function Chat() {
+  const { sandboxTerminal: terminalEnabled } = useCapabilities();
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>(
     () => restoreCachedChatMessages(sessionStorage.getItem('chat_messages')),
@@ -158,11 +160,11 @@ export default function Chat() {
     setActiveSandboxTerminal(null);
     setShowVoiceSidebar(true);
   }, []);
-  const openSandboxTerminal = useCallback((spec: SandboxTerminalSpec) => {
+  const openSandboxTerminal = useCallback((spec: Omit<SandboxTerminalSpec, 'sessionId'>) => {
     setShowVoiceSidebar(false);
     setActiveArtifact(null);
-    setActiveSandboxTerminal(spec);
-  }, []);
+    setActiveSandboxTerminal({ ...spec, sessionId: sessionId ?? '' });
+  }, [sessionId]);
 
   const [voiceLanguage, setVoiceLanguage] = useState('zh-CN');
   const {
@@ -219,6 +221,12 @@ export default function Chat() {
 
   useEffect(() => {
     sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  // The sandbox terminal panel is scoped to the session that created the sandbox —
+  // close it when the user switches sessions so a stale terminal isn't shown.
+  useEffect(() => {
+    setActiveSandboxTerminal(null);
   }, [sessionId]);
 
   const markTurnPending = useCallback((sid: string) => {
@@ -1874,6 +1882,7 @@ export default function Chat() {
         onShowEarlierMessages={handleShowEarlierMessages}
         onScrollToBottom={scrollToBottom}
         onOpenArtifact={openArtifact}
+        terminalEnabled={terminalEnabled}
         onOpenSandboxTerminal={openSandboxTerminal}
         onApproval={handleApproval}
         showFeedback={status === 'idle' && !!sessionId && hasHadAgentReply}

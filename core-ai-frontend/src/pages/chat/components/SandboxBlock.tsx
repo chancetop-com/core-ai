@@ -2,15 +2,20 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, Box, Loader2, Terminal } from 'lucide-react';
 import type { SandboxSegment, SandboxTerminalSpec } from '../types';
 
+// Sandbox details passed up when the user opens a terminal — the session that owns
+// the sandbox is attached by the caller (Chat.tsx), not known to this component.
+type OpenTerminalRequest = Omit<SandboxTerminalSpec, 'sessionId'>;
+
 interface Props {
   seg: SandboxSegment;
-  onOpenTerminal: (spec: SandboxTerminalSpec) => void;
+  terminalEnabled: boolean;
+  onOpenTerminal: (spec: OpenTerminalRequest) => void;
 }
 
-export default function SandboxBlock({ seg, onOpenTerminal }: Props) {
-  const { sandboxType, message, sandboxId, historical, hostname, ip, image, durationMs } = seg;
+export default function SandboxBlock({ seg, terminalEnabled, onOpenTerminal }: Props) {
+  const { sandboxType, message, sandboxId, hostname, ip, image, durationMs } = seg;
   const isPending = sandboxType === 'creating' || sandboxType === 'replacing';
-  const canOpenTerminal = !historical && sandboxType === 'ready'
+  const canOpenTerminal = terminalEnabled && sandboxType === 'ready'
     && Boolean(sandboxId) && sandboxId !== 'pending';
 
   const [expanded, setExpanded] = useState(false);

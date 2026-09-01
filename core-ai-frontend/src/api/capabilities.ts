@@ -7,6 +7,7 @@ export interface Capabilities {
   dashboard: boolean;
   systemPrompts: boolean;
   authRequired: boolean;
+  sandboxTerminal: boolean;
 }
 
 export const defaultCapabilities: Capabilities = {
@@ -16,6 +17,7 @@ export const defaultCapabilities: Capabilities = {
   dashboard: true,
   systemPrompts: true,
   authRequired: true,
+  sandboxTerminal: false,
 };
 
 export const CapabilitiesContext = createContext<Capabilities>(defaultCapabilities);
@@ -37,6 +39,7 @@ export async function fetchCapabilities(): Promise<Capabilities> {
       dashboard: caps.dashboard ?? true,
       systemPrompts: caps.systemPrompts ?? caps.prompts ?? false,
       authRequired: caps.auth_required ?? true,
+      sandboxTerminal: caps.sandbox_terminal_enabled ?? false,
     };
   } catch {
     return defaultCapabilities;

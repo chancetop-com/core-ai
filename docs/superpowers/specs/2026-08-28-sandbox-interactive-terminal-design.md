@@ -2,7 +2,7 @@
 
 Date: 2026-08-28
 Revised: 2026-08-31 — lifecycle renewal, reload recovery, snapshot/resume interaction, and deployment constraints added after verifying assumptions against the codebase and the dev/UAT environment manifests. See Revision Notes at the end.
-Status: Approved in chat; written specification awaiting user review
+Status: Implemented 2026-09-01 (plan: docs/superpowers/plans/2026-08-31-sandbox-interactive-terminal.md); awaiting user commit and dev deployment
 
 ## Problem
 
@@ -108,13 +108,18 @@ A `SandboxTerminalService` will provide one authorization and runtime-resolution
 6. attach to the existing provider runtime without creating, replacing, registering, or releasing the Sandbox lifecycle resource;
 7. health-check the runtime before terminal creation;
 8. proxy the internal terminal request;
-9. on terminal creation and on user input, call `AgentSessionManager.touchActivity(sessionId)`, throttled to at most once per 60 seconds per session.
+9. on terminal creation and on user input, record terminal activity (see Activity renewal), throttled to at most once per 60 seconds per session.
 
 **Attach constraint (snapshot epoch hazard).** Attaching MUST go through `provider.attach` directly. It MUST NOT use `SandboxService.reattachOrCreateSandbox` or any path that calls `SandboxSnapshotService.beginEpoch`: incrementing the epoch fails the capture CAS re-check in `SandboxSnapshotService.captureBeforeRelease` and silently discards a concurrent filesystem snapshot taken by the session-owning Pod. Terminal operations must be invisible to the snapshot epoch.
 
 **Address cache.** `attach` resolves the runtime address from the Kubernetes API (`serviceFQDN` / `podIPs[0]`). Input is keystroke-frequency traffic, so each Pod keeps a short-TTL in-memory cache of `sandboxId -> host:port`, invalidated on connection failure. A Sandbox Pod's address is stable for its lifetime, so a small TTL (e.g. 60 s) plus failure-driven invalidation is sufficient.
 
-**Activity renewal.** `touchActivity` bumps the session idle clock (guarding against the 60-minute `IdleSessionCleanupJob` close) and renews the Sandbox `shutdownTime` through `provider.renew`. Only user input renews; output events do not — an abandoned terminal left running `top` must not keep a Sandbox alive forever. An actively typing user extends the session indefinitely, which matches existing chat semantics where every message renews.
+**Activity renewal.** Both release timers are pod-local on the session-owner Pod: `cleanupIdleSessions` iterates the owner Pod's in-memory `sessionLastActivity` map (non-owner Pods discard their entries), and `SandboxService.renewSandbox` no-ops on a Pod that does not hold the sandbox in its in-memory `sessionSandboxes`. A terminal request proxied by the non-owner Pod therefore cannot renew anything by calling `touchActivity` locally. Renewal is split in two:
+
+- **Any Pod (terminal service):** on create and input, write a durable activity timestamp to Redis (`session-activity:<sessionId>`, TTL slightly above the idle threshold), throttled to once per 60 seconds; additionally call the local `touchActivity`, which is fully effective when this Pod happens to be the owner.
+- **Owner Pod (idle guard):** before `cleanupIdleSessions` closes a session that looks idle in its local map, it checks the Redis activity timestamp; if fresh, it refreshes its local `sessionLastActivity` and calls the local `renewSandbox` (which updates the in-memory `createdAt` used by `SandboxManager.cleanupExpired` and PATCHes the Kubernetes `shutdownTime`), then skips the close. The 5-minute job cadence against the 60/65-minute thresholds leaves ample margin.
+
+This follows the established Redis pattern from the turn-state registry fix and keeps the no-affinity property intact — the non-owner Pod only writes a timestamp; all lifecycle mutation stays on the owner Pod. Only user input renews; output events do not — an abandoned terminal left running `top` must not keep a Sandbox alive forever. An actively typing user extends the session indefinitely, which matches existing chat semantics where every message renews.
 
 The resolver accepts only `sessionId`, `sandboxId`, and `terminalId`. Host, IP, port, and image values from a client are ignored and are not part of the request contract.
 
@@ -125,7 +130,7 @@ Terminal REST operations use fixed session-scoped API paths so they reuse the ex
 | `POST` | `/api/sessions/sandbox-terminal` | Create a PTY from `sessionId`, `sandboxId`, `clientId`, rows, and columns |
 | `POST` | `/api/sessions/sandbox-terminal/input` | Send Base64-encoded input |
 | `PUT` | `/api/sessions/sandbox-terminal/size` | Change PTY rows and columns |
-| `DELETE` | `/api/sessions/sandbox-terminal` | Close the PTY |
+| `POST` | `/api/sessions/sandbox-terminal/close` | Close the PTY (POST with a request bean rather than DELETE — the repo's CoreNG DELETE convention carries only a single `@PathParam`, and close must be authorized against `sessionId` + `sandboxId` + `terminalId`) |
 | `GET` SSE | `/api/sessions/sandbox-terminal/events` | Stream output and lifecycle events |
 
 The SSE endpoint receives `sessionId`, `sandboxId`, and `terminalId` as query parameters and uses `Last-Event-ID` for replay; the server forwards the header to the runtime and never buffers terminal events itself. The existing SSE authentication interceptor already maps `/api/sessions...` to `chat.use`; the listener additionally calls the shared terminal authorization path.
@@ -278,7 +283,9 @@ Implementation follows red-green-refactor. Each behavior receives a failing test
 - never creates a Sandbox as part of terminal resolution;
 - resolves the runtime from provider state rather than client metadata;
 - terminal operations leave the session's snapshot epoch counter unchanged (never call `beginEpoch`);
-- calls `touchActivity` on create and input, throttled to once per 60 s; output events do not renew;
+- writes the Redis activity timestamp on create and input, throttled to once per 60 s; output events do not renew;
+- the idle guard on the owner Pod skips closing a session whose Redis activity timestamp is fresh, refreshing local activity and renewing the sandbox; a stale timestamp still closes;
+- terminal input proxied through the non-owner Pod prevents both the idle session close and the in-memory sandbox TTL release (end-to-end two-Pod test);
 - caches the resolved runtime address and invalidates it on connection failure;
 - enforces the feature gate for REST and SSE;
 - proxies create, input, resize, close, output, and lifecycle events;
@@ -364,3 +371,17 @@ Changes from the 2026-08-28 draft, each verified against code or environment man
 6. **Capabilities decoupled.** `/api/capabilities` currently returns the shared A2A DTO; the flag goes into a web-only response bean.
 7. **Resource bounds added.** Per-Pod bridged-stream cap; runtime address cache; `/workspace` ephemeral-storage gap in the SandboxTemplates recorded as a follow-up env change.
 8. **Implementation hazards recorded.** `creack/pty` is the runtime's first external dependency (go.sum + Dockerfile change); the existing `TaskRegistry` locking pattern is a data race and must not be copied; `minimalEnv` lacks `TERM`.
+9. **Cross-Pod renewal corrected.** `touchActivity`/`renewSandbox` are pod-local (`sessionLastActivity` in-memory map, `sessionSandboxes.get` no-op on non-owner Pods) and `cleanupIdleSessions` decides on the owner Pod only — a plain `touchActivity` from a proxied terminal request cannot prevent release. Replaced with a Redis activity timestamp written by any Pod plus an idle-guard check on the owner Pod that renews locally before closing.
+
+## Implementation Errata (2026-09-01)
+
+Verified deviations found while implementing against this spec:
+
+a. Busy responses carry the framework-fixed errorCode `TOO_MANY_REQUESTS` (HTTP 429), not a custom `TERMINAL_BUSY` code; the frontend keys on status 429.
+b. Error codes shipped: `SANDBOX_REPLACED` (409), `SANDBOX_EXPIRED` (404 pre-create / 410 post-create), `TERMINAL_DISABLED` (404), `TERMINAL_RUNTIME_UNAVAILABLE` (502 via `RemoteServiceException`).
+c. REST auth is the class-level `@PermissionsRequired(CHAT_USE)` annotation on the web impl (CoreNG has no path-prefix permission map for REST; the prefix map exists only for SSE) — the spec's "reuse existing authorization layers" sentence holds via annotation, not path.
+d. `/api/capabilities` now returns a web-only `ServerCapabilities` bean (decoupled from `A2ACapabilities` as specified).
+e. The runtime's overflow SSE frame's data payload is the client's requested cursor, not the evicted-through sequence; no consumer reads the payload value.
+f. Terminal wiring lives in `SessionModule` (module load order), with terminal runtime resolution extracted to `SandboxTerminalRuntimeResolver`.
+g. `TERMINAL_DISABLED` currently renders the same 已过期-style message as `SANDBOX_EXPIRED` in the panel (no dedicated disabled state).
+h. Session/sandbox renewal from terminal input is implemented cross-pod via the Redis session-activity timestamp + an owner-pod idle-cleanup guard (as specified in the Activity renewal section).

@@ -110,7 +110,8 @@ interface ChatMessageRowProps {
   sessionArtifacts: SessionArtifact[];
   agentMarkdownComponents: MarkdownComponents;
   onOpenArtifact: (spec: ArtifactSpec) => void;
-  onOpenSandboxTerminal: (spec: SandboxTerminalSpec) => void;
+  terminalEnabled: boolean;
+  onOpenSandboxTerminal: (spec: Omit<SandboxTerminalSpec, 'sessionId'>) => void;
   onApproval: (decision: 'APPROVE' | 'DENY') => void;
   showFeedback: boolean;
   onFeedbackClick?: () => void;
@@ -126,6 +127,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   sessionArtifacts,
   agentMarkdownComponents,
   onOpenArtifact,
+  terminalEnabled,
   onOpenSandboxTerminal,
   onApproval,
   showFeedback,
@@ -159,7 +161,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
       <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
         {sandboxSeg && (
           <div className="mb-3">
-            <SandboxBlock seg={sandboxSeg} onOpenTerminal={onOpenSandboxTerminal} />
+            <SandboxBlock seg={sandboxSeg} terminalEnabled={terminalEnabled} onOpenTerminal={onOpenSandboxTerminal} />
           </div>
         )}
         {thinkingSeg && (
@@ -334,7 +336,8 @@ interface ChatMessagesPanelProps {
   onShowEarlierMessages: () => void;
   onScrollToBottom: (behavior?: ScrollBehavior) => void;
   onOpenArtifact: (spec: ArtifactSpec) => void;
-  onOpenSandboxTerminal: (spec: SandboxTerminalSpec) => void;
+  terminalEnabled: boolean;
+  onOpenSandboxTerminal: (spec: Omit<SandboxTerminalSpec, 'sessionId'>) => void;
   onApproval: (decision: 'APPROVE' | 'DENY') => void;
   showFeedback?: boolean;
   onFeedbackClick?: () => void;
@@ -362,6 +365,7 @@ const ChatMessagesPanel = memo(function ChatMessagesPanel({
   onShowEarlierMessages,
   onScrollToBottom,
   onOpenArtifact,
+  terminalEnabled,
   onOpenSandboxTerminal,
   onApproval,
   showFeedback,
@@ -516,6 +520,7 @@ const ChatMessagesPanel = memo(function ChatMessagesPanel({
               sessionArtifacts={sessionArtifacts}
               agentMarkdownComponents={agentMarkdownComponents}
               onOpenArtifact={onOpenArtifact}
+              terminalEnabled={terminalEnabled}
               onOpenSandboxTerminal={onOpenSandboxTerminal}
               onApproval={onApproval}
               showFeedback={showFeedback === true && index === lastAgentMsgIndex}

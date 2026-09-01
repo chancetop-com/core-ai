@@ -1,6 +1,6 @@
 const BASE = '';
 
-function getAuthHeaders(): Record<string, string> {
+export function getAuthHeaders(): Record<string, string> {
   // Accept: application/json makes the server return a structured {message} error body
   // instead of an HTML error page, so failures below can surface the real reason.
   const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Accept': 'application/json' };

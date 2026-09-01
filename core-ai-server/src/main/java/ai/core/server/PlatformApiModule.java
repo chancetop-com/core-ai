@@ -23,6 +23,7 @@ public class PlatformApiModule extends Module {
     private void registerCapabilities() {
         var impl = bind(CapabilitiesWebServiceImpl.class);
         impl.authDisabled = "true".equals(property("sys.auth.disabled").orElse("false"));
+        impl.sandboxTerminalEnabled = Boolean.parseBoolean(property("sys.sandbox.terminal.enabled").orElse("false"));
         api().service(CapabilitiesWebService.class, impl);
     }
 }

@@ -56,6 +56,16 @@ public class SandboxManager {
         return sandbox;
     }
 
+    /**
+     * Straight pass-through to the provider's attach, with NO map registration and NO
+     * acquire-count bump. Used by transient runtime resolution (e.g. terminal address
+     * lookup), which must resolve a sandbox address without joining its lifecycle:
+     * no entry in {@code activeSandboxes}, no release ever owed for this call.
+     */
+    public Optional<Sandbox> attachTransient(String sandboxId, SandboxConfig config, String sessionId, String userId) {
+        return provider.attach(sandboxId, config, sessionId, userId);
+    }
+
     public Sandbox get(String sandboxId) {
         var entry = activeSandboxes.get(sandboxId);
         return entry == null ? null : entry.sandbox;
