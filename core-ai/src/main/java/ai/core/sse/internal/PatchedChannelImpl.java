@@ -31,7 +31,8 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
     // extracted so the framing logic (id:/event:/data: line construction) is unit-testable
     // without standing up the Undertow exchange/sink this class otherwise requires
     static String frame(String id, String event, String data) {
-        var builder = new StringBuilder();
+        int capacity = 32 + (id == null ? 0 : id.length()) + (event == null ? 0 : event.length()) + (data == null ? 0 : data.length() + 8);
+        var builder = new StringBuilder(capacity);
         if (id != null && !id.isBlank()) builder.append("id: ").append(id).append('\n');
         if (event != null && !event.isBlank()) builder.append("event: ").append(event).append('\n');
         if (data != null) {
