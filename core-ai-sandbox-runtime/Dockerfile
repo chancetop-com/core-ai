@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium xvfb xauth libnss3 libxss1 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2 && \
     rm -rf /var/lib/apt/lists/*
 
-# Layer 2: Node.js 22 (mongodb-mcp-server requires Node >= 22.13)
-RUN curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.gz -o /tmp/node.tar.gz && \
+# Layer 2: Node.js 22 (mongodb-mcp-server requires Node >= 22.13; openclaw requires >= 22.22.3)
+RUN curl -fsSL https://nodejs.org/dist/v22.23.2/node-v22.23.2-linux-x64.tar.gz -o /tmp/node.tar.gz && \
     tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 --no-same-owner && \
     rm /tmp/node.tar.gz
 
