@@ -77,9 +77,6 @@ public class PatchedServerSentEventConfig extends Config {
      */
     public void intercept(SseChannelInterceptor interceptor) {
         ensureHandler();
-        if (patchedServerSentEventHandler.webContext == null) {
-            patchedServerSentEventHandler.webContext = context.httpServer.httpHandler.webContext;
-        }
         patchedServerSentEventHandler.addInterceptor(interceptor);
     }
 
@@ -87,6 +84,7 @@ public class PatchedServerSentEventConfig extends Config {
         if (patchedServerSentEventHandler == null) {
             patchedServerSentEventHandler = new PatchedServerSentEventHandler(context.logManager, context.httpServer.siteManager.sessionManager, context.httpServer.handlerContext);
             context.httpServer.sseHandler = patchedServerSentEventHandler;
+            patchedServerSentEventHandler.webContext = context.httpServer.httpHandler.webContext;
             metrics = new PatchedServerSentEventMetrics();
             context.collector.metrics.add(metrics);
         }
