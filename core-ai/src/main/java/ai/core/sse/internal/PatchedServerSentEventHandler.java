@@ -104,7 +104,7 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
         // todo: add options support
         // CORS headers
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Origin"), "*");
-        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Methods"), "GET, POST, OPTIONS");
+        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Methods"), "GET, POST, PUT, DELETE, OPTIONS");
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Headers"), "Content-Type, Authorization, X-Auth-Request-Email, X-Auth-Request-User, x-trace-id, Last-Event-ID");
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Credentials"), "true");
 
