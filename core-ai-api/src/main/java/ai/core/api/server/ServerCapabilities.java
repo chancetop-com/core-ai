@@ -20,4 +20,6 @@ public class ServerCapabilities {
     public Boolean authRequired;
     @Property(name = "sandbox_terminal_enabled")
     public Boolean sandboxTerminalEnabled;
+    @Property(name = "sandbox_terminal_gateway_url")
+    public String sandboxTerminalGatewayUrl;
 }

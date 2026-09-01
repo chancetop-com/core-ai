@@ -21,17 +21,27 @@ import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.web.sse.AgentSessionChannelListener;
 import ai.core.server.web.sse.LiteLLMProxyChannelListener;
 import ai.core.server.web.sse.SseAuthInterceptor;
-import ai.core.server.web.sse.TerminalStreamChannelListener;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import redis.clients.jedis.JedisPool;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 /**
  * @author stephen
  */
 public class SessionModule extends Module {
+    // The Go terminal gateway (core-ai-terminal-gateway/main.go) reads TICKET_SECRET and uses
+    // its raw string bytes directly ([]byte(secret)) as the HMAC key -- no hex decoding. Both
+    // sides read the SAME env/property value, so Java MUST interpret it identically (raw UTF-8
+    // bytes), never hex-decode it, or the two sides derive different keys and every minted
+    // ticket fails verification at the gateway. An empty/missing value yields a zero-length
+    // secret, which SandboxTerminalService treats as "gate disabled".
+    private static byte[] parseTicketSecret(String raw) {
+        return raw.isBlank() ? new byte[0] : raw.getBytes(StandardCharsets.UTF_8);
+    }
+
     private SessionRegistry sessionRegistry;
     private AgentSessionManager agentSessionManager;
     private SessionActivityRegistry activityRegistry;
@@ -42,8 +52,6 @@ public class SessionModule extends Module {
         // Bound here (not SandboxModule) because SandboxService's own module loads
         // before this one in ServerApp, but SessionRegistry/AgentSessionManager are
         // bound in this module -- bean() cannot resolve a not-yet-bound type.
-        // Must run BEFORE registerSseEndpoints: the terminal SSE listener @Injects
-        // SandboxTerminalService, and bind() resolves injected fields eagerly.
         registerSandboxTerminal();
         registerSseEndpoints();
         schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
@@ -66,6 +74,8 @@ public class SessionModule extends Module {
         var service = new SandboxTerminalService(sessionRegistry::requireAccessible,
                 terminalRuntimeResolver::resolveTerminalRuntime, activityRegistry, agentSessionManager::touchActivity);
         service.enabled = "true".equals(property("sys.sandbox.terminal.enabled").orElse("false"));
+        service.ticketSecret = parseTicketSecret(property("sys.sandbox.terminal.ticketSecret").orElse(""));
+        service.gatewayUrl = property("sys.sandbox.terminal.gatewayUrl").orElse("");
         bind(service);
         api().service(SandboxTerminalWebService.class, bind(SandboxTerminalWebServiceImpl.class));
     }
@@ -77,6 +87,5 @@ public class SessionModule extends Module {
                 bean(ai.core.server.apiuser.PermissionService.class)));
         registry.register(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class), false);
         registry.register(HTTPMethod.POST, "/api/litellm/v1/chat/completions", Object.class, bind(LiteLLMProxyChannelListener.class), false);
-        registry.register(HTTPMethod.GET, "/api/sessions/sandbox-terminal/events", Object.class, bind(TerminalStreamChannelListener.class), false);
     }
 }

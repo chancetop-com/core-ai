@@ -1,0 +1,57 @@
+name: Build Terminal Gateway
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'core-ai-terminal-gateway/VERSION'
+  workflow_dispatch:
+
+env:
+  DOCKER_USER: chancetop
+  IMAGE_NAME: core-ai-terminal-gateway
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: core-ai-terminal-gateway/go.mod
+
+      - name: Vet
+        working-directory: core-ai-terminal-gateway
+        run: go vet ./...
+
+      - name: Test
+        working-directory: core-ai-terminal-gateway
+        run: go test ./...
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Read version
+        id: version
+        run: echo "value=$(cat core-ai-terminal-gateway/VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: core-ai-terminal-gateway
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

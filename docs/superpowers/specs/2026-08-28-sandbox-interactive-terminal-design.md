@@ -2,7 +2,7 @@
 
 Date: 2026-08-28
 Revised: 2026-08-31 — lifecycle renewal, reload recovery, snapshot/resume interaction, and deployment constraints added after verifying assumptions against the codebase and the dev/UAT environment manifests. See Revision Notes at the end.
-Status: Implemented 2026-09-01 (plan: docs/superpowers/plans/2026-08-31-sandbox-interactive-terminal.md); awaiting user commit and dev deployment
+Status: v2 direct-connect implemented 2026-09-01 (plan: docs/superpowers/plans/2026-09-01-terminal-direct-connect.md); awaiting user commit, image builds, and dev deployment.
 
 ## Problem
 
@@ -385,3 +385,87 @@ e. The runtime's overflow SSE frame's data payload is the client's requested cur
 f. Terminal wiring lives in `SessionModule` (module load order), with terminal runtime resolution extracted to `SandboxTerminalRuntimeResolver`.
 g. `TERMINAL_DISABLED` currently renders the same 已过期-style message as `SANDBOX_EXPIRED` in the panel (no dedicated disabled state).
 h. Session/sandbox renewal from terminal input is implemented cross-pod via the Redis session-activity timestamp + an owner-pod idle-cleanup guard (as specified in the Activity renewal section).
+
+## v2: Direct-Connect Transport (approved 2026-09-01)
+
+v1 shipped with core-ai-server bridging every terminal byte (REST input, SSE output). v2 moves the data plane off core-ai-server onto a ticketed WebSocket path while keeping every v1 invariant: authorization and lifecycle arbitration stay on core-ai-server; the sandbox runtime keeps its PTY/registry/replay-ring layer unchanged and stays cluster-internal; the frontend keeps its state machine, clientId persistence, and reconnect semantics. The v1 SSE bridge and the input/size/close REST endpoints are REMOVED (full replacement, per user decision), as are the runtime's terminal HTTP/SSE endpoints.
+
+### Architecture
+
+```text
+browser (xterm.js)
+    | 1. POST /api/sessions/sandbox-terminal/ticket   (existing auth: chat.use + session ownership + Redis binding)
+    v
+core-ai-server ── mints ticket{sessionId, sandboxId, clientId, podIp, port, iat, exp=30s, nonce} + HMAC-SHA256
+    | 2. wss://<gateway-host>/terminal?ticket=<b64>   (browser -> public gateway; TLS at ingress)
+    v
+sandbox-terminal-gateway   (new deployable, ~200-line Go service; verifies HMAC + expiry + one-shot nonce,
+    |                       then dials the podIp:port FROM THE TICKET — no Kubernetes API, no discovery)
+    | 3. ws://podIp:8080/terminal/ws?client_id=&rows=&cols=&last_seq=   (cluster-internal)
+    v
+sandbox runtime WS endpoint ── create-or-recover on the existing TerminalRegistry; duplex frames
+```
+
+- The runtime remains reachable only inside the cluster; the gateway is the sole public entry and holds no state beyond an in-memory nonce cache.
+- Any core-ai-server pod can mint tickets (Mongo ownership + Redis binding + transient resolve, unchanged from v1). The pod address is embedded in the signed ticket, so the gateway needs no resolver.
+- The v1 decision matrix survives at ticket time: REPLACED -> 409 SANDBOX_REPLACED, MISSING -> SANDBOX_EXPIRED, gate off -> TERMINAL_DISABLED. Busy/takeover moves to WS connect time (runtime close codes, below).
+
+### Ticket
+
+- Payload: base64url(JSON `{sid, sbid, cid, ip, port, iat, exp, nonce}`) + "." + base64url(HMAC-SHA256(payload, secret)). exp = iat + 30s. nonce = 16 random bytes hex.
+- Secret: `SYS_SANDBOX_TERMINAL_TICKET_SECRET`, delivered to core-ai-server and the gateway from the same Kubernetes Secret. Rotation = rolling both deployments with the new value (30s tickets make overlap windows trivial).
+- One-shot: the gateway caches seen nonces until their exp and rejects replays. The nonce cache is per-gateway-instance memory; dev runs 1 replica. Multi-replica replay protection (shared Redis nonce set) is explicitly deferred until the gateway scales.
+- The ticket authorizes exactly one WS connection to exactly one pod address. It carries no Kubernetes credentials and grants nothing at rest; a leaked expired ticket is inert.
+
+### Runtime WS endpoint (replaces /terminal REST+SSE)
+
+`GET /terminal/ws?client_id=&rows=&cols=&last_seq=` upgrades to WebSocket and performs the v1 create-or-recover on the existing TerminalRegistry (same-client recover; zero-subscriber takeover; busy otherwise). Frames are JSON text messages:
+
+- server -> client: `{"t":"ready","id":"<terminalId>","recovered":bool}`, `{"t":"o","seq":N,"d":"<base64>"}` (output), `{"t":"overflow"}`, `{"t":"exit","code":N}`, `{"t":"err","m":"..."}`
+- client -> server: `{"t":"i","d":"<base64>"}` (input, decoded cap 64 KiB), `{"t":"resize","rows":N,"cols":N}` (v1 bounds)
+
+Replay: `last_seq` drives the same ring replay as v1's Last-Event-ID; overflow semantics unchanged. Close codes: 4001 invalid params, 4003 busy (another client connected), 4004 unknown/exited terminal on a pure-attach path, 1000 normal. The busy/replaced distinction the frontend needs at connect time: busy = 4003; replaced/expired remain ticket-time REST errors. The logging middleware gains http.Hijacker forwarding (v1 review noted it only forwards Flusher). Subscriber counting, the 10-minute no-subscriber reclaim, and the fd/process-group close semantics are unchanged. terminal_http.go (REST+SSE) is deleted with its tests; the WS endpoint reuses Terminal/TerminalRegistry/eventRing as-is.
+
+### core-ai-server changes
+
+- New: `POST /api/sessions/sandbox-terminal/ticket` (request: session_id, sandbox_id, client_id, rows, cols — rows/cols echoed into the WS URL by the frontend, not the ticket; response: ticket, gateway_url, terminal hints). Auth path identical to v1 authorize(); resolve via SandboxTerminalRuntimeResolver (unchanged); mints and signs the ticket. No health pre-check (a dead pod surfaces as a WS dial failure; the frontend retries with a fresh ticket).
+- New: `POST /api/sessions/sandbox-terminal/activity` (request: session_id) — the renewal heartbeat. The frontend calls it at most once per 60s and only when terminal INPUT occurred since the last beat, preserving the v1 invariant that output never renews. It drives the same SessionActivityRegistry.touch + local touchActivity as v1.
+- Removed: input/size/close REST endpoints, the SSE bridge listener (TerminalStreamChannelListener, StreamSlots, TerminalStreamParams), SandboxTerminalClient and its exceptions (server no longer talks to the runtime terminal API at all).
+- Capabilities: `sandbox_terminal_enabled` unchanged; new `sandbox_terminal_gateway_url` (public wss base, from `SYS_SANDBOX_TERMINAL_GATEWAY_URL`) so the frontend needs no hardcoded host. Gate off or URL unset -> feature hidden.
+- SandboxTerminalService slims to authorize/resolve/mint/recordActivity; the 60s address cache and epoch-safety constraint (provider.attach only, never reattachOrCreateSandbox/beginEpoch) carry over verbatim.
+
+### sandbox-terminal-gateway (new component)
+
+- New top-level dir `core-ai-terminal-gateway/`: Go, two deps (websocket lib; no K8s client). Behavior: parse ticket -> verify HMAC/exp/nonce -> dial `ws://ip:port/terminal/ws` with the query params forwarded -> bidirectional byte pump -> close both sides on either end; propagate the runtime's close code outward. Health endpoint `/health`. Config via env: `TICKET_SECRET`, `LISTEN` (default :8080). Structured logs carry sessionId/sandboxId/terminalId only — never frame payloads.
+- Deploy (dev): 1 replica, Service + Ingress with TLS at `SYS_SANDBOX_TERMINAL_GATEWAY_URL`'s host, in fbr-env-project's dev tree; the shared secret as a k8s Secret mounted into both core-ai-server and the gateway. CI: a `gateway-build.yml` workflow mirroring sandbox-build.yml (VERSION-file trigger + workflow_dispatch).
+
+### Frontend changes
+
+- terminal.ts transport rewrite: `createTerminal` becomes `requestTicket` (same errorCode mapping at ticket time); the stream is a WebSocket to `gateway_url` with the ticket; input/resize/close become WS frames (close = WS close). parseSseBuffer is deleted. Every reconnect attempt first fetches a FRESH ticket (tickets are one-shot and 30s), then dials; the v1 backoff (500/1000/2000/5000ms in a 30s episode) and lastSeq resume carry over.
+- Panel: state machine, clientId persistence, batching (16ms/control flush), renewal heartbeat timer (input-gated 60s), overflow/exit/busy/replaced/expired states all carry over; only the transport calls change. WS close 4003 -> busy; ticket REST errors keep their v1 mappings.
+
+### Invariants explicitly preserved (the v1 review battles that must not regress)
+
+1. Terminal resolution never touches sandbox lifecycle or snapshot epochs (ticket minting uses the same transient resolver).
+2. Renewal works cross-pod (Redis activity timestamp + owner-pod idle guard) and is input-gated; output never renews.
+3. Reload recovers the same PTY via persisted clientId; zero-subscriber takeover; busy only when another client is live.
+4. Replay ring + seq resume across disconnects; overflow signaled, never fatal.
+5. The runtime stays cluster-internal with no request auth; the only public surface is the gateway, which forwards nothing without a valid server-signed ticket.
+
+### v2 rollback
+
+`SYS_SANDBOX_TERMINAL_ENABLED=false` hides the feature exactly as in v1. The gateway deployment can be scaled to zero independently; v1's transport no longer exists as a fallback (accepted trade-off, user decision 2026-09-01).
+
+#### v2 implementation errata
+
+Verified deviations found while implementing v2 against this section:
+
+a. The ticket request carries `session_id`, `sandbox_id`, `client_id` only — rows/cols travel in the WS URL query string that the frontend dials, not in the ticket-minting request (this section's prose said rows/cols were part of the ticket request; the "core-ai-server changes" subsection's parenthetical is the accurate one).
+b. Busy is signaled exclusively via WS close code 4003 (another client already attached) — there is no ticket-time 429/`TOO_MANY_REQUESTS` path in v2; the v1-era busy-at-request-time behavior is fully retired.
+c. The v1 60s address-resolution cache was removed, not carried over — resolution is fresh on every ticket mint (the "SandboxTerminalService slims to..." bullet's "60s address cache... carries over verbatim" is superseded by this).
+d. The ticket secret (`SYS_SANDBOX_TERMINAL_TICKETSECRET` / `TICKET_SECRET`) is interpreted as raw UTF-8 bytes on BOTH the core-ai-server signer and the gateway verifier — never hex-decoded, even though it is generated and stored as a hex string. A 32-byte-hex-looking value therefore yields a 64-byte HMAC key on both sides; consistent, but worth knowing before assuming key length.
+e. There is no server-side "close terminal" endpoint in v2. A panel close is purely a WS disconnect; the runtime reclaims the PTY via its existing zero-subscriber timeout, same as an ungraceful drop.
+f. **Env var naming for the two new server properties does NOT match the literal names used earlier in this section.** core-ng's `PropertyManager.envVarName()` only turns `.` into `_` and uppercases the rest — it does not insert an underscore at camelCase boundaries (the existing `sys.sandbox.agentSandbox.template` -> `SYS_SANDBOX_AGENTSANDBOX_TEMPLATE` mapping in the dev ConfigMap is the working precedent). Consequently:
+   - `sys.sandbox.terminal.ticketSecret` binds to env var `SYS_SANDBOX_TERMINAL_TICKETSECRET`, not `SYS_SANDBOX_TERMINAL_TICKET_SECRET`.
+   - `sys.sandbox.terminal.gatewayUrl` binds to env var `SYS_SANDBOX_TERMINAL_GATEWAYURL`, not `SYS_SANDBOX_TERMINAL_GATEWAY_URL`.
+   Using the underscored forms this section originally named would silently leave both properties empty (core-ng's `PropertyManager.property()` only lets an env var override a key that already has an entry in `sys.properties`; a wrong env var name is not an error, it is simply never read). The dev manifests written for Task 6 use the correct un-underscored names; the Go gateway's own `TICKET_SECRET` env var is unaffected (it is read directly via `os.Getenv`, no core-ng property indirection).

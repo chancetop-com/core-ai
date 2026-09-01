@@ -8,19 +8,23 @@ import core.framework.web.exception.NotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Exercises SandboxTerminalService's authorization/resolution path via the
- * narrow functional seams (SessionAccessChecker/TerminalRuntimeResolver)
+ * Exercises SandboxTerminalService's authorization/resolution/ticket-minting
+ * path via the narrow functional seams (SessionAccessChecker/TerminalRuntimeResolver)
  * instead of real Mongo/Redis collaborators.
  *
  * @author xander
  */
 class SandboxTerminalServiceTest {
+    private static final byte[] SECRET = "test-ticket-secret".getBytes(StandardCharsets.UTF_8);
+
     private AtomicInteger resolveCalls;
     private AtomicInteger touchCalls;
     private AtomicInteger localTouchCalls;
@@ -50,12 +54,30 @@ class SandboxTerminalServiceTest {
         };
         var built = new SandboxTerminalService(checker, resolver, activityRegistry, sessionId -> localTouchCalls.incrementAndGet());
         built.enabled = true;
+        built.ticketSecret = SECRET;
+        built.gatewayUrl = "wss://terminal.example.com";
         return built;
     }
 
     @Test
     void gateDisabledThrowsNotFound() {
         service.enabled = false;
+
+        var e = assertThrows(NotFoundException.class, () -> service.authorize("s1", "sb-1", "u1"));
+        assertEquals("TERMINAL_DISABLED", e.errorCode());
+    }
+
+    @Test
+    void emptyTicketSecretDisablesGateEvenWhenEnabledFlagIsTrue() {
+        service.ticketSecret = new byte[0];
+
+        var e = assertThrows(NotFoundException.class, () -> service.authorize("s1", "sb-1", "u1"));
+        assertEquals("TERMINAL_DISABLED", e.errorCode());
+    }
+
+    @Test
+    void blankGatewayUrlDisablesGateEvenWhenEnabledFlagIsTrue() {
+        service.gatewayUrl = "   ";
 
         var e = assertThrows(NotFoundException.class, () -> service.authorize("s1", "sb-1", "u1"));
         assertEquals("TERMINAL_DISABLED", e.errorCode());
@@ -87,27 +109,29 @@ class SandboxTerminalServiceTest {
     }
 
     @Test
-    void currentSandboxReturnsClientBoundToResolvedAddress() {
-        var client = service.authorize("s1", "sb-1", "u1");
+    void currentSandboxReturnsRuntimeBoundToResolvedAddress() {
+        var runtime = service.authorize("s1", "sb-1", "u1");
 
-        assertEquals("http://10.0.0.5:8123/terminal/term-1/events", client.eventsUrl("term-1"));
+        assertEquals("10.0.0.5", runtime.ip());
+        assertEquals(8123, runtime.port());
     }
 
     @Test
-    void secondAuthorizeWithinTtlReusesCachedAddress() {
+    void secondAuthorizeAlwaysResolvesFreshNoCaching() {
         service.authorize("s1", "sb-1", "u1");
 
         service.authorize("s1", "sb-1", "u1");
 
-        assertEquals(1, resolveCalls.get());
+        // v2 deliberately has no address cache (a stale cached pod address would poison
+        // every ticket minted within a cache window with no feedback path), so every
+        // authorize() call resolves fresh.
+        assertEquals(2, resolveCalls.get());
     }
 
     @Test
-    void invalidateAddressForcesReResolve() {
-        service.authorize("s1", "sb-1", "u1");
-
-        service.invalidateAddress("sb-1");
-        service.authorize("s1", "sb-1", "u1");
+    void mintTicketResolvesFreshOnEveryCall() {
+        service.mintTicket("s1", "sb-1", "u1", "client-1");
+        service.mintTicket("s1", "sb-1", "u1", "client-1");
 
         assertEquals(2, resolveCalls.get());
     }
@@ -119,5 +143,66 @@ class SandboxTerminalServiceTest {
 
         assertEquals(1, touchCalls.get());
         assertEquals(1, localTouchCalls.get());
+    }
+
+    @Test
+    void requireAccessibleThrowsWhenGateOff() {
+        service.enabled = false;
+
+        var e = assertThrows(NotFoundException.class, () -> service.requireAccessible("s1", "u1"));
+        assertEquals("TERMINAL_DISABLED", e.errorCode());
+    }
+
+    @Test
+    void requireAccessiblePropagatesSessionAccessCheck() {
+        service = newService((sessionId, userId) -> {
+            throw new ForbiddenException("session is unavailable");
+        });
+
+        assertThrows(ForbiddenException.class, () -> service.requireAccessible("s1", "u1"));
+    }
+
+    @Test
+    void mintTicketProducesAVerifiableTicketBoundToResolvedAddressAndRequestClientId() {
+        long before = System.currentTimeMillis() / 1000L;
+
+        var wire = service.mintTicket("s1", "sb-1", "u1", "client-9");
+
+        var verified = TerminalTicketCodec.verify(wire, SECRET, before);
+        assertEquals("s1", verified.sid());
+        assertEquals("sb-1", verified.sbid());
+        assertEquals("client-9", verified.cid());
+        assertEquals("10.0.0.5", verified.ip());
+        assertEquals(8123, verified.port());
+        assertTrue(verified.iat() >= before);
+        assertEquals(verified.iat() + 30, verified.exp());
+    }
+
+    @Test
+    void mintTicketPropagatesGateDisabledWhenSecretEmpty() {
+        service.ticketSecret = new byte[0];
+
+        var e = assertThrows(NotFoundException.class, () -> service.mintTicket("s1", "sb-1", "u1", "client-9"));
+        assertEquals("TERMINAL_DISABLED", e.errorCode());
+    }
+
+    /**
+     * Locks the raw-UTF-8-bytes interpretation of {@link #ticketSecret} at the service level:
+     * the Go terminal gateway (core-ai-terminal-gateway/main.go) always uses the raw string
+     * bytes of TICKET_SECRET as the HMAC key, never hex-decoded, even when the configured
+     * secret happens to look like hex (the operationally expected shared-secret format, e.g.
+     * `openssl rand -hex 32`). If SandboxTerminalService (or its caller, SessionModule) ever
+     * hex-decoded a hex-looking secret again, this test would fail because verifying with the
+     * secret string's raw UTF-8 bytes would no longer match what mintTicket actually signed with.
+     */
+    @Test
+    void mintTicketInterpretsHexLookingSecretAsRawBytesNotHexDecoded() {
+        var hexLookingSecret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd";
+        service.ticketSecret = hexLookingSecret.getBytes(StandardCharsets.UTF_8);
+
+        var wire = service.mintTicket("s1", "sb-1", "u1", "client-9");
+
+        var verified = TerminalTicketCodec.verify(wire, hexLookingSecret.getBytes(StandardCharsets.UTF_8), 0L);
+        assertEquals("s1", verified.sid());
     }
 }

@@ -7,7 +7,7 @@ import core.framework.api.validate.NotNull;
 /**
  * @author xander
  */
-public class TerminalSizeRequest {
+public class TerminalTicketRequest {
     @NotNull
     @NotBlank
     @Property(name = "session_id")
@@ -20,14 +20,6 @@ public class TerminalSizeRequest {
 
     @NotNull
     @NotBlank
-    @Property(name = "terminal_id")
-    public String terminalId;
-
-    @NotNull
-    @Property(name = "rows")
-    public Integer rows;
-
-    @NotNull
-    @Property(name = "cols")
-    public Integer cols;
+    @Property(name = "client_id")
+    public String clientId;
 }

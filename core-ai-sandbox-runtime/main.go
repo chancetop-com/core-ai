@@ -2,12 +2,14 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -215,7 +217,7 @@ func main() {
 	http.HandleFunc("/mcp", handleMcp)
 	http.HandleFunc("/snapshot", handleSnapshot)
 	http.HandleFunc("/snapshot/restore", handleSnapshotRestore)
-	registerTerminalHandlers(http.DefaultServeMux, terminalRegistry)
+	registerTerminalWs(http.DefaultServeMux, terminalRegistry)
 
 	probeFfmpeg()
 
@@ -257,6 +259,20 @@ func (w *loggingResponseWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// Hijack implements http.Hijacker so a WebSocket upgrade - which takes over
+// the raw TCP connection - can pass through the logging middleware. The
+// underlying http.ResponseWriter from Go's default HTTP server always
+// implements Hijacker, but the wrapper struct erases that interface
+// assertion unless forwarded explicitly; without this, gorilla's upgrader
+// fails every request routed through loggingMiddleware.
+func (w *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("underlying ResponseWriter does not support hijacking")
+	}
+	return hijacker.Hijack()
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

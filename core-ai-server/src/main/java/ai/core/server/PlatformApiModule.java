@@ -23,7 +23,15 @@ public class PlatformApiModule extends Module {
     private void registerCapabilities() {
         var impl = bind(CapabilitiesWebServiceImpl.class);
         impl.authDisabled = "true".equals(property("sys.auth.disabled").orElse("false"));
-        impl.sandboxTerminalEnabled = Boolean.parseBoolean(property("sys.sandbox.terminal.enabled").orElse("false"));
+        var terminalEnabledProperty = Boolean.parseBoolean(property("sys.sandbox.terminal.enabled").orElse("false"));
+        var ticketSecretConfigured = !property("sys.sandbox.terminal.ticketSecret").orElse("").isBlank();
+        var gatewayUrl = property("sys.sandbox.terminal.gatewayUrl").orElse("");
+        // Never expose the secret value itself -- only whether it is configured -- and only
+        // report the feature enabled when the ticket-signing secret AND the gateway URL are
+        // both present, matching SandboxTerminalService's own gate so capabilities never claims
+        // the feature is on when the service would actually reject every request.
+        impl.sandboxTerminalEnabled = terminalEnabledProperty && ticketSecretConfigured && !gatewayUrl.isBlank();
+        impl.sandboxTerminalGatewayUrl = gatewayUrl;
         api().service(CapabilitiesWebService.class, impl);
     }
 }

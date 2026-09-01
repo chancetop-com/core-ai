@@ -25,4 +25,17 @@ class CapabilitiesWebServiceImplTest {
         impl.authDisabled = true;
         assertEquals(Boolean.FALSE, impl.get().authRequired);
     }
+
+    @Test
+    void exposesGatewayUrlWhenConfigured() {
+        var impl = new CapabilitiesWebServiceImpl();
+        impl.sandboxTerminalGatewayUrl = "wss://terminal.example.com";
+        assertEquals("wss://terminal.example.com", impl.get().sandboxTerminalGatewayUrl);
+    }
+
+    @Test
+    void gatewayUrlDefaultsToEmpty() {
+        var impl = new CapabilitiesWebServiceImpl();
+        assertEquals("", impl.get().sandboxTerminalGatewayUrl);
+    }
 }

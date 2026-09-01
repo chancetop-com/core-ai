@@ -30,51 +30,9 @@ export function terminalClientId(sessionId: string, sandboxId: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// SSE frame parsing (pure, no I/O). The terminal event stream is raw SSE
-// (id:/event:/data: lines), not the JSON-in-data-field convention used by
-// session.ts's chat streams, so it needs its own parser.
-// ---------------------------------------------------------------------------
-
-export interface TerminalEvent {
-  seq: number;
-  type: 'ready' | 'output' | 'overflow' | 'exit' | 'error';
-  data: string;
-}
-
-export function parseSseBuffer(buffer: string): { events: TerminalEvent[]; rest: string } {
-  const events: TerminalEvent[] = [];
-  let start = 0;
-  for (let sep = buffer.indexOf('\n\n', start); sep !== -1; sep = buffer.indexOf('\n\n', start)) {
-    const frame = buffer.slice(start, sep);
-    start = sep + 2;
-    const event = parseFrame(frame);
-    if (event) events.push(event);
-  }
-  return { events, rest: buffer.slice(start) };
-}
-
-function parseFrame(frame: string): TerminalEvent | null {
-  let seq = 0;
-  let type: TerminalEvent['type'] | null = null;
-  const dataLines: string[] = [];
-  for (const line of frame.split('\n')) {
-    if (line.startsWith('id:')) {
-      const parsed = Number(line.slice(3).trim());
-      seq = Number.isFinite(parsed) ? parsed : 0;
-    } else if (line.startsWith('event:')) {
-      type = line.slice(6).trim() as TerminalEvent['type'];
-    } else if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trim());
-    }
-  }
-  if (!type) return null;
-  // per the SSE spec, multiple data: lines in one frame join with "\n" — terminal
-  // output/input payloads are single-line Base64 in practice, but stay spec-correct.
-  return { seq, type, data: dataLines.join('\n') };
-}
-
-// ---------------------------------------------------------------------------
-// REST calls (create/input/resize/close)
+// REST calls: ticket minting + activity heartbeat. The old create/input/
+// size/close/events REST surface no longer exists on the server (v2) — the
+// data plane moved to a ticketed WebSocket straight to the terminal gateway.
 // ---------------------------------------------------------------------------
 
 export class TerminalApiError extends Error {
@@ -114,110 +72,144 @@ async function terminalRequest<T>(url: string, options?: RequestInit): Promise<T
   return text ? JSON.parse(text) : (undefined as T);
 }
 
-export async function createTerminal(spec: { sessionId: string; sandboxId: string; rows: number; cols: number }):
-  Promise<{ terminalId: string; recovered: boolean }> {
-  const clientId = terminalClientId(spec.sessionId, spec.sandboxId);
-  const res = await terminalRequest<{ terminal_id: string; recovered: boolean }>('/api/sessions/sandbox-terminal', {
+export async function requestTicket(p: { sessionId: string; sandboxId: string }): Promise<{ ticket: string; gatewayUrl: string }> {
+  const clientId = terminalClientId(p.sessionId, p.sandboxId);
+  const res = await terminalRequest<{ ticket: string; gateway_url: string }>('/api/sessions/sandbox-terminal/ticket', {
     method: 'POST',
     body: JSON.stringify({
-      session_id: spec.sessionId,
-      sandbox_id: spec.sandboxId,
+      session_id: p.sessionId,
+      sandbox_id: p.sandboxId,
       client_id: clientId,
-      rows: spec.rows,
-      cols: spec.cols,
     }),
   });
-  return { terminalId: res.terminal_id, recovered: res.recovered };
+  return { ticket: res.ticket, gatewayUrl: res.gateway_url };
 }
 
-export async function sendTerminalInput(p: { sessionId: string; sandboxId: string; terminalId: string; dataBase64: string }): Promise<void> {
-  await terminalRequest<void>('/api/sessions/sandbox-terminal/input', {
-    method: 'POST',
-    body: JSON.stringify({
-      session_id: p.sessionId,
-      sandbox_id: p.sandboxId,
-      terminal_id: p.terminalId,
-      data_base64: p.dataBase64,
-    }),
-  });
-}
-
-export async function resizeTerminal(p: { sessionId: string; sandboxId: string; terminalId: string; rows: number; cols: number }): Promise<void> {
-  await terminalRequest<void>('/api/sessions/sandbox-terminal/size', {
-    method: 'PUT',
-    body: JSON.stringify({
-      session_id: p.sessionId,
-      sandbox_id: p.sandboxId,
-      terminal_id: p.terminalId,
-      rows: p.rows,
-      cols: p.cols,
-    }),
-  });
-}
-
-export async function closeTerminal(p: { sessionId: string; sandboxId: string; terminalId: string }): Promise<void> {
-  await terminalRequest<void>('/api/sessions/sandbox-terminal/close', {
-    method: 'POST',
-    body: JSON.stringify({
-      session_id: p.sessionId,
-      sandbox_id: p.sandboxId,
-      terminal_id: p.terminalId,
-    }),
-  });
+// Renewal heartbeat. Best-effort by design: a dropped beat just means the
+// idle-reclaim window on the runtime side may run a little sooner, never a
+// user-visible failure, so failures are swallowed here rather than pushed
+// onto callers.
+export async function postTerminalActivity(sessionId: string): Promise<void> {
+  try {
+    await terminalRequest<void>('/api/sessions/sandbox-terminal/activity', {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  } catch {
+    // best-effort heartbeat; see doc comment above
+  }
 }
 
 // ---------------------------------------------------------------------------
-// SSE stream (fetch + ReadableStream, not XHR — the terminal stream is
-// long-lived and open-ended, so we must not let a growing xhr.responseText
-// buffer the whole session; only the unparsed `rest` tail is kept between
-// reads).
+// WebSocket frame parsing (pure, no I/O). Server -> client frames are JSON
+// text messages tagged by "t"; unknown/malformed frames are dropped rather
+// than throwing, since a forward-incompatible frame from a newer gateway
+// must not tear down the connection.
 // ---------------------------------------------------------------------------
 
-export function openTerminalStream(p: {
-  sessionId: string;
-  sandboxId: string;
-  terminalId: string;
-  onEvent: (e: TerminalEvent) => void;
-  onDisconnect: (err?: unknown) => void;
-  lastEventId?: number;
-}): { abort: () => void } {
-  const controller = new AbortController();
+export type TerminalFrame =
+  | { type: 'ready'; terminalId: string; recovered: boolean }
+  | { type: 'output'; seq: number; data: string }
+  | { type: 'overflow' }
+  | { type: 'exit'; code: number }
+  | { type: 'error'; message: string };
+
+export function parseTerminalFrame(data: string): TerminalFrame | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  switch (obj.t) {
+    case 'ready':
+      if (typeof obj.id !== 'string' || typeof obj.recovered !== 'boolean') return null;
+      return { type: 'ready', terminalId: obj.id, recovered: obj.recovered };
+    case 'o':
+      if (typeof obj.seq !== 'number' || typeof obj.d !== 'string') return null;
+      return { type: 'output', seq: obj.seq, data: obj.d };
+    case 'overflow':
+      return { type: 'overflow' };
+    case 'exit':
+      if (typeof obj.code !== 'number') return null;
+      return { type: 'exit', code: obj.code };
+    case 'err':
+      if (typeof obj.m !== 'string') return null;
+      return { type: 'error', message: obj.m };
+    default:
+      return null; // unknown/future frame tag — ignore rather than fail
+  }
+}
+
+// Client -> server frame encoders (pure). Extracted so the wire format has a
+// single definition, testable without spinning up a real WebSocket.
+export function encodeInputFrame(dataBase64: string): string {
+  return JSON.stringify({ t: 'i', d: dataBase64 });
+}
+
+export function encodeResizeFrame(rows: number, cols: number): string {
+  return JSON.stringify({ t: 'resize', rows, cols });
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket transport. Every connection attempt (a fresh mount, a manual
+// restart, or a reconnect after a drop) is handed a freshly-minted ticket by
+// the caller — tickets are one-shot and expire in 30s, so none of this module
+// retries a stale ticket itself.
+// ---------------------------------------------------------------------------
+
+export interface TerminalSocket {
+  sendInput: (dataBase64: string) => void;
+  sendResize: (rows: number, cols: number) => void;
+  close: () => void;
+}
+
+export function openTerminalSocket(p: {
+  gatewayUrl: string;
+  ticket: string;
+  clientId: string;
+  rows: number;
+  cols: number;
+  lastSeq?: number;
+  onFrame: (frame: TerminalFrame) => void;
+  onClose: (code: number, wasClean: boolean) => void;
+}): TerminalSocket {
   const qs = new URLSearchParams({
-    'agent-session-id': p.sessionId,
-    'sandbox-id': p.sandboxId,
-    'terminal-id': p.terminalId,
+    ticket: p.ticket,
+    client_id: p.clientId,
+    rows: String(p.rows),
+    cols: String(p.cols),
   });
-  const headers: Record<string, string> = { ...getAuthHeaders(), 'Accept': 'text/event-stream' };
-  if (p.lastEventId !== undefined) headers['Last-Event-ID'] = String(p.lastEventId);
+  if (p.lastSeq !== undefined) qs.set('last_seq', String(p.lastSeq));
 
-  (async () => {
-    try {
-      const res = await fetch(`${BASE}/api/sessions/sandbox-terminal/events?${qs.toString()}`, {
-        headers,
-        signal: controller.signal,
-      });
-      if (!res.ok || !res.body) {
-        const { errorCode, message } = await parseErrorBody(res);
-        p.onDisconnect(new TerminalApiError(res.status, errorCode, message ?? `${res.status} ${res.statusText}`));
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parsed = parseSseBuffer(buffer);
-        buffer = parsed.rest;
-        for (const event of parsed.events) p.onEvent(event);
-      }
-      p.onDisconnect();
-    } catch (err) {
-      if (controller.signal.aborted) return; // caller-initiated close, not a disconnect
-      p.onDisconnect(err);
-    }
-  })();
+  const base = p.gatewayUrl.replace(/\/+$/, '');
+  const ws = new WebSocket(`${base}/terminal?${qs.toString()}`);
+  let deliberateClose = false;
 
-  return { abort: () => controller.abort() };
+  ws.onmessage = (ev) => {
+    if (typeof ev.data !== 'string') return; // server only ever sends JSON text frames
+    const frame = parseTerminalFrame(ev.data);
+    if (frame) p.onFrame(frame);
+  };
+  ws.onclose = (ev) => {
+    if (deliberateClose) return; // caller-initiated close, not a disconnect
+    p.onClose(ev.code, ev.wasClean);
+  };
+
+  return {
+    sendInput(dataBase64: string) {
+      if (ws.readyState !== WebSocket.OPEN) return; // best effort; dropped keystrokes surface via the next output desync, none expected in practice
+      ws.send(encodeInputFrame(dataBase64));
+    },
+    sendResize(rows: number, cols: number) {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      ws.send(encodeResizeFrame(rows, cols));
+    },
+    close() {
+      deliberateClose = true;
+      ws.close();
+    },
+  };
 }

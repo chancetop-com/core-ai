@@ -5,12 +5,12 @@ import { Loader2, RotateCw, Terminal as TerminalIcon, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   TerminalApiError,
-  closeTerminal,
-  createTerminal,
-  openTerminalStream,
-  resizeTerminal,
-  sendTerminalInput,
-  type TerminalEvent,
+  openTerminalSocket,
+  postTerminalActivity,
+  requestTicket,
+  terminalClientId,
+  type TerminalFrame,
+  type TerminalSocket,
 } from '../../../api/terminal';
 import type { SandboxTerminalSpec } from '../types';
 
@@ -23,6 +23,9 @@ interface Props {
 // State machine: connecting -> connected -> reconnecting -> connected, with
 // failed / exited / replaced / expired / busy as terminal (non-connected)
 // states. See docs/superpowers/specs/2026-08-28-sandbox-interactive-terminal-design.md.
+// (v2: transport is a ticketed WebSocket direct to the terminal gateway,
+// instead of v1's server-proxied REST+SSE — the state machine itself carries
+// over unchanged.)
 // ---------------------------------------------------------------------------
 type PanelState = 'connecting' | 'connected' | 'reconnecting' | 'failed' | 'exited' | 'replaced' | 'expired' | 'busy';
 
@@ -30,17 +33,21 @@ const RECONNECT_DELAYS_MS = [500, 1000, 2000, 5000];
 const RECONNECT_WINDOW_MS = 30000;
 const INPUT_FLUSH_MS = 16;
 const RESIZE_DEBOUNCE_MS = 200;
+const HEARTBEAT_INTERVAL_MS = 60000;
 const FALLBACK_ROWS = 24;
 const FALLBACK_COLS = 80;
+const WS_CLOSE_BUSY = 4003;
 
+// Classifies a ticket-mint REST failure. WS-connect-time busy (another client
+// already attached) is reported via close code 4003, not a REST error — see
+// handleClose below.
 function classifyError(err: unknown): PanelState {
   if (err instanceof TerminalApiError) {
     if (err.errorCode === 'SANDBOX_REPLACED') return 'replaced';
     if (err.errorCode === 'SANDBOX_EXPIRED' || err.errorCode === 'TERMINAL_DISABLED') return 'expired';
-    if (err.status === 429) return 'busy';
   }
-  // TERMINAL_RUNTIME_UNAVAILABLE (502), other TerminalApiError statuses, and a raw
-  // network-level Error (fetch rejection, not a TerminalApiError instance) all land here.
+  // Any other TerminalApiError status, or a raw network-level Error (fetch
+  // rejection, not a TerminalApiError instance), lands here.
   return 'failed';
 }
 
@@ -56,7 +63,7 @@ const STATE_MESSAGES: Partial<Record<PanelState, string>> = {
 // ---------------------------------------------------------------------------
 // Imperative connection management. Kept as a hook so the component below
 // stays a thin render function; everything here is refs + plain functions
-// because the logic is driven by async callbacks (SSE events, timers) rather
+// because the logic is driven by async callbacks (WS frames, timers) rather
 // than React state transitions.
 // ---------------------------------------------------------------------------
 function useTerminalSession(sandbox: SandboxTerminalSpec) {
@@ -67,9 +74,8 @@ function useTerminalSession(sandbox: SandboxTerminalSpec) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   const stateRef = useRef<PanelState>('connecting');
-  const terminalIdRef = useRef<string | null>(null);
-  const streamRef = useRef<{ abort: () => void } | null>(null);
-  const lastEventIdRef = useRef<number | undefined>(undefined);
+  const socketRef = useRef<TerminalSocket | null>(null);
+  const lastSeqRef = useRef<number | undefined>(undefined);
   const generationRef = useRef(0);
 
   const pendingInputRef = useRef('');
@@ -78,6 +84,8 @@ function useTerminalSession(sandbox: SandboxTerminalSpec) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectStartRef = useRef(0);
   const reconnectAttemptRef = useRef(0);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inputSinceLastBeatRef = useRef(false);
 
   const connectRef = useRef<() => void>(() => {});
 
@@ -115,16 +123,15 @@ function useTerminalSession(sandbox: SandboxTerminalSpec) {
       }
       const chunk = pendingInputRef.current;
       pendingInputRef.current = '';
-      const terminalId = terminalIdRef.current;
-      if (!chunk || !terminalId) return;
+      if (!chunk) return;
+      const socket = socketRef.current;
+      if (!socket) return;
       const dataBase64 = btoa(String.fromCharCode(...new TextEncoder().encode(chunk)));
-      sendTerminalInput({ sessionId: sandbox.sessionId, sandboxId: sandbox.sandboxId, terminalId, dataBase64 })
-        .catch(() => {
-          // best effort — a real connection problem surfaces via the stream's onDisconnect
-        });
+      socket.sendInput(dataBase64);
     }
 
     function handleInput(data: string) {
+      inputSinceLastBeatRef.current = true;
       pendingInputRef.current += data;
       const hasControlChar = Array.from(data).some((ch) => ch.charCodeAt(0) < 0x20);
       if (hasControlChar) {
@@ -135,38 +142,20 @@ function useTerminalSession(sandbox: SandboxTerminalSpec) {
     }
     term.onData(handleInput);
 
-    function openStream(terminalId: string, lastEventId: number | undefined, gen: number) {
-      const { abort } = openTerminalStream({
-        sessionId: sandbox.sessionId,
-        sandboxId: sandbox.sandboxId,
-        terminalId,
-        lastEventId,
-        onEvent: (e) => {
-          if (gen !== generationRef.current) return;
-          handleEvent(e);
-        },
-        onDisconnect: (err) => {
-          if (gen !== generationRef.current) return;
-          handleDisconnect(err);
-        },
-      });
-      streamRef.current = { abort };
-    }
-
-    function handleEvent(e: TerminalEvent) {
-      lastEventIdRef.current = e.seq;
-      switch (e.type) {
+    function handleFrame(frame: TerminalFrame) {
+      switch (frame.type) {
         case 'ready':
           updateState('connected');
           break;
         case 'output':
-          term.write(Uint8Array.from(atob(e.data), (c) => c.charCodeAt(0)));
+          term.write(Uint8Array.from(atob(frame.data), (c) => c.charCodeAt(0)));
+          if (frame.seq > 0) lastSeqRef.current = frame.seq;
           break;
         case 'overflow':
           term.write('\r\n[earlier output omitted]\r\n');
           break;
         case 'exit':
-          setExitCode(e.data);
+          setExitCode(String(frame.code));
           updateState('exited');
           break;
         case 'error':
@@ -186,24 +175,20 @@ function useTerminalSession(sandbox: SandboxTerminalSpec) {
       reconnectTimerRef.current = setTimeout(() => {
         reconnectTimerRef.current = null;
         if (gen !== generationRef.current) return;
-        const terminalId = terminalIdRef.current;
-        if (!terminalId) {
-          updateState('failed');
-          return;
-        }
-        openStream(terminalId, lastEventIdRef.current, gen);
+        dial(gen);
       }, RECONNECT_DELAYS_MS[idx]);
     }
 
-    function handleDisconnect(err?: unknown) {
-      if (stateRef.current === 'exited') return; // shell already exited; stream end is expected
-      if (err !== undefined) {
-        const classified = classifyError(err);
-        if (classified !== 'failed') {
-          updateState(classified);
-          return;
-        }
+    function handleClose(gen: number, code: number) {
+      if (gen !== generationRef.current) return;
+      if (stateRef.current === 'exited') return; // shell already exited; close is expected
+      if (code === WS_CLOSE_BUSY) {
+        updateState('busy');
+        return;
       }
+      // Any other close (runtime unreachable, protocol error, abnormal closure
+      // before the ticket's target pod ever answers) is treated as reconnectable —
+      // a dead pod surfaces here rather than as a distinct ticket-time error.
       const alreadyReconnecting = stateRef.current === 'reconnecting';
       updateState('reconnecting');
       if (!alreadyReconnecting) {
@@ -213,31 +198,51 @@ function useTerminalSession(sandbox: SandboxTerminalSpec) {
       scheduleReconnect(generationRef.current);
     }
 
+    // Every dial (initial connect, manual restart, or a backoff retry) mints a
+    // fresh ticket first — tickets are one-shot and expire in 30s, so none of
+    // them can be reused across attempts.
+    function dial(gen: number) {
+      const { rows, cols } = computeSize();
+      const clientId = terminalClientId(sandbox.sessionId, sandbox.sandboxId);
+      requestTicket({ sessionId: sandbox.sessionId, sandboxId: sandbox.sandboxId })
+        .then(({ ticket, gatewayUrl }) => {
+          if (gen !== generationRef.current) return;
+          const socket = openTerminalSocket({
+            gatewayUrl,
+            ticket,
+            clientId,
+            rows,
+            cols,
+            lastSeq: lastSeqRef.current,
+            onFrame: (frame) => {
+              if (gen !== generationRef.current) return;
+              handleFrame(frame);
+            },
+            onClose: (code) => handleClose(gen, code),
+          });
+          socketRef.current = socket;
+        })
+        .catch((err: unknown) => {
+          if (gen !== generationRef.current) return;
+          updateState(classifyError(err));
+        });
+    }
+
     function connect() {
       const gen = ++generationRef.current;
       // A manual restart/reconnect click bypasses the effect-cleanup path, so any
-      // still-open stream from the previous connection must be aborted explicitly here.
-      streamRef.current?.abort();
-      streamRef.current = null;
+      // still-open socket from the previous connection must be closed explicitly here.
+      // close() is deliberate, so it never triggers the previous generation's onClose.
+      socketRef.current?.close();
+      socketRef.current = null;
       if (reconnectTimerRef.current !== null) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
       updateState('connecting');
       setExitCode(null);
-      lastEventIdRef.current = undefined;
-      terminalIdRef.current = null;
-      const { rows, cols } = computeSize();
-      createTerminal({ sessionId: sandbox.sessionId, sandboxId: sandbox.sandboxId, rows, cols })
-        .then(({ terminalId, recovered }) => {
-          if (gen !== generationRef.current) return;
-          terminalIdRef.current = terminalId;
-          openStream(terminalId, recovered ? 0 : undefined, gen);
-        })
-        .catch((err: unknown) => {
-          if (gen !== generationRef.current) return;
-          updateState(classifyError(err));
-        });
+      lastSeqRef.current = undefined;
+      dial(gen);
     }
     connectRef.current = connect;
 
@@ -246,12 +251,7 @@ function useTerminalSession(sandbox: SandboxTerminalSpec) {
     function sendResize() {
       resizeTimerRef.current = null;
       if (stateRef.current !== 'connected') return;
-      const terminalId = terminalIdRef.current;
-      if (!terminalId) return;
-      resizeTerminal({ sessionId: sandbox.sessionId, sandboxId: sandbox.sandboxId, terminalId, rows: term.rows, cols: term.cols })
-        .catch(() => {
-          // best effort; a stale size is corrected on the next resize
-        });
+      socketRef.current?.sendResize(term.rows, term.cols);
     }
 
     function onContainerResize() {
@@ -270,19 +270,30 @@ function useTerminalSession(sandbox: SandboxTerminalSpec) {
       resizeObserver.observe(containerRef.current);
     }
 
+    // Renewal heartbeat: as long as the panel is connected and the user has
+    // typed something since the last beat, tell the server the session is
+    // still active so its idle-reclaim timer doesn't fire. Output alone never
+    // renews (matches v1). The interval itself just keeps running for the
+    // component's lifetime; the connected+input-since-beat guard inside the
+    // tick is equivalent to starting/stopping it on every state transition,
+    // without the extra bookkeeping.
+    heartbeatTimerRef.current = setInterval(() => {
+      if (stateRef.current !== 'connected') return;
+      if (!inputSinceLastBeatRef.current) return;
+      inputSinceLastBeatRef.current = false;
+      postTerminalActivity(sandbox.sessionId);
+    }, HEARTBEAT_INTERVAL_MS);
+
     return () => {
-      generationRef.current += 1; // invalidate any in-flight create/stream callbacks
+      generationRef.current += 1; // invalidate any in-flight ticket/socket callbacks
       resizeObserver?.disconnect();
       if (inputTimerRef.current !== null) clearTimeout(inputTimerRef.current);
       if (resizeTimerRef.current !== null) clearTimeout(resizeTimerRef.current);
       if (reconnectTimerRef.current !== null) clearTimeout(reconnectTimerRef.current);
-      streamRef.current?.abort();
-      const terminalId = terminalIdRef.current;
-      if (terminalId) {
-        closeTerminal({ sessionId: sandbox.sessionId, sandboxId: sandbox.sandboxId, terminalId }).catch(() => {
-          // fire-and-forget: the runtime also reclaims on disconnect
-        });
-      }
+      if (heartbeatTimerRef.current !== null) clearInterval(heartbeatTimerRef.current);
+      // Deliberate close, no server-side close call: v2 has no close endpoint
+      // (unlike v1) — the runtime reclaims the PTY on disconnect by design.
+      socketRef.current?.close();
       term.dispose();
     };
     // Reconnecting on sandbox identity change (a different sandboxId/sessionId prop
