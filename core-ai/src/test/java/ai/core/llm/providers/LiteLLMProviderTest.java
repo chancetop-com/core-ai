@@ -2,11 +2,14 @@ package ai.core.llm.providers;
 
 import ai.core.llm.domain.AssistantMessage;
 import ai.core.llm.domain.Choice;
+import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.document.Embedding;
 import ai.core.llm.domain.Usage;
 import ai.core.utils.JsonUtil;
+import core.framework.http.HTTPMethod;
+import core.framework.http.HTTPRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -14,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -21,6 +25,39 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * @author stephen
  */
 class LiteLLMProviderTest {
+
+    @Test
+    void applySessionHeaderPutsSessionIdHeader() {
+        var request = CompletionRequest.of(List.of(), List.of(), null, "test-model", "test");
+        request.setSessionId("conversation-1");
+        var req = new HTTPRequest(HTTPMethod.POST, "http://localhost/chat/completions");
+
+        LiteLLMResponsesBridge.applySessionHeader(req, request);
+
+        assertEquals("conversation-1", req.headers.get("x-session-id"));
+    }
+
+    @Test
+    void applySessionHeaderSkipsBlankSessionId() {
+        var request = CompletionRequest.of(List.of(), List.of(), null, "test-model", "test");
+        request.setSessionId(" ");
+        var req = new HTTPRequest(HTTPMethod.POST, "http://localhost/chat/completions");
+
+        LiteLLMResponsesBridge.applySessionHeader(req, request);
+
+        assertNull(req.headers.get("x-session-id"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void sessionIdIsNotSerializedToRequestBody() {
+        var request = CompletionRequest.of(List.of(), List.of(), null, "test-model", "test");
+        request.setSessionId("conversation-1");
+
+        var body = (Map<String, Object>) JsonUtil.toMap(request);
+
+        assertFalse(body.containsKey("session_id"), "session id must stay out of the upstream request body");
+    }
 
     @Test
     void testParseEmbeddingResponse() {

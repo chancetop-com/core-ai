@@ -77,7 +77,9 @@ public class CaptionImageTool extends ToolCall {
         var effectiveModel = resolveModel(context);
         LOGGER.info("caption_image using model=[{}], context.multiModalModel=[{}], context.model=[{}]",
                 effectiveModel, context.getMultiModalModel(), context.getModel());
-        var rsp = llmProvider.completion(CompletionRequest.of(messages, List.of(), null, effectiveModel, null));
+        var request = CompletionRequest.of(messages, List.of(), null, effectiveModel, null);
+        request.setSessionId(context.getSessionId());
+        var rsp = llmProvider.completion(request);
         return ToolCallResult.completed(rsp.choices.getFirst().message.content)
                 .withLlmUsage(effectiveModel, rsp.usage);
     }

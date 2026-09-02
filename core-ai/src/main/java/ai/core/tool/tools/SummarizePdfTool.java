@@ -57,6 +57,7 @@ public class SummarizePdfTool extends ToolCall {
                 null, null, null, null)));
         var targetModel = resolveModel(context);
         var request = CompletionRequest.of(messages, List.of(), null, targetModel, null);
+        request.setSessionId(context.getSessionId());
         // PDF file input is only expressible through the responses transport; an explicit
         // endpoint makes the gateway route to a responses-capable model instead of chat.completions
         request.setEndpoint("responses");

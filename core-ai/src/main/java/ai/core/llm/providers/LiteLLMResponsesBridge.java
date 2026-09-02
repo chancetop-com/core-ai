@@ -23,6 +23,15 @@ final class LiteLLMResponsesBridge {
     private static final int MAX_RETRIES = 3;
     private static final Duration RETRY_WAIT_TIME = Duration.ofSeconds(3);
 
+    // session id header consumed by the core-ai gateway to merge one conversation into a single trace
+    private static final String SESSION_ID_HEADER = "x-session-id";
+
+    static void applySessionHeader(HTTPRequest req, CompletionRequest request) {
+        if (!Strings.isBlank(request.getSessionId())) {
+            req.headers.put(SESSION_ID_HEADER, request.getSessionId());
+        }
+    }
+
     static boolean isResponsesModel(String model) {
         return LiteLLMResponsesRequestMapper.isResponsesModel(model);
     }
@@ -65,6 +74,7 @@ final class LiteLLMResponsesBridge {
         if (!Strings.isBlank(token)) {
             req.headers.put("Authorization", "Bearer " + token);
         }
+        applySessionHeader(req, request);
 
         var bodyMap = toResponsesBody(request);
         if (extraBody instanceof Map<?, ?> extraMap) {

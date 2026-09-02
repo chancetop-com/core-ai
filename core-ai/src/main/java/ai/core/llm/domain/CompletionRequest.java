@@ -82,6 +82,17 @@ public class CompletionRequest {
     // resolved per-model reasoning effort value (e.g. "xhigh" mapped from internal MAX),
     // takes precedence over the reasoningEffort enum when serializing to upstream
     private String reasoningEffortValue;
+    // agent session id, sent to the gateway as x-session-id so one conversation merges into a single trace;
+    // internal signal only, never serialized to the upstream request body
+    private String sessionId;
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
 
     public String getEndpoint() {
         return endpoint;

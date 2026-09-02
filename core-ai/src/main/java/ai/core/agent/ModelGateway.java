@@ -21,6 +21,7 @@ final class ModelGateway {
         var reasoningEffort = effectiveModel != null && effectiveModel.equals(agent.multiModalModel) ? null : agent.reasoningEffort;
         var reqTools = AgentHelper.filterRedundantVisionTools(tools, agent.getExecutionContext().isVisionNative(), effectiveModel);
         var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, reqTools, agent.llmProvider.config == null ? 0.0 : agent.llmProvider.config.getTemperature(), effectiveModel, agent.getName(), null, null, reasoningEffort));
+        req.setSessionId(agent.getExecutionContext().getSessionId());
         agent.lastLLMSpanContext = null;
         return aroundLLM(agent, r -> agent.llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(agent.getStreamingCallback()), sc -> agent.lastLLMSpanContext = sc), req);
     }

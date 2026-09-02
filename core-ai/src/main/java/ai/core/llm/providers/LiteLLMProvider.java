@@ -211,6 +211,7 @@ public class LiteLLMProvider extends LLMProvider {
         if (!Strings.isBlank(token)) {
             req.headers.put(authHeaderName, authHeaderValuePrefix + token);
         }
+        LiteLLMResponsesBridge.applySessionHeader(req, request);
 
         var bodyMap = (Map<String, Object>) JsonUtil.toMap(request);
         if (request.getReasoningEffortValue() != null) {
