@@ -15,6 +15,7 @@ import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import core.framework.web.exception.NotFoundException;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -62,6 +63,18 @@ public class SystemPromptService {
     public SystemPromptView get(String promptId) {
         var entity = getLatestVersion(promptId);
         return toView(entity);
+    }
+
+    public SystemPromptView getByName(String name) {
+        var query = new Query();
+        query.filter = Filters.eq("name", name);
+        query.sort = Sorts.descending("version");
+        query.limit = 1;
+        var results = systemPromptCollection.find(query);
+        if (results.isEmpty()) {
+            throw new NotFoundException("system prompt not found, name=" + name);
+        }
+        return toView(results.getFirst());
     }
 
     public SystemPromptView update(String promptId, SystemPromptRequest request, String userId) {

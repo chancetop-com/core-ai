@@ -23,6 +23,10 @@ public interface SystemPromptWebService {
     SystemPromptView create(SystemPromptRequest request);
 
     @GET
+    @Path("/api/system-prompts/name/:name")
+    SystemPromptView getByName(@PathParam("name") String name);
+
+    @GET
     @Path("/api/system-prompts/:promptId")
     SystemPromptView get(@PathParam("promptId") String promptId);
 
