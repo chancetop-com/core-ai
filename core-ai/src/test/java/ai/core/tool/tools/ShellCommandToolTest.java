@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * @author stephen
@@ -113,6 +114,17 @@ class ShellCommandToolTest {
         var result = shell(Map.of("command", "ls /nonexistent/path/no/such/file"));
 
         assertTrue(result.contains("exited with code") || result.contains("No such file"));
+    }
+
+    @Test
+    void shouldPreserveDoubleQuotesOnWindows() {
+        assumeTrue(isWindows());
+
+        assertEquals("hello world", shell(Map.of("command", "Write-Output \"hello world\"")));
+        assertEquals("{\"a\":\"b c\"}", shell(Map.of("command", "Write-Output '{\"a\":\"b c\"}'")));
+        assertEquals("a b", shell(Map.of("command", "$x = \"a b\"; Write-Output $x")));
+        // a `\"` pair in the command must reach PowerShell as `\"`, not lose its quote
+        assertEquals("{\"m\":\"say \\\"hi\\\"\"}", shell(Map.of("command", "Write-Output '{\"m\":\"say \\\"hi\\\"\"}'")));
     }
 
     private String shell(Map<String, Object> args) {

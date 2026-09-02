@@ -2,7 +2,9 @@ package ai.core.utils;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -86,6 +88,35 @@ class ShellUtilTest {
     @Test
     void isCommandExistsOnUnixReturnsFalseForUnknownCommand() {
         assertFalse(ShellUtil.isCommandExists(Platform.LINUX_X64, "thiscommanddoesnotexistxyz"));
+    }
+
+    @Test
+    void escapePowerShellCommandArgumentLeavesQuoteFreeCommandsUntouched() {
+        assertEquals("git status", ShellUtil.escapePowerShellCommandArgument("git status"));
+        assertEquals("Get-ChildItem C:\\temp\\x", ShellUtil.escapePowerShellCommandArgument("Get-ChildItem C:\\temp\\x"));
+        assertNull(ShellUtil.escapePowerShellCommandArgument(null));
+    }
+
+    @Test
+    void escapePowerShellCommandArgumentEscapesQuotes() {
+        assertEquals("Write-Output \\\"hello world\\\"", ShellUtil.escapePowerShellCommandArgument("Write-Output \"hello world\""));
+        assertEquals("Write-Output '{\\\"a\\\":\\\"b c\\\"}'", ShellUtil.escapePowerShellCommandArgument("Write-Output '{\"a\":\"b c\"}'"));
+    }
+
+    @Test
+    void escapePowerShellCommandArgumentDoublesBackslashRunBeforeQuote() {
+        // `\"` must survive as `\"`, so the single backslash is doubled and the quote gets its own escape.
+        assertEquals("say \\\\\\\"hi\\\\\\\"", ShellUtil.escapePowerShellCommandArgument("say \\\"hi\\\""));
+        // a backslash not followed by a quote is literal and must not be doubled
+        assertEquals("C:\\dir\\file \\\"x\\\"", ShellUtil.escapePowerShellCommandArgument("C:\\dir\\file \"x\""));
+    }
+
+    @Test
+    void wrapCommandEscapesQuotesForPowerShellOnly() {
+        var command = "Write-Output \"hello world\"";
+        assertTrue(ShellUtil.wrapCommand("pwsh.exe", command).endsWith("Write-Output \\\"hello world\\\""));
+        assertEquals(command, ShellUtil.wrapCommand("bash", command));
+        assertEquals(command, ShellUtil.wrapCommand("cmd.exe", command));
     }
 
     @Test

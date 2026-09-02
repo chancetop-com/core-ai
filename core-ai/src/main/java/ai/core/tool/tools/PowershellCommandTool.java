@@ -2,6 +2,8 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCallParameters;
 import ai.core.utils.PowershellReadOnlyChecker;
+import ai.core.utils.ShellUtil;
+import ai.core.utils.SystemUtil;
 
 /**
  * PowerShell-specific command tool for Windows environments.
@@ -16,7 +18,7 @@ public class PowershellCommandTool extends ShellCommandTool {
     private static final String TOOL_DESC_TEMPLATE = """
             Executes a PowerShell command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
 
-            Be aware: OS: ${os}
+            Be aware: OS: ${os}, PowerShell edition: ${ps_edition}
 
             All commands run in the current working directory by default. Use the `workspace` parameter if you need to run a command in a different directory. AVOID using `Set-Location <directory>; <command>` patterns — use `workspace` instead.
 
@@ -39,7 +41,7 @@ public class PowershellCommandTool extends ShellCommandTool {
              - You can use the `run_in_background` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away — you'll be notified when it finishes. You do not need to use `&` at the end of the command when using this parameter.
              - When issuing multiple commands:
               - If the commands are independent and can run in parallel, make multiple PowerShell tool calls in a single message. Example: if you need to run "git status" and "git diff", send a single message with two PowerShell tool calls in parallel.
-              - If the commands depend on each other and must run sequentially, chain them with `; if ($?) { ... }` to conditionally run the next command only if the previous succeeded. Example: `git add .; if ($?) { git commit -m "..." }`
+              - If the commands depend on each other and must run sequentially, ${sequential_chaining}
               - Use `;` when you need to run commands sequentially but don't care if earlier commands fail.
               - DO NOT use newlines to separate commands (newlines are ok in quoted strings).
              - For git commands:
@@ -55,11 +57,8 @@ public class PowershellCommandTool extends ShellCommandTool {
               - If you must sleep, keep the duration short to avoid blocking the user.
 
             # PowerShell-specific notes
-             - Pipeline chain operators `&&` and `||` are NOT available. To run B only if A succeeds: `A; if ($?) { B }`. To chain unconditionally: `A; B`.
-             - Ternary (`?:`), null-coalescing (`??`), and null-conditional (`?.`) operators are NOT available. Use `if`/`else` and explicit `$null -eq` checks instead.
-             - Avoid `2>&1` on native executables. In PowerShell, redirecting a native command's stderr wraps each line in an ErrorRecord (NativeCommandError) and sets `$?` to `$false` even when the exe returned exit code 0. stderr is already captured for you — don't redirect it.
-             - Default file encoding is UTF-16 LE (with BOM). When writing files other tools will read, pass `-Encoding UTF8` to `Out-File`/`Set-Content`.
-             - `ConvertFrom-Json` returns a `PSCustomObject`, not a hashtable. `-AsHashtable` is not available.
+             - Quoting: write the command exactly as you would type it in a PowerShell prompt. Double quotes are passed through verbatim, so `Write-Output "hello world"`, `git log --pretty=format:"%h %s"` and `kubectl get pods -o jsonpath="{.items[0].metadata.name}"` all work as written. Do NOT pre-escape quotes, double them up, or reach for `[char]34` workarounds — that corrupts the command. If a command ever comes back with its quotes mangled, do not retry it with different escaping: write the script to a `.ps1` file with ${tool_write_file} and run that file instead.
+            ${edition_notes}
              - To read any file, always prefer the dedicated ${tool_read_file} tool instead of `Get-Content`, `cat`, or `type`. The ${tool_read_file} tool handles all file types (text, images, PDFs) and automatically limits output size, preventing issues with large or growing files.
              - If you absolutely must use `Get-Content` to read a file (e.g., for piping or filtering the content), always pipe to `Select-Object -Last N` to limit the lines read. Avoid using `-Tail` or `-Last` directly on `Get-Content` — on large or actively-written log files, those parameters can cause `Get-Content` to hang. Instead use: `Get-Content -Path "..." | Select-Object -Last 500`
 
@@ -145,10 +144,46 @@ public class PowershellCommandTool extends ShellCommandTool {
             - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
             """;
 
+    // PowerShell 7+ (pwsh). Verified against 7.6.3.
+    private static final String CORE_EDITION_NOTES = """
+             - Pipeline chain operators `&&` and `||` ARE available and work like bash. Prefer `cmd1 && cmd2` over `cmd1; cmd2` when cmd2 should only run if cmd1 succeeded.
+             - Ternary (`$cond ? $a : $b`), null-coalescing (`??`), and null-conditional (`?.`) operators are available.
+             - Default file encoding is UTF-8 without BOM, and `-Encoding utf8` also writes no BOM. Use `-Encoding utf8BOM` only when a consumer specifically needs the BOM.
+             - `ConvertFrom-Json` returns a `PSCustomObject`; pass `-AsHashtable` when you want a hashtable instead.
+             - stderr from native executables is already captured for you, so `2>&1` is redundant — don't add it.
+            """.stripTrailing();
+    private static final String CORE_SEQUENTIAL_CHAINING = "chain them with `&&` so the next command only runs if the previous succeeded. Example: `git add . && git commit -m \"...\"`";
+
+    // Windows PowerShell 5.1 (powershell.exe). Verified against 5.1.26100.
+    private static final String DESKTOP_EDITION_NOTES = """
+             - Pipeline chain operators `&&` and `||` are NOT available. To run B only if A succeeds: `A; if ($?) { B }`. To chain unconditionally: `A; B`.
+             - Ternary (`?:`), null-coalescing (`??`), and null-conditional (`?.`) operators are NOT available. Use `if`/`else` and explicit `$null -eq` checks instead.
+             - Default encoding for `Out-File` and `>` is UTF-16 LE with BOM. When writing files other tools will read, pass `-Encoding UTF8` — but note that on this edition `-Encoding UTF8` still emits a BOM.
+             - `ConvertFrom-Json` returns a `PSCustomObject`, not a hashtable. `-AsHashtable` is not available.
+             - Avoid `2>&1` on native executables. On this edition, redirecting a native command's stderr wraps each line in an ErrorRecord (NativeCommandError) and sets `$?` to `$false` even when the exe returned exit code 0. stderr is already captured for you — don't redirect it.
+            """.stripTrailing();
+    private static final String DESKTOP_SEQUENTIAL_CHAINING = "chain them with `; if ($?) { ... }` to conditionally run the next command only if the previous succeeded. Example: `git add .; if ($?) { git commit -m \"...\" }`";
+
     private static final String TOOL_DESC = buildToolDescription();
 
+    /**
+     * {@link ShellUtil#getPreferredShell} picks {@code pwsh.exe} over {@code powershell.exe} when both are installed,
+     * so the description has to follow that choice: telling an agent on PowerShell 7 that `&&` and ternaries are
+     * unavailable pushes it into needlessly verbose commands, and the reverse would hand a 5.1 box syntax that does not
+     * parse. Falls back to the 5.1 wording, whose advice is valid on both editions, when detection is not possible.
+     */
+    private static boolean isPowerShellCoreEdition() {
+        var platform = SystemUtil.detectPlatform();
+        if (!platform.isWindows()) return false;
+        return ShellUtil.isPowerShellCore(ShellUtil.detectPreferredShellQuietly(platform));
+    }
+
     private static String buildToolDescription() {
+        var core = isPowerShellCoreEdition();
         return TOOL_DESC_TEMPLATE
+                .replace("${ps_edition}", core ? "PowerShell 7+ (pwsh)" : "Windows PowerShell 5.1 (powershell.exe)")
+                .replace("${edition_notes}", core ? CORE_EDITION_NOTES : DESKTOP_EDITION_NOTES)
+                .replace("${sequential_chaining}", core ? CORE_SEQUENTIAL_CHAINING : DESKTOP_SEQUENTIAL_CHAINING)
                 .replace("${tool_read_file}", ReadFileTool.TOOL_NAME)
                 .replace("${tool_edit_file}", EditFileTool.TOOL_NAME)
                 .replace("${tool_glob}", GlobFileTool.TOOL_NAME)
