@@ -26,6 +26,7 @@ public class MultiAgentModule extends Module {
         bindVectorStores(r);
         bindTelemetry(r);
         bindLangfuse(r);
+        bindSystemPrompt(r);
         bindMcp(r);
     }
 
@@ -92,6 +93,12 @@ public class MultiAgentModule extends Module {
         }
         if (r.langfusePromptProvider != null) {
             bind(r.langfusePromptProvider);
+        }
+    }
+
+    private void bindSystemPrompt(BootstrapResult r) {
+        if (r.systemPromptProvider != null) {
+            bind(r.systemPromptProvider);
         }
     }
 

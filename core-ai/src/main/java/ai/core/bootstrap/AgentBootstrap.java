@@ -16,6 +16,8 @@ import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import ai.core.prompt.langfuse.LangfusePromptConfig;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
 import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
+import ai.core.prompt.system.SystemPromptConfig;
+import ai.core.prompt.system.SystemPromptProvider;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.FlowTracer;
 import ai.core.telemetry.GroupTracer;
@@ -55,6 +57,7 @@ public class AgentBootstrap {
         configureVectorStores(result);
         configureTelemetry(result);
         configureLangfusePrompts(result);
+        configureSystemPromptProvider(result);
         configureLLMProviders(result);
         configureMcpClient(result);
         warmup();
@@ -195,6 +198,24 @@ public class AgentBootstrap {
         if (props.property("langfuse.prompt.base.url").isEmpty()) {
             logger.debug("Langfuse prompt management disabled - langfuse.prompt.base.url not configured");
             LangfusePromptProviderRegistry.clear();
+        }
+    }
+
+    private void configureSystemPromptProvider(BootstrapResult result) {
+        props.property("system.prompt.api.base.url").ifPresent(baseUrl -> {
+            var configBuilder = SystemPromptConfig.builder().baseUrl(baseUrl);
+            props.property("system.prompt.api.key").ifPresent(configBuilder::apiKey);
+            props.property("system.prompt.timeout.seconds").ifPresent(timeout ->
+                configBuilder.timeoutSeconds(Integer.parseInt(timeout)));
+            var config = configBuilder.build();
+            var provider = new SystemPromptProvider(config, true);
+
+            result.systemPromptProvider = provider;
+            logger.debug("System prompt provider initialized with base URL: {}", baseUrl);
+        });
+
+        if (props.property("system.prompt.api.base.url").isEmpty()) {
+            logger.debug("System prompt provider disabled - system.prompt.api.base.url not configured");
         }
     }
 

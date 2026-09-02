@@ -9,6 +9,7 @@ import ai.core.persistence.providers.RedisPersistenceProvider;
 import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import ai.core.prompt.langfuse.LangfusePromptConfig;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
+import ai.core.prompt.system.SystemPromptProvider;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.FlowTracer;
 import ai.core.telemetry.GroupTracer;
@@ -52,6 +53,8 @@ public class BootstrapResult {
 
     public LangfusePromptConfig langfusePromptConfig;
     public LangfusePromptProvider langfusePromptProvider;
+
+    public SystemPromptProvider systemPromptProvider;
 
     public McpClientManager mcpClientManager;
 
