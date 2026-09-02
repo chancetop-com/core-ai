@@ -145,12 +145,25 @@ public class AgentHelper {
         if (attachedContents == null || attachedContents.isEmpty()) {
             return Message.of(RoleType.USER, query, buildRequestName(false), null, null);
         }
-        var contents = new java.util.ArrayList<Content>(attachedContents.size() + 1);
+        var contents = new java.util.ArrayList<Content>(attachedContents.size() * 2 + 1);
         contents.add(Content.of(withoutDuplicateAttachmentUrls(query, attachedContents)));
-        attachedContents.stream()
-                .filter(attachedContent -> attachedContent.type != AttachedContent.AttachedContentType.VIDEO)
-                .map(attachedContent -> buildAttachedContent(attachedContent, context))
-                .forEach(contents::add);
+        var imageOrdinal = 0;
+        var fileOrdinal = 0;
+        for (var attachedContent : attachedContents) {
+            if (attachedContent.type == AttachedContent.AttachedContentType.VIDEO) continue;
+            String label;
+            if (attachedContent.type == AttachedContent.AttachedContentType.IMAGE) {
+                imageOrdinal++;
+                label = attachmentLabel("Image", imageOrdinal, attachedContent.filename);
+            } else {
+                fileOrdinal++;
+                label = attachmentLabel("File", fileOrdinal, attachedContent.filename);
+            }
+            // The label sits directly before its content part so the model binds the name by adjacency;
+            // this works the same on the native vision path and on the caption/tool reference path.
+            contents.add(Content.of(label));
+            contents.add(buildAttachedContent(attachedContent, context));
+        }
         attachedContents.stream()
                 .filter(attachedContent -> attachedContent.type == AttachedContent.AttachedContentType.VIDEO)
                 .map(AgentHelper::buildVideoReferenceHint)
@@ -176,6 +189,11 @@ public class AgentHelper {
             buildRequestName(false),
             null,
             null));
+    }
+
+    private static String attachmentLabel(String kind, int ordinal, String filename) {
+        if (filename == null || filename.isBlank()) return "[" + kind + " " + ordinal + "]";
+        return "[" + kind + " " + ordinal + ": " + filename + "]";
     }
 
     private static String buildVideoReferenceHint(AttachedContent attachedContent) {

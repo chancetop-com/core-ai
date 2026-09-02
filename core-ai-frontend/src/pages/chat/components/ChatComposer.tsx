@@ -1,4 +1,4 @@
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent, RefObject } from 'react';
 import {
   ChevronDown,
@@ -17,6 +17,9 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+import AttachmentMentionMenu from './AttachmentMentionMenu';
+import { applyMention, attachmentBadgeLabel, findMentionTrigger, imageOrdinals, mentionCandidates, pastedImageFileName } from './attachmentMentions';
+import type { MentionableAttachment, MentionTrigger } from './attachmentMentions';
 
 type ChatStatus = 'idle' | 'running';
 
@@ -347,8 +350,17 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const [needsExpand, setNeedsExpand] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [mention, setMention] = useState<{ trigger: MentionTrigger; activeIndex: number } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pastedCountRef = useRef(0);
+  const ordinals = useMemo(() => imageOrdinals(pendingAttachments), [pendingAttachments]);
+  const candidates = useMemo(
+    () => (mention ? mentionCandidates(pendingAttachments, mention.trigger.query, ordinals) : []),
+    [mention, ordinals, pendingAttachments],
+  );
+  const menuOpen = mention !== null && candidates.length > 0;
+  const activeIndex = mention ? Math.min(mention.activeIndex, Math.max(candidates.length - 1, 0)) : 0;
 
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
@@ -357,10 +369,13 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       setIsInputExpanded(false);
       setNeedsExpand(false);
       setPendingAttachments([]);
+      setMention(null);
+      pastedCountRef.current = 0;
     },
     setDraft: (text: string) => {
       setInput(text);
       setIsInputExpanded(false);
+      setMention(null);
       requestAnimationFrame(() => inputRef.current?.focus());
     },
   }), []);
@@ -470,9 +485,8 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       if (item.type.startsWith('image/')) {
         const file = item.getAsFile();
         if (file) {
-          const ext = file.type.split('/')[1] || 'png';
-          const namedFile = new File([file], `clipboard-image-${Date.now()}.${ext}`, { type: file.type });
-          imageFiles.push(namedFile);
+          pastedCountRef.current += 1;
+          imageFiles.push(new File([file], pastedImageFileName(pastedCountRef.current, file.type), { type: file.type }));
         }
       }
     }
@@ -498,6 +512,8 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     setInput('');
     setIsInputExpanded(false);
     setPendingAttachments([]);
+    setMention(null);
+    pastedCountRef.current = 0;
 
     await onSend(text, readyAttachments.map(attachment => ({
       url: attachment.url,
@@ -510,12 +526,62 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     })));
   }, [input, onSend, pendingAttachments, selectedAgentId, status]);
 
+  const updateMention = useCallback((element: HTMLTextAreaElement) => {
+    const trigger = findMentionTrigger(element.value, element.selectionStart ?? element.value.length);
+    setMention(current => {
+      if (!trigger) return null;
+      // Caret moves and key releases inside the same "@" token keep the highlighted candidate
+      const sameToken = current !== null && current.trigger.start === trigger.start;
+      return { trigger, activeIndex: sameToken ? current.activeIndex : 0 };
+    });
+  }, []);
+
+  const handleInputChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(event.target.value);
+    updateMention(event.target);
+  }, [updateMention]);
+
+  const selectMention = useCallback((attachment: MentionableAttachment) => {
+    if (!mention) return;
+    const result = applyMention(input, mention.trigger, attachment.name);
+    setInput(result.text);
+    setMention(null);
+    requestAnimationFrame(() => {
+      const element = inputRef.current;
+      if (!element) return;
+      element.focus();
+      element.setSelectionRange(result.caret, result.caret);
+    });
+  }, [input, mention]);
+
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (menuOpen && mention) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        setMention(current => current && ({
+          ...current,
+          activeIndex: (current.activeIndex + step + candidates.length) % candidates.length,
+        }));
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        selectMention(candidates[activeIndex]);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMention(null);
+        return;
+      }
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void handleSend();
     }
-  }, [handleSend]);
+  }, [activeIndex, candidates, handleSend, menuOpen, mention, selectMention]);
 
   const totalChips = countUniqueIds(loadedToolIds, preToolIds)
     + countUniqueIds(loadedSkillIds, preSkillIds)
@@ -555,7 +621,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
                 ) : (
                   <Paperclip size={12} />
                 )}
-                <span className="max-w-[120px] truncate">{attachment.name}</span>
+                <span className="max-w-[160px] truncate">{attachmentBadgeLabel(attachment, ordinals)}</span>
                 {!attachment.uploading && (
                   <button
                     onClick={() => removeAttachment(attachment.id)}
@@ -603,11 +669,22 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
           </button>
 
           <span className="relative flex-1 self-stretch flex items-end">
+            {menuOpen && mention && (
+              <AttachmentMentionMenu
+                candidates={candidates}
+                activeIndex={activeIndex}
+                ordinals={ordinals}
+                onSelect={selectMention}
+              />
+            )}
             <textarea
               ref={inputRef}
               value={input}
-              onChange={event => setInput(event.target.value)}
+              onChange={handleInputChange}
               onKeyDown={handleKeyDown}
+              onKeyUp={event => updateMention(event.currentTarget)}
+              onClick={event => updateMention(event.currentTarget)}
+              onBlur={() => setMention(null)}
               onPaste={handlePaste}
               placeholder={selectedAgentId ? 'Send a message...' : 'Select an agent first'}
               rows={isInputExpanded ? undefined : 1}
