@@ -216,6 +216,38 @@ class MediaJobServiceTest {
         assertThrows(BadRequestException.class, () -> service.list(0, 20, null, "magic", null));
     }
 
+    @Test
+    void fileRecordByHandleResolvesCompletedJobFile() {
+        var job = new MediaJob();
+        job.id = "job-1";
+        job.state = "completed";
+        job.fileId = "file-1";
+        when(collection.get("job-1")).thenReturn(java.util.Optional.of(job));
+        var record = new FileRecord();
+        record.id = "file-1";
+        when(service.fileService.get("file-1")).thenReturn(record);
+
+        var resolved = service.fileRecordByHandle(GatewayMediaHandle.encodeImage("job-1"));
+
+        assertTrue(resolved.isPresent());
+        assertEquals("file-1", resolved.get().id);
+    }
+
+    @Test
+    void fileRecordByHandleIsEmptyForNonHandlesUnknownOrPendingJobs() {
+        assertTrue(service.fileRecordByHandle("file-1").isEmpty(), "plain file ids are not handles");
+        assertTrue(service.fileRecordByHandle("gateway-media-v1.img.!!!").isEmpty(), "malformed handles never throw");
+
+        when(collection.get("job-2")).thenReturn(java.util.Optional.empty());
+        assertTrue(service.fileRecordByHandle(GatewayMediaHandle.encodeImage("job-2")).isEmpty());
+
+        var pending = new MediaJob();
+        pending.id = "job-3";
+        pending.state = "submitted";
+        when(collection.get("job-3")).thenReturn(java.util.Optional.of(pending));
+        assertTrue(service.fileRecordByHandle(GatewayMediaHandle.encodeImage("job-3")).isEmpty());
+    }
+
     private String capturedUpdateText() {
         ArgumentCaptor<Bson> captor = ArgumentCaptor.forClass(Bson.class);
         verify(collection).update(any(Bson.class), captor.capture());

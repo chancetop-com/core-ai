@@ -219,6 +219,24 @@ public class MediaJobService {
         return job;
     }
 
+    /**
+     * Lenient, ownerless handle resolution for server-stored references (drama identity stills,
+     * render inputs): the tool output tells the agent to reuse the media_id, so stores that accept
+     * "whatever the agent has" must accept it too. Empty when the handle is unknown, the job is not
+     * completed, or nothing was persisted yet (video jobs before their first download).
+     */
+    public Optional<FileRecord> fileRecordByHandle(String mediaId) {
+        if (!GatewayMediaHandle.isHandle(mediaId)) return Optional.empty();
+        try {
+            var handle = GatewayMediaHandle.decode(mediaId);
+            var job = mediaJobCollection.get(handle.jobId()).orElse(null);
+            if (job == null || !"completed".equals(job.state)) return Optional.empty();
+            return fileRecord(job);
+        } catch (BadRequestException e) {
+            return Optional.empty();
+        }
+    }
+
     public Optional<FileRecord> fileRecord(MediaJob job) {
         if (!hasText(job.fileId)) return Optional.empty();
         try {

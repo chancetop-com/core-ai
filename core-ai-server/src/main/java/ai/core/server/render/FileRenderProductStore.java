@@ -1,6 +1,8 @@
 package ai.core.server.render;
 
 import ai.core.server.file.FileService;
+import ai.core.server.gateway.GatewayMediaHandle;
+import ai.core.server.gateway.MediaJobService;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
@@ -33,6 +35,8 @@ public class FileRenderProductStore implements RenderProductStore {
 
     @Inject
     FileService fileService;
+    @Inject
+    MediaJobService mediaJobService;
 
     @Override
     public StoredProduct storeBytes(String userId, String fileName, String contentType, byte[] bytes) {
@@ -56,9 +60,10 @@ public class FileRenderProductStore implements RenderProductStore {
 
     /**
      * Lenient resolution: agents hand us whatever they have — a FileRecord id, a
-     * "/api/files/{id}/content" URL, or an artifact share URL ("/api/public/artifacts/{token}/content",
-     * "/shared/artifacts/{token}", absolute or path-only). Unresolvable refs return null instead of
-     * throwing so one bad reference never breaks a whole board/render batch.
+     * "/api/files/{id}/content" URL, an artifact share URL ("/api/public/artifacts/{token}/content",
+     * "/shared/artifacts/{token}", absolute or path-only), or a gateway media_id
+     * ("gateway-media-v1.img....", what generate_image tells the agent to reuse). Unresolvable refs
+     * return null instead of throwing so one bad reference never breaks a whole board/render batch.
      */
     @Override
     public StoredProduct resolve(String fileId) {
@@ -70,6 +75,7 @@ public class FileRenderProductStore implements RenderProductStore {
     private ai.core.server.domain.FileRecord findRecord(String ref) {
         if (ref == null || ref.isBlank()) return null;
         var path = ref.trim();
+        if (GatewayMediaHandle.isHandle(path)) return mediaJobService.fileRecordByHandle(path).orElse(null);
         var protocol = path.indexOf("://");
         if (protocol > 0) {
             var slash = path.indexOf('/', protocol + 3);
