@@ -1,25 +1,20 @@
 package ai.core.prompt.system;
 
+import ai.core.internal.http.PatchedHTTPClientBuilder;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import core.framework.http.ContentType;
+import core.framework.http.HTTPClient;
+import core.framework.http.HTTPMethod;
+import core.framework.http.HTTPRequest;
+import core.framework.http.HTTPResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.io.Serial;
-import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -44,7 +39,7 @@ public class SystemPromptProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(SystemPromptProvider.class);
 
     private final SystemPromptConfig config;
-    private final HttpClient httpClient;
+    private final HTTPClient httpClient;
     private final ObjectMapper objectMapper;
     private final Map<String, String> cache;
     private final boolean cacheEnabled;
@@ -58,41 +53,19 @@ public class SystemPromptProvider {
         this.cacheEnabled = cacheEnabled;
         this.cache = new HashMap<>();
 
-        var builder = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(config.getTimeoutSeconds()));
+        var clientBuilder = new PatchedHTTPClientBuilder()
+            .connectTimeout(Duration.ofSeconds(config.getTimeoutSeconds()))
+            .timeout(Duration.ofSeconds(config.getTimeoutSeconds()));
         if (config.isTrustAll()) {
-            builder.sslContext(trustAllSSLContext());
+            clientBuilder.trustAll();
         }
-        this.httpClient = builder.build();
+        this.httpClient = clientBuilder.build();
 
         this.objectMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
         if (config.getApiKey() == null || config.getApiKey().isEmpty()) {
             LOGGER.warn("system.prompt.api.key not configured - prompt fetch will fail if the server requires auth");
-        }
-    }
-
-    private static SSLContext trustAllSSLContext() {
-        try {
-            var sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, new TrustManager[]{new X509TrustManager() {
-                @Override
-                public X509Certificate[] getAcceptedIssuers() {
-                    return new X509Certificate[0];
-                }
-
-                @Override
-                public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                }
-
-                @Override
-                public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                }
-            }}, new SecureRandom());
-            return sslContext;
-        } catch (NoSuchAlgorithmException | KeyManagementException e) {
-            throw new Error(e);
         }
     }
 
@@ -108,21 +81,17 @@ public class SystemPromptProvider {
         if (cached != null) return cached;
 
         String url = config.getBaseUrl() + "/api/system-prompts/name/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
-        var requestBuilder = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
-            .GET();
+        var request = new HTTPRequest(HTTPMethod.GET, url);
         if (config.getApiKey() != null && !config.getApiKey().isEmpty()) {
-            requestBuilder.header("Authorization", "Bearer " + config.getApiKey());
+            request.headers.put("Authorization", "Bearer " + config.getApiKey());
         }
-        requestBuilder.header("Content-Type", "application/json");
-        var request = requestBuilder.build();
+        request.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
 
         try {
             LOGGER.debug("Fetching system prompt from core-ai-server: {}", url);
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = httpClient.execute(request);
             return handleResponse(name, response);
-        } catch (IOException | InterruptedException e) {
+        } catch (Exception e) {
             String errorMessage = String.format("Error fetching prompt '%s': %s", name, e.getMessage());
             LOGGER.error(errorMessage, e);
             throw new SystemPromptException(errorMessage, e);
@@ -136,14 +105,19 @@ public class SystemPromptProvider {
         return cached;
     }
 
-    private String handleResponse(String name, HttpResponse<String> response) throws SystemPromptException, IOException {
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String errorMessage = String.format("Failed to fetch prompt '%s': HTTP %d - %s", name, response.statusCode(), response.body());
+    private String handleResponse(String name, HTTPResponse response) throws SystemPromptException {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+            String errorMessage = String.format("Failed to fetch prompt '%s': HTTP %d - %s", name, response.statusCode, response.text());
             LOGGER.error(errorMessage);
             throw new SystemPromptException(errorMessage);
         }
-        var body = objectMapper.readValue(response.body(), SystemPromptResponse.class);
-        String content = body != null ? body.content : null;
+        String content;
+        try {
+            var body = objectMapper.readValue(response.text(), SystemPromptResponse.class);
+            content = body != null ? body.content : null;
+        } catch (IOException e) {
+            throw new SystemPromptException("Failed to parse prompt response: " + name, e);
+        }
         if (content == null || content.isBlank()) {
             throw new SystemPromptException("Prompt content is empty: " + name);
         }
