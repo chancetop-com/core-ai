@@ -120,6 +120,24 @@ export default function ApiToolDetail() {
   const [apiAppName, setApiAppName] = useState('');
   const [activeTab, setActiveTab] = useState<'services' | 'types'>('services');
   const [dirty, setDirty] = useState(false);
+  // Editable name (service api record name, not the payload app name)
+  const [editingName, setEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
+
+  const startEditName = () => {
+    setEditName(data?.name || '');
+    setEditingName(true);
+  };
+
+  const saveName = () => {
+    const trimmed = editName.trim();
+    if (!trimmed) { setEditingName(false); return; }
+    if (trimmed !== data?.name) {
+      setData(prev => prev ? { ...prev, name: trimmed } : prev);
+      setDirty(true);
+    }
+    setEditingName(false);
+  };
 
   const load = useCallback(() => {
     if (!id) return;
@@ -250,6 +268,7 @@ export default function ApiToolDetail() {
       }));
 
       await api.serviceApis.update(id, {
+        name: data.name,
         description: data.description,
         enabled: data.enabled,
         url: data.url,
@@ -333,7 +352,28 @@ export default function ApiToolDetail() {
           <div>
             <div className="flex items-center gap-3">
               <Key size={20} style={{ color: 'var(--color-primary)' }} />
-              <h1 className="text-2xl font-semibold">{data.name}</h1>
+              {editingName ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false); }}
+                    onBlur={saveName}
+                    className="px-2 py-1 rounded-lg border text-lg font-semibold"
+                    style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)' }}
+                  />
+                </div>
+              ) : (
+                <h1 className="text-2xl font-semibold flex items-center gap-2">
+                  {data.name}
+                  <button onClick={startEditName} className="p-1 rounded cursor-pointer hover:opacity-70"
+                    style={{ color: 'var(--color-text-secondary)' }} title="Rename">
+                    <Edit2 size={14} />
+                  </button>
+                </h1>
+              )}
               <span className={`px-2 py-0.5 rounded text-xs ${data.enabled ? 'text-white' : ''}`}
                 style={data.enabled ? { background: '#065f46' } : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                 {data.enabled ? 'Enabled' : 'Disabled'}

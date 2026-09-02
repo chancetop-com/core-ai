@@ -2094,7 +2094,7 @@ export const api = {
       request<ServiceApiView>(`/api/service-api/${id}`),
     create: (data: { name: string; description?: string; operator: string }) =>
       request<void>('/api/service-api', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: { enabled?: boolean; description?: string; url?: string; base_url?: string; payload?: string; service_additional?: ServiceAdditionalView[]; type_additional?: TypeAdditionalView[]; operator: string }) =>
+    update: (id: string, data: { name?: string; enabled?: boolean; description?: string; url?: string; base_url?: string; payload?: string; service_additional?: ServiceAdditionalView[]; type_additional?: TypeAdditionalView[]; operator: string }) =>
       request<void>(`/api/service-api/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/api/service-api/${id}`, { method: 'DELETE' }),
