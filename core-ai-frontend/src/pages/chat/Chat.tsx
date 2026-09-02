@@ -17,7 +17,7 @@ import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages, restoreCachedChatMessages } from './utils';
-import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn } from './streamRecovery';
+import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn, trackStrandedTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 
 const VoiceTranscriberSidebar = lazy(() => import('./components/VoiceTranscriberSidebar'));
@@ -29,6 +29,9 @@ const DRAFT_CHAT_SESSION_ID = '__new_chat_draft__';
 const TURN_WATCHDOG_INTERVAL_MS = 10000;
 // Max SSE re-attach attempts per turn before falling back to watchdog-only recovery.
 const MAX_TURN_RECONNECTS = 3;
+// Consecutive "backend says running" polls with no stream left to hear it on before the
+// watchdog stops believing the status and recovers from history.
+const MAX_STRANDED_POLLS = 2;
 
 function toToolRef(id: string, availableTools: ToolRegistryView[] = []): ToolRef {
   const registeredTool = availableTools.find(t => t.id === id);
@@ -982,6 +985,11 @@ export default function Chat() {
           // Mirrors the server clearing its replay buffer on the RUNNING event.
           if (statusEvent.sessionId && pendingTurnRef.current === statusEvent.sessionId) {
             setMessages(prev => clearActiveAgentBubble(prev));
+          } else if (statusEvent.sessionId) {
+            // A turn announced only over the stream — nothing local marked it pending.
+            // Arm the watchdog, otherwise this session has no path back to idle if the
+            // stream dies or the backend keeps reporting the turn as running.
+            markTurnPending(statusEvent.sessionId);
           }
         }
         break;
@@ -1084,7 +1092,7 @@ export default function Chat() {
         break;
       }
     }
-  }, [clearTurnPending]);
+  }, [clearTurnPending, markTurnPending]);
 
   const doStreamMessage = useCallback((
     sid: string,
@@ -1285,6 +1293,7 @@ export default function Chat() {
     let timer: number | undefined;
     let failures = 0;
     let nonRunningPolls = 0;
+    let strandedPolls = 0;
     const poll = async () => {
       try {
         const res = await sessionApi.status(pendingTurnSid);
@@ -1294,6 +1303,22 @@ export default function Chat() {
         if (status === 'running') {
           // turn still active (approval waits also report running) — keep watching
           nonRunningPolls = 0;
+          // ...unless there is no stream left to hear it on: the connection is gone and
+          // the capped re-attach has given up, so "running" is an answer this client can
+          // neither verify nor ever act on. Recover from history instead of keeping the
+          // composer locked for as long as the backend keeps saying running.
+          const stranded = trackStrandedTurn({
+            hasLiveStream: sseControllerRef.current !== null,
+            reconnectsExhausted: turnReconnectsRef.current >= MAX_TURN_RECONNECTS,
+            strandedPolls,
+            maxStrandedPolls: MAX_STRANDED_POLLS,
+          });
+          strandedPolls = stranded.strandedPolls;
+          if (stranded.recover) {
+            showToast('Lost the turn stream — restored this session from history.');
+            await syncFromHistory(pendingTurnSid);
+            return;
+          }
         } else if (nonRunningPolls < 1) {
           // Require two consecutive non-running answers before the destructive
           // history re-sync — a single reading may be a transient misreport.
@@ -1330,7 +1355,7 @@ export default function Chat() {
     };
     timer = window.setTimeout(poll, TURN_WATCHDOG_INTERVAL_MS);
     return () => { stopped = true; if (timer) window.clearTimeout(timer); };
-  }, [pendingTurnSid, syncFromHistory, clearTurnPending]);
+  }, [pendingTurnSid, syncFromHistory, clearTurnPending, showToast]);
 
   // Cleanup SSE on unmount. Session changes are handled explicitly by
   // doConnectSSE() and handleNewChat(); aborting from this effect can cancel

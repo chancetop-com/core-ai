@@ -33,6 +33,34 @@ export function mergeHistoryWithLive(hydrated: ChatMessage[], live: ChatMessage[
   return [...hydrated, { role: 'agent', segments: [], timestamp: new Date().toISOString() }];
 }
 
+export interface StrandedTurnState {
+  /** Consecutive polls where the backend said running with no stream left to hear it on. */
+  strandedPolls: number;
+  /** Stop believing the status and rebuild the session from history. */
+  recover: boolean;
+}
+
+/**
+ * Decide whether a "running" answer from the backend is still worth waiting on.
+ *
+ * Once the stream is gone and the capped re-attach has given up, this client can never
+ * observe the turn again: it would sit on "running" — composer locked, spinner up — for
+ * as long as the backend keeps saying so, with no path back to idle. That is not a
+ * hypothetical; a turn whose state is never cleared server-side reports running forever.
+ * Requiring two consecutive stranded polls keeps a re-attach that is still in flight
+ * from being cut short.
+ */
+export function trackStrandedTurn(input: {
+  hasLiveStream: boolean;
+  reconnectsExhausted: boolean;
+  strandedPolls: number;
+  maxStrandedPolls: number;
+}): StrandedTurnState {
+  if (input.hasLiveStream || !input.reconnectsExhausted) return { strandedPolls: 0, recover: false };
+  const strandedPolls = input.strandedPolls + 1;
+  return { strandedPolls, recover: strandedPolls >= input.maxStrandedPolls };
+}
+
 export type RestoredTurnAction = 'resume' | 'resync' | 'none';
 
 /**

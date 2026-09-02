@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn } from './streamRecovery';
+import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn, trackStrandedTurn } from './streamRecovery';
 import type { ChatMessage } from './types';
 
 const user = (content: string): ChatMessage => ({
@@ -104,6 +104,35 @@ describe('mergeHistoryWithLive', () => {
     const live = [user('hi'), streamingBubble()];
 
     expect(mergeHistoryWithLive(hydrated, live)).toBe(hydrated);
+  });
+});
+
+describe('trackStrandedTurn', () => {
+  const base = { strandedPolls: 0, maxStrandedPolls: 2 };
+
+  it('keeps waiting while the stream is still attached', () => {
+    expect(trackStrandedTurn({ ...base, hasLiveStream: true, reconnectsExhausted: true }))
+      .toEqual({ strandedPolls: 0, recover: false });
+  });
+
+  it('keeps waiting while re-attach attempts are still available', () => {
+    expect(trackStrandedTurn({ ...base, hasLiveStream: false, reconnectsExhausted: false }))
+      .toEqual({ strandedPolls: 0, recover: false });
+  });
+
+  it('does not recover on the first stranded poll, so an in-flight re-attach is not cut short', () => {
+    expect(trackStrandedTurn({ ...base, hasLiveStream: false, reconnectsExhausted: true }))
+      .toEqual({ strandedPolls: 1, recover: false });
+  });
+
+  it('recovers once the backend keeps reporting running with no stream to hear it on', () => {
+    expect(trackStrandedTurn({ ...base, strandedPolls: 1, hasLiveStream: false, reconnectsExhausted: true }))
+      .toEqual({ strandedPolls: 2, recover: true });
+  });
+
+  it('resets the streak when the stream comes back', () => {
+    expect(trackStrandedTurn({ ...base, strandedPolls: 1, hasLiveStream: true, reconnectsExhausted: true }))
+      .toEqual({ strandedPolls: 0, recover: false });
   });
 });
 
