@@ -4,6 +4,7 @@ import ai.core.agent.SubAgentConfig;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.auth.AuthConfig;
+import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.llm.LLMProvider;
@@ -119,14 +120,14 @@ public class CliAppHelper {
 
     /**
      * If {@code litellm.api.base} is not in agent.properties, inject fallback
-     * values from saved auth credentials so the server's LiteLLM proxy is used
-     * without manual configuration.
+     * values from saved auth credentials so the server's CLI LLM endpoint is
+     * used without manual configuration.
      */
     static void injectLiteLLMFallback(PropertiesFileSource props) {
         if (props.property("litellm.api.base").isPresent()) return;
         var auth = AuthConfig.load();
         if (auth != null && auth.apiKey() != null) {
-            props.putProperty("litellm.api.base", auth.serverUrl() + "/api/litellm/v1");
+            props.putProperty("litellm.api.base", auth.serverUrl() + RuntimeAuthConfig.LLM_PROXY_PATH);
             props.putProperty("litellm.api.key", auth.apiKey());
         }
     }

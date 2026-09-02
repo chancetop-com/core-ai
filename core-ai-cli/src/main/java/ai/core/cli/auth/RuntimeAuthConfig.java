@@ -22,6 +22,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class RuntimeAuthConfig {
     private static final RuntimeAuthConfig INSTANCE = new RuntimeAuthConfig();
 
+    /** Server-side OpenAI-compatible endpoint serving the CLI (base path, the provider appends /chat/completions). */
+    public static final String LLM_PROXY_PATH = "/api/cli/v1";
+
     public static RuntimeAuthConfig instance() {
         return INSTANCE;
     }

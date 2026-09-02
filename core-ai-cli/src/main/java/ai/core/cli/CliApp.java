@@ -83,7 +83,7 @@ public class CliApp {
     private void registerAuthListener(BootstrapResult result) {
         var auth = AuthConfig.load();
         if (auth != null && auth.apiKey() != null) {
-            RuntimeAuthConfig.instance().update(auth.serverUrl() + "/api/litellm/v1", auth.apiKey());
+            RuntimeAuthConfig.instance().update(auth.serverUrl() + RuntimeAuthConfig.LLM_PROXY_PATH, auth.apiKey());
         }
         if (result.liteLLMProvider != null) {
             RuntimeAuthConfig.instance().addListener(() -> {
@@ -107,7 +107,7 @@ public class CliApp {
         CliAppHelper.mergeWorkspaceConfig(props, workspace);
 
         // Inject LiteLLM fallback from saved auth credentials so logged-in
-        // users can call the server's LiteLLM proxy without configuring
+        // users reach the server's CLI LLM endpoint without configuring
         // provider properties in agent.properties.
         CliAppHelper.injectLiteLLMFallback(props);
 
@@ -289,7 +289,7 @@ public class CliApp {
         // Save credentials so A2ARemoteConnector can resolve them via AuthService
         if (apiKey != null) {
             AuthConfig.login(serverUrl, apiKey).save();
-            RuntimeAuthConfig.instance().update(serverUrl + "/api/litellm/v1", apiKey);
+            RuntimeAuthConfig.instance().update(serverUrl + RuntimeAuthConfig.LLM_PROXY_PATH, apiKey);
         }
         var config = new RemoteConfig(serverUrl, agentId != null ? agentId : "default-assistant", null);
         var ui = new TerminalUI();

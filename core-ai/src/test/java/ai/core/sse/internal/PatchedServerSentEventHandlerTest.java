@@ -19,7 +19,7 @@ class PatchedServerSentEventHandlerTest {
         handler = new PatchedServerSentEventHandler(null, null, null);
         handler.add(HTTPMethod.POST, "/api/gateway/v1/chat/completions", Object.class, (request, channel, lastEventId) -> {
         }, new PatchedServerSentEventContextImpl<>());
-        handler.add(HTTPMethod.POST, "/api/litellm/v1/chat/completions", Object.class, (request, channel, lastEventId) -> {
+        handler.add(HTTPMethod.POST, "/api/cli/v1/chat/completions", Object.class, (request, channel, lastEventId) -> {
         }, new PatchedServerSentEventContextImpl<>());
         handler.requireEventStreamAccept(HTTPMethod.POST, "/api/gateway/v1/chat/completions");
     }
@@ -34,8 +34,8 @@ class PatchedServerSentEventHandlerTest {
 
     @Test
     void nonGatedRouteAcceptsAnyRequest() {
-        assertTrue(handler.check(POST, "/api/litellm/v1/chat/completions", headers("application/json")));
-        assertTrue(handler.check(POST, "/api/litellm/v1/chat/completions", headers(null)));
+        assertTrue(handler.check(POST, "/api/cli/v1/chat/completions", headers("application/json")));
+        assertTrue(handler.check(POST, "/api/cli/v1/chat/completions", headers(null)));
     }
 
     @Test

@@ -54,7 +54,7 @@ public final class AuthManager {
 
         var config = enrich(serverUrl, apiKey, ui);
         if (config != null) {
-            RuntimeAuthConfig.instance().update(serverUrl + "/api/litellm/v1", apiKey);
+            RuntimeAuthConfig.instance().update(serverUrl + RuntimeAuthConfig.LLM_PROXY_PATH, apiKey);
         }
         return config;
     }
@@ -67,7 +67,7 @@ public final class AuthManager {
         AuthConfig.login(serverUrl, apiKey).save();
         var config = enrich(serverUrl, apiKey, null);
         if (config != null) {
-            RuntimeAuthConfig.instance().update(serverUrl + "/api/litellm/v1", apiKey);
+            RuntimeAuthConfig.instance().update(serverUrl + RuntimeAuthConfig.LLM_PROXY_PATH, apiKey);
         }
         return config;
     }
@@ -95,7 +95,7 @@ public final class AuthManager {
     public static AuthConfig switchServer(String serverUrl) {
         var config = AuthConfig.activate(serverUrl);
         if (config != null) {
-            RuntimeAuthConfig.instance().update(serverUrl + "/api/litellm/v1", config.apiKey());
+            RuntimeAuthConfig.instance().update(serverUrl + RuntimeAuthConfig.LLM_PROXY_PATH, config.apiKey());
         }
         return config;
     }

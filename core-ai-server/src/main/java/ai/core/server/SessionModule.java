@@ -19,7 +19,7 @@ import ai.core.server.web.ChatSessionWebServiceImpl;
 import ai.core.server.web.SessionCreateHelper;
 import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.web.sse.AgentSessionChannelListener;
-import ai.core.server.web.sse.LiteLLMProxyChannelListener;
+import ai.core.server.web.sse.CliProxyChannelListener;
 import ai.core.server.web.sse.SseAuthInterceptor;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
@@ -86,6 +86,9 @@ public class SessionModule extends Module {
                 bean(ai.core.server.web.session.SessionIdentity.class),
                 bean(ai.core.server.apiuser.PermissionService.class)));
         registry.register(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class), false);
-        registry.register(HTTPMethod.POST, "/api/litellm/v1/chat/completions", Object.class, bind(LiteLLMProxyChannelListener.class), false);
+        var cliProxyListener = bind(CliProxyChannelListener.class);
+        registry.register(HTTPMethod.POST, CliProxyChannelListener.PATH, Object.class, cliProxyListener, false);
+        // deprecated alias for older CLI binaries, removed once the CLI fleet has migrated to /api/cli/v1
+        registry.register(HTTPMethod.POST, CliProxyChannelListener.LEGACY_PATH, Object.class, cliProxyListener, false);
     }
 }

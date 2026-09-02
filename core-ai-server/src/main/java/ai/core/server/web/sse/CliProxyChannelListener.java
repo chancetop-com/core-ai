@@ -20,12 +20,18 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
-* author cyril
-* description
-* createTime  2026/6/10
-**/
-public class LiteLLMProxyChannelListener implements ChannelListener<Object> {
-    private static final Logger LOGGER = LoggerFactory.getLogger(LiteLLMProxyChannelListener.class);
+ * OpenAI-compatible chat completions endpoint for the core-ai CLI (and ACP runner):
+ * always streams over SSE and routes through the internal LLM provider stack, so
+ * models can fall back to the static provider when the gateway has no route.
+ * <p>
+ * Legacy path {@value #LEGACY_PATH} is kept as a deprecated alias for older CLI
+ * binaries and will be removed once the CLI fleet has migrated.
+ */
+public class CliProxyChannelListener implements ChannelListener<Object> {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CliProxyChannelListener.class);
+
+    public static final String PATH = "/api/cli/v1/chat/completions";
+    public static final String LEGACY_PATH = "/api/litellm/v1/chat/completions";
 
     @Inject
     LLMProviders llmProviders;
@@ -35,6 +41,9 @@ public class LiteLLMProxyChannelListener implements ChannelListener<Object> {
 
     @Override
     public void onConnect(Request request, Channel<Object> channel, String lastEventId) {
+        if (request.requestURL().startsWith(LEGACY_PATH)) {
+            LOGGER.warn("deprecated endpoint {} used, migrate to {}", LEGACY_PATH, PATH);
+        }
         var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
         var completionRequest = parseRequest(body);
         // OpenAI-compatible proxy surface: forward the client's payload verbatim, upstream errors included

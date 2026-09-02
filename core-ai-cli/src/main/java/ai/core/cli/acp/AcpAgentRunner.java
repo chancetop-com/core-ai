@@ -70,7 +70,7 @@ public class AcpAgentRunner {
         if (props.property("litellm.api.base").isPresent()) return;
         var auth = AuthConfig.load();
         if (auth != null && auth.apiKey() != null) {
-            props.putProperty("litellm.api.base", auth.serverUrl() + "/api/litellm/v1");
+            props.putProperty("litellm.api.base", auth.serverUrl() + RuntimeAuthConfig.LLM_PROXY_PATH);
             props.putProperty("litellm.api.key", auth.apiKey());
         }
     }
@@ -392,7 +392,7 @@ public class AcpAgentRunner {
     private void registerAuthListener(BootstrapResult result) {
         var auth = AuthConfig.load();
         if (auth != null && auth.apiKey() != null) {
-            RuntimeAuthConfig.instance().update(auth.serverUrl() + "/api/litellm/v1", auth.apiKey());
+            RuntimeAuthConfig.instance().update(auth.serverUrl() + RuntimeAuthConfig.LLM_PROXY_PATH, auth.apiKey());
         }
         if (result.liteLLMProvider != null) {
             RuntimeAuthConfig.instance().addListener(() -> {
