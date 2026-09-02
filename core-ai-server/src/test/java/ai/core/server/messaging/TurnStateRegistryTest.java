@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -60,6 +61,31 @@ class TurnStateRegistryTest {
         // s-1 was written once by markRunning, not renewed after clear
         verify(jedis, times(1)).set(eq(TURN_KEY), anyString(), any(SetParams.class));
         verify(jedis, times(2)).set(eq("session:turn:s-2"), anyString(), any(SetParams.class));
+    }
+
+    @Test
+    void renewAllClearsKeysWhoseTurnIsNoLongerExecuting() {
+        registry.markRunning("s-1", () -> false);
+
+        registry.renewAll();
+
+        // the dead turn's key is deleted instead of renewed, so the TTL safety net can do its job
+        verify(jedis).del(TURN_KEY);
+        verify(jedis, times(1)).set(eq(TURN_KEY), anyString(), any(SetParams.class));
+
+        registry.renewAll();
+        verify(jedis, times(1)).del(TURN_KEY);
+    }
+
+    @Test
+    void renewAllKeepsRenewingWhileTheTurnIsStillExecuting() {
+        registry.markRunning("s-1", () -> true);
+
+        registry.renewAll();
+        registry.renewAll();
+
+        verify(jedis, times(3)).set(eq(TURN_KEY), anyString(), any(SetParams.class));
+        verify(jedis, never()).del(TURN_KEY);
     }
 
     @Test

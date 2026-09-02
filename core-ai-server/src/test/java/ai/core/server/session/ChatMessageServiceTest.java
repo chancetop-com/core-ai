@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.api.server.session.SandboxEvent;
+import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -48,6 +50,34 @@ class ChatMessageServiceTest {
         assertEquals("agent", captor.getValue().role);
         assertEquals("done", captor.getValue().content);
         verify(service.sessionRegistry).recordAgentMessage("s-1");
+    }
+
+    @Test
+    void flushPendingTurnSavesWorkFromATurnThatNeverCompleted() {
+        var service = service();
+        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        var listener = service.listener("s-1");
+        listener.onToolStart(ToolStartEvent.of("s-1", "call-1", "run_bash_command", "{}"));
+
+        // the session is torn down mid-turn: no turn-complete event ever arrives
+        service.flushPendingTurn("s-1");
+
+        var captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(service.chatMessageCollection).insert(captor.capture());
+        assertEquals("agent", captor.getValue().role);
+        assertEquals(1, captor.getValue().tools.size());
+        assertEquals("run_bash_command", captor.getValue().tools.getFirst().name);
+    }
+
+    @Test
+    void flushPendingTurnWritesNothingWhenTheTurnAlreadyPersisted() {
+        var service = service();
+        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        service.listener("s-1").onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
+
+        service.flushPendingTurn("s-1");
+
+        verify(service.chatMessageCollection, times(1)).insert(any(ChatMessage.class));
     }
 
     @Test

@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 /**
@@ -45,6 +46,9 @@ public class InProcessAgentSession implements AgentSession {
     private final SessionCommandQueue commandQueue;
     private final TurnDriver turnDriver;
     private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
+    // Set when RUNNING is dispatched, cleared by whoever dispatches the turn's terminal event.
+    // close() races the turn thread for it so a force-closed turn still terminates exactly once.
+    private final AtomicBoolean turnActive = new AtomicBoolean();
 
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
@@ -114,6 +118,7 @@ public class InProcessAgentSession implements AgentSession {
         var turnToken = agent.getCancellationToken().createChild();
         agent.getExecutionContext().setCancellationToken(turnToken);
         var threadUnbind = turnToken.bindThread(executingThread);
+        turnActive.set(true);
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
 
         var usageBefore = agent.getCurrentTokenUsage();
@@ -129,22 +134,19 @@ public class InProcessAgentSession implements AgentSession {
             }
         } catch (ToolCallDeniedException e) {
             debug("tool call denied: " + e.getMessage());
-            dispatch(TurnCompleteEvent.cancelled(sessionId));
-            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            dispatchTerminal(TurnCompleteEvent.cancelled(sessionId), SessionStatus.IDLE);
             commandQueue.drainTaskNotifications();
         } catch (Throwable e) {
             if (agent.isCancelled()) {
                 debug("agent run cancelled");
-                dispatch(TurnCompleteEvent.cancelled(sessionId));
-                dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+                dispatchTerminal(TurnCompleteEvent.cancelled(sessionId), SessionStatus.IDLE);
                 commandQueue.drainTaskNotifications();
                 return;
             }
             debug("agent run failed: " + e);
             logger.warn("agent session run failed, sessionId={}", sessionId, e);
             persistOnFailure();
-            dispatch(ErrorEvent.of(sessionId, e.getMessage(), ""));
-            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
+            dispatchTerminal(ErrorEvent.of(sessionId, e.getMessage(), ""), SessionStatus.ERROR);
         } finally {
             threadUnbind.run();
             turnToken.disconnect();
@@ -194,8 +196,7 @@ public class InProcessAgentSession implements AgentSession {
             var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
             populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
             turnComplete.maxTurnsReached = Boolean.TRUE;
-            dispatch(turnComplete);
-            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            dispatchTerminal(turnComplete, SessionStatus.IDLE);
             return;
         } finally {
             context.setAttachedContents(null);
@@ -204,8 +205,7 @@ public class InProcessAgentSession implements AgentSession {
             debug("agent run cancelled");
             persistCancelledTurn();
             // carry partial output so server chat history records what was produced before ESC
-            dispatch(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()));
-            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            dispatchTerminal(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()), SessionStatus.IDLE);
             commandQueue.drainTaskNotifications();
             return;
         }
@@ -215,8 +215,7 @@ public class InProcessAgentSession implements AgentSession {
         debug("agent run completed");
         var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
         populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
-        dispatch(turnComplete);
-        dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+        dispatchTerminal(turnComplete, SessionStatus.IDLE);
     }
 
     private void executeTaskNotifications(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore) {
@@ -234,16 +233,14 @@ public class InProcessAgentSession implements AgentSession {
             var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
             populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
             turnComplete.maxTurnsReached = Boolean.TRUE;
-            dispatch(turnComplete);
-            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            dispatchTerminal(turnComplete, SessionStatus.IDLE);
             return;
         }
         if (agent.isCancelled()) {
             debug("agent run cancelled");
             persistCancelledTurn();
             // carry partial output so server chat history records what was produced before ESC
-            dispatch(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()));
-            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            dispatchTerminal(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()), SessionStatus.IDLE);
             commandQueue.drainTaskNotifications();
             return;
         }
@@ -253,8 +250,7 @@ public class InProcessAgentSession implements AgentSession {
         debug("task notifications processed");
         var turnComplete = TurnCompleteEvent.of(sessionId, result);
         populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
-        dispatch(turnComplete);
-        dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+        dispatchTerminal(turnComplete, SessionStatus.IDLE);
     }
 
     private void populateTokenUsage(TurnCompleteEvent event, long inputBefore, long outputBefore, double costBefore) {
@@ -305,10 +301,26 @@ public class InProcessAgentSession implements AgentSession {
         permissionGate.respond(callId, decision);
     }
 
+    /**
+     * True while the driver thread is actually executing a turn. A turn whose thread died without
+     * terminating cleanly reports false, so callers can expire stale turn state instead of trusting it.
+     */
+    public boolean isTurnRunning() {
+        return turnDriver.isProcessing();
+    }
+
     @Override
     public void close() {
         logger.debug("closing agent session, sessionId={}", sessionId);
         turnDriver.shutdown();
+        // A forced close (idle cleanup, explicit close, pod shutdown) interrupts the turn thread
+        // mid-flight and it may never reach its own terminal dispatch. Emit one here so listeners —
+        // turn-state registry, message persistence, SSE clients — never see a turn that runs forever.
+        // dispatchTerminal is a CAS, so whichever side gets there first is the only one that fires.
+        if (turnActive.get()) {
+            logger.warn("session closed while a turn was still running, aborting it, sessionId={}", sessionId);
+            dispatchTerminal(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()), SessionStatus.IDLE);
+        }
     }
 
     public void setOnIdle(Runnable onIdle) {
@@ -329,6 +341,17 @@ public class InProcessAgentSession implements AgentSession {
         if (compression == null) return;
         compression.setListener((beforeCount, afterCount, completed) ->
             dispatch(CompressionEvent.of(sessionId, beforeCount, afterCount, completed)));
+    }
+
+    /**
+     * Ends the current turn exactly once: dispatches the turn-ending event followed by the matching
+     * status change. Both the turn thread and {@link #close()} call this, and the CAS guarantees only
+     * one of them wins — a turn can neither be terminated twice nor left without a terminal event.
+     */
+    private void dispatchTerminal(AgentEvent turnEnd, SessionStatus status) {
+        if (!turnActive.compareAndSet(true, false)) return;
+        dispatch(turnEnd);
+        dispatch(StatusChangeEvent.of(sessionId, status));
     }
 
     private void dispatch(AgentEvent event) {

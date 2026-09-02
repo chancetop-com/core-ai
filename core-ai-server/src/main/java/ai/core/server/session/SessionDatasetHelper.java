@@ -35,6 +35,32 @@ public class SessionDatasetHelper {
         this.datasetRecordService = datasetRecordService;
     }
 
+    /**
+     * The session-level dataset shortcut: a single dataset id on the session config becomes a
+     * read-only dataset binding.
+     */
+    public List<AgentDatasetConfig> sessionDatasetConfig(SessionConfig config) {
+        if (config.datasetId == null || config.datasetId.isBlank()) return null;
+        var dp = new AgentDatasetConfig();
+        dp.datasetId = config.datasetId;
+        dp.permission = DatasetPermission.READ;
+        return List.of(dp);
+    }
+
+    /** Dataset instructions are appended to the config's system prompt as a side effect. */
+    public Map<String, Object> buildExtraVars(SessionConfig config, List<AgentDatasetConfig> datasetConfig) {
+        Map<String, Object> extraVars = null;
+        if (datasetConfig != null && !datasetConfig.isEmpty()) {
+            config.systemPrompt = appendDatasetInstructions(config.systemPrompt, datasetConfig);
+            extraVars = buildDatasetSystemVars(datasetConfig);
+        }
+        if (config.channelType != null && !config.channelType.isBlank()) {
+            if (extraVars == null) extraVars = new HashMap<>();
+            extraVars.put("system.channel.type", config.channelType);
+        }
+        return extraVars;
+    }
+
     public void addDatasetToolsToRegistry(ToolRegistry registry, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
         if (datasetConfig == null || datasetConfig.isEmpty()) return;
         var accessRegistry = DatasetAccessRegistry.from(datasetConfig, datasetService);

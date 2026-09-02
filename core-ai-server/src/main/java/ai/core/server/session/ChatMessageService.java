@@ -133,6 +133,19 @@ public class ChatMessageService {
         return new PersistenceListener(sessionId);
     }
 
+    /**
+     * Last-resort save for a turn that was torn down without a turn-complete event: the buffered
+     * reasoning and tool calls are all that survives of it, so write them out before
+     * {@link #onSessionClosed} drops the buffer. A no-op in the normal case, where the terminal
+     * event already consumed the buffer.
+     */
+    public void flushPendingTurn(String sessionId) {
+        var buf = bufferBySession.remove(sessionId);
+        if (buf == null || buf.isEmpty()) return;
+        LOGGER.warn("persisting buffered turn content left behind by an interrupted turn, sessionId={}", sessionId);
+        persistAgentMessage(sessionId, null, buf);
+    }
+
     public void onSessionClosed(String sessionId) {
         seqBySession.remove(sessionId);
         bufferBySession.remove(sessionId);
@@ -188,6 +201,26 @@ public class ChatMessageService {
         return bufferBySession.computeIfAbsent(sessionId, k -> new TurnBuffer());
     }
 
+    private void persistAgentMessage(String sessionId, String output, TurnBuffer buf) {
+        try {
+            var msg = new ChatMessage();
+            msg.id = UUID.randomUUID().toString();
+            msg.sessionId = sessionId;
+            msg.seq = nextSeq(sessionId);
+            msg.role = "agent";
+            msg.content = output;
+            msg.thinking = buf != null ? buf.thinking : null;
+            msg.tools = buf != null && !buf.tools.isEmpty() ? List.copyOf(buf.tools.values()) : null;
+            msg.sandbox = buf != null ? buf.sandbox : null;
+            msg.traceId = ActionLogContext.id();
+            msg.createdAt = ZonedDateTime.now();
+            insertWithRetry(msg, sessionId);
+            sessionRegistry.recordAgentMessage(sessionId);
+        } catch (Exception e) {
+            LOGGER.warn("failed to persist agent message, sessionId={}", sessionId, e);
+        }
+    }
+
     private class PersistenceListener implements AgentEventListener {
         private final String sessionId;
 
@@ -232,24 +265,7 @@ public class ChatMessageService {
 
         @Override
         public void onTurnComplete(TurnCompleteEvent event) {
-            var buf = bufferBySession.remove(sessionId);
-            try {
-                var msg = new ChatMessage();
-                msg.id = UUID.randomUUID().toString();
-                msg.sessionId = sessionId;
-                msg.seq = nextSeq(sessionId);
-                msg.role = "agent";
-                msg.content = event.output;
-                msg.thinking = buf != null ? buf.thinking : null;
-                msg.tools = buf != null && !buf.tools.isEmpty() ? List.copyOf(buf.tools.values()) : null;
-                msg.sandbox = buf != null ? buf.sandbox : null;
-                msg.traceId = ActionLogContext.id();
-                msg.createdAt = ZonedDateTime.now();
-                insertWithRetry(msg, sessionId);
-                sessionRegistry.recordAgentMessage(sessionId);
-            } catch (Exception e) {
-                LOGGER.warn("failed to persist agent message, sessionId={}", sessionId, e);
-            }
+            persistAgentMessage(sessionId, event.output, bufferBySession.remove(sessionId));
         }
     }
 
@@ -257,6 +273,10 @@ public class ChatMessageService {
         String thinking;
         final Map<String, ChatMessage.ToolCallRecord> tools = new LinkedHashMap<>();
         ChatMessage.SandboxRecord sandbox;
+
+        boolean isEmpty() {
+            return thinking == null && sandbox == null && tools.isEmpty();
+        }
     }
 
 }

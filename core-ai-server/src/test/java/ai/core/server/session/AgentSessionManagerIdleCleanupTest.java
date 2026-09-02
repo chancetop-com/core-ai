@@ -1,11 +1,13 @@
 package ai.core.server.session;
 
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.messaging.TurnStateRegistry;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.web.sse.SessionChannelService;
+import ai.core.session.InProcessAgentSession;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Test;
 
@@ -71,6 +73,46 @@ class AgentSessionManagerIdleCleanupTest {
         verify(manager.sandboxService).releaseSandbox("s1");
     }
 
+    @Test
+    void closingAnIdleSessionClearsItsTurnStateAndFlushesBufferedTurnContent() {
+        var manager = harness();
+        when(manager.ownershipRegistry.isOwner("s1")).thenReturn(true);
+        when(manager.sessionActivityRegistry.lastActivity("s1")).thenReturn(0L);
+        manager.touchActivity("s1");
+
+        manager.cleanupIdleSessions(FORCE_IDLE);
+
+        // without this the heartbeat keeps the Redis turn key alive forever and /status never
+        // leaves "running", so the chat page can never recover the closed turn
+        verify(manager.turnStateRegistry).clear("s1");
+        verify(manager.chatMessageService).flushPendingTurn("s1");
+    }
+
+    @Test
+    void driverHeartbeatKeepsARunningTurnFromLookingIdle() {
+        var manager = harness();
+        var session = mock(InProcessAgentSession.class);
+        when(session.isTurnRunning()).thenReturn(true);
+
+        manager.onSessionHeartbeat("s1", session);
+
+        verify(manager.sessionAgentHelper).renewSessionOwnership("s1");
+        verify(manager.sandboxService).renewSandbox("s1"); // via touchActivity
+        assertEquals(0, manager.cleanupIdleSessions(Duration.ofMinutes(60)));
+    }
+
+    @Test
+    void driverHeartbeatOnAnIdleSessionOnlyRenewsOwnership() {
+        var manager = harness();
+        var session = mock(InProcessAgentSession.class);
+        when(session.isTurnRunning()).thenReturn(false);
+
+        manager.onSessionHeartbeat("s1", session);
+
+        verify(manager.sessionAgentHelper).renewSessionOwnership("s1");
+        verify(manager.sandboxService, never()).renewSandbox("s1");
+    }
+
     private AgentSessionManager harness() {
         var manager = new AgentSessionManager();
         manager.skillService = mock(SkillService.class);
@@ -82,6 +124,7 @@ class AgentSessionManagerIdleCleanupTest {
         manager.sandboxService = mock(SandboxService.class);
         manager.ownershipRegistry = mock(SessionOwnershipRegistry.class);
         manager.sessionActivityRegistry = mock(SessionActivityRegistry.class);
+        manager.turnStateRegistry = mock(TurnStateRegistry.class);
         return manager;
     }
 }

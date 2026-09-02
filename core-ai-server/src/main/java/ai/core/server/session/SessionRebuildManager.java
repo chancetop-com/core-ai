@@ -289,9 +289,10 @@ public class SessionRebuildManager {
         sandbox.sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(params.sessionId));
         // Turn-state listener goes first so the Redis turn key is written before the
-        // RUNNING event is published to other pods.
+        // RUNNING event is published to other pods. The liveness probe lets the registry's
+        // heartbeat drop the key once the turn stops executing, even if no terminal event arrived.
         if (turnStateRegistry != null) {
-            session.onEvent(turnStateRegistry.listener(params.sessionId));
+            session.onEvent(turnStateRegistry.listener(params.sessionId, session::isTurnRunning));
         }
         session.onEvent(chatMessageService.listener(params.sessionId));
         if (eventPublisher != null) {

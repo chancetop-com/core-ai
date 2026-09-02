@@ -98,6 +98,16 @@ public class TurnDriver {
         this.onIdle = onIdle;
     }
 
+    /**
+     * True while a command batch is actually executing on the driver thread. Callers use this
+     * to tell "turn still running" apart from "turn state was never cleaned up": a driver thread
+     * that died mid-batch reports false, so external turn bookkeeping can expire instead of
+     * being renewed forever.
+     */
+    public boolean isProcessing() {
+        return heartbeatScheduler != null && driverThread.isAlive();
+    }
+
     public void shutdown() {
         logger.info("TurnDriver.shutdown called, running={}, thread={}", running, driverThread.getName());
         running = false;

@@ -11,8 +11,9 @@ import redis.clients.jedis.params.SetParams;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 
 /**
  * Cross-pod source of truth for "is a turn currently executing on this session".
@@ -32,7 +33,9 @@ public class TurnStateRegistry {
     private static final Duration RENEW_INTERVAL = Duration.ofSeconds(30);
 
     private final JedisPool jedisPool;
-    private final Set<String> runningTurns = ConcurrentHashMap.newKeySet();
+    // sessionId -> "is that turn still executing here". The heartbeat consults the supplier before
+    // renewing, so a turn whose thread died takes the TTL path instead of being renewed forever.
+    private final Map<String, BooleanSupplier> runningTurns = new ConcurrentHashMap<>();
     private volatile boolean heartbeatActive = true;
     private Thread heartbeatThread;
 
@@ -41,7 +44,16 @@ public class TurnStateRegistry {
     }
 
     public void markRunning(String sessionId) {
-        runningTurns.add(sessionId);
+        markRunning(sessionId, null);
+    }
+
+    /**
+     * @param turnLiveness answers "is this turn still executing on this pod"; the heartbeat stops
+     *                     renewing (and clears) as soon as it says no. Null means always alive,
+     *                     which only leaves the TTL as protection — pass a real check where possible.
+     */
+    public void markRunning(String sessionId, BooleanSupplier turnLiveness) {
+        runningTurns.put(sessionId, turnLiveness != null ? turnLiveness : () -> true);
         writeKey(sessionId);
     }
 
@@ -69,11 +81,15 @@ public class TurnStateRegistry {
      * other pods.
      */
     public AgentEventListener listener(String sessionId) {
+        return listener(sessionId, null);
+    }
+
+    public AgentEventListener listener(String sessionId, BooleanSupplier turnLiveness) {
         return new AgentEventListener() {
             @Override
             public void onStatusChange(StatusChangeEvent event) {
                 if (event.status == SessionStatus.RUNNING) {
-                    markRunning(sessionId);
+                    markRunning(sessionId, turnLiveness);
                 } else {
                     clear(sessionId);
                 }
@@ -87,7 +103,16 @@ public class TurnStateRegistry {
     }
 
     void renewAll() {
-        for (var sessionId : runningTurns) {
+        for (var entry : runningTurns.entrySet()) {
+            var sessionId = entry.getKey();
+            if (!entry.getValue().getAsBoolean()) {
+                // The turn behind this key is gone but nothing cleared it — renewing would pin the
+                // session to "running" for the lifetime of the pod. Clear it so status flips to idle
+                // and the frontend re-syncs from history.
+                LOGGER.warn("turn is no longer executing but its state was never cleared, clearing now, sessionId={}", sessionId);
+                clear(sessionId);
+                continue;
+            }
             writeKey(sessionId);
         }
     }
@@ -103,7 +128,7 @@ public class TurnStateRegistry {
         }
         // Turns die with this pod — delete their keys so status flips to idle immediately
         // instead of waiting for TTL expiry.
-        for (var sessionId : List.copyOf(runningTurns)) {
+        for (var sessionId : List.copyOf(runningTurns.keySet())) {
             clear(sessionId);
         }
     }

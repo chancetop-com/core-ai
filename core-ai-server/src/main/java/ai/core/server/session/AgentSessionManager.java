@@ -12,7 +12,6 @@ import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.User;
 import ai.core.server.messaging.EventPublisher;
@@ -44,9 +43,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -147,9 +144,10 @@ public class AgentSessionManager {
     }
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
         // Turn-state listener goes first so the Redis turn key is written before the
-        // RUNNING event is published to other pods.
+        // RUNNING event is published to other pods. The liveness probe lets the registry's
+        // heartbeat drop the key once the turn stops executing, even if no terminal event arrived.
         if (turnStateRegistry != null) {
-            session.onEvent(turnStateRegistry.listener(sessionId));
+            session.onEvent(turnStateRegistry.listener(sessionId, session::isTurnRunning));
         }
         session.onEvent(chatMessageService.listener(sessionId));
         session.onEvent(new SseEventBridge(sessionId, eventPublisher));
@@ -169,39 +167,20 @@ public class AgentSessionManager {
         CallerContexts.attach(context, userCollection, userId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId, scheduledTaskStore);
-        var sessionDatasetConfig = sessionDatasetConfig(effectiveConfig);
-        var extraVars = buildExtraVars(effectiveConfig, sessionDatasetConfig);
+        var sessionDatasetConfig = datasetHelper().sessionDatasetConfig(effectiveConfig);
+        var extraVars = datasetHelper().buildExtraVars(effectiveConfig, sessionDatasetConfig);
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry, context, null, extraVars, null,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
                 null, channelInject(effectiveConfig)));
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
-        session.setOnIdle(() -> renewSessionOwnership(sessionId));
+        session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
         attachSessionListeners(session, sessionId);
         var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent);
         if (sandbox != null) context.sandbox(sandbox);
         initializeSession(session, new SessionRegistry.SessionRegistration(
                 sessionId, userId, null, source, null, apiKeyId, sessionDatasetConfig));
         return sessionId;
-    }
-    private List<AgentDatasetConfig> sessionDatasetConfig(SessionConfig config) {
-        if (config.datasetId == null || config.datasetId.isBlank()) return null;
-        var dp = new AgentDatasetConfig();
-        dp.datasetId = config.datasetId;
-        dp.permission = DatasetPermission.READ;
-        return List.of(dp);
-    }
-    private Map<String, Object> buildExtraVars(SessionConfig config, List<AgentDatasetConfig> datasetConfig) {
-        Map<String, Object> extraVars = null;
-        if (datasetConfig != null && !datasetConfig.isEmpty()) {
-            config.systemPrompt = datasetHelper().appendDatasetInstructions(config.systemPrompt, datasetConfig);
-            extraVars = datasetHelper().buildDatasetSystemVars(datasetConfig);
-        }
-        if (config.channelType != null && !config.channelType.isBlank()) {
-            if (extraVars == null) extraVars = new HashMap<>();
-            extraVars.put("system.channel.type", config.channelType);
-        }
-        return extraVars;
     }
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
         return createSessionFromAgent(definition, overrides, userId, "chat", null);
@@ -229,7 +208,7 @@ public class AgentSessionManager {
         var agent = buildResult.agent;
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         buildResult.sessionRef[0] = session;
-        session.setOnIdle(() -> renewSessionOwnership(sessionId));
+        session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
         attachSessionListeners(session, sessionId);
         initializeSession(session, new SessionRegistry.SessionRegistration(
                 sessionId, userId, executableDefinition.id, source, null, apiKeyId, datasetConfig));
@@ -259,7 +238,7 @@ public class AgentSessionManager {
         });
         var toolRegistry = subAgentManager().resolveTopLevelToolsToRegistry(definition, sessionId, userId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
-        var extraVars = buildExtraVars(config, datasetConfig);
+        var extraVars = datasetHelper().buildExtraVars(config, datasetConfig);
         var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService)
                 .build(sessionId, userId);
         CallerContexts.attach(context, userCollection, userId);
@@ -306,6 +285,13 @@ public class AgentSessionManager {
     private void renewSessionOwnership(String sessionId) {
         sessionAgentHelper.renewSessionOwnership(sessionId);
     }
+    // The session driver calls this both while idle and every few seconds during a turn. A long turn
+    // produces no commands, so without the activity touch below its sessionLastActivity would go stale
+    // and cleanupIdleSessions would close the session out from under a run that is still working.
+    void onSessionHeartbeat(String sessionId, InProcessAgentSession session) {
+        renewSessionOwnership(sessionId);
+        if (session.isTurnRunning()) touchActivity(sessionId);
+    }
     public InProcessAgentSession getSession(String sessionId) {
         return getSession(sessionId, null);
     }
@@ -334,6 +320,9 @@ public class AgentSessionManager {
             logger.info("session not found locally, attempting to rebuild, sessionId={}", id);
             var rebuilt = rebuildManager().rebuildSession(id, effectiveState, callerUserId);
             if (rebuilt != null) {
+                // Take over the driver heartbeat so a long turn on a rebuilt session also keeps
+                // its activity fresh, not just its ownership lease.
+                rebuilt.setOnIdle(() -> onSessionHeartbeat(id, rebuilt));
                 if (!sessionAgentHelper.claimOrConfirmOwnership(id)) {
                     logger.warn("failed to claim rebuilt session ownership, sessionId={}", id);
                     rebuilt.close();
@@ -378,7 +367,14 @@ public class AgentSessionManager {
 
     private void cleanupRuntime(String sessionId) {
         var session = sessions.remove(sessionId);
+        // close() aborts an in-flight turn and emits its terminal event first, so the persistence
+        // listener writes the partial reply and the turn state clears before the teardown below
+        // discards the buffers those listeners write into.
         if (session != null) session.close();
+        // Belt and braces: the turn key must never outlive the runtime that owns it, even if the
+        // session was already gone or its listener chain never fired.
+        if (turnStateRegistry != null) turnStateRegistry.clear(sessionId);
+        chatMessageService.flushPendingTurn(sessionId);
         skillManager().removeSkillState(sessionId);
         sessionLastActivity.remove(sessionId);
         SessionSandboxSnapshotHelper.captureBeforeRelease(sandboxService, sandboxSnapshotService, sessionId);
