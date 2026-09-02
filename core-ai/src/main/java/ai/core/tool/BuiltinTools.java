@@ -2,6 +2,7 @@ package ai.core.tool;
 
 import ai.core.media.MediaProvider;
 import ai.core.tool.registry.ToolProvider;
+import ai.core.tool.tools.AsyncTaskOutputTool;
 import ai.core.tool.tools.CaptionImageTool;
 import ai.core.tool.tools.EditFileTool;
 import ai.core.tool.tools.GenerateImageTool;
@@ -38,6 +39,7 @@ public final class BuiltinTools {
             // Plan
             WriteTodosTool.self(),
             TaskTool.builder().build(),
+            AsyncTaskOutputTool.builder().build(),
             // File operations
             ReadFileTool.builder().build(),
             WriteFileTool.builder().build(),
@@ -137,7 +139,8 @@ public final class BuiltinTools {
      * server tool registry UI to render builtin-all tools grouped by subcategory.
      */
     public static final Map<String, String> ALL_GROUP_LABELS = Map.of(
-            ScheduledTaskTool.TOOL_NAME, "Scheduling"
+            ScheduledTaskTool.TOOL_NAME, "Scheduling",
+            AsyncTaskOutputTool.TOOL_NAME, "Async tasks"
     );
 
     public static List<ToolCall> multimodal(UnderstandVideoTool.VideoUnderstandingService service) {

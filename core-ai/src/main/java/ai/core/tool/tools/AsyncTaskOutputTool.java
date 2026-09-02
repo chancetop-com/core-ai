@@ -15,8 +15,10 @@ public class AsyncTaskOutputTool extends ToolCall {
     public static final String TOOL_NAME = "async_task_output";
 
     private static final String TOOL_DESC = """
-            Query the status and output of async tasks, including background agents launched
-            via the task tool (run_in_background=true).
+            Query the status and output of async tasks: long-running tool calls that returned a task id
+            (renders, assembly, video generation, async scripts) and background agents launched via the
+            task tool (run_in_background=true). You are notified automatically when such a task finishes,
+            so poll only when you need an interim status.
 
             Use action='poll' with task_id to check a specific task's status and get its result when completed.
             Use action='cancel' with task_id to stop a running task or background agent.
@@ -66,6 +68,9 @@ public class AsyncTaskOutputTool extends ToolCall {
     }
 
     private ToolCallResult pollTask(AsyncToolTaskExecutor executor, String taskId, ExecutionContext context) {
+        // long-running tool calls (pending results) live in the async task manager, which drives the tool's own poll
+        var manager = context != null ? context.getAsyncTaskManager() : null;
+        if (manager != null && manager.loadTask(taskId).isPresent()) return manager.pollTask(taskId);
         var result = executor.poll(taskId);
         var taskManager = context != null ? context.getTaskManager() : null;
         if (taskManager != null && result.isFailed() && taskManager.isRunning(taskId)) {
@@ -84,6 +89,8 @@ public class AsyncTaskOutputTool extends ToolCall {
     }
 
     private ToolCallResult cancelTask(AsyncToolTaskExecutor executor, String taskId, ExecutionContext context) {
+        var manager = context != null ? context.getAsyncTaskManager() : null;
+        if (manager != null && manager.loadTask(taskId).isPresent()) return manager.cancelTask(taskId);
         var result = executor.cancel(taskId);
         var taskManager = context != null ? context.getTaskManager() : null;
         if (taskManager != null && result.isFailed() && taskManager.cancel(taskId)) {

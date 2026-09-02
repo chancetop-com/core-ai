@@ -126,6 +126,8 @@ public class AgentRunBuilder {
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
     MongoCollection<User> userCollection;
+    @Inject
+    ai.core.server.asynctask.AsyncToolTaskService asyncToolTaskService;
 
     private SessionDatasetHelper datasetHelper;
 
@@ -196,6 +198,7 @@ public class AgentRunBuilder {
         var context = ExecutionContext.builder()
                 .sessionId("run:" + runEntity.id)
                 .userId(definition.userId)
+                .asyncTaskManager(asyncToolTaskService.manager())
                 .customVariables(variables)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,

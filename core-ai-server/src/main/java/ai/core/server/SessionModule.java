@@ -65,6 +65,8 @@ public class SessionModule extends Module {
         bind(ChatMessageService.class);
         activityRegistry = bind(new SessionActivityRegistry(bean(JedisPool.class)));
         agentSessionManager = bind(AgentSessionManager.class);
+        // finished async tool calls are pushed into the live session that issued them
+        bean(ai.core.server.asynctask.AsyncToolTaskService.class).setSessionLocator(agentSessionManager::getSession);
         bind(SessionCreateHelper.class);
     }
 

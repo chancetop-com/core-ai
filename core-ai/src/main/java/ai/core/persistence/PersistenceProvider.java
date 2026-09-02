@@ -14,4 +14,9 @@ public interface PersistenceProvider {
     void delete(List<String> ids);
 
     Optional<String> load(String id);
+
+    /** Keys starting with prefix; stores that cannot enumerate return nothing (server-side drivers need a store that can). */
+    default List<String> listIds(String prefix) {
+        return List.of();
+    }
 }

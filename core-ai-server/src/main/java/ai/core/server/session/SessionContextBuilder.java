@@ -33,6 +33,7 @@ public final class SessionContextBuilder {
     private final SystemSettingsService systemSettingsService;
     private final MediaProvider mediaProvider;
     private final ApiUserQuotaService quotaService;
+    private ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager;
 
     public SessionContextBuilder(ChatArtifactSetup artifactSetup, FileService fileService,
                                  PublicUrlConfiguration publicUrlConfiguration,
@@ -46,8 +47,15 @@ public final class SessionContextBuilder {
         this.quotaService = quotaService;
     }
 
+    /** Registry for pending tool results; the server drives and notifies them (see AsyncToolTaskService). */
+    public SessionContextBuilder withAsyncTaskManager(ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager) {
+        this.asyncTaskManager = asyncTaskManager;
+        return this;
+    }
+
     public ExecutionContext build(String sessionId, String userId) {
-        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
+        // pending tool results are registered against this session; the server drives and notifies them
+        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).asyncTaskManager(asyncTaskManager)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(userId, fileService,

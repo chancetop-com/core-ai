@@ -92,7 +92,7 @@ public class SessionRebuildManager {
         this.userCollection = deps.userCollection;
         this.turnStateRegistry = deps.turnStateRegistry;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
-                systemSettingsService, deps.mediaProvider, deps.quotaService);
+                systemSettingsService, deps.mediaProvider, deps.quotaService).withAsyncTaskManager(deps.asyncTaskManager);
     }
 
     private SessionDatasetHelper datasetHelper() {
@@ -419,6 +419,7 @@ public class SessionRebuildManager {
                         MongoCollection<User> userCollection,
                         MediaProvider mediaProvider,
                         ApiUserQuotaService quotaService,
-                        TurnStateRegistry turnStateRegistry) {
+                        TurnStateRegistry turnStateRegistry,
+                        ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager) {
     }
 }

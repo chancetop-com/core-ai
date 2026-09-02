@@ -308,7 +308,8 @@ public class ToolExecutor {
         var asyncTaskManager = context.getAsyncTaskManager();
         if (asyncTaskManager != null) {
             var asyncTask = new ToolCallAsyncTask(result.getTaskId(), tool, functionCall, result);
-            asyncTaskManager.storeTask(asyncTask);
+            // tagged with the issuing session so the terminal notification finds its way back
+            asyncTaskManager.storeTask(asyncTask, context.getSessionId());
         }
 
         if (result.isPending()) {

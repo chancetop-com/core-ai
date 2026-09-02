@@ -44,6 +44,11 @@ public class TemporaryPersistenceProvider implements PersistenceProvider {
     }
 
     @Override
+    public List<String> listIds(String prefix) {
+        return persistence.keySet().stream().filter(key -> key.startsWith(prefix)).sorted().toList();
+    }
+
+    @Override
     public Optional<String> load(String id) {
         if (!persistence.containsKey(id)) {
             return Optional.empty();

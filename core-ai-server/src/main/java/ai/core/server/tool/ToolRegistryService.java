@@ -307,6 +307,22 @@ public class ToolRegistryService {
         LOGGER.info("registered builtin tool group, name={}, category={}, tools={}", name, category, toolCalls.size());
     }
 
+    /**
+     * A builtin tool instance by name from every registered group plus the builtin-all set — what the
+     * async task manager dispatches a stored task's poll/cancel to.
+     */
+    public ToolCall findBuiltinTool(String toolName) {
+        for (var set : dynamicToolSets.values()) {
+            for (var tool : set) {
+                if (toolName.equals(tool.getName())) return tool;
+            }
+        }
+        for (var tool : BuiltinTools.fromSet(ToolProvider.BUILTIN_ALL, mediaProvider, gitHubTokenProvider, videoUnderstandingService)) {
+            if (toolName.equals(tool.getName())) return tool;
+        }
+        return null;
+    }
+
     /** Returns the subgroup label of a tool inside a builtin group, or null when the group has no subgroups. */
     public String builtinGroupToolGroup(String groupId, String toolName) {
         var groups = builtinGroupToolGroups.get(groupId);

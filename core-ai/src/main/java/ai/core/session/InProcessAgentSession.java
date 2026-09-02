@@ -336,6 +336,16 @@ public class InProcessAgentSession implements AgentSession {
         dispatch(event);
     }
 
+    /**
+     * Delivers the terminal state of a long-running tool call the same way a background agent's
+     * completion is delivered: queued as a task notification (a turn starts when the session is idle)
+     * plus a status event for the UI.
+     */
+    public void notifyTask(String taskId, String status, String notificationXml) {
+        commandQueue.enqueueTaskNotification(notificationXml);
+        dispatch(TaskStatusEvent.of(sessionId, taskId, status));
+    }
+
     private void setupCompressionListener() {
         var compression = agent.getCompression();
         if (compression == null) return;

@@ -122,6 +122,7 @@ public class ServerApp extends App {
         load(new DatasetModule());
         load(new ToolRegistryModule());
         load(new WebFoundationModule());
+        load(new AsyncToolTaskModule());
         load(new SessionModule());
         load(new BuilderToolsModule());
         load(new OpenClawModule());
@@ -160,6 +161,7 @@ public class ServerApp extends App {
         mongo.view(ToolRef.class);
         mongo.collection(SessionFeedback.class);
 
+        mongo.collection(ai.core.server.asynctask.AsyncToolTaskRecord.class);
         mongo.collection(Trace.class);
         mongo.collection(Span.class);
         mongo.view(TraceFacetRow.class);
