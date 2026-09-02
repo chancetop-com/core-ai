@@ -47,6 +47,24 @@ public final class ServerImageOutputSink implements GenerateImageTool.ImageOutpu
         }
     }
 
+    /**
+     * Publishes a file that already lives in the file store (a drama keyframe take) as a run artifact
+     * and returns its shared URL — same visibility as a generate_image result, no second upload.
+     */
+    public String publishExisting(String fileId, String title) {
+        var record = fileService.get(fileId);
+        var artifact = new AgentRunArtifact();
+        artifact.fileId = record.id;
+        artifact.fileName = record.fileName;
+        artifact.contentType = record.contentType;
+        artifact.size = record.size;
+        artifact.title = title;
+        artifact.createdAt = ZonedDateTime.now();
+        artifactSink.append(artifact);
+        var shared = fileService.share(record.id, userId);
+        return publicUrlConfiguration.sharedArtifactDownloadUrl(shared.shareToken);
+    }
+
     private String extension(String fileName) {
         var index = fileName.lastIndexOf('.');
         return index >= 0 ? fileName.substring(index + 1) : "png";

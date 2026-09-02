@@ -20,13 +20,15 @@ public interface RenderBackend {
 
     byte[] downloadClip(String handleId);
 
-    record KeyframeRenderSpec(String model, String prompt, String size, List<String> referenceImageUrls, String providerExtra) {
+    /** userId owns the resulting media job: without it the gateway cannot store the artifact and the generations page shows nothing. */
+    record KeyframeRenderSpec(String userId, String model, String prompt, String size, List<String> referenceImageUrls, String providerExtra) {
     }
 
-    record ClipRenderSpec(String model, String prompt, Integer seconds, String size, List<String> referenceImageUrls, String providerExtra) {
+    record ClipRenderSpec(String userId, String model, String prompt, Integer seconds, String size, List<String> referenceImageUrls, String providerExtra) {
     }
 
-    record KeyframeProduct(String url, String base64) {
+    /** mediaId is the gateway handle of the media job that already stored this image, when there is one. */
+    record KeyframeProduct(String url, String base64, String mediaId) {
     }
 
     /** state: processing | completed | failed */

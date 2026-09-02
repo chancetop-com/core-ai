@@ -4,6 +4,9 @@ import ai.core.media.MediaProvider;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.VideoGenerationRequest;
+import ai.core.server.gateway.ContextualMediaProvider;
+import ai.core.server.gateway.GatewayMediaProvider;
+import ai.core.server.gateway.MediaJobOwner;
 import core.framework.inject.Inject;
 import core.framework.web.exception.BadRequestException;
 
@@ -23,17 +26,17 @@ public class GatewayRenderBackend implements RenderBackend {
 
     @Override
     public KeyframeProduct renderKeyframe(KeyframeRenderSpec spec) {
-        var response = mediaProvider.generateImage(new ImageGenerationRequest(
+        var response = provider(spec.userId()).generateImage(new ImageGenerationRequest(
             spec.model(), spec.prompt(), 1, spec.size(), null, null, null, null,
             references(spec.referenceImageUrls()), null, spec.providerExtra(), null));
         if (response.data() == null || response.data().isEmpty()) throw new BadRequestException("image generation returned no output");
         var image = response.data().getFirst();
-        return new KeyframeProduct(image.url(), image.b64Json());
+        return new KeyframeProduct(image.url(), image.b64Json(), response.mediaId());
     }
 
     @Override
     public String submitClip(ClipRenderSpec spec) {
-        var response = mediaProvider.generateVideo(new VideoGenerationRequest(
+        var response = provider(spec.userId()).generateVideo(new VideoGenerationRequest(
             spec.model(), spec.prompt(), spec.seconds(), spec.size(), references(spec.referenceImageUrls()), spec.providerExtra()));
         return response.id();
     }
@@ -49,6 +52,13 @@ public class GatewayRenderBackend implements RenderBackend {
     @Override
     public byte[] downloadClip(String handleId) {
         return mediaProvider.downloadVideo(handleId);
+    }
+
+    // the media job must belong to the series owner: the gateway stores the artifact under the owner
+    // (ownerless jobs cannot upload and end up as blank rows on the generations page)
+    private MediaProvider provider(String userId) {
+        if (userId == null || userId.isBlank() || !(mediaProvider instanceof GatewayMediaProvider gateway)) return mediaProvider;
+        return new ContextualMediaProvider(gateway, new MediaJobOwner(userId, null, null));
     }
 
     private List<MediaReference> references(List<String> urls) {
