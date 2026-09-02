@@ -56,6 +56,9 @@ public class ServiceApiService {
 
     public void update(String id, UpdateApiRequest request) {
         var serviceApi = apiMongoCollection.get(id).orElseThrow(() -> new NotFoundException("service api not found: " + id));
+        if (request.name != null) {
+            serviceApi.name = request.name;
+        }
         if (request.description != null) {
             serviceApi.description = request.description;
         }
@@ -121,6 +124,24 @@ public class ServiceApiService {
 
     public List<ServiceApi> findAll() {
         return apiMongoCollection.find(Filters.empty());
+    }
+
+    /**
+     * Returns a compact snapshot of all enabled service apis, used to detect configuration changes
+     * so MCP api tools can be reloaded automatically without restarting the server.
+     * Format: "{count}:{max(updatedAt)}", changes whenever any enabled record is added/updated/deleted.
+     */
+    public String configSnapshot() {
+        int count = 0;
+        ZonedDateTime maxUpdatedAt = null;
+        for (var serviceApi : findAll()) {
+            if (!Boolean.TRUE.equals(serviceApi.enabled)) continue;
+            count++;
+            if (serviceApi.updatedAt != null && (maxUpdatedAt == null || serviceApi.updatedAt.isAfter(maxUpdatedAt))) {
+                maxUpdatedAt = serviceApi.updatedAt;
+            }
+        }
+        return count + ":" + (maxUpdatedAt == null ? "" : maxUpdatedAt.toInstant());
     }
 
     private ServiceApiView toApiView(ServiceApi serviceApi) {
