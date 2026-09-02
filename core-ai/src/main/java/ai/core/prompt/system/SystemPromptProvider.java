@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.io.Serial;
 import java.net.URI;
@@ -13,6 +16,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,8 +32,9 @@ import java.util.Map;
  * <p>
  * Configured via {@code system.prompt.api.*} properties (core-ai standard):
  * <ul>
- *   <li>{@code system.prompt.api.base.url} - core-ai-server base URL (required)</li>
+ *   <li>{@code system.prompt.api.base.url} - core-ai-server base URL (required, use https since core-ng sessions require it)</li>
  *   <li>{@code system.prompt.api.key} - bearer API key for core-ai-server</li>
+ *   <li>{@code system.prompt.api.trust.all} - trust any server certificate, e.g. core-ai-server's self-signed cert in-cluster (default false)</li>
  *   <li>{@code system.prompt.timeout.seconds} - request timeout (default 10)</li>
  * </ul>
  *
@@ -50,15 +58,41 @@ public class SystemPromptProvider {
         this.cacheEnabled = cacheEnabled;
         this.cache = new HashMap<>();
 
-        this.httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(config.getTimeoutSeconds()))
-            .build();
+        var builder = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(config.getTimeoutSeconds()));
+        if (config.isTrustAll()) {
+            builder.sslContext(trustAllSSLContext());
+        }
+        this.httpClient = builder.build();
 
         this.objectMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
         if (config.getApiKey() == null || config.getApiKey().isEmpty()) {
             LOGGER.warn("system.prompt.api.key not configured - prompt fetch will fail if the server requires auth");
+        }
+    }
+
+    private static SSLContext trustAllSSLContext() {
+        try {
+            var sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, new TrustManager[]{new X509TrustManager() {
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                }
+
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                }
+
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                }
+            }}, new SecureRandom());
+            return sslContext;
+        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+            throw new Error(e);
         }
     }
 
@@ -78,7 +112,6 @@ public class SystemPromptProvider {
             .uri(URI.create(url))
             .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
             .GET();
-        if (!url.startsWith("https")) requestBuilder.version(HttpClient.Version.HTTP_1_1);
         if (config.getApiKey() != null && !config.getApiKey().isEmpty()) {
             requestBuilder.header("Authorization", "Bearer " + config.getApiKey());
         }

@@ -11,11 +11,13 @@ public final class SystemPromptConfig {
     private final String baseUrl;
     private final String apiKey;
     private final int timeoutSeconds;
+    private final boolean trustAll;
 
     private SystemPromptConfig(Builder builder) {
         this.baseUrl = normalizeBaseUrl(builder.baseUrl);
         this.apiKey = builder.apiKey;
         this.timeoutSeconds = builder.timeoutSeconds;
+        this.trustAll = builder.trustAll;
     }
 
     private String normalizeBaseUrl(String url) {
@@ -37,10 +39,15 @@ public final class SystemPromptConfig {
         return timeoutSeconds;
     }
 
+    public boolean isTrustAll() {
+        return trustAll;
+    }
+
     public static class Builder {
         private String baseUrl;
         private String apiKey;
         private int timeoutSeconds = 10;
+        private boolean trustAll;
 
         public Builder baseUrl(String baseUrl) {
             this.baseUrl = baseUrl;
@@ -54,6 +61,11 @@ public final class SystemPromptConfig {
 
         public Builder timeoutSeconds(int timeoutSeconds) {
             this.timeoutSeconds = timeoutSeconds;
+            return this;
+        }
+
+        public Builder trustAll(boolean trustAll) {
+            this.trustAll = trustAll;
             return this;
         }
 

@@ -207,6 +207,7 @@ public class AgentBootstrap {
             props.property("system.prompt.api.key").ifPresent(configBuilder::apiKey);
             props.property("system.prompt.timeout.seconds").ifPresent(timeout ->
                 configBuilder.timeoutSeconds(Integer.parseInt(timeout)));
+            configBuilder.trustAll(Boolean.parseBoolean(props.property("system.prompt.api.trust.all").orElse("false")));
             var config = configBuilder.build();
             var provider = new SystemPromptProvider(config, true);
 
