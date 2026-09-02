@@ -41,13 +41,15 @@ public class DynamicApiCaller {
                 .flatMap(api -> api.services.stream()
                         .flatMap(service -> service.operations.stream()
                                 .map(operation -> new ApiMcpToolLoader.OperationContext(api, service, operation))))
-                .collect(Collectors.toMap(v -> ApiMcpToolLoader.OperationContext.toFunctionCallName(v.operation(), v.service(), v.api()), ApiMcpToolLoader.OperationContext::operation));
+                .collect(Collectors.toMap(v -> ApiMcpToolLoader.OperationContext.toFunctionCallName(v.operation(), v.service(), v.api()), ApiMcpToolLoader.OperationContext::operation, (left, right) -> left));
         this.apiDefinitionMap = apiDefinitions.stream()
                 .flatMap(api -> api.services.stream()
                         .flatMap(service -> service.operations.stream()
                                 .map(operation -> new ApiMcpToolLoader.OperationContext(api, service, operation))))
-                .collect(Collectors.toMap(v -> ApiMcpToolLoader.OperationContext.toFunctionCallName(v.operation(), v.service(), v.api()), ApiMcpToolLoader.OperationContext::api));
-        this.typeMap = apiDefinitions.stream().collect(Collectors.toMap(v -> v.app, v -> v.types.stream().collect(Collectors.toMap(t -> t.name, Function.identity()))));
+                .collect(Collectors.toMap(v -> ApiMcpToolLoader.OperationContext.toFunctionCallName(v.operation(), v.service(), v.api()), ApiMcpToolLoader.OperationContext::api, (left, right) -> left));
+        // merge function keeps the first entry when duplicate api definitions exist (e.g. multiple service_api records with same app),
+        // otherwise Collectors.toMap throws IllegalStateException and fails the whole server startup
+        this.typeMap = apiDefinitions.stream().collect(Collectors.toMap(v -> v.app, v -> v.types.stream().collect(Collectors.toMap(t -> t.name, Function.identity())), (left, right) -> left));
     }
 
     public String callApi(String name, String args) {
