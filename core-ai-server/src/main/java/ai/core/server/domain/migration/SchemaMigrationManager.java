@@ -132,7 +132,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVSessionScheduleList(),
             new SchemaMigrationVReplayIndexes(),
             new SchemaMigrationVMediaJobReferenceIndex(),
-            new SchemaMigrationVPresetSkills()
+            new SchemaMigrationVPresetSkills(),
+            new SchemaMigrationVSystemPromptNameIndex()
         );
     }
 }
