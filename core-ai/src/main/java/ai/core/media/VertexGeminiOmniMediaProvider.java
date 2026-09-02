@@ -247,7 +247,16 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
     private String error(Map<String, Object> response) {
         var error = response.get("error");
         if (error instanceof Map<?, ?> errorMap) return stringValue((Map<String, Object>) errorMap, "message");
-        return error instanceof String value ? value : null;
+        if (error instanceof String value) return value;
+        // failed interactions report an errors[] array, e.g. [{code: "content_blocked", message: "..."}]
+        if (response.get("errors") instanceof List<?> errors && !errors.isEmpty() && errors.getFirst() instanceof Map<?, ?> first) {
+            var firstError = (Map<String, Object>) first;
+            var message = stringValue(firstError, "message");
+            var code = stringValue(firstError, "code");
+            if (message == null) return code;
+            return code == null ? message : code + ": " + message;
+        }
+        return null;
     }
 
     private core.framework.http.HTTPResponse execute(HTTPMethod method, String url, Map<String, Object> body, String operation) {

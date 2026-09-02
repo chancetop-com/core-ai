@@ -21,8 +21,9 @@ public record MediaProviderCapabilities(boolean acceptsRemoteUrl, boolean accept
 
     static MediaProviderCapabilities forProtocol(String protocol) {
         return switch (protocol) {
-            // takes a gs:// or https:// uri or inline data, and keeps its own interaction state
-            case "VERTEX_GEMINI_INTERACTIONS" -> new MediaProviderCapabilities(true, true, true);
+            // the interactions API rejects http(s) reference URIs ("Only GCS URIs are supported"),
+            // so references must be inlined; it does keep its own interaction state
+            case "VERTEX_GEMINI_INTERACTIONS" -> new MediaProviderCapabilities(false, true, true);
             // reference arrays are URLs; base64 is accepted but costs an extra upload round trip
             case "KIE", "OPENAI_COMPATIBLE" -> new MediaProviderCapabilities(true, true, false);
             // OPENAI_IMAGES uploads multipart files, the Gemini generateContent protocols take

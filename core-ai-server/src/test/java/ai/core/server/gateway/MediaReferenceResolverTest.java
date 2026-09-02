@@ -113,6 +113,19 @@ class MediaReferenceResolverTest {
     }
 
     @Test
+    void vertexInteractionsReferencesAreInlinedNeverUrls() {
+        jobService.job = job("provider-b");
+        jobService.record = record();
+        jobService.presignedUrl = "https://storage.example/signed";
+
+        var resolved = resolve(route("provider-a", "VERTEX_GEMINI_INTERACTIONS"));
+
+        var reference = resolved.references().getFirst();
+        assertNull(reference.url(), "the interactions API rejects non-GCS reference URIs");
+        assertTrue(reference.b64Json().startsWith("data:image/png;base64,"));
+    }
+
+    @Test
     void carriesTheAuthorTimeNameThroughResolution() {
         jobService.job = job("provider-a");
         jobService.record = record();
