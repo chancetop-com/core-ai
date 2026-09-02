@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, DollarSign, Film, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, DollarSign, Film, Image as ImageIcon, Play } from 'lucide-react';
 import { api } from '../../api/client';
 import type { MediaJob } from '../../api/client';
 import { formatCostUsd } from '../traces/traceViewModel';
@@ -50,7 +50,15 @@ export default function Generations() {
   const [offset, setOffset] = useState(0);
   const [mediaType, setMediaType] = useState('');
   const [costSource, setCostSource] = useState('');
+  const [preview, setPreview] = useState<MediaJob | null>(null);
   const limit = 20;
+
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreview(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [preview]);
   const requestKey = JSON.stringify({ offset, mediaType, costSource });
   const loading = result.requestKey !== requestKey;
 
@@ -144,14 +152,18 @@ export default function Generations() {
                   <td className="px-4 py-2">
                     {isImage && job.fileId
                       ? <img src={`/api/files/${job.fileId}/content`} alt={job.fileName ?? 'generated'}
-                          className="h-16 w-12 rounded border object-cover" style={{ borderColor: 'var(--color-border)' }} />
+                          onClick={() => setPreview(job)} title="Click to view"
+                          className="h-16 w-12 rounded border object-cover cursor-pointer" style={{ borderColor: 'var(--color-border)' }} />
                       : isImage
                         ? <div className="h-16 w-12 rounded border flex items-center justify-center" style={{ borderColor: 'var(--color-border)' }}>
                             <ImageIcon size={14} style={{ color: 'var(--color-text-secondary)' }} />
                           </div>
                         : job.state === 'completed'
-                          ? <video src={`/api/media-jobs/${job.id}/content`} controls preload="none"
-                              className="h-16 w-28 rounded border object-cover" style={{ borderColor: 'var(--color-border)' }} />
+                          ? <div onClick={() => setPreview(job)} title="Click to play"
+                              className="h-16 w-28 rounded border flex items-center justify-center cursor-pointer"
+                              style={{ borderColor: 'var(--color-border)', background: '#0f172a' }}>
+                              <Play size={20} color="#f8fafc" fill="#f8fafc" />
+                            </div>
                           : <div className="h-16 w-28 rounded border flex items-center justify-center" style={{ borderColor: 'var(--color-border)' }}>
                               <Film size={14} style={{ color: 'var(--color-text-secondary)' }} />
                             </div>}
@@ -166,7 +178,12 @@ export default function Generations() {
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      title={job.error ?? ''}
                       style={{ background: stateColor.bg, color: stateColor.text }}>{job.state ?? '-'}</span>
+                    {job.state === 'failed' && job.error && (
+                      <div className="text-xs mt-1 truncate" title={job.error}
+                        style={{ color: '#dc2626', maxWidth: '200px' }}>{job.error}</div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="font-medium truncate" style={{ maxWidth: '160px' }}>{job.requestedModel ?? '-'}</div>
@@ -209,6 +226,23 @@ export default function Generations() {
           </button>
         </div>
       </div>
+
+      {preview && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-8"
+          style={{ background: 'rgba(0, 0, 0, 0.85)' }} onClick={() => setPreview(null)}>
+          {preview.mediaType === 'image' && preview.fileId
+            ? <img src={`/api/files/${preview.fileId}/content`} alt={preview.fileName ?? 'generated'}
+                className="max-h-[85vh] max-w-[90vw] rounded object-contain" onClick={e => e.stopPropagation()} />
+            : <video src={`/api/media-jobs/${preview.id}/content`} controls autoPlay
+                className="max-h-[85vh] max-w-[90vw] rounded" onClick={e => e.stopPropagation()} />}
+          <div className="mt-3 text-sm" style={{ color: '#cbd5e1' }} onClick={e => e.stopPropagation()}>
+            {preview.requestedModel} · {formatTime(preview.createdAt)}
+            <a href={preview.mediaType === 'image' && preview.fileId
+                ? `/api/files/${preview.fileId}/content` : `/api/media-jobs/${preview.id}/content`}
+              target="_blank" rel="noreferrer" className="ml-3 underline">Open in new tab</a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
