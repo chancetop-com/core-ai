@@ -73,11 +73,28 @@ jobs:
           mv "$SRC" "build/core-ai-cli/native/nativeCompile/$DST"
           echo "path=build/core-ai-cli/native/nativeCompile/$DST" >> $GITHUB_OUTPUT
 
-      - name: Upload binary
+      - name: Package release archive
+        id: package
+        shell: bash
+        run: |
+          NAME=core-ai-cli-${{ matrix.target }}
+          if [ "${{ matrix.target }}" = "windows" ]; then
+            NAME="$NAME.exe"
+            powershell.exe -NoProfile -Command "Compress-Archive -Path build/core-ai-cli/native/nativeCompile/$NAME -DestinationPath build/core-ai-cli/native/nativeCompile/core-ai-cli-windows.zip -Force"
+            echo "file=build/core-ai-cli/native/nativeCompile/core-ai-cli-windows.zip" >> $GITHUB_OUTPUT
+          else
+            chmod +x "build/core-ai-cli/native/nativeCompile/$NAME"
+            tar -czf "build/core-ai-cli/native/nativeCompile/$NAME.tar.gz" -C build/core-ai-cli/native/nativeCompile "$NAME"
+            echo "file=build/core-ai-cli/native/nativeCompile/$NAME.tar.gz" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload binary and archive
         uses: actions/upload-artifact@v4
         with:
           name: core-ai-cli-${{ matrix.target }}
-          path: ${{ steps.rename.outputs.path }}
+          path: |
+            ${{ steps.rename.outputs.path }}
+            ${{ steps.package.outputs.file }}
           if-no-files-found: error
 
   release:

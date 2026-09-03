@@ -71,7 +71,7 @@ class SessionUpgradeHandler {
                 return false;
             }
             Path installDir = UpgradeDownloader.resolveInstallDir();
-            ui.getWriter().println("  " + AnsiTheme.MUTED + "Downloading " + UpgradeDownloader.detectPlatformSuffix() + "..." + AnsiTheme.RESET);
+            ui.getWriter().println("  " + AnsiTheme.MUTED + "Downloading " + UpgradeDownloader.archiveFileName() + "..." + AnsiTheme.RESET);
             ui.getWriter().flush();
             Path downloaded = UpgradeDownloader.download(info.latestVersion(), installDir);
             ui.getWriter().print("  Replacing " + currentBinary.getFileName() + "...");

@@ -118,7 +118,7 @@ public class Main implements Callable<Integer> {
         }
 
         System.out.println("New version available: v" + info.latestVersion() + " (current: v" + info.currentVersion() + ")");
-        System.out.println("Platform: " + UpgradeDownloader.detectPlatformSuffix());
+        System.out.println("Package: " + UpgradeDownloader.archiveFileName());
 
         Path installDir = upgradeDir != null ? upgradeDir : UpgradeDownloader.resolveInstallDir();
         try {

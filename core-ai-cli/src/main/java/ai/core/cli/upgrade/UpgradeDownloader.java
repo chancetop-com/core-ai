@@ -1,6 +1,8 @@
 package ai.core.cli.upgrade;
 
 import ai.core.utils.SystemUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -17,7 +19,9 @@ import java.util.Locale;
  */
 public final class UpgradeDownloader {
 
-    private static final String DOWNLOAD_URL_TEMPLATE = "https://github.com/chancetop-com/core-ai/releases/download/v%s/core-ai-cli-%s";
+    private static final Logger LOGGER = LoggerFactory.getLogger(UpgradeDownloader.class);
+
+    private static final String RELEASE_BASE_URL = "https://github.com/chancetop-com/core-ai/releases/download/v%s/%s";
 
     private static final Path DEFAULT_INSTALL_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "bin");
 
@@ -26,6 +30,15 @@ public final class UpgradeDownloader {
         if (os.contains("win")) return "windows.exe";
         if (os.contains("mac") || os.contains("darwin")) return "darwin";
         return "linux";
+    }
+
+    public static String archiveFileName() {
+        if (isWindows()) return "core-ai-cli-windows.zip";
+        return "core-ai-cli-" + detectPlatformSuffix() + ".tar.gz";
+    }
+
+    private static String archiveInnerBinaryName() {
+        return "core-ai-cli-" + detectPlatformSuffix();
     }
 
     public static String getBinaryFileName(String version) {
@@ -50,11 +63,76 @@ public final class UpgradeDownloader {
                 .anyMatch(p -> p.equalsIgnoreCase(dirStr));
     }
 
+    /**
+     * Downloads the release archive (zip on Windows, tar.gz elsewhere), extracts the binary into
+     * targetDir as core-ai-cli-v{version}[.exe]. Falls back to the plain binary asset for
+     * releases that predate archive packaging.
+     */
     public static Path download(String version, Path targetDir) throws UpgradeException {
-        String platformSuffix = detectPlatformSuffix();
-        String url = String.format(DOWNLOAD_URL_TEMPLATE, version, platformSuffix);
-        Path targetFile = targetDir.resolve(getBinaryFileName(version));
+        try {
+            return downloadArchive(version, targetDir);
+        } catch (UpgradeException e) {
+            return downloadBinary(version, targetDir);
+        }
+    }
 
+    private static Path downloadArchive(String version, Path targetDir) throws UpgradeException {
+        String archiveName = archiveFileName();
+        Path archiveFile = targetDir.resolve(archiveName);
+        try {
+            Files.createDirectories(targetDir);
+            SystemUtil.download(String.format(RELEASE_BASE_URL, version, archiveName), archiveFile.toString());
+            Path binary = extractArchive(archiveFile, targetDir, version);
+            deleteQuietly(archiveFile);
+            return binary;
+        } catch (IOException | URISyntaxException e) {
+            deleteQuietly(archiveFile);
+            throw new UpgradeException("Archive download failed: " + e.getMessage(), e);
+        }
+    }
+
+    static Path extractArchive(Path archiveFile, Path targetDir, String version) throws IOException {
+        Path extractDir = targetDir.resolve(".upgrade-" + version);
+        Files.createDirectories(extractDir);
+        try {
+            return extractToTarget(archiveFile, extractDir, targetDir, version);
+        } catch (IOException e) {
+            deleteQuietly(extractDir);
+            throw e;
+        }
+    }
+
+    private static Path extractToTarget(Path archiveFile, Path extractDir, Path targetDir, String version) throws IOException {
+        if (archiveFile.toString().endsWith(".zip")) {
+            SystemUtil.extractZip(archiveFile, extractDir);
+        } else {
+            unTar(archiveFile, extractDir);
+        }
+        Path extracted = extractDir.resolve(archiveInnerBinaryName());
+        if (!Files.isRegularFile(extracted)) {
+            throw new IOException("Archive does not contain " + archiveInnerBinaryName());
+        }
+        Path target = targetDir.resolve(getBinaryFileName(version));
+        Files.move(extracted, target, StandardCopyOption.REPLACE_EXISTING);
+        if (!isWindows()) {
+            target.toFile().setExecutable(true, false);
+        }
+        SystemUtil.deleteDirectory(extractDir);
+        return target;
+    }
+
+    private static void unTar(Path archiveFile, Path extractDir) throws IOException {
+        try {
+            SystemUtil.extractTarGz(archiveFile, extractDir);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Tar extraction interrupted", e);
+        }
+    }
+
+    private static Path downloadBinary(String version, Path targetDir) throws UpgradeException {
+        String url = String.format(RELEASE_BASE_URL, version, archiveInnerBinaryName());
+        Path targetFile = targetDir.resolve(getBinaryFileName(version));
         try {
             Files.createDirectories(targetDir);
             File downloaded = SystemUtil.download(url, targetFile.toString());
@@ -64,6 +142,15 @@ public final class UpgradeDownloader {
             return downloaded.toPath();
         } catch (IOException | URISyntaxException e) {
             throw new UpgradeException("Download failed: " + e.getMessage(), e);
+        }
+    }
+
+    private static void deleteQuietly(Path path) {
+        try {
+            SystemUtil.deleteDirectory(path);
+        } catch (IOException e) {
+            // a leftover archive or extraction dir is harmless; the extracted binary is authoritative
+            LOGGER.warn("Failed to delete {}: {}", path, e);
         }
     }
 
