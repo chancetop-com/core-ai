@@ -7,12 +7,15 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.context.Context;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 final class GatewayAgentTrace {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GatewayAgentTrace.class);
     private static final AttributeKey<String> LANGFUSE_OBSERVATION_TYPE = AttributeKey.stringKey("langfuse.observation.type");
     private static final AttributeKey<String> LANGFUSE_INPUT = AttributeKey.stringKey("langfuse.observation.input");
     private static final AttributeKey<String> GEN_AI_OPERATION_NAME = AttributeKey.stringKey("gen_ai.operation.name");
@@ -23,6 +26,7 @@ final class GatewayAgentTrace {
     private static final AttributeKey<String> CLIENT_TYPE = AttributeKey.stringKey("client.type");
     private static final AttributeKey<String> GEN_AI_AGENT_NAME = AttributeKey.stringKey("gen_ai.agent.name");
     private static final AttributeKey<String> TOOL_NAME = AttributeKey.stringKey("tool.name");
+    private static final AttributeKey<String> TOOL_CALL_ID = AttributeKey.stringKey("tool.call_id");
     private static final AttributeKey<String> GEN_AI_PROMPT = AttributeKey.stringKey("gen_ai.prompt");
     private static final AttributeKey<String> GEN_AI_COMPLETION = AttributeKey.stringKey("gen_ai.completion");
     private static final int MAX_TOOL_ARGUMENTS_LENGTH = 4000;
@@ -67,6 +71,7 @@ final class GatewayAgentTrace {
         try {
             bodyMap = GatewayJson.MAPPER.readValue(request.body(), GatewaySupport.MAP_TYPE);
         } catch (IOException e) {
+            LOGGER.debug("invalid request body, skipping tool span synthesis", e);
             return;
         }
         var toolCalls = GatewaySupport.parseToolCalls(bodyMap, GatewaySupport.MAX_SYNTHESIZED_TOOL_CALLS);
@@ -80,7 +85,8 @@ final class GatewayAgentTrace {
                     .setAttribute(CLIENT_TYPE, "gateway")
                     .setAttribute(LANGFUSE_OBSERVATION_TYPE, "tool")
                     .setAttribute(GEN_AI_OPERATION_NAME, "tool")
-                    .setAttribute(TOOL_NAME, toolCall.name());
+                    .setAttribute(TOOL_NAME, toolCall.name())
+                    .setAttribute(TOOL_CALL_ID, toolCall.toolCallId());
             if (GatewaySupport.hasText(toolCall.arguments())) {
                 spanBuilder.setAttribute(GEN_AI_PROMPT, GatewaySupport.truncate(toolCall.arguments(), MAX_TOOL_ARGUMENTS_LENGTH));
             }

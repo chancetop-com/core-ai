@@ -56,10 +56,26 @@ final class GatewaySupport {
             if (!hasText(id)) continue;
             var definition = calls.remove(id);
             if (definition == null) continue;
-            results.add(new GatewayToolCall(id, definition[0], definition[1], string(message.get("content"))));
+            results.add(new GatewayToolCall(id, definition[0], definition[1], contentText(message.get("content"))));
             if (results.size() >= maxCalls) break;
         }
         return results;
+    }
+
+    // message content arrives either as a plain string or as OpenAI content parts
+    // ([{"type":"text","text":"..."}]); normalize both to the text form
+    static String contentText(Object content) {
+        if (content instanceof String text) return text;
+        if (content instanceof List<?> parts) {
+            var builder = new StringBuilder();
+            for (var part : parts) {
+                if (!(part instanceof Map<?, ?> map) || !(map.get("text") instanceof String text) || !hasText(text)) continue;
+                if (builder.length() > 0) builder.append('\n');
+                builder.append(text);
+            }
+            return builder.length() > 0 ? builder.toString() : null;
+        }
+        return null;
     }
 
     private static void collectToolCalls(Object value, Map<String, String[]> calls) {

@@ -145,6 +145,11 @@ public class OTLPIngestService {
                           String traceId, String spanId, String parentSpanId,
                           Map<String, String> attrs) {
         if (!spanCollection.find(Filters.eq("span_id", spanId)).isEmpty()) return;
+        var toolCallId = attrs.get("tool.call_id");
+        if (toolCallId != null && !toolCallId.isEmpty()
+                && !spanCollection.find(Filters.and(Filters.eq("trace_id", traceId), Filters.eq("tool_call_id", toolCallId))).isEmpty()) {
+            return;  // the same tool call was already synthesized by an earlier request of this conversation
+        }
 
         long startMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
         long endMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getEndTimeUnixNano());
@@ -163,6 +168,7 @@ public class OTLPIngestService {
         span.durationMs = endMs - startMs;
         span.status = mapSpanStatus(protoSpan.getStatus().getCode(), attrs);
         span.errorMessage = span.status == SpanStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
+        span.toolCallId = toolCallId;
         span.attributes = attrs;
         span.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
         span.completedAt = OTLPParseHelper.toZonedDateTime(endMs);

@@ -75,6 +75,11 @@ public class Span {
     @Field(name = "error_message")
     public String errorMessage;
 
+    // id of the client tool call this span was synthesized from; used to dedupe replayed
+    // tool messages when each gateway request carries the full conversation history
+    @Field(name = "tool_call_id")
+    public String toolCallId;
+
     @Field(name = "attributes")
     public Map<String, String> attributes;
 

@@ -90,6 +90,21 @@ class GatewaySupportTest {
     }
 
     @Test
+    void parseToolCallsExtractsTextFromContentParts() {
+        var body = bodyOf("messages", List.of(
+                Map.of("role", "assistant", "content", "", "tool_calls", List.of(
+                        Map.of("id", "call-1", "type", "function", "function", Map.of("name", "search_menu", "arguments", "{}")))),
+                Map.of("role", "tool", "tool_call_id", "call-1", "content", List.of(
+                        Map.of("type", "text", "text", "[\"margherita\", \"pasta\"]")))
+        ));
+
+        var calls = GatewaySupport.parseToolCalls(body, GatewaySupport.MAX_SYNTHESIZED_TOOL_CALLS);
+
+        assertEquals(1, calls.size());
+        assertEquals("[\"margherita\", \"pasta\"]", calls.getFirst().content());
+    }
+
+    @Test
     void parseToolCallsReturnsEmptyForNonChatBodies() {
         assertTrue(GatewaySupport.parseToolCalls(bodyOf("model", "gpt-4o"), 20).isEmpty());
         assertTrue(GatewaySupport.parseToolCalls(bodyOf("messages", List.of()), 20).isEmpty());
