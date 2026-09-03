@@ -180,6 +180,42 @@ class GatewayLLMProviderTest {
     }
 
     @Test
+    void vertexGeminiChatPrefixesModelWithGoogleAndRefreshesToken() {
+        var provider = provider("google", "gemini", "https://aiplatform.googleapis.com/v1beta1");
+        provider.vertexProjectId = "my-project";
+        provider.vertexLocation = "us-central1";
+        var gateway = gateway(List.of(provider), List.of(model("gemini-chat", provider.id, "gemini-3.8-flash")), null);
+
+        gateway.completion(request("gemini-chat"));
+
+        assertEquals("google/gemini-3.8-flash", gateway.upstream.capturedModel);
+        assertEquals("https://aiplatform.googleapis.com/v1beta1/projects/my-project/locations/us-central1/endpoints/openapi",
+                gateway.upstream.capturedUpdatedUrl);
+        assertEquals("vertex-token", gateway.upstream.capturedUpdatedToken);
+    }
+
+    @Test
+    void developerGeminiChatKeepsModelName() {
+        var provider = provider("google-dev", "gemini", "https://generativelanguage.googleapis.com/v1beta");
+        var gateway = gateway(List.of(provider), List.of(model("gemini-chat", provider.id, "gemini-3.8-flash")), null);
+
+        gateway.completion(request("gemini-chat"));
+
+        assertEquals("gemini-3.8-flash", gateway.upstream.capturedModel);
+    }
+
+    @Test
+    void geminiResponsesEndpointIsRejected() {
+        var provider = provider("google", "gemini", "https://aiplatform.googleapis.com/v1beta1");
+        var routingEngine = new GatewayRoutingEngine();
+        routingEngine.gatewayProviderCollection = mockMongo(GatewayProviderConfig.class, List.of(provider));
+        routingEngine.gatewayModelCollection = mockMongo(GatewayModelConfig.class, List.of());
+        var realProvider = new GatewayLLMProvider(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"), null);
+
+        assertThrows(BadRequestException.class, () -> realProvider.createUpstreamProvider(provider, "gemini-3.8-flash", "responses"));
+    }
+
+    @Test
     void downgradesJsonSchemaToJsonObjectForJsonModeOnlyModel() {
         var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
         var deepseek = model("deepseek-chat", provider.id, "deepseek/deepseek-chat");
@@ -232,11 +268,16 @@ class GatewayLLMProviderTest {
     @SuppressWarnings("unchecked")
     private TestGatewayLLMProvider gateway(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models, LiteLLMProvider fallback) {
         var routingEngine = new GatewayRoutingEngine();
-        routingEngine.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
-        routingEngine.gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
-        when(routingEngine.gatewayProviderCollection.find(any(Query.class))).thenReturn(providers);
-        when(routingEngine.gatewayModelCollection.find(any(Query.class))).thenReturn(models);
+        routingEngine.gatewayProviderCollection = mockMongo(GatewayProviderConfig.class, providers);
+        routingEngine.gatewayModelCollection = mockMongo(GatewayModelConfig.class, models);
         return new TestGatewayLLMProvider(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"), fallback);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> MongoCollection<T> mockMongo(Class<T> ignored, List<T> rows) {
+        var collection = (MongoCollection<T>) mock(MongoCollection.class);
+        when(collection.find(any(Query.class))).thenReturn(rows);
+        return collection;
     }
 
     private GatewayProviderConfig provider(String id, String type, String baseUrl) {
@@ -282,16 +323,31 @@ class GatewayLLMProviderTest {
             upstream = new CapturingLiteLLMProvider(new LLMProviderConfig(null, null, null), upstreamBaseUrl, "ok");
             return upstream;
         }
+
+        @Override
+        ai.core.media.GoogleAccessTokenProvider vertexTokenProvider(GatewayProviderConfig provider) {
+            var tokenProvider = mock(ai.core.media.GoogleAccessTokenProvider.class);
+            when(tokenProvider.accessToken()).thenReturn("vertex-token");
+            return tokenProvider;
+        }
     }
 
     private static final class CapturingLiteLLMProvider extends LiteLLMProvider {
         final String content;
         String capturedModel;
         CompletionRequest capturedRequest;
+        String capturedUpdatedUrl;
+        String capturedUpdatedToken;
 
         CapturingLiteLLMProvider(LLMProviderConfig config, String url, String content) {
             super(config, url, "sk-test");
             this.content = content;
+        }
+
+        @Override
+        public void updateCredentials(String url, String token) {
+            capturedUpdatedUrl = url;
+            capturedUpdatedToken = token;
         }
 
         @Override

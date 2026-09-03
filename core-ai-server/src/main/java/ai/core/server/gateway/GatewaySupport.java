@@ -4,9 +4,13 @@ import ai.core.server.domain.GatewayProviderConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.http.HTTPRequest;
 import core.framework.web.Request;
+import core.framework.web.exception.BadRequestException;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 final class GatewaySupport {
@@ -27,6 +31,54 @@ final class GatewaySupport {
             if (hasText(sessionId)) return sessionId;
         }
         return null;
+    }
+
+    // Agent name sent by framework clients (x-agent-name) so the gateway can synthesize an agent
+    // layer above the LLM span, mirroring the agent/llm/tool hierarchy of server-side chat traces.
+    static String agentName(Request request) {
+        return trimToNull(request.header("x-agent-name").orElse(null));
+    }
+
+    // A tool execution inferred from the request messages: the assistant's tool_calls entry names
+    // the tool and carries the arguments, the role=tool message carries the execution result.
+    record GatewayToolCall(String toolCallId, String name, String arguments, String content) {
+    }
+
+    static final int MAX_SYNTHESIZED_TOOL_CALLS = 20;
+
+    // Chat requests replay the previous tool executions as messages: the assistant message holds
+    // tool_calls (id + function.name + function.arguments) and the tool message holds the result.
+    // Pairing them lets the gateway synthesize tool spans without any extra client reporting.
+    static List<GatewayToolCall> parseToolCalls(Map<String, Object> body, int maxCalls) {
+        var messages = body.get("messages");
+        if (!(messages instanceof List<?> messageList) || messageList.isEmpty()) return List.of();
+        var calls = new LinkedHashMap<String, String[]>();
+        var results = new ArrayList<GatewayToolCall>();
+        for (var item : messageList) {
+            if (!(item instanceof Map<?, ?> message)) continue;
+            var toolCalls = message.get("tool_calls");
+            if (toolCalls instanceof List<?> toolCallList) {
+                for (var call : toolCallList) {
+                    if (!(call instanceof Map<?, ?> callMap)) continue;
+                    var id = string(callMap.get("id"));
+                    var function = callMap.get("function");
+                    if (function instanceof Map<?, ?> functionMap) {
+                        var name = string(functionMap.get("name"));
+                        var arguments = string(functionMap.get("arguments"));
+                        if (hasText(id) && hasText(name)) calls.put(id, new String[]{name, arguments});
+                    }
+                }
+            }
+            var content = message.get("content");
+            if ("tool".equals(string(message.get("role"))) && hasText(string(message.get("tool_call_id")))) {
+                var id = string(message.get("tool_call_id"));
+                var definition = calls.remove(id);
+                if (definition == null) continue;
+                results.add(new GatewayToolCall(id, definition[0], definition[1], string(content)));
+                if (results.size() >= maxCalls) break;
+            }
+        }
+        return results;
     }
 
     static boolean hasText(String value) {
@@ -56,12 +108,36 @@ final class GatewaySupport {
         return value.substring(0, maxLength);
     }
 
+    static String string(Object value) {
+        return value instanceof String string ? string : null;
+    }
+
     static long valueOrDefault(Long value, long defaultValue) {
         return value == null ? defaultValue : value;
     }
 
     static String urlEncode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    static boolean isVertexGeminiBaseUrl(String baseUrl) {
+        return baseUrl != null && baseUrl.contains("aiplatform.googleapis.com");
+    }
+
+    // Gemini models are served through Google's OpenAI-compatible endpoints: Vertex hosts them
+    // under /projects/{project}/locations/{location}/endpoints/openapi, the Developer API under
+    // /v1beta/openai. The provider baseUrl alone points at the native REST root, which has no
+    // /chat/completions path.
+    static String geminiOpenAiCompatibleUrl(GatewayProviderConfig provider) {
+        var baseUrl = stripTrailingSlash(provider.baseUrl);
+        if (isVertexGeminiBaseUrl(baseUrl)) {
+            if (isBlank(provider.vertexProjectId) || isBlank(provider.vertexLocation)) {
+                throw new BadRequestException("Vertex gemini chat requires vertexProjectId and vertexLocation on provider: " + provider.name);
+            }
+            return baseUrl + "/projects/" + urlEncode(provider.vertexProjectId)
+                    + "/locations/" + urlEncode(provider.vertexLocation) + "/endpoints/openapi";
+        }
+        return baseUrl.endsWith("/openai") ? baseUrl : baseUrl + "/openai";
     }
 
     static void applyAuth(GatewayProviderConfig provider, HTTPRequest request, String apiKey) {

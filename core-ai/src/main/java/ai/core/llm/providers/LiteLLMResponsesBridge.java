@@ -25,10 +25,28 @@ final class LiteLLMResponsesBridge {
 
     // session id header consumed by the core-ai gateway to merge one conversation into a single trace
     private static final String SESSION_ID_HEADER = "x-session-id";
+    // agent name header consumed by the core-ai gateway to synthesize an agent layer above the LLM span
+    private static final String AGENT_NAME_HEADER = "x-agent-name";
 
-    static void applySessionHeader(HTTPRequest req, CompletionRequest request) {
+    static void applyGatewayHeaders(HTTPRequest req, CompletionRequest request) {
         if (!Strings.isBlank(request.getSessionId())) {
             req.headers.put(SESSION_ID_HEADER, request.getSessionId());
+        }
+        if (!Strings.isBlank(request.getName())) {
+            req.headers.put(AGENT_NAME_HEADER, request.getName());
+        }
+    }
+
+    // The Gemini OpenAI-compatible layer ends tool-call streams with finish_reason "stop"
+    // instead of "tool_calls", which would silently drop the tool execution in agent loops
+    // that branch on the finish reason; a "stop" with collected tool calls is contradictory
+    // in OpenAI semantics, so normalize it to TOOL_CALLS.
+    static void normalizeFinishReason(CompletionResponse response) {
+        if (response == null || response.choices == null || response.choices.isEmpty()) return;
+        var choice = response.choices.getFirst();
+        if (choice.finishReason == FinishReason.STOP && choice.message != null
+                && choice.message.toolCalls != null && !choice.message.toolCalls.isEmpty()) {
+            choice.finishReason = FinishReason.TOOL_CALLS;
         }
     }
 
@@ -74,7 +92,7 @@ final class LiteLLMResponsesBridge {
         if (!Strings.isBlank(token)) {
             req.headers.put("Authorization", "Bearer " + token);
         }
-        applySessionHeader(req, request);
+        applyGatewayHeaders(req, request);
 
         var bodyMap = toResponsesBody(request);
         if (extraBody instanceof Map<?, ?> extraMap) {

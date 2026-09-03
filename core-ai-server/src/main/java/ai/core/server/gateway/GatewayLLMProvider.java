@@ -74,6 +74,7 @@ public class GatewayLLMProvider extends LLMProvider {
     private final GatewaySecretProtector secretProtector;
     private final LLMProvider fallback;
     private final Map<String, LiteLLMProvider> upstreamProviders = new ConcurrentHashMap<>();
+    private final Map<String, ai.core.media.GoogleAccessTokenProvider> vertexTokenProviders = new ConcurrentHashMap<>();
 
     public GatewayLLMProvider(LLMProviderConfig config, GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector, LLMProvider fallback) {
         super(config);
@@ -114,7 +115,14 @@ public class GatewayLLMProvider extends LLMProvider {
         var upstreamModel = upstreamModel(resolved);
         var upstream = upstreamProvider(provider, upstreamModel, endpoint);
         var originalModel = request.model;
-        request.model = upstreamModel;
+        if ("gemini".equals(provider.type) && GatewaySupport.isVertexGeminiBaseUrl(provider.baseUrl)) {
+            // Vertex short-lived OAuth tokens expire within the hour; refresh before every call
+            upstream.updateCredentials(GatewaySupport.geminiOpenAiCompatibleUrl(provider), vertexTokenProvider(provider).accessToken());
+            // Vertex OpenAI-compatible endpoints address models as google/{model}
+            request.model = "google/" + upstreamModel;
+        } else {
+            request.model = upstreamModel;
+        }
         var modelConfig = routingEngine.modelConfig(originalModel);
         applyReasoningEffort(request, modelConfig);
         applyResponseFormat(request, modelConfig);
@@ -280,7 +288,31 @@ public class GatewayLLMProvider extends LLMProvider {
             var azureUrl = resourceBase + "/deployments/" + urlEncode(upstreamModel) + "/chat/completions?api-version=" + urlEncode(version);
             return new LiteLLMProvider(upstreamConfig, azureUrl, key, "api-key", "");
         }
+        if ("gemini".equals(provider.type)) {
+            return createGeminiProvider(provider, endpoint, upstreamConfig);
+        }
         return new LiteLLMProvider(upstreamConfig, provider.baseUrl, key);
+    }
+
+    // gemini providers point at Google's native REST root (Vertex or Developer API); both serve
+    // chat completions through their OpenAI-compatible endpoints, never at {baseUrl}/chat/completions
+    private LiteLLMProvider createGeminiProvider(GatewayProviderConfig provider, String endpoint, LLMProviderConfig upstreamConfig) {
+        if (GatewayModelService.ENDPOINT_RESPONSES.equals(endpoint)) {
+            throw new BadRequestException("gemini provider does not support the responses endpoint: " + provider.name);
+        }
+        var url = GatewaySupport.geminiOpenAiCompatibleUrl(provider);
+        if (GatewaySupport.isVertexGeminiBaseUrl(provider.baseUrl)) {
+            return new LiteLLMProvider(upstreamConfig, url, vertexTokenProvider(provider).accessToken());
+        }
+        var apiKey = secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);
+        return new LiteLLMProvider(upstreamConfig, url, apiKey == null ? "" : apiKey);
+    }
+
+    ai.core.media.GoogleAccessTokenProvider vertexTokenProvider(GatewayProviderConfig provider) {
+        return vertexTokenProviders.computeIfAbsent(provider.id, ignored -> {
+            var credentials = provider.googleCredentialsEncrypted == null ? null : secretProtector.unprotect(provider.googleCredentialsEncrypted);
+            return new ai.core.media.GoogleAccessTokenProvider("GOOGLE_SERVICE_ACCOUNT_JSON".equals(provider.mediaAuthType) ? credentials : null);
+        });
     }
 
     private record ResolvedRoute(GatewayRoute route, boolean responses) {

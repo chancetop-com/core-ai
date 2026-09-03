@@ -21,6 +21,7 @@ import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.context.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,8 +57,19 @@ public class GatewayProxyService {
     private static final AttributeKey<String> USER_ID = AttributeKey.stringKey("user.id");
     private static final AttributeKey<String> SESSION_ID = AttributeKey.stringKey("session.id");
     private static final AttributeKey<String> CLIENT_TYPE = AttributeKey.stringKey("client.type");
+    private static final AttributeKey<String> GEN_AI_AGENT_NAME = AttributeKey.stringKey("gen_ai.agent.name");
+    private static final AttributeKey<String> TOOL_NAME = AttributeKey.stringKey("tool.name");
+    private static final AttributeKey<String> GEN_AI_PROMPT = AttributeKey.stringKey("gen_ai.prompt");
+    private static final AttributeKey<String> GEN_AI_COMPLETION = AttributeKey.stringKey("gen_ai.completion");
     // cap the span output so a very long streaming response cannot inflate the stored span
     private static final int MAX_SPAN_OUTPUT_LENGTH = 200_000;
+    private static final int MAX_TOOL_ARGUMENTS_LENGTH = 4000;
+    private static final int MAX_TOOL_RESULT_LENGTH = 8000;
+
+    // Root span (agent when the client sends x-agent-name, otherwise the LLM span itself) plus the
+    // LLM span; tool spans synthesized from the request messages are children of the LLM span.
+    record GatewaySpanRoot(Span root, Span llm) {
+    }
 
     @Inject
     GatewayRoutingEngine routingEngine;
@@ -68,24 +80,24 @@ public class GatewayProxyService {
     @Inject
     TelemetryConfig telemetryConfig;
 
-    public Response proxyChatCompletions(byte[] body, String userId, String sessionId) {
-        return proxy(body, GatewayEndpointType.CHAT_COMPLETIONS, MediaJobOwner.UNKNOWN, userId, sessionId);
+    public Response proxyChatCompletions(byte[] body, String userId, String sessionId, String agentName) {
+        return proxy(body, GatewayEndpointType.CHAT_COMPLETIONS, MediaJobOwner.UNKNOWN, userId, sessionId, agentName);
     }
 
-    public Response proxyResponses(byte[] body, String userId, String sessionId) {
-        return proxy(body, GatewayEndpointType.RESPONSES, MediaJobOwner.UNKNOWN, userId, sessionId);
+    public Response proxyResponses(byte[] body, String userId, String sessionId, String agentName) {
+        return proxy(body, GatewayEndpointType.RESPONSES, MediaJobOwner.UNKNOWN, userId, sessionId, agentName);
     }
 
     public Response proxyImageGenerations(byte[] body, String userId) {
-        return proxy(body, GatewayEndpointType.IMAGE_GENERATION, MediaJobOwner.UNKNOWN, userId, null);
+        return proxy(body, GatewayEndpointType.IMAGE_GENERATION, MediaJobOwner.UNKNOWN, userId, null, null);
     }
 
     public Response proxyImageEdits(byte[] body, String userId) {
-        return proxy(body, GatewayEndpointType.IMAGE_EDIT, MediaJobOwner.UNKNOWN, userId, null);
+        return proxy(body, GatewayEndpointType.IMAGE_EDIT, MediaJobOwner.UNKNOWN, userId, null, null);
     }
 
     public Response proxyVideoGenerations(byte[] body, MediaJobOwner owner) {
-        return proxy(body, GatewayEndpointType.VIDEO_GENERATION, owner, owner.userId(), null);
+        return proxy(body, GatewayEndpointType.VIDEO_GENERATION, owner, owner.userId(), null, null);
     }
 
     public Response getVideoStatus(String videoId, String userId) {
@@ -128,9 +140,11 @@ public class GatewayProxyService {
         return jsonResponse(response);
     }
 
-    void streamToChannel(byte[] body, GatewayEndpointType endpoint, RawSseChannel<?> channel, String userId, String sessionId) {
+    void streamToChannel(byte[] body, GatewayEndpointType endpoint, RawSseChannel<?> channel, String userId, String sessionId, String agentName) {
         var call = prepare(body, endpoint);
-        var span = startSpan(call, endpoint, userId, body, sessionId);
+        var spans = startSpans(call, endpoint, userId, body, sessionId, agentName);
+        var span = spans.llm();
+        synthesizeToolSpans(body, span, userId, sessionId);
         try {
             if (!call.stream()) {
                 var upstream = execute(call.request(), call.provider());
@@ -144,10 +158,11 @@ public class GatewayProxyService {
             span.setStatus(StatusCode.OK);
         } catch (RuntimeException e) {
             span.setStatus(StatusCode.ERROR, e.getMessage());
+            spans.root().setStatus(StatusCode.ERROR, e.getMessage());
             LOGGER.error("gateway {} upstream request failed, uri={}", endpoint.path, call.request().uri, e);
             throw e;
         } finally {
-            span.end();
+            endSpans(spans, span);
         }
     }
 
@@ -164,12 +179,14 @@ public class GatewayProxyService {
         if (output.length() > 0) span.setAttribute(LANGFUSE_OUTPUT, output.toString());
     }
 
-    private Response proxy(byte[] body, GatewayEndpointType endpoint, MediaJobOwner owner, String userId, String sessionId) {
+    private Response proxy(byte[] body, GatewayEndpointType endpoint, MediaJobOwner owner, String userId, String sessionId, String agentName) {
         var call = prepare(body, endpoint);
         if (endpoint == GatewayEndpointType.VIDEO_GENERATION && call.stream()) {
             throw new BadRequestException("streaming video generation is not supported by the gateway");
         }
-        var span = startSpan(call, endpoint, userId, body, sessionId);
+        var spans = startSpans(call, endpoint, userId, body, sessionId, agentName);
+        var span = spans.llm();
+        synthesizeToolSpans(body, span, userId, sessionId);
         try {
             if (call.stream()) {
                 var response = bufferedStream(call, span);
@@ -186,20 +203,41 @@ public class GatewayProxyService {
             return response(upstream);
         } catch (RuntimeException e) {
             span.setStatus(StatusCode.ERROR, e.getMessage());
+            spans.root().setStatus(StatusCode.ERROR, e.getMessage());
             LOGGER.error("gateway {} upstream request failed, uri={}", endpoint.path, call.request().uri, e);
             throw e;
         } finally {
-            span.end();
+            endSpans(spans, span);
         }
     }
 
-    private Span startSpan(GatewayUpstreamCall call, GatewayEndpointType endpoint, String userId, byte[] body, String sessionId) {
+    private void endSpans(GatewaySpanRoot spans, Span llm) {
+        llm.end();
+        if (!spans.root().getSpanContext().getSpanId().equals(llm.getSpanContext().getSpanId())) {
+            spans.root().end();
+        }
+    }
+
+    private GatewaySpanRoot startSpans(GatewayUpstreamCall call, GatewayEndpointType endpoint, String userId, byte[] body, String sessionId, String agentName) {
         var telemetry = telemetryConfig;
         if (telemetry == null || !telemetry.isEnabled()) {
-            return OpenTelemetry.noop().getTracer("core-ai-server").spanBuilder("gateway").startSpan();
+            var noop = OpenTelemetry.noop().getTracer("core-ai-server").spanBuilder("gateway").startSpan();
+            return new GatewaySpanRoot(noop, noop);
         }
-        var spanBuilder = telemetry.getOpenTelemetry().getTracer("core-ai-server")
-                .spanBuilder("gateway" + endpoint.path.replace('/', '.'))
+        var tracer = telemetry.getOpenTelemetry().getTracer("core-ai-server");
+        Span root = null;
+        if (hasText(agentName)) {
+            // synthesize an agent layer above the LLM span, mirroring the agent/llm/tool hierarchy of server-side chats
+            var rootBuilder = tracer.spanBuilder(agentName)
+                    .setSpanKind(SpanKind.INTERNAL)
+                    .setAttribute(CLIENT_TYPE, "gateway")
+                    .setAttribute(LANGFUSE_OBSERVATION_TYPE, "agent")
+                    .setAttribute(GEN_AI_OPERATION_NAME, "agent")
+                    .setAttribute(GEN_AI_AGENT_NAME, agentName);
+            applyGatewayAttributes(rootBuilder, userId, sessionId);
+            root = rootBuilder.startSpan();
+        }
+        var spanBuilder = tracer.spanBuilder("gateway" + endpoint.path.replace('/', '.'))
                 .setSpanKind(SpanKind.CLIENT)
                 .setAttribute(CLIENT_TYPE, "gateway")
                 .setAttribute(LANGFUSE_OBSERVATION_TYPE, "generation")
@@ -209,6 +247,15 @@ public class GatewayProxyService {
         if (endpoint == GatewayEndpointType.CHAT_COMPLETIONS || endpoint == GatewayEndpointType.RESPONSES) {
             spanBuilder.setAttribute(GEN_AI_OPERATION_NAME, "chat");
         }
+        applyGatewayAttributes(spanBuilder, userId, sessionId);
+        if (root != null) {
+            spanBuilder.setParent(Context.root().with(Span.wrap(root.getSpanContext())));
+        }
+        var llm = spanBuilder.startSpan();
+        return new GatewaySpanRoot(root != null ? root : llm, llm);
+    }
+
+    private void applyGatewayAttributes(io.opentelemetry.api.trace.SpanBuilder spanBuilder, String userId, String sessionId) {
         if (userId != null && !userId.isBlank()) {
             spanBuilder.setAttribute(USER_ID, userId);
         }
@@ -217,7 +264,40 @@ public class GatewayProxyService {
             // conversation (e.g. Claude Code's X-Claude-Code-Session-Id) into a single trace
             spanBuilder.setAttribute(SESSION_ID, sessionId);
         }
-        return spanBuilder.startSpan();
+    }
+
+    // Client-side tool executions (framework or MCP) return to the LLM as tool messages in the next
+    // request; synthesize them as tool spans under the LLM span so the trace shows a tool layer
+    // without any extra client reporting.
+    private void synthesizeToolSpans(byte[] body, Span llmSpan, String userId, String sessionId) {
+        if (!llmSpan.getSpanContext().isValid()) return;
+        Map<String, Object> bodyMap;
+        try {
+            bodyMap = parseBody(body);
+        } catch (BadRequestException e) {
+            return;  // prepare() already validated the body; nothing to synthesize on malformed input
+        }
+        var toolCalls = GatewaySupport.parseToolCalls(bodyMap, GatewaySupport.MAX_SYNTHESIZED_TOOL_CALLS);
+        if (toolCalls.isEmpty()) return;
+        var tracer = telemetryConfig.getOpenTelemetry().getTracer("core-ai-server");
+        var parentContext = Context.root().with(Span.wrap(llmSpan.getSpanContext()));
+        for (var toolCall : toolCalls) {
+            var spanBuilder = tracer.spanBuilder(toolCall.name())
+                    .setSpanKind(SpanKind.INTERNAL)
+                    .setParent(parentContext)
+                    .setAttribute(CLIENT_TYPE, "gateway")
+                    .setAttribute(LANGFUSE_OBSERVATION_TYPE, "tool")
+                    .setAttribute(GEN_AI_OPERATION_NAME, "tool")
+                    .setAttribute(TOOL_NAME, toolCall.name());
+            if (hasText(toolCall.arguments())) {
+                spanBuilder.setAttribute(GEN_AI_PROMPT, GatewaySupport.truncate(toolCall.arguments(), MAX_TOOL_ARGUMENTS_LENGTH));
+            }
+            if (hasText(toolCall.content())) {
+                spanBuilder.setAttribute(GEN_AI_COMPLETION, GatewaySupport.truncate(toolCall.content(), MAX_TOOL_RESULT_LENGTH));
+            }
+            applyGatewayAttributes(spanBuilder, userId, sessionId);
+            spanBuilder.startSpan().end();
+        }
     }
 
     private void markUpstreamStatus(Span span, int statusCode) {

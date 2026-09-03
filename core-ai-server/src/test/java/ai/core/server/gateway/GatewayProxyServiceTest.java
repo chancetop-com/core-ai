@@ -70,7 +70,7 @@ class GatewayProxyServiceTest {
         service.proxyChatCompletions(json(Map.of(
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1", null);
+        )), "user-1", null, null);
 
         assertEquals("https://api.deepseek.com/v1/chat/completions", service.captured.uri);
         assertEquals("Bearer sk-test", service.captured.headers.get("Authorization"));
@@ -88,7 +88,7 @@ class GatewayProxyServiceTest {
         service.proxyChatCompletions(json(Map.of(
                 "model", "azure/my-deployment",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1", null);
+        )), "user-1", null, null);
 
         assertEquals("https://example.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2025-01-01-preview", service.captured.uri);
         assertEquals("sk-test", service.captured.headers.get("api-key"));
@@ -103,7 +103,7 @@ class GatewayProxyServiceTest {
         assertThrows(BadRequestException.class, () -> service.proxyChatCompletions(json(Map.of(
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1", null));
+        )), "user-1", null, null));
     }
 
     @Test
@@ -114,7 +114,7 @@ class GatewayProxyServiceTest {
         service.proxyChatCompletions(json(Map.of(
                 "model", "fast-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1", null);
+        )), "user-1", null, null);
 
         assertEquals("https://litellm.example.com/chat/completions", service.captured.uri);
         var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
@@ -129,7 +129,7 @@ class GatewayProxyServiceTest {
         assertThrows(BadRequestException.class, () -> service.proxyChatCompletions(json(Map.of(
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
-        )), "user-1", null));
+        )), "user-1", null, null));
     }
 
     @Test
@@ -159,7 +159,7 @@ class GatewayProxyServiceTest {
         service.proxyResponses(json(Map.of(
                 "model", "fast-response",
                 "input", "hi"
-        )), "user-1", null);
+        )), "user-1", null, null);
 
         assertEquals("https://litellm.example.com/responses", service.captured.uri);
         var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
@@ -177,7 +177,7 @@ class GatewayProxyServiceTest {
                 "model", "luna-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi")),
                 "reasoning_effort", "low"
-        )), "user-1", null);
+        )), "user-1", null, null);
 
         var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
         assertFalse(body.containsKey("reasoning_effort"));
@@ -191,7 +191,7 @@ class GatewayProxyServiceTest {
         provider.apiVersion = "2025-01-01-preview";
         var service = service(provider, model("luna-resp", provider.id, "gpt-5.6-luna", List.of("responses")));
 
-        service.proxyResponses(json(Map.of("model", "luna-resp", "input", "hi")), "user-1", null);
+        service.proxyResponses(json(Map.of("model", "luna-resp", "input", "hi")), "user-1", null, null);
 
         assertEquals("https://example.openai.azure.com/openai/responses?api-version=2025-01-01-preview", service.captured.uri);
     }
@@ -205,7 +205,7 @@ class GatewayProxyServiceTest {
                 "model", "gpt-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi")),
                 "reasoning_effort", "low"
-        )), "user-1", null);
+        )), "user-1", null, null);
 
         var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
         assertEquals("low", body.get("reasoning_effort"));
@@ -225,7 +225,7 @@ class GatewayProxyServiceTest {
                 Map.of("role", "assistant", "content", "summary")
         ));
 
-        service.proxyChatCompletions(json(Map.of("model", "gpt-chat", "messages", messages)), "user-1", null);
+        service.proxyChatCompletions(json(Map.of("model", "gpt-chat", "messages", messages)), "user-1", null, null);
 
         var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
         var forwarded = (List<?>) body.get("messages");
@@ -290,7 +290,7 @@ class GatewayProxyServiceTest {
             service.proxyChatCompletions(json(Map.of(
                     "model", "deepseek/deepseek-chat",
                     "messages", List.of(Map.of("role", "user", "content", "hi"))
-            )), "user-1", null);
+            )), "user-1", null, null);
 
             // span export runs on LocalSpanProcessor's async executor; under full-suite load the
             // single worker thread can be scheduled late, so allow a generous wait
@@ -318,11 +318,11 @@ class GatewayProxyServiceTest {
             service.proxyChatCompletions(json(Map.of(
                     "model", "deepseek/deepseek-chat",
                     "messages", List.of(Map.of("role", "user", "content", "hi"))
-            )), "user-1", "session-1");
+            )), "user-1", "session-1", null);
             service.proxyChatCompletions(json(Map.of(
                     "model", "deepseek/deepseek-chat",
                     "messages", List.of(Map.of("role", "user", "content", "again"))
-            )), "user-1", null);
+            )), "user-1", null, null);
 
             // span export runs on LocalSpanProcessor's async executor; under full-suite load the
             // single worker thread can be scheduled late, so allow a generous wait
@@ -330,6 +330,71 @@ class GatewayProxyServiceTest {
             assertEquals(2, captured.size());
             assertEquals("session-1", spanAttributes(protoSpan(captured.get(0))).get("session.id"));
             assertNull(spanAttributes(protoSpan(captured.get(1))).get("session.id"));
+        } finally {
+            LocalSpanProcessorRegistry.clear();
+        }
+    }
+
+    @Test
+    void synthesizesAgentRootAndToolSpansFromRequestMessages() throws Exception {
+        var captured = new CopyOnWriteArrayList<ExportTraceServiceRequest>();
+        var latch = new CountDownLatch(3);
+        var service = spanCapturingService(captured, latch);
+        var messages = List.of(
+                Map.of("role", "user", "content", "run tools"),
+                Map.of("role", "assistant", "content", "", "tool_calls", List.of(
+                        Map.of("id", "call-1", "type", "function", "function", Map.of("name", "search_menu", "arguments", "{\"q\":\"pasta\"}")))),
+                Map.of("role", "tool", "tool_call_id", "call-1", "content", "[\"margherita\"]")
+        );
+        try {
+            service.proxyChatCompletions(json(Map.of("model", "deepseek/deepseek-chat", "messages", messages)),
+                    "user-1", "session-1", "menu-agent");
+
+            // each span exports as its own request through LocalSpanProcessor's single-worker executor
+            assertTrue(latch.await(15, TimeUnit.SECONDS), "spans exported: " + captured.size() + "/3");
+            var spans = new ArrayList<io.opentelemetry.proto.trace.v1.Span>();
+            for (var request : captured) {
+                spans.addAll(request.getResourceSpans(0).getScopeSpans(0).getSpansList());
+            }
+            assertEquals(3, spans.size());
+            var agentSpan = spans.stream().filter(s -> "agent".equals(spanAttributes(s).get("langfuse.observation.type"))).findFirst().orElseThrow();
+            var llmSpan = spans.stream().filter(s -> "generation".equals(spanAttributes(s).get("langfuse.observation.type"))).findFirst().orElseThrow();
+            var toolSpan = spans.stream().filter(s -> "tool".equals(spanAttributes(s).get("langfuse.observation.type"))).findFirst().orElseThrow();
+
+            var agentAttrs = spanAttributes(agentSpan);
+            assertEquals("menu-agent", agentAttrs.get("gen_ai.agent.name"));
+            assertEquals("gateway", agentAttrs.get("client.type"));
+            assertEquals("session-1", agentAttrs.get("session.id"));
+            assertEquals("user-1", agentAttrs.get("user.id"));
+
+            assertEquals(agentSpan.getSpanId(), llmSpan.getParentSpanId());
+            var toolAttrs = spanAttributes(toolSpan);
+            assertEquals("search_menu", toolSpan.getName());
+            assertEquals("search_menu", toolAttrs.get("tool.name"));
+            assertEquals("{\"q\":\"pasta\"}", toolAttrs.get("gen_ai.prompt"));
+            assertEquals("[\"margherita\"]", toolAttrs.get("gen_ai.completion"));
+            assertEquals("session-1", toolAttrs.get("session.id"));
+            assertEquals(llmSpan.getSpanId(), toolSpan.getParentSpanId());
+        } finally {
+            LocalSpanProcessorRegistry.clear();
+        }
+    }
+
+    @Test
+    void withoutAgentNameHeaderLlmSpanStaysRoot() throws Exception {
+        var captured = new CopyOnWriteArrayList<ExportTraceServiceRequest>();
+        var latch = new CountDownLatch(1);
+        var service = spanCapturingService(captured, latch);
+        try {
+            service.proxyChatCompletions(json(Map.of(
+                    "model", "deepseek/deepseek-chat",
+                    "messages", List.of(Map.of("role", "user", "content", "hi"))
+            )), "user-1", null, null);
+
+            assertTrue(latch.await(15, TimeUnit.SECONDS), "span export timed out");
+            var spans = captured.getFirst().getResourceSpans(0).getScopeSpans(0).getSpansList();
+            assertEquals(1, spans.size());
+            assertEquals("gateway.chat.completions", spans.getFirst().getName());
         } finally {
             LocalSpanProcessorRegistry.clear();
         }
@@ -363,7 +428,7 @@ class GatewayProxyServiceTest {
                     "model", "deepseek/deepseek-chat",
                     "stream", Boolean.TRUE,
                     "messages", List.of(Map.of("role", "user", "content", "hi"))
-            )), "user-1", null);
+            )), "user-1", null, null);
 
             assertTrue(latch.await(15, TimeUnit.SECONDS), "span export timed out");
             var recorded = spanAttributes(protoSpan(exportRequest.get()));

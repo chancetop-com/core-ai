@@ -188,6 +188,108 @@ class GatewayModelServiceTest {
         assertThrows(ForbiddenException.class, () -> service.create(request, "user-1"));
     }
 
+    @Test
+    void rejectsGeminiResponsesEndpoint() {
+        var service = serviceWithUser(admin("admin-1"), vertexGeminiProvider());
+        var request = new GatewayModelRequest();
+        request.modelId = "gemini-resp";
+        request.providerId = "google";
+        request.upstreamModel = "gemini-3.8-flash";
+        request.endpointTypes = List.of("responses");
+
+        var exception = assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+        assertTrue(exception.getMessage().contains("responses"));
+    }
+
+    @Test
+    void rejectsVertexGeminiChatWithoutProjectId() {
+        var provider = vertexGeminiProvider();
+        provider.vertexProjectId = null;
+        var service = serviceWithUser(admin("admin-1"), provider);
+        var request = new GatewayModelRequest();
+        request.modelId = "gemini-chat";
+        request.providerId = "google";
+        request.upstreamModel = "gemini-3.8-flash";
+
+        assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+    }
+
+    @Test
+    void rejectsVertexGeminiChatWithoutCredentials() {
+        var provider = vertexGeminiProvider();
+        provider.googleCredentialsEncrypted = null;
+        var service = serviceWithUser(admin("admin-1"), provider);
+        var request = new GatewayModelRequest();
+        request.modelId = "gemini-chat";
+        request.providerId = "google";
+        request.upstreamModel = "gemini-3.8-flash";
+
+        assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+    }
+
+    @Test
+    void rejectsDeveloperGeminiChatWithoutApiKey() {
+        var provider = new GatewayProviderConfig();
+        provider.id = "google-dev";
+        provider.name = "google-dev";
+        provider.type = "gemini";
+        provider.baseUrl = "https://generativelanguage.googleapis.com/v1beta";
+        provider.enabled = Boolean.TRUE;
+        var service = serviceWithUser(admin("admin-1"), provider);
+        var request = new GatewayModelRequest();
+        request.modelId = "gemini-chat";
+        request.providerId = "google-dev";
+        request.upstreamModel = "gemini-3.8-flash";
+
+        assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+    }
+
+    @Test
+    void acceptsVertexGeminiChatWithFullCredentials() {
+        var service = serviceWithUser(admin("admin-1"), vertexGeminiProvider());
+        var request = new GatewayModelRequest();
+        request.modelId = "gemini-chat";
+        request.providerId = "google";
+        request.upstreamModel = "gemini-3.8-flash";
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals("gemini-chat", view.modelId);
+    }
+
+    @Test
+    void ignoresMediaEndpointsForGeminiProvider() {
+        var provider = new GatewayProviderConfig();
+        provider.id = "google-dev";
+        provider.name = "google-dev";
+        provider.type = "gemini";
+        provider.baseUrl = "https://generativelanguage.googleapis.com/v1beta";
+        provider.enabled = Boolean.TRUE;
+        var service = serviceWithUser(admin("admin-1"), provider);
+        var request = new GatewayModelRequest();
+        request.modelId = "gemini-video";
+        request.providerId = "google-dev";
+        request.upstreamModel = "gemini-3.8-flash";
+        request.endpointTypes = List.of("video.generations");
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals("gemini-video", view.modelId);
+    }
+
+    private GatewayProviderConfig vertexGeminiProvider() {
+        var provider = new GatewayProviderConfig();
+        provider.id = "google";
+        provider.name = "google";
+        provider.type = "gemini";
+        provider.baseUrl = "https://aiplatform.googleapis.com/v1beta1";
+        provider.enabled = Boolean.TRUE;
+        provider.vertexProjectId = "my-project";
+        provider.vertexLocation = "us-central1";
+        provider.googleCredentialsEncrypted = "enc:v1:credentials";
+        return provider;
+    }
+
     @SuppressWarnings("unchecked")
     private GatewayModelService serviceWithUser(User user, GatewayProviderConfig provider) {
         var service = new GatewayModelService();

@@ -25,10 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 class ToolCallAsyncTaskManagerTest {
-    private static <T extends ToolCall> T named(T tool) {
+    private static void named(ToolCall tool) {
         tool.setName("counting_tool");
         tool.setDescription("test");
-        return tool;
     }
 
     private static FunctionCall call(String name) {
@@ -45,7 +44,8 @@ class ToolCallAsyncTaskManagerTest {
 
     @Test
     void terminalResultIsKeptAndAnnouncedOnce() {
-        var tool = named(new CountingPollTool(2));   // pending twice, then completed
+        var tool = new CountingPollTool(2);   // pending twice, then completed
+        named(tool);
         manager.registerTool(tool);
         var announced = new ArrayList<String>();
         manager.addTerminalListener((sessionId, task, result) -> announced.add(sessionId + ":" + task.taskId() + ":" + result.getStatus()));
@@ -73,12 +73,13 @@ class ToolCallAsyncTaskManagerTest {
 
     @Test
     void pollErrorKeepsTheTaskAlive() {
-        var tool = named(new CountingPollTool(Integer.MAX_VALUE) {
+        var tool = new CountingPollTool(Integer.MAX_VALUE) {
             @Override
             public ToolCallResult poll(String taskId) {
                 throw new IllegalStateException("upstream 503");
             }
-        });
+        };
+        named(tool);
         manager.registerTool(tool);
         manager.storeTask(new ToolCallAsyncTask("t-2", tool, call(tool.getName()), ToolCallResult.pending("t-2", "started")), "s");
 
@@ -90,7 +91,8 @@ class ToolCallAsyncTaskManagerTest {
 
     @Test
     void asyncTaskOutputToolRoutesKnownTasksToTheManager() {
-        var tool = named(new CountingPollTool(0));
+        var tool = new CountingPollTool(0);
+        named(tool);
         manager.registerTool(tool);
         manager.storeTask(new ToolCallAsyncTask("t-3", tool, call(tool.getName()), ToolCallResult.pending("t-3", "started")), "s");
         var context = ExecutionContext.builder().sessionId("s").asyncTaskManager(manager).build();

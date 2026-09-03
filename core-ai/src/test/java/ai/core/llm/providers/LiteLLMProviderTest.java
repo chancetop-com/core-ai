@@ -3,7 +3,9 @@ package ai.core.llm.providers;
 import ai.core.llm.domain.AssistantMessage;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingResponse;
+import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.document.Embedding;
 import ai.core.llm.domain.Usage;
@@ -27,25 +29,27 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class LiteLLMProviderTest {
 
     @Test
-    void applySessionHeaderPutsSessionIdHeader() {
-        var request = CompletionRequest.of(List.of(), List.of(), null, "test-model", "test");
+    void applyGatewayHeadersPutsSessionAndAgentHeaders() {
+        var request = CompletionRequest.of(List.of(), List.of(), null, "test-model", "menu-agent");
         request.setSessionId("conversation-1");
         var req = new HTTPRequest(HTTPMethod.POST, "http://localhost/chat/completions");
 
-        LiteLLMResponsesBridge.applySessionHeader(req, request);
+        LiteLLMResponsesBridge.applyGatewayHeaders(req, request);
 
         assertEquals("conversation-1", req.headers.get("x-session-id"));
+        assertEquals("menu-agent", req.headers.get("x-agent-name"));
     }
 
     @Test
-    void applySessionHeaderSkipsBlankSessionId() {
-        var request = CompletionRequest.of(List.of(), List.of(), null, "test-model", "test");
+    void applyGatewayHeadersSkipsBlankValues() {
+        var request = CompletionRequest.of(List.of(), List.of(), null, "test-model", " ");
         request.setSessionId(" ");
         var req = new HTTPRequest(HTTPMethod.POST, "http://localhost/chat/completions");
 
-        LiteLLMResponsesBridge.applySessionHeader(req, request);
+        LiteLLMResponsesBridge.applyGatewayHeaders(req, request);
 
         assertNull(req.headers.get("x-session-id"));
+        assertNull(req.headers.get("x-agent-name"));
     }
 
     @Test
@@ -124,7 +128,7 @@ class LiteLLMProviderTest {
 
         String repaired = LiteLLMProvider.repairInvalidJsonEscapes(invalidJson);
 
-        var response = JsonUtil.fromJson(ai.core.llm.domain.CompletionResponse.class, repaired);
+        var response = JsonUtil.fromJson(CompletionResponse.class, repaired);
         assertEquals("path \\{value\\} and \\q", response.choices.getFirst().delta.content);
     }
 
@@ -144,6 +148,45 @@ class LiteLLMProviderTest {
         var chunk = LiteLLMCompletionChunkParser.parse(json);
 
         assertEquals("thinking step by step", chunk.choices.getFirst().delta.reasoningContent);
+    }
+
+    @Test
+    void normalizesStopToToolCallsWhenToolCallsWereCollected() {
+        var choice = new Choice();
+        choice.finishReason = FinishReason.STOP;
+        choice.message = new AssistantMessage();
+        choice.message.toolCalls = new ArrayList<>(List.of(new FunctionCall()));
+        var response = CompletionResponse.of(List.of(choice), new Usage(1, 1, 2));
+
+        LiteLLMResponsesBridge.normalizeFinishReason(response);
+
+        assertEquals(FinishReason.TOOL_CALLS, response.choices.getFirst().finishReason);
+    }
+
+    @Test
+    void keepsStopWhenNoToolCallsWereCollected() {
+        var choice = new Choice();
+        choice.finishReason = FinishReason.STOP;
+        choice.message = new AssistantMessage();
+        choice.message.toolCalls = new ArrayList<>();
+        var response = CompletionResponse.of(List.of(choice), new Usage(1, 1, 2));
+
+        LiteLLMResponsesBridge.normalizeFinishReason(response);
+
+        assertEquals(FinishReason.STOP, response.choices.getFirst().finishReason);
+    }
+
+    @Test
+    void keepsToolCallsFinishReasonUnchanged() {
+        var choice = new Choice();
+        choice.finishReason = FinishReason.TOOL_CALLS;
+        choice.message = new AssistantMessage();
+        choice.message.toolCalls = new ArrayList<>(List.of(new FunctionCall()));
+        var response = CompletionResponse.of(List.of(choice), new Usage(1, 1, 2));
+
+        LiteLLMResponsesBridge.normalizeFinishReason(response);
+
+        assertEquals(FinishReason.TOOL_CALLS, response.choices.getFirst().finishReason);
     }
 
     @Test

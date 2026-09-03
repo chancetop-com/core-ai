@@ -211,7 +211,7 @@ public class LiteLLMProvider extends LLMProvider {
         if (!Strings.isBlank(token)) {
             req.headers.put(authHeaderName, authHeaderValuePrefix + token);
         }
-        LiteLLMResponsesBridge.applySessionHeader(req, request);
+        LiteLLMResponsesBridge.applyGatewayHeaders(req, request);
 
         var bodyMap = (Map<String, Object>) JsonUtil.toMap(request);
         if (request.getReasoningEffortValue() != null) {
@@ -307,6 +307,7 @@ public class LiteLLMProvider extends LLMProvider {
                 }
                 mergeChunkIntoFinalResponse(response, chunk, callback);
             }
+            LiteLLMResponsesBridge.normalizeFinishReason(response);
             return response;
         } finally {
             // Sync builders to String fields so partial response is usable on error/cancel

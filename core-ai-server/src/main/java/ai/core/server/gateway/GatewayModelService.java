@@ -157,6 +157,7 @@ public class GatewayModelService {
         var entity = new GatewayModelConfig();
         entity.id = UUID.randomUUID().toString();
         apply(entity, request, true);
+        validateProviderEndpointCompatibility(provider, entity.endpointTypes);
         if (Boolean.TRUE.equals(entity.isDefault)) clearDefaults(entity.providerId);
         rejectDuplicateModelId(entity);
         entity.createdBy = userId;
@@ -176,6 +177,7 @@ public class GatewayModelService {
         var providerId = request.providerId != null ? request.providerId : entity.providerId;
         var provider = provider(providerId);
         apply(entity, request, false);
+        validateProviderEndpointCompatibility(provider, entity.endpointTypes);
         if (Boolean.TRUE.equals(entity.isDefault)) clearDefaults(entity.providerId);
         rejectDuplicateModelId(entity);
         entity.updatedBy = userId;
@@ -223,6 +225,7 @@ public class GatewayModelService {
             if (metadata.endpointTypes() == null || metadata.endpointTypes().isEmpty()) {
                 throw new BadRequestException("gateway does not support model endpoint type: " + upstreamModel);
             }
+            validateProviderEndpointCompatibility(provider, metadata.endpointTypes());
 
             var entity = existingByUpstream.get(upstreamModel);
             var create = entity == null;
@@ -311,6 +314,27 @@ public class GatewayModelService {
         var duplicate = providerModels(entity.providerId).stream()
                 .anyMatch(model -> !model.id.equals(entity.id) && entity.modelId.equals(model.modelId));
         if (duplicate) throw new BadRequestException("gateway model already exists for provider: " + entity.modelId);
+    }
+
+    // gemini providers serve chat through Google's OpenAI-compatible endpoints, which have no
+    // /responses transport and need per-endpoint credentials; reject configurations that would
+    // fail at call time with a misleading 404 or auth error
+    private void validateProviderEndpointCompatibility(GatewayProviderConfig provider, List<String> endpointTypes) {
+        if (endpointTypes == null || endpointTypes.isEmpty() || !"gemini".equals(provider.type)) return;
+        if (endpointTypes.contains(ENDPOINT_RESPONSES)) {
+            throw new BadRequestException("gemini provider does not support the responses endpoint, provider=" + provider.name);
+        }
+        if (!endpointTypes.contains(ENDPOINT_CHAT_COMPLETIONS)) return;
+        if (GatewaySupport.isVertexGeminiBaseUrl(provider.baseUrl)) {
+            if (isBlank(provider.vertexProjectId) || isBlank(provider.vertexLocation)) {
+                throw new BadRequestException("Vertex gemini chat models require vertexProjectId and vertexLocation on provider: " + provider.name);
+            }
+            if (isBlank(provider.googleCredentialsEncrypted)) {
+                throw new BadRequestException("Vertex gemini chat models require googleCredentialsJson (service account) on provider: " + provider.name);
+            }
+        } else if (isBlank(provider.apiKey) && isBlank(provider.apiKeyEncrypted)) {
+            throw new BadRequestException("gemini chat models require an apiKey on provider: " + provider.name);
+        }
     }
 
     private void validate(GatewayModelRequest request, boolean create) {

@@ -313,8 +313,8 @@ public class ToolRegistryService {
      * async task manager dispatches a stored task's poll/cancel to.
      */
     public ToolCall findBuiltinTool(String toolName) {
-        for (var set : dynamicToolSets.values()) {
-            for (var tool : set) {
+        for (var tools : dynamicToolSets.values()) {
+            for (var tool : tools) {
                 if (toolName.equals(tool.getName())) return tool;
             }
         }
