@@ -22,8 +22,8 @@ graalvmNative {
             buildArgs.add("--initialize-at-build-time=core.framework.internal.log.LogLevel")
             buildArgs.add("--initialize-at-build-time=ai.core.cli.log.CliLoggerFactory")
             buildArgs.add("--initialize-at-build-time=ai.core.cli.log.CliLoggerServiceProvider")
-            // only the cl100k model is used at runtime; p50k/r50k/o200k stay out of the image
-            buildArgs.add("-H:IncludeResources=com/knuddels/jtokkit/cl100k_base\\.tiktoken")
+            // the cl100k tokenizer model is registered by NativeReflectionFeature via RuntimeResourceAccess;
+            // an -H:IncludeResources regex for it silently matched nothing in the full CLI build (see 1.0.48)
             buildArgs.add("-H:IncludeResources=org/jline/.*")
             buildArgs.add("-H:ExcludeResources=org/jline/nativ/.*")
             buildArgs.add("-H:IncludeResources=META-INF/services/org/jline/.*")

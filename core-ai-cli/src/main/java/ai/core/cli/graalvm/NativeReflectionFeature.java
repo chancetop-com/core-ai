@@ -4,6 +4,7 @@ import ai.core.api.tool.function.CoreAiMethod;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeForeignAccess;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
+import org.graalvm.nativeimage.hosted.RuntimeResourceAccess;
 
 import java.io.File;
 import java.io.IOException;
@@ -86,6 +87,8 @@ public class NativeReflectionFeature implements Feature {
         "com.agentclientprotocol.sdk.json.JacksonAcpJsonMapper"
     };
 
+    private static final String TOKENIZER_MODEL_RESOURCE = "com/knuddels/jtokkit/cl100k_base.tiktoken";
+
     // base packages to scan recursively for @CoreAiMethod tool classes
     private static final String[] TOOL_SCAN_PACKAGES = {
         "ai/core"
@@ -114,6 +117,18 @@ public class NativeReflectionFeature implements Feature {
         for (String pkg : TOOL_SCAN_PACKAGES) {
             scanToolClasses(access, pkg);
         }
+        registerTokenizerModel(access);
+    }
+
+    // jtokkit reads the BPE ranks as a classpath resource at runtime; register the cl100k model explicitly so only that
+    // one model is embedded (p50k/r50k/o200k stay out, -5.2MB) without depending on an -H:IncludeResources regex
+    private void registerTokenizerModel(BeforeAnalysisAccess access) {
+        var clazz = access.findClassByName("com.knuddels.jtokkit.EncodingFactory");
+        if (clazz == null) {
+            LOGGER.log(Level.WARNING, "jtokkit EncodingFactory not on the image classpath, cl100k tokenizer model not embedded");
+            return;
+        }
+        RuntimeResourceAccess.addResource(clazz.getModule(), TOKENIZER_MODEL_RESOURCE);
     }
 
     private void scanPackage(BeforeAnalysisAccess access, String pkg) {
