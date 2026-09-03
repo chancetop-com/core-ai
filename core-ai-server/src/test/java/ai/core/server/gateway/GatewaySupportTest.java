@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -98,8 +99,8 @@ class GatewaySupportTest {
     void isVertexGeminiBaseUrlMatchesAiPlatformOnly() {
         assertTrue(GatewaySupport.isVertexGeminiBaseUrl("https://aiplatform.googleapis.com/v1beta1"));
         assertTrue(GatewaySupport.isVertexGeminiBaseUrl("https://us-aiplatform.googleapis.com"));
-        assertTrue(!GatewaySupport.isVertexGeminiBaseUrl("https://generativelanguage.googleapis.com/v1beta"));
-        assertTrue(!GatewaySupport.isVertexGeminiBaseUrl(null));
+        assertFalse(GatewaySupport.isVertexGeminiBaseUrl("https://generativelanguage.googleapis.com/v1beta"));
+        assertFalse(GatewaySupport.isVertexGeminiBaseUrl(null));
     }
 
     @Test

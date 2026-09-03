@@ -103,7 +103,7 @@ public class ToolCallAsyncTaskManager {
             var data = JSON.fromJSON(AsyncTaskData.class, json.get());
             var terminal = data.status == ToolCallResult.Status.COMPLETED || data.status == ToolCallResult.Status.FAILED;
             var lastTouch = data.lastPolledAtMs != null ? data.lastPolledAtMs : data.createdAtMs;
-            if (terminal && lastTouch != null && lastTouch < cutoff) stale.add(key);
+            if (terminal && lastTouch != null && lastTouch <= cutoff) stale.add(key);
         }
         if (!stale.isEmpty()) persistenceProvider.delete(stale);
         return stale.size();

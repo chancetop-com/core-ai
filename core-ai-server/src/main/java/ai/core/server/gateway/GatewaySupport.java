@@ -15,6 +15,7 @@ import java.util.Map;
 
 final class GatewaySupport {
     static final long DEFAULT_TIMEOUT_SECONDS = 120;
+    static final int MAX_SYNTHESIZED_TOOL_CALLS = 20;
 
     // Per-conversation session headers sent by LLM CLI terminals (Claude Code, Codex, ...).
     // cc-switch forwards them upstream; extend this table when supporting new terminals.
@@ -39,13 +40,6 @@ final class GatewaySupport {
         return trimToNull(request.header("x-agent-name").orElse(null));
     }
 
-    // A tool execution inferred from the request messages: the assistant's tool_calls entry names
-    // the tool and carries the arguments, the role=tool message carries the execution result.
-    record GatewayToolCall(String toolCallId, String name, String arguments, String content) {
-    }
-
-    static final int MAX_SYNTHESIZED_TOOL_CALLS = 20;
-
     // Chat requests replay the previous tool executions as messages: the assistant message holds
     // tool_calls (id + function.name + function.arguments) and the tool message holds the result.
     // Pairing them lets the gateway synthesize tool spans without any extra client reporting.
@@ -56,29 +50,30 @@ final class GatewaySupport {
         var results = new ArrayList<GatewayToolCall>();
         for (var item : messageList) {
             if (!(item instanceof Map<?, ?> message)) continue;
-            var toolCalls = message.get("tool_calls");
-            if (toolCalls instanceof List<?> toolCallList) {
-                for (var call : toolCallList) {
-                    if (!(call instanceof Map<?, ?> callMap)) continue;
-                    var id = string(callMap.get("id"));
-                    var function = callMap.get("function");
-                    if (function instanceof Map<?, ?> functionMap) {
-                        var name = string(functionMap.get("name"));
-                        var arguments = string(functionMap.get("arguments"));
-                        if (hasText(id) && hasText(name)) calls.put(id, new String[]{name, arguments});
-                    }
-                }
-            }
-            var content = message.get("content");
-            if ("tool".equals(string(message.get("role"))) && hasText(string(message.get("tool_call_id")))) {
-                var id = string(message.get("tool_call_id"));
-                var definition = calls.remove(id);
-                if (definition == null) continue;
-                results.add(new GatewayToolCall(id, definition[0], definition[1], string(content)));
-                if (results.size() >= maxCalls) break;
-            }
+            collectToolCalls(message.get("tool_calls"), calls);
+            if (!"tool".equals(string(message.get("role")))) continue;
+            var id = string(message.get("tool_call_id"));
+            if (!hasText(id)) continue;
+            var definition = calls.remove(id);
+            if (definition == null) continue;
+            results.add(new GatewayToolCall(id, definition[0], definition[1], string(message.get("content"))));
+            if (results.size() >= maxCalls) break;
         }
         return results;
+    }
+
+    private static void collectToolCalls(Object value, Map<String, String[]> calls) {
+        if (!(value instanceof List<?> toolCallList)) return;
+        for (var call : toolCallList) {
+            if (!(call instanceof Map<?, ?> callMap)) continue;
+            var function = callMap.get("function");
+            if (!(function instanceof Map<?, ?> functionMap)) continue;
+            var id = string(callMap.get("id"));
+            var name = string(functionMap.get("name"));
+            if (hasText(id) && hasText(name)) {
+                calls.put(id, new String[]{name, string(functionMap.get("arguments"))});
+            }
+        }
     }
 
     static boolean hasText(String value) {
@@ -140,6 +135,24 @@ final class GatewaySupport {
         return baseUrl.endsWith("/openai") ? baseUrl : baseUrl + "/openai";
     }
 
+    static void validateProviderEndpointCompatibility(GatewayProviderConfig provider, List<String> endpointTypes) {
+        if (endpointTypes == null || endpointTypes.isEmpty() || !"gemini".equals(provider.type)) return;
+        if (endpointTypes.contains(GatewayModelService.ENDPOINT_RESPONSES)) {
+            throw new BadRequestException("gemini provider does not support the responses endpoint, provider=" + provider.name);
+        }
+        if (!endpointTypes.contains(GatewayModelService.ENDPOINT_CHAT_COMPLETIONS)) return;
+        if (isVertexGeminiBaseUrl(provider.baseUrl)) {
+            if (isBlank(provider.vertexProjectId) || isBlank(provider.vertexLocation)) {
+                throw new BadRequestException("Vertex gemini chat models require vertexProjectId and vertexLocation on provider: " + provider.name);
+            }
+            if (isBlank(provider.googleCredentialsEncrypted)) {
+                throw new BadRequestException("Vertex gemini chat models require googleCredentialsJson (service account) on provider: " + provider.name);
+            }
+        } else if (isBlank(provider.apiKey) && isBlank(provider.apiKeyEncrypted)) {
+            throw new BadRequestException("gemini chat models require an apiKey on provider: " + provider.name);
+        }
+    }
+
     static void applyAuth(GatewayProviderConfig provider, HTTPRequest request, String apiKey) {
         if (isBlank(apiKey)) return;
         if ("azure".equals(provider.type)) {
@@ -177,5 +190,10 @@ final class GatewaySupport {
     };
 
     private GatewaySupport() {
+    }
+
+    // A tool execution inferred from request messages: tool_calls supplies the definition and the
+    // matching role=tool message supplies the result.
+    record GatewayToolCall(String toolCallId, String name, String arguments, String content) {
     }
 }

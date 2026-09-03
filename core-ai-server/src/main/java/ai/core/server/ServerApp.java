@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.McpServerModule;
 import ai.core.MultiAgentModule;
+import ai.core.server.asynctask.AsyncToolTaskRecord;
 import ai.core.server.apimcp.mcp.McpModule;
 import ai.core.server.apimcp.serviceapi.ServiceApiModule;
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
@@ -161,7 +162,6 @@ public class ServerApp extends App {
         mongo.view(ToolRef.class);
         mongo.collection(SessionFeedback.class);
 
-        mongo.collection(ai.core.server.asynctask.AsyncToolTaskRecord.class);
         mongo.collection(Trace.class);
         mongo.collection(Span.class);
         mongo.view(TraceFacetRow.class);
@@ -209,6 +209,7 @@ public class ServerApp extends App {
     private void registerCoreCollections(MongoConfig mongo) {
         mongo.collection(User.class);
         mongo.collection(ApiKey.class);
+        mongo.collection(AsyncToolTaskRecord.class);
         mongo.collection(ToolRegistryEntry.class);
         mongo.collection(AgentDefinition.class);
         mongo.collection(ChannelConfigView.class);

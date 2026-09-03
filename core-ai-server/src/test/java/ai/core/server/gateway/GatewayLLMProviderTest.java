@@ -41,6 +41,13 @@ class GatewayLLMProviderTest {
         );
     }
 
+    @SuppressWarnings("unchecked")
+    private static <T> MongoCollection<T> mockMongo(List<T> rows) {
+        var collection = (MongoCollection<T>) mock(MongoCollection.class);
+        when(collection.find(any(Query.class))).thenReturn(rows);
+        return collection;
+    }
+
     @Test
     void routesGatewayModelIdToUpstreamModelAndRestoresRequestedModel() {
         var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
@@ -208,8 +215,8 @@ class GatewayLLMProviderTest {
     void geminiResponsesEndpointIsRejected() {
         var provider = provider("google", "gemini", "https://aiplatform.googleapis.com/v1beta1");
         var routingEngine = new GatewayRoutingEngine();
-        routingEngine.gatewayProviderCollection = mockMongo(GatewayProviderConfig.class, List.of(provider));
-        routingEngine.gatewayModelCollection = mockMongo(GatewayModelConfig.class, List.of());
+        routingEngine.gatewayProviderCollection = mockMongo(List.of(provider));
+        routingEngine.gatewayModelCollection = mockMongo(List.of());
         var realProvider = new GatewayLLMProvider(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"), null);
 
         assertThrows(BadRequestException.class, () -> realProvider.createUpstreamProvider(provider, "gemini-3.8-flash", "responses"));
@@ -268,16 +275,9 @@ class GatewayLLMProviderTest {
     @SuppressWarnings("unchecked")
     private TestGatewayLLMProvider gateway(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models, LiteLLMProvider fallback) {
         var routingEngine = new GatewayRoutingEngine();
-        routingEngine.gatewayProviderCollection = mockMongo(GatewayProviderConfig.class, providers);
-        routingEngine.gatewayModelCollection = mockMongo(GatewayModelConfig.class, models);
+        routingEngine.gatewayProviderCollection = mockMongo(providers);
+        routingEngine.gatewayModelCollection = mockMongo(models);
         return new TestGatewayLLMProvider(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"), fallback);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> MongoCollection<T> mockMongo(Class<T> ignored, List<T> rows) {
-        var collection = (MongoCollection<T>) mock(MongoCollection.class);
-        when(collection.find(any(Query.class))).thenReturn(rows);
-        return collection;
     }
 
     private GatewayProviderConfig provider(String id, String type, String baseUrl) {
