@@ -148,6 +148,7 @@ public class ToolRegistryService {
             registry.description = "Built-in tool set: " + entry.getKey();
             registry.config = Map.of("set", entry.getKey());
             tools.put(registry.id, registry);
+            dynamicToolSets.put(registry.id, BuiltinTools.fromSet(entry.getKey(), mediaProvider, gitHubTokenProvider, videoUnderstandingService));
             if (ToolProvider.BUILTIN_ALL.equals(entry.getKey())) {
                 builtinGroupToolGroups.put(registry.id, BuiltinTools.ALL_GROUP_LABELS);
             }
