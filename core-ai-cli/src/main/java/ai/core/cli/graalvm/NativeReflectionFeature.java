@@ -81,14 +81,6 @@ public class NativeReflectionFeature implements Feature {
         "org.jline.terminal.impl.ffm.FfmTerminal",
         // SLF4J provider for Class.forName() via slf4j.provider system property
         "ai.core.cli.log.CliLoggerServiceProvider",
-        // SessionsHandler class for JSON serialization in native image
-        "ai.core.cli.a2a.handler.SessionsHandler$SessionItem",
-        "ai.core.cli.a2a.handler.SessionMessagesHandler$MessageDto",
-        // ChatSessionActionHandler inner classes for JSON serialization in native image
-        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$SessionInfo",
-        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$HistoryMessage",
-        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$HistoryResponse",
-        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$SimpleMessage",
         // ACP SDK ServiceLoader SPI implementation (discovered via META-INF/services/)
         "com.agentclientprotocol.sdk.json.JacksonAcpJsonMapperSupplier",
         "com.agentclientprotocol.sdk.json.JacksonAcpJsonMapper"

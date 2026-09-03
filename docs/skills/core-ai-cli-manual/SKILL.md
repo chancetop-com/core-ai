@@ -1,6 +1,6 @@
 ---
 name: core-ai-cli-manual
-description: Complete operation manual for core-ai-cli covering all configuration, features, and operational modes. Use when the user asks about configuring core-ai-cli, understanding available features, reading or writing agent.properties, setting up LLM providers, memory system configuration, hooks, MCP servers, CLI commands, ACP mode, serve mode, remote agents, or any aspect of core-ai-cli operation. This skill is for both users and LLMs — use it to look up exact property names, defaults, and configuration patterns before making changes.
+description: Complete operation manual for core-ai-cli covering all configuration, features, and operational modes. Use when the user asks about configuring core-ai-cli, understanding available features, reading or writing agent.properties, setting up LLM providers, memory system configuration, hooks, MCP servers, CLI commands, ACP mode, remote agents, or any aspect of core-ai-cli operation. This skill is for both users and LLMs — use it to look up exact property names, defaults, and configuration patterns before making changes.
 ---
 
 # core-ai-cli Operation Manual
@@ -41,7 +41,7 @@ For detailed reference, read the relevant file:
 | Topic | File |
 |-------|------|
 | **All agent.properties keys, defaults, and descriptions** | [references/agent-properties.md](references/agent-properties.md) |
-| **CLI modes (interactive, headless, serve, ACP), flags, and commands** | [references/cli-modes.md](references/cli-modes.md) |
+| **CLI modes (interactive, headless, ACP), flags, and commands** | [references/cli-modes.md](references/cli-modes.md) |
 | **hooks.json format, events, environment variables** | [references/hooks.md](references/hooks.md) |
 | **MCP server configuration** | [references/mcp.md](references/mcp.md) |
 | **Memory system architecture, properties, and modes** | [references/memory.md](references/memory.md) |
@@ -49,15 +49,15 @@ For detailed reference, read the relevant file:
 
 ## Feature Gates (Quick Reference)
 
-| Property | Interactive | Headless | Serve | ACP |
-|----------|------------|----------|-------|-----|
-| `agent.memory.enabled` | `true` | `true` | `true` | `true` |
-| `agent.memory.daily.logs.enabled` | `false` | `false` | `false` | `false` |
-| `agent.memory.prompt.extraction` | `false` | n/a | n/a | n/a |
-| `agent.coding.enabled` | `false` | `false` | `false` | `false` |
-| `agent.todo.v2.enabled` | `false` | `false` | `false` | n/a |
+| Property | Interactive | Headless | ACP |
+|----------|------------|----------|-----|
+| `agent.memory.enabled` | `true` | `true` | `true` |
+| `agent.memory.daily.logs.enabled` | `false` | `false` | `false` |
+| `agent.memory.prompt.extraction` | `false` | n/a | n/a |
+| `agent.coding.enabled` | `false` | `false` | `false` |
+| `agent.todo.v2.enabled` | `false` | `false` | n/a |
 
-All boolean feature flags default to `false` unless noted. `agent.memory.enabled` defaults to `true`. Interactive mode = `core-ai`, Headless = `core-ai --prompt`, Serve = `core-ai --serve`, ACP = `core-ai --acp-agent`.
+All boolean feature flags default to `false` unless noted. `agent.memory.enabled` defaults to `true`. Interactive mode = `core-ai`, Headless = `core-ai --prompt`, ACP = `core-ai --acp-agent`.
 
 ## Writing Configuration
 

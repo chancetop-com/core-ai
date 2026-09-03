@@ -4,6 +4,12 @@ plugins {
 
 graalvmNative {
     toolchainDetection.set(false)
+    metadataRepository {
+        // the reachability-metadata repo registers jackson's optional DOM/JAXB ext handlers
+        // (condition: org.w3c.dom.Node reachable), which drags java.xml/Xerces into the image;
+        // the CLI ships its own minimal reflect-config instead (see META-INF/native-image in resources)
+        excludedModules.add("com.fasterxml.jackson.core:jackson-databind")
+    }
     binaries {
         named("main") {
             javaLauncher.set(project.extensions.getByType<JavaToolchainService>().launcherFor {
@@ -16,12 +22,15 @@ graalvmNative {
             buildArgs.add("--initialize-at-build-time=core.framework.internal.log.LogLevel")
             buildArgs.add("--initialize-at-build-time=ai.core.cli.log.CliLoggerFactory")
             buildArgs.add("--initialize-at-build-time=ai.core.cli.log.CliLoggerServiceProvider")
-            buildArgs.add("-H:IncludeResources=com/knuddels/jtokkit/.*")
+            // only the cl100k model is used at runtime; p50k/r50k/o200k stay out of the image
+            buildArgs.add("-H:IncludeResources=com/knuddels/jtokkit/cl100k_base\\.tiktoken")
             buildArgs.add("-H:IncludeResources=org/jline/.*")
+            buildArgs.add("-H:ExcludeResources=org/jline/nativ/.*")
             buildArgs.add("-H:IncludeResources=META-INF/services/org/jline/.*")
             buildArgs.add("-H:IncludeResources=META-INF/services/io.modelcontextprotocol.*")
             buildArgs.add("-H:IncludeResources=META-INF/services/com.agentclientprotocol.*")
-            buildArgs.add("-H:IncludeResources=web/.*")
+            // litellm pricing catalog is only a cost fallback; CLI cost comes from upstream/gateway prices
+            buildArgs.add("-H:ExcludeResources=model_prices_and_context_window\\.json")
             buildArgs.add("--initialize-at-run-time=org.slf4j.LoggerFactory")
             buildArgs.add("--features=ai.core.cli.graalvm.NativeReflectionFeature")
         }

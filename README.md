@@ -64,7 +64,6 @@ core-ai-cli --model "openai/gpt-4o"                    # Use a specific model
 core-ai-cli --workspace /path/to/project                # Set workspace
 core-ai-cli --continue                                  # Resume last session
 core-ai-cli --server https://your-server.com --api-key your-token  # Remote server
-core-ai-cli --serve                                     # Start as A2A web server
 core-ai-cli --upgrade                                   # Self-update
 ```
 

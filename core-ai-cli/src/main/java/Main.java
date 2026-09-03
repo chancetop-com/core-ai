@@ -70,18 +70,6 @@ public class Main implements Callable<Integer> {
     @Option(names = "--agent-id", description = "Agent ID or A2A tenant to use on remote server (default: default-assistant)")
     String agentId;
 
-    @Option(names = "--serve", description = "Start A2A web server mode")
-    boolean serve;
-
-    @Option(names = "--port", description = "A2A server port (default: 8080)", defaultValue = "8080")
-    int port;
-
-    @Option(names = "--headless", description = "A2A server without opening browser")
-    boolean headless;
-
-    @Option(names = "--web-dir", description = "Serve frontend from local directory (for dev)")
-    Path webDir;
-
     @Option(names = "--acp-agent", description = "Start in ACP (Agent Client Protocol) stdio mode for editor integration")
     boolean acpAgent;
 
@@ -107,8 +95,6 @@ public class Main implements Callable<Integer> {
         var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace, timeLimitSeconds);
         if (acpAgent) {
             new CliApp(options).startAcpAgent();
-        } else if (serve) {
-            new CliApp(options).startServe(port, !headless, webDir);
         } else if (serverUrl != null) {
             new CliApp(options).startRemote(serverUrl, apiKey, agentId);
         } else {

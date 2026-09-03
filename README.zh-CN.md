@@ -62,7 +62,6 @@ core-ai-cli --model "openai/gpt-4o"                    # 指定模型
 core-ai-cli --workspace /path/to/project                # 设置工作目录
 core-ai-cli --continue                                  # 恢复上次会话
 core-ai-cli --server https://your-server.com --api-key your-token  # 连接远程服务器
-core-ai-cli --serve                                     # 启动 A2A Web 服务器
 core-ai-cli --upgrade                                   # 自动更新
 ```
 

@@ -1,15 +1,18 @@
 package ai.core.cli.auth;
 
-import io.undertow.Undertow;
-import io.undertow.util.Headers;
-import io.undertow.util.StatusCodes;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -22,10 +25,13 @@ public class LocalCallbackServer implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalCallbackServer.class);
     private static final Path PORT_FILE = Path.of(System.getProperty("user.home"), ".core-ai", "cli.port");
 
-    private static void sendHtml(io.undertow.server.HttpServerExchange exchange, String html) {
-        exchange.setStatusCode(StatusCodes.OK);
-        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/html; charset=utf-8");
-        exchange.getResponseSender().send(html);
+    private static void sendHtml(HttpExchange exchange, String html) throws IOException {
+        var bytes = html.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (var body = exchange.getResponseBody()) {
+            body.write(bytes);
+        }
     }
 
     @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
@@ -73,42 +79,57 @@ public class LocalCallbackServer implements AutoCloseable {
                 + "</html>";
     }
 
-    private final Undertow server;
+    private final HttpServer server;
     private final int port;
     private final CompletableFuture<String> apiKeyFuture = new CompletableFuture<>();
 
     public LocalCallbackServer() {
-        this.server = Undertow.builder()
-                .addHttpListener(0, "127.0.0.1")
-                .setHandler(exchange -> {
-                    try {
-                        var params = exchange.getQueryParameters();
-                        var apiKey = params.get("api_key") != null ? params.get("api_key").getFirst() : null;
-                        var error = params.get("error") != null ? params.get("error").getFirst() : null;
-
-                        if (error != null) {
-                            apiKeyFuture.completeExceptionally(new RuntimeException("authorization denied: " + error));
-                            sendHtml(exchange, errorPage(error));
-                            return;
-                        }
-
-                        if (apiKey != null && !apiKey.isBlank()) {
-                            sendHtml(exchange, successPage());
-                            apiKeyFuture.complete(apiKey);
-                            return;
-                        }
-
-                        sendHtml(exchange, errorPage("no api_key parameter"));
-                    } catch (Exception e) {
-                        apiKeyFuture.completeExceptionally(e);
-                    }
-                })
-                .setWorkerThreads(1)
-                .build();
-        server.start();
-        this.port = ((InetSocketAddress) server.getListenerInfo().get(0).getAddress()).getPort();
+        try {
+            server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/", this::handle);
+            server.start();
+            port = server.getAddress().getPort();
+        } catch (IOException e) {
+            throw new IllegalStateException("failed to start local callback server", e);
+        }
         writePortFile();
         LOGGER.debug("LocalCallbackServer started on port {}", port);
+    }
+
+    private void handle(HttpExchange exchange) throws IOException {
+        try {
+            var params = parseQuery(exchange.getRequestURI().getRawQuery());
+            var apiKey = params.get("api_key");
+            var error = params.get("error");
+
+            if (error != null) {
+                apiKeyFuture.completeExceptionally(new RuntimeException("authorization denied: " + error));
+                sendHtml(exchange, errorPage(error));
+                return;
+            }
+
+            if (apiKey != null && !apiKey.isBlank()) {
+                sendHtml(exchange, successPage());
+                apiKeyFuture.complete(apiKey);
+                return;
+            }
+
+            sendHtml(exchange, errorPage("no api_key parameter"));
+        } catch (Exception e) {
+            apiKeyFuture.completeExceptionally(e);
+        }
+    }
+
+    private Map<String, String> parseQuery(String rawQuery) {
+        var params = new HashMap<String, String>();
+        if (rawQuery == null || rawQuery.isEmpty()) return params;
+        for (var pair : rawQuery.split("&")) {
+            var index = pair.indexOf('=');
+            var key = index >= 0 ? pair.substring(0, index) : pair;
+            var value = index >= 0 ? pair.substring(index + 1) : "";
+            params.putIfAbsent(URLDecoder.decode(key, StandardCharsets.UTF_8), URLDecoder.decode(value, StandardCharsets.UTF_8));
+        }
+        return params;
     }
 
     public int port() {
@@ -131,7 +152,7 @@ public class LocalCallbackServer implements AutoCloseable {
     @Override
     public void close() {
         try {
-            server.stop();
+            server.stop(0);
             Files.deleteIfExists(PORT_FILE);
             LOGGER.debug("LocalCallbackServer stopped");
         } catch (Exception e) {

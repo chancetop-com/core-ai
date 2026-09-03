@@ -2,13 +2,12 @@
 
 ## Operation Modes
 
-core-ai-cli supports six modes via the `core-ai` command:
+core-ai-cli supports five modes via the `core-ai` command:
 
 | Mode | Command | Description |
 |------|---------|-------------|
 | Interactive | `core-ai` | REPL mode — type prompts and use slash commands |
 | Headless | `core-ai --prompt "query"` | Single prompt, print response, exit |
-| Serve | `core-ai --serve` | Start A2A web server (port 9527 by default) |
 | ACP | `core-ai --acp-agent` | Stdio mode for editor integration (Agent Client Protocol) |
 | Remote | `core-ai --server <url>` | Connect to remote core-ai-server |
 | Resume | `core-ai --resume` | Pick a recent session to resume |
@@ -30,10 +29,6 @@ core-ai-cli supports six modes via the `core-ai` command:
 | `--server <url>` | String | — | Remote A2A agent URL |
 | `--api-key <token>` | String | — | Bearer token for remote |
 | `--agent-id <id>` | String | `default-assistant` | Agent ID on remote server |
-| `--serve` | boolean | — | Start A2A web server |
-| `--port <num>` | int | `9527` | A2A server port |
-| `--headless` | boolean | — | Serve without opening browser |
-| `--web-dir <path>` | Path | — | Serve frontend from local directory |
 | `--acp-agent` | boolean | — | Start in ACP stdio mode |
 | `--upgrade` | boolean | — | Download latest CLI version |
 | `--upgrade-dir <path>` | Path | — | Install dir for `--upgrade` |
@@ -41,7 +36,7 @@ core-ai-cli supports six modes via the `core-ai` command:
 
 ## Interactive Mode Slash Commands
 
-Available in the REPL (`core-ai` without `--prompt` or `--serve`):
+Available in the REPL (`core-ai` without `--prompt`):
 
 ### Session Management
 | Command | Description |
@@ -126,21 +121,6 @@ core-ai --model gpt-4o --prompt "Review this code"
 # With time limit
 core-ai --time-limit-seconds 300 --prompt "Run the benchmark suite"
 ```
-
-## Serve Mode
-
-```bash
-# Start A2A web server
-core-ai --serve
-
-# Custom port, headless
-core-ai --serve --port 8080 --headless
-
-# With local frontend for development
-core-ai --serve --web-dir ./frontend/dist
-```
-
-Serve mode starts an HTTP API server for A2A protocol clients to connect.
 
 ## ACP Mode
 

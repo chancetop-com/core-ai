@@ -213,8 +213,6 @@ project(":core-ai-cli") {
         // Project Reactor (required by ACP SDK)
         implementation(platform("io.projectreactor:reactor-bom:2024.0.1"))
         implementation("io.projectreactor:reactor-core")
-        // Undertow for embedded A2A web server (--serve mode)
-        implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
         // GraalVM SDK for native-image Feature (compile-time only)
         compileOnly("org.graalvm.sdk:nativeimage:${Versions.GRAALVM_SDK_VERSION}")
         compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
@@ -240,26 +238,6 @@ project(":core-ai-cli") {
         systemProperty("org.jline.terminal.type", "xterm-256color")
         System.getProperty("core.ai.debug")?.let { systemProperty("core.ai.debug", it) }
         outputs.upToDateWhen { false }
-    }
-    tasks.register<Exec>("npmInstall") {
-        group = "build"
-        workingDir = rootDir.resolve("core-ai-frontend")
-        commandLine(Frontend.commandLine(listOf("npm", "install", "--legacy-peer-deps")))
-    }
-    tasks.register<Exec>("buildFrontend") {
-        group = "build"
-        dependsOn("npmInstall")
-        workingDir = rootDir.resolve("core-ai-frontend")
-        commandLine(Frontend.commandLine(listOf("npm", "run", "build")))
-    }
-    tasks.register<Copy>("copyFrontend") {
-        group = "build"
-        dependsOn("buildFrontend")
-        from(rootDir.resolve("core-ai-frontend/build/dist"))
-        into(layout.buildDirectory.dir("resources/main/web"))
-    }
-    tasks.named("processResources") {
-        dependsOn("copyFrontend")
     }
 }
 

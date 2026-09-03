@@ -1,12 +1,10 @@
 package ai.core.cli;
 
-import ai.core.a2a.A2ARunManager;
 import ai.core.a2a.RemoteAgentSession;
 import ai.core.agent.profile.AgentProfile;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
-import ai.core.cli.a2a.A2AServer;
 import ai.core.cli.acp.AcpAgentRunner;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
@@ -24,7 +22,6 @@ import ai.core.cli.remote.A2ARemoteAgentConfigLoader;
 import ai.core.cli.remote.A2ARemoteConnector;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.remote.RemoteSessionRunner;
-import ai.core.cli.session.LocalChatSessionManager;
 import ai.core.cli.skill.ManagedSkillProvisioner;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
@@ -35,7 +32,6 @@ import ai.core.session.SessionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -169,28 +165,6 @@ public class CliApp {
         return null;
     }
 
-    private String resolveSessionIdForServe(SessionManager sessionManager) {
-        if (continueSession) {
-            var sessions = sessionManager.listSessions();
-            if (sessions.isEmpty()) {
-                ConsoleWriter.println("No previous sessions found. Starting new session.");
-                return null;
-            }
-            var sid = sessions.getFirst().id();
-            ConsoleWriter.println("Resuming most recent session: " + sid);
-            return sid;
-        }
-        if (resume) {
-            var sessions = sessionManager.listSessions();
-            if (sessions.isEmpty()) {
-                ConsoleWriter.println("No previous sessions found. Starting new session.");
-                return null;
-            }
-            return CliAppHelper.pickSession(sessions, sessionManager, ConsoleWriter::println, () -> new java.util.Scanner(System.in, StandardCharsets.UTF_8).nextLine());
-        }
-        return null;
-    }
-
     public void startAcpAgent() {
         System.setProperty("core.appName", "core-ai-cli");
         var runner = new AcpAgentRunner(configFile, modelOverride, autoApproveAll, workspace);
@@ -300,47 +274,6 @@ public class CliApp {
             ui.showError(e.getMessage());
         } finally {
             CliAppHelper.closeQuietly(ui);
-        }
-    }
-
-    public void startServe(int port, boolean openBrowser, Path webDir) {
-        System.setProperty("core.appName", "core-ai-cli");
-        var bc = bootstrapCore();
-        ManagedSkillProvisioner.provision();
-        var sessionManager = bc.sessionManager();
-        var currentSessionId = resolveSessionIdForServe(sessionManager);
-        if (currentSessionId == null) currentSessionId = CliAppHelper.defaultSessionId("serve-");
-        CliLogger.initialize(workspace, currentSessionId);
-        var agentConfig = new CliAgent.Config(bc.result().llmProviders, modelOverride, bc.maxTurn(), bc.sessionPersistence(), workspace, question -> {
-            LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
-            return "(user input not available in web mode)";
-        }, bc.memoryEnabled(), bc.dailyLogsEnabled(), bc.coding(), bc.todoV2Enabled(), currentSessionId, bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), bc.a2aAutoDiscover(),
-                bc.mediaProvider(), bc.imageMediaProvider(), bc.videoMediaProvider(), bc.defaultImageModel(), bc.defaultVideoModel(), null);
-        var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, bc.permissionStore(), currentSessionId);
-        var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, bc.permissionStore(), sessionManager, bc.sessionPersistence(), workspace);
-        var server = new A2AServer(port, runManager, chatSessionManager, bc.sessionPersistence(), webDir);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            ScriptHookLifecycle.fireSessionStopHooks(workspace);
-            server.stop();
-            CliAppHelper.closeShutdownResources(bc.result());
-        }));
-        server.start();
-        var authStatus = AuthManager.status();
-        if (authStatus != null) ConsoleWriter.println("[" + authStatus + "]");
-        var url = "http://localhost:" + port;
-        ConsoleWriter.println("A2A server running at " + url);
-        if (!currentSessionId.startsWith("serve-")) {
-            ConsoleWriter.println("Session: " + currentSessionId);
-        }
-        if (openBrowser) {
-            BrowserLauncher.open(url);
-        } else {
-            ConsoleWriter.println("Headless mode - use any A2A client to connect");
-        }
-        try {
-            Thread.currentThread().join();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
     }
 

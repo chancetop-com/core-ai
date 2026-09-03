@@ -3,7 +3,6 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import ai.core.utils.ImageUtil;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +25,6 @@ public class ReadFileTool extends ToolCall {
     private static final Logger LOGGER = LoggerFactory.getLogger(ReadFileTool.class);
     private static final int DEFAULT_LINE_LIMIT = 2000;
     private static final int MAX_LINE_LENGTH = 2000;
-    public static final int DEFAULT_MAX_IMAGE_SIZE_BYTES = 500_000;
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
 
     private static final String TOOL_DESC = """
@@ -76,10 +74,6 @@ public class ReadFileTool extends ToolCall {
 
     public static Builder builder() {
         return new Builder();
-    }
-
-    public static boolean shouldCompress(int sizeBytes) {
-        return sizeBytes > DEFAULT_MAX_IMAGE_SIZE_BYTES;
     }
 
     @Override
@@ -138,14 +132,6 @@ public class ReadFileTool extends ToolCall {
             var bytes = Files.readAllBytes(Path.of(filePath));
             var originalSize = bytes.length;
             var mimeType = getImageMimeType(filePath);
-
-            if (shouldCompress(bytes.length)) {
-                var compressed = ImageUtil.compressImage(file, bytes, mimeType);
-                bytes = compressed.data();
-                mimeType = compressed.mimeType();
-                LOGGER.debug("Compressed image: {}, original: {} bytes, compressed: {} bytes",
-                        filePath, originalSize, bytes.length);
-            }
 
             var base64 = Base64.getEncoder().encodeToString(bytes);
             LOGGER.debug("Successfully read image file: {}, mimeType: {}, size: {} bytes", filePath, mimeType, bytes.length);
