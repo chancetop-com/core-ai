@@ -84,7 +84,7 @@ public class BackgroundTaskManager {
             try {
                 var runResult = runAgentWithSink(agentRunner, sink, taskId);
                 LOGGER.debug("background task finished, taskId={}, status={}", taskId, runResult.status);
-                notifyTerminal(taskId, runResult.status, outputRef, runResult.result, runResult.error, notified);
+                notifyTerminal(taskId, runResult.status, runResult.result, runResult.error, running);
             } finally {
                 scope.close();
             }
@@ -93,12 +93,7 @@ public class BackgroundTaskManager {
         if (token != null) {
             token.onCancel(() -> {
                 LOGGER.debug("token cancelled for background task, taskId={}", taskId);
-                future.cancel(true);
-                // Send cancellation notification immediately. The executor lambda also
-                // sends a "cancelled" status when it detects the interruption, but if the
-                // task hasn't started yet, future.cancel(true) prevents execution entirely
-                // and the lambda never runs. The notified CAS ensures exactly one notification.
-                notifyTerminal(taskId, "cancelled", outputRef, null, "cancelled by user", notified);
+                cancelRunning(taskId, running);
             });
         }
         return new TaskHandle(outputRef, future);
@@ -121,20 +116,28 @@ public class BackgroundTaskManager {
             return false;
         }
         LOGGER.debug("cancelling background task, taskId={}", taskId);
-        running.future.cancel(true);
-        notifyTerminal(taskId, "cancelled", running.outputRef, null, "cancelled by user", running.notified);
-        return true;
+        return cancelRunning(taskId, running);
     }
 
     public boolean isRunning(String taskId) {
         return runningTasks.containsKey(taskId);
     }
 
-    private void notifyTerminal(String taskId, String status, String outputRef, String result, String error, AtomicBoolean notified) {
-        if (!notified.compareAndSet(false, true)) {
-            return;
-        }
-        runningTasks.remove(taskId);
+    private boolean cancelRunning(String taskId, RunningTask running) {
+        if (!running.notified.compareAndSet(false, true)) return false;
+        runningTasks.remove(taskId, running);
+        running.future.cancel(true);
+        publishTerminal(taskId, "cancelled", running.outputRef, null, "cancelled by user");
+        return true;
+    }
+
+    private void notifyTerminal(String taskId, String status, String result, String error, RunningTask running) {
+        if (!running.notified.compareAndSet(false, true)) return;
+        runningTasks.remove(taskId, running);
+        publishTerminal(taskId, status, running.outputRef, result, error);
+    }
+
+    private void publishTerminal(String taskId, String status, String outputRef, String result, String error) {
         commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error));
         dispatcher.accept(TaskStatusEvent.of(sessionId, taskId, status));
     }
