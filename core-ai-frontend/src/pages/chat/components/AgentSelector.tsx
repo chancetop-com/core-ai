@@ -103,7 +103,7 @@ const AgentSelector = memo(function AgentSelector({
       onMouseEnter={event => { if (selectedAgentId !== agent.id) event.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
       onMouseLeave={event => { if (selectedAgentId !== agent.id) event.currentTarget.style.background = 'transparent'; }}>
       <button
-        onClick={() => handleSelect(agent.id)}
+        onClick={() => handleSelect(agent.id, agent)}
         className="flex items-center gap-2 flex-1 min-w-0 text-left text-sm cursor-pointer"
         style={{ color: 'var(--color-text)', background: 'transparent' }}>
         {icon === 'bot' ? (
