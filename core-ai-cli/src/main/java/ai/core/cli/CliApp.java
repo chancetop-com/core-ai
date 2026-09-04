@@ -1,11 +1,11 @@
 package ai.core.cli;
 
-import ai.core.a2a.RemoteAgentSession;
 import ai.core.agent.profile.AgentProfile;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.acp.AcpAgentRunner;
+import ai.core.cli.a2a.A2ARemoteAgentConfigLoader;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.auth.AuthConfig;
@@ -18,10 +18,6 @@ import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.plugin.PluginManager;
-import ai.core.cli.remote.A2ARemoteAgentConfigLoader;
-import ai.core.cli.remote.A2ARemoteConnector;
-import ai.core.cli.remote.RemoteConfig;
-import ai.core.cli.remote.RemoteSessionRunner;
 import ai.core.cli.skill.ManagedSkillProvisioner;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
@@ -218,12 +214,6 @@ public class CliApp {
             while (true) {
                 var runner = createLocalRunner(ui, ctx, currentSessionId);
                 String nextSessionId = runner.run();
-                var remote = runner.getRemoteConfig();
-                if (remote != null) {
-                    runRemoteSession(ui, remote, null);
-                    ui.printStreamingChunk(AnsiTheme.MUTED + "  Back to local mode." + AnsiTheme.RESET + "\n");
-                    continue;
-                }
                 if (nextSessionId == null) break;
                 currentSessionId = nextSessionId.isEmpty() ? null : nextSessionId;
             }
@@ -257,40 +247,6 @@ public class CliApp {
         var defaultServerUrl = ctx.props().property("core.server.url").orElse(null);
         var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds(), defaultServerUrl, scheduledTaskStore);
         return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);
-    }
-
-    public void startRemote(String serverUrl, String apiKey, String agentId) {
-        // Save credentials so A2ARemoteConnector can resolve them via AuthService
-        if (apiKey != null) {
-            AuthConfig.login(serverUrl, apiKey).save();
-            RuntimeAuthConfig.instance().update(serverUrl + RuntimeAuthConfig.LLM_PROXY_PATH, apiKey);
-        }
-        var config = new RemoteConfig(serverUrl, agentId != null ? agentId : "default-assistant", null);
-        var ui = new TerminalUI();
-        try {
-            runRemoteSession(ui, config, prompt);
-            ui.printStreamingChunk("Goodbye!\n");
-        } catch (Exception e) {
-            ui.showError(e.getMessage());
-        } finally {
-            CliAppHelper.closeQuietly(ui);
-        }
-    }
-
-    private void runRemoteSession(TerminalUI ui, RemoteConfig config, String promptText) {
-        try {
-            var connection = new A2ARemoteConnector().connect(config);
-            var session = RemoteAgentSession.connect(connection.client());
-            var name = config.name() != null ? config.name() : connection.agentName();
-            var runner = new RemoteSessionRunner(ui, session, connection.baseUrl(), name, connection.agentId());
-            if (promptText != null) {
-                runner.runPrompt(promptText);
-            } else {
-                runner.run();
-            }
-        } catch (Exception e) {
-            ui.showError(e.getMessage());
-        }
     }
 
     private void printAuthBanner(TerminalUI ui) {

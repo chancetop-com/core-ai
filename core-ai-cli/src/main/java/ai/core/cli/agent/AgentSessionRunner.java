@@ -10,7 +10,6 @@ import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.memory.SessionCloseExtractor;
-import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.FileReferenceExpander;
@@ -60,7 +59,6 @@ public class AgentSessionRunner {
     private final Integer timeLimitSeconds;
     private final Path workspace;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
-    private final AtomicReference<RemoteConfig> remoteConfig = new AtomicReference<>();
     private final SessionUpgradeHandler upgradeHandler;
     private final ModelPicker modelPicker;
     private ReplCommandHandler commands;
@@ -190,10 +188,6 @@ public class AgentSessionRunner {
             executor.shutdownNow();
             listener.getPanel().stopSpinnerIfActive();
         }
-    }
-
-    public RemoteConfig getRemoteConfig() {
-        return remoteConfig.get();
     }
 
     private void printBanner() {
@@ -351,7 +345,7 @@ public class AgentSessionRunner {
             if (trimmed.startsWith("/")) {
                 dispatcher.dispatch(trimmed, queue);
                 showFrame = true;
-                if (switchSessionId.get() != null || remoteConfig.get() != null) break;
+                if (switchSessionId.get() != null) break;
                 readyForInput.release();
                 continue;
             }

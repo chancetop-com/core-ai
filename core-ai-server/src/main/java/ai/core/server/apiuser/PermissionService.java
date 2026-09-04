@@ -21,6 +21,8 @@ import java.util.List;
  */
 public class PermissionService {
     public static final String RESOURCE_TYPE_AGENT = "agent";
+    // MCP Hub resource whitelist for API users: resourceId is the ToolRegistryEntry id of the MCP server
+    public static final String RESOURCE_TYPE_MCP_SERVER = "mcp-server";
     private static final String USER_TYPE_API = "api";
 
     @Inject
@@ -52,7 +54,15 @@ public class PermissionService {
         if (permission.endsWith(".view")) {
             return permissions.contains(permission.substring(0, permission.length() - ".view".length()) + "manage");
         }
+        if (permission.endsWith(".call")) {
+            return permissions.contains(permission.substring(0, permission.length() - ".call".length()) + ".manage");
+        }
         return false;
+    }
+
+    public boolean isApiUser(String userId) {
+        var user = userCollection.get(userId).orElse(null);
+        return user != null && USER_TYPE_API.equals(user.userType);
     }
 
     public List<String> permissionsOf(String userId) {

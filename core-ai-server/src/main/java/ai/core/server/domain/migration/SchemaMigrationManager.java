@@ -133,7 +133,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVReplayIndexes(),
             new SchemaMigrationVMediaJobReferenceIndex(),
             new SchemaMigrationVPresetSkills(),
-            new SchemaMigrationVSystemPromptNameIndex()
+            new SchemaMigrationVSystemPromptNameIndex(),
+            new SchemaMigrationVMcpHubCallsIndexes()
         );
     }
 }

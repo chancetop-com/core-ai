@@ -93,6 +93,10 @@ public class ToolRegistryService {
         mcpOperationService = new McpServerOperationService(tools, mcpConnectionManager, applicationMcpManager);
     }
 
+    public void setMcpCatalogInvalidator(java.util.function.Consumer<String> invalidator) {
+        mcpOperationService.setCatalogInvalidator(invalidator);
+    }
+
     public void setGitHubTokenProvider(GitHubTokenProvider gitHubTokenProvider) {
         this.gitHubTokenProvider = gitHubTokenProvider;
     }

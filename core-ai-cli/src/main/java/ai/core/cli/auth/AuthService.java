@@ -122,7 +122,8 @@ public final class AuthService {
                 return null;
             }
             ui.printStreamingChunk(
-                    AnsiTheme.MUTED + "  Session ended. Use /login to try again." + AnsiTheme.RESET + "\n");
+                    AnsiTheme.MUTED + "  Session ended. Run 'core-ai-cli --login' (or /login in the REPL) to try again."
+                            + AnsiTheme.RESET + "\n");
             return null;
         } catch (Exception e) {
             LOGGER.warn("Browser login error: {}", e.getMessage());

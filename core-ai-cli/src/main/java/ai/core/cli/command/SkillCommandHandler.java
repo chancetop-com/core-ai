@@ -1,8 +1,7 @@
 package ai.core.cli.command;
 
-import ai.core.cli.auth.AuthService;
-import ai.core.cli.remote.RemoteApiClient;
-import ai.core.cli.remote.RemoteConfig;
+import ai.core.cli.auth.AuthConfig;
+import ai.core.cli.http.RemoteApiClient;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
@@ -90,10 +89,10 @@ public class SkillCommandHandler {
     }
 
     private void uploadToServer(SkillEntry skill) {
-        var config = RemoteConfig.load();
-        if (config == null) {
+        var auth = AuthConfig.load();
+        if (auth == null || auth.serverUrl() == null) {
             ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "core-ai-server is not configured." + AnsiTheme.RESET + "\n");
-            ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Use /remote to connect to a server first." + AnsiTheme.RESET + "\n\n");
+            ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Run core-ai-cli and use /login to connect to a server first." + AnsiTheme.RESET + "\n\n");
             return;
         }
 
@@ -103,7 +102,7 @@ public class SkillCommandHandler {
             return;
         }
 
-        var api = new RemoteApiClient(config.serverUrl(), AuthService.loadApiKey(config.serverUrl()));
+        var api = new RemoteApiClient(auth.serverUrl(), auth.apiKey());
         var files = new LinkedHashMap<String, Path>();
         files.put("skill_file", skillFile);
 
@@ -155,15 +154,15 @@ public class SkillCommandHandler {
 
     @SuppressWarnings("unchecked")
     private void handleServerSkills() {
-        var config = RemoteConfig.load();
-        if (config == null) {
+        var auth = AuthConfig.load();
+        if (auth == null || auth.serverUrl() == null) {
             ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "core-ai-server is not configured." + AnsiTheme.RESET + "\n");
-            ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Use /remote to connect to a server first." + AnsiTheme.RESET + "\n\n");
+            ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Run core-ai-cli and use /login to connect to a server first." + AnsiTheme.RESET + "\n\n");
             return;
         }
 
         ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Fetching skills from server..." + AnsiTheme.RESET + "\n");
-        var api = new RemoteApiClient(config.serverUrl(), AuthService.loadApiKey(config.serverUrl()));
+        var api = new RemoteApiClient(auth.serverUrl(), auth.apiKey());
 
         String json;
         try {

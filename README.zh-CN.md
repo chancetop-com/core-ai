@@ -57,11 +57,13 @@ CLI 支持两种使用模式：
 
 ```bash
 core-ai-cli                                          # 交互式对话
+core-ai-cli --login [server-url]                      # 登录 core-ai-server（REPL 之外也可用）
 core-ai-cli --prompt "解释量子计算"                     # 单次查询
 core-ai-cli --model "openai/gpt-4o"                    # 指定模型
 core-ai-cli --workspace /path/to/project                # 设置工作目录
 core-ai-cli --continue                                  # 恢复上次会话
-core-ai-cli --server https://your-server.com --api-key your-token  # 连接远程服务器
+core-ai-cli mcp search "create jira issue"              # 搜索服务器上注册的 MCP 工具
+core-ai-cli mcp call jira/create_issue --arg project=CORE --arg summary="修复 bug" --json
 core-ai-cli --upgrade                                   # 自动更新
 ```
 

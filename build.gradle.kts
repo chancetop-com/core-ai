@@ -232,6 +232,12 @@ project(":core-ai-cli") {
             "test"
         )
     }
+    // SpotBugs' default aux classpath is the compile classpath, which hides the CLI's
+    // transitive runtime deps (core-ng, otel, google-auth pulled in by core-ai classes).
+    // Missing aux types abort analysis (exit code 3), so analyze against the runtime classpath.
+    tasks.named<com.github.spotbugs.snom.SpotBugsTask>("spotbugsMain") {
+        auxClassPaths.from(configurations.runtimeClasspath.get())
+    }
     tasks.withType<JavaExec> {
         standardInput = System.`in`
         jvmArgs("--enable-native-access=ALL-UNNAMED")

@@ -38,6 +38,9 @@ public class RoleRegistry {
                     PermissionCodes.TRIGGER_VIEW, PermissionCodes.TRIGGER_MANAGE,
                     PermissionCodes.TASK_VIEW,
                     PermissionCodes.TOOL_VIEW,
+                    // mcp.call intentionally NOT granted to the default `user` role in P0:
+                    // it executes MCP tools (side effects) with only admin-provided registration.
+                    // Grant it via Roles UI when Hub rollout is confirmed. See PermissionCodes.MCP_CALL.
                     PermissionCodes.APITOOL_VIEW, PermissionCodes.APITOOL_MANAGE,
                     PermissionCodes.SKILL_VIEW, PermissionCodes.SKILL_MANAGE,
                     PermissionCodes.DATASET_VIEW, PermissionCodes.DATASET_MANAGE,

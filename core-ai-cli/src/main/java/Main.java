@@ -1,6 +1,8 @@
 import ai.core.cli.CliApp;
 import ai.core.cli.CliAppOptions;
 import ai.core.cli.DebugLog;
+import ai.core.cli.auth.LoginCommand;
+import ai.core.cli.hub.McpCommand;
 import ai.core.cli.upgrade.UpgradeChecker;
 import ai.core.cli.upgrade.UpgradeDownloader;
 import org.slf4j.LoggerFactory;
@@ -16,7 +18,8 @@ import java.util.concurrent.Callable;
 /**
  * @author stephen
  */
-@Command(name = "core-ai-cli", versionProvider = VersionProvider.class, description = "Core-AI CLI agent")
+@Command(name = "core-ai-cli", versionProvider = VersionProvider.class, description = "Core-AI CLI agent",
+        subcommands = McpCommand.class)
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         initSlf4j();
@@ -61,14 +64,9 @@ public class Main implements Callable<Integer> {
     @Option(names = "--workspace", description = "Set the working directory for the agent session")
     Path workspace;
 
-    @Option(names = "--server", description = "Connect to a remote A2A agent or core-ai-server")
-    String serverUrl;
-
-    @Option(names = "--api-key", description = "Bearer token for remote server authentication")
-    String apiKey;
-
-    @Option(names = "--agent-id", description = "Agent ID or A2A tenant to use on remote server (default: default-assistant)")
-    String agentId;
+    @Option(names = "--login", arity = "0..1", fallbackValue = "", paramLabel = "server-url",
+            description = "Login to a core-ai-server and exit (optionally pass the server URL; usable outside the REPL)")
+    String loginServerUrl;
 
     @Option(names = "--acp-agent", description = "Start in ACP (Agent Client Protocol) stdio mode for editor integration")
     boolean acpAgent;
@@ -88,6 +86,9 @@ public class Main implements Callable<Integer> {
             checkUpgrade();
             return 0;
         }
+        if (loginServerUrl != null) {
+            return LoginCommand.run(loginServerUrl.isEmpty() ? null : loginServerUrl);
+        }
         if (debug) {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
@@ -95,8 +96,6 @@ public class Main implements Callable<Integer> {
         var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace, timeLimitSeconds);
         if (acpAgent) {
             new CliApp(options).startAcpAgent();
-        } else if (serverUrl != null) {
-            new CliApp(options).startRemote(serverUrl, apiKey, agentId);
         } else {
             new CliApp(options).start();
         }

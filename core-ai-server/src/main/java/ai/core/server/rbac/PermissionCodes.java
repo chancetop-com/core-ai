@@ -26,6 +26,10 @@ public final class PermissionCodes {
     public static final String TOOL_VIEW = "tool.view";
     public static final String MCP_VIEW = "mcp.view";
     public static final String MCP_MANAGE = "mcp.manage";
+    // MCP Hub catalog search + tool execution. Independent from mcp.view (no config exposure);
+    // mcp.manage implies mcp.call. P0 grants it to admin only — decide later whether default
+    // `user` roles may execute registered MCP tools (they can have side effects).
+    public static final String MCP_CALL = "mcp.call";
     public static final String APITOOL_VIEW = "apitool.view";
     public static final String APITOOL_MANAGE = "apitool.manage";
     public static final String SKILL_VIEW = "skill.view";
@@ -53,7 +57,7 @@ public final class PermissionCodes {
             PROMPT_VIEW, PROMPT_MANAGE,
             TRIGGER_VIEW, TRIGGER_MANAGE,
             TASK_VIEW,
-            TOOL_VIEW, MCP_VIEW, MCP_MANAGE,
+            TOOL_VIEW, MCP_VIEW, MCP_MANAGE, MCP_CALL,
             APITOOL_VIEW, APITOOL_MANAGE,
             SKILL_VIEW, SKILL_MANAGE,
             DATASET_VIEW, DATASET_MANAGE,

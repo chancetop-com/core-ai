@@ -2,7 +2,7 @@ package ai.core.cli.skill;
 
 import ai.core.cli.ConsoleWriter;
 import ai.core.cli.auth.AuthConfig;
-import ai.core.cli.remote.RemoteApiClient;
+import ai.core.cli.http.RemoteApiClient;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;

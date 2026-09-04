@@ -55,6 +55,7 @@ class McpServerOperationService {
     private final ApplicationMcpManager applicationMcpManager;
     private final Map<String, CachedToolDetails> toolDetailsCache = new ConcurrentHashMap<>();
     private final Map<String, CachedState> stateCache = new ConcurrentHashMap<>();
+    private java.util.function.Consumer<String> catalogInvalidator;
     private MongoCollection<ToolRegistryEntry> toolRegistryCollection;
 
     McpServerOperationService(Map<String, ToolRegistryEntry> tools,
@@ -69,6 +70,11 @@ class McpServerOperationService {
         this.toolRegistryCollection = toolRegistryCollection;
     }
 
+    /** Optional hub catalog hook — server enable/disable/connect drops the stale snapshot immediately. */
+    void setCatalogInvalidator(java.util.function.Consumer<String> catalogInvalidator) {
+        this.catalogInvalidator = catalogInvalidator;
+    }
+
     ToolRegistryEntry createMcpServer(String name, String description, String category,
                                       Map<String, String> config, Boolean enabled) {
         return createMcpServerInternal(name, description, category, config, enabled, null);
@@ -76,6 +82,7 @@ class McpServerOperationService {
 
     ToolRegistryEntry createMcpServerInternal(String name, String description, String category,
                                               Map<String, String> config, Boolean enabled, String rawConfig) {
+        validateServerName(name);
         if (findMcpServerByName(name).isPresent()) {
             throw new ConflictException("mcp server name already exists: " + name);
         }
@@ -137,6 +144,7 @@ class McpServerOperationService {
         boolean enabledChanged = false;
 
         if (request.name != null && !request.name.equals(entity.name)) {
+            validateServerName(request.name);
             if (findMcpServerByName(request.name).isPresent()) {
                 throw new ConflictException("mcp server name already exists: " + request.name);
             }
@@ -367,6 +375,7 @@ class McpServerOperationService {
     private void invalidateMcpServerCache(String serverId) {
         toolDetailsCache.remove(serverId);
         stateCache.remove(serverId);
+        if (catalogInvalidator != null) catalogInvalidator.accept(serverId);
     }
 
     private ToolRegistryEntry requireMcpEntity(String serverId) {
@@ -375,6 +384,13 @@ class McpServerOperationService {
             throw new RuntimeException("mcp server not found or not MCP type, id=" + serverId);
         }
         return entity;
+    }
+
+    private void validateServerName(String name) {
+        if (name == null || name.contains("/")) {
+            throw new core.framework.web.exception.BadRequestException(
+                    "mcp server name must not contain '/': " + name);
+        }
     }
 
     private java.util.Optional<ToolRegistryEntry> findMcpServerByName(String name) {

@@ -46,6 +46,8 @@ import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
+import ai.core.server.domain.McpHubCall;
+import ai.core.server.mcphub.McpHubModule;
 import ai.core.server.domain.User;
 import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
@@ -122,6 +124,9 @@ public class ServerApp extends App {
         load(new AgentDefinitionModule());
         load(new DatasetModule());
         load(new ToolRegistryModule());
+        // MCP Hub needs ToolRegistryService (registry) — must follow ToolRegistryModule; its own
+        // schedule job keeps the hub catalog warm for later consumers (SessionModule etc.).
+        load(new McpHubModule());
         load(new WebFoundationModule());
         load(new AsyncToolTaskModule());
         load(new SessionModule());
@@ -211,6 +216,7 @@ public class ServerApp extends App {
         mongo.collection(ApiKey.class);
         mongo.collection(AsyncToolTaskRecord.class);
         mongo.collection(ToolRegistryEntry.class);
+        mongo.collection(McpHubCall.class);
         mongo.collection(AgentDefinition.class);
         mongo.collection(ChannelConfigView.class);
         mongo.collection(OcgConfigView.class);

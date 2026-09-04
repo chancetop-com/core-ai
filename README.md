@@ -59,11 +59,13 @@ If no configuration is found on first run, the CLI will guide you through server
 
 ```bash
 core-ai-cli                                          # Interactive chat
+core-ai-cli --login [server-url]                      # Login to a core-ai-server (also outside the REPL)
 core-ai-cli --prompt "Explain quantum computing"       # One-shot query
 core-ai-cli --model "openai/gpt-4o"                    # Use a specific model
 core-ai-cli --workspace /path/to/project                # Set workspace
 core-ai-cli --continue                                  # Resume last session
-core-ai-cli --server https://your-server.com --api-key your-token  # Remote server
+core-ai-cli mcp search "create jira issue"              # Search MCP tools registered on the server
+core-ai-cli mcp call jira/create_issue --arg project=CORE --arg summary="Fix bug" --json
 core-ai-cli --upgrade                                   # Self-update
 ```
 
