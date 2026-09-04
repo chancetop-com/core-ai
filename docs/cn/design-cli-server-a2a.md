@@ -268,6 +268,9 @@ Core-AI 首选 HTTP+JSON binding。当前 CLI serve 模式已经使用以下 end
 
 ### 7.1 CLI 调 server Agent
 
+> ⚠️ 已废弃（2026-09-04）：CLI remote 模式已随 `core-ai-cli mcp …`（MCP Hub 工具发现/执行）落地而移除，
+> 见 [design-mcp-hub-cli.md](design-mcp-hub-cli.md) §7。终端直连 server Agent 的交互改由 Web UI / 委派工具承担。
+
 ```
 core-ai-cli
   └─ 读取 server.url / token / agentId
