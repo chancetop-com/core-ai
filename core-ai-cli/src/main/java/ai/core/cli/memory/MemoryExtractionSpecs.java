@@ -106,6 +106,13 @@ final class MemoryExtractionSpecs {
             | "The external API docs are at..." | reference |
             | Validated approach that worked across tasks | project |
 
+            **Explicit memory requests always win**: when the user says "记住…", "请记住…", "别忘了…",
+            "remember…", "don't forget…", "keep in mind…" and wants the content kept across sessions,
+            write it even if the durability/self-checks below would skip it. Choose the type by content
+            (preference → user, correction → feedback, project constraint/pattern → project, external
+            fact → reference) and extract immediately. If the extraction prompt names an explicit
+            request, store that content FIRST, then continue with the rest of the messages.
+
             ### Process vs. Outcome
             **Extract process, not just results.** The most valuable knowledge is how a problem
             was approached and solved — the reasoning, SOPs, and strategies. Bare numbers

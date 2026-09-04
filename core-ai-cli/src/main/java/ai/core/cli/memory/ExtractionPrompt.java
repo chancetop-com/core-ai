@@ -24,9 +24,20 @@ final class ExtractionPrompt {
             + "Current datetime: %s%n"
             + "Max turns: %d%n";
 
-    static String format(Path workspace, String cursorInfo, ZonedDateTime now, int maxTurns) {
+    private static final String EXPLICIT_REQUEST_TEMPLATE = "%n## Explicit Memory Request%n"
+            + "The user explicitly asked to remember the following. Store it in the knowledge wiki%n"
+            + "even if the durability/self-check filters below would normally skip it — this explicit%n"
+            + "request overrides them. Prioritize it over other candidates:%n"
+            + "> %s%n%n"
+            + "Extract it first, then continue the normal procedure for any remaining unprocessed messages.%n";
+
+    static String format(Path workspace, String cursorInfo, ZonedDateTime now, int maxTurns, String explicitRequest) {
         String spec = MemoryExtractionTool.getCurrentSpec();
-        return TEMPLATE.formatted(spec, workspace.toAbsolutePath(), cursorInfo, now.format(DATETIME_FMT), maxTurns);
+        String prompt = TEMPLATE.formatted(spec, workspace.toAbsolutePath(), cursorInfo, now.format(DATETIME_FMT), maxTurns);
+        if (explicitRequest == null || explicitRequest.isBlank()) {
+            return prompt;
+        }
+        return prompt + EXPLICIT_REQUEST_TEMPLATE.formatted(explicitRequest.strip());
     }
 
     private ExtractionPrompt() { }

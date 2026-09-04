@@ -41,6 +41,8 @@ public final class MemoryTriggerService {
 
     private static final String LOCK_SUFFIX = ".lock";
 
+    private static final ThreadLocal<Boolean> EXTRACTION_THREAD = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     private static volatile ZoneId timezone = ZoneId.systemDefault();
 
 
@@ -98,6 +100,7 @@ public final class MemoryTriggerService {
     private final AtomicInteger extractionTargetCount = new AtomicInteger(-1);
     private final AtomicReference<CountDownLatch> lockProcessingLatch = new AtomicReference<>();
     private final AtomicBoolean agentBusy = new AtomicBoolean(false);
+    private volatile String pendingExplicitRequest;
     private volatile ScheduledExecutorService scheduler;
     private volatile Agent mainAgent;
     private volatile boolean dailyLogsEnabled = false;
@@ -226,6 +229,43 @@ public final class MemoryTriggerService {
             runExtractionAgent();
         } finally {
             extractionInProgress.set(false);
+        }
+    }
+
+    /**
+     * Runs the extraction agent synchronously and guarantees it covers the current conversation
+     * (including the message that triggered the call). Used by {@link ExtractMemoryNowTool} so an
+     * explicit "remember" request is persisted BEFORE the main agent continues with the operation.
+     *
+     * @param explicitRequest the fact the user asked to remember, or {@code null} for a plain run
+     */
+    public void runExplicitMemoryExtraction(String explicitRequest) {
+        if (isExtractionRunningOnCurrentThread()) return; // re-entrant call from inside an extraction run
+        while (true) {
+            waitForExtractionIdle();
+            if (extractionInProgress.compareAndSet(false, true)) break;
+        }
+        try {
+            pendingExplicitRequest = explicitRequest;
+            runExtractionAgent();
+        } finally {
+            pendingExplicitRequest = null;
+            extractionInProgress.set(false);
+        }
+    }
+
+    boolean isExtractionRunningOnCurrentThread() {
+        return Boolean.TRUE.equals(EXTRACTION_THREAD.get());
+    }
+
+    private void waitForExtractionIdle() {
+        while (extractionInProgress.get()) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                // keep waiting: an explicit memory request must be persisted before the turn continues
+                LOGGER.warn("Interrupted while waiting for extraction to finish: {}", e.getMessage());
+            }
         }
     }
 
@@ -362,25 +402,29 @@ public final class MemoryTriggerService {
     }
 
     private void runExtractionAgent() {
+        String explicitRequest = pendingExplicitRequest;
+        EXTRACTION_THREAD.set(Boolean.TRUE);
         try {
             int cursor = readCursor();
             int totalMessages = mainAgent.getHistory().size();
             extractionTargetCount.set(totalMessages);
             var agent = AgentFork.fork(mainAgent, new AgentFork.ForkConfig("extraction", EXTRACTION_MAX_TURNS, (double) EXTRACTION_TEMPERATURE, false, null));
-            agent.injectUserMessage(buildExtractionPrompt(cursor, totalMessages, EXTRACTION_MAX_TURNS));
+            agent.injectUserMessage(buildExtractionPrompt(cursor, totalMessages, EXTRACTION_MAX_TURNS, explicitRequest));
             agent.continueWithInjectedMessage();
         } catch (Exception e) {
             LOGGER.warn("{} agent failed: {}", "extraction", e.getMessage());
         } finally {
+            pendingExplicitRequest = null;
             extractionTargetCount.set(-1);
+            EXTRACTION_THREAD.remove();
         }
     }
 
-    private String buildExtractionPrompt(int cursor, int totalMessages, int maxTurns) {
+    private String buildExtractionPrompt(int cursor, int totalMessages, int maxTurns, String explicitRequest) {
         String cursorInfo = cursor >= 0
                 ? "Messages 0–" + (cursor - 1) + " have been extracted (cursor=" + cursor + ", total=" + totalMessages + ")."
                 : "No messages have been extracted yet (total=" + totalMessages + ").";
-        return ExtractionPrompt.format(workspace, cursorInfo, ZonedDateTime.now(timezone), maxTurns);
+        return ExtractionPrompt.format(workspace, cursorInfo, ZonedDateTime.now(timezone), maxTurns, explicitRequest);
     }
 
     private List<Path> findLockFiles() {

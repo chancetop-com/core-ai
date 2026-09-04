@@ -36,6 +36,7 @@ public class CliMemoryLifecycle extends AbstractLifecycle {
         service.setDailyLogsEnabled(dailyLogsEnabled);
         service.init(agent);
         var tools = new ArrayList<>(service.buildMemoryTools(agent));
+        tools.add(ExtractMemoryNowTool.builder().service(service).build());
         agent.addTools(tools);
     }
 
