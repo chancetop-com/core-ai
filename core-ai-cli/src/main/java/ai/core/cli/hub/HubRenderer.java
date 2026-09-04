@@ -72,7 +72,7 @@ public class HubRenderer {
         int nameWidth = tools.stream().mapToInt(tool -> tool.qualifiedName.length()).max().orElse(1) + 2;
         var matchedByServer = new HashMap<String, Integer>();
         for (var server : servers) {
-            matchedByServer.put(server.name, server.matchedCount == null ? 0 : server.matchedCount);
+            matchedByServer.put(server.name, server.matchedCount != null ? server.matchedCount : 0);
         }
         var lastIndexByServer = new HashMap<String, Integer>();
         for (int i = 0; i < tools.size(); i++) {
