@@ -69,6 +69,9 @@ public final class ToolCallResult {
     private final Map<String, Object> stats;
     private Boolean directReturn;
     private RuntimeException runtimeException;
+    /** Set when this result reports the status of a task that a manager already tracks (a poll relay from async_task_output),
+     * never fresh async work — the executor must not register it as a new async task. */
+    private boolean managedTask;
 
     private String llmModel;
     private Usage llmUsage;
@@ -136,6 +139,15 @@ public final class ToolCallResult {
 
     public boolean isDirectReturn() {
         return directReturn != null && directReturn;
+    }
+
+    public boolean isManagedTask() {
+        return managedTask;
+    }
+
+    public ToolCallResult withManagedTask() {
+        this.managedTask = true;
+        return this;
     }
 
     public Map<String, Object> getStats() {

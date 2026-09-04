@@ -90,6 +90,20 @@ class ToolCallAsyncTaskManagerTest {
     }
 
     @Test
+    void dropsStoredTaskWhoseToolCannotPoll() {
+        // corrupt record from a pre-fix poll relay: the stored tool is the polling tool itself
+        var asyncTaskOutput = AsyncTaskOutputTool.builder().build();
+        manager.registerTool(asyncTaskOutput);
+        manager.storeTask(new ToolCallAsyncTask("t-4", asyncTaskOutput, call(asyncTaskOutput.getName()), ToolCallResult.pending("t-4", "started")), "s");
+
+        var result = manager.pollTask("t-4");
+
+        assertTrue(result.isFailed());
+        assertTrue(manager.loadTask("t-4").isEmpty(), "an un-pollable record must be dropped, not polled forever");
+        assertTrue(manager.listOpenTaskIds().isEmpty());
+    }
+
+    @Test
     void asyncTaskOutputToolRoutesKnownTasksToTheManager() {
         var tool = new CountingPollTool(0);
         named(tool);
@@ -103,6 +117,33 @@ class ToolCallAsyncTaskManagerTest {
         assertEquals(1, tool.polls.get());
         var unknown = AsyncTaskOutputTool.builder().build().execute("{\"action\":\"poll\",\"task_id\":\"nope\"}", context);
         assertFalse(unknown.isCompleted());
+    }
+
+    @Test
+    void pollRelayThroughExecutorDoesNotReRegisterTaskUnderPollingTool() {
+        var tool = new CountingPollTool(2);   // pending twice, then completed
+        named(tool);
+        manager.registerTool(tool);
+        var announced = new ArrayList<String>();
+        manager.addTerminalListener((sessionId, task, result) -> announced.add(sessionId + ":" + task.taskId() + ":" + result.getStatus()));
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var context = ExecutionContext.builder().sessionId("s").asyncTaskManager(manager).build();
+        var asyncTaskOutput = AsyncTaskOutputTool.builder().build();
+
+        // the async tool's pending result registers the task under the tool that started it
+        executor.execute(tool, call(tool.getName()), context);
+        assertEquals("counting_tool", manager.loadTask("t").orElseThrow().tool().getName());
+
+        // an agent poll through async_task_output while the task is still running returns pending
+        var pollCall = FunctionCall.of("call-2", "function", asyncTaskOutput.getName(), "{\"action\":\"poll\",\"task_id\":\"t\"}");
+        var poll = executor.execute(asyncTaskOutput, pollCall, context);
+        assertTrue(poll.isPending(), poll.getResult());
+
+        // ...but must not overwrite the stored record with the polling tool (which cannot poll)
+        assertEquals("counting_tool", manager.loadTask("t").orElseThrow().tool().getName());
+        assertTrue(manager.pollTask("t").isPending());
+        assertTrue(manager.pollTask("t").isCompleted(), "the task must still complete through its real tool");
+        assertEquals(List.of("s:t:COMPLETED"), announced);
     }
 
     /** completes on the (pendingPolls + 1)th poll */

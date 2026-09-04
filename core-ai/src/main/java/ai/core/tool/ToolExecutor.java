@@ -306,7 +306,10 @@ public class ToolExecutor {
         }
 
         var asyncTaskManager = context.getAsyncTaskManager();
-        if (asyncTaskManager != null) {
+        // Register only fresh async work. A pending result that polls a task the manager already tracks or that a
+        // manager owns (poll relay from async_task_output) must not be re-registered: the overwrite would replace
+        // the stored tool with the polling tool, which does not support poll and can never turn the task terminal.
+        if (asyncTaskManager != null && !result.isManagedTask() && asyncTaskManager.loadTask(result.getTaskId()).isEmpty()) {
             var asyncTask = new ToolCallAsyncTask(result.getTaskId(), tool, functionCall, result);
             // tagged with the issuing session so the terminal notification finds its way back
             asyncTaskManager.storeTask(asyncTask, context.getSessionId());

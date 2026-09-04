@@ -2,6 +2,7 @@ package ai.core.tool;
 
 import ai.core.llm.domain.FunctionCall;
 import ai.core.persistence.PersistenceProvider;
+import ai.core.tool.tools.AsyncTaskOutputTool;
 import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,6 +122,14 @@ public class ToolCallAsyncTaskManager {
         if (data.status == ToolCallResult.Status.COMPLETED || data.status == ToolCallResult.Status.FAILED) return data.restoredResult();
         var tool = resolveTool(data.toolName);
         if (tool == null) return ToolCallResult.failed("Tool not available for task " + taskId + ": " + data.toolName);
+        if (tool instanceof AsyncTaskOutputTool) {
+            // Corrupt record from before the executor stopped re-registering poll relays: the stored tool is the
+            // polling tool itself, which never started the task and cannot poll it, so it can never turn terminal.
+            // Drop it (the underlying work keeps running and is reachable through async_task_output by task id).
+            LOGGER.warn("Dropping async task {}: stored tool '{}' does not support polling", taskId, data.toolName);
+            deleteTask(taskId);
+            return ToolCallResult.failed("Dropped task " + taskId + ": tool '" + data.toolName + "' does not support polling");
+        }
         var task = data.toTask(tool);
         if (!task.isPending()) return ToolCallResult.failed("Task is not pending: " + taskId);
         try {

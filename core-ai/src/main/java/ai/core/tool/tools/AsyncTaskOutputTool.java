@@ -70,12 +70,17 @@ public class AsyncTaskOutputTool extends ToolCall {
     private ToolCallResult pollTask(AsyncToolTaskExecutor executor, String taskId, ExecutionContext context) {
         // long-running tool calls (pending results) live in the async task manager, which drives the tool's own poll
         var manager = context != null ? context.getAsyncTaskManager() : null;
-        if (manager != null && manager.loadTask(taskId).isPresent()) return manager.pollTask(taskId);
+        if (manager != null && manager.loadTask(taskId).isPresent()) {
+            // relay of a task the manager already tracks: marking it managed keeps the executor from
+            // re-registering the pending result under this polling tool (which does not support poll)
+            return manager.pollTask(taskId).withManagedTask();
+        }
         var result = executor.poll(taskId);
         var taskManager = context != null ? context.getTaskManager() : null;
         if (taskManager != null && result.isFailed() && taskManager.isRunning(taskId)) {
             // Not an async tool task - a background agent launched via the task tool is still running.
-            return ToolCallResult.pending(taskId, "Background agent is still running");
+            // The agent task manager owns it, so this status must never be registered as an async tool task.
+            return ToolCallResult.pending(taskId, "Background agent is still running").withManagedTask();
         }
 
         var taskInfo = executor.getTaskInfo(taskId);
