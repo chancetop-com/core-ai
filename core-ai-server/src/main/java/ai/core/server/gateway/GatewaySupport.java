@@ -1,5 +1,6 @@
 package ai.core.server.gateway;
 
+import ai.core.http.GatewayHeaderCodec;
 import ai.core.server.domain.GatewayProviderConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.http.HTTPRequest;
@@ -36,8 +37,12 @@ final class GatewaySupport {
 
     // Agent name sent by framework clients (x-agent-name) so the gateway can synthesize an agent
     // layer above the LLM span, mirroring the agent/llm/tool hierarchy of server-side chat traces.
+    // Non-ASCII names travel as an RFC 2047 encoded-word (see GatewayHeaderCodec); plain ASCII
+    // values from external clients pass through unchanged.
     static String agentName(Request request) {
-        return trimToNull(request.header("x-agent-name").orElse(null));
+        var value = trimToNull(request.header("x-agent-name").orElse(null));
+        if (value == null) return null;
+        return GatewayHeaderCodec.decode(value);
     }
 
     // Chat requests replay the previous tool executions as messages: the assistant message holds

@@ -15,13 +15,16 @@ import core.framework.http.HTTPRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author stephen
@@ -38,6 +41,20 @@ class LiteLLMProviderTest {
 
         assertEquals("conversation-1", req.headers.get("x-session-id"));
         assertEquals("menu-agent", req.headers.get("x-agent-name"));
+    }
+
+    @Test
+    void applyGatewayHeadersEncodesNonAsciiAgentName() {
+        var request = CompletionRequest.of(List.of(), List.of(), null, "test-model", "Docs 构建修复助手");
+        request.setSessionId("conversation-1");
+        var req = new HTTPRequest(HTTPMethod.POST, "http://localhost/chat/completions");
+
+        LiteLLMResponsesBridge.applyGatewayHeaders(req, request);
+
+        var expected = "=?UTF-8?B?" + Base64.getEncoder().encodeToString("Docs 构建修复助手".getBytes(StandardCharsets.UTF_8)) + "?=";
+        assertEquals(expected, req.headers.get("x-agent-name"));
+        assertEquals("conversation-1", req.headers.get("x-session-id"));
+        assertTrue(req.headers.get("x-agent-name").chars().allMatch(c -> c >= 0x20 && c <= 0x7E), "header value must stay ASCII");
     }
 
     @Test

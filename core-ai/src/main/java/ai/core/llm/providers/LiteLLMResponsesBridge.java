@@ -2,6 +2,7 @@ package ai.core.llm.providers;
 
 import ai.core.agent.CancelReason;
 import ai.core.agent.CancellationException;
+import ai.core.http.GatewayHeaderCodec;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
@@ -30,10 +31,10 @@ final class LiteLLMResponsesBridge {
 
     static void applyGatewayHeaders(HTTPRequest req, CompletionRequest request) {
         if (!Strings.isBlank(request.getSessionId())) {
-            req.headers.put(SESSION_ID_HEADER, request.getSessionId());
+            req.headers.put(SESSION_ID_HEADER, GatewayHeaderCodec.encode(request.getSessionId()));
         }
         if (!Strings.isBlank(request.getName())) {
-            req.headers.put(AGENT_NAME_HEADER, request.getName());
+            req.headers.put(AGENT_NAME_HEADER, GatewayHeaderCodec.encode(request.getName()));
         }
     }
 

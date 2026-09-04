@@ -3,6 +3,8 @@ package ai.core.server.gateway;
 import core.framework.web.Request;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,6 +51,14 @@ class GatewaySupportTest {
         assertEquals("menu-agent", GatewaySupport.agentName(requestWith("x-agent-name", " menu-agent ")));
         assertNull(GatewaySupport.agentName(requestWith("x-agent-name", null)));
         assertNull(GatewaySupport.agentName(requestWith("x-agent-name", "  ")));
+    }
+
+    @Test
+    void agentNameDecodesEncodedWordBackToOriginalName() {
+        var chineseName = "Docs 构建修复助手";
+        var encoded = "=?UTF-8?B?" + Base64.getEncoder().encodeToString(chineseName.getBytes(StandardCharsets.UTF_8)) + "?=";
+
+        assertEquals(chineseName, GatewaySupport.agentName(requestWith("x-agent-name", encoded)));
     }
 
     @Test
