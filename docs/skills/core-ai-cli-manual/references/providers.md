@@ -2,6 +2,14 @@
 
 core-ai-cli supports multiple LLM providers. Configure via `agent.properties`.
 
+## Option 0: Log in to a core-ai-server
+
+```bash
+core-ai-cli --login https://core-ai.example.com    # or /login inside the REPL
+```
+
+When `litellm.api.base` is not set, a login is enough: the CLI points the `litellm` provider at `<server>/api/cli/v1` with your API key. The same login is used by the hub subcommands (`core-ai-cli mcp …`, see [hub.md](hub.md)). Explicit `litellm.*` properties take precedence over the login.
+
 ## Supported Providers
 
 | Provider | Key | Base URL Required? |

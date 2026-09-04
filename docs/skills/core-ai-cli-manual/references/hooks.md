@@ -7,8 +7,8 @@ Hooks execute shell commands at specific lifecycle events. Compatible with Claud
 | Priority | Location | Scope |
 |----------|----------|-------|
 | Highest | `<workspace>/.core-ai/hooks.json` | Per-project |
-| Medium | `~/.core-ai/plugins/<name>/hooks/hooks.json` | Per-plugin |
-| Lowest | `~/.core-ai/plugins/<name>/hooks/hooks.json` (local) | Per-plugin local |
+| Medium | `~/.core-ai/plugins/<name>/hooks/hooks.json` | Global plugin |
+| Lowest | `<workspace>/.core-ai/plugins/<name>/hooks/hooks.json` | Local (project) plugin |
 
 Deduplication key: `plugin:command` (plugin hooks) or `command` (workspace hooks). If the same command appears at multiple levels, the highest priority wins.
 

@@ -22,19 +22,19 @@ Workspace values override global values. If a property is set in both files, the
 
 ## Feature Gates
 
-| Property | Interactive Default | Serve Default | ACP Default | Description |
-|----------|-------------------|---------------|-------------|-------------|
-| `agent.memory.enabled` | `false` | `true` | `false` | Enable memory extraction system |
-| `agent.memory.daily.logs.enabled` | `false` | `false` | `false` | Enable daily logs (session-close extraction) |
-| `agent.memory.prompt.extraction` | `false` | n/a | n/a | Enable prompt-level extraction triggers |
-| `agent.coding.enabled` | `false` | `false` | `false` | Enable coding mode |
-| `agent.todo.v2.enabled` | `false` | `false` | n/a | Enable todo v2 feature |
+| Property | Interactive / Headless | ACP | Description |
+|----------|-----------------------|-----|-------------|
+| `agent.memory.enabled` | `true` | `true` | Enable memory system |
+| `agent.memory.daily.logs.enabled` | `false` | `false` | Enable daily logs (session-close extraction) |
+| `agent.memory.prompt.extraction` | `false` | n/a | Enable prompt-level extraction triggers |
+| `agent.coding.enabled` | `false` | `false` | Enable coding mode |
+| `agent.todo.v2.enabled` | `false` | n/a | Enable todo v2 feature |
 
 ## Memory Properties
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `agent.memory.enabled` | boolean | `false` | Master switch for memory system |
+| `agent.memory.enabled` | boolean | `true` | Master switch for memory system |
 | `agent.memory.daily.logs.enabled` | boolean | `false` | Enable daily logs — when false, memory switches to direct wiki-only extraction |
 | `agent.memory.prompt.extraction` | boolean | `false` | Enable incremental extraction after each prompt |
 | `agent.memory.timezone` | string | system default | Timezone for memory timestamps (e.g. `Asia/Shanghai`, `America/New_York`) |
@@ -53,6 +53,8 @@ When `agent.memory.enabled=false`:
 ## LLM Provider Configuration
 
 Providers are auto-detected when their `<provider>.api.key` is set. For `litellm`, `openai`, and `azure`, `<provider>.api.base` is also required.
+
+If no `litellm.api.base` is configured and you are logged in to a core-ai-server (`~/.core-ai/auth.json`), the CLI injects `litellm.api.base=<server>/api/cli/v1` and `litellm.api.key=<your api key>` at startup, so a login alone is enough to run the agent.
 
 ### Base (Shared) Properties
 
@@ -79,6 +81,7 @@ Replace `<provider>` with: `litellm`, `openrouter`, `openai`, `deepseek`, `azure
 | `<provider>.temperature` | double | No | Temperature override |
 | `<provider>.embeddings.model` | String | No | Embedding model override |
 | `<provider>.request.extra_body` | JSON | No | Extra body override |
+| `<provider>.request.extra_body.<model>` | JSON | No | Extra body applied only when `<model>` is the active model |
 | `<provider>.timeout.seconds` | long | No | Timeout override |
 | `<provider>.connect.timeout.seconds` | long | No | Connect timeout override |
 | `<provider>.stream.buffer.size` | int | No | Stream buffer override |
@@ -94,16 +97,35 @@ Hardcoded base URLs:
 |----------|------|---------|-------------|
 | `agent.sub.<name>.model` | String | — | Model for sub-agent `<name>` |
 | `agent.sub.<name>.provider` | String | — | LLM provider for sub-agent `<name>` |
+| `agent.sub.<name>.max-turn` | int | — | Max turns for sub-agent `<name>` |
 
-Sub-agents are auto-discovered from any property starting with `agent.sub.`. The `.<name>.` segment identifies the sub-agent.
+Sub-agents are auto-discovered from any property starting with `agent.sub.`. The `.<name>.` segment identifies the sub-agent. Custom agent profiles can also be defined as markdown files in `.core-ai/agents/` (see [cli-modes.md](cli-modes.md)).
 
 ## MCP Configuration
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `mcp.servers.json` | JSON | — | MCP server configurations (see [mcp.md](mcp.md)) |
+| `mcp.servers.json` | JSON | — | Local MCP server configurations (see [mcp.md](mcp.md)). Server-side MCP tools are not configured here; use `core-ai-cli mcp …` (see [hub.md](hub.md)) |
+
+## Media Generation
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `media.image.model` | String | — | Default image generation model |
+| `media.video.model` | String | — | Default video generation model |
+| `media.api.base` / `media.api.key` | String | falls back to `litellm.api.base` / `litellm.api.key` | Shared media endpoint |
+| `media.image.api.base` / `media.image.api.key` | String | falls back to `media.*` | Image endpoint override |
+| `media.video.api.base` / `media.video.api.key` | String | falls back to `media.*` | Video endpoint override |
+| `media.protocol` / `media.video.protocol` | String | — | Set `VERTEX_GEMINI_INTERACTIONS` to use Vertex for video |
+| `media.vertex.api.base`, `media.vertex.project-id`, `media.vertex.location` | String | location `global` | Vertex settings (with a Google service-account JSON) |
 
 ## A2A Remote Agent Configuration
+
+Lets the local agent delegate to agents on a core-ai-server over A2A (`search_remote_agents` / `delegate_to_remote_agent` tools). Planned to be superseded by `core-ai-cli agent run` (see [hub.md](hub.md)).
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `a2a.autoDiscover` | boolean | `false` | Discover agents from the logged-in server at startup |
 
 ### Individual Remote Agents
 
@@ -138,6 +160,8 @@ Sub-agents are auto-discovered from any property starting with `agent.sub.`. The
 | `a2a.remoteServers.<id>.toolPrefix` | String | `<id>` | Tool name prefix |
 | `a2a.remoteServers.<id>.includeAgents` | CSV | all | Agent whitelist |
 | `a2a.remoteServers.<id>.excludeAgents` | CSV | — | Agent blacklist |
+| `a2a.remoteServers.<id>.discoverable` | boolean | `false` | Expose discovered agents as discoverable |
+| `a2a.remoteServers.<id>.maxInputChars` / `.maxOutputChars` | int | system default | Size limits |
 | `a2a.remoteServers.<id>.timeout` | String | `60s` | Timeout |
 | `a2a.remoteServers.<id>.contextPolicy` | String | `SESSION` | Context policy |
 | `a2a.remoteServers.<id>.invocationMode` | String | `STREAM_BLOCKING` | Invocation mode |
