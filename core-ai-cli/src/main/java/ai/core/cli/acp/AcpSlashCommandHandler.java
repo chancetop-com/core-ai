@@ -9,8 +9,6 @@ import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.mcp.client.McpClientManagerRegistry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -25,8 +23,6 @@ import java.util.stream.Collectors;
  * returning results as strings (no TerminalUI dependency).
  */
 class AcpSlashCommandHandler {
-    private static final Logger LOGGER = LoggerFactory.getLogger(AcpSlashCommandHandler.class);
-
     private final Path workspace;
 
     AcpSlashCommandHandler(Path workspace) {
@@ -237,28 +233,23 @@ class AcpSlashCommandHandler {
         }
     }
 
-    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
     private String handleSkills() {
         var sb = new StringBuilder("Installed skills:\n");
-        boolean found = false;
-        for (String d : new String[]{".core-ai/skills", System.getProperty("user.home") + "/.core-ai/skills"}) {
-            var dir = Path.of(d);
-            if (!Files.isDirectory(dir)) continue;
-            try (var s = Files.newDirectoryStream(dir)) {
-                for (var entry : s) {
-                    if (Files.isDirectory(entry) || entry.toString().endsWith(".md")) {
-                        Path fn = entry.getFileName();
-                        String n = fn != null ? fn.toString() : entry.toString();
-                        if (n.endsWith(".md")) n = n.substring(0, n.length() - 3);
-                        sb.append("  ").append(n).append('\n');
-                        found = true;
-                    }
+        var scanner = new ai.core.cli.hub.skill.LocalSkillScanner();
+        int shown = 0;
+        for (var root : List.of(workspace.resolve(".core-ai/skills"), Path.of(System.getProperty("user.home"), ".core-ai", "skills"))) {
+            for (var skill : scanner.scan(root)) {
+                String qualified = skill.qualifiedName() == null || skill.qualifiedName().isEmpty()
+                        ? skill.name() : skill.qualifiedName();
+                sb.append("  ").append(qualified);
+                if (skill.description() != null && !skill.description().isBlank()) {
+                    sb.append("  - ").append(skill.description());
                 }
-            } catch (IOException e) {
-                LOGGER.debug("Cannot read skills directory: {}", d, e);
+                sb.append('\n');
+                shown++;
             }
         }
-        if (!found) sb.append("  (none)");
+        if (shown == 0) sb.append("  (none)");
         return sb.toString();
     }
 

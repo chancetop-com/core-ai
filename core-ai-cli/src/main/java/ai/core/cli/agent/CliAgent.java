@@ -115,11 +115,12 @@ public class CliAgent {
     }
 
     private static SkillConfig buildSkillConfig(Config config, PluginManager pluginManager) {
+        // Lower priority value wins in SkillRegistry: workspace overrides plugins overrides user.
         var builder = SkillConfig.builder()
-                .source("workspace", config.workspace.resolve(".core-ai/skills").toString(), 100)
-                .source("user", userSkillsDir().toString(), 50);
+                .source("workspace", config.workspace.resolve(".core-ai/skills").toString(), 50)
+                .source("user", userSkillsDir().toString(), 100);
 
-        int priority = 75; // Between workspace (100) and user (50)
+        int priority = 75; // Between workspace (50) and user (100)
         for (var source : pluginManager.getEnabledPluginSkillSources()) {
             builder.source("plugin:" + source[0], source[1], priority);
         }

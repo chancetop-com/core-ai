@@ -134,7 +134,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVMediaJobReferenceIndex(),
             new SchemaMigrationVPresetSkills(),
             new SchemaMigrationVSystemPromptNameIndex(),
-            new SchemaMigrationVMcpHubCallsIndexes()
+            new SchemaMigrationVMcpHubCallsIndexes(),
+            new SchemaMigrationVSkillDigestBackfill()
         );
     }
 }

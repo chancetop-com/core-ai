@@ -1,36 +1,35 @@
 package ai.core.cli.command;
 
 import ai.core.cli.auth.AuthConfig;
-import ai.core.cli.http.RemoteApiClient;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import ai.core.cli.hub.skill.LocalSkillScanner;
+import ai.core.cli.hub.skill.SkillHubClient;
+import ai.core.cli.hub.skill.SkillHubMarker;
+import ai.core.cli.hub.skill.SkillInstaller;
+import ai.core.cli.hub.skill.SkillLocations;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
-import ai.core.utils.JsonUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * Handles /skill command with interactive menu.
- * Lists local skills and provides access to core-ai-server skills.
+ * Handles /skill command with interactive menu. Lists local skills (scanned with
+ * {@link LocalSkillScanner}, the same parser the agent stack uses) and provides
+ * access to the core-ai-server skill hub (search/show/pull/remove through
+ * {@link SkillHubClient} + {@link SkillInstaller}).
  *
  * @author stephen
  */
 public class SkillCommandHandler {
-
-    private static final String[] SKILL_DIRS = {
-        ".core-ai/skills",
-        System.getProperty("user.home") + "/.core-ai/skills"
-    };
+    private static final Logger LOGGER = LoggerFactory.getLogger(SkillCommandHandler.class);
     private static final String SERVER_ENTRY = "core-ai-server (list and install skills from server)";
-    private static final Path USER_SKILLS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "skills");
 
     private static String truncate(String text, int max) {
         if (text == null) return "";
@@ -38,22 +37,22 @@ public class SkillCommandHandler {
         return clean.length() <= max ? clean : clean.substring(0, max) + "...";
     }
 
-    private static String toStringOrName(Path path) {
-        Path fn = path.getFileName();
-        return fn != null ? fn.toString() : path.toString();
-    }
-
     private final TerminalUI ui;
+    private final LocalSkillScanner scanner = new LocalSkillScanner();
 
     public SkillCommandHandler(TerminalUI ui) {
         this.ui = ui;
     }
 
     public void handle() {
-        var localSkills = scanSkills();
+        var localSkills = scanLocalSkills();
         var labels = new ArrayList<String>();
         for (var skill : localSkills) {
-            labels.add(skill.name + AnsiTheme.MUTED + " (" + skill.source + ")" + AnsiTheme.RESET);
+            var sb = new StringBuilder(displayName(skill));
+            if (skill.description() != null && !skill.description().isBlank()) {
+                sb.append(AnsiTheme.MUTED).append(" - ").append(truncate(skill.description(), 40)).append(AnsiTheme.RESET);
+            }
+            labels.add(sb.toString());
         }
         labels.add(SERVER_ENTRY);
 
@@ -70,56 +69,53 @@ public class SkillCommandHandler {
     }
 
     public String loadSkillContent(String name) {
-        for (var skill : scanSkills()) {
-            if (skill.name.equals(name)) return loadSkillContentFromEntry(skill);
+        for (var skill : scanLocalSkills()) {
+            if (name.equals(skill.name()) || name.equals(displayName(skill))) return loadSkillContentFromEntry(skill);
         }
         ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "!" + AnsiTheme.RESET
                 + " Skill '" + name + "' not found.\n\n");
         return null;
     }
 
-    private void loadLocalSkill(SkillEntry skill) {
+    private void loadLocalSkill(LocalSkillScanner.LocalSkill skill) {
         var actions = List.of("Upload to server", "Back");
 
-        ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + skill.name + ":" + AnsiTheme.RESET + "\n");
+        ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + displayName(skill) + ":" + AnsiTheme.RESET + "\n");
         int action = ui.pickIndex(actions);
         if (action == 0) {
             uploadToServer(skill);
         }
     }
 
-    private void uploadToServer(SkillEntry skill) {
-        var auth = AuthConfig.load();
-        if (auth == null || auth.serverUrl() == null) {
+    private void uploadToServer(LocalSkillScanner.LocalSkill skill) {
+        var client = authenticatedClient();
+        if (client == null) {
             ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "core-ai-server is not configured." + AnsiTheme.RESET + "\n");
             ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Run core-ai-cli and use /login to connect to a server first." + AnsiTheme.RESET + "\n\n");
             return;
         }
 
-        var skillFile = skill.dirPath.resolve("SKILL.md");
+        var skillFile = skill.skillDir().resolve("SKILL.md");
         if (!Files.isRegularFile(skillFile)) {
-            ui.showError("SKILL.md not found in " + skill.dirPath);
+            ui.showError("SKILL.md not found in " + skill.skillDir());
             return;
         }
 
-        var api = new RemoteApiClient(auth.serverUrl(), auth.apiKey());
         var files = new LinkedHashMap<String, Path>();
         files.put("skill_file", skillFile);
-
-        var resources = scanResources(skill.dirPath);
-        for (var resource : resources) {
-            var resourceFile = skill.dirPath.resolve(resource);
+        for (var resource : skill.resources()) {
+            var resourceFile = skill.skillDir().resolve(resource);
             if (Files.isRegularFile(resourceFile)) {
                 files.put(resource, resourceFile);
             }
         }
 
-        ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Uploading " + skill.name + "..." + AnsiTheme.RESET + "\n");
+        ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Uploading " + skill.name() + "..." + AnsiTheme.RESET + "\n");
         try {
-            var result = api.postMultipart("/api/skills/upload", files);
+            var result = client.push(files);
             if (result != null) {
                 ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "\u2713" + AnsiTheme.RESET
-                        + " Uploaded " + skill.name + " to server.\n\n");
+                        + " Uploaded " + skill.name() + " to server.\n\n");
             } else {
                 ui.showError("upload failed");
             }
@@ -128,19 +124,18 @@ public class SkillCommandHandler {
         }
     }
 
-    private String loadSkillContentFromEntry(SkillEntry skill) {
-        var skillFile = skill.dirPath.resolve("SKILL.md");
+    private String loadSkillContentFromEntry(LocalSkillScanner.LocalSkill skill) {
+        var skillFile = skill.skillDir().resolve("SKILL.md");
         try {
             String skillMd = Files.readString(skillFile, StandardCharsets.UTF_8);
             var sb = new StringBuilder(skillMd.length() + 256);
-            sb.append("<skill name=\"").append(skill.name)
-                    .append("\" base_dir=\"").append(skill.dirPath.toAbsolutePath())
+            sb.append("<skill name=\"").append(skill.name())
+                    .append("\" base_dir=\"").append(skill.skillDir().toAbsolutePath())
                     .append("\">\n")
                     .append(skillMd);
-            List<String> resources = scanResources(skill.dirPath);
-            if (!resources.isEmpty()) {
+            if (!skill.resources().isEmpty()) {
                 sb.append("\n\nResources:\n");
-                for (String resource : resources) {
+                for (String resource : skill.resources()) {
                     sb.append("- ").append(resource).append('\n');
                 }
             }
@@ -152,46 +147,35 @@ public class SkillCommandHandler {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private void handleServerSkills() {
-        var auth = AuthConfig.load();
-        if (auth == null || auth.serverUrl() == null) {
+        var client = authenticatedClient();
+        if (client == null) {
             ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "core-ai-server is not configured." + AnsiTheme.RESET + "\n");
             ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Run core-ai-cli and use /login to connect to a server first." + AnsiTheme.RESET + "\n\n");
             return;
         }
 
         ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Fetching skills from server..." + AnsiTheme.RESET + "\n");
-        var api = new RemoteApiClient(auth.serverUrl(), auth.apiKey());
-
-        String json;
+        ai.core.api.server.skillhub.SkillHubSearchResponse response;
         try {
-            json = api.get("/api/skills");
+            response = client.search(null, null, null, 200);
         } catch (Exception e) {
             ui.showError("failed to fetch skills: " + e.getMessage());
             return;
         }
-        if (json == null) {
-            ui.showError("failed to fetch skills from server");
-            return;
-        }
-
-        Map<String, Object> response = JsonUtil.fromJson(Map.class, json);
-        var skills = (List<Map<String, Object>>) response.get("skills");
-        if (skills == null || skills.isEmpty()) {
+        var skills = response.skills == null ? List.<ai.core.api.server.skillhub.SkillHubSummary>of() : response.skills;
+        if (skills.isEmpty()) {
             ui.printStreamingChunk("  " + AnsiTheme.MUTED + "No skills on server." + AnsiTheme.RESET + "\n\n");
             return;
         }
 
         var labels = new ArrayList<String>();
         for (var skill : skills) {
-            var qualifiedName = (String) skill.get("qualified_name");
-            var desc = (String) skill.get("description");
-            boolean installed = isInstalled(qualifiedName);
-            var sb = new StringBuilder(qualifiedName);
+            boolean installed = isInstalledLocally(skill.qualifiedName);
+            var sb = new StringBuilder(skill.qualifiedName);
             if (installed) sb.append(AnsiTheme.SUCCESS).append(" (installed)").append(AnsiTheme.RESET);
-            if (desc != null && !desc.isBlank()) {
-                sb.append(AnsiTheme.MUTED).append(" - ").append(truncate(desc, 40)).append(AnsiTheme.RESET);
+            if (skill.description != null && !skill.description.isBlank()) {
+                sb.append(AnsiTheme.MUTED).append(" - ").append(truncate(skill.description, 40)).append(AnsiTheme.RESET);
             }
             labels.add(sb.toString());
         }
@@ -201,75 +185,44 @@ public class SkillCommandHandler {
         if (selected < 0) return;
 
         var selectedSkill = skills.get(selected);
-        var qualifiedName = (String) selectedSkill.get("qualified_name");
-        var skillId = (String) selectedSkill.get("id");
-
-        if (isInstalled(qualifiedName)) {
-            handleInstalledSkill(api, skillId, qualifiedName);
+        if (isInstalledLocally(selectedSkill.qualifiedName)) {
+            handleInstalledSkill(client, selectedSkill);
         } else {
-            installSkill(api, skillId, qualifiedName);
+            installSkill(client, selectedSkill, true);
         }
     }
 
-    private void handleInstalledSkill(RemoteApiClient api, String skillId, String qualifiedName) {
+    private void handleInstalledSkill(SkillHubClient client, ai.core.api.server.skillhub.SkillHubSummary skill) {
         var actions = List.of("Update (re-download)", "Remove local copy", "Back");
-        ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + qualifiedName + " is already installed:" + AnsiTheme.RESET + "\n");
+        ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + skill.qualifiedName + " is already installed:" + AnsiTheme.RESET + "\n");
         int action = ui.pickIndex(actions);
         switch (action) {
-            case 0 -> installSkill(api, skillId, qualifiedName);
-            case 1 -> removeSkill(qualifiedName);
-            default -> { }
+            case 0 -> installSkill(client, skill, true);
+            case 1 -> removeSkill(skill.qualifiedName);
+            default -> {
+            }
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private void installSkill(RemoteApiClient api, String skillId, String qualifiedName) {
-        String json;
+    private void installSkill(SkillHubClient client, ai.core.api.server.skillhub.SkillHubSummary skill, boolean force) {
         try {
-            json = api.get("/api/skills/" + skillId + "/download");
-        } catch (Exception e) {
-            ui.showError("failed to download skill: " + e.getMessage());
-            return;
-        }
-        if (json == null) {
-            ui.showError("failed to download skill");
-            return;
-        }
-
-        Map<String, Object> data = JsonUtil.fromJson(Map.class, json);
-        var namespace = (String) data.get("namespace");
-        var name = (String) data.get("name");
-        var content = (String) data.get("content");
-
-        var skillDir = USER_SKILLS_DIR.resolve(namespace).resolve(name);
-        try {
-            Files.createDirectories(skillDir);
-            Files.writeString(skillDir.resolve("SKILL.md"), content, StandardCharsets.UTF_8);
-
-            var resources = (List<Map<String, String>>) data.get("resources");
-            if (resources != null) {
-                for (var resource : resources) {
-                    var path = resource.get("path");
-                    var resourceContent = resource.get("content");
-                    var resourceFile = skillDir.resolve(path);
-                    Path resParent = resourceFile.getParent();
-                    if (resParent == null) continue;
-                    Files.createDirectories(resParent);
-                    Files.writeString(resourceFile, resourceContent, StandardCharsets.UTF_8);
-                }
-            }
-
+            var archive = client.archive(skill.namespace, skill.name);
+            var targetDir = SkillLocations.userSkillsDir().resolve(skill.namespace).resolve(skill.name);
+            var source = new SkillHubMarker.Marker(skill.qualifiedName, archive.id() != null ? archive.id() : skill.id,
+                    archive.digest() != null ? archive.digest() : "", client.serverUrl(), null);
+            var outcome = new SkillInstaller().install(targetDir, archive.bytes(), source, force);
             ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "\u2713" + AnsiTheme.RESET
-                    + " Installed " + qualifiedName + " to " + skillDir + "\n\n");
-        } catch (IOException e) {
-            ui.showError("failed to write skill files: " + e.getMessage());
+                    + (outcome.replaced() ? " Installed " : " Already up to date: ")
+                    + skill.qualifiedName + " to " + targetDir + "\n\n");
+        } catch (Exception e) {
+            ui.showError("failed to install skill: " + e.getMessage());
         }
     }
 
     private void removeSkill(String qualifiedName) {
         var parts = qualifiedName.split("/", 2);
         if (parts.length != 2) return;
-        var skillDir = USER_SKILLS_DIR.resolve(parts[0]).resolve(parts[1]);
+        var skillDir = SkillLocations.userSkillsDir().resolve(parts[0]).resolve(parts[1]);
         if (!Files.exists(skillDir)) {
             ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Not found locally." + AnsiTheme.RESET + "\n");
             return;
@@ -287,91 +240,39 @@ public class SkillCommandHandler {
                 + " Removed " + qualifiedName + "\n\n");
     }
 
-    private boolean isInstalled(String qualifiedName) {
+    private boolean isInstalledLocally(String qualifiedName) {
         if (qualifiedName == null) return false;
         var parts = qualifiedName.split("/", 2);
         if (parts.length != 2) return false;
-        return Files.exists(USER_SKILLS_DIR.resolve(parts[0]).resolve(parts[1]).resolve("SKILL.md"));
+        for (var root : List.of(Path.of(".core-ai/skills"), SkillLocations.userSkillsDir())) {
+            var dir = root.resolve(parts[0]).resolve(parts[1]);
+            if (Files.isRegularFile(dir.resolve("SKILL.md"))) return true;
+        }
+        return false;
     }
 
-    private List<SkillEntry> scanSkills() {
-        var result = new ArrayList<SkillEntry>();
-        for (String dir : SKILL_DIRS) {
-            var path = Path.of(dir);
-            if (!Files.isDirectory(path)) continue;
-            try (var stream = Files.list(path)) {
-                stream.filter(Files::isDirectory)
-                      .sorted()
-                      .forEach(p -> {
-                          var skillMd = p.resolve("SKILL.md");
-                          if (Files.isRegularFile(skillMd)) {
-                              String name = parseFrontmatterName(skillMd);
-                              if (name == null) name = toStringOrName(p);
-                              result.add(new SkillEntry(name, p, dir));
-                          } else {
-                              scanNamespaceDir(p, dir, result);
-                          }
-                      });
-            } catch (IOException ignored) {
-                // skip unreadable directories
+    private List<LocalSkillScanner.LocalSkill> scanLocalSkills() {
+        var result = new ArrayList<LocalSkillScanner.LocalSkill>();
+        for (var root : List.of(Path.of(".core-ai/skills"), SkillLocations.userSkillsDir())) {
+            if (!Files.isDirectory(root)) continue;
+            try {
+                result.addAll(scanner.scan(root));
+            } catch (Exception e) {
+                LOGGER.debug("failed to scan skills directory: {}", root, e);
             }
         }
         return result;
     }
 
-    private void scanNamespaceDir(Path namespaceDir, String source, List<SkillEntry> result) {
-        Path nsFn = namespaceDir.getFileName();
-        String namespace = nsFn != null ? nsFn.toString() : namespaceDir.toString();
-        try (var stream = Files.list(namespaceDir)) {
-            stream.filter(p -> Files.isDirectory(p) && Files.isRegularFile(p.resolve("SKILL.md")))
-                  .sorted()
-                  .forEach(p -> {
-                      String name = parseFrontmatterName(p.resolve("SKILL.md"));
-                      if (name == null) name = toStringOrName(p);
-                      result.add(new SkillEntry(namespace + "/" + name, p, source));
-                  });
-        } catch (IOException ignored) {
-            // skip unreadable namespace directories
-        }
+    private String displayName(LocalSkillScanner.LocalSkill skill) {
+        if (skill.marker() != null && skill.marker().qualifiedName() != null) return skill.marker().qualifiedName();
+        String qualified = skill.qualifiedName();
+        return qualified == null || qualified.isEmpty() ? skill.name() : qualified;
     }
 
-    private String parseFrontmatterName(Path skillFile) {
-        try {
-            String content = Files.readString(skillFile, StandardCharsets.UTF_8);
-            if (!content.startsWith("---")) return null;
-            int end = content.indexOf("\n---", 3);
-            if (end < 0) return null;
-            for (String line : content.substring(3, end).split("\n")) {
-                if (line.startsWith("name:")) return line.substring(5).trim();
-            }
-        } catch (IOException ignored) {
-            // fall back to directory name
-        }
-        return null;
-    }
-
-    @SuppressFBWarnings("SACM_STATIC_ARRAY_CREATED_IN_METHOD")
-    private List<String> scanResources(Path skillDir) {
-        String[] subDirs = {"scripts", "references"};
-        var result = new ArrayList<String>();
-        for (String sub : subDirs) {
-            Path subDir = skillDir.resolve(sub);
-            if (!Files.isDirectory(subDir)) continue;
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(subDir)) {
-                for (Path entry : stream) {
-                    if (Files.isRegularFile(entry)) {
-                        Path fn = entry.getFileName();
-                        result.add(sub + "/" + (fn != null ? fn.toString() : entry.toString()));
-                    }
-                }
-            } catch (IOException ignored) {
-                // skip
-            }
-        }
-        result.sort(String::compareTo);
-        return result;
-    }
-
-    private record SkillEntry(String name, Path dirPath, String source) {
+    private SkillHubClient authenticatedClient() {
+        var auth = AuthConfig.load();
+        if (auth == null || auth.serverUrl() == null || auth.apiKey() == null) return null;
+        return new SkillHubClient(auth.serverUrl(), auth.apiKey());
     }
 }

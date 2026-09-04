@@ -6,6 +6,9 @@ import ai.core.api.server.mcphub.HubServerView;
 import ai.core.api.server.mcphub.HubToolDetail;
 import ai.core.api.server.mcphub.HubToolSummary;
 import ai.core.api.server.mcphub.HubToolsResponse;
+import ai.core.api.server.skillhub.SkillHubNamespaceMatch;
+import ai.core.api.server.skillhub.SkillHubSearchResponse;
+import ai.core.api.server.skillhub.SkillHubSummary;
 import ai.core.cli.ConsoleWriter;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,6 +22,10 @@ import java.util.Map;
  * Human-readable rendering for hub commands (two-space indent, stable columns) plus
  * single-line JSON output. JSON mode is the machine contract: field names mirror the
  * server API exactly, and errors also go to stdout as JSON.
+ * <p>
+ * {@link #searchText(HubToolsResponse)} and {@link #skillSearchText(SkillHubSearchResponse)}
+ * share the same two-level group/item renderer ({@link #searchText(String, String, String, String, List, List)}):
+ * a brand line over groups with a positive score, then the diversified item rows.
  *
  * @author stephen
  */
@@ -56,42 +63,72 @@ public class HubRenderer {
     public String searchText(HubToolsResponse response) {
         var tools = response.tools == null ? List.<HubToolSummary>of() : response.tools;
         var servers = response.servers == null ? List.<HubServerMatch>of() : response.servers;
-        if (tools.isEmpty() && servers.isEmpty()) return "  (no matching tools)\n";
+        var groups = servers.stream()
+                .map(server -> new GroupRow(server.name,
+                        server.matchedCount != null ? server.matchedCount : 0,
+                        server.score != null ? server.score : 0))
+                .toList();
+        var items = tools.stream()
+                .map(tool -> new ItemRow(tool.qualifiedName, tool.server, tool.description,
+                        Boolean.TRUE.equals(tool.stale)))
+                .toList();
+        return searchText("Servers", "Tools", "--on-server", "(no matching tools)", groups, items);
+    }
+
+    /** Shared two-level search layout: brand line (score > 0) then padded group-qualified item rows. */
+    String searchText(String groupLabel, String itemLabel, String drillDownOption, String noMatchesText,
+                      List<GroupRow> groups, List<ItemRow> items) {
+        if (items.isEmpty() && groups.isEmpty()) return "  " + noMatchesText + "\n";
         var sb = new StringBuilder(256);
-        var brand = servers.stream().filter(server -> server.score != null && server.score > 0).toList();
+        var brand = groups.stream().filter(group -> group.score() > 0).toList();
         if (!brand.isEmpty()) {
-            sb.append("Servers (").append(brand.size()).append("): ");
+            sb.append(groupLabel).append(" (").append(brand.size()).append("): ");
             for (int i = 0; i < brand.size(); i++) {
                 if (i > 0) sb.append(' ');
-                sb.append(brand.get(i).name).append('(').append(brand.get(i).matchedCount).append(')');
+                sb.append(brand.get(i).name()).append('(').append(brand.get(i).matchedCount()).append(')');
             }
             sb.append('\n');
-            if (!tools.isEmpty()) sb.append("Tools:\n");
+            if (!items.isEmpty()) sb.append(itemLabel).append(":\n");
         }
-        if (tools.isEmpty()) return sb.toString();
-        int nameWidth = tools.stream().mapToInt(tool -> tool.qualifiedName.length()).max().orElse(1) + 2;
-        var matchedByServer = new HashMap<String, Integer>();
-        for (var server : servers) {
-            matchedByServer.put(server.name, server.matchedCount != null ? server.matchedCount : 0);
+        if (items.isEmpty()) return sb.toString();
+        int nameWidth = items.stream().mapToInt(item -> item.qualifiedName().length()).max().orElse(1) + 2;
+        var matchedByGroup = new HashMap<String, Integer>();
+        for (var group : groups) {
+            matchedByGroup.put(group.name(), group.matchedCount());
         }
-        var lastIndexByServer = new HashMap<String, Integer>();
-        for (int i = 0; i < tools.size(); i++) {
-            lastIndexByServer.put(tools.get(i).server, i);
+        var lastIndexByGroup = new HashMap<String, Integer>();
+        for (int i = 0; i < items.size(); i++) {
+            lastIndexByGroup.put(items.get(i).group(), i);
         }
-        for (int i = 0; i < tools.size(); i++) {
-            var tool = tools.get(i);
-            String stale = Boolean.TRUE.equals(tool.stale) ? " [stale]" : "";
-            String description = tool.description == null ? "" : tool.description;
+        for (int i = 0; i < items.size(); i++) {
+            var item = items.get(i);
+            String stale = item.stale() ? " [stale]" : "";
+            String description = item.description() == null ? "" : item.description();
             var line = new StringBuilder(128);
-            line.append("  ").append(pad(tool.qualifiedName, Math.min(nameWidth, 48))).append(pad(description, 56)).append(stale);
-            int matched = matchedByServer.getOrDefault(tool.server, 1);
-            if (matched > 1 && i == lastIndexByServer.get(tool.server)) {
-                int shown = (int) tools.stream().filter(t -> tool.server.equals(t.server)).count();
-                line.append(" (+").append(matched - shown).append(" more, --on-server ").append(tool.server).append(')');
+            line.append("  ").append(pad(item.qualifiedName(), Math.min(nameWidth, 48))).append(pad(description, 56)).append(stale);
+            int matched = matchedByGroup.getOrDefault(item.group(), 1);
+            if (matched > 1 && i == lastIndexByGroup.get(item.group())) {
+                int shown = (int) items.stream().filter(candidate -> item.group().equals(candidate.group())).count();
+                line.append(" (+").append(matched - shown).append(" more, ").append(drillDownOption).append(' ')
+                        .append(item.group()).append(')');
             }
             sb.append(line).append('\n');
         }
         return sb.toString();
+    }
+
+    public String skillSearchText(SkillHubSearchResponse response) {
+        var skills = response.skills == null ? List.<SkillHubSummary>of() : response.skills;
+        var namespaces = response.namespaces == null ? List.<SkillHubNamespaceMatch>of() : response.namespaces;
+        var groups = namespaces.stream()
+                .map(namespace -> new GroupRow(namespace.namespace,
+                        namespace.matchedCount != null ? namespace.matchedCount : 0,
+                        namespace.score != null ? namespace.score : 0))
+                .toList();
+        var items = skills.stream()
+                .map(skill -> new ItemRow(skill.qualifiedName, skill.namespace, skill.description, false))
+                .toList();
+        return searchText("Namespaces", "Skills", "--namespace", "(no matching skills)", groups, items);
     }
 
     public String detailText(HubToolDetail detail) {
@@ -132,5 +169,11 @@ public class HubRenderer {
 
     private String nz(String value) {
         return value == null ? "" : value;
+    }
+
+    public record GroupRow(String name, int matchedCount, int score) {
+    }
+
+    public record ItemRow(String qualifiedName, String group, String description, boolean stale) {
     }
 }

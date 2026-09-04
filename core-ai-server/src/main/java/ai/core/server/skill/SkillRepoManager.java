@@ -61,6 +61,7 @@ class SkillRepoManager {
         entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
         entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
         entity.userId = userId;
+        entity.digest = SkillDigest.of(entity.content, entity.resources);
         entity.updatedAt = ZonedDateTime.now();
 
         var repoConfig = new SkillRepoConfig();

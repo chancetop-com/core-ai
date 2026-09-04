@@ -4,6 +4,9 @@ import ai.core.api.server.mcphub.HubServerMatch;
 import ai.core.api.server.mcphub.HubServerView;
 import ai.core.api.server.mcphub.HubToolSummary;
 import ai.core.api.server.mcphub.HubToolsResponse;
+import ai.core.api.server.skillhub.SkillHubNamespaceMatch;
+import ai.core.api.server.skillhub.SkillHubSearchResponse;
+import ai.core.api.server.skillhub.SkillHubSummary;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -76,6 +79,56 @@ class HubRendererTest {
         var pretty = renderer.prettyJson("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}}}");
         assertTrue(pretty.contains("\n"));
         assertTrue(pretty.contains("  \"properties\""));
+    }
+
+    @Test
+    void skillSearchTextUsesNamespaceGroups() {
+        var stephen = namespaceMatch("stephen", 3, 50);
+        var anthropics = namespaceMatch("anthropics", 1, 0);
+        var skills = List.of(
+                skill("stephen/code-review", "Structured code review"),
+                skill("stephen/pr-review", "Review a GitHub PR"),
+                skill("anthropics/code-review", "Anthropic review style"));
+
+        var text = renderer.skillSearchText(skillResponse(List.of(stephen, anthropics), skills));
+
+        assertTrue(text.startsWith("Namespaces (1): stephen(3)\n"), "brand namespaces line:\n" + text);
+        assertTrue(text.contains("Skills:\n"));
+        assertTrue(text.contains("(+1 more, --namespace stephen)"), "more-note on the last stephen line:\n" + text);
+        assertTrue(text.indexOf("stephen/code-review") < text.indexOf("anthropics/code-review"));
+    }
+
+    @Test
+    void skillSearchTextWithoutBrandIsPlainList() {
+        var text = renderer.skillSearchText(skillResponse(List.of(namespaceMatch("anthropics", 1, 0)),
+                List.of(skill("anthropics/code-review", "Anthropic review style"))));
+        assertFalse(text.contains("Namespaces ("));
+        assertTrue(text.contains("anthropics/code-review"));
+        assertEquals("  (no matching skills)\n", renderer.skillSearchText(new SkillHubSearchResponse()));
+    }
+
+    private SkillHubSearchResponse skillResponse(List<SkillHubNamespaceMatch> namespaces, List<SkillHubSummary> skills) {
+        var response = new SkillHubSearchResponse();
+        response.namespaces = namespaces;
+        response.skills = skills;
+        return response;
+    }
+
+    private SkillHubNamespaceMatch namespaceMatch(String namespace, Integer matched, Integer score) {
+        var match = new SkillHubNamespaceMatch();
+        match.namespace = namespace;
+        match.matchedCount = matched;
+        match.score = score;
+        return match;
+    }
+
+    private SkillHubSummary skill(String qualifiedName, String description) {
+        var skill = new SkillHubSummary();
+        skill.qualifiedName = qualifiedName;
+        skill.namespace = qualifiedName.substring(0, qualifiedName.indexOf('/'));
+        skill.name = qualifiedName.substring(qualifiedName.indexOf('/') + 1);
+        skill.description = description;
+        return skill;
     }
 
     private HubToolsResponse response(List<HubServerMatch> servers, List<HubToolSummary> tools) {

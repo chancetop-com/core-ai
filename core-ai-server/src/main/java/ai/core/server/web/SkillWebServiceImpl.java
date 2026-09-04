@@ -111,8 +111,11 @@ public class SkillWebServiceImpl implements SkillWebService {
     public SkillDownloadResponse download(String id) {
         var entity = skillService.download(id);
         var response = new SkillDownloadResponse();
+        response.id = entity.id;
         response.name = entity.name;
         response.namespace = entity.namespace;
+        response.qualifiedName = entity.qualifiedName;
+        response.digest = entity.digest;
         response.content = entity.content;
         if (entity.resources != null) {
             response.resources = entity.resources.stream().map(r -> {
@@ -211,6 +214,7 @@ public class SkillWebServiceImpl implements SkillWebService {
         view.allowedTools = entity.allowedTools;
         view.metadata = entity.metadata;
         view.version = entity.version;
+        view.digest = entity.digest;
         view.userId = entity.userId;
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;

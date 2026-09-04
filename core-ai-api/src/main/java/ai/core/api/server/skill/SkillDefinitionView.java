@@ -43,6 +43,9 @@ public class SkillDefinitionView {
     @Property(name = "version")
     public String version;
 
+    @Property(name = "digest")
+    public String digest;
+
     @NotNull
     @Property(name = "user_id")
     public String userId;

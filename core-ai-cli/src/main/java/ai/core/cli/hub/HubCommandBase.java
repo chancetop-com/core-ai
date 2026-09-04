@@ -2,6 +2,7 @@ package ai.core.cli.hub;
 
 import ai.core.cli.ConsoleWriter;
 import ai.core.cli.http.RemoteApiException;
+import ai.core.cli.hub.skill.SkillHubClient;
 import picocli.CommandLine.Mixin;
 
 import java.util.concurrent.Callable;
@@ -44,8 +45,30 @@ public abstract class HubCommandBase implements Callable<Integer> {
     protected abstract Integer execute();
 
     protected HubClient client() {
-        var credentials = new HubCredentialResolver().resolve(options, System.getenv(), HubCredentialResolver.authLookup());
+        var credentials = credentials();
         return new HubClient(credentials.serverUrl(), credentials.apiKey());
+    }
+
+    protected SkillHubClient skillClient() {
+        var credentials = credentials();
+        return new SkillHubClient(credentials.serverUrl(), credentials.apiKey());
+    }
+
+    /** Resolved server URL, for callers that need to record where content came from. */
+    protected String serverUrl() {
+        return credentials().serverUrl();
+    }
+
+    protected boolean json() {
+        return options.json;
+    }
+
+    protected boolean raw() {
+        return options.raw;
+    }
+
+    protected HubCredentialResolver.HubCredentials credentials() {
+        return new HubCredentialResolver().resolve(options, System.getenv(), HubCredentialResolver.authLookup());
     }
 
     /** stderr metadata in human/raw mode; nothing in json or quiet mode. */

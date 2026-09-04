@@ -73,6 +73,32 @@ public class RemoteApiClient {
         return sendRequired(request);
     }
 
+    /** Binary GET: returns body bytes plus response headers (e.g. digest headers of an archive download). */
+    public BinaryResponse getBytes(String path) {
+        var request = request(path)
+                .GET()
+                .build();
+        try {
+            var response = apiClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() >= 400) {
+                var message = parseErrorMessage(response.statusCode(), response.body() == null ? null
+                        : new String(response.body(), StandardCharsets.UTF_8));
+                LOGGER.warn("API error: {} {}", response.statusCode(), message);
+                throw new RemoteApiException(response.statusCode(), message);
+            }
+            var headers = new java.util.HashMap<String, String>();
+            response.headers().map().forEach((name, values) ->
+                    headers.put(name, values == null || values.isEmpty() ? null : values.getFirst()));
+            byte[] body = response.body() == null ? new byte[0] : response.body();
+            return new BinaryResponse(body, headers);
+        } catch (RemoteApiException e) {
+            throw e;
+        } catch (Exception e) {
+            LOGGER.warn("API request failed: {}", e.getMessage());
+            throw new IllegalStateException("API request failed: " + e.getMessage(), e);
+        }
+    }
+
     public String post(String path, Object body) {
         var json = body != null ? JsonUtil.toJson(body) : "{}";
         var request = request(path)
@@ -210,21 +236,39 @@ public class RemoteApiClient {
     }
 
     private String parseErrorMessage(int statusCode, String body) {
-        if (body != null && !body.isBlank()) {
-            try {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> error = JsonUtil.fromJson(Map.class, body);
-                var message = error.get("message");
-                if (message != null) return String.valueOf(message);
-            } catch (RuntimeException ignored) {
-                // failed to parse error body as JSON, fall through to generic message
-            }
+        if (body == null || body.isBlank()) return genericMessage(statusCode);
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> error = JsonUtil.fromJson(Map.class, body);
+            String message = topLevelMessage(error);
+            if (message != null) return message;
+        } catch (RuntimeException ignored) {
+            // failed to parse error body as JSON, fall through to generic message
         }
+        return genericMessage(statusCode);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String topLevelMessage(Map<String, Object> error) {
+        var message = error.get("message");
+        if (message != null) return String.valueOf(message);
+        var nested = error.get("error");
+        if (nested instanceof Map<?, ?> errorBody) {
+            var nestedMessage = errorBody.get("message");
+            if (nestedMessage != null) return String.valueOf(nestedMessage);
+        }
+        return null;
+    }
+
+    private String genericMessage(int statusCode) {
         return switch (statusCode) {
             case 401 -> "authentication failed, please run 'core-ai-cli --login' to log in";
             case 403 -> "access denied";
             case 404 -> "resource not found";
             default -> "server error (" + statusCode + ")";
         };
+    }
+
+    public record BinaryResponse(byte[] body, Map<String, String> headers) {
     }
 }

@@ -48,6 +48,7 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.McpHubCall;
 import ai.core.server.mcphub.McpHubModule;
+import ai.core.server.skillhub.SkillHubModule;
 import ai.core.server.domain.User;
 import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
@@ -120,6 +121,8 @@ public class ServerApp extends App {
 
     private void loadDomainModules() {
         load(new SkillModule());
+        // Skill Hub needs SkillService (catalog invalidator) — must follow SkillModule
+        load(new SkillHubModule());
         load(new GitHubModule());
         load(new AgentDefinitionModule());
         load(new DatasetModule());

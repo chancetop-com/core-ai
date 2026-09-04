@@ -54,6 +54,12 @@ public class SkillDefinition {
     @Field(name = "version")
     public String version;
 
+    @Field(name = "digest")
+    public String digest;
+
+    @Field(name = "stats")
+    public SkillStats stats;
+
     @NotNull
     @Field(name = "user_id")
     public String userId;

@@ -10,12 +10,23 @@ import java.util.List;
  */
 public class SkillDownloadResponse {
     @NotNull
+    @Property(name = "id")
+    public String id;
+
+    @NotNull
     @Property(name = "name")
     public String name;
 
     @NotNull
     @Property(name = "namespace")
     public String namespace;
+
+    @NotNull
+    @Property(name = "qualified_name")
+    public String qualifiedName;
+
+    @Property(name = "digest")
+    public String digest;
 
     @NotNull
     @Property(name = "content")
