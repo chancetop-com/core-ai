@@ -12,14 +12,16 @@ core-ai-cli <kind> call|run|pull <group>/<name> ...     # act
 
 Never guess names. Always search, then inspect, then act.
 
+Prerequisites: the `core-ai-cli` binary on PATH (see "Installing core-ai-cli" in SKILL.md) and a login or `CORE_AI_SERVER` + `CORE_AI_API_KEY`.
+
 ## Availability
 
 | Kind | Subcommand | Status | Section |
 |------|-----------|--------|---------|
 | MCP tools | `core-ai-cli mcp …` | **Available** | MCP Hub |
 | Skills | `core-ai-cli skill …` | Planned (design: `docs/cn/design-skill-hub-cli.md`) | Skill Hub |
-| API tools | `core-ai-cli api-tool …` | Planned | API-Tool Hub |
-| Agents | `core-ai-cli agent …` | Planned (design: `docs/cn/design-mcp-hub-cli.md` §8.2) | Agent Hub |
+| API tools | `core-ai-cli api-tool …` | Planned (design: `docs/cn/design-api-tool-hub-cli.md`) | API-Tool Hub |
+| Agents | `core-ai-cli agent …` | Planned (design: `docs/cn/design-agent-hub-cli.md`) | Agent Hub |
 
 Before relying on a planned kind, run `core-ai-cli <kind> --help`. If the CLI reports an unknown subcommand (exit code 2), that hub is not yet shipped in the installed version; fall back to the REPL commands or the Web UI.
 
@@ -59,7 +61,8 @@ Human mode prints tables to stdout and metadata (duration, warnings, saved file 
 | 3 | Not authenticated (401 or no credentials) | Ask the user to run `core-ai-cli --login` |
 | 4 | Permission denied (403) | Stop and tell the user; do not retry |
 | 5 | Server, tool, skill, or agent not found (404) | Re-run `search`; the name may be wrong or not visible to you |
-| 6 | Timeout (client-side or server 504) | Raise `--timeout` or split the work |
+| 6 | Timeout (client-side or server 504); for `agent run`, the wait limit was hit and the task is still running | Raise `--timeout`, split the work, or poll with `agent status` |
+| 7 | `agent run` only: the agent needs input | Inspect `input_request` and answer with `agent reply` |
 
 ### Naming
 
@@ -140,19 +143,33 @@ Until this ships, use the REPL: `/skill` opens a menu to browse server skills an
 
 ## API-Tool Hub (`core-ai-cli api-tool`) — planned
 
-API tools are HTTP endpoints registered on the server (the same ones exposed at `/api/api-tools/mcp`). The planned shape mirrors `mcp`: `api-tool search`, `api-tool describe <group>/<name>`, `api-tool call <group>/<name> --args …`, with the same argument flags and exit codes. Check `core-ai-cli api-tool --help` for availability.
-
-## Agent Hub (`core-ai-cli agent`) — planned
-
-Run server-side agents as delegates, replacing the older `delegate_to_remote_agent` A2A path.
+API tools are internal Service APIs imported into the server from core-ng applications (the same ones exposed at `/api/api-tools/mcp`). One app contains services, each with operations; the operation is the callable unit. Permission: `apitool.call`.
 
 | Command | Purpose |
 |---------|---------|
-| `agent search <query>` | Agents visible to you: name, description, status. Internal tool lists are not exposed |
-| `agent show <name>` | Capability summary |
-| `agent run <name> --task "…" [--context-id ID] [--timeout SEC] --json` | Execute; response `{run_id, context_id, status, output, token_usage, duration_ms}`; `status` is `completed`, `input_required`, or `failed`. Reuse `context_id` to continue a multi-turn exchange |
+| `api-tool apps` | Visible apps with service and operation counts |
+| `api-tool search <query> [--on-app APP] [--service SVC] [--limit N]` | Search operations by app, service, operation name, description, HTTP method, path |
+| `api-tool describe <app>/<service>/<operation>` | Method, path, `input_schema`, `output_schema`, example. Also accepts the function form `app_service_operation` |
+| `api-tool call <app>/<service>/<operation> [--args JSON \| --args-file F \| --arg k=v …] [--timeout SEC] [--max-output N]` | Execute; same argument flags as `mcp call`. Response adds `status_code`; a backend 4xx/5xx is `is_error=true` with exit 1 |
+| `api-tool instructions` | Paste-ready snippet |
 
-Permission: `chat.use`. Check `core-ai-cli agent --help` for availability.
+Names have three segments (`{app}/{service}/{operation}`). Calls carry your identity to the backend as caller headers, so data-scoping is enforced there.
+
+## Agent Hub (`core-ai-cli agent`) — planned
+
+Run published server-side agents as delegates, replacing the older `delegate_to_remote_agent` A2A path. Only agents that are published (or your own drafts) are visible; the catalog exposes capability summaries, never system prompts or tool lists. Permission: `chat.use`.
+
+| Command | Purpose |
+|---------|---------|
+| `agent search <query> [--type agent\|llm_call] [--limit N]` | Visible agents: id, name, description, type, skills |
+| `agent show <id \| name>` | Capability summary and input hint |
+| `agent run <id \| name> --task "…" [--task-file F\|-] [--context-id ID] [--timeout SEC] [--detach] --json` | Execute. Response `{task_id, context_id, status, output, input_request?, token_usage, duration_ms}` |
+| `agent status <task_id>` | Poll a run that returned `running` |
+| `agent reply <task_id> --approve \| --deny \| --message "…"` | Answer an `input_required` run (tool approval or missing information) |
+| `agent cancel <task_id>` | Cancel |
+| `agent instructions` | Paste-ready snippet |
+
+Status and exit codes: `completed` → 0, `failed`/`cancelled` → 1, `running` (wait limit hit, task continues) → 6, **`input_required` → 7**. Exit 7 is not a failure: read `input_request`, then `agent reply`. Reuse `context_id` on a later `run` to continue the same conversation. Keep `--task` self-contained; the agent cannot see your local files. A bare name is accepted when unique among visible agents; otherwise the CLI exits 2 and lists candidate ids.
 
 ## Snippet for other agents
 

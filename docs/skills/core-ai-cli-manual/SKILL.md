@@ -1,6 +1,6 @@
 ---
 name: core-ai-cli-manual
-description: Operation manual for core-ai-cli, for both users and LLMs. Use when configuring core-ai-cli (agent.properties, LLM providers, memory, hooks, local MCP servers, plugins, custom agents), when using its modes (interactive REPL, headless --prompt, ACP), when logging in to a core-ai-server, or when an agent needs to discover and use company resources through the CLI hub subcommands (core-ai-cli mcp search/describe/call today; skill, api-tool and agent hubs as they ship). Look up exact property names, flags, defaults, exit codes and JSON shapes here before acting.
+description: Operation manual for core-ai-cli, for both users and LLMs. Use when installing or upgrading core-ai-cli, configuring it (agent.properties, LLM providers, memory, hooks, local MCP servers, plugins, custom agents), when using its modes (interactive REPL, headless --prompt, ACP), when logging in to a core-ai-server, or when an agent needs to discover and use company resources through the CLI hub subcommands (core-ai-cli mcp search/describe/call today; skill, api-tool and agent hubs as they ship). Look up exact property names, flags, defaults, exit codes and JSON shapes here before acting.
 metadata:
   author: core-ai-team
   version: "2.0"
@@ -9,6 +9,40 @@ metadata:
 # core-ai-cli Operation Manual
 
 Reference for configuring core-ai-cli and for using it as a shell tool that reaches company resources on core-ai-server.
+
+## Installing core-ai-cli
+
+Check first: `core-ai-cli --version`. If the command is missing, install the native binary from GitHub Releases (no Java required). Releases ship one archive per platform; the archive contains a single file named `core-ai-cli-<platform>` (`core-ai-cli-darwin`, `core-ai-cli-linux`, or `core-ai-cli-windows.exe`).
+
+| Platform | Archive |
+|----------|---------|
+| macOS | `https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-darwin.tar.gz` |
+| Linux | `https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-linux.tar.gz` |
+| Windows | `https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-windows.zip` |
+
+```bash
+# macOS
+curl -L https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-darwin.tar.gz | tar xz
+chmod +x core-ai-cli-darwin && sudo mv core-ai-cli-darwin /usr/local/bin/core-ai-cli
+
+# Linux
+curl -L https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-linux.tar.gz | tar xz
+chmod +x core-ai-cli-linux && sudo mv core-ai-cli-linux /usr/local/bin/core-ai-cli
+```
+
+```powershell
+# Windows (PowerShell); make sure $env:USERPROFILE\bin is on PATH
+mkdir "$env:USERPROFILE\bin" -Force
+Invoke-WebRequest -Uri "https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-windows.zip" -OutFile "$env:TEMP\core-ai-cli.zip"
+Expand-Archive "$env:TEMP\core-ai-cli.zip" -DestinationPath "$env:TEMP\core-ai-cli" -Force
+Move-Item "$env:TEMP\core-ai-cli\core-ai-cli-windows.exe" "$env:USERPROFILE\bin\core-ai-cli.exe" -Force
+```
+
+Rename the extracted file to `core-ai-cli` (or `core-ai-cli.exe`) as shown so the commands in this manual work as written. Older releases published the bare binary instead of an archive; if the archive URL returns 404, download `…/releases/latest/download/core-ai-cli-<platform>` directly and skip the extraction step.
+
+After installing: `core-ai-cli --login <server-url>` to connect to your core-ai-server (browser flow, or paste an API key). Upgrade later with `core-ai-cli --upgrade` (downloads the same archive, installs to the current binary's directory, or `~/.core-ai/bin/` when that is not writable; add it to PATH). Build from source with `./gradlew :core-ai-cli:nativeCompile` (GraalVM JDK 21+).
+
+If you are an agent operating on a machine without the CLI and cannot install software, stop and ask the user to install it; do not try to call the server API by hand.
 
 ## Two ways to use this CLI
 
