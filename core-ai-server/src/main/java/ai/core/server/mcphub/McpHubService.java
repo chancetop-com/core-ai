@@ -3,6 +3,7 @@ package ai.core.server.mcphub;
 import ai.core.api.server.mcphub.HubCallRequest;
 import ai.core.api.server.mcphub.HubCallResponse;
 import ai.core.api.server.mcphub.HubContentPart;
+import ai.core.api.server.mcphub.HubServerMatch;
 import ai.core.api.server.mcphub.HubServerView;
 import ai.core.api.server.mcphub.HubServersResponse;
 import ai.core.api.server.mcphub.HubToolDetail;
@@ -87,8 +88,18 @@ public class McpHubService {
     }
 
     public HubToolsResponse search(String query, String serverFilter, Integer limit) {
+        var outcome = catalog.search(query, serverFilter, limit);
         var response = new HubToolsResponse();
-        response.tools = catalog.search(query, serverFilter, limit).stream().map(scored -> {
+        response.servers = outcome.servers().stream().map(hit -> {
+            var view = new HubServerMatch();
+            view.name = hit.name();
+            view.matchedCount = hit.matchedCount();
+            view.score = hit.serverScore();
+            view.state = hit.state();
+            view.stale = hit.stale();
+            return view;
+        }).toList();
+        response.tools = outcome.tools().stream().map(scored -> {
             var view = new HubToolSummary();
             var tool = scored.tool();
             view.qualifiedName = tool.qualifiedName();

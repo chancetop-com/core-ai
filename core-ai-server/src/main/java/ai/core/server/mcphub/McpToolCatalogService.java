@@ -4,6 +4,7 @@ import ai.core.mcp.client.McpClientManager;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolType;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.tool.ToolSearchScorer;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -14,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -33,6 +33,7 @@ public class McpToolCatalogService {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpToolCatalogService.class);
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 200;
+    private static final int MAX_TOOLS_PER_SERVER = 3;
 
     @Inject
     ToolRegistryService toolRegistryService;
@@ -68,28 +69,90 @@ public class McpToolCatalogService {
         return result;
     }
 
-    public List<ScoredTool> search(String query, String serverFilter, Integer limit) {
+    /**
+     * Two-level search: {@code servers} carries every server with matched tools
+     * (brand layer first, matched counts attached) and {@code tools} carries the
+     * diversified picks — at most {@link #MAX_TOOLS_PER_SERVER} per server, filled
+     * round-robin by server order — so one large server cannot flood the top-N.
+     * A query-less call lists all tools flat, without the server level.
+     */
+    public SearchOutcome search(String query, String serverFilter, Integer limit) {
         int effectiveLimit = normalizeLimit(limit);
-        var tokens = query == null ? List.<String>of() : tokenize(query);
-        var matches = new ArrayList<ScoredTool>();
+        var tokens = query == null ? List.<String>of() : ToolSearchScorer.tokenize(query);
+        if (tokens.isEmpty()) return listAll(serverFilter, effectiveLimit);
+        var matches = matchServers(serverFilter, tokens, query);
+        var ordered = orderedServers(matches);
+        var servers = ordered.stream()
+                .map(server -> new ServerSearchHit(server.snapshot().entry().name, server.serverScore(), server.matched().size(),
+                        server.snapshot().state().name(), server.snapshot().stale()))
+                .toList();
+        int cap = serverFilter != null && !serverFilter.isBlank() ? Integer.MAX_VALUE : MAX_TOOLS_PER_SERVER;
+        return new SearchOutcome(servers, diversify(ordered, effectiveLimit, cap));
+    }
+
+    private SearchOutcome listAll(String serverFilter, int limit) {
+        var tools = new ArrayList<ScoredTool>();
         for (var entry : enabledMcpEntries()) {
             if (serverFilter != null && !serverFilter.isBlank() && !serverFilter.equals(entry.name)) continue;
             var snapshot = ensureLoaded(entry);
+            for (var tool : staleMarkedTools(snapshot)) tools.add(new ScoredTool(tool, 0));
+        }
+        tools.sort(Comparator.comparing(scored -> scored.tool().qualifiedName()));
+        return new SearchOutcome(List.of(), tools.size() > limit ? List.copyOf(tools.subList(0, limit)) : tools);
+    }
+
+    private List<ServerMatches> matchServers(String serverFilter, List<String> tokens, String query) {
+        var matches = new ArrayList<ServerMatches>();
+        for (var entry : enabledMcpEntries()) {
+            if (serverFilter != null && !serverFilter.isBlank() && !serverFilter.equals(entry.name)) continue;
+            var snapshot = ensureLoaded(entry);
+            var matched = new ArrayList<ScoredTool>();
             for (var tool : staleMarkedTools(snapshot)) {
-                if (tokens.isEmpty()) {
-                    matches.add(new ScoredTool(tool, 0));
-                } else {
-                    int score = score(tool, query, tokens);
-                    if (score > 0) matches.add(new ScoredTool(tool, score));
-                }
+                var match = ToolSearchScorer.match(tool.name(), tool.description(), tool.serverName(), query);
+                if (match.allTokensHit()) matched.add(new ScoredTool(tool, match.score()));
+            }
+            if (!matched.isEmpty()) {
+                int serverScore = ToolSearchScorer.serverNameScore(entry.name, tokens);
+                matched.sort(Comparator.comparingInt(ScoredTool::score).reversed()
+                        .thenComparing(scored -> scored.tool().qualifiedName()));
+                matches.add(new ServerMatches(snapshot, serverScore, matched));
             }
         }
-        Comparator<ScoredTool> order = tokens.isEmpty()
-                ? Comparator.comparing(scored -> scored.tool().qualifiedName())
-                : Comparator.comparingInt(ScoredTool::score).reversed()
-                        .thenComparing(scored -> scored.tool().qualifiedName());
-        matches.sort(order);
-        return matches.size() > effectiveLimit ? List.copyOf(matches.subList(0, effectiveLimit)) : matches;
+        return matches;
+    }
+
+    /** Brand-matched servers (server score > 0) first, then others by their best tool score. */
+    private List<ServerMatches> orderedServers(List<ServerMatches> matches) {
+        var brand = new ArrayList<ServerMatches>();
+        var others = new ArrayList<ServerMatches>();
+        for (var server : matches) {
+            (server.serverScore() > 0 ? brand : others).add(server);
+        }
+        Comparator<ServerMatches> byName = Comparator.comparing(server -> server.snapshot().entry().name);
+        brand.sort(Comparator.comparingInt(ServerMatches::serverScore).reversed().thenComparing(byName));
+        others.sort(Comparator.comparingInt((ServerMatches server) -> server.matched().getFirst().score()).reversed()
+                .thenComparing(byName));
+        var ordered = new ArrayList<ServerMatches>(brand.size() + others.size());
+        ordered.addAll(brand);
+        ordered.addAll(others);
+        return ordered;
+    }
+
+    /** Round-robin over the ordered servers; each server contributes at most {@code cap} tools. */
+    private List<ScoredTool> diversify(List<ServerMatches> ordered, int limit, int cap) {
+        var picks = new ArrayList<ScoredTool>();
+        for (int rank = 0; rank < cap && picks.size() < limit; rank++) {
+            boolean added = false;
+            for (var server : ordered) {
+                var tools = server.matched();
+                if (rank >= tools.size()) continue;
+                picks.add(tools.get(rank));
+                added = true;
+                if (picks.size() >= limit) break;
+            }
+            if (!added || picks.size() >= limit) break;
+        }
+        return picks;
     }
 
     public CatalogTool findTool(String serverName, String toolName) {
@@ -162,48 +225,6 @@ public class McpToolCatalogService {
                 || state == McpClientManager.ConnectionState.CONNECTING;
     }
 
-    /**
-     * Keyword scoring matching the semantics of agent-side tool activation search:
-     * every token must hit at least one field or the tool is dropped.
-     */
-    private int score(CatalogTool tool, String query, List<String> tokens) {
-        var name = tool.name().toLowerCase(Locale.ROOT);
-        var server = tool.serverName().toLowerCase(Locale.ROOT);
-        var qualified = tool.qualifiedName().toLowerCase(Locale.ROOT);
-        var description = tool.description() == null ? "" : tool.description().toLowerCase(Locale.ROOT);
-        int total = 0;
-        if (tool.name().equalsIgnoreCase(query)) total += 100;
-        for (var token : tokens) {
-            boolean hit = false;
-            if (name.contains(token)) {
-                hit = true;
-                total += 10;
-            }
-            if (server.contains(token)) {
-                hit = true;
-                total += 5;
-            }
-            if (qualified.startsWith(token + "/")) {
-                hit = true;
-                total += 3;
-            }
-            if (description.contains(token)) {
-                hit = true;
-                total += 2;
-            }
-            if (!hit) return 0;
-        }
-        return total;
-    }
-
-    private List<String> tokenize(String query) {
-        var tokens = new ArrayList<String>();
-        for (var part : query.toLowerCase(Locale.ROOT).split("\\s+")) {
-            if (!part.isBlank()) tokens.add(part);
-        }
-        return tokens;
-    }
-
     private int normalizeLimit(Integer limit) {
         if (limit == null || limit <= 0) return DEFAULT_LIMIT;
         return Math.min(limit, MAX_LIMIT);
@@ -228,6 +249,15 @@ public class McpToolCatalogService {
     }
 
     public record ScoredTool(CatalogTool tool, int score) {
+    }
+
+    public record ServerSearchHit(String name, int serverScore, int matchedCount, String state, boolean stale) {
+    }
+
+    public record SearchOutcome(List<ServerSearchHit> servers, List<ScoredTool> tools) {
+    }
+
+    private record ServerMatches(ServerSnapshot snapshot, int serverScore, List<ScoredTool> matched) {
     }
 
     private record ServerSnapshot(ToolRegistryEntry entry, List<CatalogTool> tools,

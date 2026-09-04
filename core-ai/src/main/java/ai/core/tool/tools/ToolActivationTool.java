@@ -4,13 +4,14 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.ToolSearchScorer;
 import ai.core.tool.registry.ToolExposure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * @author stephen
@@ -88,9 +89,12 @@ public class ToolActivationTool extends ToolCall {
     }
 
     private ToolCallResult executeSearch(String query) {
-        var keywords = query.toLowerCase(Locale.ROOT).split("\\s+");
         var matches = allToolCalls.stream()
-                .filter(t -> t.isDiscoverable() && !t.isLlmVisible() && matchesAny(t, keywords))
+                .filter(tool -> tool.isDiscoverable() && !tool.isLlmVisible())
+                .map(tool -> new ToolSearchHit(tool, ToolSearchScorer.match(tool.getName(), tool.getDescription(), null, query)))
+                .filter(hit -> hit.match().anyTokenHit())
+                .sorted(Comparator.comparingInt((ToolSearchHit hit) -> hit.match().score()).reversed()
+                        .thenComparing(hit -> hit.tool().getName()))
                 .limit(MAX_SEARCH_RESULTS)
                 .toList();
 
@@ -100,22 +104,14 @@ public class ToolActivationTool extends ToolCall {
 
         var sb = new StringBuilder(256);
         sb.append("Found ").append(matches.size()).append(" tools:\n");
-        for (var tool : matches) {
+        for (var hit : matches) {
+            var tool = hit.tool();
             sb.append("- ").append(tool.getName()).append(": ").append(truncateDesc(tool.getDescription())).append('\n');
         }
         sb.append("\nCall activate_tools with tool_names to activate the ones you need.");
 
         LOGGER.debug("activate_tools search query='{}', found={}", query, matches.size());
         return ToolCallResult.completed(sb.toString());
-    }
-
-    private boolean matchesAny(ToolCall tool, String[] keywords) {
-        var name = tool.getName().toLowerCase(Locale.ROOT);
-        var desc = tool.getDescription() != null ? tool.getDescription().toLowerCase(Locale.ROOT) : "";
-        for (var kw : keywords) {
-            if (name.contains(kw) || desc.contains(kw)) return true;
-        }
-        return false;
     }
 
     private ToolCallResult executeActivate(List<String> toolNames) {
@@ -194,5 +190,8 @@ public class ToolActivationTool extends ToolCall {
             tool.searchMode = isSearchMode;
             return tool;
         }
+    }
+
+    private record ToolSearchHit(ToolCall tool, ToolSearchScorer.Match match) {
     }
 }

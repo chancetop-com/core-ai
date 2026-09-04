@@ -25,7 +25,7 @@ class McpSearchCommand extends HubCommandBase {
         if (options.json) {
             HubRenderer.printJson(response);
         } else {
-            ConsoleWriter.print(renderer.searchText(response.tools));
+            ConsoleWriter.print(renderer.searchText(response));
         }
         return HubExitCodes.SUCCESS;
     }

@@ -1,15 +1,19 @@
 package ai.core.cli.hub;
 
 import ai.core.api.server.mcphub.HubCallResponse;
+import ai.core.api.server.mcphub.HubServerMatch;
 import ai.core.api.server.mcphub.HubServerView;
 import ai.core.api.server.mcphub.HubToolDetail;
 import ai.core.api.server.mcphub.HubToolSummary;
+import ai.core.api.server.mcphub.HubToolsResponse;
 import ai.core.cli.ConsoleWriter;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Human-readable rendering for hub commands (two-space indent, stable columns) plus
@@ -30,7 +34,7 @@ public class HubRenderer {
     }
 
     public static void printErrorJson(int statusCode, String code, String message) {
-        ConsoleWriter.println(JsonUtil.toJson(java.util.Map.of("error", java.util.Map.of(
+        ConsoleWriter.println(JsonUtil.toJson(Map.of("error", Map.of(
                 "code", code, "message", message == null ? "" : message, "status", statusCode))));
     }
 
@@ -49,16 +53,43 @@ public class HubRenderer {
         return sb.toString();
     }
 
-    public String searchText(List<HubToolSummary> tools) {
-        if (tools.isEmpty()) return "  (no matching tools)\n";
+    public String searchText(HubToolsResponse response) {
+        var tools = response.tools == null ? List.<HubToolSummary>of() : response.tools;
+        var servers = response.servers == null ? List.<HubServerMatch>of() : response.servers;
+        if (tools.isEmpty() && servers.isEmpty()) return "  (no matching tools)\n";
         var sb = new StringBuilder(256);
-        int nameWidth = tools.stream().mapToInt(t -> t.qualifiedName.length()).max().orElse(1) + 2;
-        for (var tool : tools) {
-            String score = tool.score != null && tool.score > 0 ? "(score " + tool.score + ")" : "";
+        var brand = servers.stream().filter(server -> server.score != null && server.score > 0).toList();
+        if (!brand.isEmpty()) {
+            sb.append("Servers (").append(brand.size()).append("): ");
+            for (int i = 0; i < brand.size(); i++) {
+                if (i > 0) sb.append(' ');
+                sb.append(brand.get(i).name).append('(').append(brand.get(i).matchedCount).append(')');
+            }
+            sb.append('\n');
+            if (!tools.isEmpty()) sb.append("Tools:\n");
+        }
+        if (tools.isEmpty()) return sb.toString();
+        int nameWidth = tools.stream().mapToInt(tool -> tool.qualifiedName.length()).max().orElse(1) + 2;
+        var matchedByServer = new HashMap<String, Integer>();
+        for (var server : servers) {
+            matchedByServer.put(server.name, server.matchedCount == null ? 0 : server.matchedCount);
+        }
+        var lastIndexByServer = new HashMap<String, Integer>();
+        for (int i = 0; i < tools.size(); i++) {
+            lastIndexByServer.put(tools.get(i).server, i);
+        }
+        for (int i = 0; i < tools.size(); i++) {
+            var tool = tools.get(i);
             String stale = Boolean.TRUE.equals(tool.stale) ? " [stale]" : "";
             String description = tool.description == null ? "" : tool.description;
-            sb.append("  ").append(pad(tool.qualifiedName, Math.min(nameWidth, 48)))
-                    .append(pad(description, 56)).append(score).append(stale).append('\n');
+            var line = new StringBuilder(128);
+            line.append("  ").append(pad(tool.qualifiedName, Math.min(nameWidth, 48))).append(pad(description, 56)).append(stale);
+            int matched = matchedByServer.getOrDefault(tool.server, 1);
+            if (matched > 1 && i == lastIndexByServer.get(tool.server)) {
+                int shown = (int) tools.stream().filter(t -> tool.server.equals(t.server)).count();
+                line.append(" (+").append(matched - shown).append(" more, --on-server ").append(tool.server).append(')');
+            }
+            sb.append(line).append('\n');
         }
         return sb.toString();
     }

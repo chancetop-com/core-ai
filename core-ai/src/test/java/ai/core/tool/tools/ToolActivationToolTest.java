@@ -173,6 +173,21 @@ class ToolActivationToolTest {
     }
 
     @Test
+    void searchKeepsOrSemanticsAcrossMultipleKeywords() {
+        var tools = buildLargeToolList(ToolActivationTool.CATALOG_MODE_THRESHOLD + 10);
+        for (var tool : tools) {
+            if (tool.isDiscoverable()) tool.setLlmVisible(Boolean.FALSE);
+        }
+        var activationTool = ToolActivationTool.builder().allToolCalls(tools).build();
+
+        var result = activationTool.execute("{\"query\": \"order inventory\"}");
+        LOGGER.info("Multi-keyword search result:\n{}", result.getResult());
+        assertTrue(result.isCompleted());
+        assertTrue(result.getResult().contains("order_service_create"), "tool matching only 'order' must be returned");
+        assertTrue(result.getResult().contains("auth_service_list"), "tool matching only 'inventory' must be returned (OR)");
+    }
+
+    @Test
     void searchThenActivateShouldWork() {
         var tools = buildLargeToolList(ToolActivationTool.CATALOG_MODE_THRESHOLD + 10);
         for (var tool : tools) {
