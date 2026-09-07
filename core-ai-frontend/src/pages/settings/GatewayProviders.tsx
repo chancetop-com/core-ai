@@ -97,6 +97,8 @@ type ModelFormState = {
   outputPricePer1MTokens: string;
   cacheReadInputPricePer1MTokens: string;
   peakPriceMultiplier: string;
+  imagePricePerImage: string;
+  videoPricePerSecond: string;
 };
 
 const emptyProviderForm: ProviderFormState = {
@@ -155,6 +157,8 @@ const emptyModelForm: ModelFormState = {
   outputPricePer1MTokens: '',
   cacheReadInputPricePer1MTokens: '',
   peakPriceMultiplier: '',
+  imagePricePerImage: '',
+  videoPricePerSecond: '',
 };
 
 export default function GatewayProviders() {
@@ -363,6 +367,8 @@ export default function GatewayProviders() {
       outputPricePer1MTokens: model.outputPricePer1MTokens == null ? '' : String(model.outputPricePer1MTokens),
       cacheReadInputPricePer1MTokens: model.cacheReadInputPricePer1MTokens == null ? '' : String(model.cacheReadInputPricePer1MTokens),
       peakPriceMultiplier: model.peakPriceMultiplier == null ? '' : String(model.peakPriceMultiplier),
+      imagePricePerImage: model.imagePricePerImage == null ? '' : String(model.imagePricePerImage),
+      videoPricePerSecond: model.videoPricePerSecond == null ? '' : String(model.videoPricePerSecond),
     });
     setModalityBaseline({
       supportsVision: model.supportsVision == null ? '' : String(model.supportsVision),
@@ -425,6 +431,8 @@ export default function GatewayProviders() {
       if (modelForm.outputPricePer1MTokens !== '') payload.outputPricePer1MTokens = optionalNumber(modelForm.outputPricePer1MTokens, 'Output price per 1M');
       if (modelForm.cacheReadInputPricePer1MTokens !== '') payload.cacheReadInputPricePer1MTokens = optionalNumber(modelForm.cacheReadInputPricePer1MTokens, 'Cache read price per 1M');
       if (modelForm.peakPriceMultiplier !== '') payload.peakPriceMultiplier = optionalNumber(modelForm.peakPriceMultiplier, 'Peak price multiplier');
+      if (modelForm.imagePricePerImage !== '') payload.imagePricePerImage = optionalNumber(modelForm.imagePricePerImage, 'Image price per image');
+      if (modelForm.videoPricePerSecond !== '') payload.videoPricePerSecond = optionalNumber(modelForm.videoPricePerSecond, 'Video price per second');
       if (modelForm.id) {
         await api.gateway.updateModel(modelForm.id, payload);
       } else {
@@ -1137,6 +1145,27 @@ function renderModelPanel(props: {
             </div>
             <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
               Peak hours (Beijing 9:00-12:00, 14:00-18:00) multiply all prices by the peak multiplier, e.g. 2 for DeepSeek; empty = flat pricing. Cached input price optional; empty = cached input billed at the input price.
+            </p>
+          </Field>
+          <Field label="Media pricing (USD)">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                className={inputClass}
+                style={inputStyle}
+                value={form.imagePricePerImage}
+                onChange={e => setForm({ ...form, imagePricePerImage: e.target.value })}
+                placeholder="per image"
+              />
+              <input
+                className={inputClass}
+                style={inputStyle}
+                value={form.videoPricePerSecond}
+                onChange={e => setForm({ ...form, videoPricePerSecond: e.target.value })}
+                placeholder="per video second"
+              />
+            </div>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+              Used to settle image/video generation cost (cost_source=gateway_model). Empty = fall back to upstream-reported cost, then the built-in model catalog; jobs with none of these are recorded as unpriced.
             </p>
           </Field>
         </div>

@@ -1531,6 +1531,8 @@ export interface GatewayModel {
   outputPricePer1MTokens?: number | null;
   cacheReadInputPricePer1MTokens?: number | null;
   peakPriceMultiplier?: number | null;
+  imagePricePerImage?: number | null;
+  videoPricePerSecond?: number | null;
 }
 
 export interface GatewayModelRequest {
@@ -1564,6 +1566,8 @@ export interface GatewayModelRequest {
   outputPricePer1MTokens?: number | null;
   cacheReadInputPricePer1MTokens?: number | null;
   peakPriceMultiplier?: number | null;
+  imagePricePerImage?: number | null;
+  videoPricePerSecond?: number | null;
 }
 
 export interface ListGatewayModelsResponse {
