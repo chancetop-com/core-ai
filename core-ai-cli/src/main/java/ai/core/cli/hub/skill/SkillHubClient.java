@@ -29,16 +29,26 @@ public class SkillHubClient {
     private final String apiKey;
     private final Duration timeout;
     private final Duration archiveTimeout;
+    private final boolean insecure;
 
     public SkillHubClient(String serverUrl, String apiKey) {
-        this(serverUrl, apiKey, TIMEOUT, ARCHIVE_TIMEOUT);
+        this(serverUrl, apiKey, TIMEOUT, ARCHIVE_TIMEOUT, false);
+    }
+
+    public SkillHubClient(String serverUrl, String apiKey, boolean insecure) {
+        this(serverUrl, apiKey, TIMEOUT, ARCHIVE_TIMEOUT, insecure);
     }
 
     public SkillHubClient(String serverUrl, String apiKey, Duration timeout, Duration archiveTimeout) {
+        this(serverUrl, apiKey, timeout, archiveTimeout, false);
+    }
+
+    public SkillHubClient(String serverUrl, String apiKey, Duration timeout, Duration archiveTimeout, boolean insecure) {
         this.serverUrl = serverUrl;
         this.apiKey = apiKey;
         this.timeout = timeout;
         this.archiveTimeout = archiveTimeout;
+        this.insecure = insecure;
     }
 
     public String serverUrl() {
@@ -95,7 +105,7 @@ public class SkillHubClient {
     }
 
     private RemoteApiClient apiClient(Duration timeout) {
-        return new RemoteApiClient(serverUrl, apiKey, timeout, Map.of(CLIENT_HEADER, "cli"));
+        return new RemoteApiClient(serverUrl, apiKey, timeout, Map.of(CLIENT_HEADER, "cli"), insecure);
     }
 
     private String header(RemoteApiClient.BinaryResponse response, String name) {

@@ -20,6 +20,9 @@ public class HubGlobalOptions {
     @Option(names = "--api-key", description = "API key (overrides CORE_AI_API_KEY / auth.json)")
     public String apiKey;
 
+    @Option(names = "--insecure", description = "Skip TLS certificate verification (e.g. self-signed local server)")
+    public boolean insecure;
+
     @Option(names = "--quiet", description = "Suppress progress and metadata output on stderr")
     public boolean quiet;
 }

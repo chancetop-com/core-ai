@@ -46,12 +46,12 @@ public abstract class HubCommandBase implements Callable<Integer> {
 
     protected HubClient client() {
         var credentials = credentials();
-        return new HubClient(credentials.serverUrl(), credentials.apiKey());
+        return new HubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
     }
 
     protected SkillHubClient skillClient() {
         var credentials = credentials();
-        return new SkillHubClient(credentials.serverUrl(), credentials.apiKey());
+        return new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
     }
 
     /** Resolved server URL, for callers that need to record where content came from. */
