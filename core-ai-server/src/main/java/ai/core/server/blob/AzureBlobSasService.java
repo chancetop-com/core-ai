@@ -42,6 +42,18 @@ public class AzureBlobSasService {
         return containerName;
     }
 
+    /**
+     * [start, expiry] for a read SAS at {@code now}, quantized to 10-minute buckets: start is the current bucket
+     * boundary minus the usual 5-minute clock-skew allowance, expiry is the next boundary plus {@code expiryMinutes}
+     * — identical for every call inside the bucket, never shorter than {@code expiryMinutes} from now.
+     */
+    static OffsetDateTime[] readWindow(OffsetDateTime now, int expiryMinutes) {
+        final int bucketMinutes = 10;
+        var bucketStart = now.truncatedTo(java.time.temporal.ChronoUnit.HOURS)
+            .plusMinutes((long) (now.getMinute() / bucketMinutes) * bucketMinutes);
+        return new OffsetDateTime[]{bucketStart.minusMinutes(5), bucketStart.plusMinutes(bucketMinutes + expiryMinutes)};
+    }
+
     private final String accountName;
     private final byte[] accountKey;
 
@@ -66,10 +78,16 @@ public class AzureBlobSasService {
         return buildResult(containerName, blobName, params, expiryStr);
     }
 
+    /**
+     * Read URLs are re-signed on every request. Quantizing the validity window to 10-minute buckets
+     * keeps the URL byte-identical within a bucket, so a polled {@code <video src>} / {@code <img src>} does not reload
+     * on every refresh (the drama board re-fetched a 60s proxy every 5 seconds and never got to play it) and browser
+     * caches can hit. The URL is still valid for at least {@code expiryMinutes} from now.
+     */
     public SasResult generateReadBlobSas(String containerName, String blobName, int expiryMinutes) {
-        var expiry = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(expiryMinutes);
-        var expiryStr = EXPIRY_FORMATTER.format(expiry);
-        var startStr = EXPIRY_FORMATTER.format(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5));
+        var window = readWindow(OffsetDateTime.now(ZoneOffset.UTC), expiryMinutes);
+        var expiryStr = EXPIRY_FORMATTER.format(window[1]);
+        var startStr = EXPIRY_FORMATTER.format(window[0]);
 
         var params = new LinkedHashMap<String, String>();
         params.put("sv", SAS_VERSION);
