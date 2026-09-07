@@ -4,9 +4,11 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Usage;
+import ai.core.persistence.PersistenceProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.SessionStreamingCallback;
 import ai.core.sandbox.SandboxFile;
+import ai.core.tool.tools.AsyncTaskOutputTool;
 import ai.core.tool.tools.WriteFileTool;
 import ai.core.tool.tools.WriteTodosTool;
 import ai.core.sandbox.SandboxStatus;
@@ -17,8 +19,10 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -205,6 +209,28 @@ class ToolExecutorTest {
         }
     }
 
+    @Test
+    void pendingRelayFromAsyncTaskOutputIsNotRegisteredAsATask() {
+        var manager = new ToolCallAsyncTaskManager(new MapPersistenceProvider(new HashMap<>()));
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var context = ExecutionContext.builder().asyncTaskManager(manager).build();
+        // relays the status of a task the manager does not track (e.g. one owned by AsyncToolTaskExecutor)
+        var relay = new FakeToolCall(AsyncTaskOutputTool.TOOL_NAME, false) {
+            @Override
+            public ToolCallResult execute(String arguments, ExecutionContext ctx) {
+                return ToolCallResult.pending("py-1", "Task is still running");
+            }
+        };
+        manager.registerTool(relay);
+
+        var result = executor.execute(relay, FunctionCall.of("call_1", "function", AsyncTaskOutputTool.TOOL_NAME, "{}"), context);
+
+        assertTrue(result.isPending());
+        // registering the relay would store py-1 under async_task_output, which cannot poll, and the next
+        // poll would drop the task with "does not support polling"
+        assertTrue(manager.loadTask("py-1").isEmpty());
+    }
+
     @SuppressWarnings("PMD.ConstructorCallsOverridableMethod")
     private static class FakeToolCall extends ToolCall {
         private final boolean subAgent;
@@ -303,6 +329,34 @@ class ToolExecutorTest {
 
         @Override
         public void close() {
+        }
+    }
+
+    static class MapPersistenceProvider implements PersistenceProvider {
+        private final Map<String, String> store;
+
+        MapPersistenceProvider(Map<String, String> store) {
+            this.store = store;
+        }
+
+        @Override
+        public void save(String id, String content) {
+            store.put(id, content);
+        }
+
+        @Override
+        public void clear() {
+            store.clear();
+        }
+
+        @Override
+        public void delete(List<String> ids) {
+            ids.forEach(store::remove);
+        }
+
+        @Override
+        public Optional<String> load(String id) {
+            return Optional.ofNullable(store.get(id));
         }
     }
 }

@@ -7,6 +7,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Usage;
 import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import ai.core.tool.tools.AsyncTaskOutputTool;
 import ai.core.tool.tools.WriteFileTool;
 import ai.core.tool.tools.WriteTodosTool;
 import ai.core.utils.JsonUtil;
@@ -304,6 +305,10 @@ public class ToolExecutor {
         if (!result.isPending() && !result.isWaitingForInput()) {
             return;
         }
+        // async_task_output only relays another task's status. A relay for a task the manager does not track yet
+        // (e.g. one owned by AsyncToolTaskExecutor) must not be registered here: the record would carry a tool that
+        // cannot poll, and the next check would drop the task with "does not support polling".
+        if (AsyncTaskOutputTool.TOOL_NAME.equals(tool.getName())) return;
 
         var asyncTaskManager = context.getAsyncTaskManager();
         // Register only fresh async work. A pending result that polls a task the manager already tracks or that a
