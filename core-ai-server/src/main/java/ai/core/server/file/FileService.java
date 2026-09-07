@@ -115,9 +115,16 @@ public class FileService {
     }
 
     public Optional<FileRecord> findByContentHash(String userId, String contentHash) {
+        if (contentHash == null || contentHash.isBlank()) return Optional.empty();
+        // stored hashes are upper-case hex (Encodings.hex); callers that computed the digest themselves usually
+        // hand in lower-case, so both spellings are accepted (trace 3b14c428: a correct md5 was refused for its case)
+        var spellings = new java.util.LinkedHashSet<String>();
+        spellings.add(contentHash);
+        spellings.add(contentHash.toUpperCase(java.util.Locale.ROOT));
+        spellings.add(contentHash.toLowerCase(java.util.Locale.ROOT));
         return fileRecordCollection.findOne(Filters.and(
                 Filters.eq("user_id", userId),
-                Filters.eq("content_hash", contentHash),
+                Filters.in("content_hash", spellings),
                 Filters.type("content_hash", "string")));
     }
 
