@@ -83,9 +83,9 @@ class SandboxFfmpegRunnerTest {
     @Test
     void safeNameRejectsPathEscapes() {
         for (var name : new String[]{null, "", "  ", "../etc/passwd", "sub/dir.mp4", "back\\slash.mp4"}) {
-            assertThrows(IllegalArgumentException.class, () -> runner.safeName(name), "must reject: " + name);
+            assertThrows(IllegalArgumentException.class, () -> FfmpegRunner.safeName(name), "must reject: " + name);
         }
-        assertEquals("out.mp4", runner.safeName("out.mp4"));
+        assertEquals("out.mp4", FfmpegRunner.safeName("out.mp4"));
     }
 
     @Test
@@ -99,7 +99,7 @@ class SandboxFfmpegRunnerTest {
 
         var products = runner.execute(sandbox, plan(), "/tmp/job");
 
-        assertEquals(record, products.get("EPISODE"), "products are keyed by the plan's output kind");
+        assertEquals(record, products.get("EPISODE").file(), "products are keyed by the plan's output kind");
         verify(sandbox).uploadFile(eq("/tmp/job/concat.txt"), any(byte[].class));
         var arguments = ArgumentCaptor.forClass(String.class);
         verify(sandbox, times(3)).execute(eq(ShellCommandTool.TOOL_NAME), arguments.capture(), any());
@@ -127,5 +127,12 @@ class SandboxFfmpegRunnerTest {
             var e = assertThrows(IllegalStateException.class, () -> runner.requireFfmpegMajor(health, 8), health);
             assertTrue(e.getMessage().startsWith("FFMPEG_VERSION_MISMATCH"), e.getMessage());
         }
+    }
+
+    @Test
+    void probeStepsBecomeFfprobeCommands() {
+        var runner = new SandboxFfmpegRunner();
+        assertEquals("ffprobe '-v' 'error' '-of' 'json' 'in.mp4'", runner.ffmpegCommand(List.of("ffprobe", "-v", "error", "-of", "json", "in.mp4")));
+        assertEquals("ffmpeg '-y' '-i' 'in.mp4' 'out.mp4'", runner.ffmpegCommand(List.of("-y", "-i", "in.mp4", "out.mp4")));
     }
 }

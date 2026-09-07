@@ -2,7 +2,6 @@ package ai.core.server.render.ffmpeg;
 
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConfig;
-import ai.core.server.domain.FileRecord;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.tool.tools.ShellCommandTool;
@@ -33,8 +32,16 @@ import java.util.Map;
  *
  * @author stephen
  */
-public class SandboxFfmpegRunner {
+public class SandboxFfmpegRunner implements FfmpegRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxFfmpegRunner.class);
+
+    private static String readText(java.nio.file.Path path) {
+        try {
+            return java.nio.file.Files.readString(path, StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException("cannot read inline product " + path, e);
+        }
+    }
 
     @Inject
     SandboxService sandboxService;
@@ -47,8 +54,8 @@ public class SandboxFfmpegRunner {
         .trustAll()
         .build();
 
-    /** Products keyed by the plan's output kind. Throws on any failed step or missing output. */
-    public Map<String, FileRecord> run(Plan plan) {
+    @Override
+    public Map<String, Product> run(Plan plan) {
         var sandboxKey = plan.jobKey();
         var workDir = "/tmp/" + sandboxKey;
         try {
@@ -58,6 +65,12 @@ public class SandboxFfmpegRunner {
         } finally {
             sandboxService.releaseSandbox(sandboxKey);
         }
+    }
+
+    /** The sandbox TTL is only bumped per tool call, so a long ffmpeg step needs the lease heartbeat to renew it. */
+    @Override
+    public void renew(String jobKey) {
+        sandboxService.renewSandbox(jobKey);
     }
 
     /**
@@ -72,22 +85,26 @@ public class SandboxFfmpegRunner {
         return sandbox;
     }
 
-    Map<String, FileRecord> execute(Sandbox sandbox, Plan plan, String workDir) {
+    Map<String, Product> execute(Sandbox sandbox, Plan plan, String workDir) {
         bash(sandbox, "mkdir -p " + quote(workDir), null, plan.stepTimeoutMs());
         for (var download : plan.downloads()) {
             // -f so an HTML error page never lands where a video is expected
-            bash(sandbox, "curl -fsSL " + quote(download.url()) + " -o " + quote(safeName(download.fileName())), workDir, plan.stepTimeoutMs());
+            bash(sandbox, "curl -fsSL " + quote(download.url()) + " -o " + quote(FfmpegRunner.safeName(download.fileName())), workDir, plan.stepTimeoutMs());
         }
         for (var write : plan.writes()) {
-            sandbox.uploadFile(workDir + "/" + safeName(write.fileName()), write.content().getBytes(StandardCharsets.UTF_8));
+            sandbox.uploadFile(workDir + "/" + FfmpegRunner.safeName(write.fileName()), write.content().getBytes(StandardCharsets.UTF_8));
         }
         for (var step : plan.steps()) {
             bash(sandbox, ffmpegCommand(step), workDir, plan.stepTimeoutMs());
         }
-        var products = new LinkedHashMap<String, FileRecord>();
+        var products = new LinkedHashMap<String, Product>();
         for (var output : plan.outputs()) {
-            var file = sandbox.downloadFile(workDir + "/" + safeName(output.fileName()));
-            products.put(output.kind(), fileService.uploadIfAbsent(plan.userId(), output.fileName(), output.contentType(), file.path()));
+            var file = sandbox.downloadFile(workDir + "/" + FfmpegRunner.safeName(output.fileName()));
+            if (output.inline()) {
+                products.put(output.kind(), new Product(null, readText(file.path())));
+            } else {
+                products.put(output.kind(), Product.of(fileService.uploadIfAbsent(plan.userId(), output.fileName(), output.contentType(), file.path())));
+            }
         }
         return products;
     }
@@ -118,18 +135,11 @@ public class SandboxFfmpegRunner {
     }
 
     String ffmpegCommand(List<String> step) {
-        var command = new StringBuilder("ffmpeg");
-        for (var argument : step) {
+        var command = new StringBuilder(FfmpegRunner.binaryFor(step));
+        for (var argument : FfmpegRunner.arguments(step)) {
             command.append(' ').append(quote(argument));
         }
         return command.toString();
-    }
-
-    /** Plan file names are server-generated, but they end up inside a shell command — verify anyway. */
-    String safeName(String fileName) {
-        if (fileName == null || fileName.isBlank() || fileName.contains("..") || fileName.indexOf('/') >= 0 || fileName.indexOf('\\') >= 0)
-            throw new IllegalArgumentException("unsafe plan file name: " + fileName);
-        return fileName;
     }
 
     /** Single-quote shell quoting: nothing in a plan (urls, filter graphs) may reach the shell as syntax. */
@@ -143,29 +153,5 @@ public class SandboxFfmpegRunner {
         config.networkEnabled = Boolean.TRUE;
         config.timeoutSeconds = plan.sandboxTtlSeconds();
         return config;
-    }
-
-    public record Download(String fileName, String url) {
-    }
-
-    public record Write(String fileName, String content) {
-    }
-
-    public record Output(String fileName, String kind, String contentType) {
-    }
-
-    /**
-     * @param jobKey             names the sandbox; must be unique per in-flight plan
-     * @param expectedFfmpegMajor the major the caller's cache keys are pinned to
-     */
-    public record Plan(String jobKey, String userId, List<Download> downloads, List<Write> writes,
-                       List<List<String>> steps, List<Output> outputs,
-                       long stepTimeoutMs, int sandboxTtlSeconds, int expectedFfmpegMajor) {
-        public Plan {
-            downloads = downloads == null ? List.of() : downloads;
-            writes = writes == null ? List.of() : writes;
-            steps = steps == null ? List.of() : steps;
-            outputs = outputs == null ? List.of() : outputs;
-        }
     }
 }
