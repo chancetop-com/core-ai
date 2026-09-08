@@ -6,6 +6,7 @@ on:
     paths:
       - 'core-ai/**'
       - 'core-ai-api/**'
+      - 'vectorstores/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
@@ -19,6 +20,7 @@ on:
     paths:
       - 'core-ai/**'
       - 'core-ai-api/**'
+      - 'vectorstores/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
@@ -54,4 +56,4 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Check core libraries
-        run: ./gradlew :core-ai-api:check :core-ai:ciCheck --no-daemon --stacktrace
+        run: ./gradlew :core-ai-api:check :core-ai:ciCheck :core-ai-vectorstore-milvus:check :core-ai-vectorstore-hnswlib:check --no-daemon --stacktrace

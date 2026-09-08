@@ -21,6 +21,8 @@ settings.gradle.kts 包含:
   core-ai-cli       — 交互式命令行应用
   core-ai-server    — REST API 服务（MongoDB 持久化）
   core-ai-benchmark — BFCL 基准评测
+  core-ai-vectorstore-milvus  — Milvus 向量库后端（源码在 vectorstores/ 子目录，项目路径仍为 :core-ai-vectorstore-milvus）
+  core-ai-vectorstore-hnswlib — HNSWLib 向量库后端（同上）
 ```
 
 ### 2.1 依赖关系图

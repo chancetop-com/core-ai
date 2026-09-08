@@ -164,7 +164,6 @@ project(":core-ai-vectorstore-hnswlib") {
 
 
 project(":core-ai-server") {
-    version = ProjectVersions.CORE_AI_SERVER_VERSION
     apply(plugin = "app")
     tasks.register<Exec>("npmInstallServer") {
         group = "build"
@@ -222,7 +221,6 @@ project(":core-ai-server") {
 }
 
 project(":core-ai-cli") {
-    version = ProjectVersions.CORE_AI_CLI_VERSION
     apply(plugin = "application")
     apply(plugin = "native-app")
     the<JavaApplication>().mainClass.set("Main")
@@ -282,7 +280,6 @@ project(":core-ai-cli") {
 }
 
 project(":core-ai-benchmark") {
-    version = ProjectVersions.CORE_AI_BENCHMARK_VERSION
     apply(plugin = "app")
     dependencies {
         implementation(project(":core-ai"))
