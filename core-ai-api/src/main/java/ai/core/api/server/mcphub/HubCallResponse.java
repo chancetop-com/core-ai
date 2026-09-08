@@ -24,6 +24,13 @@ public class HubCallResponse {
     public String text;
 
     /**
+     * Set by the CLI in {@code --json} mode when the text fields were truncated by
+     * {@code --max-output}; never set by the server.
+     */
+    @Property(name = "truncated")
+    public Boolean truncated;
+
+    /**
      * HTTP status of the executed backend call (API-tool hub only; null for MCP tools).
      * Business failures (>= 400) still return HTTP 200 with {@code is_error=true}.
      */

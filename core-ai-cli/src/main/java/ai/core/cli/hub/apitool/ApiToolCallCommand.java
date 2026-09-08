@@ -55,7 +55,10 @@ class ApiToolCallCommand extends HubCommandBase {
 
         boolean failed = Boolean.TRUE.equals(response.isError);
         if (json()) {
+            int limit = outputLimit();
+            boolean truncated = HubRenderer.truncateCallContent(response, limit);
             HubRenderer.printCallJson(response);
+            if (truncated) metadata("warning: output truncated at " + limit + " chars");
         } else if (raw()) {
             printText(response.text, true);
         } else {
@@ -83,7 +86,7 @@ class ApiToolCallCommand extends HubCommandBase {
             if (!raw) ConsoleWriter.println();
             return;
         }
-        int limit = maxOutput == null || maxOutput <= 0 ? DEFAULT_MAX_OUTPUT : maxOutput;
+        int limit = outputLimit();
         String body = text;
         if (text.length() > limit) {
             body = text.substring(0, limit) + "\n... (output truncated; raise --max-output for more)";
@@ -91,5 +94,9 @@ class ApiToolCallCommand extends HubCommandBase {
         }
         ConsoleWriter.print(body);
         if (!body.endsWith("\n")) ConsoleWriter.println();
+    }
+
+    private int outputLimit() {
+        return maxOutput == null || maxOutput <= 0 ? DEFAULT_MAX_OUTPUT : maxOutput;
     }
 }

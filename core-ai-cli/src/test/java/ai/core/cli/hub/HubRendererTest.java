@@ -1,5 +1,7 @@
 package ai.core.cli.hub;
 
+import ai.core.api.server.mcphub.HubCallResponse;
+import ai.core.api.server.mcphub.HubContentPart;
 import ai.core.api.server.mcphub.HubServerMatch;
 import ai.core.api.server.mcphub.HubServerView;
 import ai.core.api.server.mcphub.HubToolSummary;
@@ -13,6 +15,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HubRendererTest {
@@ -79,6 +82,40 @@ class HubRendererTest {
         var pretty = renderer.prettyJson("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}}}");
         assertTrue(pretty.contains("\n"));
         assertTrue(pretty.contains("  \"properties\""));
+    }
+
+    @Test
+    void truncateCallContentCutsTextFieldsAndFlagsResponse() {
+        var response = new HubCallResponse();
+        response.text = "a".repeat(100);
+        var part = new HubContentPart();
+        part.type = "text";
+        part.text = "b".repeat(100);
+        response.content = List.of(part);
+
+        boolean truncated = HubRenderer.truncateCallContent(response, 30);
+
+        assertTrue(truncated);
+        assertEquals(30, response.text.length());
+        assertEquals(30, response.content.get(0).text.length());
+        assertEquals(Boolean.TRUE, response.truncated, "truncated flag is the machine signal");
+    }
+
+    @Test
+    void truncateCallContentKeepsShortTextUntouchedWithoutFlag() {
+        var response = new HubCallResponse();
+        response.text = "short";
+        var part = new HubContentPart();
+        part.type = "text";
+        part.text = "also short";
+        response.content = List.of(part);
+
+        boolean truncated = HubRenderer.truncateCallContent(response, 65536);
+
+        assertFalse(truncated);
+        assertEquals("short", response.text);
+        assertEquals("also short", response.content.get(0).text);
+        assertNull(response.truncated, "no flag when nothing was cut");
     }
 
     @Test

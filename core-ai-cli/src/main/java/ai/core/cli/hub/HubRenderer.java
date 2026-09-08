@@ -45,6 +45,30 @@ public class HubRenderer {
         printJson(response);
     }
 
+    /**
+     * Truncates every text field of a call response to {@code maxOutput} chars so that
+     * {@code --json} output respects {@code --max-output} the same way human mode does,
+     * and flags the response as truncated. Text stays pure data; the flag is the machine
+     * signal that content was cut.
+     */
+    public static boolean truncateCallContent(HubCallResponse response, int maxOutput) {
+        boolean truncated = false;
+        if (response.text != null && response.text.length() > maxOutput) {
+            response.text = response.text.substring(0, maxOutput);
+            truncated = true;
+        }
+        if (response.content != null) {
+            for (var part : response.content) {
+                if (part.text != null && part.text.length() > maxOutput) {
+                    part.text = part.text.substring(0, maxOutput);
+                    truncated = true;
+                }
+            }
+        }
+        response.truncated = truncated ? Boolean.TRUE : null;
+        return truncated;
+    }
+
     public static void printErrorJson(int statusCode, String code, String message) {
         ConsoleWriter.println(JsonUtil.toJson(Map.of("error", Map.of(
                 "code", code, "message", message == null ? "" : message, "status", statusCode))));
