@@ -1,6 +1,6 @@
 package ai.core.api.server.apitoolhub;
 
-import core.framework.api.json.Property;
+import core.framework.api.web.service.QueryParam;
 
 /**
  * Search query over the API-Tool Hub catalog. When {@code query} is blank the result
@@ -9,15 +9,15 @@ import core.framework.api.json.Property;
  * @author stephen
  */
 public class ApiToolHubSearchRequest {
-    @Property(name = "query")
+    @QueryParam(name = "query")
     public String query;
 
-    @Property(name = "app")
+    @QueryParam(name = "app")
     public String app;
 
-    @Property(name = "service")
+    @QueryParam(name = "service")
     public String service;
 
-    @Property(name = "limit")
+    @QueryParam(name = "limit")
     public Integer limit;
 }

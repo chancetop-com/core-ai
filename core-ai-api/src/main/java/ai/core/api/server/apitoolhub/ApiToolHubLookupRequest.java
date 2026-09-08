@@ -1,11 +1,11 @@
 package ai.core.api.server.apitoolhub;
 
-import core.framework.api.json.Property;
+import core.framework.api.web.service.QueryParam;
 
 /**
  * @author stephen
  */
 public class ApiToolHubLookupRequest {
-    @Property(name = "tool_name")
+    @QueryParam(name = "tool_name")
     public String toolName;
 }
