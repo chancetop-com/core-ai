@@ -46,7 +46,9 @@ public class PermissionInterceptor implements Interceptor {
         }
         if (path.startsWith("/api/api-tools/mcp")) {
             // MCP transport routes are bound in the core-ai module, so they cannot carry
-            // @PermissionsRequired; authentication is enforced by AuthInterceptor
+            // @PermissionsRequired. tools/list + tools/call are authorized per JSON-RPC request
+            // inside ApiToolsMcpInterceptor (apitool.call, api-app whitelist) with JSON-RPC
+            // -32001 errors; remaining methods keep protocol-level authentication only.
             return invocation.proceed();
         }
         var required = invocation.annotation(PermissionsRequired.class);

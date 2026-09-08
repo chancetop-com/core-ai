@@ -14,7 +14,7 @@ import core.framework.json.JSON;
 import core.framework.log.ActionLogContext;
 import core.framework.util.Strings;
 
-import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.AbstractMap;
 import java.util.HashMap;
 import java.util.List;
@@ -23,13 +23,25 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
+ * Executes Service API operations over HTTP against the base URLs of the loaded API
+ * definitions. One shared {@link HTTPClient} per caller instance (created per tool
+ * reload, not per call) with a 5s connect timeout and a request timeout defaulting to
+ * 60s, overridable via {@code apitool.request.timeout.seconds}.
+ * <p>
+ * Transport failures (connection refused, DNS, timeouts, ...) throw — callers decide
+ * how to surface them; HTTP 4xx/5xx responses are returned as-is so business rejections
+ * keep their real status/body.
+ *
  * @author stephen
  */
 public class DynamicApiCaller {
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
+
     private final Map<String, ApiDefinition.Operation> operationMap;
     private final Map<String, Map<String, ApiDefinitionType>> typeMap;
     private final Map<String, ApiDefinition> apiDefinitionMap;
     private final DynamicApiCallerRequestInterceptor interceptor;
+    private final HTTPClient httpClient;
 
     public DynamicApiCaller(List<ApiDefinition> apiDefinitions) {
         this(apiDefinitions, null);
@@ -50,6 +62,10 @@ public class DynamicApiCaller {
         // merge function keeps the first entry when duplicate api definitions exist (e.g. multiple service_api records with same app),
         // otherwise Collectors.toMap throws IllegalStateException and fails the whole server startup
         this.typeMap = apiDefinitions.stream().collect(Collectors.toMap(v -> v.app, v -> v.types.stream().collect(Collectors.toMap(t -> t.name, Function.identity())), (left, right) -> left));
+        this.httpClient = HTTPClient.builder().trustAll()
+                .connectTimeout(CONNECT_TIMEOUT)
+                .timeout(Duration.ofSeconds(Integer.getInteger("apitool.request.timeout.seconds", 60)))
+                .build();
     }
 
     public String callApi(String name, String args) {
@@ -74,7 +90,6 @@ public class DynamicApiCaller {
         var apiDefinition = apiDefinitionMap.get(name);
         var baseUrl = apiDefinition.baseUrl.replaceAll("/+$", "");
         var url = baseUrl + operation.path;
-        var client = HTTPClient.builder().trustAll().build();
         for (var pathParam : operation.pathParams) {
             if (!argsMap.containsKey(pathParam.name)) {
                 throw new IllegalArgumentException("Missing path parameter: " + pathParam.name);
@@ -93,6 +108,7 @@ public class DynamicApiCaller {
             if (req.method == HTTPMethod.GET || req.method == HTTPMethod.DELETE) {
                 req.params.putAll(setupParams(apiDefinition, requestType, argsMap));
                 req.uri = req.requestURI();
+                req.params.clear();   // params are baked into uri; otherwise the client appends them again and duplicates every query parameter
             } else {
                 req.body(setupBody(apiDefinition, requestType, argsMap), ContentType.APPLICATION_JSON);
             }
@@ -103,11 +119,13 @@ public class DynamicApiCaller {
                 req = interceptor.invoke(req);
             }
             injectCallerHeaders(req);
-            var rsp = client.execute(req);
+            var rsp = httpClient.execute(req);
             ActionLogContext.put("mcp-call-api-rsp", JSON.toJSON(rsp));
             return rsp;
-        } catch (Exception e) {
-            return new HTTPResponse(500, new HashMap<>(), Strings.format("Call api[{}, {}] failed: {}", url, JSON.toJSON(req), e.getMessage()).getBytes(StandardCharsets.UTF_8));
+        } catch (RuntimeException e) {
+            // transport failures propagate: the Function tool wrapper turns them into a failed
+            // ToolCallResult and hub callers map them to is_error — never fake a 500 text body
+            throw new IllegalStateException(Strings.format("Call api[{}, {}] failed: {}", url, JSON.toJSON(req), e.getMessage()), e);
         }
     }
 

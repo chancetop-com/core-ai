@@ -2,17 +2,17 @@ package ai.core.server.mcphub;
 
 import ai.core.api.server.mcphub.HubCallRequest;
 import ai.core.api.server.mcphub.HubCallResponse;
-import ai.core.server.domain.McpHubCall;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolType;
+import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.mcphub.McpToolCatalogService.CatalogTool;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCallResult;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.ZonedDateTime;
 
@@ -28,22 +28,22 @@ import static org.mockito.Mockito.when;
 
 class McpHubServiceTest {
     private McpToolCatalogService catalog;
-    private MongoCollection<McpHubCall> callCollection;
+    private HubCallAuditService auditService;
     private ToolRegistryService registry;
     private McpHubService service;
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
         catalog = mock(McpToolCatalogService.class);
         var accessPolicy = mock(McpHubAccessPolicy.class);
-        callCollection = mock(MongoCollection.class);
+        auditService = mock(HubCallAuditService.class);
         registry = mock(ToolRegistryService.class);
         service = new McpHubService();
         service.catalog = catalog;
         service.accessPolicy = accessPolicy;
-        service.callCollection = callCollection;
+        service.auditService = auditService;
         service.toolRegistryService = registry;
+        when(auditService.begin(any(HubCallAuditService.BeginRequest.class))).thenReturn("audit-1");
     }
 
     @Test
@@ -81,7 +81,13 @@ class McpHubServiceTest {
         assertFalse(response.isError);
         assertEquals("CORE-1234 created", response.text);
         assertEquals("CONNECTED", response.serverState);
-        verify(callCollection).insert(any(McpHubCall.class));
+        var captor = ArgumentCaptor.forClass(HubCallAuditService.BeginRequest.class);
+        verify(auditService).begin(captor.capture());
+        var beginRequest = captor.getValue();
+        assertEquals(HubCallAuditService.KIND_MCP_TOOL, beginRequest.kind());
+        assertEquals("user-1", beginRequest.userId());
+        assertEquals("cli", beginRequest.source());
+        assertEquals("jira/create_issue", beginRequest.target());
     }
 
     @Test

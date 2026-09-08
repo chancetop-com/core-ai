@@ -63,8 +63,24 @@ public class McpServerService implements AutoCloseable {
     }
 
     public void reload() {
-        toolsLoaded = false;
-        loadTools();
+        if (toolLoader == null) {
+            throw new IllegalStateException("Tool loader not configured");
+        }
+        var tools = toolLoader.load();
+        var nextNames = tools.stream().map(ToolCall::getName).collect(java.util.stream.Collectors.toSet());
+        // the SDK registry only ever grows: drop tools that disappeared from the loader
+        // before re-registering, so a reload after a removal actually removes the tool
+        for (var current : server.listTools()) {
+            if (!nextNames.contains(current.name())) {
+                server.removeTool(current.name());
+                LOGGER.debug("removed stale tool: {}", current.name());
+            }
+        }
+        for (var tool : tools) {
+            registerTool(tool);
+        }
+        toolsLoaded = true;
+        LOGGER.debug("reloaded {} tools into MCP server", tools.size());
     }
 
     @SuppressWarnings("unchecked")

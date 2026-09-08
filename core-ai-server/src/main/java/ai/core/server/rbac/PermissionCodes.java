@@ -32,6 +32,12 @@ public final class PermissionCodes {
     public static final String MCP_CALL = "mcp.call";
     public static final String APITOOL_VIEW = "apitool.view";
     public static final String APITOOL_MANAGE = "apitool.manage";
+    // API-Tool Hub catalog search + operation execution (incl. /api/api-tools/mcp tools/list|call).
+    // Independent from apitool.manage (schema/admin surface); apitool.manage implies apitool.call.
+    // Default `user` role holds it — authenticated users already reach every API tool through
+    // /api/api-tools/mcp and agent-mounted api-app refs; the Hub makes those calls auditable
+    // and scopeable per app (api-app whitelist) instead of widening access.
+    public static final String APITOOL_CALL = "apitool.call";
     public static final String SKILL_VIEW = "skill.view";
     public static final String SKILL_MANAGE = "skill.manage";
     public static final String DATASET_VIEW = "dataset.view";
@@ -58,7 +64,7 @@ public final class PermissionCodes {
             TRIGGER_VIEW, TRIGGER_MANAGE,
             TASK_VIEW,
             TOOL_VIEW, MCP_VIEW, MCP_MANAGE, MCP_CALL,
-            APITOOL_VIEW, APITOOL_MANAGE,
+            APITOOL_VIEW, APITOOL_MANAGE, APITOOL_CALL,
             SKILL_VIEW, SKILL_MANAGE,
             DATASET_VIEW, DATASET_MANAGE,
             PROJECT_VIEW, PROJECT_MANAGE,

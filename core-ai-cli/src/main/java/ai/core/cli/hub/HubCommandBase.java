@@ -2,6 +2,7 @@ package ai.core.cli.hub;
 
 import ai.core.cli.ConsoleWriter;
 import ai.core.cli.http.RemoteApiException;
+import ai.core.cli.hub.apitool.ApiToolHubClient;
 import ai.core.cli.hub.skill.SkillHubClient;
 import picocli.CommandLine.Mixin;
 
@@ -52,6 +53,11 @@ public abstract class HubCommandBase implements Callable<Integer> {
     protected SkillHubClient skillClient() {
         var credentials = credentials();
         return new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
+    }
+
+    protected ApiToolHubClient apiToolClient() {
+        var credentials = credentials();
+        return new ApiToolHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
     }
 
     /** Resolved server URL, for callers that need to record where content came from. */

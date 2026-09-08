@@ -9,29 +9,19 @@ import ai.core.api.server.mcphub.HubServersResponse;
 import ai.core.api.server.mcphub.HubToolDetail;
 import ai.core.api.server.mcphub.HubToolSummary;
 import ai.core.api.server.mcphub.HubToolsResponse;
-import ai.core.server.domain.McpHubCall;
 import ai.core.server.domain.ToolRegistryEntry;
+import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.mcphub.McpToolCatalogService.CatalogTool;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.util.StopWatch;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
-import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,7 +37,7 @@ import java.util.concurrent.TimeoutException;
  * Orchestrates MCP Hub operations: server listing, catalog search, tool details and
  * tool execution. Execution always goes through
  * {@link ToolRegistryService#callMcpServerTool(String, String, String)} — no new MCP
- * connection is ever opened here — and every call is recorded in {@code mcp_hub_calls}.
+ * connection is ever opened here — and every call is recorded in {@code hub_calls}.
  * <p>
  * Hub calls are not agent sessions: nothing is written to chat_sessions or traces.
  *
@@ -57,7 +47,6 @@ public class McpHubService {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpHubService.class);
     private static final int DEFAULT_TIMEOUT_SECONDS = 60;
     private static final int MAX_TIMEOUT_SECONDS = 300;
-    private static final int PREVIEW_MAX_CHARS = 512;
 
     private static final ExecutorService CALL_EXECUTOR = Executors.newThreadPerTaskExecutor(
             Thread.ofVirtual().name("mcp-hub-call-", 0).factory()
@@ -68,7 +57,7 @@ public class McpHubService {
     @Inject
     McpHubAccessPolicy accessPolicy;
     @Inject
-    MongoCollection<McpHubCall> callCollection;
+    HubCallAuditService auditService;
     @Inject
     ToolRegistryService toolRegistryService;
 
@@ -141,7 +130,7 @@ public class McpHubService {
         int timeoutSeconds = normalizeTimeout(request);
         var argumentsJson = normalizeArguments(request);
         String callId = UUID.randomUUID().toString();
-        beginAudit(userId, source, entry, tool, argumentsJson, callId);
+        String auditId = beginAudit(userId, source, entry, tool, argumentsJson, callId);
 
         var watch = new StopWatch();
         Future<ToolCallResult> future = CALL_EXECUTOR.submit(
@@ -154,20 +143,20 @@ public class McpHubService {
                     entry.name, tool.name(), result.getStatus(), durationMs);
             var state = toolRegistryService.getMcpServerState(entry.id).name();
             var text = result.toResultForLLM();
-            finishAudit(callId, durationMs, text, !failed, failed ? "tool failed: " + text : null);
+            finishAudit(auditId, durationMs, text, !failed, failed ? "tool failed: " + text : null);
             return toResponse(callId, text, failed, durationMs, state);
         } catch (TimeoutException e) {
             future.cancel(true);
             long durationMs = elapsedMillis(watch);
             LOGGER.warn("mcp hub call timed out, server={}, tool={}, timeout={}s, elapsed={}",
                     entry.name, tool.name(), timeoutSeconds, durationMs);
-            finishAudit(callId, durationMs, null, false, "timed out after " + timeoutSeconds + "s");
+            finishAudit(auditId, durationMs, null, false, "timed out after " + timeoutSeconds + "s");
             throw new McpToolTimeoutException("mcp tool call timed out after " + timeoutSeconds + "s: "
                     + serverName + "/" + toolName, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             future.cancel(true);
-            finishAudit(callId, elapsedMillis(watch), null, false, "interrupted");
+            finishAudit(auditId, elapsedMillis(watch), null, false, "interrupted");
             throw new IllegalStateException("mcp hub call interrupted", e);
         } catch (ExecutionException e) {
             future.cancel(true);
@@ -175,11 +164,11 @@ public class McpHubService {
             var cause = e.getCause() != null ? e.getCause() : e;
             LOGGER.warn("mcp hub call failed, server={}, tool={}, elapsed={}", entry.name, tool.name(), durationMs, cause);
             var state = toolRegistryService.getMcpServerState(entry.id).name();
-            finishAudit(callId, durationMs, null, false, cause.getMessage());
+            finishAudit(auditId, durationMs, null, false, cause.getMessage());
             throw new McpServerUnavailableException("mcp server unavailable while calling " + serverName + "/" + toolName
                     + " (state=" + state + "): " + cause.getMessage(), e);
         } catch (CancellationException e) {
-            finishAudit(callId, elapsedMillis(watch), null, false, "cancelled");
+            finishAudit(auditId, elapsedMillis(watch), null, false, "cancelled");
             throw new McpServerUnavailableException("mcp tool call cancelled: " + serverName + "/" + toolName, e);
         }
     }
@@ -204,35 +193,15 @@ public class McpHubService {
         return response;
     }
 
-    private void beginAudit(String userId, String source, ToolRegistryEntry entry,
-                            CatalogTool tool, String argumentsJson, String callId) {
-        if (userId == null) return;   // auth disabled (dev): nothing to attribute, skip audit
-        var audit = new McpHubCall();
-        audit.id = callId;
-        audit.userId = userId;
-        audit.userType = accessPolicy.isApiUser(userId) ? "api" : "internal";
-        audit.source = source == null || source.isBlank() ? "unknown" : source;
-        audit.serverId = entry.id;
-        audit.serverName = entry.name;
-        audit.toolName = tool.name();
-        audit.argsHash = sha256(argumentsJson);
-        audit.argsPreview = truncate(argumentsJson, PREVIEW_MAX_CHARS);
-        audit.createdAt = ZonedDateTime.now();
-        callCollection.insert(audit);
+    private String beginAudit(String userId, String source, ToolRegistryEntry entry,
+                              CatalogTool tool, String argumentsJson, String callId) {
+        return auditService.begin(new HubCallAuditService.BeginRequest(callId, HubCallAuditService.KIND_MCP_TOOL, userId,
+                accessPolicy.isApiUser(userId) ? "api" : "internal", source,
+                entry.name + "/" + tool.name(), tool.refId(), entry.name, tool.name(), argumentsJson));
     }
 
-    private void finishAudit(String callId, long durationMs, String text, boolean success, String errorMessage) {
-        var sets = new ArrayList<Bson>();
-        sets.add(Updates.set("success", success));
-        sets.add(Updates.set("is_error", !success));
-        sets.add(Updates.set("duration_ms", durationMs));
-        if (text != null) {
-            sets.add(Updates.set("output_bytes", text.getBytes(StandardCharsets.UTF_8).length));
-        }
-        if (errorMessage != null) {
-            sets.add(Updates.set("error_message", truncate(errorMessage, PREVIEW_MAX_CHARS)));
-        }
-        callCollection.update(Filters.eq("_id", callId), Updates.combine(sets.toArray(new Bson[0])));
+    private void finishAudit(String auditId, long durationMs, String text, boolean success, String errorMessage) {
+        auditService.finish(auditId, durationMs, text, success, null, errorMessage);
     }
 
     private int normalizeTimeout(HubCallRequest request) {
@@ -253,19 +222,5 @@ public class McpHubService {
             throw new BadRequestException("arguments must be a valid JSON object: " + e.getMessage(), "BAD_REQUEST", e);
         }
         return JsonUtil.toJson(parsed);
-    }
-
-    private String sha256(String value) {
-        try {
-            var digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
-    }
-
-    private String truncate(String value, int maxChars) {
-        if (value == null) return null;
-        return value.length() <= maxChars ? value : value.substring(0, maxChars);
     }
 }

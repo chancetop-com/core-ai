@@ -6,6 +6,7 @@ import ai.core.server.asynctask.AsyncToolTaskRecord;
 import ai.core.server.apimcp.mcp.McpModule;
 import ai.core.server.apimcp.serviceapi.ServiceApiModule;
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
+import ai.core.server.apitoolhub.ApiToolHubModule;
 import ai.core.server.channel.ChannelConfigView;
 import ai.core.server.channel.openclaw.OcgConfigView;
 import ai.core.server.costalert.CostAlertEvent;
@@ -46,7 +47,7 @@ import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
-import ai.core.server.domain.McpHubCall;
+import ai.core.server.domain.HubCall;
 import ai.core.server.mcphub.McpHubModule;
 import ai.core.server.skillhub.SkillHubModule;
 import ai.core.server.domain.User;
@@ -131,6 +132,9 @@ public class ServerApp extends App {
         // schedule job keeps the hub catalog warm for later consumers (SessionModule etc.).
         load(new McpHubModule());
         load(new WebFoundationModule());
+        // API-Tool Hub needs ToolRegistryService + HubCallAuditService (McpHubModule); loads after
+        // WebFoundationModule so its /api/api-tools/mcp interceptor runs inside the auth chain.
+        load(new ApiToolHubModule());
         load(new AsyncToolTaskModule());
         load(new SessionModule());
         load(new BuilderToolsModule());
@@ -219,7 +223,7 @@ public class ServerApp extends App {
         mongo.collection(ApiKey.class);
         mongo.collection(AsyncToolTaskRecord.class);
         mongo.collection(ToolRegistryEntry.class);
-        mongo.collection(McpHubCall.class);
+        mongo.collection(HubCall.class);
         mongo.collection(AgentDefinition.class);
         mongo.collection(ChannelConfigView.class);
         mongo.collection(OcgConfigView.class);

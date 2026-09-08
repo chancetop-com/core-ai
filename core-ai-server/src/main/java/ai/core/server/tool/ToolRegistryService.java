@@ -18,6 +18,7 @@ import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.github.GitHubTokenProvider;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
+import core.framework.http.HTTPResponse;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -52,17 +53,14 @@ public class ToolRegistryService {
 
     @Inject
     MongoCollection<ToolRegistryEntry> toolRegistryCollection;
-
     @Inject
     ApiDefinitionService apiDefinitionService;
-
     @Inject
     AgentDefinitionService agentDefinitionService;
-
     @Inject
     LLMCallExecutor llmCallExecutor;
 
-    private InternalApiToolLoader internalApiToolLoader;
+    private final ServiceApiToolExecutor serviceApiTools = new ServiceApiToolExecutor();
 
     @Inject
     SandboxService sandboxService;
@@ -110,7 +108,7 @@ public class ToolRegistryService {
         mcpOperationService.setToolRegistryCollection(toolRegistryCollection);
         loadBuiltinTools();
         loadServiceApiTools();
-        resolutionService.setInternalApiToolLoader(internalApiToolLoader);
+        resolutionService.setInternalApiToolLoader(serviceApiTools.loader());
         loadConfigMcpServers(mcpServersJson);
         loadDatabaseTools();
     }
@@ -121,8 +119,9 @@ public class ToolRegistryService {
                 LOGGER.warn("ApiDefinitionService not injected, skipping Service API tools");
                 return;
             }
-            internalApiToolLoader = new InternalApiToolLoader(apiDefinitionService);
-            var apiTools = internalApiToolLoader.load();
+            var loader = new InternalApiToolLoader(apiDefinitionService);
+            serviceApiTools.setLoader(loader);
+            var apiTools = loader.load();
 
             var registry = new ToolRegistryEntry();
             registry.id = API_TOOL_ID;
@@ -409,38 +408,38 @@ public class ToolRegistryService {
 
     // ── Service API Tools ───────────────────────────────────────────────────────
 
+    public void setApiToolCatalogInvalidator(Runnable invalidator) {
+        serviceApiTools.setCatalogInvalidator(invalidator);
+    }
+
     public InternalApiToolLoader getInternalApiToolLoader() {
-        return internalApiToolLoader;
+        return serviceApiTools.loader();
     }
 
     public List<InternalApiToolLoader.ApiAppInfo> listServiceApiApps() {
-        return internalApiToolLoader == null ? List.of() : internalApiToolLoader.listApiApps();
+        return serviceApiTools.listApps();
     }
 
     public List<InternalApiToolLoader.ApiServiceInfo> listApiAppServices(String appName) {
-        return internalApiToolLoader == null ? List.of() : internalApiToolLoader.listApiAppServices(appName);
+        return serviceApiTools.listServices(appName);
+    }
+
+    public List<InternalApiToolLoader.ApiAppCatalog> loadApiCatalog() {
+        return serviceApiTools.loadCatalog();
     }
 
     public ToolCallResult callServiceApiTool(String toolId, String argumentsJson) {
-        if (internalApiToolLoader == null) {
-            throw new RuntimeException("service API tools are not initialized");
-        }
-        if (!InternalApiToolLoader.isApiToolId(toolId)) {
-            throw new IllegalArgumentException("unsupported service API tool id: " + toolId);
-        }
-        var tools = internalApiToolLoader.loadByToolId(toolId);
-        if (tools.isEmpty()) {
-            throw new RuntimeException("service API tool not found, id=" + toolId);
-        }
-        if (tools.size() != 1) {
-            throw new IllegalArgumentException("test requires a single service API operation, id=" + toolId);
-        }
-        var payload = argumentsJson == null || argumentsJson.isBlank() ? "{}" : argumentsJson;
-        return tools.getFirst().execute(payload);
+        return serviceApiTools.callTool(toolId, argumentsJson);
     }
 
     public void reloadApiTools() {
         resolutionService.reloadApiTools();
+        serviceApiTools.invalidateCatalog();
+    }
+
+    public HTTPResponse callServiceApiOperation(String appName, String serviceName, String operationName,
+                                                String argumentsJson) {
+        return serviceApiTools.callOperation(appName, serviceName, operationName, argumentsJson);
     }
 
     // ── Inner types ─────────────────────────────────────────────────────────────

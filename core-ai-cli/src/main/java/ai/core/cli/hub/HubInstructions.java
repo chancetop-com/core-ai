@@ -16,6 +16,8 @@ public final class HubInstructions {
                     core-ai-cli mcp describe <server>/<tool> --json      # read input_schema before calling
                     core-ai-cli mcp call <server>/<tool> --args '<json>' --json
             Do NOT guess tool names.
+            API tools: core-ai-cli api-tool search "<need>" --json -> api-tool describe <app>/<svc>/<op> --json -> api-tool call <app>/<svc>/<op> --args '<json>' --json
+            Exit 1 with status_code >= 400 = the backend rejected the request; read "text" for the error body.
             Skills: when a task matches a known workflow, first check for a skill:
               1. Discover: core-ai-cli skill search "<topic>" --json
               2. Read:     core-ai-cli skill show <namespace>/<name> --raw   # prints SKILL.md; follow its instructions

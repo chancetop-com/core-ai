@@ -2,12 +2,19 @@ package ai.core.mcp.server.apiserver;
 
 import ai.core.api.apidefinition.ApiDefinition;
 import ai.core.api.apidefinition.ApiDefinitionType;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author Xander
@@ -15,20 +22,47 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class DynamicApiCallerTest {
 
     @Test
-    void testGetOperationOmitsBlankQueryParamInsteadOfThrowing() {
-        var caller = new DynamicApiCaller(List.of(buildSeoApi()));
-
-        // an empty query param value must be omitted, not crash Collectors.toMap with a NullPointerException
-        assertDoesNotThrow(() -> {
-            var response = caller.callApi("test_app_SeoService_searchOrganicKeywordRank", "{\"site\":\"\",\"date\":\"2026-05-24\"}");
-            assertNotNull(response);
+    void blankQueryParamIsOmittedFromRequest() throws IOException {
+        var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        var receivedQuery = new AtomicReference<String>();
+        server.createContext("/seo/organic-keyword-rank", exchange -> {
+            receivedQuery.set(exchange.getRequestURI().getRawQuery());
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
         });
+        server.start();
+        try {
+            var address = InetAddress.getLoopbackAddress().getHostAddress() + ":" + server.getAddress().getPort();
+            var caller = new DynamicApiCaller(List.of(buildSeoApi("http://" + address)));
+
+            var response = caller.callApiWithRsp("test_app_SeoService_searchOrganicKeywordRank",
+                    "{\"site\":\"\",\"date\":\"2026-05-24\"}");
+
+            assertNotNull(response);
+            assertEquals(200, response.statusCode);
+            // an empty query param value must be omitted, not crash Collectors.toMap with a NullPointerException
+            assertEquals("date=2026-05-24", receivedQuery.get());
+        } finally {
+            server.stop(0);
+        }
     }
 
-    private ApiDefinition buildSeoApi() {
+    @Test
+    void transportFailureThrowsInsteadOfReturningFake500() {
+        var caller = new DynamicApiCaller(List.of(buildSeoApi("http://127.0.0.1:1"))); // unreachable on purpose
+
+        var exception = assertThrows(IllegalStateException.class,
+                () -> caller.callApiWithRsp("test_app_SeoService_searchOrganicKeywordRank", "{\"site\":\"\",\"date\":\"2026-05-24\"}"));
+
+        // transport failures propagate to the caller instead of being masked as a 500 text body
+        assertTrue(exception.getMessage().contains("Call api["));
+        assertNotNull(exception.getCause());
+    }
+
+    private ApiDefinition buildSeoApi(String baseUrl) {
         var api = new ApiDefinition();
         api.app = "test-app";
-        api.baseUrl = "http://127.0.0.1:1"; // unreachable on purpose: the HTTP call fails fast and is handled, no external dependency
+        api.baseUrl = baseUrl;
         api.version = "1";
 
         var operation = new ApiDefinition.Operation();

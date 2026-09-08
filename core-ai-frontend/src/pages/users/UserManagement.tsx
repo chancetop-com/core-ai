@@ -1103,7 +1103,7 @@ function PermissionsQuotaSection({
         </div>
         <div>
           <label className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-            Agent permissions (empty = unrestricted)
+            Resource permissions (empty = unrestricted)
           </label>
           <div className="mt-1 space-y-2">
             {draft.permissions.map((p, i) => (
@@ -1112,30 +1112,46 @@ function PermissionsQuotaSection({
                   value={p.resourceType}
                   onChange={(e) => {
                     const next = [...draft.permissions];
-                    next[i] = { ...next[i], resourceType: e.target.value };
+                    next[i] = { ...next[i], resourceType: e.target.value, resourceId: '' };
                     onChange({ ...draft, permissions: next });
                   }}
                   className="px-2 py-1.5 rounded text-xs border-0 outline-none cursor-pointer"
                   style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
                   <option value="agent">agent</option>
+                  <option value="mcp-server">mcp-server</option>
+                  <option value="api-app">api-app</option>
                 </select>
-                <select
-                  value={p.resourceId}
-                  onChange={(e) => {
-                    const next = [...draft.permissions];
-                    next[i] = { ...next[i], resourceId: e.target.value };
-                    onChange({ ...draft, permissions: next });
-                  }}
-                  className="flex-1 px-2 py-1.5 rounded text-sm border-0 outline-none cursor-pointer"
-                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
-                  <option value="">Select agent...</option>
-                  {agents.map(a => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                  {p.resourceId && !agents.some(a => a.id === p.resourceId) && (
-                    <option value={p.resourceId}>{p.resourceId} (deleted)</option>
-                  )}
-                </select>
+                {p.resourceType === 'agent' ? (
+                  <select
+                    value={p.resourceId}
+                    onChange={(e) => {
+                      const next = [...draft.permissions];
+                      next[i] = { ...next[i], resourceId: e.target.value };
+                      onChange({ ...draft, permissions: next });
+                    }}
+                    className="flex-1 px-2 py-1.5 rounded text-sm border-0 outline-none cursor-pointer"
+                    style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                    <option value="">Select agent...</option>
+                    {agents.map(a => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                    {p.resourceId && !agents.some(a => a.id === p.resourceId) && (
+                      <option value={p.resourceId}>{p.resourceId} (deleted)</option>
+                    )}
+                  </select>
+                ) : (
+                  <input
+                    value={p.resourceId}
+                    onChange={(e) => {
+                      const next = [...draft.permissions];
+                      next[i] = { ...next[i], resourceId: e.target.value };
+                      onChange({ ...draft, permissions: next });
+                    }}
+                    placeholder={p.resourceType === 'mcp-server' ? 'MCP server id...' : 'Service API app name...'}
+                    className="flex-1 px-2 py-1.5 rounded text-sm border-0 outline-none"
+                    style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
+                  />
+                )}
                 <button
                   onClick={() => onChange({ ...draft, permissions: draft.permissions.filter((_, j) => j !== i) })}
                   className="p-1 rounded hover:opacity-70 cursor-pointer"
@@ -1149,7 +1165,7 @@ function PermissionsQuotaSection({
               onClick={() => onChange({ ...draft, permissions: [...draft.permissions, { resourceType: 'agent', resourceId: '' }] })}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
               style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
-              <Plus size={12} /> Add Agent
+              <Plus size={12} /> Add Permission
             </button>
           </div>
         </div>

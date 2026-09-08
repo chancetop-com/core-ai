@@ -23,6 +23,13 @@ public class HubCallResponse {
     @Property(name = "text")
     public String text;
 
+    /**
+     * HTTP status of the executed backend call (API-tool hub only; null for MCP tools).
+     * Business failures (>= 400) still return HTTP 200 with {@code is_error=true}.
+     */
+    @Property(name = "status_code")
+    public Integer statusCode;
+
     @Property(name = "duration_ms")
     public Long durationMs;
 

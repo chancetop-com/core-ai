@@ -9,6 +9,7 @@ import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.function.Function;
 import ai.core.utils.JsonSchemaUtil;
 import ai.core.utils.JsonUtil;
+import core.framework.http.HTTPResponse;
 import core.framework.inject.Inject;
 import core.framework.util.Strings;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -95,7 +96,7 @@ public class InternalApiToolLoader {
             return List.of();
         }
 
-        return loadTools(apis);
+        return loadTools(apis, true);
     }
 
     public List<ToolCall> loadApiServiceTools(String appName, String serviceName) {
@@ -128,7 +129,7 @@ public class InternalApiToolLoader {
                 .filter(api -> !api.services.isEmpty())
                 .toList();
 
-        return loadTools(filteredApis);
+        return loadTools(filteredApis, true);
     }
 
     public List<ToolCall> loadApiOperationTools(String appName, String serviceName, String operationName) {
@@ -137,40 +138,7 @@ public class InternalApiToolLoader {
             return List.of();
         }
 
-        var apis = apiDefinitionService.loadAll().stream()
-                .filter(api -> api.app.equals(appName))
-                .toList();
-
-        if (apis.isEmpty()) {
-            LOGGER.debug("No API definition found for app: {}", appName);
-            return List.of();
-        }
-
-        var filteredApis = apis.stream()
-                .map(api -> {
-                    var filtered = new ApiDefinition();
-                    filtered.app = api.app;
-                    filtered.baseUrl = api.baseUrl;
-                    filtered.version = api.version;
-                    filtered.services = api.services.stream()
-                            .filter(s -> s.name.equals(serviceName))
-                            .map(s -> {
-                                var svc = new ApiDefinition.Service();
-                                svc.name = s.name;
-                                svc.description = s.description;
-                                svc.operations = s.operations.stream()
-                                        .filter(op -> op.name.equals(operationName))
-                                        .toList();
-                                return svc;
-                            })
-                            .filter(s -> !s.operations.isEmpty())
-                            .toList();
-                    filtered.types = api.types;
-                    return filtered;
-                })
-                .filter(api -> !api.services.isEmpty())
-                .toList();
-
+        var filteredApis = filterApis(apiDefinitionService.loadAll(), appName, serviceName, operationName);
         return loadTools(filteredApis);
     }
 
@@ -212,6 +180,68 @@ public class InternalApiToolLoader {
                 .toList();
     }
 
+    /**
+     * One-pass snapshot of every enabled app's services/operations (single Mongo read),
+     * used by the API-Tool Hub catalog. Schemas are pre-built like the tool-loading path.
+     */    public List<ApiAppCatalog> loadCatalog() {
+        if (apiDefinitionService == null) return List.of();
+        var apis = apiDefinitionService.loadAll();
+        return apis.stream().map(api -> new ApiAppCatalog(api.app, api.baseUrl, api.version,
+                api.services.isEmpty() ? null : api.services.getFirst().description,
+                api.services.stream()
+                        .map(service -> new ApiServiceCatalog(service.name, service.description,
+                                service.operations == null ? List.of() : service.operations.stream()
+                                        .map(operation -> toApiOperationInfo(api, service, operation))
+                                        .toList()))
+                        .toList())).toList();
+    }
+
+    /**
+     * Executes a single operation end-to-end against the freshest definition and returns the
+     * raw HTTP response so the caller can read the real status code. Transport failures throw;
+     * HTTP 4xx/5xx are returned as-is. Hub execution path (bypasses the Function wrapper).
+     */
+    public HTTPResponse callOperationRaw(String appName, String serviceName, String operationName, String argumentsJson) {
+        if (apiDefinitionService == null) {
+            throw new IllegalStateException("service API tools are not initialized");
+        }
+        var filtered = filterApis(apiDefinitionService.loadAll(), appName, serviceName, operationName);
+        if (filtered.isEmpty()) {
+            throw new IllegalArgumentException("operation not found: " + appName + "/" + serviceName + "/" + operationName);
+        }
+        var caller = new DynamicApiCaller(filtered);
+        var payload = argumentsJson == null || argumentsJson.isBlank() ? "{}" : argumentsJson;
+        return caller.callApiWithRsp(functionCallName(appName, serviceName, operationName), payload);
+    }
+
+    private List<ApiDefinition> filterApis(List<ApiDefinition> apis, String appName, String serviceName, String operationName) {
+        return apis.stream()
+                .filter(api -> api.app.equals(appName))
+                .map(api -> {
+                    var filtered = new ApiDefinition();
+                    filtered.app = api.app;
+                    filtered.baseUrl = api.baseUrl;
+                    filtered.version = api.version;
+                    filtered.services = api.services.stream()
+                            .filter(s -> s.name.equals(serviceName))
+                            .map(s -> {
+                                var svc = new ApiDefinition.Service();
+                                svc.name = s.name;
+                                svc.description = s.description;
+                                svc.operations = s.operations.stream()
+                                        .filter(op -> op.name.equals(operationName))
+                                        .toList();
+                                return svc;
+                            })
+                            .filter(s -> !s.operations.isEmpty())
+                            .toList();
+                    filtered.types = api.types;
+                    return filtered;
+                })
+                .filter(api -> !api.services.isEmpty())
+                .toList();
+    }
+
     private ApiOperationInfo toApiOperationInfo(ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {
         return new ApiOperationInfo(
                 operation.name,
@@ -222,10 +252,22 @@ public class InternalApiToolLoader {
                 operation.requestType,
                 operation.responseType,
                 JsonUtil.toJson(JsonSchemaUtil.toJsonSchema(toParams(api, operation))),
-                schemaJsonForType(operation.responseType, api));
+                schemaJsonForType(operation.responseType, api),
+                operation.example,
+                operation.needAuth,
+                operation.deprecated);
     }
 
     private List<ToolCall> loadTools(List<ApiDefinition> apis) {
+        return loadTools(apis, false);
+    }
+
+    /**
+     * @param discoverable mounts whole app/service families as catalog entries the agent can
+     *                      {@code activate_tools} on demand instead of DIRECT in-context tools;
+     *                      exact api-operation mounts stay DIRECT (false)
+     */
+    private List<ToolCall> loadTools(List<ApiDefinition> apis, boolean discoverable) {
         if (apis.isEmpty()) {
             return List.of();
         }
@@ -237,14 +279,15 @@ public class InternalApiToolLoader {
         var tools = apis.stream()
                 .flatMap(api -> api.services.stream()
                         .flatMap(service -> service.operations.stream()
-                                .map(operation -> toToolCall(caller, api, service, operation))))
+                                .map(operation -> toToolCall(caller, api, service, operation, discoverable))))
                 .toList();
 
         LOGGER.info("Loaded {} API tools from {} API definitions", tools.size(), apis.size());
         return tools;
     }
 
-    private ToolCall toToolCall(DynamicApiCaller caller, ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {
+    private ToolCall toToolCall(DynamicApiCaller caller, ApiDefinition api, ApiDefinition.Service service,
+                                ApiDefinition.Operation operation, boolean discoverable) {
         var method = findCallApiMethod();
         var params = toParams(api, operation);
 
@@ -257,6 +300,7 @@ public class InternalApiToolLoader {
                 .method(method)
                 .needAuth(operation.needAuth)
                 .dynamicArguments(Boolean.TRUE)
+                .discoverable(discoverable)
                 .parameters(params)
                 .build();
     }
@@ -367,10 +411,18 @@ public class InternalApiToolLoader {
     public record ApiAppInfo(String app, String baseUrl, String version, String description) {
     }
 
+    public record ApiAppCatalog(String app, String baseUrl, String version, String description,
+                                List<ApiServiceCatalog> services) {
+    }
+
+    public record ApiServiceCatalog(String name, String description, List<ApiOperationInfo> operations) {
+    }
+
     public record ApiServiceInfo(String name, String description, int operationCount, List<ApiOperationInfo> operations) {
     }
 
     public record ApiOperationInfo(String name, String toolName, String description, String method, String path,
-                                   String requestType, String responseType, String inputSchema, String outputSchema) {
+                                   String requestType, String responseType, String inputSchema, String outputSchema,
+                                   String example, Boolean needAuth, Boolean deprecated) {
     }
 }

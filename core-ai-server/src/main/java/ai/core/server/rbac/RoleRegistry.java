@@ -42,6 +42,10 @@ public class RoleRegistry {
                     // it executes MCP tools (side effects) with only admin-provided registration.
                     // Grant it via Roles UI when Hub rollout is confirmed. See PermissionCodes.MCP_CALL.
                     PermissionCodes.APITOOL_VIEW, PermissionCodes.APITOOL_MANAGE,
+                    // apitool.call = reach any Service API operation through the hub / MCP endpoint.
+                    // Already possible today via /api/api-tools/mcp and mounted api-app refs; the hub
+                    // adds audit + per-app whitelisting (api users). mcp.call stays admin-granted.
+                    PermissionCodes.APITOOL_CALL,
                     PermissionCodes.SKILL_VIEW, PermissionCodes.SKILL_MANAGE,
                     PermissionCodes.DATASET_VIEW, PermissionCodes.DATASET_MANAGE,
                     // projects are shared business containers: regular members can view and drive them

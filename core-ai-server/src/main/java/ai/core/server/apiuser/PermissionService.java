@@ -23,6 +23,8 @@ public class PermissionService {
     public static final String RESOURCE_TYPE_AGENT = "agent";
     // MCP Hub resource whitelist for API users: resourceId is the ToolRegistryEntry id of the MCP server
     public static final String RESOURCE_TYPE_MCP_SERVER = "mcp-server";
+    // API-Tool Hub resource whitelist for API users: resourceId is the Service API app name
+    public static final String RESOURCE_TYPE_API_APP = "api-app";
     private static final String USER_TYPE_API = "api";
 
     @Inject
@@ -42,6 +44,13 @@ public class PermissionService {
         if (!has(userId, permission)) {
             throw new ForbiddenException("permission required: " + permission);
         }
+    }
+
+    /** Non-throwing variant of {@link #check} for whitelist filtering (returns true when the user is unrestricted). */
+    public boolean checkResource(String userId, String resourceType, String resourceId) {
+        var user = userCollection.get(userId).orElse(null);
+        if (user == null || user.permissions == null || user.permissions.isEmpty()) return true;
+        return hasResourcePermission(user, resourceType, resourceId);
     }
 
     public boolean has(String userId, String permission) {

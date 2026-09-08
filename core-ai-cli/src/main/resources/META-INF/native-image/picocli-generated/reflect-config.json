@@ -102,6 +102,42 @@
     "allDeclaredFields": true
   },
   {
+    "name": "ai.core.cli.hub.apitool.ApiToolCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.hub.apitool.ApiToolAppsCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.hub.apitool.ApiToolSearchCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.hub.apitool.ApiToolDescribeCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.hub.apitool.ApiToolCallCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.hub.apitool.ApiToolInstructionsCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "ai.core.cli.hub.HubCommandBase",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,

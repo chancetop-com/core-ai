@@ -25,6 +25,29 @@ public final class OutboundCallerContext {
         return Context.current().with(CALLER_KEY, caller).makeCurrent();
     }
 
+    /** Runs the action with the caller scope current on this thread (no-op scope when caller is null). */
+    @SuppressWarnings("try")
+    public static void runWith(Caller caller, Runnable action) {
+        if (caller == null) {
+            action.run();
+            return;
+        }
+        try (var ignored = set(caller)) {
+            action.run();
+        }
+    }
+
+    /** Runs the supplier with the caller scope current on this thread (no-op scope when caller is null). */
+    @SuppressWarnings("try")
+    public static <T> T runWith(Caller caller, java.util.function.Supplier<T> action) {
+        if (caller == null) {
+            return action.get();
+        }
+        try (var ignored = set(caller)) {
+            return action.get();
+        }
+    }
+
     /** Current caller, or null outside tool execution / when no caller context was set. */
     public static Caller current() {
         return Context.current().get(CALLER_KEY);

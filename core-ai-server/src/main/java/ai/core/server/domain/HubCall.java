@@ -8,15 +8,22 @@ import core.framework.mongo.Id;
 import java.time.ZonedDateTime;
 
 /**
- * Audit record of one MCP Hub tool execution. Full arguments/results are never stored
- * (they may contain sensitive data) — only a sha256 hash and a truncated preview.
+ * Audit record of one Hub tool execution (kind: {@code mcp_tool} / {@code api_tool} /
+ * {@code agent}). Full arguments/results are never stored (they may contain sensitive
+ * data) — only a sha256 hash and a truncated preview. {@code target} is the qualified
+ * name ({@code server/tool} or {@code app/service/operation}), {@code group} the owning
+ * server/app and {@code name} the executed tool/operation name.
  *
  * @author stephen
  */
-@Collection(name = "mcp_hub_calls")
-public class McpHubCall {
+@Collection(name = "hub_calls")
+public class HubCall {
     @Id
     public String id;
+
+    @NotNull
+    @Field(name = "kind")
+    public String kind;
 
     @NotNull
     @Field(name = "user_id")
@@ -28,14 +35,17 @@ public class McpHubCall {
     @Field(name = "source")
     public String source;
 
-    @Field(name = "server_id")
-    public String serverId;
+    @Field(name = "target")
+    public String target;
 
-    @Field(name = "server_name")
-    public String serverName;
+    @Field(name = "ref_id")
+    public String refId;
 
-    @Field(name = "tool_name")
-    public String toolName;
+    @Field(name = "group")
+    public String group;
+
+    @Field(name = "name")
+    public String name;
 
     @Field(name = "args_hash")
     public String argsHash;
@@ -48,6 +58,9 @@ public class McpHubCall {
 
     @Field(name = "is_error")
     public Boolean isError;
+
+    @Field(name = "status_code")
+    public Integer statusCode;
 
     @Field(name = "duration_ms")
     public Long durationMs;

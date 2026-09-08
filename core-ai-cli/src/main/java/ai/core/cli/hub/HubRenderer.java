@@ -1,5 +1,10 @@
 package ai.core.cli.hub;
 
+import ai.core.api.server.apitoolhub.ApiToolHubAppMatch;
+import ai.core.api.server.apitoolhub.ApiToolHubAppView;
+import ai.core.api.server.apitoolhub.ApiToolHubOperationDetail;
+import ai.core.api.server.apitoolhub.ApiToolHubOperationSummary;
+import ai.core.api.server.apitoolhub.ApiToolHubSearchResponse;
 import ai.core.api.server.mcphub.HubCallResponse;
 import ai.core.api.server.mcphub.HubServerMatch;
 import ai.core.api.server.mcphub.HubServerView;
@@ -146,6 +151,67 @@ public class HubRenderer {
             sb.append(schemaBlock);
         }
         return sb.toString();
+    }
+
+    public String apiAppsText(List<ApiToolHubAppView> apps) {
+        if (apps.isEmpty()) return "  (no api apps visible)\n";
+        var sb = new StringBuilder(256);
+        int nameWidth = apps.stream().mapToInt(app -> app.name.length()).max().orElse(1) + 2;
+        for (var app : apps) {
+            String description = app.description == null || app.description.isBlank()
+                    ? "" : "  " + app.description;
+            sb.append("  ").append(pad(app.name, nameWidth))
+                    .append(operationCountText(app.serviceCount, app.operationCount)).append(description).append('\n');
+        }
+        return sb.toString();
+    }
+
+    public String apiSearchText(ApiToolHubSearchResponse response) {
+        var operations = response.operations == null ? List.<ApiToolHubOperationSummary>of() : response.operations;
+        var apps = response.apps == null ? List.<ApiToolHubAppMatch>of() : response.apps;
+        var groups = apps.stream()
+                .map(app -> new GroupRow(app.name,
+                        app.matchedCount != null ? app.matchedCount : 0,
+                        app.score != null ? app.score : 0))
+                .toList();
+        var items = operations.stream()
+                .map(operation -> new ItemRow(operation.qualifiedName, operation.app,
+                        withMethod(operation.method, operation.description), false))
+                .toList();
+        return searchText("Apps", "Operations", "--on-app", "(no matching operations)", groups, items);
+    }
+
+    public String apiDetailText(ApiToolHubOperationDetail detail) {
+        var sb = new StringBuilder(256);
+        sb.append("  ").append(detail.qualifiedName)
+                .append("\n    ref_id:      ").append(nz(detail.refId))
+                .append("\n    tool_name:   ").append(nz(detail.toolName))
+                .append("\n    method/path: ").append(nz(detail.method)).append(' ').append(nz(detail.path)).append('\n');
+        if (Boolean.TRUE.equals(detail.deprecated)) sb.append("    deprecated:  true\n");
+        if (detail.description != null && !detail.description.isBlank()) {
+            sb.append("    description: ").append(detail.description).append('\n');
+        }
+        if (detail.example != null && !detail.example.isBlank()) {
+            sb.append("    example:     ").append(detail.example).append('\n');
+        }
+        if (detail.inputSchema != null && !detail.inputSchema.isBlank()) {
+            sb.append("  input_schema:\n").append(prettyJson(detail.inputSchema));
+        }
+        if (detail.outputSchema != null && !detail.outputSchema.isBlank()) {
+            sb.append("  output_schema:\n").append(prettyJson(detail.outputSchema));
+        }
+        return sb.toString();
+    }
+
+    private String withMethod(String method, String description) {
+        String prefix = method == null || method.isBlank() ? "" : method.toUpperCase(java.util.Locale.ROOT) + " ";
+        return prefix + (description == null ? "" : description);
+    }
+
+    private String operationCountText(Integer serviceCount, Integer operationCount) {
+        int services = serviceCount == null ? 0 : serviceCount;
+        int operations = operationCount == null ? 0 : operationCount;
+        return services + " services, " + operations + " operations  ";
     }
 
     public String prettyJson(String json) {
