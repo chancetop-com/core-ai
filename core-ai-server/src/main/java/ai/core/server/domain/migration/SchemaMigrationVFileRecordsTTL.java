@@ -7,6 +7,9 @@ import core.framework.mongo.Mongo;
 import java.util.concurrent.TimeUnit;
 
 /**
+ * Superseded by {@link SchemaMigrationVFileRecordsDropTTL}: the blanket TTL is replaced by a partial one that
+ * only expires legacy inline-data records once artifacts live in object storage.
+ *
  * @author stephen
  */
 public class SchemaMigrationVFileRecordsTTL implements SchemaMigration {
