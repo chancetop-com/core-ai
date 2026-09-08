@@ -12,6 +12,7 @@ import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
+import io.milvus.v2.exception.MilvusClientException;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.DescribeCollectionReq;
 import io.milvus.v2.service.collection.request.DropCollectionReq;
@@ -19,6 +20,7 @@ import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.collection.request.LoadCollectionReq;
 import io.milvus.v2.service.index.request.CreateIndexReq;
 import io.milvus.v2.service.index.request.DescribeIndexReq;
+import io.milvus.v2.service.index.response.DescribeIndexResp;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.InsertReq;
 import io.milvus.v2.service.vector.request.QueryReq;
@@ -190,9 +192,7 @@ public class MilvusVectorStore implements VectorStore, AutoCloseable {
                     .build());
             logger.debug("created collection {}", coll);
         }
-        var index = client().describeIndex(DescribeIndexReq.builder().collectionName(coll).build())
-                .getIndexDescByFieldName(spec.vectorField());
-        if (index == null) {
+        if (vectorIndex(coll, spec.vectorField()) == null) {
             client().createIndex(CreateIndexReq.builder()
                     .collectionName(coll)
                     .indexParams(List.of(MilvusSchemaMapper.index(spec)))
@@ -246,6 +246,19 @@ public class MilvusVectorStore implements VectorStore, AutoCloseable {
         throw new IllegalArgumentException("collection must be set in the request or configured via sys.milvus.collection");
     }
 
+    // milvus-sdk-java 2.6.x returns an empty list from describeIndex when neither fieldName nor indexName is given,
+    // and raises MilvusClientException (index not found) when the field has no index yet
+    private DescribeIndexResp.IndexDesc vectorIndex(String collection, String vectorField) {
+        if (vectorField == null) return null;
+        try {
+            return client().describeIndex(DescribeIndexReq.builder().collectionName(collection).fieldName(vectorField).build())
+                    .getIndexDescByFieldName(vectorField);
+        } catch (MilvusClientException e) {
+            logger.debug("no index on {}.{}: {}", collection, vectorField, e.getMessage());
+            return null;
+        }
+    }
+
     private CollectionInfo collectionInfo(String collection) {
         return collectionInfos.computeIfAbsent(collection, c -> {
             var describe = client().describeCollection(DescribeCollectionReq.builder().collectionName(c).build());
@@ -254,8 +267,7 @@ public class MilvusVectorStore implements VectorStore, AutoCloseable {
                     .filter(field -> Boolean.TRUE.equals(field.getIsPrimaryKey()))
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException("collection " + c + " has no primary key field"));
-            var index = client().describeIndex(DescribeIndexReq.builder().collectionName(c).build())
-                    .getIndexDescByFieldName(vectorField);
+            var index = vectorIndex(c, vectorField);
             var metricType = index == null ? IndexParam.MetricType.INVALID : index.getMetricType();
             return new CollectionInfo(vectorField, pk.getName(), pk.getDataType(), Boolean.TRUE.equals(pk.getAutoID()), metricType, Set.copyOf(describe.getFieldNames()));
         });

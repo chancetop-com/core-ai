@@ -141,6 +141,8 @@ project(":core-ai-vectorstore-milvus") {
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("org.slf4j:slf4j-api:2.0.17")
         api("io.milvus:milvus-sdk-java:${Versions.MILVUS_JAVA_VERSION}")
+        // align all io.grpc artifacts (see Versions.GRPC_VERSION); published to consumers via Gradle module metadata / pom dependencyManagement
+        api(platform("io.grpc:grpc-bom:${Versions.GRPC_VERSION}"))
         compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
         testCompileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
