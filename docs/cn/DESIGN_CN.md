@@ -94,7 +94,8 @@ ai.core/
 ├── tool/                  — ToolCall, Function, ToolExecutor, ToolCallAsyncTaskManager
 │   └── tools/             — 15+ 内置工具（ReadFile, WriteFile, Shell, WebFetch 等）
 ├── utils/                 — JsonUtil, JsonSchemaUtil, MessageTokenCounterUtil, ShellUtil
-├── vectorstore/           — VectorStore 接口（MilvusVectorStore, HnswLibVectorStore）
+├── vectorstore/           — VectorStore 接口、VectorStoreProvider SPI、spec（CollectionSpec）
+│                           （实现按后端拆分：core-ai-vectorstore-milvus / core-ai-vectorstore-hnswlib）
 └── vender/                — 供应商集成异常
 ```
 
@@ -429,11 +430,11 @@ SkillConfig → SkillLoader → SkillMetadata → SkillPromptFormatter → 系�
 
 **RagConfig**: `useRag`, `topK=5`, `threshold`, `vectorStore`, `llmProvider`, `enableQueryRewriting=true`
 
-**VectorStore 接口**: `add(documents)`, `search(request)`, `delete(ids)`
-- **MilvusVectorStore** — 分布式向量数据库
-- **HnswLibVectorStore** — 内存 HNSW 索引
+**VectorStore 接口**: `similaritySearch(request)`, `query(request)`, `add(collection, documents)`, `deleteByIds / deleteByFilter`, `ensureCollection(spec)`
+- **core-ai-vectorstore-milvus** — Milvus 分布式向量数据库（ServiceLoader SPI 注册）
+- **core-ai-vectorstore-hnswlib** — 文件持久化的 HNSW 索引（ServiceLoader SPI 注册）
 
-**过滤系统**: 元数据过滤的表达式树，配合 `MilvusExpressionConverter`。
+**过滤**: 使用各后端原生过滤字符串（Milvus 布尔表达式）；`ai.core.rag.filter` 表达式 DSL 已废弃。
 
 **上下文注入**: 通过 `__rag_default_context_placeholder__` 模板追加到提示词。
 

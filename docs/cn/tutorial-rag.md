@@ -60,71 +60,69 @@ RAG（Retrieval-Augmented Generation）通过检索相关文档来增强 LLM 的
 ### 1. Milvus 向量存储
 
 ```java
-import ai.core.vectorstore.MilvusVectorStore;
-import ai.core.vectorstore.VectorStoreConfig;
-import io.milvus.client.MilvusServiceClient;
-import io.milvus.param.ConnectParam;
+import ai.core.document.Document;
+import ai.core.document.Embedding;
+import ai.core.rag.DistanceMetricType;
+import ai.core.rag.SimilaritySearchRequest;
+import ai.core.vectorstore.milvus.MilvusConfig;
+import ai.core.vectorstore.milvus.MilvusVectorStore;
+import ai.core.vectorstore.request.ScalarQueryRequest;
+import ai.core.vectorstore.spec.CollectionSpec;
+import ai.core.vectorstore.spec.FieldSpec;
+import ai.core.vectorstore.spec.IndexType;
 
 public class MilvusConfigExample {
 
-    public MilvusVectorStore createMilvusStore() {
-        // Milvus 连接配置
-        ConnectParam connectParam = ConnectParam.newBuilder()
-            .withHost("localhost")
-            .withPort(19530)
-            .withDatabaseName("default")
+    static final String COL = "knowledge_base";
+
+    // 自定义 schema：主键 id（Int64 autoID）+ 向量 vector（1536 维）+ 标量字段
+    static final CollectionSpec SPEC = CollectionSpec.builder(COL)
+            .dimension(1536)                       // OpenAI ada-002 维度
+            .indexType(IndexType.HNSW)             // 索引类型
+            .metricType(DistanceMetricType.COSINE) // 相似度度量
+            .indexParams(Map.of("M", 16, "efConstruction", 200))
+            .scalarField(FieldSpec.varchar("source", 256))
             .build();
 
-        MilvusServiceClient client = new MilvusServiceClient(connectParam);
+    public static void main(String[] args) {
+        // 创建向量存储（连接延迟建立，不暴露 Milvus SDK 类型）
+        var store = new MilvusVectorStore(MilvusConfig.builder()
+                .uri("http://localhost:19530")
+                .database("default")
+                .collection(COL)                     // 默认 collection，请求未指定时回落到这里
+                .build());
 
-        // 创建向量存储配置
-        VectorStoreConfig config = VectorStoreConfig.builder()
-            .collectionName("knowledge_base")
-            .embeddingDimension(1536)  // OpenAI ada-002 维度
-            .metricType("COSINE")       // 相似度度量
-            .indexType("IVF_FLAT")      // 索引类型
-            .nlist(1024)                // 索引参数
-            .build();
+        // 幂等建表：has → create → index → load
+        store.ensureCollection(SPEC);
 
-        // 创建 Milvus 向量存储
-        return new MilvusVectorStore(client, config);
-    }
+        // 写入：content 写到 contentField（默认 query），extraField 平铺为标量字段
+        var doc = new Document(null, new Embedding(embedding), "北京是中国的首都。", Map.of("source", "wiki"));
+        store.add(COL, List.of(doc));
 
-    public void createCollection() {
-        MilvusVectorStore store = createMilvusStore();
+        // 带过滤与阈值的向量检索
+        var results = store.similaritySearch(SimilaritySearchRequest.builder()
+                .collection(COL)
+                .embedding(new Embedding(queryEmbedding))
+                .topK(5)
+                .threshold(0.7)
+                .filter("source == 'wiki'")          // Milvus 原生布尔表达式
+                .outputFields(List.of("source"))
+                .build());
+        for (var result : results) {
+            System.out.println(result.id + " score=" + result.score + " content=" + result.content);
+        }
 
-        // 创建集合架构
-        store.createCollection(
-            "documents",
-            List.of(
-                Field.builder()
-                    .name("doc_id")
-                    .dataType(DataType.VarChar)
-                    .maxLength(65535)
-                    .isPrimaryKey(true)
-                    .build(),
+        // 标量分页查询（对应 Milvus QueryReq）
+        store.query(ScalarQueryRequest.builder()
+                .collection(COL)
+                .filter("source == 'wiki'")
+                .offset(0)
+                .limit(10)
+                .build());
 
-                Field.builder()
-                    .name("content")
-                    .dataType(DataType.VarChar)
-                    .maxLength(65535)
-                    .build(),
-
-                Field.builder()
-                    .name("embedding")
-                    .dataType(DataType.FloatVector)
-                    .dimension(1536)
-                    .build(),
-
-                Field.builder()
-                    .name("metadata")
-                    .dataType(DataType.JSON)
-                    .build()
-            )
-        );
-
-        // 创建索引
-        store.createIndex("embedding", IndexType.IVF_FLAT, Map.of("nlist", 1024));
+        // 按过滤删除 / 删除整个集合
+        store.deleteByFilter(COL, "source == 'wiki'");
+        store.dropCollection(COL);
     }
 }
 ```
@@ -132,42 +130,34 @@ public class MilvusConfigExample {
 ### 2. HNSWLib 向量存储（轻量级）
 
 ```java
-import ai.core.vectorstore.HNSWLibVectorStore;
-import com.github.jelmerk.knn.hnswlib.HnswIndex;
-import com.github.jelmerk.knn.hnswlib.DistanceFunctions;
+import ai.core.document.Document;
+import ai.core.document.Embedding;
+import ai.core.rag.SimilaritySearchRequest;
+import ai.core.vectorstore.hnswlib.HnswConfig;
+import ai.core.vectorstore.hnswlib.HnswLibVectorStore;
+import ai.core.vectorstore.spec.CollectionSpec;
 
 public class HNSWLibConfigExample {
 
-    public HNSWLibVectorStore createHNSWStore() {
-        // HNSWLib 配置
-        HnswIndex<String, float[], Item<float[], String>, Float> index =
-            HnswIndex.newBuilder(
-                DistanceFunctions.FLOAT_COSINE_DISTANCE,
-                1536  // 维度
-            )
-            .withM(16)                // 连接数
-            .withEf(200)              // 搜索参数
-            .withEfConstruction(200)  // 构建参数
-            .withMaxItemCount(1000000) // 最大项数
-            .build();
+    public static void main(String[] args) {
+        // 单文件持久化，无需外部服务；collection 参数被忽略（一个文件即一个索引）
+        var store = new HnswLibVectorStore(HnswConfig.of("index.hnsw", 1536));
 
-        return new HNSWLibVectorStore(index);
-    }
+        // 文件不存在时按 spec 新建空索引并保存
+        store.ensureCollection(CollectionSpec.builder("local").dimension(1536).build());
 
-    // 持久化支持
-    public void saveAndLoadIndex() throws IOException {
-        HNSWLibVectorStore store = createHNSWStore();
+        // 写入（距离度量默认 EUCLIDEAN）
+        store.add(null, List.of(new Document("text-1", new Embedding(embedding), "内容", Map.of())));
 
-        // 添加一些向量...
-        store.add(vectors);
+        // 检索：threshold 语义为「距离 ≤ threshold」，结果带 score
+        var results = store.similaritySearch(SimilaritySearchRequest.builder()
+                .embedding(new Embedding(queryEmbedding))
+                .topK(5)
+                .threshold(0.7)
+                .build());
 
-        // 保存索引到文件
-        store.saveIndex(Paths.get("index.hnsw"));
-
-        // 加载索引
-        HNSWLibVectorStore loadedStore = HNSWLibVectorStore.loadIndex(
-            Paths.get("index.hnsw")
-        );
+        // 按 id 删除
+        store.deleteByIds(null, List.of("text-1"));
     }
 }
 ```

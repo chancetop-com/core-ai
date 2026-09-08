@@ -64,7 +64,7 @@ public class LongQueryHandler {
         // to question cannot rag
         if (Strings.isBlank(query) && Strings.isBlank(question)) return new LongQueryHandlerResult(query, new Usage());
         var embeddingTexts = textSplitter.split(query).stream().map(TextChunk::embeddingText).collect(Collectors.toList());
-        var documents = vectorStore.getAll(embeddingTexts);
+        var documents = vectorStore.getByIds(null, embeddingTexts.stream().map(Document::toId).toList());
         embeddingTexts.removeAll(documents.stream().map(v -> v.content).toList());
         var usage = new Usage();
         if (!embeddingTexts.isEmpty()) {

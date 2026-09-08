@@ -3,7 +3,6 @@ package ai.core.vectorstore;
 import java.util.EnumMap;
 import java.util.Map;
 
-
 /**
  * @author stephen
  */
@@ -16,7 +15,9 @@ public class VectorStores {
     }
 
     public VectorStore getDefaultVectorStore() {
-        return vectorStores.get(defaultVectorStoreType);
+        if (defaultVectorStoreType != null) return vectorStores.get(defaultVectorStoreType);
+        if (vectorStores.size() == 1) return vectorStores.values().iterator().next();
+        return null;
     }
 
     public VectorStore getVectorStore(VectorStoreType vectorStoreType) {

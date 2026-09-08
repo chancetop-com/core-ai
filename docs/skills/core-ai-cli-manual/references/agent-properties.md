@@ -172,12 +172,14 @@ Lets the local agent delegate to agents on a core-ai-server over A2A (`search_re
 |----------|------|---------|-------------|
 | `sys.redis.host` | String | — | Redis host (presence enables Redis persistence) |
 | `sys.persistence.file.directory` | String | — | File persistence directory |
-| `sys.milvus.uri` | String | — | Milvus vector store URI |
+| `sys.milvus.uri` | String | — | Milvus vector store URI (presence enables the Milvus backend) |
 | `sys.milvus.token` | String | — | Milvus auth token |
 | `sys.milvus.database` | String | — | Milvus database |
 | `sys.milvus.username` | String | — | Milvus username |
 | `sys.milvus.password` | String | — | Milvus password |
-| `sys.hnswlib.path` | String | — | HnswLib vector store path |
+| `sys.milvus.collection` | String | — | Default collection used when a request does not specify one |
+| `sys.milvus.content.field` | String | `query` | Scalar field that `Document.content` is written to / read from |
+| `sys.hnswlib.path` | String | — | HnswLib vector store path (presence enables the HnswLib backend) |
 
 ## Telemetry / Tracing
 

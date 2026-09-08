@@ -17,8 +17,6 @@ import ai.core.telemetry.LLMTracer;
 import ai.core.telemetry.TelemetryConfig;
 import ai.core.telemetry.TracerBundle;
 import ai.core.vectorstore.VectorStores;
-import ai.core.vectorstore.vectorstores.hnswlib.HnswLibVectorStore;
-import ai.core.vectorstore.vectorstores.milvus.MilvusVectorStore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,9 +38,6 @@ public class BootstrapResult {
     public TemporaryPersistenceProvider temporaryPersistenceProvider;
     public RedisPersistenceProvider redisPersistenceProvider;
     public FilePersistenceProvider filePersistenceProvider;
-
-    public MilvusVectorStore milvusVectorStore;
-    public HnswLibVectorStore hnswLibVectorStore;
 
     public TelemetryConfig telemetryConfig;
     public LLMTracer llmTracer;

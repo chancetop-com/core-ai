@@ -387,15 +387,23 @@ public class InMemoryChatHistoryProvider implements ChatHistoryProvider {
 ### Custom Storage Implementation
 
 ```java
-// Implement MemoryStore interface
+// Implement MemoryStore interface backed by the core-ai Milvus vector store
 public class MilvusMemoryStore implements MemoryStore {
-    private final MilvusClient client;
+    private static final String COL = "memory_collection";
+
+    private final VectorStore vectorStore;   // @Inject @Named("milvus") VectorStore, see MultiAgentModule
 
     @Override
     public List<MemoryRecord> searchByVector(String userId, List<Double> embedding, int topK) {
-        // Query with userId isolation
-        return client.search("memory_collection",
-            "user_id == '" + userId + "'", embedding, topK);
+        // Query with userId isolation via a Milvus native filter
+        List<Document> results = vectorStore.similaritySearch(SimilaritySearchRequest.builder()
+            .collection(COL)
+            .embedding(new Embedding(embedding))
+            .topK(topK)
+            .filter("user_id == '" + userId + "'")
+            .outputFields(List.of("user_id", "content"))
+            .build());
+        // ... map Document back to MemoryRecord
     }
     // ... other methods
 }
@@ -538,7 +546,7 @@ MemoryStore devStore = new InMemoryStore();
 ChatHistoryProvider devHistory = new InMemoryChatHistoryProvider();
 
 // Production: persistent storage
-MemoryStore prodStore = new MilvusMemoryStore(milvusClient);
+MemoryStore prodStore = new MilvusMemoryStore(vectorStore);   // core-ai-vectorstore-milvus
 ChatHistoryProvider prodHistory = new DatabaseHistoryProvider(repository);
 // Or use Lambda
 ChatHistoryProvider prodHistory = userId -> repository.findByUserId(userId);

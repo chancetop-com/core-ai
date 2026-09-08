@@ -1,4 +1,4 @@
-package ai.core.vectorstore.vectorstores.hnswlib;
+package ai.core.vectorstore.hnswlib;
 
 import ai.core.rag.DistanceMetricType;
 
@@ -16,6 +16,7 @@ public record HnswConfig(String path, int dimension, int maxItemCount, int ef, i
     public static HnswConfig of(String path) {
         return of(path, 1536);
     }
+
     public static HnswConfig of(String path, int dimension) {
         return new HnswConfig(path, dimension, dimension, 40, 200, 16, DistanceMetricType.EUCLIDEAN);
     }

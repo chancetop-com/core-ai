@@ -1,19 +1,21 @@
-package ai.core.vectorstore.vectorstores.hnswlib;
+package ai.core.vectorstore.hnswlib;
 
 import ai.core.document.Document;
 import ai.core.document.Embedding;
 import ai.core.rag.DistanceMetricType;
 import ai.core.rag.SimilaritySearchRequest;
 import ai.core.vectorstore.VectorStore;
+import ai.core.vectorstore.request.ScalarQueryRequest;
+import ai.core.vectorstore.spec.CollectionSpec;
 import com.github.jelmerk.hnswlib.core.DistanceFunction;
 import com.github.jelmerk.hnswlib.core.DistanceFunctions;
 import com.github.jelmerk.hnswlib.core.Index;
 import com.github.jelmerk.hnswlib.core.SearchResult;
 import com.github.jelmerk.hnswlib.core.hnsw.HnswIndex;
 import core.framework.json.JSON;
-import core.framework.web.exception.NotFoundException;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.List;
@@ -21,6 +23,9 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
+ * File-backed HNSWLib {@link VectorStore}. The {@code collection} argument is ignored by all methods — this
+ * implementation serves exactly one index per file path.
+ *
  * @author stephen
  */
 public class HnswLibVectorStore implements VectorStore {
@@ -37,10 +42,11 @@ public class HnswLibVectorStore implements VectorStore {
     }
 
     public static void build(HnswConfig config, List<Document> documents) throws IOException, InterruptedException {
-        if (config.path().isEmpty() || documents.isEmpty()) throw new NotFoundException("Path or documents is empty");
+        if (config.path().isEmpty() || documents.isEmpty()) throw new IllegalArgumentException("Path or documents is empty");
         HnswIndex<String, float[], HnswDocument, Float> index = HnswIndex.newBuilder(config.dimension(), mapToFunction(config.metricType()), config.maxItemCount())
                 .withEf(config.efConstruction())
                 .withM(config.m())
+                .withRemoveEnabled()
                 .build();
         var docs = documents.stream().map(HnswLibVectorStore::fromDocument).toList();
         index.addAll(docs);
@@ -82,21 +88,17 @@ public class HnswLibVectorStore implements VectorStore {
                         v.item().id(),
                         Embedding.of(v.item().vector()),
                         v.item().content(),
-                        (Map<String, Object>) JSON.fromJSON(Map.class, v.item().extraField()))).toList();
+                        (Map<String, Object>) JSON.fromJSON(Map.class, v.item().extraField()),
+                        v.distance().doubleValue())).toList();
     }
 
     @Override
-    public Optional<Document> get(String text) {
-        return this.index.get(Document.toId(text)).map(this::toDocument);
+    public List<Document> query(ScalarQueryRequest request) {
+        throw new UnsupportedOperationException("HNSWLib does not support scalar queries");
     }
 
     @Override
-    public List<Document> getAll(List<String> text) {
-        return text.stream().map(this::get).filter(Optional::isPresent).map(Optional::get).toList();
-    }
-
-    @Override
-    public void add(List<Document> documents) {
+    public void add(String collection, List<Document> documents) {
         try {
             this.index.addAll(documents.stream().map(HnswLibVectorStore::fromDocument).toList());
             save();
@@ -106,12 +108,55 @@ public class HnswLibVectorStore implements VectorStore {
     }
 
     @Override
-    public void delete(List<String> texts) {
-        texts.forEach(this::delete);
+    public void deleteByIds(String collection, List<String> ids) {
+        ids.forEach(id -> this.index.remove(id, 0));
     }
 
-    public void delete(String text) {
-        this.index.remove(Document.toId(text), 0);
+    @Override
+    public void deleteByFilter(String collection, String filter) {
+        throw new UnsupportedOperationException("HNSWLib does not support filtering");
+    }
+
+    @Override
+    public Optional<Document> getById(String collection, String id) {
+        return this.index.get(id).map(this::toDocument);
+    }
+
+    @Override
+    public List<Document> getByIds(String collection, List<String> ids) {
+        return ids.stream().map(this.index::get).filter(Optional::isPresent).map(Optional::get).map(this::toDocument).toList();
+    }
+
+    @Override
+    public boolean hasCollection(String collection) {
+        return Files.exists(Paths.get(config.path()));
+    }
+
+    @Override
+    public void ensureCollection(CollectionSpec spec) {
+        if (hasCollection(spec.name())) return;
+        try {
+            HnswIndex<String, float[], HnswDocument, Float> created = HnswIndex.newBuilder(
+                            spec.dimension(), mapToFunction(spec.metricType()), Math.max(config.maxItemCount(), spec.dimension()))
+                    .withEf(config.efConstruction())
+                    .withM(config.m())
+                    .withRemoveEnabled()
+                    .build();
+            created.save(Paths.get(config.path()));
+            index = created;
+        } catch (IOException e) {
+            throw new RuntimeException("HnswLib ensure collection failed: " + config.path(), e);
+        }
+    }
+
+    @Override
+    public void dropCollection(String collection) {
+        try {
+            Files.deleteIfExists(Paths.get(config.path()));
+        } catch (IOException e) {
+            throw new RuntimeException("HnswLib drop collection failed: " + config.path(), e);
+        }
+        index = null;
     }
 
     @Override

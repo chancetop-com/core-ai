@@ -1,4 +1,4 @@
-package ai.core.vectorstore.vectorstores.milvus;
+package ai.core.vectorstore.milvus;
 
 /**
  * @author stephen
@@ -14,7 +14,9 @@ public class MilvusConfig {
     String database;
     String username;
     String password;
-    String collection;
+    String collection;             // default collection, may be null
+    String contentField = "query"; // field that Document.content is written to / read from
+    Integer connectTimeoutMs = 10_000;
 
     public static class Builder {
         private String uri;
@@ -23,6 +25,8 @@ public class MilvusConfig {
         private String username;
         private String password;
         private String collection;
+        private String contentField = "query";
+        private Integer connectTimeoutMs = 10_000;
 
         public Builder uri(String uri) {
             this.uri = uri;
@@ -54,6 +58,16 @@ public class MilvusConfig {
             return this;
         }
 
+        public Builder contentField(String contentField) {
+            this.contentField = contentField;
+            return this;
+        }
+
+        public Builder connectTimeoutMs(Integer connectTimeoutMs) {
+            this.connectTimeoutMs = connectTimeoutMs;
+            return this;
+        }
+
         public MilvusConfig build() {
             var config = new MilvusConfig();
             config.uri = this.uri;
@@ -62,6 +76,8 @@ public class MilvusConfig {
             config.username = this.username;
             config.password = this.password;
             config.collection = this.collection;
+            config.contentField = this.contentField;
+            config.connectTimeoutMs = this.connectTimeoutMs;
             return config;
         }
     }

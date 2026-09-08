@@ -157,9 +157,7 @@ public final class CustomHTTPClientImpl implements HTTPClient {
         if (statusCode == 204) {
             return new byte[0];
         }
-        var body = httpResponse.body();
-        if (body == null) return new byte[0];
-        return body.bytes();
+        return httpResponse.body().bytes();
     }
 
     private Map<String, @Nullable String> headers(Response httpResponse) {

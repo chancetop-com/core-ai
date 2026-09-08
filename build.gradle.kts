@@ -33,7 +33,7 @@ subprojects {
         return@subprojects
     }
 
-    if (project.name.endsWith("core-ai") || project.name.endsWith("core-ai-api")) {
+    if (project.name == "core-ai" || project.name == "core-ai-api" || project.name.startsWith("core-ai-vectorstore-")) {
         the<JavaPluginExtension>().withSourcesJar()
         apply(plugin = "maven-publish")
         publishing {
@@ -83,14 +83,15 @@ project(":core-ai") {
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         api("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
         implementation("com.github.spullara.mustache.java:compiler:${Versions.MUSTACHE_JAVA_VERSION}")
-        implementation("io.milvus:milvus-sdk-java:${Versions.MILVUS_JAVA_VERSION}")
-        implementation("com.github.jelmerk:hnswlib-core:${Versions.HNSWLIB_JAVA_VERSION}")
-        implementation("com.github.jelmerk:hnswlib-utils:${Versions.HNSWLIB_JAVA_VERSION}")
         implementation("com.knuddels:jtokkit:${Versions.JTOKKIT_VERSION}")
         // tricky part: self-defined sse module
         implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
         implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Versions.JACKSON_VERSION}")
         implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
+        // previously resolved transitively via milvus-sdk-java; declared explicitly now that vector stores are split out
+        implementation("com.squareup.okhttp3:okhttp:${Versions.OKHTTP_VERSION}")
+        implementation("org.apache.commons:commons-lang3:3.12.0")
+        implementation("org.jetbrains:annotations:13.0")
         // OpenTelemetry for tracing
         implementation("io.opentelemetry:opentelemetry-api:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-sdk:${Versions.OPENTELEMETRY_VERSION}")
@@ -132,6 +133,36 @@ project(":core-ai-api") {
 }
 
 
+project(":core-ai-vectorstore-milvus") {
+    apply(plugin = "java-library")
+    version = ProjectVersions.CORE_AI_VERSION
+    dependencies {
+        implementation(project(":core-ai"))
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("org.slf4j:slf4j-api:2.0.17")
+        api("io.milvus:milvus-sdk-java:${Versions.MILVUS_JAVA_VERSION}")
+        compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
+        testCompileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
+    }
+}
+
+
+project(":core-ai-vectorstore-hnswlib") {
+    apply(plugin = "java-library")
+    version = ProjectVersions.CORE_AI_VERSION
+    dependencies {
+        implementation(project(":core-ai"))
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        api("com.github.jelmerk:hnswlib-core:${Versions.HNSWLIB_JAVA_VERSION}")
+        api("com.github.jelmerk:hnswlib-utils:${Versions.HNSWLIB_JAVA_VERSION}")
+        compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
+        testCompileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
+    }
+}
+
+
 project(":core-ai-server") {
     version = ProjectVersions.CORE_AI_SERVER_VERSION
     apply(plugin = "app")
@@ -158,6 +189,9 @@ project(":core-ai-server") {
     dependencies {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
+        // vector store backends discovered via ServiceLoader at runtime when sys.milvus.* / sys.hnswlib.* are configured
+        runtimeOnly(project(":core-ai-vectorstore-milvus"))
+        runtimeOnly(project(":core-ai-vectorstore-hnswlib"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("core.framework:core-ng-mongo:${Versions.CORE_FRAMEWORK_VERSION}")
         // BouncyCastle for password hashing

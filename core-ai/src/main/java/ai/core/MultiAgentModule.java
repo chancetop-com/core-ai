@@ -4,6 +4,8 @@ import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.telemetry.TracerBundle;
+import ai.core.vectorstore.VectorStore;
+import ai.core.vectorstore.VectorStoreType;
 import core.framework.module.Module;
 
 /**
@@ -58,11 +60,15 @@ public class MultiAgentModule extends Module {
     }
 
     private void bindVectorStores(BootstrapResult r) {
-        if (r.milvusVectorStore != null) {
-            bind(r.milvusVectorStore);
-        }
-        if (r.hnswLibVectorStore != null) {
-            bind(r.hnswLibVectorStore);
+        for (var type : VectorStoreType.values()) {
+            var store = r.vectorStores.getVectorStore(type);
+            if (store != null) {
+                bind(VectorStore.class, type.getName(), store);
+                bind(store);
+                if (store instanceof AutoCloseable closeable) {
+                    onShutdown(closeable::close);
+                }
+            }
         }
     }
 

@@ -7,7 +7,7 @@ object Versions {
     const val UNDERTOW_CORE_VERSION = "2.3.23.Final"
     const val OKHTTP_VERSION = "5.3.2"
     const val MUSTACHE_JAVA_VERSION = "0.9.10"
-    const val MILVUS_JAVA_VERSION = "2.5.2"
+    const val MILVUS_JAVA_VERSION = "2.6.8"
     const val HNSWLIB_JAVA_VERSION = "1.2.0"
     const val JTOKKIT_VERSION = "1.1.0"
     const val OPENTELEMETRY_VERSION = "1.44.1"
@@ -25,10 +25,6 @@ object Versions {
 }
 
 object ProjectVersions {
-    const val CORE_AI_VERSION = "1.3.0-SNAPSHOT"
+    const val CORE_AI_VERSION = "1.4.0-SNAPSHOT"
     const val CORE_AI_API_VERSION = "1.3.0-SNAPSHOT"
-    const val CORE_AI_SERVER_VERSION = "1.0.0-SNAPSHOT"
-    const val CORE_AI_CLI_VERSION = "1.0.0-SNAPSHOT"
-    const val CORE_AI_BENCHMARK_VERSION = "1.0.0-SNAPSHOT"
-    const val CORE_AI_TRACE_VERSION = "1.0.0-SNAPSHOT"
 }

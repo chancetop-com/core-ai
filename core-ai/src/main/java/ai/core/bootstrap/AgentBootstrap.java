@@ -26,18 +26,16 @@ import ai.core.telemetry.TelemetryConfig;
 import ai.core.telemetry.TracerBundle;
 import ai.core.telemetry.TracerRegistry;
 import ai.core.utils.JsonUtil;
+import ai.core.vectorstore.VectorStoreProvider;
 import ai.core.vectorstore.VectorStoreType;
 import ai.core.vectorstore.VectorStores;
-import ai.core.vectorstore.vectorstores.hnswlib.HnswConfig;
-import ai.core.vectorstore.vectorstores.hnswlib.HnswLibVectorStore;
-import ai.core.vectorstore.vectorstores.milvus.MilvusConfig;
-import ai.core.vectorstore.vectorstores.milvus.MilvusVectorStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
+import java.util.ServiceLoader;
 
 /**
  * @author stephen
@@ -95,23 +93,23 @@ public class AgentBootstrap {
         var vectorStores = new VectorStores();
         result.vectorStores = vectorStores;
 
-        props.property("sys.milvus.uri").ifPresent(uri -> {
-            var config = MilvusConfig.builder()
-                    .uri(uri)
-                    .token(props.property("sys.milvus.token").orElse(null))
-                    .database(props.property("sys.milvus.database").orElse(null))
-                    .username(props.property("sys.milvus.username").orElse(null))
-                    .password(props.property("sys.milvus.password").orElse(null)).build();
-            var vectorStore = new MilvusVectorStore(config);
-            result.milvusVectorStore = vectorStore;
-            vectorStores.addVectorStore(VectorStoreType.MILVUS, vectorStore);
-        });
+        var providers = ServiceLoader.load(VectorStoreProvider.class).stream()
+                .map(ServiceLoader.Provider::get)
+                .toList();
+        for (var provider : providers) {
+            if (provider.enabled(props::property)) {
+                vectorStores.addVectorStore(provider.type(), provider.create(props::property));
+            }
+        }
+        failIfConfiguredButMissing(vectorStores, "sys.milvus.uri", VectorStoreType.MILVUS);
+        failIfConfiguredButMissing(vectorStores, "sys.hnswlib.path", VectorStoreType.HNSW_LIB);
+    }
 
-        props.property("sys.hnswlib.path").ifPresent(path -> {
-            var vectorStore = new HnswLibVectorStore(HnswConfig.of(path));
-            result.hnswLibVectorStore = vectorStore;
-            vectorStores.addVectorStore(VectorStoreType.HNSW_LIB, vectorStore);
-        });
+    private void failIfConfiguredButMissing(VectorStores vectorStores, String property, VectorStoreType type) {
+        if (props.property(property).isPresent() && vectorStores.getVectorStore(type) == null) {
+            throw new IllegalStateException(property + " is configured but no " + type
+                    + " vector store provider found on classpath; add the corresponding core-ai-vectorstore module");
+        }
     }
 
     private void configureTelemetry(BootstrapResult result) {
