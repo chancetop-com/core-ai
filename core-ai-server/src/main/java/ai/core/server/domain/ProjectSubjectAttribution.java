@@ -42,9 +42,15 @@ public class ProjectSubjectAttribution {
     public String targetId;
 
     // consumption marker: null = attributed but not yet analyzed; the subject-analysis run sets
-    // this once the attributed material has been consumed (idempotent, per-attribution cursor)
+    // this once the attributed material has been consumed. The attribution stage clears it again
+    // when the target grows (a session received new messages), so the new part gets analyzed.
     @Field(name = "analyzed_at")
     public ZonedDateTime analyzedAt;
+
+    // material time consumed so far (session: last_message_at at analysis time); only messages
+    // newer than this are fed on re-analysis of a grown session
+    @Field(name = "analyzed_through")
+    public ZonedDateTime analyzedThrough;
 
     @Field(name = "created_at")
     public ZonedDateTime createdAt;

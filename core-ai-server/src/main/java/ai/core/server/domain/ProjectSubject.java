@@ -6,10 +6,13 @@ import core.framework.mongo.Field;
 import core.framework.mongo.Id;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 /**
  * Subject (business subject under a project): the stable anchor of KPI/report series
- * (product decision D5 — an entity, not free text, so LLM-written names cannot fragment series).
+ * (product decision D5 — an entity, not free text, so LLM-written names cannot fragment series)
+ * and the ONLY carrier of current state: phase/summary and the action-item list live here, the
+ * history behind them in {@link ProjectSubjectEvent}.
  *
  * @author stephen
  */
@@ -45,6 +48,22 @@ public class ProjectSubject {
     // overwritten per analysis
     @Field(name = "profile")
     public String profile;
+
+    // ---- current state (overwrite semantics; every change appends a history event) ----
+    @Field(name = "phase")
+    public String phase;
+
+    @Field(name = "summary")
+    public String summary;
+
+    @Field(name = "status_updated_at")
+    public ZonedDateTime statusUpdatedAt;   // material time of the current phase/summary
+
+    @Field(name = "status_updated_by")
+    public String statusUpdatedBy;
+
+    @Field(name = "action_items")
+    public List<ProjectActionItem> actionItems;
 
     // subject-level analysis cursor: attributed material older than this has been analyzed
     // by the subject-analysis stage; failures leave it untouched so the next run retries

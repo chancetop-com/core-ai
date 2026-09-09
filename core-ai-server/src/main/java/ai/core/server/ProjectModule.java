@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.api.server.project.ProjectWebService;
 import ai.core.server.project.ProjectAnalysisJob;
+import ai.core.server.project.ProjectAnalysisMaterialLoader;
 import ai.core.server.project.ProjectAnalysisService;
 import ai.core.server.project.ProjectAttributionJob;
 import ai.core.server.project.ProjectAttributionStage;
@@ -17,12 +18,11 @@ import ai.core.server.project.ProjectStateService;
 import ai.core.server.project.ProjectStatsQueryService;
 import ai.core.server.project.ProjectStatsRefreshJob;
 import ai.core.server.project.ProjectSubjectAnalysisStage;
+import ai.core.server.project.ProjectTargetScanStore;
 import ai.core.server.project.ProjectToolDispatcher;
 import ai.core.server.project.ProjectTools;
 import ai.core.server.project.ProjectViewAssembler;
 import ai.core.server.project.ProjectWebServiceImpl;
-import ai.core.server.project.ProjectWriterToolFactory;
-import ai.core.server.project.ProjectWriterToolSupport;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 
@@ -48,7 +48,9 @@ public class ProjectModule extends Module {
         bind(ProjectMemberQueryService.class);
         bind(ProjectViewAssembler.class);
         bind(ProjectStatsQueryService.class);
+        bind(ProjectTargetScanStore.class);
         bind(ProjectAttributionStage.class);
+        bind(ProjectAnalysisMaterialLoader.class);
         bind(ProjectSubjectAnalysisStage.class);
         bind(ProjectReportStage.class);
         bind(ProjectResetService.class);
@@ -59,7 +61,6 @@ public class ProjectModule extends Module {
         http().route(HTTPMethod.POST, "/api/projects/:id/subjects/:subjectId/reports", bind(ProjectReportUploadController.class));
         var projectTools = bind(ProjectTools.class);
         projectTools.initialize();
-        ProjectWriterToolSupport.setFactory(bind(ProjectWriterToolFactory.class));
         // high-frequency attribution (tags new member material) + low-frequency subject analysis
         schedule().fixedRate("project-attribution", bind(ProjectAttributionJob.class), Duration.ofMinutes(10));
         schedule().fixedRate("project-analysis", bind(ProjectAnalysisJob.class), Duration.ofMinutes(60));

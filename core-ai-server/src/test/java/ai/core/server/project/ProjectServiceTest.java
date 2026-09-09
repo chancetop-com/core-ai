@@ -15,8 +15,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -127,7 +125,7 @@ class ProjectServiceTest {
     }
 
     @Test
-    void addMemberSetsAgentProjectId() {
+    void addMemberWritesMembersWithTargetedUpdate() {
         var stored = project("p-1");
         when(projects.get("p-1")).thenReturn(Optional.of(stored));
         var agent = new AgentDefinition();
@@ -138,11 +136,10 @@ class ProjectServiceTest {
 
         service.addMember("p-1", "user-1", false, "agent", "agent-1");
 
-        assertEquals(1, stored.members.size());
-        assertEquals("agent", stored.members.getFirst().type);
-        assertEquals("agent-1", stored.members.getFirst().id);
-        assertEquals("audit-agent", stored.members.getFirst().name);
-        verify(projects).replace(any());
+        // membership is written with a targeted $set (never a whole-document replace, which would
+        // clobber the analysis cursors/claims the jobs update concurrently)
+        verify(projects).update(any(Bson.class), any(Bson.class));
+        verify(projects, never()).replace(any());
     }
 
     @Test
@@ -169,8 +166,7 @@ class ProjectServiceTest {
 
         service.addMember("p-1", "user-1", false, "agent", "agent-1");
 
-        assertEquals(1, stored.members.size());
-        verify(projects).replace(any());
+        verify(projects).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -193,8 +189,7 @@ class ProjectServiceTest {
 
         service.addMember("p-1", "user-2", false, "agent", "agent-1");
 
-        assertEquals(1, stored.members.size());
-        verify(projects).replace(any());
+        verify(projects).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -205,7 +200,7 @@ class ProjectServiceTest {
     }
 
     @Test
-    void removeMemberClearsWorkflowProjectId() {
+    void removeMemberWritesMembersWithTargetedUpdate() {
         var stored = project("p-1");
         var member = new ai.core.server.domain.ProjectMemberRef();
         member.type = "workflow";
@@ -216,7 +211,7 @@ class ProjectServiceTest {
 
         service.removeMember("p-1", "user-1", false, "workflow", "wf-1");
 
-        assertNull(stored.members);
-        verify(projects).replace(any());
+        verify(projects).update(any(Bson.class), any(Bson.class));
+        verify(projects, never()).replace(any());
     }
 }

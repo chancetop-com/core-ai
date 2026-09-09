@@ -12,15 +12,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Registers the {@code project} builtin tool group (get_project_info / attribute_subjects /
- * analyze_subject) that the builtin project-agent mounts. project_id is declared on each tool but
- * is normally auto-injected from the run's runtime variables; subject-scoped material queries
- * join the attribution table.
+ * Registers the {@code project-report} builtin tool group (append_report_section) that the builtin
+ * report-renderer agent mounts. The analysis pipeline itself has no agent-facing tools: attribution
+ * and subject analysis are driven by the jobs through the LLM_CALL writer definitions directly.
  *
  * @author stephen
  */
 public class ProjectTools {
-    public static final String TOOL_SET_NAME = "builtin:project";
     public static final String REPORT_TOOL_SET_NAME = "builtin:project-report";
 
     @Inject
@@ -29,14 +27,6 @@ public class ProjectTools {
     ToolRegistryService toolRegistryService;
 
     public void initialize() {
-        var tools = new ArrayList<ToolCall>();
-        tools.add(build("get_project_info",
-            "Load one project's context: playbook, goal, report sources, members, subjects (with per-subject attribution counts and analysis cursors) and the project analysis cursor.",
-            List.of(required("project_id", "Project ID")),
-            method("getProjectInfo", String.class)));
-        toolRegistryService.registerBuiltinToolGroup(TOOL_SET_NAME, "Project",
-            "Project analysis tools for the builtin project agent: project context lookup (the attribution and subject-analysis writers are mounted as LLM_CALL tools)",
-            tools);
         var reportTools = new ArrayList<ToolCall>();
         reportTools.add(build("append_report_section",
             "Append ONE section of the campaign report HTML. The report is too long for a single reply, so write it section by section: call this once per section with a complete, valid HTML fragment (the first call must carry the <style> block and the subject headline). Do NOT put HTML in your reply text.",

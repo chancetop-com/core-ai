@@ -5,7 +5,8 @@ import core.framework.mongo.Field;
 import java.time.ZonedDateTime;
 
 /**
- * Embedded action item; empty subject_id means project-level.
+ * Action item embedded in the {@link ProjectSubject} document (current state; every create/status/
+ * title change also appends an action_item history event).
  *
  * @author stephen
  */

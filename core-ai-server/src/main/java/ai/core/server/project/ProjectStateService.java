@@ -2,17 +2,15 @@ package ai.core.server.project;
 
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectActionItem;
-import ai.core.server.domain.ProjectKpiRecord;
-import ai.core.server.domain.ProjectNote;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectEvent;
-import ai.core.server.domain.ProjectSubjectStatus;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
+import org.bson.Document;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -21,18 +19,15 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Subject-state write surface of the project feature: status/KPIs/action items/notes plus the
- * append-only event rows (D7) behind every change. The embedded arrays on the project document
- * are the current-state surface for the existing UI; the event collection is the authoritative
- * history consumed by the timeline, trends and the HTML report renderer.
+ * Subject-state write surface of the project feature. Current state (phase/summary/action items)
+ * is written onto the subject document with targeted {@code $set}s; every change appends an
+ * event row (D7), and KPIs/notes are events ONLY — the event collection is the authoritative
+ * history consumed by the cockpit views, the timeline and the HTML report renderer.
  *
  * @author stephen
  */
 public class ProjectStateService {
-    static final int MAX_KPIS = 2000;
     static final int MAX_ACTION_ITEMS = 500;
-    static final int MAX_NOTES = 2000;
-    static final int MAX_SUBJECT_STATUSES = 200;
     static final int KPI_VALUE_MAX_LENGTH = 200;
     static final int TEXT_MAX_LENGTH = 2000;
     static final int TITLE_MAX_LENGTH = 200;
@@ -44,96 +39,71 @@ public class ProjectStateService {
     @Inject
     MongoCollection<ProjectSubjectEvent> eventCollection;
 
+    /**
+     * Overwrites the subject's current phase/summary and appends phase/summary events on change. The
+     * event time is the MATERIAL time (when the phase actually happened). Material OLDER than the
+     * current state still lands in history but does not regress the current state (analysis consumes
+     * material in batches whose order is not guaranteed).
+     */
     public void updateStatus(String projectId, String subjectId, String phase, String summary, ZonedDateTime at, String updatedBy) {
-        validateWrite(projectId, subjectId);
-        var now = ZonedDateTime.now();
-        var project = require(projectId);
-        var statuses = new ArrayList<ProjectSubjectStatus>();
-        if (project.subjectStatuses != null) statuses.addAll(project.subjectStatuses);
-        var existing = statuses.stream().filter(s -> subjectId.equals(s.subjectId)).findFirst();
-        ProjectSubjectStatus entry = existing.orElseGet(() -> {
-            var created = new ProjectSubjectStatus();
-            created.subjectId = subjectId;
-            statuses.add(created);
-            return created;
-        });
-        if (statuses.size() > MAX_SUBJECT_STATUSES) {
-            throw new BadRequestException("project has too many subject statuses, limit=" + MAX_SUBJECT_STATUSES);
-        }
+        var subject = validateWrite(projectId, subjectId);
         var newPhase = limitText(phase, TEXT_MAX_LENGTH);
         var newSummary = limitText(summary, TEXT_MAX_LENGTH);
-        var oldPhase = entry.phase;
-        var oldSummary = entry.summary;
+        if (newPhase == null && newSummary == null) return;
         var eventAt = eventAt(at);
-        if (newPhase != null) entry.phase = newPhase;
-        if (newSummary != null) entry.summary = newSummary;
-        entry.updatedAt = eventAt;
-        entry.updatedBy = updatedBy;
-        project.subjectStatuses = statuses;
-        normalizeArrayFields(project);
-        project.updatedAt = now;
-        projectCollection.replace(project);
-        // phase/summary changes append history events (D7): the transition itself is the insight;
-        // the event time is the MATERIAL time (when the phase actually happened), not the write time
-        if (newPhase != null && !newPhase.equals(oldPhase)) {
-            var meta = oldPhase == null ? null : JsonUtil.toJson(Map.of("previous_phase", oldPhase));
+        var phaseChanged = newPhase != null && !newPhase.equals(subject.phase);
+        var summaryChanged = newSummary != null && !newSummary.equals(subject.summary);
+        var older = subject.statusUpdatedAt != null && eventAt.isBefore(subject.statusUpdatedAt);
+        if (!older) {
+            var updates = new ArrayList<org.bson.conversions.Bson>();
+            if (newPhase != null) updates.add(Updates.set("phase", newPhase));
+            if (newSummary != null) updates.add(Updates.set("summary", newSummary));
+            updates.add(Updates.set("status_updated_at", eventAt));
+            updates.add(Updates.set("status_updated_by", updatedBy));
+            updates.add(Updates.set("updated_at", ZonedDateTime.now()));
+            subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(updates));
+        }
+        if (phaseChanged) {
+            var meta = subject.phase == null ? null : JsonUtil.toJson(Map.of("previous_phase", subject.phase));
             recordEvent(projectId, subjectId, ProjectSubjectEvent.TYPE_PHASE, updatedBy, new EventValue(newPhase, newPhase, meta, eventAt));
         }
-        if (newSummary != null && !newSummary.equals(oldSummary)) {
-            recordEvent(projectId, subjectId, ProjectSubjectEvent.TYPE_SUMMARY, updatedBy, new EventValue(entry.phase, newSummary, null, eventAt));
+        if (summaryChanged) {
+            var phaseKey = newPhase != null ? newPhase : subject.phase;
+            recordEvent(projectId, subjectId, ProjectSubjectEvent.TYPE_SUMMARY, updatedBy, new EventValue(phaseKey, newSummary, null, eventAt));
         }
     }
 
+    // KPIs are an append-only series: one event per observation, deduplicated on the exact
+    // (key, value, at) so a re-analysis of the same material cannot double a data point
     public void recordKpi(String projectId, String subjectId, String createdBy, ZonedDateTime at, KpiSnapshot kpi) {
         validateWrite(projectId, subjectId);
-        var project = require(projectId);
-        var size = project.kpis != null ? project.kpis.size() : 0;
-        var record = new ProjectKpiRecord();
-        record.subjectId = subjectId;
-        record.key = limitText(kpi.key(), TITLE_MAX_LENGTH);
-        record.value = limitText(kpi.value(), KPI_VALUE_MAX_LENGTH);
-        record.unit = limitText(kpi.unit(), TITLE_MAX_LENGTH);
-        record.createdAt = eventAt(at);
-        record.createdBy = createdBy;
-        // the event series is the authoritative history; the embedded array is the current-state
-        // surface. At the embedded cap the event still lands (analysis must not fail on volume).
-        recordEvent(projectId, subjectId, ProjectSubjectEvent.TYPE_KPI, createdBy,
-            new EventValue(record.key, record.value, record.unit != null ? JsonUtil.toJson(Map.of("unit", record.unit)) : null, record.createdAt));
-        if (size >= MAX_KPIS) return;
-        // push as a raw Document: core-ng has no codec for nested classes, so embedding an entity
-        // instance as an update value fails with "Can't find a codec" (replace() works because the
-        // entity encoder handles nested fields inline)
-        var doc = new org.bson.Document("subject_id", record.subjectId)
-            .append("key", record.key)
-            .append("value", record.value);
-        if (record.unit != null) doc.append("unit", record.unit);
-        doc.append("created_at", record.createdAt).append("created_by", record.createdBy);
-        ensureArrayField(projectId, "kpis", project.kpis == null);
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
-            Updates.push("kpis", doc),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        var key = limitText(kpi.key(), TITLE_MAX_LENGTH);
+        var value = limitText(kpi.value(), KPI_VALUE_MAX_LENGTH);
+        if (key == null || value == null) throw new BadRequestException("kpi key and value are required");
+        var unit = limitText(kpi.unit(), TITLE_MAX_LENGTH);
+        var meta = unit != null ? JsonUtil.toJson(Map.of("unit", unit)) : null;
+        recordEventOnce(projectId, subjectId, ProjectSubjectEvent.TYPE_KPI, createdBy, new EventValue(key, value, meta, eventAt(at)));
     }
 
     public void updateActionItem(String projectId, String updatedBy, ActionItemFields fields) {
         var subjectId = fields.subjectId();
-        validateWrite(projectId, subjectId);
+        var subject = validateWrite(projectId, subjectId);
         if (fields.title() == null || fields.title().isBlank()) throw new BadRequestException("title is required");
         if (fields.status() != null && !List.of("open", "in_progress", "done").contains(fields.status())) {
             throw new BadRequestException("invalid action item status: " + fields.status());
         }
-        var project = require(projectId);
         var items = new ArrayList<ProjectActionItem>();
-        if (project.actionItems != null) items.addAll(project.actionItems);
-        var now = ZonedDateTime.now();
+        if (subject.actionItems != null) items.addAll(subject.actionItems);
         var eventAt = eventAt(fields.at());
+        var title = limitText(fields.title(), TITLE_MAX_LENGTH);
         if (fields.itemId() == null || fields.itemId().isBlank()) {
             if (items.size() >= MAX_ACTION_ITEMS) {
-                throw new BadRequestException("project has too many action items, limit=" + MAX_ACTION_ITEMS);
+                throw new BadRequestException("subject has too many action items, limit=" + MAX_ACTION_ITEMS);
             }
             var item = new ProjectActionItem();
             item.id = UUID.randomUUID().toString();
             item.subjectId = subjectId;
-            item.title = limitText(fields.title(), TITLE_MAX_LENGTH);
+            item.title = title;
             item.status = fields.status() != null ? fields.status() : "open";
             item.note = limitText(fields.note(), TEXT_MAX_LENGTH);
             item.createdAt = eventAt;
@@ -145,42 +115,25 @@ public class ProjectStateService {
             var item = items.stream().filter(i -> fields.itemId().equals(i.id)).findFirst()
                 .orElseThrow(() -> new BadRequestException("action item not found, id=" + fields.itemId()));
             var statusChanged = fields.status() != null && !fields.status().equals(item.status);
-            var titleChanged = fields.title() != null && !limitText(fields.title(), TITLE_MAX_LENGTH).equals(item.title);
-            item.subjectId = subjectId;
-            item.title = limitText(fields.title(), TITLE_MAX_LENGTH);
+            var titleChanged = !title.equals(item.title);
+            item.title = title;
             if (fields.status() != null) item.status = fields.status();
             if (fields.note() != null) item.note = limitText(fields.note(), TEXT_MAX_LENGTH);
             item.updatedAt = eventAt;
             item.updatedBy = updatedBy;
             if (statusChanged || titleChanged) recordActionItemEvent(projectId, subjectId, item, updatedBy, eventAt);
         }
-        project.actionItems = items;
-        normalizeArrayFields(project);
-        project.updatedAt = now;
-        projectCollection.replace(project);
+        // raw Documents: core-ng has no codec for nested classes, so $set of entity instances fails
+        subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(
+            Updates.set("action_items", items.stream().map(this::toDocument).toList()),
+            Updates.set("updated_at", ZonedDateTime.now())));
     }
 
     public void addNote(String projectId, String subjectId, String content, ZonedDateTime at, String createdBy) {
         validateWrite(projectId, subjectId);
         if (content == null || content.isBlank()) throw new BadRequestException("content is required");
-        var project = require(projectId);
-        var size = project.notes != null ? project.notes.size() : 0;
-        var note = new ProjectNote();
-        note.subjectId = subjectId;
-        note.content = limitText(content, TEXT_MAX_LENGTH);
-        note.createdAt = eventAt(at);
-        note.createdBy = createdBy;
-        recordEvent(projectId, subjectId, ProjectSubjectEvent.TYPE_NOTE, createdBy, new EventValue(null, note.content, null, note.createdAt));
-        if (size >= MAX_NOTES) return;
-        // see recordKpi: raw Document because core-ng has no codec for nested classes
-        var doc = new org.bson.Document("subject_id", note.subjectId)
-            .append("content", note.content)
-            .append("created_at", note.createdAt)
-            .append("created_by", note.createdBy);
-        ensureArrayField(projectId, "notes", project.notes == null);
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
-            Updates.push("notes", doc),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        recordEventOnce(projectId, subjectId, ProjectSubjectEvent.TYPE_NOTE, createdBy,
+            new EventValue(null, limitText(content, TEXT_MAX_LENGTH), null, eventAt(at)));
     }
 
     // subject tracking status (started/paused): the subject.status field itself, with a history
@@ -203,6 +156,19 @@ public class ProjectStateService {
             new EventValue(item.id, item.status, JsonUtil.toJson(Map.of("title", item.title)), at));
     }
 
+    // idempotent append: an identical (type, key, value, at) row for the subject already exists →
+    // skip (crash-replay / re-analysis safety); the (subject_id, at) index serves the lookup
+    private void recordEventOnce(String projectId, String subjectId, String type, String createdBy, EventValue fields) {
+        var filters = new ArrayList<org.bson.conversions.Bson>();
+        filters.add(Filters.eq("subject_id", subjectId));
+        filters.add(Filters.eq("at", fields.at()));
+        filters.add(Filters.eq("type", type));
+        filters.add(Filters.eq("value", fields.value()));
+        filters.add(fields.key() == null ? Filters.exists("key", false) : Filters.eq("key", fields.key()));
+        if (eventCollection.count(Filters.and(filters)) > 0) return;
+        recordEvent(projectId, subjectId, type, createdBy, fields);
+    }
+
     private void recordEvent(String projectId, String subjectId, String type, String createdBy, EventValue fields) {
         var event = new ProjectSubjectEvent();
         event.id = UUID.randomUUID().toString();
@@ -217,6 +183,16 @@ public class ProjectStateService {
         eventCollection.insert(event);
     }
 
+    private Document toDocument(ProjectActionItem item) {
+        var doc = new Document("subject_id", item.subjectId)
+            .append("id", item.id)
+            .append("title", item.title)
+            .append("status", item.status);
+        if (item.note != null) doc.append("note", item.note);
+        doc.append("created_at", item.createdAt).append("updated_at", item.updatedAt).append("updated_by", item.updatedBy);
+        return doc;
+    }
+
     // the event time is the MATERIAL time (when the fact actually happened): the analyzer passes
     // the date it found in the material. Missing, future or implausibly old dates fall back to now.
     private ZonedDateTime eventAt(ZonedDateTime at) {
@@ -226,25 +202,11 @@ public class ProjectStateService {
         return at;
     }
 
-    // core-ng's entity encoder persists null fields verbatim on replace(), so a null array field
-    // can end up in the document and break $push later — normalize them back to empty arrays
-    private void normalizeArrayFields(Project project) {
-        if (project.kpis == null) project.kpis = List.of();
-        if (project.notes == null) project.notes = List.of();
-    }
-
-    // $push requires the field to be absent or an array; a persisted null must be fixed first
-    private void ensureArrayField(String projectId, String field, boolean missing) {
-        if (missing) {
-            projectCollection.update(Filters.eq("_id", projectId), Updates.set(field, List.of()));
-        }
-    }
-
     // every state write requires a subject: the project itself holds no state (it is a scaffold)
-    private void validateWrite(String projectId, String subjectId) {
+    private ProjectSubject validateWrite(String projectId, String subjectId) {
         require(projectId);
         if (subjectId == null || subjectId.isBlank()) throw new BadRequestException("subject_id is required: the project itself holds no state, state belongs to subjects");
-        requireSubject(projectId, subjectId);
+        return requireSubject(projectId, subjectId);
     }
 
     private Project require(String projectId) {
@@ -263,6 +225,7 @@ public class ProjectStateService {
     private String limitText(String value, int maxLength) {
         if (value == null) return null;
         var trimmed = value.trim();
+        if (trimmed.isEmpty()) return null;
         return trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed;
     }
 

@@ -8,6 +8,7 @@ import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.trace.domain.Trace;
+import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
@@ -26,15 +27,29 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Read-side aggregations behind the project page tabs: executions, members and the narrative
- * timeline (reports live in {@link ProjectReportQueryService}). All project material is DERIVED from the member agent/workflow ids (no
- * binding fields on raw records); subject scoping joins the attribution table written by the
- * project agent analysis. Cost aggregation lives in {@link ProjectStatsQueryService}.
+ * Read-side aggregations behind the project page tabs: executions, the event history and the
+ * narrative timeline (reports live in {@link ProjectReportQueryService}, membership in
+ * {@link ProjectMemberQueryService}, cost in {@link ProjectStatsQueryService}). All project material
+ * is DERIVED from the member agent/workflow ids (no binding fields on raw records, no owner filter:
+ * a project is a shared business container); subject scoping joins the attribution table.
  *
  * @author stephen
  */
 public class ProjectQueryService {
     static final int TIMELINE_MAX_ENTRIES = 200;
+    static final int EVENTS_MAX = 500;
+    static final int STATE_EVENTS_MAX = 2000;
+
+    static String metaValue(String meta, String field, String fallback) {
+        if (meta == null || meta.isBlank()) return fallback;
+        try {
+            var map = JsonUtil.toMap(meta);
+            var value = map != null ? map.get(field) : null;
+            return value != null ? value.toString() : fallback;
+        } catch (RuntimeException e) {
+            return fallback;
+        }
+    }
 
     @Inject
     MongoCollection<Project> projectCollection;
@@ -66,8 +81,23 @@ public class ProjectQueryService {
         var query = new Query();
         query.filter = Filters.and(filters);
         query.sort = Sorts.descending("at");
-        query.limit = 500;
+        query.limit = EVENTS_MAX;
         return eventCollection.find(query);
+    }
+
+    // the most recent events of one type in chronological order (the cockpit's KPI series / notes list)
+    public List<ProjectSubjectEvent> stateEvents(String projectId, String subjectId, String type) {
+        var filters = new ArrayList<Bson>();
+        filters.add(Filters.eq("project_id", projectId));
+        if (subjectId != null && !subjectId.isBlank()) filters.add(Filters.eq("subject_id", subjectId));
+        filters.add(Filters.eq("type", type));
+        var query = new Query();
+        query.filter = Filters.and(filters);
+        query.sort = Sorts.descending("at");
+        query.limit = STATE_EVENTS_MAX;
+        var rows = new ArrayList<>(eventCollection.find(query));
+        rows.sort((a, b) -> compareDesc(b.at, a.at));
+        return rows;
     }
 
     // search + pagination in memory over the project's subjects: subject counts are small and the
@@ -99,39 +129,52 @@ public class ProjectQueryService {
             && s.name.toLowerCase(java.util.Locale.ROOT).contains(search.trim().toLowerCase(java.util.Locale.ROOT))).toList();
     }
 
+    // a single type pages in the database; the merged view fetches the first offset+limit rows of
+    // every type, merges by time and slices ONCE (offset applied to the merged order only)
     public List<ProjectExecution> executions(String projectId, String type, String subjectId, int offset, int limit) {
         var scope = ProjectScope.resolve(projectCollection, projectId);
         if (scope == null) return List.of();
+        if (type != null) {
+            return switch (type) {
+                case "chat" -> chatExecutions(scope, subjectId, offset, limit);
+                case "run" -> runExecutions(scope, subjectId, offset, limit);
+                case "workflow" -> workflowExecutions(scope, subjectId, offset, limit);
+                default -> List.of();
+            };
+        }
+        var window = offset + limit;
         var rows = new ArrayList<ProjectExecution>();
-        if (type == null || "chat".equals(type)) rows.addAll(chatExecutions(scope, subjectId, offset, limit));
-        if (type == null || "run".equals(type)) rows.addAll(runExecutions(scope, subjectId, offset, limit));
-        if (type == null || "workflow".equals(type)) rows.addAll(workflowExecutions(scope, subjectId, offset, limit));
+        rows.addAll(chatExecutions(scope, subjectId, 0, window));
+        rows.addAll(runExecutions(scope, subjectId, 0, window));
+        rows.addAll(workflowExecutions(scope, subjectId, 0, window));
         rows.sort((a, b) -> compareDesc(a.startedAt, b.startedAt));
-        return type == null && rows.size() > offset + limit ? rows.subList(offset, offset + limit) : rows;
+        var from = Math.min(offset, rows.size());
+        return rows.subList(from, Math.min(window, rows.size()));
     }
 
     public long executionCount(String projectId, String type, String subjectId) {
         var scope = ProjectScope.resolve(projectCollection, projectId);
         if (scope == null) return 0;
-        if (type == null || "chat".equals(type)) return chatSessionCollection.count(sessionFilter(scope, subjectId));
-        if ("run".equals(type)) return agentRunCollection.count(runFilter(scope, subjectId));
-        return workflowRunCollection.count(workflowFilter(scope, subjectId));
+        long total = 0;
+        if (type == null || "chat".equals(type)) total += chatSessionCollection.count(sessionFilter(scope, subjectId));
+        if (type == null || "run".equals(type)) total += agentRunCollection.count(runFilter(scope, subjectId));
+        if (type == null || "workflow".equals(type)) total += workflowRunCollection.count(workflowFilter(scope, subjectId));
+        return total;
     }
 
-    // membership queries (embedded members + addable options) live in ProjectMemberQueryService
-
+    // narrative timeline: history events (authoritative) + member sessions + reports
     public List<TimelineEntry> timeline(String projectId, String subjectId) {
         var scope = ProjectScope.resolve(projectCollection, projectId);
         var entries = new ArrayList<TimelineEntry>();
         if (scope == null) return entries;
-        var project = projectCollection.get(projectId).orElse(null);
-        if (project == null) return entries;
-        addKpiEntries(entries, project, subjectId);
-        addNoteEntries(entries, project, subjectId);
-        addActionItemEntries(entries, project, subjectId);
-        addSubjectStatusEntries(entries, project, subjectId);
+        for (var event : events(projectId, subjectId, null, null, null)) {
+            var entry = toTimelineEntry(event);
+            if (entry != null) entries.add(entry);
+        }
         var subjectBySession = subjectByTarget(scope, "session");
-        for (var session : chatSessionCollection.find(sortedQuery(sessionFilter(scope, subjectId), "last_message_at"))) {
+        var sessions = sortedQuery(sessionFilter(scope, subjectId), "last_message_at");
+        sessions.limit = TIMELINE_MAX_ENTRIES;
+        for (var session : chatSessionCollection.find(sessions)) {
             if (session.title == null) continue;
             var at = session.lastMessageAt != null ? session.lastMessageAt : session.createdAt;
             entries.add(new TimelineEntry("session", session.title, null, subjectBySession.get(session.id), session.id, null, at));
@@ -141,6 +184,23 @@ public class ProjectQueryService {
         }
         entries.sort((a, b) -> compareDesc(a.at, b.at));
         return entries.size() > TIMELINE_MAX_ENTRIES ? entries.subList(0, TIMELINE_MAX_ENTRIES) : entries;
+    }
+
+    private TimelineEntry toTimelineEntry(ProjectSubjectEvent event) {
+        return switch (event.type) {
+            case ProjectSubjectEvent.TYPE_KPI -> new TimelineEntry("kpi", event.key + " = " + event.value + unitSuffix(event.meta), null, event.subjectId, null, null, event.at);
+            case ProjectSubjectEvent.TYPE_NOTE -> new TimelineEntry("note", event.value, null, event.subjectId, null, null, event.at);
+            case ProjectSubjectEvent.TYPE_ACTION_ITEM -> new TimelineEntry("action_item", metaValue(event.meta, "title", event.key), event.value, event.subjectId, null, null, event.at);
+            case ProjectSubjectEvent.TYPE_PHASE -> new TimelineEntry("status", "entered phase " + event.value, event.value, event.subjectId, null, null, event.at);
+            case ProjectSubjectEvent.TYPE_SUMMARY -> new TimelineEntry("status", event.value, event.key, event.subjectId, null, null, event.at);
+            case ProjectSubjectEvent.TYPE_SUBJECT_STATUS -> new TimelineEntry("subject_status", "tracking " + event.value, event.value, event.subjectId, null, null, event.at);
+            default -> null;
+        };
+    }
+
+    private String unitSuffix(String meta) {
+        var unit = metaValue(meta, "unit", null);
+        return unit != null ? " " + unit : "";
     }
 
     private List<ProjectExecution> chatExecutions(ProjectScope scope, String subjectId, int offset, int limit) {
@@ -265,10 +325,8 @@ public class ProjectQueryService {
 
     private Map<String, String> subjectByTarget(ProjectScope scope, String targetType) {
         var result = new HashMap<String, String>();
-        var subjectIds = subjectPageSource(scope.projectId).stream().map(s -> s.id).toList();
-        if (subjectIds.isEmpty()) return result;
         var query = new Query();
-        query.filter = Filters.and(Filters.in("subject_id", subjectIds), Filters.eq("target_type", targetType));
+        query.filter = Filters.and(Filters.eq("project_id", scope.projectId), Filters.eq("target_type", targetType));
         for (var attribution : attributionCollection.find(query)) {
             result.putIfAbsent(attribution.targetId, attribution.subjectId);
         }
@@ -287,44 +345,6 @@ public class ProjectQueryService {
         if (left == null) return 1;
         if (right == null) return -1;
         return right.compareTo(left);
-    }
-
-    private void addKpiEntries(List<TimelineEntry> entries, Project project, String subjectId) {
-        if (project.kpis == null) return;
-        for (var kpi : project.kpis) {
-            if (!matches(kpi.subjectId, subjectId)) continue;
-            var title = kpi.key + " = " + kpi.value + (kpi.unit != null ? " " + kpi.unit : "");
-            entries.add(new TimelineEntry("kpi", title, null, kpi.subjectId, null, null, kpi.createdAt));
-        }
-    }
-
-    private void addNoteEntries(List<TimelineEntry> entries, Project project, String subjectId) {
-        if (project.notes == null) return;
-        for (var note : project.notes) {
-            if (!matches(note.subjectId, subjectId)) continue;
-            entries.add(new TimelineEntry("note", note.content, null, note.subjectId, null, null, note.createdAt));
-        }
-    }
-
-    private void addActionItemEntries(List<TimelineEntry> entries, Project project, String subjectId) {
-        if (project.actionItems == null) return;
-        for (var item : project.actionItems) {
-            if (!matches(item.subjectId, subjectId)) continue;
-            entries.add(new TimelineEntry("action_item", item.title, item.status, item.subjectId, null, null,
-                item.updatedAt != null ? item.updatedAt : item.createdAt));
-        }
-    }
-
-    private void addSubjectStatusEntries(List<TimelineEntry> entries, Project project, String subjectId) {
-        if (project.subjectStatuses == null) return;
-        for (var status : project.subjectStatuses) {
-            if (!matches(status.subjectId, subjectId)) continue;
-            entries.add(new TimelineEntry("status", status.summary, status.phase, status.subjectId, null, null, status.updatedAt));
-        }
-    }
-
-    private boolean matches(String recordSubjectId, String filterSubjectId) {
-        return filterSubjectId == null || filterSubjectId.equals(recordSubjectId);
     }
 
     public record ProjectExecution(String id, String type, String title, String agentName, String status,

@@ -17,11 +17,12 @@ import java.time.Duration;
 import java.time.ZonedDateTime;
 
 /**
- * Low-frequency subject-analysis driver: for every active project that has a started subject with
- * attributed-but-not-yet-analyzed material, runs the subject-analysis stage (single-flight claim).
- * The per-attribution consumption marker is the cursor — no analysis runs when there is nothing
- * new, and no material is ever analyzed twice. The "Analyze now" button triggers the same stage
- * on demand.
+ * Low-frequency subject-analysis driver: for every active project whose last subject analysis is
+ * older than the interval and that has a started subject with attributed-but-not-yet-analyzed
+ * material, runs the subject-analysis stage (single-flight claim). The gate is
+ * {@code last_analysis_at} (set by THIS stage only — the attribution stage's cursor advances every
+ * ten minutes and must not push the analysis out); the per-attribution consumption marker is the
+ * material cursor, so nothing is analyzed twice and nothing runs when there is nothing new.
  *
  * @author stephen
  */
@@ -48,7 +49,7 @@ public class ProjectAnalysisJob implements Job {
         query.filter = Filters.and(
             Filters.eq("status", ProjectService.STATUS_ACTIVE),
             Filters.ne("analysis_status", ProjectService.ANALYSIS_RUNNING),
-            Filters.or(Filters.exists("last_analyzed_at", false), Filters.lt("last_analyzed_at", cutoff)));
+            Filters.or(Filters.exists("last_analysis_at", false), Filters.lt("last_analysis_at", cutoff)));
         query.limit = MAX_PROJECTS_PER_TICK;
         for (var project : projectCollection.find(query)) {
             if (!hasUnanalyzedStartedSubject(project.id)) continue;

@@ -6,8 +6,8 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * The four builtin definitions behind the project feature: one AGENT investigator (project-agent),
- * two LLM_CALL writers (attribution, subject analysis) and one AGENT renderer (report rendering —
+ * The three builtin definitions behind the project feature: two LLM_CALL writers (attribution,
+ * subject analysis) driven directly by the analysis jobs, and one AGENT renderer (report rendering —
  * a single LLM call cannot emit a full HTML report, so the renderer writes it section by section
  * through the append_report_section tool). Defaults live here so both the creation migrations and
  * the admin reset endpoint apply the same content; the prompts and response schemas are
@@ -16,41 +16,12 @@ import java.util.List;
  * @author stephen
  */
 public final class ProjectBuiltinAgents {
-    public static final String PROJECT_AGENT = "project-agent";
     public static final String ATTRIBUTOR = "project-attributor";
     public static final String SUBJECT_ANALYZER = "project-subject-analyzer";
     public static final String REPORT_RENDERER = "project-report-renderer";
 
-    public static final String PROJECT_AGENT_PROMPT = """
-        You are the project agent: a periodic analyst that reviews one business project's activity.
-        You do NOT talk to users. Each run you inspect the project's NEW material and update its
-        structured state (subject attributions, subject status/KPIs/action items/notes).
-
-        ## Workflow (follow in order, no skipping)
-
-        1. Call get_project_info(project_id) to load the playbook, subjects, members and cursors.
-        2. Discover NEW material: search_sessions / search_runs / search_workflow_runs with
-           attributed=false and since=the project cursor (last_analyzed_at). Keep the volume small —
-           prefer the most recent or most substantial items.
-        3. Investigate candidates: read transcripts via get_session_history and reports via
-           get_file_content (list_files if you need to find report file ids).
-        4. Compose an attribution input: the SUBJECTS list (one "id: name" per line) followed by a
-           digest of the new unattributed targets you found (their ids and content). Call the
-           project-attributor tool with query=that input. Its result is applied automatically —
-           it reports how many targets were attributed.
-        5. For each subject that received NEW material this run: collect its material via the
-           search tools (subject_id=..., since=the subject's analyzed_at cursor from
-           get_project_info), then compose the analysis input (playbook, the subject's name and
-           description, its current state, and a digest of the material) and call the
-           project-subject-analyzer tool with query=input and the subject_id. The result is
-           applied automatically.
-        6. Finish with a 2-3 sentence summary of what changed (attributions + subject updates).
-        If there is no new material, say so and stop — do not call the writer tools.
-        Never invent facts; base every update on material you actually read.
-        Scheduled runs only analyze subjects whose status is "started". Subjects with status
-        "not_started" or "paused" must be skipped entirely. Manual focus runs (input names a
-        specific subject) override this.
-        """;
+    public static final String ATTRIBUTOR_DESCRIPTION = "Attributes the targets listed in the query to project subjects. The query is the SUBJECTS list plus a digest of the unattributed targets; the result is applied to the attribution table automatically.";
+    public static final String SUBJECT_ANALYZER_DESCRIPTION = "Derives ONE subject's status/KPIs/action items/notes from the query (playbook + subject context + current state + material digest); the result is applied automatically.";
 
     private static final String ATTRIBUTOR_PROMPT_HEAD = """
         You are an attribution classifier for a business project. Assign each listed target
@@ -184,35 +155,6 @@ public final class ProjectBuiltinAgents {
                 .append("system_prompt", reportRendererPrompt())
                 .append("tools", toolRefs)
                 .append("max_turns", 20)
-                .append("timeout_seconds", 1800))
-            .append("published_at", now)
-            .append("created_at", now)
-            .append("updated_at", now);
-    }
-
-    public static Document mainAgentDoc(Date now) {
-        var toolRefs = List.of(
-            new Document("id", "builtin:project").append("type", "BUILTIN"),
-            new Document("id", "builtin:self-harness").append("type", "BUILTIN"),
-            new Document("id", "llm-call:builtin-" + ATTRIBUTOR).append("type", "LLM_CALL"),
-            new Document("id", "llm-call:builtin-" + SUBJECT_ANALYZER).append("type", "LLM_CALL"));
-        return new Document()
-            .append("_id", "builtin-" + PROJECT_AGENT)
-            .append("user_id", "system")
-            .append("name", PROJECT_AGENT)
-            .append("name_key", PROJECT_AGENT)
-            .append("description", "Builtin project analyst: periodically attributes material to subjects and updates subject state. Edit the prompt and publish to tune.")
-            .append("system_prompt", PROJECT_AGENT_PROMPT)
-            .append("tools", toolRefs)
-            .append("max_turns", 30)
-            .append("timeout_seconds", 1800)
-            .append("system_default", Boolean.TRUE)
-            .append("type", "AGENT")
-            .append("status", "PUBLISHED")
-            .append("published_config", new Document()
-                .append("system_prompt", PROJECT_AGENT_PROMPT)
-                .append("tools", toolRefs)
-                .append("max_turns", 30)
                 .append("timeout_seconds", 1800))
             .append("published_at", now)
             .append("created_at", now)

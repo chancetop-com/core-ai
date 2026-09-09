@@ -25,8 +25,10 @@ function formatTokens(n?: number) {
 }
 
 // backfill watermark: FUTURE sentinel (year 2099) = every member record has been scanned for attribution
-function attributionDone(at?: string) {
-  return !!at && new Date(at).getFullYear() >= 2099;
+// the attribution cursor: member records up to this time have been offered to the attributor at
+// least once; the forward pass keeps moving it every 10 minutes as new records arrive
+function attributionCaughtUp(at?: string) {
+  return !!at && Date.now() - new Date(at).getTime() < 24 * 60 * 60 * 1000;
 }
 
 export default function ProjectDetail() {
@@ -188,10 +190,9 @@ export default function ProjectDetail() {
     setAnalyzeMessage('Attributing new material and analyzing all started subjects (1-3 min)...');
     try {
       const res = await api.projects.analyze(id);
-      const total = (res.attributed ?? 0) + (res.analyzed ?? 0) + (res.updated ?? 0);
-      setAnalyzeMessage(total === 0
-        ? 'Analysis complete: no new material to attribute/analyze'
-        : `Analysis complete: attributed ${res.attributed ?? 0}, analyzed ${res.analyzed ?? 0}, updated ${res.updated ?? 0}`);
+      setAnalyzeMessage(res.status === 'running'
+        ? 'Analysis started in the background — attributing new material and analyzing all started subjects. This page refreshes when it finishes.'
+        : 'Analysis triggered.');
       pollUntilIdle();
     } catch (e) {
       setAnalyzeMessage(String((e as Error).message || e));
@@ -221,7 +222,7 @@ export default function ProjectDetail() {
   };
 
   const resetBuiltins = async () => {
-    if (!confirm('Reset the builtin project-agent / project-attributor / project-subject-analyzer definitions to their default prompts and schemas? Your edits will be overwritten.')) return;
+    if (!confirm('Reset the builtin project-attributor / project-subject-analyzer / project-report-renderer definitions to their default prompts and schemas? Your edits will be overwritten.')) return;
     try {
       await api.projects.resetBuiltinAgents();
       setAnalyzeMessage('Builtin agents reset.');
@@ -341,21 +342,21 @@ export default function ProjectDetail() {
         <div className="p-4 rounded-xl border mb-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
-              {attributionDone(project.attribution_backfilled_at) ? (
+              {attributionCaughtUp(project.attribution_backfilled_at) ? (
                 <CheckCircle2 size={16} style={{ color: 'var(--color-success, #10b981)' }} className="shrink-0" />
               ) : (
                 <Clock size={16} className="shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
               )}
               <div className="min-w-0">
-                <div className="text-sm font-medium">Attribution backfill</div>
+                <div className="text-sm font-medium">Attribution scan</div>
                 <div className="text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
-                  {attributionDone(project.attribution_backfilled_at)
-                    ? 'All member records have been attributed — only new records are processed from now on.'
-                    : `Attributed through ${new Date(project.attribution_backfilled_at).toLocaleDateString()} — older records still need attribution. A batch runs automatically every 10 minutes.`}
+                  {attributionCaughtUp(project.attribution_backfilled_at)
+                    ? `Caught up — member records through ${new Date(project.attribution_backfilled_at).toLocaleString()} have been offered to the attributor; new records are picked up every 10 minutes.`
+                    : `Scanned through ${new Date(project.attribution_backfilled_at).toLocaleDateString()} — older records are still being worked through. A batch runs automatically every 10 minutes.`}
                 </div>
               </div>
             </div>
-            {!attributionDone(project.attribution_backfilled_at) && (
+            {!attributionCaughtUp(project.attribution_backfilled_at) && (
               <button onClick={runAnalysis} disabled={analyzing}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50 shrink-0"
                 style={{ borderColor: 'var(--color-border)' }}>

@@ -3,7 +3,6 @@ package ai.core.server.project;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectMemberRef;
-import ai.core.server.domain.ProjectReportSource;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.WorkflowDefinition;
@@ -18,6 +17,7 @@ import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
+import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
@@ -26,10 +26,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Project (campaign container) domain service: CRUD, subject and membership management, the
- * attribution table and the subject-state write surface. Subject state writes (status/KPIs/
- * action items/notes + history events) live in {@link ProjectStateService}; read-side
- * aggregations live in {@link ProjectQueryService}.
+ * Project (campaign container) domain service: CRUD, subject and membership management and the
+ * attribution table. Subject state writes (status/KPIs/action items/notes + history events) live
+ * in {@link ProjectStateService}; read-side aggregations live in {@link ProjectQueryService}.
+ * Project writes are targeted {@code $set}s: the analysis jobs update cursors/claims on the same
+ * document concurrently, so a whole-document replace would clobber them.
  *
  * @author stephen
  */
@@ -108,43 +109,41 @@ public class ProjectService {
     public void update(String id, String userId, boolean admin, UpdateFields fields) {
         var project = require(id);
         requireAccess(project, userId, admin);
-        // whole-document replace (like pushMember): $set of the embedded ProjectReportSource list has no
-        // codec — core-ng only generates codecs for @Collection classes — and used to 500 on report_sources
-        if (fields.name() != null && !fields.name().isBlank()) project.name = fields.name().trim();
-        project.description = blankToNull(fields.description());
-        project.goal = blankToNull(fields.goal());
-        project.playbook = blankToNull(fields.playbook());
+        var updates = new ArrayList<Bson>();
+        if (fields.name() != null && !fields.name().isBlank()) updates.add(Updates.set("name", fields.name().trim()));
+        updates.add(Updates.set("description", blankToNull(fields.description())));
+        updates.add(Updates.set("goal", blankToNull(fields.goal())));
+        updates.add(Updates.set("playbook", blankToNull(fields.playbook())));
         if (fields.reportSources() != null) {
-            project.reportSources = resolveReportSources(project.userId, fields.reportSources());
+            // raw Documents: core-ng only generates codecs for @Collection classes, $set of the
+            // embedded ProjectReportSource list fails with "Can't find a codec"
+            updates.add(Updates.set("report_sources", resolveReportSources(project.userId, fields.reportSources())));
         }
         if (fields.status() != null) {
             if (!STATUS_ACTIVE.equals(fields.status()) && !STATUS_ARCHIVED.equals(fields.status())) throw new BadRequestException("invalid status: " + fields.status());
-            project.status = fields.status();
+            updates.add(Updates.set("status", fields.status()));
         }
-        project.updatedAt = ZonedDateTime.now();
-        projectCollection.replace(project);
+        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
+        projectCollection.update(Filters.eq("_id", id), Updates.combine(updates));
     }
 
     // report sources must be addable members (own or shared); names are snapshotted so display survives removal
-    private List<ProjectReportSource> resolveReportSources(String ownerUserId, List<ReportSourceRef> refs) {
-        if (refs == null || refs.isEmpty()) return null;
-        var sources = new ArrayList<ProjectReportSource>();
+    private List<Document> resolveReportSources(String ownerUserId, List<ReportSourceRef> refs) {
+        var sources = new ArrayList<Document>();
         for (var ref : refs) {
-            var source = new ProjectReportSource();
-            source.type = ref.type();
-            source.id = ref.id();
+            String name;
             if ("agent".equals(ref.type())) {
                 var agent = agentCollection.get(ref.id()).orElseThrow(() -> new NotFoundException("agent not found, id=" + ref.id()));
                 if (!isAddableAgent(agent, ownerUserId)) throw new ForbiddenException("agent is not published and does not belong to the project owner");
-                source.name = agent.name;
+                name = agent.name;
             } else if ("workflow".equals(ref.type())) {
                 var workflow = workflowCollection.get(ref.id()).orElseThrow(() -> new NotFoundException("workflow not found, id=" + ref.id()));
                 if (!ownerUserId.equals(workflow.userId) && !WorkflowDefinitionService.isPublicActive(workflow)) throw new ForbiddenException("workflow is not public and does not belong to the project owner");
-                source.name = workflow.name;
+                name = workflow.name;
             } else {
                 throw new BadRequestException("invalid report source type: " + ref.type());
             }
-            sources.add(source);
+            sources.add(refDocument(ref.type(), ref.id(), name));
         }
         return sources;
     }
@@ -188,10 +187,6 @@ public class ProjectService {
         return entity;
     }
 
-    public List<SubjectRef> subjectRefs(String projectId) {
-        return subjects(projectId).stream().map(s -> new SubjectRef(s.id, s.name)).toList();
-    }
-
     public ProjectSubject createSubject(String projectId, String userId, boolean admin, String name, String description, String externalLink) {
         var project = require(projectId);
         requireAccess(project, userId, admin);
@@ -211,6 +206,7 @@ public class ProjectService {
     public void updateSubject(String projectId, String userId, boolean admin, String subjectId, SubjectFields fields) {
         var project = require(projectId);
         requireAccess(project, userId, admin);
+        subject(projectId, subjectId);
         var updates = new ArrayList<Bson>();
         if (fields.name() != null && !fields.name().isBlank()) updates.add(Updates.set("name", fields.name().trim()));
         updates.add(Updates.set("description", blankToNull(fields.description())));
@@ -223,13 +219,17 @@ public class ProjectService {
         }
     }
 
+    // a subject that still owns attributed material is protected (the rows are the users' curation);
+    // reset-analysis first, then delete. History events go with the subject; the cost snapshot is
+    // marked stale so the by-subject rows disappear on the next refresh.
     public void deleteSubject(String projectId, String userId, boolean admin, String subjectId) {
         var project = require(projectId);
         requireAccess(project, userId, admin);
         subject(projectId, subjectId);
-        if (attributionCollection.count(Filters.eq("subject_id", subjectId)) > 0) throw new BadRequestException("subject is referenced by attributions and cannot be deleted; rename it instead");
+        if (attributionCollection.count(Filters.eq("subject_id", subjectId)) > 0) throw new BadRequestException("subject is referenced by attributions and cannot be deleted; reset its analysis first or rename it instead");
         subjectCollection.delete(Filters.eq("_id", subjectId));
         stateService.deleteSubjectEvents(subjectId);
+        markStatsDirty(projectId);
     }
 
     // ---- membership: lives on the PROJECT side (embedded members list) — agent/workflow definitions
@@ -257,11 +257,8 @@ public class ProjectService {
         if (!"agent".equals(type) && !"workflow".equals(type)) throw new BadRequestException("invalid member type: " + type);
         var members = new ArrayList<ProjectMemberRef>();
         if (project.members != null) members.addAll(project.members);
-        project.members = members.stream().filter(m -> !(type.equals(m.type) && memberId.equals(m.id))).toList();
-        if (project.members.isEmpty()) project.members = null;
-        project.statsDirty = Boolean.TRUE;
-        project.updatedAt = ZonedDateTime.now();
-        projectCollection.replace(project);
+        var remaining = members.stream().filter(m -> !(type.equals(m.type) && memberId.equals(m.id))).toList();
+        writeMembers(project.id, remaining);
     }
 
     private void pushMember(Project project, String type, String memberId, String name) {
@@ -273,10 +270,27 @@ public class ProjectService {
         member.id = memberId;
         member.name = name;
         members.add(member);
-        project.members = members;
-        project.statsDirty = Boolean.TRUE;
-        project.updatedAt = ZonedDateTime.now();
-        projectCollection.replace(project);
+        writeMembers(project.id, members);
+    }
+
+    private void writeMembers(String projectId, List<ProjectMemberRef> members) {
+        var docs = members.stream().map(m -> refDocument(m.type, m.id, m.name)).toList();
+        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
+            docs.isEmpty() ? Updates.unset("members") : Updates.set("members", docs),
+            Updates.set("stats_dirty", Boolean.TRUE),
+            Updates.set("updated_at", ZonedDateTime.now())));
+    }
+
+    private Document refDocument(String type, String id, String name) {
+        var doc = new Document("type", type).append("id", id);
+        if (name != null) doc.append("name", name);
+        return doc;
+    }
+
+    private void markStatsDirty(String projectId) {
+        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
+            Updates.set("stats_dirty", Boolean.TRUE),
+            Updates.set("updated_at", ZonedDateTime.now())));
     }
 
     // ---- subject attribution (analysis output): rows in a side table, raw records stay untouched ----
@@ -322,7 +336,7 @@ public class ProjectService {
         } else if (Boolean.FALSE.equals(archivedOnly)) {
             filters.add(Filters.eq("status", STATUS_ACTIVE));
         }
-        return filters.isEmpty() ? new org.bson.Document() : Filters.and(filters);
+        return filters.isEmpty() ? new Document() : Filters.and(filters);
     }
 
     // every write requires a subject: the project itself holds no state (it is a scaffold)
@@ -334,9 +348,6 @@ public class ProjectService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    public record SubjectRef(String id, String name) {
     }
 
     public record UpdateFields(String name, String description, String goal, String playbook,

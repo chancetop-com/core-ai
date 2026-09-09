@@ -12,12 +12,15 @@ import ai.core.api.server.project.ProjectSubjectStatView;
 import ai.core.api.server.project.ProjectSubjectStatusView;
 import ai.core.api.server.project.ProjectSubjectView;
 import ai.core.api.server.project.TimelineEntryView;
+import ai.core.server.domain.ProjectActionItem;
+import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectEvent;
 import core.framework.inject.Inject;
 
 /**
  * View converters of the project web service, extracted to keep the service class within the
- * file-length budget. Pure mapping — no business logic.
+ * file-length budget. Pure mapping — no business logic. Current state comes from the subject
+ * document, KPI/note series from the event collection.
  *
  * @author stephen
  */
@@ -33,7 +36,7 @@ public class ProjectViewAssembler {
         return view;
     }
 
-    ProjectSubjectView toSubjectView(ai.core.server.domain.ProjectSubject subject) {
+    ProjectSubjectView toSubjectView(ProjectSubject subject) {
         var view = new ProjectSubjectView();
         view.id = subject.id;
         view.name = subject.name;
@@ -53,30 +56,32 @@ public class ProjectViewAssembler {
         return view;
     }
 
-    ProjectSubjectStatusView toSubjectStatusView(ai.core.server.domain.ProjectSubjectStatus status) {
+    // null when the subject has no phase/summary yet (the cockpit lists only subjects with a status)
+    ProjectSubjectStatusView toSubjectStatusView(ProjectSubject subject) {
+        if (subject.phase == null && subject.summary == null) return null;
         var view = new ProjectSubjectStatusView();
-        view.subjectId = status.subjectId;
-        view.phase = status.phase;
-        view.summary = status.summary;
-        view.updatedAt = status.updatedAt;
-        view.updatedBy = status.updatedBy;
+        view.subjectId = subject.id;
+        view.phase = subject.phase;
+        view.summary = subject.summary;
+        view.updatedAt = subject.statusUpdatedAt;
+        view.updatedBy = subject.statusUpdatedBy;
         return view;
     }
 
-    ProjectKpiView toKpiView(ai.core.server.domain.ProjectKpiRecord kpi) {
+    ProjectKpiView toKpiView(ProjectSubjectEvent event) {
         var view = new ProjectKpiView();
-        view.subjectId = kpi.subjectId;
-        view.key = kpi.key;
-        view.value = kpi.value;
-        view.unit = kpi.unit;
-        view.createdAt = kpi.createdAt;
-        view.createdBy = kpi.createdBy;
+        view.subjectId = event.subjectId;
+        view.key = event.key;
+        view.value = event.value;
+        view.unit = ProjectQueryService.metaValue(event.meta, "unit", null);
+        view.createdAt = event.at;
+        view.createdBy = event.createdBy;
         return view;
     }
 
-    ProjectActionItemView toActionItemView(ai.core.server.domain.ProjectActionItem item) {
+    ProjectActionItemView toActionItemView(ProjectSubject subject, ProjectActionItem item) {
         var view = new ProjectActionItemView();
-        view.subjectId = item.subjectId;
+        view.subjectId = subject.id;
         view.id = item.id;
         view.title = item.title;
         view.status = item.status;
@@ -87,12 +92,12 @@ public class ProjectViewAssembler {
         return view;
     }
 
-    ProjectNoteView toNoteView(ai.core.server.domain.ProjectNote note) {
+    ProjectNoteView toNoteView(ProjectSubjectEvent event) {
         var view = new ProjectNoteView();
-        view.subjectId = note.subjectId;
-        view.content = note.content;
-        view.createdAt = note.createdAt;
-        view.createdBy = note.createdBy;
+        view.subjectId = event.subjectId;
+        view.content = event.value;
+        view.createdAt = event.at;
+        view.createdBy = event.createdBy;
         return view;
     }
 

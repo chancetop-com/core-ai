@@ -371,11 +371,7 @@ class ToolRefResolutionService {
         if (llmCallExecutor == null) {
             throw new IllegalStateException("LLM_CALL tool resolution requires LLMCallExecutor");
         }
-        // the builtin project writers apply their structured output to the project instead of
-        // returning raw JSON (fallback = plain LLM_CALL tool when the project module is absent)
-        var tool = ai.core.server.project.ProjectWriterToolSupport.isProjectWriter(definitionId)
-            ? ai.core.server.project.ProjectWriterToolSupport.wrap(definitionId, definition, llmCallExecutor)
-            : LLMCallTool.create(definition, llmCallExecutor);
+        var tool = LLMCallTool.create(definition, llmCallExecutor);
         registry.registerProvider(new ListToolProvider("llm-call:" + definitionId, List.of(tool)));
     }
 

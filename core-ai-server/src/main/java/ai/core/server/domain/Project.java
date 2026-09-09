@@ -10,8 +10,9 @@ import java.util.List;
 
 /**
  * Lightweight campaign container: loose organization of agents/workflows/sessions/traces/artifacts.
- * The project itself is a scaffold — it defines the campaign (playbook, report sources) but holds
- * NO state of its own: status/kpis/action items/notes all belong to {@link ProjectSubject}s.
+ * The project itself is a scaffold — it defines the campaign (playbook, report sources, members)
+ * and carries the analysis cursors; it holds NO subject state. Current state (phase/summary/action
+ * items) lives on {@link ProjectSubject}, history (KPIs/notes/transitions) in {@link ProjectSubjectEvent}.
  *
  * @author stephen
  */
@@ -51,39 +52,31 @@ public class Project {
     @Field(name = "status")
     public String status;
 
-    // ---- project agent analysis cursor / single-flight state ----
+    // ---- analysis pipeline cursors / single-flight state ----
     @Field(name = "last_analyzed_at")
-    public ZonedDateTime lastAnalyzedAt;   // incremental cursor: material newer than this is analyzed next run
+    public ZonedDateTime lastAnalyzedAt;   // when the attribution stage last completed (attribution job gate)
 
-    // backfill watermark: records OLDER than this have been scanned for attribution, batch by
-    // batch. Each successful attribution run pushes it further into the past until all legacy
-    // material is covered (epoch = backfill complete). Exposed in the UI as "attribution processed
-    // up to <date>" so incremental coverage is visible.
+    // forward-scan cursor of the attribution stage: member records with a material time up to this
+    // point have been offered to the attributor at least once. Sessions that grow past it are
+    // offered again. Exposed in the UI as "attribution scanned through <date>".
     @Field(name = "attribution_backfilled_at")
     public ZonedDateTime attributionBackfilledAt;
 
     @Field(name = "analysis_status")
-    public String analysisStatus;          // running | error (single-flight claim marker; null = idle)
+    public String analysisStatus;          // running | error | idle (single-flight claim marker; null = idle)
 
     @Field(name = "analysis_error")
     public String analysisError;           // last failed analysis message
 
-    @Field(name = "analysis_run_id")
-    public String analysisRunId;           // the main project-agent run id, polled to detect completion
-
     @Field(name = "analysis_claimed_at")
-    public ZonedDateTime analysisClaimedAt;   // when the running claim was taken; used to detect stale claims
+    public ZonedDateTime analysisClaimedAt;   // heartbeat of the running claim; stale = the process died mid-run
 
     @Field(name = "last_analysis_at")
-    public ZonedDateTime lastAnalysisAt;      // when the subject-analysis stage last completed (display: next ≈ +1h)
+    public ZonedDateTime lastAnalysisAt;      // when the subject-analysis stage last completed (analysis job gate)
 
-    // v1.4 event backfill marker (migration idempotency only, not a report watermark — the report
-    // watermark lives on the subject)
+    // v1.4 event backfill marker (migration idempotency only)
     @Field(name = "events_backfilled_at")
     public ZonedDateTime eventsBackfilledAt;
-
-    @Field(name = "subject_statuses")
-    public List<ProjectSubjectStatus> subjectStatuses;
 
     // cached cost snapshot lives in the project_stats collection (separate entity — core-ng
     // generates codecs only for registered @Collection classes, so $set on an embedded instance
@@ -93,15 +86,6 @@ public class Project {
 
     @Field(name = "last_stats_at")
     public ZonedDateTime lastStatsAt;
-
-    @Field(name = "kpis")
-    public List<ProjectKpiRecord> kpis;
-
-    @Field(name = "action_items")
-    public List<ProjectActionItem> actionItems;
-
-    @Field(name = "notes")
-    public List<ProjectNote> notes;
 
     @NotNull
     @Field(name = "created_at")

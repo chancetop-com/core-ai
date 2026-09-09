@@ -38,6 +38,7 @@ import ai.core.server.domain.ProjectStatsEntity;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.ProjectSubjectEvent;
+import ai.core.server.domain.ProjectTargetScan;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.MediaJob;
@@ -163,6 +164,16 @@ public class ServerApp extends App {
         load(new WebModule());
     }
 
+    private void registerProjectCollections(MongoConfig mongo) {
+        mongo.collection(Project.class);
+        mongo.collection(ProjectSubject.class);
+        mongo.collection(ProjectSubjectAttribution.class);
+        mongo.collection(ProjectSubjectEvent.class);
+        mongo.collection(ProjectTargetScan.class);
+        mongo.collection(ProjectReportDraft.class);
+        mongo.collection(ProjectStatsEntity.class);
+    }
+
     private void registerMongo() {
         var mongo = config(MongoConfig.class);
         mongo.uri(requiredProperty("sys.mongo.uri"));
@@ -188,12 +199,7 @@ public class ServerApp extends App {
         mongo.collection(Dataset.class);
         mongo.collection(DatasetRecord.class);
 
-        mongo.collection(Project.class);
-        mongo.collection(ProjectSubject.class);
-        mongo.collection(ProjectSubjectAttribution.class);
-        mongo.collection(ProjectSubjectEvent.class);
-        mongo.collection(ProjectReportDraft.class);
-        mongo.collection(ProjectStatsEntity.class);
+        registerProjectCollections(mongo);
 
         mongo.collection(UserReport.class);
         mongo.collection(UserTodo.class);

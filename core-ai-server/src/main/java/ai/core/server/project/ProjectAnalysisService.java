@@ -5,11 +5,13 @@ import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectSubject;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
+import core.framework.async.Executor;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,12 +21,16 @@ import java.util.List;
  * the members' new execution records to subjects; the low-frequency analysis run consumes the
  * attributed-but-not-yet-analyzed material per started subject, derives subject state and marks
  * the consumed attributions as analyzed (per-attribution cursor). Both runs share the single-flight
- * claim; the attribution cursor advances only when the attribution stage succeeds.
+ * claim, which is heartbeaten between LLM calls so a healthy long run is never taken over while a
+ * dead one is recovered after {@link #STALE_CLAIM}.
  *
  * @author stephen
  */
 public class ProjectAnalysisService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ProjectAnalysisService.class);
+    // one LLM call is capped at 15 minutes; the heartbeat runs between calls, so a live claim is
+    // never older than that — anything past 30 minutes is a process that died mid-run
+    static final Duration STALE_CLAIM = Duration.ofMinutes(30);
 
     @Inject
     MongoCollection<Project> projectCollection;
@@ -42,19 +48,25 @@ public class ProjectAnalysisService {
     ProjectStateService stateService;
     @Inject
     ProjectReportStage reportStage;
+    @Inject
+    Executor executor;
 
-    // single-flight claim with stale recovery: a claim older than 10 minutes is treated as dead
-    // (e.g. the process died mid-run) and can be taken over
+    // single-flight claim with stale recovery
     public boolean claimAnalysis(String projectId) {
         long updated = projectCollection.update(Filters.and(
                 Filters.eq("_id", projectId),
                 Filters.or(
                     Filters.ne("analysis_status", ProjectService.ANALYSIS_RUNNING),
-                    Filters.lt("analysis_claimed_at", ZonedDateTime.now().minusMinutes(10)))),
+                    Filters.lt("analysis_claimed_at", ZonedDateTime.now().minus(STALE_CLAIM)))),
             Updates.combine(
                 Updates.set("analysis_status", ProjectService.ANALYSIS_RUNNING),
                 Updates.set("analysis_claimed_at", ZonedDateTime.now())));
         return updated > 0;
+    }
+
+    // refreshes the claim between LLM calls (see STALE_CLAIM)
+    void heartbeat(String projectId) {
+        projectCollection.update(Filters.eq("_id", projectId), Updates.set("analysis_claimed_at", ZonedDateTime.now()));
     }
 
     public void finishAnalysis(String projectId, String error) {
@@ -71,8 +83,8 @@ public class ProjectAnalysisService {
         projectCollection.update(Filters.eq("_id", projectId), Updates.combine(list));
     }
 
-    // attribution stage completion also advances the attribution cursor (material newer than this
-    // will be considered by the next attribution run); failures leave the cursor untouched
+    // attribution stage completion stamps last_analyzed_at (the attribution job's own gate; the
+    // subject-analysis job gates on last_analysis_at instead); failures leave it untouched
     public void finishAttribution(String projectId, String error) {
         var list = new ArrayList<org.bson.conversions.Bson>();
         list.add(Updates.set("analysis_status", error != null ? "error" : "idle"));
@@ -98,6 +110,7 @@ public class ProjectAnalysisService {
             } catch (RuntimeException e) {
                 if (attempt == 1) {
                     LOGGER.error("project attribution failed, projectId={}, retrying once", projectId, e);
+                    heartbeat(projectId);
                     continue;
                 }
                 LOGGER.error("project attribution retry failed, projectId={}", projectId, e);
@@ -118,17 +131,25 @@ public class ProjectAnalysisService {
         }
     }
 
-    // manual "Analyze now": a full pass — first attribute the members' new material, then analyze.
-    // The first manual analysis of a subject marks it started, which opts it into scheduled runs.
+    // manual "Analyze now" (claim already taken by the caller): runs in the background — an
+    // attribution pass plus one LLM call per subject takes minutes, far past any HTTP timeout.
+    // The UI polls analysis_status until it leaves "running".
+    public void submitManualAnalysis(String projectId, String focusSubjectId) {
+        executor.submit("project-analysis", () -> runManualAnalysis(projectId, focusSubjectId));
+    }
+
+    // a full pass — first attribute the members' new material, then analyze. The first manual
+    // analysis of a subject marks it started, which opts it into scheduled runs.
     public AnalysisResult runManualAnalysis(String projectId, String focusSubjectId) {
         try {
             if (focusSubjectId != null && !focusSubjectId.isBlank()) {
                 stateService.recordSubjectStatus(projectId, focusSubjectId, "started", ProjectSubjectAnalysisStage.WRITER);
             }
             int attributed = attributionStage.run(projectId);
-            finishAttribution(projectId, null);
+            heartbeat(projectId);
             var result = analyzeTargets(projectId, focusSubjectId);
             finishAnalysis(projectId, null);
+            projectCollection.update(Filters.eq("_id", projectId), Updates.set("last_analyzed_at", ZonedDateTime.now()));
             // manual runs refresh the cost snapshot right away (scheduled runs rely on the stats job)
             statsQueryService.refresh(projectId);
             return new AnalysisResult(attributed, result.analyzed(), result.updated());
@@ -152,6 +173,7 @@ public class ProjectAnalysisService {
         int updated = 0;
         var targets = analysisTargets(projectId, focusSubjectId);
         for (var subject : targets) {
+            heartbeat(projectId);
             var result = subjectAnalysisStage.run(projectId, subject.id);
             analyzed += result.consumed();
             updated += result.updated();
@@ -174,18 +196,15 @@ public class ProjectAnalysisService {
         return targets;
     }
 
-    // restores the four builtin definitions to their defaults (admin action; user edits are overwritten)
+    // restores the three builtin definitions to their defaults (admin action; user edits are overwritten)
     public void resetBuiltinAgents() {
         var now = new java.util.Date();
         var docs = java.util.Map.of(
-            ProjectBuiltinAgents.PROJECT_AGENT, ProjectBuiltinAgents.mainAgentDoc(now),
             ProjectBuiltinAgents.ATTRIBUTOR, ProjectBuiltinAgents.writerDoc("builtin-" + ProjectBuiltinAgents.ATTRIBUTOR,
-                ProjectBuiltinAgents.ATTRIBUTOR,
-                "Attributes the targets listed in the query to project subjects. Prepare the query as the SUBJECTS list plus a digest of the unattributed targets; the result is applied to the attribution table automatically.",
+                ProjectBuiltinAgents.ATTRIBUTOR, ProjectBuiltinAgents.ATTRIBUTOR_DESCRIPTION,
                 ProjectBuiltinAgents.attributorPrompt(), ProjectBuiltinAgents.attributionSchema(), now),
             ProjectBuiltinAgents.SUBJECT_ANALYZER, ProjectBuiltinAgents.writerDoc("builtin-" + ProjectBuiltinAgents.SUBJECT_ANALYZER,
-                ProjectBuiltinAgents.SUBJECT_ANALYZER,
-                "Derives ONE subject's status/KPIs/action items/notes from the query (playbook + subject context + current state + material digest) and applies them automatically; pass the subject_id.",
+                ProjectBuiltinAgents.SUBJECT_ANALYZER, ProjectBuiltinAgents.SUBJECT_ANALYZER_DESCRIPTION,
                 ProjectBuiltinAgents.subjectAnalyzerPrompt(), ProjectBuiltinAgents.subjectAnalysisSchema(), now),
             ProjectBuiltinAgents.REPORT_RENDERER, ProjectBuiltinAgents.reportRendererDoc(now));
         for (var entry : docs.entrySet()) {

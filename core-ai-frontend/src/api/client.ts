@@ -1252,6 +1252,7 @@ export interface ProjectSubject {
 }
 
 export interface AnalyzeProjectResponse {
+  status?: string;   // 'running' = accepted, poll GET /api/projects/:id until analysis_status leaves 'running'
   attributed?: number;
   analyzed?: number;
   updated?: number;

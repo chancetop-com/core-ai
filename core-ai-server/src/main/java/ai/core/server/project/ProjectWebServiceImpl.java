@@ -30,6 +30,7 @@ import ai.core.api.server.project.ProjectWebService;
 import ai.core.api.server.project.UpdateProjectRequest;
 import ai.core.api.server.project.UpdateSubjectRequest;
 import ai.core.server.domain.Project;
+import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
@@ -111,12 +112,17 @@ public class ProjectWebServiceImpl implements ProjectWebService {
         view.createdAt = project.createdAt;
         view.updatedAt = project.updatedAt;
         view.archivedAt = project.archivedAt;
-        view.subjects = projectService.subjects(project.id).stream().map(assembler::toSubjectView).toList();
+        var subjects = projectService.subjects(project.id);
+        view.subjects = subjects.stream().map(assembler::toSubjectView).toList();
+        // current state comes from the subject documents, the KPI/note series from the event history
         var subjectId = request.subjectId;
-        view.subjectStatuses = streamOf(project.subjectStatuses).filter(s -> matches(s.subjectId, subjectId)).map(assembler::toSubjectStatusView).toList();
-        view.kpis = streamOf(project.kpis).filter(k -> matches(k.subjectId, subjectId)).map(assembler::toKpiView).toList();
-        view.actionItems = streamOf(project.actionItems).filter(i -> matches(i.subjectId, subjectId)).map(assembler::toActionItemView).toList();
-        view.notes = streamOf(project.notes).filter(n -> matches(n.subjectId, subjectId)).map(assembler::toNoteView).toList();
+        var scoped = subjects.stream().filter(s -> matches(s.id, subjectId)).toList();
+        view.subjectStatuses = scoped.stream().map(assembler::toSubjectStatusView).filter(s -> s != null).toList();
+        view.actionItems = scoped.stream()
+            .flatMap(s -> streamOf(s.actionItems).map(item -> assembler.toActionItemView(s, item)))
+            .toList();
+        view.kpis = queryService.stateEvents(project.id, subjectId, ProjectSubjectEvent.TYPE_KPI).stream().map(assembler::toKpiView).toList();
+        view.notes = queryService.stateEvents(project.id, subjectId, ProjectSubjectEvent.TYPE_NOTE).stream().map(assembler::toNoteView).toList();
         return view;
     }
 
@@ -180,11 +186,10 @@ public class ProjectWebServiceImpl implements ProjectWebService {
             throw new BadRequestException("an analysis is already running for this project (claimed at " + claimedAt
                 + "); it will finish on its own — wait a moment and try again");
         }
-        var result = analysisService.runManualAnalysis(id, request.subjectId);
+        // the claim is taken here (409-style error above when busy); the run itself is async
+        analysisService.submitManualAnalysis(id, request.subjectId);
         var view = new AnalyzeProjectResponse();
-        view.attributed = result.attributed();
-        view.analyzed = result.analyzed();
-        view.updated = result.updated();
+        view.status = ProjectService.ANALYSIS_RUNNING;
         return view;
     }
 

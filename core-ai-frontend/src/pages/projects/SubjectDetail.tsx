@@ -127,10 +127,9 @@ export default function SubjectDetail() {
     setAnalyzeMessage('Attributing new material and analyzing this subject (1-3 min)...');
     try {
       const res = await api.projects.analyze(id, subjectId);
-      const total = (res.attributed ?? 0) + (res.analyzed ?? 0) + (res.updated ?? 0);
-      setAnalyzeMessage(total === 0
-        ? 'Analysis complete: no new material to attribute/analyze'
-        : `Analysis complete: attributed ${res.attributed ?? 0}, analyzed ${res.analyzed ?? 0}, updated ${res.updated ?? 0}`);
+      setAnalyzeMessage(res.status === 'running'
+        ? 'Analysis started in the background — attributing new material and analyzing this subject. This page refreshes when it finishes.'
+        : 'Analysis triggered.');
       pollUntilIdle();
     } catch (e) {
       setAnalyzeMessage(String((e as Error).message || e));

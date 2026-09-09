@@ -217,7 +217,7 @@ public class ProjectReportStage {
         if (project.playbook != null && !project.playbook.isBlank()) {
             input.append("PLAYBOOK:\n").append(limit(project.playbook, 8000)).append('\n');
         }
-        var status = currentStatus(project, subject.id);
+        var status = currentStatus(subject);
         if (status != null) input.append("CURRENT STATUS: ").append(status).append('\n');
         input.append("\nEVENT HISTORY (authoritative):\n")
             .append(foldEvents(events))
@@ -325,16 +325,11 @@ public class ProjectReportStage {
         }
     }
 
-    private String currentStatus(Project project, String subjectId) {
-        if (project.subjectStatuses == null) return null;
-        for (var status : project.subjectStatuses) {
-            if (subjectId.equals(status.subjectId)) {
-                var phase = status.phase != null ? status.phase : "";
-                var summary = status.summary != null ? " — " + status.summary : "";
-                return phase + summary;
-            }
-        }
-        return null;
+    private String currentStatus(ProjectSubject subject) {
+        if (subject.phase == null && subject.summary == null) return null;
+        var phase = subject.phase != null ? subject.phase : "";
+        var summary = subject.summary != null ? " — " + subject.summary : "";
+        return phase + summary;
     }
 
     private String limit(String value, int maxChars) {

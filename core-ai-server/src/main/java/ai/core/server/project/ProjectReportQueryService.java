@@ -33,6 +33,7 @@ import java.util.Set;
 public class ProjectReportQueryService {
     public static final String SOURCE_AGENT = "agent";
     public static final String SOURCE_UPLOAD = "upload";
+    static final int MAX_SOURCE_RECORDS = 1000;   // newest artifact-bearing sessions/runs considered per type
     private static final Bson FILE_META_PROJECTION = Projections.exclude("data", "storage_path");
 
     @Inject
@@ -103,10 +104,14 @@ public class ProjectReportQueryService {
         return names;
     }
 
+    // only records that actually carry artifacts, newest first, bounded: the (agent_id, time) index
+    // walks the member history in order and the artifacts filter drops the artifact-less bulk
     private void addSessionReports(Map<String, ProjectReport> byFile, ProjectScope scope, String agentId) {
         var query = new Query();
-        query.filter = Filters.and(Filters.in("agent_id", scope.agentIds), Filters.or(Filters.exists("deleted_at", false), Filters.eq("deleted_at", null)));
+        query.filter = Filters.and(Filters.in("agent_id", scope.agentIds), Filters.exists("artifacts.0", true),
+            Filters.or(Filters.exists("deleted_at", false), Filters.eq("deleted_at", null)));
         query.sort = Sorts.descending("last_message_at");
+        query.limit = MAX_SOURCE_RECORDS;
         for (var session : chatSessionCollection.find(query)) {
             if (session.artifacts == null || !matchesAgent(session.agentId, agentId)) continue;
             for (var artifact : session.artifacts) {
@@ -119,8 +124,9 @@ public class ProjectReportQueryService {
 
     private void addRunReports(Map<String, ProjectReport> byFile, ProjectScope scope, String agentId) {
         var query = new Query();
-        query.filter = Filters.in("agent_id", scope.agentIds);
+        query.filter = Filters.and(Filters.in("agent_id", scope.agentIds), Filters.exists("artifacts.0", true));
         query.sort = Sorts.descending("started_at");
+        query.limit = MAX_SOURCE_RECORDS;
         for (var run : agentRunCollection.find(query)) {
             if (run.artifacts == null || !matchesAgent(run.agentId, agentId)) continue;
             for (var artifact : run.artifacts) {
