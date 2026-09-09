@@ -138,6 +138,24 @@
     "allDeclaredFields": true
   },
   {
+    "name": "ai.core.cli.hub.report.ReportCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.hub.report.ReportPushCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.hub.report.ReportProjectsCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "ai.core.cli.hub.HubCommandBase",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,
