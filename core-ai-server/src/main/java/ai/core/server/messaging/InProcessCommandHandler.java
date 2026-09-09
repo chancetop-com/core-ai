@@ -47,6 +47,7 @@ public class InProcessCommandHandler {
     private final ToolRegistryService toolRegistryService;
     private final ObjectStorageServiceResolver objectStorageResolver;
     private final ai.core.server.domain.SessionAttachmentRefRepository attachmentRepository;
+    private final ai.core.server.asynctask.AsyncToolTaskService asyncToolTaskService;
 
     public InProcessCommandHandler(SessionCommandDependencies sessionDependencies, CommandRpcDependencies rpcDependencies) {
         this.sessionManager = sessionDependencies.sessionManager();
@@ -61,6 +62,7 @@ public class InProcessCommandHandler {
         this.objectStorageResolver = sessionDependencies.objectStorageResolver();
         this.attachmentRepository = sessionDependencies.attachmentRepository();
         this.toolRegistryService = rpcDependencies.toolRegistryService();
+        this.asyncToolTaskService = sessionDependencies.asyncToolTaskService();
     }
 
     /**
@@ -74,6 +76,7 @@ public class InProcessCommandHandler {
             }
             switch (command.type()) {
                 case SEND_MESSAGE -> handleSendMessage(command);
+                case TASK_NOTIFICATION -> handleTaskNotification(command);
                 case APPROVE_TOOL -> handleApproveTool(command);
                 case CANCEL_TURN -> handleCancelTurn(command);
                 case CLOSE_SESSION -> handleCloseSession(command);
@@ -225,6 +228,37 @@ public class InProcessCommandHandler {
         return container != null && blobName != null && contentType != null
                 && container.equals(objectStorageResolver.multimodalContainer())
                 && blobName.startsWith("ai/");
+    }
+
+    /**
+     * Injects a finished long-running tool call back into its session. The delivery flag is claimed
+     * before the injection so a task announced twice — two replicas polling it on the same tick — is
+     * only ever injected once, and handed back when the injection fails so the sweep retries it.
+     * <p>
+     * Failures are swallowed on purpose: the generic command error path pushes an ERROR status down the
+     * session's SSE channel, and a transient rebuild failure must not flip a user's chat into an error
+     * state over work they never asked about directly.
+     */
+    @SuppressWarnings("unchecked")
+    private void handleTaskNotification(SessionCommand command) {
+        var payload = JsonUtil.fromJson(Map.class, command.payload());
+        var taskId = (String) payload.get("taskId");
+        var status = (String) payload.get("status");
+        var notification = (String) payload.get("notification");
+        var toolName = (String) payload.get("tool");
+        if (!asyncToolTaskService.claimNotificationDelivery(taskId)) {
+            LOGGER.info("async task notification already delivered, skipping, taskId={}, sessionId={}", taskId, command.sessionId());
+            return;
+        }
+        try {
+            var session = sessionManager.getSession(command.sessionId(), null, command.userId());
+            session.notifyTask(taskId, status, toolName, notification);
+            ownershipRegistry.renew(command.sessionId());
+            LOGGER.info("async task notification injected, taskId={}, sessionId={}, status={}", taskId, command.sessionId(), status);
+        } catch (RuntimeException | Error e) {
+            asyncToolTaskService.releaseNotificationDelivery(taskId);
+            LOGGER.warn("failed to inject async task notification, will retry, taskId={}, sessionId={}", taskId, command.sessionId(), e);
+        }
     }
 
     private void handleApproveTool(SessionCommand command) {

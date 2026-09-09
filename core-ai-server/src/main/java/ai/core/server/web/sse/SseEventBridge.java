@@ -8,6 +8,7 @@ import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.StatusChangeEvent;
+import ai.core.api.server.session.TaskStatusEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.EnvironmentOutputChunkEvent;
@@ -22,6 +23,7 @@ import ai.core.api.server.session.sse.SsePlanUpdateEvent;
 import ai.core.api.server.session.sse.SseReasoningChunkEvent;
 import ai.core.api.server.session.sse.SseSandboxEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
+import ai.core.api.server.session.sse.SseTaskStatusEvent;
 import ai.core.api.server.session.sse.SseTextChunkEvent;
 import ai.core.api.server.session.sse.SseToolApprovalRequestEvent;
 import ai.core.api.server.session.sse.SseEnvironmentOutputChunkEvent;
@@ -179,6 +181,19 @@ public class SseEventBridge implements AgentEventListener {
                 })
                 .toList();
         sse.taskId = event.taskId();
+        eventPublisher.publish(sessionId, sse);
+    }
+
+    /**
+     * The only event a client receives while the session is idle. Without it a turn started by a
+     * finished background task appears out of nowhere, with nothing to explain what triggered it.
+     */
+    @Override
+    public void onTaskStatus(TaskStatusEvent event) {
+        var sse = new SseTaskStatusEvent();
+        sse.taskId = event.taskId;
+        sse.toolName = event.toolName;
+        sse.status = event.status;
         eventPublisher.publish(sessionId, sse);
     }
 

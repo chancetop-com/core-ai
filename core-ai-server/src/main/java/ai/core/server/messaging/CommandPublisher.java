@@ -16,16 +16,25 @@ public class CommandPublisher {
     private final SessionOwnershipRegistry ownershipRegistry;
     private final SandboxService sandboxService;
     private final InProcessCommandHandler commandHandler;
+    private final boolean claimLocally;
 
     public CommandPublisher(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService,
                             InProcessCommandHandler commandHandler) {
+        this(jedisPool, ownershipRegistry, sandboxService, commandHandler, true);
+    }
+
+    /** @param claimLocally sys.session.claimLocally — unowned sessions run on the receiving instance (default) or go through the shared stream */
+    public CommandPublisher(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService,
+                            InProcessCommandHandler commandHandler, boolean claimLocally) {
         this.jedisPool = jedisPool;
         this.ownershipRegistry = ownershipRegistry;
         this.sandboxService = sandboxService;
         this.commandHandler = commandHandler;
+        this.claimLocally = claimLocally;
     }
 
     public void publish(SessionCommand command) {
+        if (claimAndProcessLocally(command)) return;
         var targetStream = resolveTargetStream(command.sessionId());
         LOGGER.info("[PUBLISH] publishing command: type={}, sessionId={}, targetStream={}",
                 command.type(), command.sessionId(), targetStream);
@@ -39,6 +48,21 @@ public class CommandPublisher {
                 throw new RuntimeException("failed to deliver command: Redis unavailable and session not owned locally, sessionId=" + command.sessionId(), e);
             }
         }
+    }
+
+    /**
+     * Locality first: an unowned session is claimed by the server that received the request. Its SSE channel and
+     * its sandbox live here, and any other process on the same Redis (a compose stack next to an IDE run, a
+     * replica with a different sandbox provider) would otherwise race for the command and run the turn where the
+     * user cannot see it. Only when the claim is lost — or this process has no handler — does the command travel.
+     */
+    private boolean claimAndProcessLocally(SessionCommand command) {
+        if (!claimLocally || commandHandler == null || command.sessionId() == null) return false;
+        if (ownershipRegistry.getOwner(command.sessionId()) != null) return false;
+        if (!ownershipRegistry.claim(command.sessionId())) return false;
+        LOGGER.info("[PUBLISH] claimed unowned session locally, processing in-process: type={}, sessionId={}", command.type(), command.sessionId());
+        commandHandler.handle(command);
+        return true;
     }
 
     private boolean processLocally(SessionCommand command) {

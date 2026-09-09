@@ -162,7 +162,17 @@ public class ToolExecutor {
         ToolCallResult result;
         if (useSandbox) {
             LOGGER.debug("sandbox intercepting tool: {}", tool.getName());
-            result = traceToolSpan(functionCall, tool.isSubAgent(), () -> sandbox.execute(tool.getName(), functionCall.function.arguments, context));
+            // a sandbox that cannot be acquired (docker daemon unreachable, pool exhausted) is a failed tool call the
+            // agent can report and route around — not a dead turn with nothing shown to the user
+            result = traceToolSpan(functionCall, tool.isSubAgent(), () -> {
+                try {
+                    return sandbox.execute(tool.getName(), functionCall.function.arguments, context);
+                } catch (RuntimeException e) {
+                    LOGGER.warn("sandbox execution failed, tool={}", tool.getName(), e);
+                    return ToolCallResult.failed("SANDBOX_UNAVAILABLE: the sandbox could not run this tool (" + e.getMessage()
+                        + "). Tell the user; do not retry sandbox tools until it is fixed.", e);
+                }
+            });
             result.withStats("executionMode", "sandbox");
             result.withStats("sandboxId", sandbox.getId());
         } else {
@@ -301,6 +311,12 @@ public class ToolExecutor {
         llmUsageConsumer.accept(result.getLlmModel(), result.getLlmUsage());
     }
 
+    private boolean isFreshTask(ToolCallAsyncTaskManager asyncTaskManager, String taskId, ToolCall tool) {
+        var existing = asyncTaskManager.loadTask(taskId);
+        if (existing.isEmpty()) return true;
+        return existing.get().isTerminal() && tool.getName().equals(existing.get().tool().getName());
+    }
+
     private void handleAsyncResult(ToolCallResult result, ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
         if (!result.isPending() && !result.isWaitingForInput()) {
             return;
@@ -314,7 +330,10 @@ public class ToolExecutor {
         // Register only fresh async work. A pending result that polls a task the manager already tracks or that a
         // manager owns (poll relay from async_task_output) must not be re-registered: the overwrite would replace
         // the stored tool with the polling tool, which does not support poll and can never turn the task terminal.
-        if (asyncTaskManager != null && !result.isManagedTask() && asyncTaskManager.loadTask(result.getTaskId()).isEmpty()) {
+        // A finished record under the same id from the same tool is a previous batch, not a live task (tools that
+        // key a task per subject, e.g. one render queue per episode, reuse ids): the new work replaces it, otherwise
+        // nobody polls it and the session waits for a completion notice that never comes.
+        if (asyncTaskManager != null && !result.isManagedTask() && isFreshTask(asyncTaskManager, result.getTaskId(), tool)) {
             var asyncTask = new ToolCallAsyncTask(result.getTaskId(), tool, functionCall, result);
             // tagged with the issuing session so the terminal notification finds its way back
             asyncTaskManager.storeTask(asyncTask, context.getSessionId());

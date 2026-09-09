@@ -4,7 +4,6 @@ import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
-import ai.core.media.reference.MediaModality;
 import ai.core.media.domain.Usage;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;
@@ -30,28 +29,28 @@ public class KieMediaProvider implements MediaProvider {
     private static final List<Integer> WAN_RESOLUTIONS = List.of(720, 1080);
 
     private static final ModelFamily DEFAULT_FAMILY =
-            new ModelFamily("", ReferenceMode.ARRAY, "image_urls", DurationType.STRING);
+            new ModelFamily("", KieVideoReferenceRouter.Mode.ARRAY, "image_urls", DurationType.STRING);
 
     // longest prefix first; the first match wins
     private static final List<ModelFamily> MODEL_FAMILIES = List.of(
-            new ModelFamily("minimax-h3/reference-to-video", ReferenceMode.ARRAY, "reference_image_urls", DurationType.INT),
-            new ModelFamily("minimax-h3/image-to-video", ReferenceMode.FIRST_LAST, "first_frame_url", DurationType.INT),
-            new ModelFamily("minimax-h3/text-to-video", ReferenceMode.NONE, null, DurationType.INT),
-            new ModelFamily("wan/2-7-image-to-video", ReferenceMode.FIRST_LAST, "first_frame_url", DurationType.INT, WAN_RESOLUTIONS),
-            new ModelFamily("wan/2-7-r2v", ReferenceMode.ARRAY, "reference_image", DurationType.INT, WAN_RESOLUTIONS),
-            new ModelFamily("wan/2-7-", ReferenceMode.NONE, null, DurationType.INT, WAN_RESOLUTIONS),
-            new ModelFamily("wan/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
-            new ModelFamily("bytedance/seedance-2", ReferenceMode.ARRAY, "reference_image_urls", DurationType.INT, SEEDANCE_RESOLUTIONS),
-            new ModelFamily("bytedance/seedance-1", ReferenceMode.ARRAY, "input_urls", DurationType.INT, SEEDANCE_RESOLUTIONS),
-            new ModelFamily("bytedance/v1-", ReferenceMode.SINGLE, "image_url", DurationType.STRING),
-            new ModelFamily("kling-2.6/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
-            new ModelFamily("kling-3.0/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
-            new ModelFamily("kling/v3-", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
-            new ModelFamily("kling/v2-", ReferenceMode.SINGLE, "image_url", DurationType.STRING),
-            new ModelFamily("grok-imagine/", ReferenceMode.ARRAY, "image_urls", DurationType.STRING),
-            new ModelFamily("hailuo/", ReferenceMode.SINGLE, "image_url", DurationType.STRING),
-            new ModelFamily("pixverse/", ReferenceMode.ARRAY, "image_urls", DurationType.INT),
-            new ModelFamily("happyhorse", ReferenceMode.ARRAY, "image_urls", DurationType.INT)
+            new ModelFamily("minimax-h3/reference-to-video", KieVideoReferenceRouter.Mode.ARRAY, "reference_image_urls", DurationType.INT),
+            new ModelFamily("minimax-h3/image-to-video", KieVideoReferenceRouter.Mode.FIRST_LAST, "first_frame_url", DurationType.INT),
+            new ModelFamily("minimax-h3/text-to-video", KieVideoReferenceRouter.Mode.NONE, null, DurationType.INT),
+            new ModelFamily("wan/2-7-image-to-video", KieVideoReferenceRouter.Mode.FIRST_LAST, "first_frame_url", DurationType.INT, WAN_RESOLUTIONS),
+            new ModelFamily("wan/2-7-r2v", KieVideoReferenceRouter.Mode.ARRAY, "reference_image", DurationType.INT, WAN_RESOLUTIONS),
+            new ModelFamily("wan/2-7-", KieVideoReferenceRouter.Mode.NONE, null, DurationType.INT, WAN_RESOLUTIONS),
+            new ModelFamily("wan/", KieVideoReferenceRouter.Mode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("bytedance/seedance-2", KieVideoReferenceRouter.Mode.ARRAY, "reference_image_urls", DurationType.INT, SEEDANCE_RESOLUTIONS),
+            new ModelFamily("bytedance/seedance-1", KieVideoReferenceRouter.Mode.ARRAY, "input_urls", DurationType.INT, SEEDANCE_RESOLUTIONS),
+            new ModelFamily("bytedance/v1-", KieVideoReferenceRouter.Mode.SINGLE, "image_url", DurationType.STRING),
+            new ModelFamily("kling-2.6/", KieVideoReferenceRouter.Mode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("kling-3.0/", KieVideoReferenceRouter.Mode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("kling/v3-", KieVideoReferenceRouter.Mode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("kling/v2-", KieVideoReferenceRouter.Mode.SINGLE, "image_url", DurationType.STRING),
+            new ModelFamily("grok-imagine/", KieVideoReferenceRouter.Mode.ARRAY, "image_urls", DurationType.STRING),
+            new ModelFamily("hailuo/", KieVideoReferenceRouter.Mode.SINGLE, "image_url", DurationType.STRING),
+            new ModelFamily("pixverse/", KieVideoReferenceRouter.Mode.ARRAY, "image_urls", DurationType.INT),
+            new ModelFamily("happyhorse", KieVideoReferenceRouter.Mode.ARRAY, "image_urls", DurationType.INT)
     );
 
     // KIE image models take a fixed aspect_ratio enum instead of a pixel size; the widest ratio first
@@ -307,54 +306,28 @@ public class KieMediaProvider implements MediaProvider {
         var input = new LinkedHashMap<>(defaultInputParams);
         input.put("prompt", request.prompt());
         var family = modelFamily(request.model());
+        var profile = VideoModelProfiles.lookup(request.model());
+        var framesSent = false;
         if (request.inputReferences() != null && !request.inputReferences().isEmpty()) {
-            applyReferences(input, request, family);
+            framesSent = KieVideoReferenceRouter.apply(input, new KieVideoReferenceRouter.Target(request.model(), family.referenceMode(), family.referenceField(), profile),
+                    request.inputReferences(), this::referenceUrls);
         }
         var aspectRatio = KieOutputSize.aspectRatio(request.size());
+        // seedance frame mode derives the aspect ratio from the frame image and rejects an explicit one
+        if (framesSent && profile.frameExclusive() && !profile.frames().positional()) aspectRatio = "adaptive";
         if (aspectRatio != null) input.put("aspect_ratio", aspectRatio);
         var resolution = KieOutputSize.resolution(request.size(), family.resolutions());
         if (resolution != null) input.put("resolution", resolution);
-        if (request.seconds() != null) input.put("duration", duration(request, family));
+        if (request.seconds() != null) input.put("duration", duration(request, family, profile));
+        // native audio is the reason to pick these families for dialogue; kling defaults it OFF
+        if (profile.audioParam() != null) input.putIfAbsent(profile.audioParam(), Boolean.TRUE);
         return input;
     }
 
-    /**
-     * The reference arrays are the only token/asset binding the KIE API documents, so the array order
-     * here must stay exactly the order the prompt tokens were compiled against — never reorder. Video
-     * and audio references ride on their own arrays; putting them into the image array would silently
-     * hand the model the wrong kind of asset.
-     */
-    private void applyReferences(Map<String, Object> input, VideoGenerationRequest request, ModelFamily family) {
-        var imageUrls = referenceUrls(request.inputReferences(), MediaModality.IMAGE);
-        var videoUrls = referenceUrls(request.inputReferences(), MediaModality.VIDEO);
-        var audioUrls = referenceUrls(request.inputReferences(), MediaModality.AUDIO);
-        if (!videoUrls.isEmpty()) input.put("reference_video_urls", videoUrls);
-        if (!audioUrls.isEmpty()) input.put("reference_audio_urls", audioUrls);
-        if (imageUrls.isEmpty()) return;
-        switch (family.referenceMode()) {
-            case ARRAY -> input.put(family.referenceField(), imageUrls);
-            case SINGLE -> {
-                if (imageUrls.size() > 1)
-                    throw new IllegalArgumentException(request.model() + " accepts exactly one reference image, got " + imageUrls.size());
-                input.put(family.referenceField(), imageUrls.getFirst());
-            }
-            case FIRST_LAST -> {
-                if (imageUrls.size() > 2)
-                    throw new IllegalArgumentException(request.model() + " accepts at most two reference images (first and last frame), got " + imageUrls.size());
-                input.put("first_frame_url", imageUrls.getFirst());
-                if (imageUrls.size() == 2) input.put("last_frame_url", imageUrls.get(1));
-            }
-            case NONE -> throw new IllegalArgumentException(request.model() + " does not accept reference images");
-            default -> throw new IllegalArgumentException("unexpected reference mode: " + family.referenceMode());
-        }
-    }
-
-    private Object duration(VideoGenerationRequest request, ModelFamily family) {
-        return family.durationType() == DurationType.INT ? request.seconds() : request.seconds().toString();
-    }
-
-    private List<String> referenceUrls(List<MediaReference> references, MediaModality modality) {
-        return referenceUrls(references.stream().filter(reference -> reference.modalityOrImage() == modality).toList());
+    // snapped to what the family accepts: a rejected 3s or 7s request helps nobody, the clip is trimmed at edit time
+    private Object duration(VideoGenerationRequest request, ModelFamily family, VideoModelProfiles.Profile profile) {
+        var seconds = profile.durations().snap(request.seconds());
+        return family.durationType() == DurationType.INT ? seconds : String.valueOf(seconds);
     }
 
     private List<String> referenceUrls(List<MediaReference> references) {
@@ -420,16 +393,14 @@ public class KieMediaProvider implements MediaProvider {
 
     private enum DurationType { INT, STRING }
 
-    private enum ReferenceMode { ARRAY, SINGLE, FIRST_LAST, NONE }
-
     /**
      * @param resolutions short-side tiers this family accepts, largest-wins against the requested size.
      *                    Empty means "not verified against the model page": no resolution is sent and the
      *                    model uses its own default, which is what happened for every family before.
      */
-    private record ModelFamily(String prefix, ReferenceMode referenceMode, String referenceField, DurationType durationType,
+    private record ModelFamily(String prefix, KieVideoReferenceRouter.Mode referenceMode, String referenceField, DurationType durationType,
                                List<Integer> resolutions) {
-        ModelFamily(String prefix, ReferenceMode referenceMode, String referenceField, DurationType durationType) {
+        ModelFamily(String prefix, KieVideoReferenceRouter.Mode referenceMode, String referenceField, DurationType durationType) {
             this(prefix, referenceMode, referenceField, durationType, List.of());
         }
     }

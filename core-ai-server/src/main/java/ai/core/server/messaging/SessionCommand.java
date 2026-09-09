@@ -54,6 +54,19 @@ public record SessionCommand(CommandType type, String sessionId, String userId, 
         return new SessionCommand(CommandType.SEND_MESSAGE, sessionId, userId, payload, null);
     }
 
+    /**
+     * A finished long-running tool call, addressed to the session that issued it. Travels the same road
+     * as a user message so it reaches the owning replica and rebuilds a session that is no longer live.
+     */
+    public static SessionCommand taskNotification(String sessionId, String userId, String taskId, String toolName, String status, String notificationXml) {
+        var payloadMap = new HashMap<String, Object>();
+        payloadMap.put("taskId", taskId);
+        payloadMap.put("status", status);
+        payloadMap.put("notification", notificationXml);
+        if (toolName != null) payloadMap.put("tool", toolName);
+        return new SessionCommand(CommandType.TASK_NOTIFICATION, sessionId, userId, JsonUtil.toJson(payloadMap), null);
+    }
+
     public static SessionCommand approveToolCall(String sessionId, String userId, String callId, ApprovalDecision decision) {
         var payload = JsonUtil.toJson(Map.of(
                 "callId", callId,

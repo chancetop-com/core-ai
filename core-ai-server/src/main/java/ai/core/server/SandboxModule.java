@@ -38,6 +38,10 @@ class SandboxModule extends Module {
     @Override
     protected void initialize() {
         var providerName = property("sys.sandbox.provider").orElse(null);
+        // declared in sys.properties so env/-D overrides work; touched before branching (core-ng fails on declared-but-unread)
+        property("sys.sandbox.docker.socket");
+        property("sys.sandbox.docker.workspace.base");
+        property("sys.sandbox.server.url");
         if (providerName == null || providerName.isBlank()) {
             sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
@@ -55,9 +59,11 @@ class SandboxModule extends Module {
             provider = createAgentSandboxProvider();
             serverUrlFromSandbox = resolveServerUrlFromSandbox(KUBERNETES_SERVER_HOST);
         } else if ("docker".equalsIgnoreCase(providerName)) {
-            var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
+            var dockerSocket = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
             var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
-            provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
+            if (!dockerSocket.startsWith("tcp://"))
+                LOGGER.warn("sys.sandbox.docker.socket={} is not a tcp:// endpoint; the docker provider will talk to localhost:2375 — inside a container that is the container itself", dockerSocket);
+            provider = new DockerSandboxProvider(dockerSocket, workspaceBase, null);
             serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
         } else {
             sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),

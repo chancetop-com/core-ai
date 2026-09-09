@@ -47,6 +47,11 @@ public class SessionAttachmentRef {
     @Field(name = "source_size_bytes")
     public Long sourceSizeBytes;
 
+    // server file record behind the blob when the reference was minted from one (rendered drama clip), so per-file
+    // memories such as recorded video understanding can find their subject; null for direct human uploads
+    @Field(name = "file_id")
+    public String fileId;
+
     @Field(name = "created_at")
     public ZonedDateTime createdAt;
 }

@@ -11,10 +11,15 @@ import core.framework.api.validate.NotNull;
  */
 public class TaskStatusEvent implements AgentEvent {
     public static TaskStatusEvent of(String sessionId, String taskId, String status) {
+        return of(sessionId, taskId, status, null);
+    }
+
+    public static TaskStatusEvent of(String sessionId, String taskId, String status, String toolName) {
         var event = new TaskStatusEvent();
         event.sessionId = sessionId;
         event.taskId = taskId;
         event.status = status;
+        event.toolName = toolName;
         return event;
     }
 
@@ -29,6 +34,10 @@ public class TaskStatusEvent implements AgentEvent {
     @NotNull
     @Property(name = "status")
     public String status;
+
+    /** the tool that owns the task, when the source knows it; sub-agent tasks have none */
+    @Property(name = "toolName")
+    public String toolName;
 
     @Override
     public String sessionId() {

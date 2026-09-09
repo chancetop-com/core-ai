@@ -22,6 +22,7 @@ class MediaCapabilityRegistryTest {
         assertEquals(4, caps.maxImages());
         assertEquals(0, caps.maxAudios(), "uploading audio references is documented as unsupported");
         assertFalse(caps.acceptsAudioRef());
+        assertEquals(MediaAddressingSyntax.REF_TAG, caps.addressingSyntax(), "prompts address inputs as <IMAGE_REF_0>");
     }
 
     @Test

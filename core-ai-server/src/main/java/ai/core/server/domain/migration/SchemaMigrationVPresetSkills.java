@@ -31,7 +31,8 @@ public class SchemaMigrationVPresetSkills implements SchemaMigration {
     public String version() {
         // 20260829006: initial seed
         // 20260830001: camera-language upgraded to 24-move dictionary; added ai-shot-language (shot sizes/angles/composition/shot-reverse-shot)
-        return "20260830003";
+        // 20260907001: ai-character-sheet — three clean single-subject images for video references; the 4-panel sheet is design-only
+        return "20260907001";
     }
 
     @Override

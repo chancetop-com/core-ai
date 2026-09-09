@@ -1044,6 +1044,7 @@ function renderModelPanel(props: {
               <option value="AT_TOKEN">AT_TOKEN (@Image1)</option>
               <option value="BRACKET">BRACKET ([Image1])</option>
               <option value="ANGLE_SUBJECT">ANGLE_SUBJECT (&lt;Picture 1&gt;)</option>
+              <option value="REF_TAG">REF_TAG (&lt;IMAGE_REF_0&gt;, zero-based)</option>
               <option value="NONE">NONE (no addressing syntax)</option>
             </select>
             <select className={inputClass} style={inputStyle} value={form.acceptsAudioReference} onChange={e => setForm({ ...form, acceptsAudioReference: e.target.value })}>

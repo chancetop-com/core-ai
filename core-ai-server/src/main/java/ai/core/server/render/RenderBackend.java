@@ -1,5 +1,7 @@
 package ai.core.server.render;
 
+import ai.core.media.domain.MediaReference;
+
 import java.util.List;
 
 /**
@@ -20,11 +22,15 @@ public interface RenderBackend {
 
     byte[] downloadClip(String handleId);
 
-    /** userId owns the resulting media job: without it the gateway cannot store the artifact and the generations page shows nothing. */
-    record KeyframeRenderSpec(String userId, String model, String prompt, String size, List<String> referenceImageUrls, String providerExtra) {
+    /**
+     * userId owns the resulting media job: without it the gateway cannot store the artifact and the generations page shows nothing.
+     * References carry name / role / modality so the gateway can route a FIRST_FRAME to the model's frame slot and rewrite
+     * {@code @name} mentions in the prompt into the model's own tokens — an unnamed URL list loses both.
+     */
+    record KeyframeRenderSpec(String userId, String model, String prompt, String size, List<MediaReference> references, String providerExtra) {
     }
 
-    record ClipRenderSpec(String userId, String model, String prompt, Integer seconds, String size, List<String> referenceImageUrls, String providerExtra) {
+    record ClipRenderSpec(String userId, String model, String prompt, Integer seconds, String size, List<MediaReference> references, String providerExtra) {
     }
 
     /** mediaId is the gateway handle of the media job that already stored this image, when there is one. */

@@ -84,14 +84,36 @@ public class ToolCallAsyncTaskManager {
 
     /** Task ids still pending or waiting for input — what a server-side driver refreshes each tick. */
     public List<String> listOpenTaskIds() {
-        var ids = new ArrayList<String>();
+        return listTasks().stream().filter(TaskSnapshot::open).map(TaskSnapshot::taskId).toList();
+    }
+
+    /**
+     * One pass over the store, giving a driver everything it needs to decide what to poll and what to
+     * re-announce. Kept as a single scan because both questions are asked on the same tick.
+     */
+    public List<TaskSnapshot> listTasks() {
+        var snapshots = new ArrayList<TaskSnapshot>();
         for (var key : persistenceProvider.listIds(TASK_PREFIX)) {
             var json = persistenceProvider.load(key);
             if (json.isEmpty()) continue;
             var data = JSON.fromJSON(AsyncTaskData.class, json.get());
-            if (data.status == ToolCallResult.Status.PENDING || data.status == ToolCallResult.Status.WAITING_FOR_INPUT) ids.add(data.taskId);
+            snapshots.add(new TaskSnapshot(data.taskId, data.sessionId, data.status, isOpen(data),
+                isNotificationPending(data), data.notifyAttempts, data.lastNotifyAttemptAtMs));
         }
-        return ids;
+        return snapshots;
+    }
+
+    private static boolean isOpen(AsyncTaskData data) {
+        return data.status == ToolCallResult.Status.PENDING || data.status == ToolCallResult.Status.WAITING_FOR_INPUT;
+    }
+
+    private static boolean isTerminal(AsyncTaskData data) {
+        return data.status == ToolCallResult.Status.COMPLETED || data.status == ToolCallResult.Status.FAILED;
+    }
+
+    /** Terminal, addressed to a session, and no one has confirmed that the session took it. */
+    private static boolean isNotificationPending(AsyncTaskData data) {
+        return isTerminal(data) && data.sessionId != null && data.notifiedAtMs == null;
     }
 
     /** Terminal tasks are kept for late readers; this drops the ones nobody will ask about any more. */
@@ -102,7 +124,7 @@ public class ToolCallAsyncTaskManager {
             var json = persistenceProvider.load(key);
             if (json.isEmpty()) continue;
             var data = JSON.fromJSON(AsyncTaskData.class, json.get());
-            var terminal = data.status == ToolCallResult.Status.COMPLETED || data.status == ToolCallResult.Status.FAILED;
+            var terminal = isTerminal(data);
             var lastTouch = data.lastPolledAtMs != null ? data.lastPolledAtMs : data.createdAtMs;
             if (terminal && lastTouch != null && lastTouch <= cutoff) stale.add(key);
         }
@@ -138,9 +160,18 @@ public class ToolCallAsyncTaskManager {
             LOGGER.debug("Polled task {}: status={}", taskId, result.getStatus());
             var polled = task.withPolled(result);
             var updated = AsyncTaskData.from(polled);
-            updated.sessionId = data.sessionId;
-            save(updated);
-            if (result.isTerminal()) announce(data.sessionId, polled, result);
+            updated.inheritDelivery(data);
+            if (!result.isTerminal()) {
+                save(updated);
+                return result;
+            }
+            if (updated.sessionId == null) {
+                // no conversation to continue: settle the delivery state now so the retry sweep skips it
+                updated.notifiedAtMs = System.currentTimeMillis();
+                save(updated);
+                return result;
+            }
+            announce(updated, polled, result);
             return result;
         } catch (Exception e) {
             LOGGER.warn("Error polling task {}: {}", taskId, e.getMessage(), e);
@@ -187,10 +218,70 @@ public class ToolCallAsyncTaskManager {
         return toolRegistry.get(toolName);
     }
 
-    private void announce(String sessionId, ToolCallAsyncTask task, ToolCallResult result) {
+    /**
+     * Re-announces a terminal task whose session never confirmed the notification, so a completion lost
+     * to a dead session, a failed rebuild or a Redis hiccup is not lost for good — the task is already
+     * terminal, so nothing would ever poll, let alone announce, it again.
+     */
+    public boolean retryNotification(String taskId) {
+        var dataOpt = loadData(taskId);
+        if (dataOpt.isEmpty()) return false;
+        var data = dataOpt.get();
+        if (!isNotificationPending(data)) return false;
+        var tool = resolveTool(data.toolName);
+        if (tool == null) {
+            LOGGER.warn("cannot re-announce async task {}: tool '{}' is not available", taskId, data.toolName);
+            return false;
+        }
+        LOGGER.info("re-announcing async task notification, taskId={}, session={}, attempt={}", taskId, data.sessionId, data.notifyAttempts + 1);
+        announce(data, data.toTask(tool), data.restoredResult());
+        return true;
+    }
+
+    /**
+     * Claims delivery of a terminal task's notification. Exactly one caller wins, so a task announced
+     * twice (two replicas polled it on the same tick) is still injected into its session once. The
+     * winner calls {@link #reopenNotification} when the injection then fails.
+     */
+    public synchronized boolean markNotificationDelivered(String taskId) {
+        var dataOpt = loadData(taskId);
+        if (dataOpt.isEmpty()) return false;
+        var data = dataOpt.get();
+        if (data.notifiedAtMs != null) return false;
+        data.notifiedAtMs = System.currentTimeMillis();
+        save(data);
+        return true;
+    }
+
+    /** Hands a claimed notification back to the retry sweep after the session refused it. */
+    public synchronized void reopenNotification(String taskId) {
+        var dataOpt = loadData(taskId);
+        if (dataOpt.isEmpty()) return;
+        var data = dataOpt.get();
+        if (data.notifiedAtMs == null) return;
+        data.notifiedAtMs = null;
+        save(data);
+    }
+
+    /** Stops re-announcing a task no one can take: its session is gone, or the retries ran out. */
+    public void abandonNotification(String taskId) {
+        if (markNotificationDelivered(taskId)) {
+            LOGGER.warn("giving up on async task notification, taskId={}", taskId);
+        }
+    }
+
+    /**
+     * Hands a terminal task to its listeners and records the attempt. A listener returning normally is
+     * not a delivery receipt: the session side confirms with {@link #markNotificationDelivered}, and the
+     * attempt counter written here is what lets a driver back off and eventually give up.
+     */
+    private void announce(AsyncTaskData data, ToolCallAsyncTask task, ToolCallResult result) {
+        data.notifyAttempts++;
+        data.lastNotifyAttemptAtMs = System.currentTimeMillis();
+        save(data);
         for (var listener : listeners) {
             try {
-                listener.onTerminal(sessionId, task, result);
+                listener.onTerminal(data.sessionId, task, result);
             } catch (Exception e) {
                 LOGGER.warn("async task listener failed, taskId={}", task.taskId(), e);
             }
@@ -208,6 +299,11 @@ public class ToolCallAsyncTaskManager {
 
     public interface TerminalListener {
         void onTerminal(String sessionId, ToolCallAsyncTask task, ToolCallResult result);
+    }
+
+    /** What one stored task looks like to a server-side driver, without materialising its tool. */
+    public record TaskSnapshot(String taskId, String sessionId, ToolCallResult.Status status, boolean open,
+                               boolean notificationPending, int notifyAttempts, Long lastNotifyAttemptAtMs) {
     }
 
     public static class AsyncTaskData {
@@ -234,6 +330,18 @@ public class ToolCallAsyncTaskManager {
         public int pollCount;
         /** text of the last result; ToolCallResult itself is not JSON-friendly, so status + text are what survive the store */
         public String lastMessage;
+        /** set once the owning session has accepted the terminal notification; null means still owed */
+        public Long notifiedAtMs;
+        public int notifyAttempts;
+        public Long lastNotifyAttemptAtMs;
+
+        /** {@link #from} rebuilds the task facts only; who it belongs to and what it still owes carries over. */
+        void inheritDelivery(AsyncTaskData previous) {
+            sessionId = previous.sessionId;
+            notifiedAtMs = previous.notifiedAtMs;
+            notifyAttempts = previous.notifyAttempts;
+            lastNotifyAttemptAtMs = previous.lastNotifyAttemptAtMs;
+        }
 
         public ToolCallAsyncTask toTask(ToolCall tool) {
             return new ToolCallAsyncTask(

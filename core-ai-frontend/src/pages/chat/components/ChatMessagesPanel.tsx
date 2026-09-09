@@ -5,9 +5,9 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import type { PluggableList } from 'unified';
-import { Bot, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, Sparkles, User } from 'lucide-react';
+import { AlertCircle, Bot, CheckCircle2, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, Sparkles, User } from 'lucide-react';
 import type { SessionArtifact } from '../../../api/session';
-import type { ChatMessage, MessageSegment, PlanTodo, SandboxSegment, SandboxTerminalSpec, ToolsSegment } from '../types';
+import type { ChatMessage, MessageSegment, PlanTodo, SandboxSegment, SandboxTerminalSpec, TasksSegment, ToolsSegment } from '../types';
 import { formatMessageTime, formatMessageTimeFull, getMessageText } from '../utils';
 import { chatSanitizeSchema } from '../markdownSanitizeSchema';
 import type { ArtifactSpec } from './artifactTypes';
@@ -28,6 +28,29 @@ type MarkdownComponents = ComponentProps<typeof ReactMarkdown>['components'];
 interface VisibleMessage {
   msg: ChatMessage;
   index: number;
+}
+
+/**
+ * A background task that finished on its own. Rendered above the reply it triggered, because without
+ * it the continuation turn looks like the agent started talking for no reason.
+ */
+function BackgroundTasksBlock({ seg }: { seg: TasksSegment }) {
+  return (
+    <div className="flex flex-col gap-1">
+      {seg.tasks.map(task => {
+        const failed = task.status !== 'completed';
+        const color = failed ? 'var(--color-danger)' : 'var(--color-text-secondary)';
+        return (
+          <div key={task.taskId} className="inline-flex items-center gap-1.5 text-xs" style={{ color }}>
+            {failed ? <AlertCircle size={13} /> : <CheckCircle2 size={13} />}
+            <span>
+              Background task {task.toolName ? <code className="font-mono">{task.toolName}</code> : task.taskId} {task.status}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function hasTextSegments(segments?: MessageSegment[]): boolean {
@@ -134,6 +157,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   onFeedbackClick,
 }: ChatMessageRowProps) {
   const sandboxSeg = msg.segments?.find(s => s.type === 'sandbox') as SandboxSegment | undefined;
+  const tasksSeg = msg.segments?.find(s => s.type === 'tasks') as TasksSegment | undefined;
   const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
   const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
   const textSeg = msg.segments?.find(s => s.type === 'text');
@@ -159,6 +183,11 @@ const ChatMessageRow = memo(function ChatMessageRow({
         </div>
       )}
       <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
+        {tasksSeg && tasksSeg.tasks.length > 0 && (
+          <div className="mb-3">
+            <BackgroundTasksBlock seg={tasksSeg} />
+          </div>
+        )}
         {sandboxSeg && (
           <div className="mb-3">
             <SandboxBlock seg={sandboxSeg} terminalEnabled={terminalEnabled} onOpenTerminal={onOpenSandboxTerminal} />

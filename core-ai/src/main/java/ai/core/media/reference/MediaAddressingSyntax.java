@@ -17,6 +17,8 @@ public enum MediaAddressingSyntax {
     BRACKET,
     // <Picture 1> / <Video 1> (MiniMax H3)
     ANGLE_SUBJECT,
+    // <IMAGE_REF_0> / <VIDEO_REF_0>, zero-based (Gemini Omni)
+    REF_TAG,
     // no addressing syntax (Seedream image-to-image); tokens are stripped from the prompt
     NONE;
 

@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } fro
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import { useCapabilities } from '../../api/capabilities';
-import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact, SessionFeedback } from '../../api/session';
+import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, SseTaskStatusEvent, ChatSessionSummary, SessionArtifact, SessionFeedback } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import type { IdName } from '../../api/session';
@@ -15,7 +15,7 @@ import ChatComposer from './components/ChatComposer';
 import type { ChatComposerHandle, ComposerAttachment } from './components/ChatComposer';
 import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
-import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, SandboxTerminalSpec } from './types';
+import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, TasksSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages, restoreCachedChatMessages } from './utils';
 import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn, trackStrandedTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
@@ -62,8 +62,14 @@ function toToolRef(id: string, availableTools: ToolRegistryView[] = []): ToolRef
   return { id, type: 'BUILTIN' };
 }
 
+/**
+ * Did this turn actually produce anything? A `tasks` segment does not count: it is a note about
+ * background work that finished, written into the bubble before the turn it triggers has produced a
+ * single chunk. Counting it would make an empty turn look answered — TURN_COMPLETE would stop
+ * back-filling its output, and a lost error would have nowhere to render.
+ */
 function hasAnySegments(segments?: MessageSegment[]): boolean {
-  return segments != null && segments.length > 0;
+  return segments != null && segments.some(s => s.type !== 'tasks');
 }
 
 function titleFromMessage(text: string): string {
@@ -1055,6 +1061,36 @@ export default function Chat() {
             }];
           }
           segments[toolsSegIdx] = { ...toolsSeg, tools };
+          updated[updated.length - 1] = { ...last, segments };
+          return updated;
+        });
+        break;
+      }
+      case 'TASK_STATUS':
+      case 'task_status': {
+        // Arrives while the session is idle, just before (or just after) the RUNNING of the turn the
+        // finished task kicks off. Recorded on the trailing agent bubble so the continuation reads as
+        // "background task finished -> here is what the agent did about it".
+        const taskEvent = event as SseTaskStatusEvent;
+        setMessages(prev => {
+          const updated = [...prev];
+          let last = updated[updated.length - 1];
+          if (!last || last.role !== 'agent') {
+            last = { role: 'agent', segments: [], timestamp: new Date().toISOString() };
+            updated.push(last);
+          }
+          const segments = [...(last.segments || [])];
+          const entry = { taskId: taskEvent.task_id, toolName: taskEvent.tool_name, status: taskEvent.status };
+          const existingIdx = segments.findIndex(s => s.type === 'tasks');
+          if (existingIdx >= 0) {
+            const existing = segments[existingIdx] as TasksSegment;
+            const tasks = existing.tasks.some(t => t.taskId === entry.taskId)
+              ? existing.tasks.map(t => (t.taskId === entry.taskId ? entry : t))
+              : [...existing.tasks, entry];
+            segments[existingIdx] = { ...existing, tasks };
+          } else {
+            segments.push({ type: 'tasks', tasks: [entry] });
+          }
           updated[updated.length - 1] = { ...last, segments };
           return updated;
         });

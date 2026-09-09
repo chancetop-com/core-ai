@@ -80,8 +80,10 @@ public final class GenerateVideoTool extends ToolCall {
                       "last" (a bare string) means the most recent image generated in this session.
                     - {"url": "https://..."} / {"b64Json": "data:image/jpeg;base64,..."} — external
                       content only. For b64Json the "data:<mime>;base64," prefix is REQUIRED.
-                  role is one of subject, scene, camera, style, prop, audio and decides which
-                  references survive when the model accepts fewer than you passed. If omitted
+                  role is one of first_frame, last_frame, subject, scene, camera, style, prop, audio and decides which
+                  references survive when the model accepts fewer than you passed. first_frame / last_frame
+                  are frame anchors: the video starts (ends) on that picture; families with a dedicated
+                  frame parameter receive it there, and on Seedance a frame excludes other image references. If omitted
                   entirely, the images attached to the current chat message are used automatically.
                   With more than one reference, name each one and say in the prompt what it
                   contributes, e.g. "@char_lin defines the woman's face only. @scene_cafe defines the

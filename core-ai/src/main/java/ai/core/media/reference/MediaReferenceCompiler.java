@@ -99,6 +99,8 @@ public class MediaReferenceCompiler {
             };
             return "<" + noun + " " + index + ">";
         }
+        // gemini omni counts from zero and upper-cases the modality: <IMAGE_REF_0> / <VIDEO_REF_0>
+        if (syntax == MediaAddressingSyntax.REF_TAG) return "<" + modality.name() + "_REF_" + (index - 1) + ">";
         var noun = switch (modality) {
             case IMAGE -> "Image";
             case VIDEO -> "Video";

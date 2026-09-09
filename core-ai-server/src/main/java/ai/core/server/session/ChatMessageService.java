@@ -6,6 +6,7 @@ import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
+import ai.core.api.server.session.ErrorEvent;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
@@ -266,6 +267,12 @@ public class ChatMessageService {
         @Override
         public void onTurnComplete(TurnCompleteEvent event) {
             persistAgentMessage(sessionId, event.output, bufferBySession.remove(sessionId));
+        }
+
+        /** A failed turn still leaves its trace in the history — otherwise a reload shows the user's question answered by silence. */
+        @Override
+        public void onError(ErrorEvent event) {
+            persistAgentMessage(sessionId, "Error: " + (event.message == null ? "turn failed" : event.message), bufferBySession.remove(sessionId));
         }
     }
 

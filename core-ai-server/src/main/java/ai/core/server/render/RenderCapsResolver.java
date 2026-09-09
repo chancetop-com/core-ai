@@ -1,5 +1,6 @@
 package ai.core.server.render;
 
+import ai.core.media.VideoModelProfiles;
 import ai.core.media.reference.MediaModelCapabilities;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.gateway.GatewayEndpointType;
@@ -31,7 +32,8 @@ public class RenderCapsResolver {
         var config = model == null || model.isBlank() ? null : routingEngine.modelConfig(model);
         if (config == null) return null;
         return new RenderCaps(model, GatewayReferenceCompiler.capabilities(config.upstreamModel, config),
-            Boolean.TRUE.equals(config.nativeAudio), config.maxOutputDurationSec, version(config));
+            Boolean.TRUE.equals(config.nativeAudio), config.maxOutputDurationSec, version(config),
+            VideoModelProfiles.lookup(config.upstreamModel));
     }
 
     public List<RenderCaps> videoModels() {
@@ -62,11 +64,26 @@ public class RenderCapsResolver {
 
     /**
      * @param version marker for render cache keys
+     * @param profile family facts that decide request validity (accepted durations, frame slots, audio switch)
      */
     public record RenderCaps(String model, MediaModelCapabilities capabilities, boolean nativeAudio,
-                             Double maxOutputDurationSec, String version) {
+                             Double maxOutputDurationSec, String version, VideoModelProfiles.Profile profile) {
+        public RenderCaps(String model, MediaModelCapabilities capabilities, boolean nativeAudio, Double maxOutputDurationSec, String version) {
+            this(model, capabilities, nativeAudio, maxOutputDurationSec, version, VideoModelProfiles.lookup(capabilities == null ? null : capabilities.model()));
+        }
+
         public boolean carriesImageReferences() {
             return capabilities.maxImages() == null || capabilities.maxImages() > 0;
+        }
+
+        /** Whole seconds the family will accept for the requested length (design: never let upstream reject a planned shot). */
+        public int snapSeconds(int seconds) {
+            return profile == null ? seconds : profile.durations().snap(seconds);
+        }
+
+        /** A first frame travels alone on this family: sending identity sheets next to it either errors or fills the frame slots. */
+        public boolean frameExclusive() {
+            return profile != null && profile.frameExclusive();
         }
     }
 }

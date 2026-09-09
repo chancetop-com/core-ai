@@ -33,5 +33,7 @@ public enum EventType {
     @Property(name = "batch_tool_start")
     BATCH_TOOL_START,
     @Property(name = "environment_output_chunk")
-    ENVIRONMENT_OUTPUT_CHUNK
+    ENVIRONMENT_OUTPUT_CHUNK,
+    @Property(name = "task_status")
+    TASK_STATUS
 }

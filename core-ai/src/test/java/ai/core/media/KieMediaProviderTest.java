@@ -2,6 +2,8 @@ package ai.core.media;
 
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.MediaReference;
+import ai.core.media.reference.MediaModality;
+import ai.core.media.reference.MediaReferenceRole;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.utils.JsonUtil;
 import com.sun.net.httpserver.HttpServer;
@@ -271,6 +273,79 @@ class KieMediaProviderTest {
 
         assertTrue(uploadBodies.isEmpty());
         assertEquals(List.of("https://example.com/ref.png"), createTaskInput().get("image_urls"));
+    }
+
+    @Test
+    void generateVideoRoutesFrameAnchorsToSeedanceFrameFieldsAndGoesAdaptive() {
+        var first = new MediaReference("https://example.com/kf.png", null, null, "first_frame", MediaReferenceRole.FIRST_FRAME, MediaModality.IMAGE);
+        var last = new MediaReference("https://example.com/end.png", null, null, "last_frame", MediaReferenceRole.LAST_FRAME, MediaModality.IMAGE);
+
+        provider.generateVideo(videoRequest("bytedance/seedance-2-5", "animate", 6, "1080x1920", List.of(first, last)));
+
+        var input = createTaskInput();
+        assertEquals("https://example.com/kf.png", input.get("first_frame_url"));
+        assertEquals("https://example.com/end.png", input.get("last_frame_url"));
+        assertFalse(input.containsKey("reference_image_urls"), "frame mode: no reference array");
+        assertEquals("adaptive", input.get("aspect_ratio"), "frame mode derives the ratio from the frame image");
+        assertEquals("1080p", input.get("resolution"));
+        assertEquals(Boolean.TRUE, input.get("generate_audio"), "native audio on by default");
+    }
+
+    @Test
+    void generateVideoRejectsFramesMixedWithReferencesWhereTheyAreExclusive() {
+        var first = new MediaReference("https://example.com/kf.png", null, null, "first_frame", MediaReferenceRole.FIRST_FRAME, MediaModality.IMAGE);
+        var sheet = new MediaReference("https://example.com/sheet.png", null, null, "char_1", MediaReferenceRole.SUBJECT, MediaModality.IMAGE);
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> provider.generateVideo(videoRequest("bytedance/seedance-2-5", "animate", 6, null, List.of(sheet, first))));
+
+        assertTrue(error.getMessage().contains("not both"), error.getMessage());
+    }
+
+    @Test
+    void generateVideoPutsTheFirstFrameInSlotZeroOnPositionalFamilies() {
+        var sheet = new MediaReference("https://example.com/sheet.png", null, null, "char_1", MediaReferenceRole.SUBJECT, MediaModality.IMAGE);
+        var first = new MediaReference("https://example.com/kf.png", null, null, "first_frame", MediaReferenceRole.FIRST_FRAME, MediaModality.IMAGE);
+
+        provider.generateVideo(videoRequest("kling-3.0/std", "animate", 7, "720x1280", List.of(sheet, first)));
+
+        var input = createTaskInput();
+        assertEquals(List.of("https://example.com/kf.png", "https://example.com/sheet.png"), input.get("image_urls"),
+                "kling reads image_urls[0] as the opening frame — the keyframe, never the character sheet");
+        assertEquals("7", input.get("duration"));
+        assertEquals("9:16", input.get("aspect_ratio"));
+        assertEquals(Boolean.TRUE, input.get("sound"), "kling defaults audio off; dialogue needs it on");
+    }
+
+    @Test
+    void generateVideoSendsWanR2vFirstFrameNextToItsReferences() {
+        var first = new MediaReference("https://example.com/kf.png", null, null, "first_frame", MediaReferenceRole.FIRST_FRAME, MediaModality.IMAGE);
+        var face = new MediaReference("https://example.com/face.png", null, null, "char_1", MediaReferenceRole.SUBJECT, MediaModality.IMAGE);
+
+        provider.generateVideo(videoRequest("wan/2-7-r2v", "animate", 5, "1080x1920", List.of(face, first)));
+
+        var input = createTaskInput();
+        assertEquals("https://example.com/kf.png", input.get("first_frame"));
+        assertEquals(List.of("https://example.com/face.png"), input.get("reference_image"));
+        assertEquals("9:16", input.get("aspect_ratio"), "not adaptive: wan r2v is not frame-exclusive");
+    }
+
+    @Test
+    void generateVideoSnapsDurationsToWhatTheFamilyAccepts() {
+        provider.generateVideo(videoRequest("bytedance/seedance-2-fast", "too short", 3, null, null));
+        provider.generateVideo(videoRequest("kling-2.6/pro", "between tiers", 7, "720x1280", null));
+        provider.generateVideo(videoRequest("hailuo/2-3-image-to-video-pro", "above all", 12, null, null));
+
+        assertEquals(4, createTaskInput(0).get("duration"), "seedance rejects 3s");
+        assertEquals("10", createTaskInput(1).get("duration"), "never shorter than planned on a 5/10 model");
+        assertEquals("10", createTaskInput(2).get("duration"), "longest tier when the plan exceeds them all");
+    }
+
+    @Test
+    void generateVideoLetsProviderExtraOverrideTheAudioDefault() {
+        provider.generateVideo(new VideoGenerationRequest("kling-3.0/std", "silent", 5, null, null, "{\"input\":{\"sound\":false}}"));
+
+        assertEquals(Boolean.FALSE, createTaskInput().get("sound"));
     }
 
     @Test

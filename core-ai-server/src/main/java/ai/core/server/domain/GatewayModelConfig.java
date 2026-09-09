@@ -80,7 +80,7 @@ public class GatewayModelConfig {
     @Field(name = "max_mixed_references")
     public Integer maxMixedReferences;
 
-    // AT_TOKEN | BRACKET | ANGLE_SUBJECT | NONE
+    // AT_TOKEN | BRACKET | ANGLE_SUBJECT | REF_TAG | NONE
     @Field(name = "addressing_syntax")
     public String addressingSyntax;
 

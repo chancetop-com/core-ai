@@ -55,7 +55,7 @@ final class GatewayModelReferenceCapabilities {
     private static String normalizeAddressingSyntax(String value) {
         if (value == null || value.isBlank()) return null;
         var syntax = MediaAddressingSyntax.parse(value);
-        if (syntax == null) throw new BadRequestException("addressingSyntax must be one of AT_TOKEN, BRACKET, ANGLE_SUBJECT, NONE");
+        if (syntax == null) throw new BadRequestException("addressingSyntax must be one of AT_TOKEN, BRACKET, ANGLE_SUBJECT, REF_TAG, NONE");
         return syntax.name();
     }
 

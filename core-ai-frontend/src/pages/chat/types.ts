@@ -51,6 +51,22 @@ export interface SandboxSegment {
   durationMs?: number;
 }
 
+export interface BackgroundTask {
+  taskId: string;
+  toolName?: string;
+  status: string;
+}
+
+/**
+ * Background work that finished while the session was idle. It is not part of any turn and is not
+ * persisted with the message, so it disappears on reload — it exists to explain why the session
+ * started talking again on its own.
+ */
+export interface TasksSegment {
+  type: 'tasks';
+  tasks: BackgroundTask[];
+}
+
 export interface SandboxTerminalSpec {
   sandboxId: string;
   sessionId: string;
@@ -59,7 +75,7 @@ export interface SandboxTerminalSpec {
   image?: string;
 }
 
-export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment;
+export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment | TasksSegment;
 
 export interface ChatAttachment {
   url: string;

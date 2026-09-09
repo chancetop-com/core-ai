@@ -5,6 +5,7 @@ package ai.core.server.messaging;
  */
 public enum CommandType {
     SEND_MESSAGE,
+    TASK_NOTIFICATION,
     APPROVE_TOOL,
     CANCEL_TURN,
     CLOSE_SESSION,

@@ -97,6 +97,12 @@ export interface SseCompressionEvent extends SseBaseEvent {
   completed: boolean;
 }
 
+export interface SseTaskStatusEvent extends SseBaseEvent {
+  task_id: string;
+  tool_name?: string;
+  status: string;
+}
+
 export interface SseSandboxEvent extends SseBaseEvent {
   sandbox_id?: string;
   sandbox_type?: string;
@@ -120,7 +126,8 @@ export type SseEvent =
   | SseBatchToolStartEvent
   | SseEnvironmentOutputChunkEvent
   | SseCompressionEvent
-  | SseSandboxEvent;
+  | SseSandboxEvent
+  | SseTaskStatusEvent;
 
 export interface HistoryToolCall {
   call_id: string;

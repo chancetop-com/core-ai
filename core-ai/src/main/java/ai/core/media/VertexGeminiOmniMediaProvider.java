@@ -8,6 +8,7 @@ import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
+import ai.core.media.reference.MediaReferenceRole;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
@@ -107,13 +108,32 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
         throw new IllegalStateException("completed interaction did not include video data");
     }
 
+    /**
+     * Images first, text last — every official sample orders the input that way. Frame anchors lead:
+     * "first and last frame interpolation" is two images in the input list (first frame, then last frame)
+     * followed by the transition prompt, with no dedicated field; other references follow the frames and are
+     * told apart by the prompt.
+     */
     private List<Map<String, Object>> input(VideoGenerationRequest request) {
         var input = new ArrayList<Map<String, Object>>();
+        for (var reference : orderedReferences(request)) input.add(referenceInput(reference));
         input.add(Map.of("type", "text", "text", request.prompt()));
-        if (request.inputReferences() != null) {
-            for (var reference : request.inputReferences()) input.add(referenceInput(reference));
-        }
         return input;
+    }
+
+    private List<MediaReference> orderedReferences(VideoGenerationRequest request) {
+        if (request.inputReferences() == null) return List.of();
+        var ordered = new ArrayList<MediaReference>(request.inputReferences().size());
+        request.inputReferences().stream().filter(reference -> reference.role() == MediaReferenceRole.FIRST_FRAME).findFirst().ifPresent(ordered::add);
+        request.inputReferences().stream().filter(reference -> reference.role() == MediaReferenceRole.LAST_FRAME).findFirst().ifPresent(ordered::add);
+        for (var reference : request.inputReferences()) {
+            if (reference.role() == null || !reference.role().isFrame()) ordered.add(reference);
+        }
+        return ordered;
+    }
+
+    private boolean hasFrameAnchor(VideoGenerationRequest request) {
+        return request.inputReferences() != null && request.inputReferences().stream().anyMatch(reference -> reference.role() != null && reference.role().isFrame());
     }
 
     private List<Map<String, Object>> imageInput(ImageGenerationRequest request) {
@@ -140,7 +160,25 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
         if (request.seconds() != null) format.put("duration", request.seconds() + "s");
         var aspectRatio = aspectRatio(request.size());
         if (aspectRatio != null) format.put("aspect_ratio", aspectRatio);
+        var resolution = resolution(request.size());
+        if (resolution != null) format.put("resolution", resolution);
         return format;
+    }
+
+    // 360p / 720p (default) / 1080p / 4k by the short side of the requested size; nothing sent without a size
+    private String resolution(String size) {
+        if (size == null || size.isBlank()) return null;
+        var parts = size.toLowerCase(Locale.ROOT).split("x");
+        if (parts.length != 2) return null;
+        try {
+            var shortSide = Math.min(Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()));
+            if (shortSide >= 2160) return "4k";
+            if (shortSide >= 1080) return "1080p";
+            if (shortSide >= 720) return "720p";
+            return "360p";
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private Map<String, Object> referenceInput(MediaReference reference) {
@@ -174,7 +212,9 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
         return value.substring(separator + 1);
     }
 
+    // a frame anchor makes it image_to_video (interpolation when both frames are present); references alone are reference_to_video
     private String task(VideoGenerationRequest request) {
+        if (hasFrameAnchor(request)) return "image_to_video";
         return request.inputReferences() == null || request.inputReferences().isEmpty() ? "text_to_video" : "reference_to_video";
     }
 

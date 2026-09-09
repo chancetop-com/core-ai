@@ -17,6 +17,9 @@ import java.util.UUID;
 public class GeminiFileService {
     // Vertex generateContent inline payload is capped at 100MB (base64 encoded); 64MB raw keeps the base64 payload safely below it.
     private static final long MAX_INLINE_VIDEO_BYTES = 64L * 1024 * 1024;
+    // "video_" plus one uuid hex group is the shortest abbreviation worth resolving; anything shorter matches half the session
+    private static final int MIN_PREFIX_LENGTH = "video_".length() + 8;
+    private static final int MAX_HINTED_REFERENCES = 20;
 
     @Inject
     GeminiFileRepository repository;
@@ -40,8 +43,11 @@ public class GeminiFileService {
 
     public ResolvedFile ensureActive(UnderstandVideoTool.AttachmentOwner owner, String referenceId,
                                      String providerId, String upstreamModel, GeminiFilesClient client) {
-        var reference = attachmentRepository.findOwned(referenceId, owner.sessionId(), owner.userId());
-        if (reference == null) throw new IllegalArgumentException("video attachment not found");
+        return ensureActive(owner, resolveReference(owner, referenceId), providerId, upstreamModel, client);
+    }
+
+    public ResolvedFile ensureActive(UnderstandVideoTool.AttachmentOwner owner, SessionAttachmentRef reference,
+                                     String providerId, String upstreamModel, GeminiFilesClient client) {
         if (reference.sourceETag == null) throw new IllegalArgumentException("video attachment has no source version");
 
         var cached = repository.findBySource(owner.userId(), providerId, upstreamModel,
@@ -58,8 +64,10 @@ public class GeminiFileService {
      * Downloads the video attachment and returns it as a base64 inline payload for Vertex generateContent.
      */
     public InlineVideo loadInlineVideo(UnderstandVideoTool.AttachmentOwner owner, String referenceId) {
-        var reference = attachmentRepository.findOwned(referenceId, owner.sessionId(), owner.userId());
-        if (reference == null) throw new IllegalArgumentException("video attachment not found");
+        return loadInlineVideo(resolveReference(owner, referenceId));
+    }
+
+    public InlineVideo loadInlineVideo(SessionAttachmentRef reference) {
         if (reference.sourceETag == null) throw new IllegalArgumentException("video attachment has no source version");
         if (reference.sourceSizeBytes != null && reference.sourceSizeBytes > MAX_INLINE_VIDEO_BYTES) {
             throw new IllegalArgumentException("video is too large for inline video understanding: " + reference.sourceSizeBytes + " bytes; configure a GCS bucket for larger videos");
@@ -82,6 +90,29 @@ public class GeminiFileService {
         } finally {
             deleteTempFile(temp);
         }
+    }
+
+    /**
+     * The owned reference for an id the model passed. Models routinely abbreviate {@code video_<uuid>} to its first
+     * hex group, so a miss falls back to a unique-prefix match; a genuine miss names the ids this session can watch
+     * so the next call can copy one verbatim instead of concluding the clip is unwatchable.
+     */
+    public SessionAttachmentRef resolveReference(UnderstandVideoTool.AttachmentOwner owner, String referenceId) {
+        var exact = attachmentRepository.findOwned(referenceId, owner.sessionId(), owner.userId());
+        if (exact != null) return exact;
+        if (referenceId.length() >= MIN_PREFIX_LENGTH) {
+            var candidates = attachmentRepository.findOwnedByPrefix(referenceId, owner.sessionId(), owner.userId());
+            if (candidates.size() == 1) return candidates.getFirst();
+            if (candidates.size() > 1) {
+                throw new IllegalArgumentException("video attachment reference is ambiguous: " + referenceId + " matches "
+                        + candidates.stream().map(candidate -> candidate.id).toList() + "; pass the full id");
+            }
+        }
+        var available = attachmentRepository.findOwnedVideos(owner.sessionId(), owner.userId()).stream()
+                .map(candidate -> candidate.id).limit(MAX_HINTED_REFERENCES).toList();
+        throw new IllegalArgumentException("video attachment not found: " + referenceId
+                + " — pass attachment_reference_id exactly as shown (full video_<uuid>, e.g. video_reference_id from drama_list_takes)"
+                + (available.isEmpty() ? "" : "; videos this session can watch: " + available));
     }
 
     private ResolvedFile uploadAndActivate(UnderstandVideoTool.AttachmentOwner owner, String providerId,

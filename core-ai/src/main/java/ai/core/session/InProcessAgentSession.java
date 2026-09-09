@@ -342,8 +342,12 @@ public class InProcessAgentSession implements AgentSession {
      * plus a status event for the UI.
      */
     public void notifyTask(String taskId, String status, String notificationXml) {
+        notifyTask(taskId, status, null, notificationXml);
+    }
+
+    public void notifyTask(String taskId, String status, String toolName, String notificationXml) {
         commandQueue.enqueueTaskNotification(notificationXml);
-        dispatch(TaskStatusEvent.of(sessionId, taskId, status));
+        dispatch(TaskStatusEvent.of(sessionId, taskId, status, toolName));
     }
 
     private void setupCompressionListener() {

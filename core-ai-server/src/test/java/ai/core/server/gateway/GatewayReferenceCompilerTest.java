@@ -53,6 +53,12 @@ class GatewayReferenceCompilerTest {
                 MediaModality.IMAGE, "minimax-h3/reference-to-video", null).prompt());
         assertEquals("@Image1 smiles", compiler.compile("@char_lin smiles", references,
                 MediaModality.IMAGE, "bytedance/seedance-2-5", null).prompt());
+        // gemini omni counts from zero: the first image is <IMAGE_REF_0>, a video reference <VIDEO_REF_0>
+        var mixed = List.of(ref("char_lin", MediaReferenceRole.SUBJECT, MediaModality.IMAGE),
+                ref("scene_cafe", MediaReferenceRole.SCENE, MediaModality.IMAGE),
+                ref("walk", MediaReferenceRole.CAMERA, MediaModality.VIDEO));
+        assertEquals("<IMAGE_REF_0> walks through <IMAGE_REF_1> like <VIDEO_REF_0>", compiler.compile("@char_lin walks through @scene_cafe like @walk", mixed,
+                MediaModality.IMAGE, "gemini-omni-1.1-flash", null).prompt());
     }
 
     @Test

@@ -45,11 +45,34 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
 
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 
+    // recorded observations per file (the drama ledger keeps them on the take); null when nothing records them
+    private VideoUnderstandingMemory memory;
+
+    public void memory(VideoUnderstandingMemory memory) {
+        this.memory = memory;
+    }
+
     @Override
     public UnderstandVideoTool.VideoUnderstandingResult understand(UnderstandVideoTool.AttachmentOwner owner,
                                                                      String referenceId, String effectiveModel,
                                                                      String question) {
         var model = resolveVideoModel(effectiveModel);
+        var reference = fileService.resolveReference(owner, referenceId);
+        if (memory != null) {
+            var recalled = memory.recall(reference, model, question);
+            if (recalled.isPresent()) {
+                return new UnderstandVideoTool.VideoUnderstandingResult(recalled.get().answer(), recalled.get().model(), "memory");
+            }
+        }
+        var generated = askModel(owner, reference, model, question);
+        if (memory != null) memory.record(reference, model, question, generated.answer());
+        // report the gateway model id, not the upstream name: it is what pricing and the agent's model list key on
+        return new UnderstandVideoTool.VideoUnderstandingResult(generated.answer(), model, generated.fileCache(),
+                generated.promptTokens(), generated.completionTokens(), generated.totalTokens());
+    }
+
+    private UnderstandVideoTool.VideoUnderstandingResult askModel(UnderstandVideoTool.AttachmentOwner owner, SessionAttachmentRef reference,
+                                                                String model, String question) {
         var route = routingEngine.route(model, GatewayEndpointType.CHAT_COMPLETIONS);
         if (!"gemini".equalsIgnoreCase(route.provider().type)) {
             throw new IllegalArgumentException("video understanding requires a Gemini provider; "
@@ -62,10 +85,10 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
         var provider = route.provider();
         var apiKey = secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);
         if (apiKey != null && !apiKey.isBlank() && isVertexProvider(provider)) {
-            return understandWithVertexApiKey(owner, referenceId, route.upstreamModel(), apiKey, provider, question);
+            return understandWithVertexApiKey(reference, route.upstreamModel(), apiKey, provider, question);
         }
-        if (apiKey != null && !apiKey.isBlank()) return understandWithDeveloperApi(owner, referenceId, route.upstreamModel(), apiKey, provider, question);
-        return understandWithVertex(owner, referenceId, route.upstreamModel(), provider, question);
+        if (apiKey != null && !apiKey.isBlank()) return understandWithDeveloperApi(owner, reference, route.upstreamModel(), apiKey, provider, question);
+        return understandWithVertex(owner, reference, route.upstreamModel(), provider, question);
     }
 
     private boolean isVertexProvider(GatewayProviderConfig provider) {
@@ -73,7 +96,7 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
     }
 
     private UnderstandVideoTool.VideoUnderstandingResult understandWithDeveloperApi(UnderstandVideoTool.AttachmentOwner owner,
-                                                                                    String referenceId, String upstreamModel,
+                                                                                    SessionAttachmentRef reference, String upstreamModel,
                                                                                     String apiKey, GatewayProviderConfig provider,
                                                                                     String question) {
         var baseUrl = provider.baseUrl;
@@ -81,7 +104,7 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
             throw new IllegalArgumentException("Gemini provider baseUrl is not configured: " + provider.name);
         }
         var files = new GeminiFilesClient(baseUrl, apiKey);
-        var resolved = fileService.ensureActive(owner, referenceId, provider.id, upstreamModel, files);
+        var resolved = fileService.ensureActive(owner, reference, provider.id, upstreamModel, files);
         var mediaPart = Map.<String, Object>of("fileData", Map.of("fileUri", resolved.uri(), "mimeType",
                 resolved.contentType() == null || resolved.contentType().isBlank() ? "video/mp4" : resolved.contentType()));
         var generated = generate(strip(baseUrl) + "/v1beta/models/" + upstreamModel + ":generateContent",
@@ -91,7 +114,7 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
     }
 
     private UnderstandVideoTool.VideoUnderstandingResult understandWithVertex(UnderstandVideoTool.AttachmentOwner owner,
-                                                                              String referenceId, String upstreamModel,
+                                                                              SessionAttachmentRef reference, String upstreamModel,
                                                                               GatewayProviderConfig provider,
                                                                               String question) {
         if (provider.vertexProjectId == null || provider.vertexLocation == null
@@ -107,7 +130,7 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
         }
         var token = new GoogleAccessTokenProvider("GOOGLE_SERVICE_ACCOUNT_JSON".equals(provider.mediaAuthType) ? credentials : null).accessToken();
         var files = new GeminiFilesClient(provider.vertexGcsBucket, token, true);
-        var resolved = fileService.ensureActive(owner, referenceId, provider.id, upstreamModel, files);
+        var resolved = fileService.ensureActive(owner, reference, provider.id, upstreamModel, files);
         var url = strip(provider.baseUrl) + "/projects/" + provider.vertexProjectId + "/locations/" + provider.vertexLocation
                 + "/publishers/google/models/" + upstreamModel + ":generateContent";
         var mediaPart = Map.<String, Object>of("fileData", Map.of("fileUri", resolved.uri(), "mimeType",
@@ -117,11 +140,10 @@ public class GeminiVideoUnderstandingService implements UnderstandVideoTool.Vide
                 resolved.cacheHit() ? "hit" : "miss", generated.promptTokens(), generated.completionTokens(), generated.totalTokens());
     }
 
-    private UnderstandVideoTool.VideoUnderstandingResult understandWithVertexApiKey(UnderstandVideoTool.AttachmentOwner owner,
-                                                                                      String referenceId, String upstreamModel,
+    private UnderstandVideoTool.VideoUnderstandingResult understandWithVertexApiKey(SessionAttachmentRef reference, String upstreamModel,
                                                                                       String apiKey, GatewayProviderConfig provider,
                                                                                       String question) {
-        var video = fileService.loadInlineVideo(owner, referenceId);
+        var video = fileService.loadInlineVideo(reference);
         var mediaPart = Map.<String, Object>of("inlineData", Map.of("mimeType",
                 video.contentType() == null || video.contentType().isBlank() ? "video/mp4" : video.contentType(),
                 "data", video.base64Data()));

@@ -146,6 +146,67 @@ class ToolCallAsyncTaskManagerTest {
         assertEquals(List.of("s:t:COMPLETED"), announced);
     }
 
+    @Test
+    void terminalNotificationIsOwedUntilTheSessionConfirmsIt() {
+        var tool = new CountingPollTool(0);
+        named(tool);
+        manager.registerTool(tool);
+        var announced = new ArrayList<String>();
+        manager.addTerminalListener((sessionId, task, result) -> announced.add(sessionId + ":" + task.taskId()));
+        manager.storeTask(new ToolCallAsyncTask("t-5", tool, call(tool.getName()), ToolCallResult.pending("t-5", "started")), "session-5");
+
+        assertTrue(manager.pollTask("t-5").isCompleted());
+        assertEquals(1, announced.size());
+
+        // the listener returning is not a receipt: the task is still owed to its session, so a driver
+        // can re-announce it after a delivery that never landed
+        var owed = snapshot("t-5");
+        assertTrue(owed.notificationPending(), "an unconfirmed notification must stay on the books");
+        assertEquals(1, owed.notifyAttempts());
+
+        assertTrue(manager.retryNotification("t-5"));
+        assertEquals(2, announced.size());
+        assertEquals(2, snapshot("t-5").notifyAttempts());
+
+        // ...and stops the moment the session takes it
+        assertTrue(manager.markNotificationDelivered("t-5"));
+        assertFalse(snapshot("t-5").notificationPending());
+        assertFalse(manager.retryNotification("t-5"), "a delivered notification is never re-announced");
+        assertEquals(2, announced.size());
+    }
+
+    @Test
+    void deliveryIsClaimedOnceAndCanBeHandedBack() {
+        var tool = new CountingPollTool(0);
+        named(tool);
+        manager.registerTool(tool);
+        manager.storeTask(new ToolCallAsyncTask("t-6", tool, call(tool.getName()), ToolCallResult.pending("t-6", "started")), "session-6");
+        manager.pollTask("t-6");
+
+        assertTrue(manager.markNotificationDelivered("t-6"));
+        assertFalse(manager.markNotificationDelivered("t-6"), "a second announcement must not inject the notification twice");
+
+        // the winner failed to inject it after all — the task goes back to the retry sweep
+        manager.reopenNotification("t-6");
+        assertTrue(snapshot("t-6").notificationPending());
+        assertTrue(manager.markNotificationDelivered("t-6"));
+    }
+
+    @Test
+    void aTaskWithNoSessionOwesNothing() {
+        var tool = new CountingPollTool(0);
+        named(tool);
+        manager.registerTool(tool);
+        manager.storeTask(new ToolCallAsyncTask("t-7", tool, call(tool.getName()), ToolCallResult.pending("t-7", "started")));
+
+        assertTrue(manager.pollTask("t-7").isCompleted());
+        assertFalse(snapshot("t-7").notificationPending(), "nothing to notify, so nothing for the sweep to retry");
+    }
+
+    private ToolCallAsyncTaskManager.TaskSnapshot snapshot(String taskId) {
+        return manager.listTasks().stream().filter(t -> t.taskId().equals(taskId)).findFirst().orElseThrow();
+    }
+
     /** completes on the (pendingPolls + 1)th poll */
     static class CountingPollTool extends ToolCall {
         final AtomicInteger polls = new AtomicInteger();

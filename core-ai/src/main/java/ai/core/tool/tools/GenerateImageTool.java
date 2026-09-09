@@ -84,7 +84,7 @@ public final class GenerateImageTool extends ToolCall {
                 - "last" — shorthand for the most recent image generated in this conversation.
                 - {"url": "https://..."} / {"b64Json": "data:image/png;base64,..."} — external
                   content only, for images that did not come from this tool.
-              role is one of subject, scene, camera, style, prop, audio and decides which references
+              role is one of first_frame, last_frame, subject, scene, camera, style, prop, audio and decides which references
               are kept first if the model accepts fewer than you passed.
               Omit input_images entirely for plain text-to-image — several models reject references.
             - mask: Mask image for inpainting, in the same format as one input_images item

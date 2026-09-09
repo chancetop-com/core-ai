@@ -28,7 +28,7 @@ public class GatewayRenderBackend implements RenderBackend {
     public KeyframeProduct renderKeyframe(KeyframeRenderSpec spec) {
         var response = provider(spec.userId()).generateImage(new ImageGenerationRequest(
             spec.model(), spec.prompt(), 1, spec.size(), null, null, null, null,
-            references(spec.referenceImageUrls()), null, spec.providerExtra(), null));
+            references(spec.references()), null, spec.providerExtra(), null));
         if (response.data() == null || response.data().isEmpty()) throw new BadRequestException("image generation returned no output");
         var image = response.data().getFirst();
         return new KeyframeProduct(image.url(), image.b64Json(), response.mediaId());
@@ -37,7 +37,7 @@ public class GatewayRenderBackend implements RenderBackend {
     @Override
     public String submitClip(ClipRenderSpec spec) {
         var response = provider(spec.userId()).generateVideo(new VideoGenerationRequest(
-            spec.model(), spec.prompt(), spec.seconds(), spec.size(), references(spec.referenceImageUrls()), spec.providerExtra()));
+            spec.model(), spec.prompt(), spec.seconds(), spec.size(), references(spec.references()), spec.providerExtra()));
         return response.id();
     }
 
@@ -61,8 +61,10 @@ public class GatewayRenderBackend implements RenderBackend {
         return new ContextualMediaProvider(gateway, new MediaJobOwner(userId, null, null));
     }
 
-    private List<MediaReference> references(List<String> urls) {
-        if (urls == null || urls.isEmpty()) return null;
-        return urls.stream().map(url -> new MediaReference(url, null)).toList();
+    // passed through with name/role/modality intact: the gateway compiler binds @name to the model's positional
+    // token and the provider routes FIRST_FRAME/LAST_FRAME to its frame parameters
+    private List<MediaReference> references(List<MediaReference> references) {
+        if (references == null || references.isEmpty()) return null;
+        return references;
     }
 }

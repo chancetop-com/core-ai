@@ -231,6 +231,48 @@ class ToolExecutorTest {
         assertTrue(manager.loadTask("py-1").isEmpty());
     }
 
+    @Test
+    void pendingResultReusingAFinishedTaskIdIsRegisteredAgain() {
+        var manager = new ToolCallAsyncTaskManager(new MapPersistenceProvider(new HashMap<>()));
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var tool = new FakeToolCall("render_batch", false) {
+            @Override
+            public ToolCallResult execute(String arguments, ExecutionContext ctx) {
+                return ToolCallResult.pending("batch-1", "queued");
+            }
+        };
+        manager.registerTool(tool);
+        var previous = FunctionCall.of("call_0", "function", "render_batch", "{}");
+        // the previous batch under the same id finished a while ago and is still retained
+        manager.storeTask(new ToolCallAsyncTask("batch-1", tool, previous, ToolCallResult.completed("done")), "old-session");
+        var context = ExecutionContext.builder().asyncTaskManager(manager).sessionId("new-session").build();
+
+        var result = executor.execute(tool, FunctionCall.of("call_1", "function", "render_batch", "{}"), context);
+
+        assertTrue(result.isPending());
+        var stored = manager.loadTask("batch-1").orElseThrow();
+        assertTrue(stored.isPending(), "the new batch must be tracked so it gets polled and announced");
+        assertEquals(Optional.of("new-session"), manager.sessionIdOf("batch-1"));
+    }
+
+    @Test
+    void sandboxFailuresBecomeFailedToolCallsNotDeadTurns() {
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var context = ExecutionContext.empty();
+        context.sandbox(new FakeSandbox("run_bash_command") {
+            @Override
+            public ToolCallResult execute(String toolName, String arguments, ExecutionContext ctx) {
+                throw new RuntimeException("Docker API request failed: /networks/core-ai-sandbox");
+            }
+        });
+
+        var result = executor.execute(tool("run_bash_command", false), FunctionCall.of("call_1", "function", "run_bash_command", "{}"), context);
+
+        assertTrue(result.isFailed());
+        assertTrue(result.getResult().startsWith("SANDBOX_UNAVAILABLE"), result.getResult());
+        assertTrue(result.getResult().contains("/networks/core-ai-sandbox"), result.getResult());
+    }
+
     @SuppressWarnings("PMD.ConstructorCallsOverridableMethod")
     private static class FakeToolCall extends ToolCall {
         private final boolean subAgent;

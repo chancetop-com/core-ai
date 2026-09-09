@@ -6,6 +6,7 @@ import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SseReasoningChunkEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
+import ai.core.api.server.session.sse.SseTaskStatusEvent;
 import ai.core.api.server.session.sse.SseTextChunkEvent;
 import ai.core.api.server.session.sse.SseTurnCompleteEvent;
 import core.framework.inject.Inject;
@@ -58,6 +59,14 @@ public class SessionChannelService {
         sseEvent.sessionId = sessionId;
         sseEvent.timestamp = ZonedDateTime.now();
         setEventType(sseEvent);
+
+        // A task-status ping is about work that outlives the turn that started it, so it arrives exactly
+        // when the buffer is in its post-terminal state and would otherwise be dropped as a late event.
+        // It is sent straight through: buffering it would replay a stale "task finished" on reconnect.
+        if (sseEvent instanceof SseTaskStatusEvent) {
+            channelService.send(sessionId, sseEvent);
+            return;
+        }
 
         var isRunningStatus = sseEvent instanceof SseStatusChangeEvent statusChange
                 && statusChange.status == SessionStatus.RUNNING;
@@ -160,6 +169,8 @@ public class SessionChannelService {
             sseEvent.type = EventType.BATCH_TOOL_START;
         } else if (sseEvent instanceof ai.core.api.server.session.sse.SseEnvironmentOutputChunkEvent) {
             sseEvent.type = EventType.ENVIRONMENT_OUTPUT_CHUNK;
+        } else if (sseEvent instanceof SseTaskStatusEvent) {
+            sseEvent.type = EventType.TASK_STATUS;
         }
     }
 
