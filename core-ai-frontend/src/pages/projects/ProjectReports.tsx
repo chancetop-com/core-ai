@@ -35,6 +35,7 @@ function monthLabel(key: string) {
   return new Date(y, m - 1, 1).toLocaleDateString(undefined, { year: 'numeric', month: 'long' });
 }
 
+// same spec shape as the For You artifact list: the drawer loads /api/files/:id/content with the session's auth
 function toSpec(r: ProjectReport): ArtifactSpec {
   return {
     kind: 'file',
@@ -43,7 +44,6 @@ function toSpec(r: ProjectReport): ArtifactSpec {
     fileName: r.file_name,
     contentType: r.content_type,
     size: r.size,
-    contentUrl: r.share_token ? `/api/public/artifacts/${r.share_token}/content` : undefined,
   };
 }
 
@@ -239,11 +239,13 @@ export default function ProjectReports({ projectId, subjectId, subjects, onChang
                     <span>({month.reports.length})</span>
                   </button>
                   {!monthCollapsed && month.reports.map(r => (
-                    <div key={r.file_id} className="flex items-center gap-3 px-3 py-2 text-sm"
-                      style={{ borderTop: '1px solid var(--color-border)' }}>
+                    <div key={r.file_id} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer transition-colors"
+                      style={{ borderTop: '1px solid var(--color-border)' }}
+                      onClick={() => setActive(toSpec(r))} title="Open report preview"
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                       <FileText size={14} className="shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
-                      <button onClick={() => setActive(toSpec(r))} title="Open report"
-                        className="min-w-0 flex-1 truncate text-left cursor-pointer hover:underline">{r.file_name}</button>
+                      <span className="min-w-0 flex-1 truncate text-left">{r.file_name}</span>
                       <span className="text-xs shrink-0 px-1.5 rounded"
                         style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                         {r.source === 'upload' ? 'upload' : (r.agent_name || 'agent')}
@@ -253,18 +255,20 @@ export default function ProjectReports({ projectId, subjectId, subjects, onChang
                         {new Date(r.created_at).toLocaleString()}
                       </span>
                       <select value={r.subject_id || UNASSIGNED} disabled={busyId === r.file_id}
+                        onClick={e => e.stopPropagation()}
                         onChange={e => move(r, e.target.value)} title="Move to another subject"
                         className="text-xs px-1.5 py-1 rounded border cursor-pointer disabled:opacity-50 max-w-40" style={inputStyle}>
                         <option value={UNASSIGNED}>Unassigned</option>
                         {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
-                      <button onClick={() => copyLink(r)} disabled={!r.share_token}
+                      <button onClick={e => { e.stopPropagation(); copyLink(r); }} disabled={!r.share_token}
                         title={r.share_token ? 'Copy share link' : 'Not shared'}
                         className="p-1 rounded cursor-pointer disabled:opacity-30" style={{ color: copiedId === r.file_id ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}>
                         <Link2 size={14} />
                       </button>
                       {r.share_token ? (
                         <a href={`/shared/artifacts/${r.share_token}`} target="_blank" rel="noreferrer" title="Open shared page"
+                          onClick={e => e.stopPropagation()}
                           className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
                           <ExternalLink size={14} />
                         </a>

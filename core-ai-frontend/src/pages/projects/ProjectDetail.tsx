@@ -39,10 +39,10 @@ export default function ProjectDetail() {
   const [error, setError] = useState('');
   const [memberWarning, setMemberWarning] = useState('');
 
-  // collapsed by default: cost stays on top, the growing subject list sits at the bottom
-  const [showMembers, setShowMembers] = useState(true);   // expanded by default: users must see which members are agents vs workflows
+  // all sections collapsed by default so the subject list is not pushed below the fold
+  const [showMembers, setShowMembers] = useState(false);
   const [showPlaybook, setShowPlaybook] = useState(false);
-  const [showReports, setShowReports] = useState(true);   // the report directory is what most visitors come for
+  const [showReports, setShowReports] = useState(false);
 
   const [subjectModal, setSubjectModal] = useState(false);
   const [subjectName, setSubjectName] = useState('');
