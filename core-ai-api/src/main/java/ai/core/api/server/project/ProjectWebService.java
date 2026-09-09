@@ -48,6 +48,10 @@ public interface ProjectWebService {
     @Path("/api/projects/:id/reports")
     ListProjectReportsResponse reports(@PathParam("id") String id, ListProjectReportsRequest request);
 
+    @GET
+    @Path("/api/projects/:id/reports/stats")
+    ProjectReportStatsView reportStats(@PathParam("id") String id);
+
     @PUT
     @Path("/api/projects/:id/reports/:fileId/subject")
     void moveReport(@PathParam("id") String id, @PathParam("fileId") String fileId, MoveProjectReportRequest request);

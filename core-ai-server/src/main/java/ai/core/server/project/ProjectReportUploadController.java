@@ -88,7 +88,7 @@ public class ProjectReportUploadController implements Controller {
 
         var record = fileService.upload(userId, fileName, contentType, file.path);
         var shared = fileService.share(record.id, userId);
-        attributionStore.attribute(project.id, subject.id, ProjectAttributionStore.TARGET_FILE, record.id, ProjectAttributionStore.SOURCE_UPLOAD);
+        attributionStore.attributeFile(project.id, subject.id, record.id, ProjectAttributionStore.SOURCE_UPLOAD, null, record.createdAt);
 
         var view = new ProjectReportView();
         view.fileId = record.id;

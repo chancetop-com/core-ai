@@ -35,6 +35,6 @@ public final class AgentRunArtifactSink implements ArtifactSink {
         run.artifacts = artifacts;
         agentRunCollection.replace(run);
         // project attribution is inherited from the run (schedule binding or attributor) once persisted
-        if (binder != null) binder.onArtifact(ProjectAttributionStore.TARGET_RUN, runId, artifact.fileId);
+        if (binder != null) binder.onArtifact(ProjectAttributionStore.TARGET_RUN, runId, artifact.fileId, run.agentId, artifact.createdAt);
     }
 }

@@ -86,9 +86,9 @@ export default function ProjectDetail() {
         return { agents: [], workflows: [] };
       }),
       api.projects.subjects(id, subjectOffset, subjectLimit, subjectQuery),
-      api.projects.reports(id).catch(e => { console.error('project reports failed', e); return null; }),
+      api.projects.reportStats(id).catch(e => { console.error('project report stats failed', e); return null; }),
     ])
-      .then(([p, s, m, options, subjectPage, reportPage]) => {
+      .then(([p, s, m, options, subjectPage, reportStatsView]) => {
         setProject(p);
         setStats(s);
         setMembers(m);
@@ -96,17 +96,11 @@ export default function ProjectDetail() {
         setAllWorkflows(options.workflows || []);
         setSubjectList(subjectPage.subjects || []);
         setSubjectTotal(subjectPage.total ?? 0);
-        if (reportPage) {
+        if (reportStatsView) {
+          // server-side counts: the project page never lists reports, so it stays cheap regardless of history size
           const bySubject: Record<string, { count: number; latest?: string }> = {};
-          let unassigned = 0;
-          for (const r of reportPage.reports || []) {
-            if (!r.subject_id) { unassigned++; continue; }
-            const entry = bySubject[r.subject_id] ?? { count: 0 };
-            entry.count++;
-            if (!entry.latest || r.created_at > entry.latest) entry.latest = r.created_at;
-            bySubject[r.subject_id] = entry;
-          }
-          setReportStats({ unassigned, bySubject });
+          for (const s of reportStatsView.subjects || []) bySubject[s.subject_id] = { count: s.count, latest: s.latest_at };
+          setReportStats({ unassigned: reportStatsView.unassigned ?? 0, bySubject });
         }
         setError('');
       })

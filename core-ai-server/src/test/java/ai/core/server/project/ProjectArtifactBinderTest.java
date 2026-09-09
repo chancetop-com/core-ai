@@ -68,6 +68,7 @@ class ProjectArtifactBinderTest {
         binder.agentRunCollection = runs;
         when(store.byTarget(anyString(), anyString())).thenReturn(List.of());
         when(store.attribute(any(), any(), any(), any(), any())).thenReturn(ProjectAttributionStore.Result.INSERTED);
+        when(store.attributeFile(any(), any(), any(), any(), any(), any())).thenReturn(ProjectAttributionStore.Result.INSERTED);
         when(store.subject(any())).thenReturn(Optional.empty());
     }
 
@@ -109,15 +110,17 @@ class ProjectArtifactBinderTest {
         binder.bindRun(run);
 
         verify(store, never()).attribute(any(), any(), any(), any(), any());
+        verify(store, never()).attributeFile(any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void artifactInheritsSingleSubjectOfItsSession() {
         when(store.byTarget("session", "sess-1")).thenReturn(List.of(row("p-1", "s-1", "session", "sess-1")));
 
-        binder.onArtifact("session", "sess-1", "f-1");
+        var at = java.time.ZonedDateTime.parse("2026-09-01T10:00:00Z");
+        binder.onArtifact("session", "sess-1", "f-1", "agent-1", at);
 
-        verify(store).attribute("p-1", "s-1", "file", "f-1", ProjectAttributionStore.SOURCE_INHERITED);
+        verify(store).attributeFile("p-1", "s-1", "f-1", ProjectAttributionStore.SOURCE_INHERITED, "agent-1", at);
     }
 
     @Test
@@ -128,8 +131,8 @@ class ProjectArtifactBinderTest {
         binder.onArtifact("session", "sess-1", "f-1");
 
         // project p-1 is ambiguous (two subjects) -> skipped; project p-2 is unambiguous -> inherited
-        verify(store, never()).attribute(eq("p-1"), any(), any(), any(), any());
-        verify(store).attribute("p-2", "s-9", "file", "f-1", ProjectAttributionStore.SOURCE_INHERITED);
+        verify(store, never()).attributeFile(eq("p-1"), any(), any(), any(), any(), any());
+        verify(store).attributeFile("p-2", "s-9", "f-1", ProjectAttributionStore.SOURCE_INHERITED, null, null);
     }
 
     @Test
@@ -150,23 +153,25 @@ class ProjectArtifactBinderTest {
         binder.onArtifact("run", "run-1", "f-1");
 
         verify(store).attribute("p-1", "s-1", "run", "run-1", ProjectAttributionStore.SOURCE_SCHEDULE);
-        verify(store).attribute("p-1", "s-1", "file", "f-1", ProjectAttributionStore.SOURCE_INHERITED);
+        verify(store).attributeFile("p-1", "s-1", "f-1", ProjectAttributionStore.SOURCE_INHERITED, null, null);
     }
 
     @Test
     void cascadeAttributesExistingArtifactsAndCountsInserts() {
         var run = new AgentRun();
         run.id = "run-1";
+        run.agentId = "agent-1";
         run.artifacts = List.of(artifact("f-1"), artifact("f-2"), artifact("f-1"));
         when(runs.get("run-1")).thenReturn(Optional.of(run));
         when(store.byTarget("run", "run-1")).thenReturn(List.of(row("p-1", "s-1", "run", "run-1")));
-        when(store.attribute("p-1", "s-1", "file", "f-2", ProjectAttributionStore.SOURCE_CASCADE)).thenReturn(ProjectAttributionStore.Result.CONFLICT);
+        when(store.attributeFile("p-1", "s-1", "f-2", ProjectAttributionStore.SOURCE_CASCADE, "agent-1", null)).thenReturn(ProjectAttributionStore.Result.CONFLICT);
 
         int count = binder.cascade("p-1", "s-1", "run", "run-1");
 
         assertEquals(1, count);
-        verify(store).attribute("p-1", "s-1", "file", "f-1", ProjectAttributionStore.SOURCE_CASCADE);
-        verify(store).attribute("p-1", "s-1", "file", "f-2", ProjectAttributionStore.SOURCE_CASCADE);
+        // duplicate artifact entries of the same file are attributed once, with the producing agent denormalized
+        verify(store).attributeFile("p-1", "s-1", "f-1", ProjectAttributionStore.SOURCE_CASCADE, "agent-1", null);
+        verify(store).attributeFile("p-1", "s-1", "f-2", ProjectAttributionStore.SOURCE_CASCADE, "agent-1", null);
     }
 
     @Test
@@ -178,6 +183,6 @@ class ProjectArtifactBinderTest {
         when(store.byTarget("session", "sess-1")).thenReturn(List.of(row("p-1", "s-1", "session", "sess-1"), row("p-1", "s-2", "session", "sess-1")));
 
         assertEquals(0, binder.cascade("p-1", "s-2", "session", "sess-1"));
-        verify(store, never()).attribute(any(), any(), eq("file"), any(), any());
+        verify(store, never()).attributeFile(any(), any(), any(), any(), any(), any());
     }
 }

@@ -41,6 +41,15 @@ public class ProjectSubjectAttribution {
     @Field(name = "target_id")
     public String targetId;
 
+    // FILE rows only: the file's own created_at, denormalized so the report directory can be sorted and paged
+    // on the attribution table without touching file_records; null on legacy rows until backfilled
+    @Field(name = "target_created_at")
+    public ZonedDateTime targetCreatedAt;
+
+    // FILE rows only: the member agent whose session/run produced the file (null for uploads / legacy rows)
+    @Field(name = "agent_id")
+    public String agentId;
+
     // consumption marker: null = attributed but not yet analyzed; the subject-analysis run sets
     // this once the attributed material has been consumed. The attribution stage clears it again
     // when the target grows (a session received new messages), so the new part gets analyzed.

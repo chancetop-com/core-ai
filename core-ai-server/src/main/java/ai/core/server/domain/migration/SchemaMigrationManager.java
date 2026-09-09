@@ -138,7 +138,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVSkillDigestBackfill(),
             new SchemaMigrationVFileRecordsDropTTL(),
             new SchemaMigrationVProjectAttributionScope(),
-            new SchemaMigrationVProjectSubjectState()
+            new SchemaMigrationVProjectSubjectState(),
+            new SchemaMigrationVProjectAttributionFileTime()
         );
     }
 }

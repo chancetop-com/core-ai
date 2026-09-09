@@ -10,4 +10,8 @@ import java.util.List;
 public class ListProjectReportsResponse {
     @Property(name = "reports")
     public List<ProjectReportView> reports;
+
+    // matching reports before paging (inbox: within the bounded scan of recent member material)
+    @Property(name = "total")
+    public Long total;
 }

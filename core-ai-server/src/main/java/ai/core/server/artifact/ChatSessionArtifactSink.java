@@ -35,6 +35,6 @@ public final class ChatSessionArtifactSink implements ArtifactSink {
         session.artifacts = artifacts;
         chatSessionCollection.replace(session);
         // project attribution is inherited from the session once the artifact is persisted (never fails delivery)
-        if (binder != null) binder.onArtifact(ProjectAttributionStore.TARGET_SESSION, sessionId, artifact.fileId);
+        if (binder != null) binder.onArtifact(ProjectAttributionStore.TARGET_SESSION, sessionId, artifact.fileId, session.agentId, artifact.createdAt);
     }
 }

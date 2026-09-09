@@ -9,6 +9,7 @@ import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -56,6 +57,11 @@ public class ProjectArtifactBinder {
 
     /** parent (session|run) → new artifact: inherit the parent's subject in every project where it is unambiguous */
     public void onArtifact(String parentType, String parentId, String fileId) {
+        onArtifact(parentType, parentId, fileId, null, null);
+    }
+
+    /** same, with the file metadata the sink already holds (denormalized onto the attribution row for paging) */
+    public void onArtifact(String parentType, String parentId, String fileId, String agentId, ZonedDateTime createdAt) {
         if (fileId == null || fileId.isBlank() || parentId == null) return;
         try {
             var subjectsByProject = subjectsByProject(parentType, parentId);
@@ -69,7 +75,7 @@ public class ProjectArtifactBinder {
             }
             for (var entry : subjectsByProject.entrySet()) {
                 if (entry.getValue().size() != 1) continue;   // ambiguous parent: leave the file unassigned
-                store.attribute(entry.getKey(), entry.getValue().iterator().next(), ProjectAttributionStore.TARGET_FILE, fileId, ProjectAttributionStore.SOURCE_INHERITED);
+                store.attributeFile(entry.getKey(), entry.getValue().iterator().next(), fileId, ProjectAttributionStore.SOURCE_INHERITED, agentId, createdAt);
             }
         } catch (RuntimeException e) {
             LOGGER.warn("failed to inherit artifact attribution, parentType={}, parentId={}, fileId={}", parentType, parentId, fileId, e);
@@ -82,8 +88,12 @@ public class ProjectArtifactBinder {
             var subjects = subjectsByProject(parentType, parentId).getOrDefault(projectId, Set.of());
             if (subjects.size() > 1) return 0;   // parent now spans several subjects of this project: do not guess
             int count = 0;
-            for (var fileId : artifactFileIds(parentType, parentId)) {
-                if (store.attribute(projectId, subjectId, ProjectAttributionStore.TARGET_FILE, fileId, ProjectAttributionStore.SOURCE_CASCADE) == ProjectAttributionStore.Result.INSERTED) count++;
+            var parent = parentArtifacts(parentType, parentId);
+            var seen = new java.util.HashSet<String>();
+            for (var artifact : parent.artifacts()) {
+                if (artifact.fileId == null || artifact.fileId.isBlank() || !seen.add(artifact.fileId)) continue;
+                var result = store.attributeFile(projectId, subjectId, artifact.fileId, ProjectAttributionStore.SOURCE_CASCADE, parent.agentId(), artifact.createdAt);
+                if (result == ProjectAttributionStore.Result.INSERTED) count++;
             }
             return count;
         } catch (RuntimeException e) {
@@ -93,13 +103,17 @@ public class ProjectArtifactBinder {
     }
 
     List<String> artifactFileIds(String parentType, String parentId) {
-        List<AgentRunArtifact> artifacts = switch (parentType) {
-            case ProjectAttributionStore.TARGET_SESSION -> chatSessionCollection.get(parentId).map(s -> s.artifacts).orElse(null);
-            case ProjectAttributionStore.TARGET_RUN -> agentRunCollection.get(parentId).map(r -> r.artifacts).orElse(null);
-            default -> null;
+        return parentArtifacts(parentType, parentId).artifacts().stream().map(a -> a.fileId).filter(id -> id != null && !id.isBlank()).distinct().toList();
+    }
+
+    private ParentArtifacts parentArtifacts(String parentType, String parentId) {
+        return switch (parentType) {
+            case ProjectAttributionStore.TARGET_SESSION -> chatSessionCollection.get(parentId)
+                .map(s -> new ParentArtifacts(s.agentId, s.artifacts != null ? s.artifacts : List.<AgentRunArtifact>of())).orElse(ParentArtifacts.EMPTY);
+            case ProjectAttributionStore.TARGET_RUN -> agentRunCollection.get(parentId)
+                .map(r -> new ParentArtifacts(r.agentId, r.artifacts != null ? r.artifacts : List.<AgentRunArtifact>of())).orElse(ParentArtifacts.EMPTY);
+            default -> ParentArtifacts.EMPTY;
         };
-        if (artifacts == null) return List.of();
-        return artifacts.stream().map(a -> a.fileId).filter(id -> id != null && !id.isBlank()).distinct().toList();
     }
 
     private Map<String, Set<String>> subjectsByProject(String targetType, String targetId) {
@@ -122,5 +136,9 @@ public class ProjectArtifactBinder {
     }
 
     private record Binding(String projectId, String subjectId) {
+    }
+
+    private record ParentArtifacts(String agentId, List<AgentRunArtifact> artifacts) {
+        static final ParentArtifacts EMPTY = new ParentArtifacts(null, List.of());
     }
 }

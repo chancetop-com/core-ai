@@ -16,6 +16,7 @@ import ai.core.api.server.project.ListProjectMembersResponse;
 import ai.core.api.server.project.ListProjectReportsRequest;
 import ai.core.api.server.project.ListProjectReportsResponse;
 import ai.core.api.server.project.MoveProjectReportRequest;
+import ai.core.api.server.project.ProjectReportStatsView;
 import ai.core.api.server.project.ListProjectSubjectsRequest;
 import ai.core.api.server.project.ListProjectSubjectsResponse;
 import ai.core.api.server.project.ListProjectsRequest;
@@ -165,8 +166,28 @@ public class ProjectWebServiceImpl implements ProjectWebService {
         requireAccessible(id);
         var response = new ListProjectReportsResponse();
         var filter = new ProjectReportQueryService.ReportFilter(request.subjectId, request.agentId, request.from, request.to, request.unassigned);
-        response.reports = reportQueryService.reports(id, filter).stream().map(assembler::toReportView).toList();
+        int offset = request.offset == null ? 0 : request.offset;
+        int limit = request.limit == null ? ProjectReportQueryService.DEFAULT_LIMIT : request.limit;
+        var page = reportQueryService.reports(id, filter, offset, limit);
+        response.reports = page.reports().stream().map(assembler::toReportView).toList();
+        response.total = page.total();
         return response;
+    }
+
+    @Override
+    public ProjectReportStatsView reportStats(String id) {
+        requireAccessible(id);
+        var stats = reportQueryService.stats(id);
+        var view = new ProjectReportStatsView();
+        view.unassigned = stats.unassigned();
+        view.subjects = stats.bySubject().entrySet().stream().map(entry -> {
+            var stat = new ProjectReportStatsView.SubjectStat();
+            stat.subjectId = entry.getKey();
+            stat.count = entry.getValue().count();
+            stat.latestAt = entry.getValue().latest();
+            return stat;
+        }).toList();
+        return view;
     }
 
     @Override

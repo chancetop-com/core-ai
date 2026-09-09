@@ -7,6 +7,8 @@ import ProjectReports from './ProjectReports';
 
 type Tab = 'report' | 'current' | 'executions' | 'artifacts' | 'cost' | 'timeline';
 
+const EXEC_PAGE_SIZE = 50;
+
 function formatNumber(n?: number) {
   if (n === undefined || n === null) return '-';
   return n.toLocaleString();
@@ -66,6 +68,8 @@ export default function SubjectDetail() {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [phaseEvents, setPhaseEvents] = useState<ProjectEvent[]>([]);
   const [executions, setExecutions] = useState<ProjectExecution[]>([]);
+  const [execOffset, setExecOffset] = useState(0);
+  const [execTotal, setExecTotal] = useState(0);
   const [stats, setStats] = useState<ProjectStatsView | null>(null);
   const [tab, setTab] = useState<Tab>(() => {
     const requested = searchParams.get('tab');
@@ -163,7 +167,7 @@ export default function SubjectDetail() {
     return Promise.all([
       api.projects.get(id, subjectId),
       api.projects.timeline(id, subjectId),
-      api.projects.executions(id, undefined, 0, 50, subjectId),
+      api.projects.executions(id, undefined, execOffset, EXEC_PAGE_SIZE, subjectId),
       api.projects.stats(id, subjectId),
       api.projects.events(id, subjectId, 'phase').catch(e => { console.error('phase events failed', e); return { events: [] }; }),
     ])
@@ -172,12 +176,13 @@ export default function SubjectDetail() {
         setTimeline(t.entries || []);
         setPhaseEvents(ev.events || []);
         setExecutions(e.executions || []);
+        setExecTotal(e.total ?? (e.executions || []).length);
         setStats(s);
         setError('');
       })
       .catch(e => setError(String((e as Error).message || e)))
       .finally(() => setLoading(false));
-  }, [id, subjectId]);
+  }, [id, subjectId, execOffset]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -570,6 +575,15 @@ export default function SubjectDetail() {
               <span className="text-xs shrink-0 w-20 text-right">{formatCost(e.cost_usd)}</span>
             </div>
           ))}
+          {execTotal > EXEC_PAGE_SIZE && (
+            <div className="flex items-center justify-end gap-2 mt-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              <button onClick={() => setExecOffset(Math.max(0, execOffset - EXEC_PAGE_SIZE))} disabled={execOffset === 0}
+                className="px-2 py-1 rounded border cursor-pointer disabled:opacity-40" style={{ borderColor: 'var(--color-border)' }}>Previous</button>
+              <span>{execOffset + 1}–{Math.min(execOffset + executions.length, execTotal)} of {execTotal}</span>
+              <button onClick={() => setExecOffset(execOffset + EXEC_PAGE_SIZE)} disabled={execOffset + EXEC_PAGE_SIZE >= execTotal}
+                className="px-2 py-1 rounded border cursor-pointer disabled:opacity-40" style={{ borderColor: 'var(--color-border)' }}>Next</button>
+            </div>
+          )}
         </div>
       )}
 

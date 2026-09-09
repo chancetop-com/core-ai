@@ -179,7 +179,7 @@ public class ProjectQueryService {
             var at = session.lastMessageAt != null ? session.lastMessageAt : session.createdAt;
             entries.add(new TimelineEntry("session", session.title, null, subjectBySession.get(session.id), session.id, null, at));
         }
-        for (var report : reportQueryService.reports(projectId, subjectId, null)) {
+        for (var report : reportQueryService.reports(projectId, subjectId, TIMELINE_MAX_ENTRIES)) {
             entries.add(new TimelineEntry("report", report.fileName(), null, report.subjectId(), null, null, report.createdAt()));
         }
         entries.sort((a, b) -> compareDesc(a.at, b.at));

@@ -15,18 +15,23 @@ import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
- * Report directory of a project. Project reports = artifacts of member sessions/runs (candidate pool, subject
- * possibly still unassigned) plus files explicitly attributed to one of the project's subjects (uploads,
- * cascaded/inherited artifacts, material of former members). A file's subject comes from the file attribution
- * row ONLY, never from the agent scope, so one report shows up under exactly one subject per project.
+ * Report directory of a project, paged. Two sources:
+ * <ul>
+ *   <li><b>filed</b> — files attributed to a subject. Served from the attribution table alone (sorted and paged
+ *       on the denormalized file time), then one metadata fetch for the page. Unbounded history is fine here.</li>
+ *   <li><b>inbox</b> — artifacts of member sessions/runs that have no home yet. Bounded by construction: only
+ *       the newest {@link #MAX_SOURCE_RECORDS} artifact-bearing sessions and runs are scanned; older unfiled
+ *       material is reached through the attributor / analysis, not through this list.</li>
+ * </ul>
+ * A file's subject comes from the file attribution row ONLY, never from the agent scope, so one report shows
+ * up under exactly one subject per project.
  *
  * @author stephen
  */
@@ -34,6 +39,8 @@ public class ProjectReportQueryService {
     public static final String SOURCE_AGENT = "agent";
     public static final String SOURCE_UPLOAD = "upload";
     static final int MAX_SOURCE_RECORDS = 1000;   // newest artifact-bearing sessions/runs considered per type
+    static final int DEFAULT_LIMIT = 50;
+    static final int MAX_LIMIT = 200;
     private static final Bson FILE_META_PROJECTION = Projections.exclude("data", "storage_path");
 
     @Inject
@@ -49,45 +56,81 @@ public class ProjectReportQueryService {
     @Inject
     ProjectAttributionStore attributionStore;
 
-    public List<ProjectReport> reports(String projectId, String subjectId, String agentId) {
-        return reports(projectId, new ReportFilter(subjectId, agentId, null, null, null));
+    /** newest filed reports of the project / one subject (timeline and other bounded consumers) */
+    public List<ProjectReport> reports(String projectId, String subjectId, int limit) {
+        return reports(projectId, new ReportFilter(subjectId, null, null, null, Boolean.FALSE), 0, limit).reports();
     }
 
-    public List<ProjectReport> reports(String projectId, ReportFilter filter) {
-        if (projectCollection.get(projectId).isEmpty()) return List.of();
-        var subjectByFile = attributionStore.fileSubjects(projectId);
-        var byFile = new LinkedHashMap<String, ProjectReport>();
-        var scope = ProjectScope.resolve(projectCollection, projectId);
-        if (scope != null) {
-            addRunReports(byFile, scope, filter.agentId());
-            addSessionReports(byFile, scope, filter.agentId());
+    public ReportPage reports(String projectId, ReportFilter filter, int offset, int limit) {
+        if (projectCollection.get(projectId).isEmpty()) return new ReportPage(List.of(), 0);
+        int safeOffset = Math.max(offset, 0);
+        int safeLimit = limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
+        return Boolean.TRUE.equals(filter.unassigned()) ? inbox(projectId, filter, safeOffset, safeLimit) : filed(projectId, filter, safeOffset, safeLimit);
+    }
+
+    /** per-subject counts / newest report plus the (bounded) size of the inbox: what the project page cards show */
+    public ReportStats stats(String projectId) {
+        if (projectCollection.get(projectId).isEmpty()) return new ReportStats(0, Map.of());
+        var unassigned = inbox(projectId, new ReportFilter(null, null, null, null, Boolean.TRUE), 0, 1).total();
+        return new ReportStats(unassigned, attributionStore.fileStatsBySubject(projectId));
+    }
+
+    // ---- filed: attribution table is the source of truth, paged in Mongo ----
+
+    private ReportPage filed(String projectId, ReportFilter filter, int offset, int limit) {
+        var rows = attributionStore.filedFiles(projectId, filter.subjectId(), filter.from(), filter.to(), offset, limit);
+        var total = attributionStore.filedFileCount(projectId, filter.subjectId(), filter.from(), filter.to());
+        var agentFilter = filter.agentId();
+        if (agentFilter != null && !agentFilter.isBlank()) {
+            // agent filter is rare on the filed path: applied on the page (agent_id is denormalized on the row)
+            rows = rows.stream().filter(r -> agentFilter.equals(r.agentId)).toList();
         }
-        var records = fileRecords(subjectByFile.keySet(), byFile.keySet());
-        if (filter.agentId() == null || filter.agentId().isBlank()) {
-            for (var fileId : subjectByFile.keySet()) {
-                if (byFile.containsKey(fileId)) continue;
-                var record = records.get(fileId);
-                if (record == null) continue;   // attributed file has been deleted
-                byFile.put(fileId, new ProjectReport(fileId, record.fileName, record.contentType, record.size, record.createdAt, null, null, null, SOURCE_UPLOAD, null));
-            }
-        }
-        var names = agentNames(byFile.values().stream().map(ProjectReport::agentId).filter(id -> id != null && !id.isBlank()).distinct().toList());
+        var records = fileRecords(rows.stream().map(r -> r.targetId).toList());
+        var names = agentNames(rows.stream().map(r -> r.agentId).filter(id -> id != null && !id.isBlank()).distinct().toList());
         var result = new ArrayList<ProjectReport>();
-        for (var r : byFile.values()) {
-            var subject = subjectByFile.get(r.fileId());
-            if (!filter.accepts(subject, r.createdAt())) continue;
-            var record = records.get(r.fileId());
-            result.add(new ProjectReport(r.fileId(), r.fileName(), r.contentType(), r.size(), r.createdAt(), subject, r.agentId(), names.get(r.agentId()),
-                r.source(), record != null ? record.shareToken : null));
+        for (var row : rows) {
+            var record = records.get(row.targetId);
+            if (record == null) continue;   // attributed file has been deleted
+            var source = ProjectAttributionStore.SOURCE_UPLOAD.equals(row.source) ? SOURCE_UPLOAD : SOURCE_AGENT;
+            var createdAt = row.targetCreatedAt != null ? row.targetCreatedAt : record.createdAt;
+            result.add(new ProjectReport(record.id, record.fileName, record.contentType, record.size, createdAt, row.subjectId,
+                row.agentId, names.get(row.agentId), source, record.shareToken));
         }
-        result.sort((a, b) -> compareDesc(a.createdAt(), b.createdAt()));
-        return result;
+        return new ReportPage(result, total);
     }
 
-    // one metadata fetch (no payload) for every candidate file: share tokens plus the uploads' names/sizes
-    private Map<String, FileRecord> fileRecords(Set<String> attributed, Set<String> produced) {
-        var ids = new LinkedHashSet<String>(attributed);
-        ids.addAll(produced);
+    // ---- inbox: newest member artifacts minus the ones already homed, paged in memory (bounded scan) ----
+
+    private ReportPage inbox(String projectId, ReportFilter filter, int offset, int limit) {
+        var scope = ProjectScope.resolve(projectCollection, projectId);
+        if (scope == null) return new ReportPage(List.of(), 0);
+        var homed = attributionStore.fileSubjects(projectId);
+        var byFile = new LinkedHashMap<String, ProjectReport>();
+        addRunReports(byFile, scope, filter.agentId());
+        addSessionReports(byFile, scope, filter.agentId());
+        var candidates = new ArrayList<ProjectReport>();
+        for (var r : byFile.values()) {
+            if (homed.containsKey(r.fileId())) continue;
+            if (!filter.accepts(r.createdAt())) continue;
+            candidates.add(r);
+        }
+        candidates.sort((a, b) -> compareDesc(a.createdAt(), b.createdAt()));
+        var total = candidates.size();
+        if (offset >= total) return new ReportPage(List.of(), total);
+        var page = candidates.subList(offset, Math.min(offset + limit, total));
+        var records = fileRecords(page.stream().map(ProjectReport::fileId).toList());
+        var names = agentNames(page.stream().map(ProjectReport::agentId).filter(id -> id != null && !id.isBlank()).distinct().toList());
+        var result = new ArrayList<ProjectReport>();
+        for (var r : page) {
+            var record = records.get(r.fileId());
+            result.add(new ProjectReport(r.fileId(), r.fileName(), r.contentType(), r.size(), r.createdAt(), null, r.agentId(), names.get(r.agentId()),
+                SOURCE_AGENT, record != null ? record.shareToken : null));
+        }
+        return new ReportPage(result, total);
+    }
+
+    // one metadata fetch (no payload) for the files of the current page
+    private Map<String, FileRecord> fileRecords(Collection<String> ids) {
         var result = new HashMap<String, FileRecord>();
         if (ids.isEmpty()) return result;
         var query = new Query();
@@ -153,11 +196,15 @@ public class ProjectReportQueryService {
                                 String source, String shareToken) {
     }
 
-    /** subjectId filters to one subject; unassigned=true keeps only reports without a subject; from/to bound createdAt */
+    public record ReportPage(List<ProjectReport> reports, long total) {
+    }
+
+    public record ReportStats(long unassigned, Map<String, ProjectAttributionStore.SubjectFileStats> bySubject) {
+    }
+
+    /** subjectId filters to one subject; unassigned=true switches to the inbox; from/to bound the report time */
     public record ReportFilter(String subjectId, String agentId, ZonedDateTime from, ZonedDateTime to, Boolean unassigned) {
-        boolean accepts(String subject, ZonedDateTime createdAt) {
-            if (subjectId != null && !subjectId.isBlank() && !subjectId.equals(subject)) return false;
-            if (subject != null && Boolean.TRUE.equals(unassigned)) return false;
+        boolean accepts(ZonedDateTime createdAt) {
             if (from != null && (createdAt == null || createdAt.isBefore(from))) return false;
             return to == null || createdAt != null && !createdAt.isAfter(to);
         }

@@ -23,4 +23,10 @@ public class ListProjectReportsRequest {
     // true = only reports not yet attributed to any subject of the project (the "unassigned" bucket)
     @QueryParam(name = "unassigned")
     public Boolean unassigned;
+
+    @QueryParam(name = "offset")
+    public Integer offset;
+
+    @QueryParam(name = "limit")
+    public Integer limit;   // default 50, max 200
 }

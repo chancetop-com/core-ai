@@ -8,6 +8,7 @@ import type { ArtifactSpec } from '../chat/components/artifactTypes';
 const ArtifactDrawer = lazy(() => import('../chat/components/ArtifactDrawer'));
 
 const UNASSIGNED = '__unassigned__';
+const PAGE_SIZE = 50;
 
 interface Props {
   projectId: string;
@@ -57,6 +58,8 @@ function toSpec(r: ProjectReport): ArtifactSpec {
  */
 export default function ProjectReports({ projectId, subjectId, inbox = false, subjects, onChanged }: Props) {
   const [reports, setReports] = useState<ProjectReport[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [from, setFrom] = useState('');
@@ -82,14 +85,24 @@ export default function ProjectReports({ projectId, subjectId, inbox = false, su
       from: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
       to: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
       unassigned: inbox || (!subjectId && unassignedOnly) ? true : undefined,
+      offset,
+      limit: PAGE_SIZE,
     };
     return api.projects.reports(projectId, filter)
-      .then(res => { setReports(res.reports || []); setError(''); })
+      .then(res => { setReports(res.reports || []); setTotal(res.total ?? (res.reports || []).length); setError(''); })
       .catch(e => setError(String((e as Error).message || e)))
       .finally(() => setLoading(false));
-  }, [projectId, subjectId, inbox, from, to, unassignedOnly]);
+  }, [projectId, subjectId, inbox, from, to, unassignedOnly, offset]);
 
   useEffect(() => { load(); }, [load]);
+
+  // a filter change restarts from the first page
+  useEffect(() => { setOffset(0); }, [projectId, subjectId, inbox, from, to, unassignedOnly]);
+
+  const pageStart = total === 0 ? 0 : offset + 1;
+  const pageEnd = Math.min(offset + reports.length, total);
+  const hasPrev = offset > 0;
+  const hasNext = offset + PAGE_SIZE < total;
 
   // subject -> month -> reports (project level); month -> reports (subject level)
   const groups = useMemo(() => {
@@ -182,7 +195,7 @@ export default function ProjectReports({ projectId, subjectId, inbox = false, su
           </label>
         )}
         <span className="text-xs ml-auto" style={{ color: 'var(--color-text-secondary)' }}>
-          {loading ? 'Loading...' : `${reports.length} report${reports.length === 1 ? '' : 's'}`}
+          {loading ? 'Loading...' : total === 0 ? '0 reports' : `${pageStart}–${pageEnd} of ${total}`}
         </span>
         {subjectId && (
           <>
@@ -286,6 +299,22 @@ export default function ProjectReports({ projectId, subjectId, inbox = false, su
           </div>
         );
       })}
+
+      {(hasPrev || hasNext) && (
+        <div className="flex items-center justify-end gap-2 mt-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+          <button onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} disabled={!hasPrev || loading}
+            className="px-2 py-1 rounded border cursor-pointer disabled:opacity-40" style={{ borderColor: 'var(--color-border)' }}>Previous</button>
+          <span>{pageStart}–{pageEnd} of {total}</span>
+          <button onClick={() => setOffset(offset + PAGE_SIZE)} disabled={!hasNext || loading}
+            className="px-2 py-1 rounded border cursor-pointer disabled:opacity-40" style={{ borderColor: 'var(--color-border)' }}>Next</button>
+        </div>
+      )}
+      {inbox && !loading && total > 0 && (
+        <p className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+          The inbox scans the newest runs and conversations of the member agents (up to 1000 of each); older unfiled
+          material is picked up by the scheduled attribution, not listed here.
+        </p>
+      )}
 
       {/* the drawer is a flex sibling in chat / For You (page root is a horizontal flex); here the page is a
           vertical document, so anchor it to the right edge of the viewport via a portal */}

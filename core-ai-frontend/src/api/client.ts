@@ -1375,10 +1375,20 @@ export interface ProjectReportFilter {
   from?: string;
   to?: string;
   unassigned?: boolean;
+  offset?: number;
+  limit?: number;   // default 50, max 200
+}
+
+export interface ProjectReportStats {
+  // unfiled reports among the recent member material (same bound as the inbox list)
+  unassigned: number;
+  subjects: { subject_id: string; count: number; latest_at?: string }[];
 }
 
 export interface ListProjectReportsResponse {
   reports: ProjectReport[];
+  // matching reports before paging
+  total?: number;
 }
 
 export interface ListProjectSubjectsResponse {
@@ -1958,9 +1968,12 @@ export const api = {
       if (f.from) params.set('from', f.from);
       if (f.to) params.set('to', f.to);
       if (f.unassigned) params.set('unassigned', 'true');
+      if (f.offset !== undefined) params.set('offset', String(f.offset));
+      if (f.limit !== undefined) params.set('limit', String(f.limit));
       const qs = params.toString();
       return request<ListProjectReportsResponse>(`/api/projects/${id}/reports${qs ? `?${qs}` : ''}`);
     },
+    reportStats: (id: string) => request<ProjectReportStats>(`/api/projects/${id}/reports/stats`),
     // re-home a report under another subject; null = back to the unassigned bucket
     moveReport: (id: string, fileId: string, subjectId: string | null) =>
       request<void>(`/api/projects/${id}/reports/${encodeURIComponent(fileId)}/subject`, { method: 'PUT', body: JSON.stringify({ subject_id: subjectId }) }),
