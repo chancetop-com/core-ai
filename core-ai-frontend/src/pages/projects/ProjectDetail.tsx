@@ -43,6 +43,8 @@ export default function ProjectDetail() {
   const [showMembers, setShowMembers] = useState(false);
   const [showPlaybook, setShowPlaybook] = useState(false);
   const [showReports, setShowReports] = useState(false);
+  // report counts for the subject cards and the unassigned badge (one list call, aggregated client-side)
+  const [reportStats, setReportStats] = useState<{ unassigned: number; bySubject: Record<string, { count: number; latest?: string }> } | null>(null);
 
   const [subjectModal, setSubjectModal] = useState(false);
   const [subjectName, setSubjectName] = useState('');
@@ -82,8 +84,9 @@ export default function ProjectDetail() {
         return { agents: [], workflows: [] };
       }),
       api.projects.subjects(id, subjectOffset, subjectLimit, subjectQuery),
+      api.projects.reports(id).catch(e => { console.error('project reports failed', e); return null; }),
     ])
-      .then(([p, s, m, options, subjectPage]) => {
+      .then(([p, s, m, options, subjectPage, reportPage]) => {
         setProject(p);
         setStats(s);
         setMembers(m);
@@ -91,6 +94,18 @@ export default function ProjectDetail() {
         setAllWorkflows(options.workflows || []);
         setSubjectList(subjectPage.subjects || []);
         setSubjectTotal(subjectPage.total ?? 0);
+        if (reportPage) {
+          const bySubject: Record<string, { count: number; latest?: string }> = {};
+          let unassigned = 0;
+          for (const r of reportPage.reports || []) {
+            if (!r.subject_id) { unassigned++; continue; }
+            const entry = bySubject[r.subject_id] ?? { count: 0 };
+            entry.count++;
+            if (!entry.latest || r.created_at > entry.latest) entry.latest = r.created_at;
+            bySubject[r.subject_id] = entry;
+          }
+          setReportStats({ unassigned, bySubject });
+        }
         setError('');
       })
       .catch(e => {
@@ -493,17 +508,30 @@ export default function ProjectDetail() {
         )}
       </div>
 
-      {/* Reports directory: every report of the project grouped by subject and month, with the unassigned
-          bucket on top so material the attributor could not place gets filed by a person */}
+      {/* Unassigned reports: the triage inbox. Reports already filed live on their subject page (see the
+          counts on the subject cards); listing them here again would only duplicate that view */}
       <div className="p-4 rounded-xl border mb-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         <button onClick={() => setShowReports(!showReports)}
           className="w-full flex items-center justify-between cursor-pointer">
-          <span className="text-sm font-medium">Reports</span>
+          <span className="flex items-center gap-2 text-sm font-medium">
+            Unassigned reports
+            {reportStats && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-normal"
+                style={reportStats.unassigned > 0
+                  ? { background: 'rgba(234, 179, 8, 0.15)', color: '#b45309' }
+                  : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                {reportStats.unassigned}
+              </span>
+            )}
+            <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>
+              reports the attributor could not place; file them under a subject
+            </span>
+          </span>
           {showReports ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </button>
         {showReports && (
           <div className="mt-3">
-            <ProjectReports projectId={id} subjects={project.subjects} onChanged={load} />
+            <ProjectReports projectId={id} inbox subjects={project.subjects} onChanged={load} />
           </div>
         )}
       </div>
@@ -569,6 +597,19 @@ export default function ProjectDetail() {
                 </div>
                 {s.description && (
                   <p className="text-sm mt-1 ml-7" style={{ color: 'var(--color-text-secondary)' }}>{s.description}</p>
+                )}
+                {reportStats && (
+                  <p className="text-xs mt-1 ml-7" style={{ color: 'var(--color-text-secondary)' }}>
+                    {reportStats.bySubject[s.id]?.count
+                      ? <>
+                          <button onClick={e => { e.stopPropagation(); navigate(`/projects/${id}/subjects/${s.id}?tab=artifacts`); }}
+                            className="underline cursor-pointer" style={{ color: 'var(--color-primary)' }}>
+                            {reportStats.bySubject[s.id].count} report{reportStats.bySubject[s.id].count === 1 ? '' : 's'}
+                          </button>
+                          {reportStats.bySubject[s.id].latest && ` · latest ${new Date(reportStats.bySubject[s.id].latest!).toLocaleDateString()}`}
+                        </>
+                      : 'No reports yet'}
+                  </p>
                 )}
                 {s.external_link && (
                   <p className="text-xs mt-1 ml-7 truncate" style={{ color: 'var(--color-text-tertiary)' }}>{s.external_link}</p>

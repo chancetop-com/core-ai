@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, ExternalLink, FileText, Link2, Loader2, Upload } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ProjectReport, ProjectSubject } from '../../api/client';
@@ -12,6 +13,8 @@ interface Props {
   projectId: string;
   // fixed subject (subject page): no subject grouping, no "unassigned" toggle, upload enabled
   subjectId?: string;
+  // project page: only the reports not yet filed under any subject (triage inbox); filed reports live on their subject page
+  inbox?: boolean;
   subjects: ProjectSubject[];
   onChanged?: () => void;
 }
@@ -52,7 +55,7 @@ function toSpec(r: ProjectReport): ArtifactSpec {
  * openable in the artifact drawer, shareable by link, re-homeable to another subject, plus a manual upload
  * for reports produced outside the platform.
  */
-export default function ProjectReports({ projectId, subjectId, subjects, onChanged }: Props) {
+export default function ProjectReports({ projectId, subjectId, inbox = false, subjects, onChanged }: Props) {
   const [reports, setReports] = useState<ProjectReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -78,13 +81,13 @@ export default function ProjectReports({ projectId, subjectId, subjects, onChang
       subjectId,
       from: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
       to: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
-      unassigned: !subjectId && unassignedOnly ? true : undefined,
+      unassigned: inbox || (!subjectId && unassignedOnly) ? true : undefined,
     };
     return api.projects.reports(projectId, filter)
       .then(res => { setReports(res.reports || []); setError(''); })
       .catch(e => setError(String((e as Error).message || e)))
       .finally(() => setLoading(false));
-  }, [projectId, subjectId, from, to, unassignedOnly]);
+  }, [projectId, subjectId, inbox, from, to, unassignedOnly]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -172,7 +175,7 @@ export default function ProjectReports({ projectId, subjectId, subjects, onChang
           <button onClick={() => { setFrom(''); setTo(''); }} className="text-xs underline cursor-pointer"
             style={{ color: 'var(--color-text-secondary)' }}>Clear</button>
         )}
-        {!subjectId && (
+        {!subjectId && !inbox && (
           <label className="flex items-center gap-1 text-xs cursor-pointer ml-2" style={{ color: 'var(--color-text-secondary)' }}>
             <input type="checkbox" checked={unassignedOnly} onChange={e => setUnassignedOnly(e.target.checked)} />
             Unassigned only
@@ -202,7 +205,9 @@ export default function ProjectReports({ projectId, subjectId, subjects, onChang
         <div className="text-sm py-6 text-center" style={{ color: 'var(--color-text-secondary)' }}>
           {subjectId
             ? 'No reports yet. Reports submitted by runs bound to this subject, attributed conversations, or uploaded here appear in this list.'
-            : 'No reports yet. Member agents’ artifacts and uploaded reports appear here, grouped by subject and month.'}
+            : inbox
+              ? 'Nothing to file: every report of this project is already under a subject. Open a subject to browse its reports.'
+              : 'No reports yet. Member agents’ artifacts and uploaded reports appear here, grouped by subject and month.'}
         </div>
       )}
 
@@ -282,10 +287,15 @@ export default function ProjectReports({ projectId, subjectId, subjects, onChang
         );
       })}
 
-      {active && (
-        <Suspense fallback={null}>
-          <ArtifactDrawer artifact={active} onClose={() => setActive(null)} />
-        </Suspense>
+      {/* the drawer is a flex sibling in chat / For You (page root is a horizontal flex); here the page is a
+          vertical document, so anchor it to the right edge of the viewport via a portal */}
+      {active && createPortal(
+        <div className="fixed inset-y-0 right-0 z-40 flex shadow-2xl">
+          <Suspense fallback={null}>
+            <ArtifactDrawer artifact={active} onClose={() => setActive(null)} />
+          </Suspense>
+        </div>,
+        document.body,
       )}
     </div>
   );

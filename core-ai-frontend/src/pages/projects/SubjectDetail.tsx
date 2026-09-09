@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Activity, ArrowLeft, CheckSquare, ExternalLink, FileText, ListChecks, Loader2, RefreshCw, RotateCcw, UserRound } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ProjectEvent, ProjectExecution, ProjectStatsView, ProjectView, TimelineEntry } from '../../api/client';
@@ -60,12 +60,17 @@ function numericKpis(kpis: ProjectView['kpis'], key: string): number[] {
 export default function SubjectDetail() {
   const { id, subjectId } = useParams<{ id: string; subjectId: string }>();
   const navigate = useNavigate();
+  // deep link from the project page: /projects/:id/subjects/:subjectId?tab=artifacts
+  const [searchParams] = useSearchParams();
   const [project, setProject] = useState<ProjectView | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [phaseEvents, setPhaseEvents] = useState<ProjectEvent[]>([]);
   const [executions, setExecutions] = useState<ProjectExecution[]>([]);
   const [stats, setStats] = useState<ProjectStatsView | null>(null);
-  const [tab, setTab] = useState<Tab>('report');
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = searchParams.get('tab');
+    return requested && ['report', 'current', 'executions', 'artifacts', 'cost', 'timeline'].includes(requested) ? requested as Tab : 'report';
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
