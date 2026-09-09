@@ -217,7 +217,7 @@ public class ProjectAttributionStage {
      */
     private int applyProposals(String projectId, Project project, String output, ProjectAttributionMaterial material) {
         var mode = ProjectService.autoSubjectMode(project);
-        if (ProjectService.AUTO_SUBJECTS_OFF.equals(mode) || output == null || output.isBlank()) return 0;
+        if (output == null || output.isBlank() || ProjectService.AUTO_SUBJECTS_OFF.equals(mode)) return 0;
         if (project.playbook == null || project.playbook.isBlank()) {
             LOGGER.warn("auto subject discovery is on but the playbook is empty; proposals can only guess, projectId={}", projectId);
         }

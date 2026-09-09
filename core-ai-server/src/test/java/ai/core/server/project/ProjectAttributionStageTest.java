@@ -228,7 +228,6 @@ class ProjectAttributionStageTest {
 
     private String proposal(String name, String targetId, String targetType) {
         return """
-            {"attributions":[],"new_subjects":[{"name":"%s","description":"the spa account","reason":"run mentions acme","targets":[{"target_type":"%s","target_id":"%s"}]}]}
-            """.formatted(name, targetType, targetId);
+            {"attributions":[],"new_subjects":[{"name":"%s","description":"the spa account","reason":"run mentions acme","targets":[{"target_type":"%s","target_id":"%s"}]}]}""".formatted(name, targetType, targetId);
     }
 }

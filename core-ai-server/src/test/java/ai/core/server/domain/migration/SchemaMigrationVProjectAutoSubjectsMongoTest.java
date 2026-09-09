@@ -165,7 +165,7 @@ class SchemaMigrationVProjectAutoSubjectsMongoTest {
         mongo.runCommand(new Document("update", collection).append("updates", List.of(
             new Document("q", new Document("_id", id))
                 .append("u", new Document("$set", fields))
-                .append("upsert", true))));
+                .append("upsert", Boolean.TRUE))));
     }
 
     private void replace(String collection, String id, Document document) {
