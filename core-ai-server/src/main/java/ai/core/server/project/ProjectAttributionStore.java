@@ -53,6 +53,7 @@ public class ProjectAttributionStore {
 
     private static final int DUPLICATE_KEY_CODE = 11000;
     private static final Bson FILE_TIME_PROJECTION = Projections.include("_id", "created_at");
+    private static final ZonedDateTime EPOCH = ZonedDateTime.of(1970, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
 
     @Inject
     MongoCollection<ProjectSubjectAttribution> attributionCollection;
@@ -151,8 +152,10 @@ public class ProjectAttributionStore {
     public Result attributeFile(String projectId, String subjectId, String fileId, String source, String agentId, ZonedDateTime createdAt) {
         var existing = fileAttribution(projectId, fileId);
         if (existing.isPresent()) return subjectId.equals(existing.get().subjectId) ? Result.EXISTS : Result.CONFLICT;
+        var attribution = fileRow(projectId, subjectId, fileId, source, agentId, createdAt);
+        if (attribution == null) return Result.MISSING;
         try {
-            attributionCollection.insert(fileRow(projectId, subjectId, fileId, source, agentId, createdAt));
+            attributionCollection.insert(attribution);
             return Result.INSERTED;
         } catch (MongoWriteException e) {
             if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
@@ -167,29 +170,41 @@ public class ProjectAttributionStore {
         var previous = fileAttribution(projectId, fileId).orElse(null);
         attributionCollection.delete(Filters.and(Filters.eq("project_id", projectId), Filters.eq("target_type", TARGET_FILE), Filters.eq("target_id", fileId)));
         if (subjectId == null || subjectId.isBlank()) return;
+        // keep the file metadata of the previous home so the moved report keeps its date and producer
+        var attribution = fileRow(projectId, subjectId, fileId, source,
+            previous != null ? previous.agentId : null, previous != null ? previous.targetCreatedAt : null);
+        if (attribution == null) return;   // file gone: nothing left to re-home
         try {
-            // keep the file metadata of the previous home so the moved report keeps its date and producer
-            attributionCollection.insert(fileRow(projectId, subjectId, fileId, source,
-                previous != null ? previous.agentId : null, previous != null ? previous.targetCreatedAt : null));
+            attributionCollection.insert(attribution);
         } catch (MongoWriteException e) {
             if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
         }
     }
 
+    /** the file was deleted: drop its rows in every project (called by FileService.delete) */
+    public void removeFile(String fileId) {
+        attributionCollection.delete(Filters.and(Filters.eq("target_type", TARGET_FILE), Filters.eq("target_id", fileId)));
+    }
+
+    // rows without a file time are legacy orphans (file gone before the time backfill): the lower bound keeps
+    // them out of both the page and the count so offsets stay consistent; the range is served by the sort index
     private Bson filedFilter(String projectId, String subjectId, ZonedDateTime from, ZonedDateTime to) {
         var filters = new ArrayList<Bson>();
         filters.add(Filters.eq("project_id", projectId));
         if (subjectId != null && !subjectId.isBlank()) filters.add(Filters.eq("subject_id", subjectId));
         filters.add(Filters.eq("target_type", TARGET_FILE));
-        if (from != null) filters.add(Filters.gte("target_created_at", from));
+        filters.add(Filters.gte("target_created_at", from != null ? from : EPOCH));
         if (to != null) filters.add(Filters.lte("target_created_at", to));
         return Filters.and(filters);
     }
 
+    // null when the file does not exist: no attribution row is written for a file nobody can open
     private ProjectSubjectAttribution fileRow(String projectId, String subjectId, String fileId, String source, String agentId, ZonedDateTime createdAt) {
+        var at = createdAt != null ? createdAt : fileCreatedAt(fileId);
+        if (at == null) return null;
         var attribution = row(projectId, subjectId, TARGET_FILE, fileId, source);
         attribution.agentId = agentId;
-        attribution.targetCreatedAt = createdAt != null ? createdAt : fileCreatedAt(fileId);
+        attribution.targetCreatedAt = at;
         return attribution;
     }
 
@@ -199,8 +214,8 @@ public class ProjectAttributionStore {
         query.projection = FILE_TIME_PROJECTION;
         query.limit = 1;
         var record = fileRecordCollection.find(query).stream().findFirst().orElse(null);
-        // unknown file (deleted, or an id the attributor made up): stamp now so the row still sorts
-        return record != null && record.createdAt != null ? record.createdAt : ZonedDateTime.now();
+        if (record == null) return null;
+        return record.createdAt != null ? record.createdAt : ZonedDateTime.now();
     }
 
     private ProjectSubjectAttribution row(String projectId, String subjectId, String targetType, String targetId, String source) {
@@ -216,7 +231,8 @@ public class ProjectAttributionStore {
     }
 
     public enum Result {
-        INSERTED, EXISTS, CONFLICT
+        INSERTED, EXISTS, CONFLICT,
+        MISSING   // file record does not exist: nothing written
     }
 
     public record SubjectFileStats(long count, ZonedDateTime latest) {

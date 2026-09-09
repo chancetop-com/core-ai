@@ -34,6 +34,13 @@ class ProjectAttributionStoreTest {
         return row;
     }
 
+    // the default driver registry has no ZonedDateTime codec (core-ng registers its own at runtime)
+    private static String json(Bson bson) {
+        var registry = org.bson.codecs.configuration.CodecRegistries.fromRegistries(
+            org.bson.codecs.configuration.CodecRegistries.fromCodecs(new ZonedDateTimeCodec()), com.mongodb.MongoClientSettings.getDefaultCodecRegistry());
+        return bson.toBsonDocument(org.bson.BsonDocument.class, registry).toJson();
+    }
+
     private ProjectAttributionStore store;
     private MongoCollection<ProjectSubjectAttribution> attributions;
     private MongoCollection<FileRecord> files;
@@ -102,6 +109,27 @@ class ProjectAttributionStoreTest {
     }
 
     @Test
+    void missingFileWritesNoRow() {
+        // the file expired / was deleted: homing it would create a row the list cannot render but the count would include
+        when(files.find(any(Query.class))).thenReturn(List.of());
+
+        var result = store.attributeFile("p-1", "s-1", "f-gone", ProjectAttributionStore.SOURCE_CASCADE, "agent-1", null);
+
+        assertEquals(ProjectAttributionStore.Result.MISSING, result);
+        verify(attributions, never()).insert(any());
+    }
+
+    @Test
+    void filedFilterExcludesRowsWithoutFileTime() {
+        store.filedFileCount("p-1", null, null, null);
+
+        var filter = ArgumentCaptor.forClass(Bson.class);
+        verify(attributions).count(filter.capture());
+        var json = json(filter.getValue());
+        org.junit.jupiter.api.Assertions.assertTrue(json.contains("\"target_created_at\": {\"$gte\""), json);
+    }
+
+    @Test
     void filedFilesPagesOnTheAttributionTable() {
         store.filedFiles("p-1", "s-1", null, null, 100, 50);
 
@@ -111,7 +139,7 @@ class ProjectAttributionStoreTest {
         assertEquals(50, query.getValue().limit);
         var sort = query.getValue().sort.toBsonDocument(org.bson.BsonDocument.class, com.mongodb.MongoClientSettings.getDefaultCodecRegistry());
         assertEquals(-1, sort.getInt32("target_created_at").getValue());
-        var filter = query.getValue().filter.toBsonDocument(org.bson.BsonDocument.class, com.mongodb.MongoClientSettings.getDefaultCodecRegistry()).toJson();
+        var filter = json(query.getValue().filter);
         org.junit.jupiter.api.Assertions.assertTrue(filter.contains("\"subject_id\": \"s-1\"") && filter.contains("\"target_type\": \"file\""), filter);
     }
 
@@ -153,5 +181,22 @@ class ProjectAttributionStoreTest {
 
         assertEquals("s-1", map.get("f-1"));
         assertEquals("s-2", map.get("f-2"));
+    }
+
+    private static final class ZonedDateTimeCodec implements org.bson.codecs.Codec<ZonedDateTime> {
+        @Override
+        public ZonedDateTime decode(org.bson.BsonReader reader, org.bson.codecs.DecoderContext context) {
+            return java.time.Instant.ofEpochMilli(reader.readDateTime()).atZone(java.time.ZoneOffset.UTC);
+        }
+
+        @Override
+        public void encode(org.bson.BsonWriter writer, ZonedDateTime value, org.bson.codecs.EncoderContext context) {
+            writer.writeDateTime(value.toInstant().toEpochMilli());
+        }
+
+        @Override
+        public Class<ZonedDateTime> getEncoderClass() {
+            return ZonedDateTime.class;
+        }
     }
 }

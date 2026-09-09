@@ -64,6 +64,8 @@ public class FileService {
 
     @Inject
     ObjectStorageServiceResolver storageResolver;
+    @Inject
+    ai.core.server.project.ProjectAttributionStore attributionStore;
 
     public FileRecord upload(String userId, String fileName, String contentType, Path tempFile) {
         return upload(userId, fileName, contentType, tempFile, computeContentHash(tempFile));
@@ -268,6 +270,8 @@ public class FileService {
             }
         }
         fileRecordCollection.delete(id);
+        // a report that no longer exists must leave the project directories too, or its rows inflate counts/offsets
+        if (attributionStore != null) attributionStore.removeFile(id);
     }
 
     private String containerOf(String storagePath) {
