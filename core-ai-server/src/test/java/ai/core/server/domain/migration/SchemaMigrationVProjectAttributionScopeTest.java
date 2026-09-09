@@ -4,6 +4,7 @@ import com.mongodb.MongoClientSettings;
 import com.mongodb.client.model.IndexOptions;
 import core.framework.mongo.Mongo;
 import org.bson.BsonDocument;
+import org.bson.BsonNull;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -37,6 +39,10 @@ class SchemaMigrationVProjectAttributionScopeTest {
             if (stage.containsKey("$group")) return true;
         }
         return false;
+    }
+
+    private static boolean isBackfill(Document command) {
+        return SchemaMigrationVProjectAttributionScope.COLLECTION.equals(command.getString("aggregate")) && !isGroupPipeline(command);
     }
 
     @Test
@@ -90,6 +96,34 @@ class SchemaMigrationVProjectAttributionScopeTest {
         @SuppressWarnings("unchecked")
         var ids = (List<Object>) ((Document) idDelete.get("_id")).get("$in");
         assertEquals(List.of("later"), ids);
+    }
+
+    @Test
+    void scansUnassignedRowsByNullEqualityAfterLookupIndexesExist() {
+        var mongo = mock(Mongo.class);
+        var commands = ArgumentCaptor.forClass(Document.class);
+        when(mongo.runCommand(any(Document.class))).thenReturn(emptyCursor());
+
+        new SchemaMigrationVProjectAttributionScope().migrate(mongo);
+
+        verify(mongo, atLeastOnce()).runCommand(commands.capture());
+        var backfill = commands.getAllValues().stream()
+            .filter(SchemaMigrationVProjectAttributionScopeTest::isBackfill)
+            .findFirst().orElseThrow();
+        var match = (Document) backfill.getList("pipeline", Document.class).getFirst().get("$match");
+        assertEquals(BsonNull.VALUE, match.get("project_id"),
+            "null equality is index-served; $exists:false forces a collection scan (error 291 under notablescan)");
+
+        var orphanDelete = commands.getAllValues().stream()
+            .filter(c -> SchemaMigrationVProjectAttributionScope.COLLECTION.equals(c.getString("delete")))
+            .map(c -> (Document) c.getList("deletes", Document.class).getFirst().get("q"))
+            .filter(q -> q.containsKey("project_id"))
+            .findFirst().orElseThrow();
+        assertEquals(BsonNull.VALUE, orphanDelete.get("project_id"));
+
+        var ordered = inOrder(mongo);
+        ordered.verify(mongo, times(2)).createIndex(eq(SchemaMigrationVProjectAttributionScope.COLLECTION), any(Bson.class));
+        ordered.verify(mongo, atLeastOnce()).runCommand(any(Document.class));
     }
 
     @Test

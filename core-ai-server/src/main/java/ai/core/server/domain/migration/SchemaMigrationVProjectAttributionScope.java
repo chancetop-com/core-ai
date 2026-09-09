@@ -4,6 +4,7 @@ import ai.core.server.project.ProjectBuiltinAgents;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import core.framework.mongo.Mongo;
+import org.bson.BsonNull;
 import org.bson.Document;
 import org.bson.types.MinKey;
 import org.slf4j.Logger;
@@ -24,13 +25,15 @@ import java.util.UUID;
 /**
  * Project attribution v2: one home per report.
  * <ol>
+ *   <li>lookup indexes first — every scan below filters a field that must be index-served, the shared clusters
+ *       run {@code notablescan} and reject collection scans with error 291</li>
  *   <li>denormalize {@code project_id} onto every attribution row (from its subject); rows whose subject is
  *       gone are dropped</li>
  *   <li>collapse duplicate FILE attributions inside a project (the attributor used to be allowed to home a
  *       report under several subjects): the earliest row wins</li>
- *   <li>indexes: unique partial (project_id, target_id) for files — the invariant the query side relies on —
- *       plus (target_type, target_id) for inheritance lookups and (project_id, target_type) for the
- *       project-level report list</li>
+ *   <li>the unique partial (project_id, target_id) file index — the invariant the query side relies on —
+ *       created once the duplicates are gone; building it before the backfill would make that {@code $merge}
+ *       stop silently at the first duplicate home</li>
  *   <li>cascade existing session/run attributions onto their artifacts, so subject report tabs keep their
  *       content when the query switches from "agent scope" to "file attribution"; parents attributed to
  *       several subjects of the same project are skipped (ambiguous)</li>
@@ -57,9 +60,10 @@ public class SchemaMigrationVProjectAttributionScope implements SchemaMigration 
 
     @Override
     public void migrate(Mongo mongo) {
+        createLookupIndexes(mongo);
         backfillProjectId(mongo);
         int removed = dedupeFiles(mongo);
-        createIndexes(mongo);
+        createFileHomeIndex(mongo);
         int cascaded = cascadeParents(mongo);
         refreshAttributorPrompt(mongo);
         LOGGER.info("project attribution scope migration completed: duplicates removed={}, artifacts cascaded={}", removed, cascaded);
@@ -67,9 +71,10 @@ public class SchemaMigrationVProjectAttributionScope implements SchemaMigration 
 
     // single server-side pass: attribution.subject_id -> project_subjects._id -> project_id, merged back by _id
     private void backfillProjectId(Mongo mongo) {
+        // null equality, not $exists:false: only equality is index-served, and the shared clusters run notablescan
         mongo.runCommand(new Document("aggregate", COLLECTION)
             .append("pipeline", List.of(
-                new Document("$match", new Document("project_id", new Document("$exists", Boolean.FALSE))),
+                new Document("$match", new Document("project_id", BsonNull.VALUE)),
                 new Document("$lookup", new Document("from", "project_subjects")
                     .append("localField", "subject_id").append("foreignField", "_id").append("as", "subject")),
                 new Document("$unwind", "$subject"),
@@ -79,7 +84,7 @@ public class SchemaMigrationVProjectAttributionScope implements SchemaMigration 
             .append("cursor", new Document()));
         // subject deleted underneath the row: nothing to attribute to any more
         mongo.runCommand(new Document("delete", COLLECTION)
-            .append("deletes", List.of(new Document("q", new Document("project_id", new Document("$exists", Boolean.FALSE))).append("limit", 0))));
+            .append("deletes", List.of(new Document("q", new Document("project_id", BsonNull.VALUE)).append("limit", 0))));
     }
 
     @SuppressWarnings("unchecked")
@@ -105,11 +110,15 @@ public class SchemaMigrationVProjectAttributionScope implements SchemaMigration 
         return toDelete.size();
     }
 
-    private void createIndexes(Mongo mongo) {
-        mongo.createIndex(COLLECTION, Indexes.compoundIndex(Indexes.ascending("project_id"), Indexes.ascending("target_id")),
-            new IndexOptions().unique(true).partialFilterExpression(new Document("target_type", "file")));
+    private void createLookupIndexes(Mongo mongo) {
+        // before the scans below: both filter fields must be index-served (notablescan clusters reject collection scans)
         mongo.createIndex(COLLECTION, Indexes.compoundIndex(Indexes.ascending("target_type"), Indexes.ascending("target_id")));
         mongo.createIndex(COLLECTION, Indexes.compoundIndex(Indexes.ascending("project_id"), Indexes.ascending("target_type")));
+    }
+
+    private void createFileHomeIndex(Mongo mongo) {
+        mongo.createIndex(COLLECTION, Indexes.compoundIndex(Indexes.ascending("project_id"), Indexes.ascending("target_id")),
+            new IndexOptions().unique(true).partialFilterExpression(new Document("target_type", "file")));
     }
 
     private int cascadeParents(Mongo mongo) {
