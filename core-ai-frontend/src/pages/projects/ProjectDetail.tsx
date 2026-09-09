@@ -10,6 +10,7 @@ import type {
   ProjectSubject,
   ProjectView,
 } from '../../api/client';
+import ProjectReports from './ProjectReports';
 
 function formatCost(cost?: number) {
   if (cost === undefined || cost === null) return '-';
@@ -41,6 +42,7 @@ export default function ProjectDetail() {
   // collapsed by default: cost stays on top, the growing subject list sits at the bottom
   const [showMembers, setShowMembers] = useState(true);   // expanded by default: users must see which members are agents vs workflows
   const [showPlaybook, setShowPlaybook] = useState(false);
+  const [showReports, setShowReports] = useState(true);   // the report directory is what most visitors come for
 
   const [subjectModal, setSubjectModal] = useState(false);
   const [subjectName, setSubjectName] = useState('');
@@ -487,6 +489,21 @@ export default function ProjectDetail() {
                 </span>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Reports directory: every report of the project grouped by subject and month, with the unassigned
+          bucket on top so material the attributor could not place gets filed by a person */}
+      <div className="p-4 rounded-xl border mb-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+        <button onClick={() => setShowReports(!showReports)}
+          className="w-full flex items-center justify-between cursor-pointer">
+          <span className="text-sm font-medium">Reports</span>
+          {showReports ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </button>
+        {showReports && (
+          <div className="mt-3">
+            <ProjectReports projectId={id} subjects={project.subjects} onChanged={load} />
           </div>
         )}
       </div>

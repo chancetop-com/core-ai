@@ -136,7 +136,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVSystemPromptNameIndex(),
             new SchemaMigrationVHubCalls(),
             new SchemaMigrationVSkillDigestBackfill(),
-            new SchemaMigrationVFileRecordsDropTTL()
+            new SchemaMigrationVFileRecordsDropTTL(),
+            new SchemaMigrationVProjectAttributionScope()
         );
     }
 }

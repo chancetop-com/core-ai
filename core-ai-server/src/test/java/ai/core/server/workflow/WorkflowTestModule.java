@@ -2,6 +2,7 @@ package ai.core.server.workflow;
 
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
+import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.Notification;
@@ -62,6 +63,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(User.class);                    // project feature: ProjectService/ProjectAccess permission checks
         mongo.collection(SystemSettings.class);          // project feature: RoleRegistry permission resolution
         mongo.collection(AgentRun.class);
+        mongo.collection(AgentSchedule.class);           // project feature: ProjectArtifactBinder resolves schedule bindings
         mongo.collection(FileRecord.class);
         mongo.view(ToolRef.class);                        // partial updates persist loaded ToolRef values
 
@@ -108,6 +110,8 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(ai.core.server.rbac.RoleRegistry.class);
         bind(ai.core.server.apiuser.PermissionService.class);
         bind(ai.core.server.project.ProjectStateService.class);   // injected by ProjectService
+        bind(ai.core.server.project.ProjectAttributionStore.class);   // injected by ProjectService/ProjectArtifactBinder
+        bind(ai.core.server.project.ProjectArtifactBinder.class);
         bind(ProjectService.class);          // SessionRegistry/WorkflowRunService inject it eagerly at bind() time
         bind(SessionRegistry.class);
         bind(WorkflowDefinitionService.class);

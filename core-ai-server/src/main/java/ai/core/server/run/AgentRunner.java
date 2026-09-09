@@ -72,6 +72,8 @@ public class AgentRunner {
 
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
+    @Inject
+    ai.core.server.project.ProjectArtifactBinder artifactBinder;
 
     @Inject
     LLMCallExecutor llmCallExecutor;
@@ -124,6 +126,7 @@ public class AgentRunner {
         var runEntity = createRunRecord(
             params.definition, params.input, params.trigger, params.scheduleId, params.callerUserId);
         agentRunCollection.insert(runEntity);
+        artifactBinder.bindRun(runEntity);   // schedule → subject binding, deterministic (no-op without a bound schedule)
 
         var runId = runEntity.id;
         var workflowContext = params.workflowContext;

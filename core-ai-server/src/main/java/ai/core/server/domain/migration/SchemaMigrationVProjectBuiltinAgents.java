@@ -33,7 +33,7 @@ public class SchemaMigrationVProjectBuiltinAgents implements SchemaMigration {
         upsert(mongo, ProjectBuiltinAgents.mainAgentDoc(now));
         upsert(mongo, ProjectBuiltinAgents.writerDoc("builtin-" + ProjectBuiltinAgents.ATTRIBUTOR, ProjectBuiltinAgents.ATTRIBUTOR,
             "Attributes the targets listed in the query to project subjects. Prepare the query as the SUBJECTS list plus a digest of the unattributed targets; the result is applied to the attribution table automatically.",
-            ProjectBuiltinAgents.ATTRIBUTOR_PROMPT, ProjectBuiltinAgents.attributionSchema(), now));
+            ProjectBuiltinAgents.attributorPrompt(), ProjectBuiltinAgents.attributionSchema(), now));
         upsert(mongo, ProjectBuiltinAgents.writerDoc("builtin-" + ProjectBuiltinAgents.SUBJECT_ANALYZER, ProjectBuiltinAgents.SUBJECT_ANALYZER,
             "Derives ONE subject's status/KPIs/action items/notes from the query (playbook + subject context + current state + material digest) and applies them automatically; pass the subject_id.",
             ProjectBuiltinAgents.subjectAnalyzerPrompt(), ProjectBuiltinAgents.subjectAnalysisSchema(), now));

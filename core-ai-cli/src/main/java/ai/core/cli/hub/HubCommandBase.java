@@ -60,6 +60,11 @@ public abstract class HubCommandBase implements Callable<Integer> {
         return new ApiToolHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
     }
 
+    protected ai.core.cli.hub.report.ReportHubClient reportClient() {
+        var credentials = credentials();
+        return new ai.core.cli.hub.report.ReportHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
+    }
+
     /** Resolved server URL, for callers that need to record where content came from. */
     protected String serverUrl() {
         return credentials().serverUrl();

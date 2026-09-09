@@ -992,6 +992,9 @@ export interface AgentScheduleView {
   variables?: Record<string, string>;
   channel_id?: string;
   channel_recipient_id?: string;
+  // optional project binding: runs and their artifacts are attributed to this subject deterministically
+  project_id?: string;
+  subject_id?: string;
   concurrency_policy: string;
   next_run_at: string;
   created_at: string;
@@ -1031,6 +1034,9 @@ export interface CreateScheduleRequest {
   variables?: Record<string, string>;
   channel_id?: string;
   channel_recipient_id?: string;
+  // optional project binding: runs and their artifacts are attributed to this subject deterministically
+  project_id?: string;
+  subject_id?: string;
   concurrency_policy?: string;
 }
 
@@ -1044,6 +1050,9 @@ export interface UpdateScheduleRequest {
   variables?: Record<string, string>;
   channel_id?: string;
   channel_recipient_id?: string;
+  // optional project binding: runs and their artifacts are attributed to this subject deterministically
+  project_id?: string;
+  subject_id?: string;
   concurrency_policy?: string;
 }
 
@@ -1354,6 +1363,17 @@ export interface ProjectReport {
   subject_id?: string;
   agent_id?: string;
   agent_name?: string;
+  // agent = produced by a member session/run; upload = pushed via CLI/UI
+  source?: 'agent' | 'upload' | string;
+  share_token?: string;
+}
+
+export interface ProjectReportFilter {
+  subjectId?: string;
+  agentId?: string;
+  from?: string;
+  to?: string;
+  unassigned?: boolean;
 }
 
 export interface ListProjectReportsResponse {
@@ -1928,12 +1948,30 @@ export const api = {
       if (subjectId) params.set('subject_id', subjectId);
       return request<ListProjectExecutionsResponse>(`/api/projects/${id}/executions?${params}`);
     },
-    reports: (id: string, subjectId?: string, agentId?: string) => {
+    reports: (id: string, filter: ProjectReportFilter | string = {}, agentId?: string) => {
+      // legacy positional call: reports(id, subjectId, agentId)
+      const f: ProjectReportFilter = typeof filter === 'string' ? { subjectId: filter, agentId } : filter;
       const params = new URLSearchParams();
-      if (subjectId) params.set('subject_id', subjectId);
-      if (agentId) params.set('agent_id', agentId);
+      if (f.subjectId) params.set('subject_id', f.subjectId);
+      if (f.agentId) params.set('agent_id', f.agentId);
+      if (f.from) params.set('from', f.from);
+      if (f.to) params.set('to', f.to);
+      if (f.unassigned) params.set('unassigned', 'true');
       const qs = params.toString();
       return request<ListProjectReportsResponse>(`/api/projects/${id}/reports${qs ? `?${qs}` : ''}`);
+    },
+    // re-home a report under another subject; null = back to the unassigned bucket
+    moveReport: (id: string, fileId: string, subjectId: string | null) =>
+      request<void>(`/api/projects/${id}/reports/${encodeURIComponent(fileId)}/subject`, { method: 'PUT', body: JSON.stringify({ subject_id: subjectId }) }),
+    uploadReport: async (id: string, subjectId: string, file: File): Promise<ProjectReport> => {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      // multipart: let the browser set Content-Type (boundary); keep the bearer token from the shared headers
+      const headers = getAuthHeaders();
+      delete headers['Content-Type'];
+      const res = await fetch(`${BASE}/api/projects/${id}/subjects/${encodeURIComponent(subjectId)}/reports`, { method: 'POST', headers, body: form });
+      if (!res.ok) throw new Error(await errorMessage(res));
+      return res.json();
     },
     analyze: (id: string, subjectId?: string) =>
       request<AnalyzeProjectResponse>(`/api/projects/${id}/analyze`, { method: 'POST', body: JSON.stringify({ subject_id: subjectId }) }),

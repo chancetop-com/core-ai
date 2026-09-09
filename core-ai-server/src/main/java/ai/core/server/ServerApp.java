@@ -96,6 +96,8 @@ public class ServerApp extends App {
 
     private void loadPlatformInfrastructure() {
         load(new SettingsModule());
+        // before ObjectStorageModule: the file upload controller writes project attributions
+        load(new ProjectAttributionModule());
         load(new ObjectStorageModule());
         load(new SseTransportModule());
         load(new GatewayModule());

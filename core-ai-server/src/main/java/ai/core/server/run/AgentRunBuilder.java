@@ -125,6 +125,8 @@ public class AgentRunBuilder {
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
+    ai.core.server.project.ProjectArtifactBinder artifactBinder;
+    @Inject
     MongoCollection<User> userCollection;
     @Inject
     ai.core.server.asynctask.AsyncToolTaskService asyncToolTaskService;
@@ -176,7 +178,7 @@ public class AgentRunBuilder {
         }
         if (sandbox != null) {
             builder.addAgentLifecycle(new SandboxLifecycle(fileService,
-                    new AgentRunArtifactSink(runEntity.id, agentRunCollection), publicUrlConfiguration));
+                    new AgentRunArtifactSink(runEntity.id, agentRunCollection, artifactBinder), publicUrlConfiguration));
         }
         var agent = builder.build();
         agent.setAuthenticated(true);
@@ -203,10 +205,10 @@ public class AgentRunBuilder {
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(definition.userId, fileService,
-                                new AgentRunArtifactSink(runEntity.id, agentRunCollection), publicUrlConfiguration))
+                                new AgentRunArtifactSink(runEntity.id, agentRunCollection, artifactBinder), publicUrlConfiguration))
                 .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(definition.userId, fileService,
-                                new AgentRunArtifactSink(runEntity.id, agentRunCollection), publicUrlConfiguration))
+                                new AgentRunArtifactSink(runEntity.id, agentRunCollection, artifactBinder), publicUrlConfiguration))
                 .customVariables(mediaModelVariables())
                 .build();
         // quota metering per LLM call: sub-agents and tool-internal calls share this context, so the

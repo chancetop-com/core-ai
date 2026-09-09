@@ -163,7 +163,7 @@ public class ProjectAttributionStage {
                 LOGGER.warn("attribution skipped, unknown target, type={}, targetId={}", targetType, targetId);
                 return 0;
             }
-            projectService.attribute(projectId, subjectId, targetType, targetId);
+            projectService.attribute(projectId, subjectId, targetType, targetId, ProjectAttributionStore.SOURCE_ATTRIBUTOR);
             return 1;
         } catch (RuntimeException e) {
             LOGGER.warn("attribution rejected, subjectId={}, type={}, targetId={}, error={}",

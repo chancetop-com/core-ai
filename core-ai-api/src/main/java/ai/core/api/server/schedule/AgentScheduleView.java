@@ -47,6 +47,13 @@ public class AgentScheduleView {
     @Property(name = "channel_recipient_id")
     public String channelRecipientId;
 
+    // optional project binding: runs and their artifacts are attributed to this subject deterministically
+    @Property(name = "project_id")
+    public String projectId;
+
+    @Property(name = "subject_id")
+    public String subjectId;
+
     @Property(name = "concurrency_policy")
     public String concurrencyPolicy;
 

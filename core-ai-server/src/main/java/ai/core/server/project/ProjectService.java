@@ -9,7 +9,6 @@ import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.workflow.WorkflowDefinitionService;
-import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
@@ -40,7 +39,6 @@ public class ProjectService {
     static final String STATUS_ACTIVE = "active";
     static final String STATUS_ARCHIVED = "archived";
     static final String ANALYSIS_RUNNING = "running";
-    private static final int DUPLICATE_KEY_CODE = 11000;
 
     @Inject
     MongoCollection<Project> projectCollection;
@@ -58,6 +56,10 @@ public class ProjectService {
     ai.core.server.apiuser.PermissionService permissionService;
     @Inject
     ProjectStateService stateService;
+    @Inject
+    ProjectAttributionStore attributionStore;
+    @Inject
+    ProjectArtifactBinder artifactBinder;
 
     public Project create(String userId, String name, String description, String goal) {
         var project = new Project();
@@ -106,20 +108,21 @@ public class ProjectService {
     public void update(String id, String userId, boolean admin, UpdateFields fields) {
         var project = require(id);
         requireAccess(project, userId, admin);
-        var updates = new ArrayList<Bson>();
-        if (fields.name() != null && !fields.name().isBlank()) updates.add(Updates.set("name", fields.name().trim()));
-        updates.add(Updates.set("description", blankToNull(fields.description())));
-        updates.add(Updates.set("goal", blankToNull(fields.goal())));
-        updates.add(Updates.set("playbook", blankToNull(fields.playbook())));
+        // whole-document replace (like pushMember): $set of the embedded ProjectReportSource list has no
+        // codec — core-ng only generates codecs for @Collection classes — and used to 500 on report_sources
+        if (fields.name() != null && !fields.name().isBlank()) project.name = fields.name().trim();
+        project.description = blankToNull(fields.description());
+        project.goal = blankToNull(fields.goal());
+        project.playbook = blankToNull(fields.playbook());
         if (fields.reportSources() != null) {
-            updates.add(Updates.set("report_sources", resolveReportSources(project.userId, fields.reportSources())));
+            project.reportSources = resolveReportSources(project.userId, fields.reportSources());
         }
         if (fields.status() != null) {
             if (!STATUS_ACTIVE.equals(fields.status()) && !STATUS_ARCHIVED.equals(fields.status())) throw new BadRequestException("invalid status: " + fields.status());
-            updates.add(Updates.set("status", fields.status()));
+            project.status = fields.status();
         }
-        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
-        projectCollection.update(Filters.eq("_id", id), Updates.combine(updates));
+        project.updatedAt = ZonedDateTime.now();
+        projectCollection.replace(project);
     }
 
     // report sources must be addable members (own or shared); names are snapshotted so display survives removal
@@ -279,25 +282,34 @@ public class ProjectService {
     // ---- subject attribution (analysis output): rows in a side table, raw records stay untouched ----
 
     public void attribute(String projectId, String subjectId, String targetType, String targetId) {
+        attribute(projectId, subjectId, targetType, targetId, ProjectAttributionStore.SOURCE_ATTRIBUTOR);
+    }
+
+    /**
+     * Files have ONE home per project: attributing a file already homed under another subject is rejected
+     * (use {@link #moveReport} for an explicit re-home). Attributing a session/run pulls its artifacts along
+     * (cascade), so reports never stay orphaned behind an attributed conversation.
+     */
+    public void attribute(String projectId, String subjectId, String targetType, String targetId, String source) {
         validateWrite(projectId, subjectId);
         if (targetType == null || targetId == null || targetId.isBlank()) throw new BadRequestException("target_type and target_id are required");
-        if (!List.of("session", "run", "workflow_run", "file").contains(targetType)) throw new BadRequestException("invalid attribution target type: " + targetType);
-        if (attributionCollection.count(Filters.and(
-                Filters.eq("subject_id", subjectId),
-                Filters.eq("target_type", targetType),
-                Filters.eq("target_id", targetId))) > 0) return;
-        var attribution = new ProjectSubjectAttribution();
-        attribution.id = UUID.randomUUID().toString();
-        attribution.subjectId = subjectId;
-        attribution.targetType = targetType;
-        attribution.targetId = targetId;
-        attribution.createdAt = ZonedDateTime.now();
-        try {
-            attributionCollection.insert(attribution);
-        } catch (MongoWriteException e) {
-            if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
-            // concurrent duplicate: the existing row is equivalent, treat as no-op
+        if (!ProjectAttributionStore.TARGET_TYPES.contains(targetType)) throw new BadRequestException("invalid attribution target type: " + targetType);
+        var result = attributionStore.attribute(projectId, subjectId, targetType, targetId, source);
+        if (result == ProjectAttributionStore.Result.CONFLICT) {
+            throw new BadRequestException("file is already attributed to another subject of this project, move it explicitly instead, fileId=" + targetId);
         }
+        if (ProjectAttributionStore.TARGET_SESSION.equals(targetType) || ProjectAttributionStore.TARGET_RUN.equals(targetType)) {
+            artifactBinder.cascade(projectId, subjectId, targetType, targetId);
+        }
+    }
+
+    /** manual re-home of a report (null subject = back to the project's unassigned bucket) */
+    public void moveReport(String projectId, String userId, boolean admin, String fileId, String subjectId) {
+        var project = require(projectId);
+        requireAccess(project, userId, admin);
+        if (fileId == null || fileId.isBlank()) throw new BadRequestException("file_id is required");
+        if (subjectId != null && !subjectId.isBlank()) subject(projectId, subjectId);
+        attributionStore.moveFile(projectId, blankToNull(subjectId), fileId, ProjectAttributionStore.SOURCE_MANUAL);
     }
 
     private Bson listFilter(String userId, Boolean archivedOnly) {

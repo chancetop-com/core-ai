@@ -31,4 +31,12 @@ public class ProjectReportView {
 
     @Property(name = "agent_name")
     public String agentName;
+
+    // agent = produced by a member session/run; upload = pushed via CLI/UI
+    @Property(name = "source")
+    public String source;
+
+    // public share token of the file (null when the file has not been shared)
+    @Property(name = "share_token")
+    public String shareToken;
 }

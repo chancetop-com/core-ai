@@ -112,7 +112,7 @@ public class ProjectViewAssembler {
         return view;
     }
 
-    ProjectReportView toReportView(ProjectQueryService.ProjectReport row) {
+    ProjectReportView toReportView(ProjectReportQueryService.ProjectReport row) {
         var view = new ProjectReportView();
         view.fileId = row.fileId();
         view.fileName = row.fileName();
@@ -122,6 +122,8 @@ public class ProjectViewAssembler {
         view.subjectId = row.subjectId();
         view.agentId = row.agentId();
         view.agentName = row.agentName();
+        view.source = row.source();
+        view.shareToken = row.shareToken();
         return view;
     }
 

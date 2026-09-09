@@ -1,6 +1,5 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.Project;
@@ -23,13 +22,12 @@ import org.bson.conversions.Bson;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Read-side aggregations behind the project page tabs: executions, reports, members and the
- * narrative timeline. All project material is DERIVED from the member agent/workflow ids (no
+ * Read-side aggregations behind the project page tabs: executions, members and the narrative
+ * timeline (reports live in {@link ProjectReportQueryService}). All project material is DERIVED from the member agent/workflow ids (no
  * binding fields on raw records); subject scoping joins the attribution table written by the
  * project agent analysis. Cost aggregation lives in {@link ProjectStatsQueryService}.
  *
@@ -49,13 +47,13 @@ public class ProjectQueryService {
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
-    MongoCollection<AgentDefinition> agentCollection;
-    @Inject
     MongoCollection<ProjectSubject> subjectCollection;
     @Inject
     MongoCollection<ProjectSubjectAttribution> attributionCollection;
     @Inject
     MongoCollection<ProjectSubjectEvent> eventCollection;
+    @Inject
+    ProjectReportQueryService reportQueryService;
 
     // subject history rows (D7): the event series behind the timeline, trends and the report
     public List<ProjectSubjectEvent> events(String projectId, String subjectId, String type, ZonedDateTime from, ZonedDateTime to) {
@@ -120,28 +118,6 @@ public class ProjectQueryService {
         return workflowRunCollection.count(workflowFilter(scope, subjectId));
     }
 
-    public List<ProjectReport> reports(String projectId, String subjectId, String agentId) {
-        var scope = ProjectScope.resolve(projectCollection, projectId);
-        if (scope == null) return List.of();
-        var byFile = new LinkedHashMap<String, ProjectReport>();
-        addRunReports(byFile, scope, subjectId, agentId);
-        addSessionReports(byFile, scope, subjectId, agentId);
-        var subjectByFile = subjectByTarget(scope, "file");
-        var names = agentNames(byFile.values().stream().map(ProjectReport::agentId).filter(id -> id != null && !id.isBlank()).distinct().toList());
-        var result = new ArrayList<>(byFile.values().stream()
-            .map(r -> new ProjectReport(r.fileId(), r.fileName(), r.contentType(), r.size(), r.createdAt(), subjectByFile.get(r.fileId()), r.agentId(), names.get(r.agentId())))
-            .toList());
-        result.sort((a, b) -> compareDesc(a.createdAt, b.createdAt));
-        return result;
-    }
-
-    private Map<String, String> agentNames(List<String> agentIds) {
-        var names = new HashMap<String, String>();
-        if (agentIds.isEmpty()) return names;
-        agentCollection.find(Filters.in("_id", agentIds)).forEach(a -> names.put(a.id, a.name));
-        return names;
-    }
-
     // membership queries (embedded members + addable options) live in ProjectMemberQueryService
 
     public List<TimelineEntry> timeline(String projectId, String subjectId) {
@@ -160,9 +136,8 @@ public class ProjectQueryService {
             var at = session.lastMessageAt != null ? session.lastMessageAt : session.createdAt;
             entries.add(new TimelineEntry("session", session.title, null, subjectBySession.get(session.id), session.id, null, at));
         }
-        var subjectByFile = subjectByTarget(scope, "file");
-        for (var report : reports(projectId, subjectId, null)) {
-            entries.add(new TimelineEntry("report", report.fileName, null, subjectByFile.get(report.fileId()), null, null, report.createdAt));
+        for (var report : reportQueryService.reports(projectId, subjectId, null)) {
+            entries.add(new TimelineEntry("report", report.fileName(), null, report.subjectId(), null, null, report.createdAt()));
         }
         entries.sort((a, b) -> compareDesc(a.at, b.at));
         return entries.size() > TIMELINE_MAX_ENTRIES ? entries.subList(0, TIMELINE_MAX_ENTRIES) : entries;
@@ -215,32 +190,6 @@ public class ProjectQueryService {
                 run.tokenUsage != null ? run.tokenUsage.output : null, null, null, subjectByWorkflowRun.get(run.id)));
         }
         return rows;
-    }
-
-    private void addSessionReports(Map<String, ProjectReport> byFile, ProjectScope scope, String subjectId, String agentId) {
-        for (var session : chatSessionCollection.find(sortedQuery(sessionFilter(scope, subjectId), "last_message_at"))) {
-            if (session.artifacts == null || !matchesAgent(session.agentId, agentId)) continue;
-            for (var artifact : session.artifacts) {
-                if (artifact.fileId == null) continue;
-                var at = artifact.createdAt != null ? artifact.createdAt : session.lastMessageAt;
-                byFile.putIfAbsent(artifact.fileId, new ProjectReport(artifact.fileId, artifact.fileName, artifact.contentType, artifact.size, at, null, session.agentId, null));
-            }
-        }
-    }
-
-    private void addRunReports(Map<String, ProjectReport> byFile, ProjectScope scope, String subjectId, String agentId) {
-        for (var run : agentRunCollection.find(sortedQuery(runFilter(scope, subjectId), "started_at"))) {
-            if (run.artifacts == null || !matchesAgent(run.agentId, agentId)) continue;
-            for (var artifact : run.artifacts) {
-                if (artifact.fileId == null) continue;
-                var at = artifact.createdAt != null ? artifact.createdAt : run.startedAt;
-                byFile.putIfAbsent(artifact.fileId, new ProjectReport(artifact.fileId, artifact.fileName, artifact.contentType, artifact.size, at, null, run.agentId, null));
-            }
-        }
-    }
-
-    private boolean matchesAgent(String actualAgentId, String filterAgentId) {
-        return filterAgentId == null || filterAgentId.isBlank() || filterAgentId.equals(actualAgentId);
     }
 
     // aggregates cost/latest trace per session id (traces.session_id index)
@@ -381,10 +330,6 @@ public class ProjectQueryService {
     public record ProjectExecution(String id, String type, String title, String agentName, String status,
                                     ZonedDateTime startedAt, Long inputTokens, Long outputTokens, Double costUsd,
                                     String traceId, String subjectId) {
-    }
-
-    public record ProjectReport(String fileId, String fileName, String contentType, Long size,
-                                ZonedDateTime createdAt, String subjectId, String agentId, String agentName) {
     }
 
     public record StatRow(String groupId, String name, Long tokens, Double costUsd, Long count) {

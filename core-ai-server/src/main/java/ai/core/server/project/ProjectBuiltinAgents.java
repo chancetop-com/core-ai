@@ -52,14 +52,18 @@ public final class ProjectBuiltinAgents {
         specific subject) override this.
         """;
 
-    public static final String ATTRIBUTOR_PROMPT = """
+    private static final String ATTRIBUTOR_PROMPT_HEAD = """
         You are an attribution classifier for a business project. Assign each listed target
         (a conversation, run, workflow run or report) to the subject it belongs to.
 
         Rules:
+        """;
+    private static final String ATTRIBUTOR_PROMPT_TAIL = """
         - Use ONLY subject ids from the SUBJECTS list; never invent subject names or ids.
         - Only attribute targets you can confidently map from their content. Skip uncertain ones.
-        - A target may cover several subjects: emit one attribution entry per subject.
+        - A conversation or run may cover several subjects: emit one attribution entry per subject.
+        - A report (target_type "file") belongs to exactly ONE subject: emit at most one entry for it,
+          choosing the subject it reports on; skip it when the subject is unclear.
         - target_id must be copied verbatim from the material.
         """;
 
@@ -144,6 +148,10 @@ public final class ProjectBuiltinAgents {
 
     public static String subjectAnalysisSchema() {
         return new StringBuilder(SUBJECT_ANALYSIS_SCHEMA_HEAD).append(SUBJECT_ANALYSIS_SCHEMA_TAIL).toString();
+    }
+
+    public static String attributorPrompt() {
+        return new StringBuilder(ATTRIBUTOR_PROMPT_HEAD).append(ATTRIBUTOR_PROMPT_TAIL).toString();
     }
 
     public static String subjectAnalyzerPrompt() {

@@ -53,6 +53,14 @@ public class AgentSchedule {
     @Field(name = "channel_recipient_id")
     public String channelRecipientId;
 
+    // optional project binding: runs fired by this schedule (and the artifacts they submit) are
+    // attributed to this subject deterministically, no LLM attribution involved
+    @Field(name = "project_id")
+    public String projectId;
+
+    @Field(name = "subject_id")
+    public String subjectId;
+
     @NotNull
     @Field(name = "concurrency_policy")
     public ConcurrencyPolicy concurrencyPolicy;

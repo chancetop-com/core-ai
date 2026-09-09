@@ -7,9 +7,11 @@ import ai.core.api.server.schedule.UpdateScheduleRequest;
 import ai.core.schedule.CronExpression;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ConcurrencyPolicy;
+import ai.core.server.domain.ProjectSubject;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.BadRequestException;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -21,6 +23,8 @@ import java.util.UUID;
 public class AgentScheduleService {
     @Inject
     MongoCollection<AgentSchedule> agentScheduleCollection;
+    @Inject
+    MongoCollection<ProjectSubject> subjectCollection;
 
     public AgentScheduleView create(CreateScheduleRequest request, String userId) {
         var entity = new AgentSchedule();
@@ -36,6 +40,7 @@ public class AgentScheduleService {
         entity.variables = request.variables;
         entity.channelId = request.channelId;
         entity.channelRecipientId = request.channelRecipientId;
+        applyProjectBinding(entity, request.projectId, request.subjectId);
         entity.concurrencyPolicy = request.concurrencyPolicy != null
             ? ConcurrencyPolicy.valueOf(request.concurrencyPolicy)
             : ConcurrencyPolicy.SKIP;
@@ -85,6 +90,7 @@ public class AgentScheduleService {
         if (request.variables != null) entity.variables = request.variables;
         if (request.channelId != null) entity.channelId = request.channelId;
         if (request.channelRecipientId != null) entity.channelRecipientId = request.channelRecipientId;
+        if (request.subjectId != null || request.projectId != null) applyProjectBinding(entity, request.projectId, request.subjectId);
         if (request.concurrencyPolicy != null) entity.concurrencyPolicy = ConcurrencyPolicy.valueOf(request.concurrencyPolicy);
         entity.updatedAt = ZonedDateTime.now();
 
@@ -98,6 +104,23 @@ public class AgentScheduleService {
 
         agentScheduleCollection.replace(entity);
         return toView(entity);
+    }
+
+    // binding is validated against the subject table: the subject must exist and belong to the project;
+    // an empty subject_id clears the binding
+    private void applyProjectBinding(AgentSchedule entity, String projectId, String subjectId) {
+        if (subjectId == null || subjectId.isBlank()) {
+            entity.projectId = null;
+            entity.subjectId = null;
+            return;
+        }
+        var subject = subjectCollection.get(subjectId)
+            .orElseThrow(() -> new BadRequestException("project subject not found, subjectId=" + subjectId));
+        if (projectId != null && !projectId.isBlank() && !projectId.equals(subject.projectId)) {
+            throw new BadRequestException("subject does not belong to the project, subjectId=" + subjectId + ", projectId=" + projectId);
+        }
+        entity.projectId = subject.projectId;
+        entity.subjectId = subject.id;
     }
 
     public void delete(String id) {
@@ -117,6 +140,8 @@ public class AgentScheduleService {
         view.variables = entity.variables;
         view.channelId = entity.channelId;
         view.channelRecipientId = entity.channelRecipientId;
+        view.projectId = entity.projectId;
+        view.subjectId = entity.subjectId;
         view.concurrencyPolicy = entity.concurrencyPolicy.name();
         view.nextRunAt = entity.nextRunAt;
         view.createdAt = entity.createdAt;

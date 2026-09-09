@@ -13,8 +13,10 @@ public class ChatArtifactSetup {
     FileService fileService;
     @Inject
     MongoCollection<ChatSession> chatSessionCollection;
+    @Inject
+    ai.core.server.project.ProjectArtifactBinder artifactBinder;
 
     public ArtifactSink createChatSessionSink(String sessionId) {
-        return new ChatSessionArtifactSink(sessionId, chatSessionCollection);
+        return new ChatSessionArtifactSink(sessionId, chatSessionCollection, artifactBinder);
     }
 }

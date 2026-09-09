@@ -8,7 +8,9 @@ import ai.core.server.project.ProjectAttributionStage;
 import ai.core.server.project.ProjectMemberQueryService;
 import ai.core.server.project.ProjectQueryService;
 import ai.core.server.project.ProjectReportCompletionJob;
+import ai.core.server.project.ProjectReportQueryService;
 import ai.core.server.project.ProjectReportStage;
+import ai.core.server.project.ProjectReportUploadController;
 import ai.core.server.project.ProjectResetService;
 import ai.core.server.project.ProjectService;
 import ai.core.server.project.ProjectStateService;
@@ -21,6 +23,7 @@ import ai.core.server.project.ProjectViewAssembler;
 import ai.core.server.project.ProjectWebServiceImpl;
 import ai.core.server.project.ProjectWriterToolFactory;
 import ai.core.server.project.ProjectWriterToolSupport;
+import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 
 import java.time.Duration;
@@ -40,6 +43,7 @@ public class ProjectModule extends Module {
         // assembler/report stage, stages before the analysis service.
         bind(ProjectStateService.class);
         bind(ProjectService.class);
+        bind(ProjectReportQueryService.class);
         bind(ProjectQueryService.class);
         bind(ProjectMemberQueryService.class);
         bind(ProjectViewAssembler.class);
@@ -51,6 +55,8 @@ public class ProjectModule extends Module {
         bind(ProjectToolDispatcher.class);
         bind(ProjectAnalysisService.class);
         api().service(ProjectWebService.class, bind(ProjectWebServiceImpl.class));
+        // multipart report upload (CLI `report push` / UI upload): raw controller, JSON api cannot take files
+        http().route(HTTPMethod.POST, "/api/projects/:id/subjects/:subjectId/reports", bind(ProjectReportUploadController.class));
         var projectTools = bind(ProjectTools.class);
         projectTools.initialize();
         ProjectWriterToolSupport.setFactory(bind(ProjectWriterToolFactory.class));

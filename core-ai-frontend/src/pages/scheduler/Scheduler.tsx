@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Calendar, Edit2, Trash2, X, Play } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, AgentScheduleView, ChannelView, CreateScheduleRequest, SessionScheduleView, UpdateScheduleRequest } from '../../api/client';
+import type { AgentDefinition, AgentScheduleView, ChannelView, CreateScheduleRequest, ProjectSubject, ProjectSummary, SessionScheduleView, UpdateScheduleRequest } from '../../api/client';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
 import CronEditor, { describeCron, isOnceCron } from './CronEditor';
 
@@ -19,6 +19,9 @@ interface EditorState {
   variables?: Record<string, string>;
   channelId: string;
   channelRecipientId: string;
+  // project binding: runs + artifacts of this schedule are attributed to the subject (no LLM attribution)
+  projectId: string;
+  subjectId: string;
   concurrencyPolicy: ConcurrencyPolicy;
   enabled: boolean;
 }
@@ -40,6 +43,8 @@ function emptyEditor(): EditorState {
     variables: undefined,
     channelId: '',
     channelRecipientId: '',
+    projectId: '',
+    subjectId: '',
     concurrencyPolicy: 'SKIP',
     enabled: true,
   };
@@ -63,6 +68,9 @@ export default function Scheduler() {
   const [sessionSchedules, setSessionSchedules] = useState<SessionScheduleView[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [channels, setChannels] = useState<ChannelView[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [subjects, setSubjects] = useState<ProjectSubject[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionOffset, setSessionOffset] = useState(0);
@@ -73,14 +81,33 @@ export default function Scheduler() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([api.schedules.list(), api.agents.list(), api.channels.list()])
-      .then(([scheduleRes, agentRes, channelRes]) => {
+    Promise.all([
+      api.schedules.list(),
+      api.agents.list(),
+      api.channels.list(),
+      // projects are optional context (permission-gated): a failure must not break the scheduler page
+      api.projects.list(0, 200, false).catch(() => ({ projects: [], total: 0 })),
+    ])
+      .then(([scheduleRes, agentRes, channelRes, projectRes]) => {
         setSchedules(scheduleRes.schedules || []);
         setAgents(agentRes.agents || []);
         setChannels(channelRes.channels || []);
+        setProjects(projectRes.projects || []);
       })
       .finally(() => setLoading(false));
   };
+
+  // subject options follow the selected project
+  useEffect(() => {
+    if (!editor.open || !editor.projectId) { setSubjects([]); return; }
+    let cancelled = false;
+    setSubjectsLoading(true);
+    api.projects.subjects(editor.projectId, 0, 200)
+      .then(res => { if (!cancelled) setSubjects(res.subjects || []); })
+      .catch(() => { if (!cancelled) setSubjects([]); })
+      .finally(() => { if (!cancelled) setSubjectsLoading(false); });
+    return () => { cancelled = true; };
+  }, [editor.open, editor.projectId]);
 
   useEffect(load, []);
 
@@ -116,6 +143,28 @@ export default function Scheduler() {
     return m;
   }, [agents]);
 
+  const projectMap = useMemo(() => {
+    const m: Record<string, ProjectSummary> = {};
+    for (const p of projects) m[p.id] = p;
+    return m;
+  }, [projects]);
+
+  // subject names for the list badges: resolved lazily per bound project (small, cached per page load)
+  const [subjectNames, setSubjectNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const boundProjects = Array.from(new Set(schedules.map(s => s.project_id).filter((id): id is string => !!id)));
+    const missing = boundProjects.filter(pid => !schedules.some(s => s.project_id === pid && s.subject_id && subjectNames[s.subject_id]));
+    if (missing.length === 0) return;
+    Promise.all(missing.map(pid => api.projects.subjects(pid, 0, 200).catch(() => ({ subjects: [] as ProjectSubject[] }))))
+      .then(results => {
+        const next: Record<string, string> = {};
+        for (const r of results) for (const sub of r.subjects || []) next[sub.id] = sub.name;
+        setSubjectNames(prev => ({ ...prev, ...next }));
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedules]);
+  const subjectName = (id: string) => subjectNames[id] ?? id.slice(0, 8);
+
   const filtered = schedules.filter(s => {
     if (filterAgentId && s.agent_id !== filterAgentId) return false;
     if (filterEnabled === 'enabled' && !s.enabled) return false;
@@ -146,6 +195,8 @@ export default function Scheduler() {
     variables: s.variables,
     channelId: s.channel_id || '',
     channelRecipientId: s.channel_recipient_id || '',
+    projectId: s.project_id || '',
+    subjectId: s.subject_id || '',
     concurrencyPolicy: (s.concurrency_policy as ConcurrencyPolicy) || 'SKIP',
     enabled: s.enabled,
   });
@@ -170,6 +221,9 @@ export default function Scheduler() {
           variables,
           channel_id: editor.channelId || undefined,
           channel_recipient_id: editor.channelRecipientId || undefined,
+          // empty subject clears the binding on the server
+          project_id: editor.projectId || '',
+          subject_id: editor.subjectId || '',
           concurrency_policy: editor.concurrencyPolicy,
           enabled: editor.enabled,
         };
@@ -185,6 +239,8 @@ export default function Scheduler() {
           variables,
           channel_id: editor.channelId || undefined,
           channel_recipient_id: editor.channelRecipientId || undefined,
+          project_id: editor.projectId || undefined,
+          subject_id: editor.subjectId || undefined,
           concurrency_policy: editor.concurrencyPolicy,
         };
         await api.schedules.create(payload);
@@ -309,6 +365,13 @@ export default function Scheduler() {
                         {s.remark?.trim() && (
                           <div className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }} title={s.remark}>
                             {s.remark}
+                          </div>
+                        )}
+                        {s.subject_id && (
+                          <div className="text-[10px] truncate mt-0.5" title="Runs and reports of this schedule are attributed to this project subject">
+                            <span className="px-1.5 py-0.5 rounded" style={{ background: 'rgba(16, 185, 129, 0.12)', color: '#047857' }}>
+                              {projectMap[s.project_id || '']?.name ?? 'project'} / {subjectName(s.subject_id)}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -531,6 +594,32 @@ export default function Scheduler() {
                 <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
                   SKIP: drop tick if previous still running. QUEUE: wait and run after. PARALLEL: run in parallel.
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Project Subject (optional)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={editor.projectId}
+                    onChange={e => setEditor({ ...editor, projectId: e.target.value, subjectId: '' })}
+                    className="w-full px-3 py-2 rounded-lg border text-sm"
+                    style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+                    <option value="">No project</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <select value={editor.subjectId} disabled={!editor.projectId || subjectsLoading}
+                    onChange={e => setEditor({ ...editor, subjectId: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border text-sm disabled:opacity-50"
+                    style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+                    <option value="">{subjectsLoading ? 'Loading subjects...' : editor.projectId ? 'Select subject' : 'Pick a project first'}</option>
+                    {subjects.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+                  </select>
+                </div>
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Every run of this schedule and the reports it submits are filed under this subject directly, without LLM attribution.
+                </p>
+                {editor.projectId && !editor.subjectId && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-danger)' }}>Pick a subject, or the binding is not saved.</p>
+                )}
               </div>
 
               <div>

@@ -15,6 +15,7 @@ import ai.core.api.server.project.ListProjectExecutionsResponse;
 import ai.core.api.server.project.ListProjectMembersResponse;
 import ai.core.api.server.project.ListProjectReportsRequest;
 import ai.core.api.server.project.ListProjectReportsResponse;
+import ai.core.api.server.project.MoveProjectReportRequest;
 import ai.core.api.server.project.ListProjectSubjectsRequest;
 import ai.core.api.server.project.ListProjectSubjectsResponse;
 import ai.core.api.server.project.ListProjectsRequest;
@@ -55,6 +56,8 @@ public class ProjectWebServiceImpl implements ProjectWebService {
     ProjectService projectService;
     @Inject
     ProjectQueryService queryService;
+    @Inject
+    ProjectReportQueryService reportQueryService;
     @Inject
     ProjectMemberQueryService memberQueryService;
     @Inject
@@ -155,8 +158,15 @@ public class ProjectWebServiceImpl implements ProjectWebService {
     public ListProjectReportsResponse reports(String id, ListProjectReportsRequest request) {
         requireAccessible(id);
         var response = new ListProjectReportsResponse();
-        response.reports = queryService.reports(id, request.subjectId, request.agentId).stream().map(assembler::toReportView).toList();
+        var filter = new ProjectReportQueryService.ReportFilter(request.subjectId, request.agentId, request.from, request.to, request.unassigned);
+        response.reports = reportQueryService.reports(id, filter).stream().map(assembler::toReportView).toList();
         return response;
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.PROJECT_MANAGE)
+    public void moveReport(String id, String fileId, MoveProjectReportRequest request) {
+        projectService.moveReport(id, userId(), admin(), fileId, request != null ? request.subjectId : null);
     }
 
     @Override

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Activity, ArrowLeft, CheckSquare, ExternalLink, FileText, ListChecks, Loader2, RefreshCw, RotateCcw, UserRound } from 'lucide-react';
 import { api } from '../../api/client';
-import type { ProjectEvent, ProjectExecution, ProjectReport, ProjectStatsView, ProjectView, TimelineEntry } from '../../api/client';
+import type { ProjectEvent, ProjectExecution, ProjectStatsView, ProjectView, TimelineEntry } from '../../api/client';
+import ProjectReports from './ProjectReports';
 
 type Tab = 'report' | 'current' | 'executions' | 'artifacts' | 'cost' | 'timeline';
 
@@ -63,7 +64,6 @@ export default function SubjectDetail() {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [phaseEvents, setPhaseEvents] = useState<ProjectEvent[]>([]);
   const [executions, setExecutions] = useState<ProjectExecution[]>([]);
-  const [reports, setReports] = useState<ProjectReport[]>([]);
   const [stats, setStats] = useState<ProjectStatsView | null>(null);
   const [tab, setTab] = useState<Tab>('report');
   const [loading, setLoading] = useState(true);
@@ -160,16 +160,14 @@ export default function SubjectDetail() {
       api.projects.get(id, subjectId),
       api.projects.timeline(id, subjectId),
       api.projects.executions(id, undefined, 0, 50, subjectId),
-      api.projects.reports(id, subjectId),
       api.projects.stats(id, subjectId),
       api.projects.events(id, subjectId, 'phase').catch(e => { console.error('phase events failed', e); return { events: [] }; }),
     ])
-      .then(([p, t, e, r, s, ev]) => {
+      .then(([p, t, e, s, ev]) => {
         setProject(p);
         setTimeline(t.entries || []);
         setPhaseEvents(ev.events || []);
         setExecutions(e.executions || []);
-        setReports(r.reports || []);
         setStats(s);
         setError('');
       })
@@ -572,23 +570,9 @@ export default function SubjectDetail() {
       )}
 
       {tab === 'artifacts' && (
-        <div>
-          {reports.length === 0 ? (
-            <div className="text-sm py-6 text-center" style={{ color: 'var(--color-text-secondary)' }}>No reports yet.</div>
-          ) : reports.map(r => (
-            <div key={r.file_id} className="flex items-center gap-3 py-2 text-sm border-b"
-              style={{ borderColor: 'var(--color-border)' }}>
-              <FileText size={14} style={{ color: 'var(--color-text-secondary)' }} />
-              <span className="min-w-0 flex-1 truncate">{r.file_name}</span>
-              {r.agent_name && (
-                <span className="text-xs shrink-0 px-1.5 rounded"
-                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>{r.agent_name}</span>
-              )}
-              <span className="text-xs shrink-0" style={{ color: 'var(--color-text-secondary)' }}>{r.size ? `${r.size} B` : ''}</span>
-              <span className="text-xs shrink-0 w-24 text-right" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(r.created_at)}</span>
-            </div>
-          ))}
-        </div>
+        /* the subject's report directory: every report filed under this subject (bound schedules,
+           attributed conversations, cascades, uploads), by month; openable, shareable, re-homeable */
+        <ProjectReports projectId={id} subjectId={subjectId} subjects={project.subjects} onChanged={load} />
       )}
 
       {tab === 'cost' && stats && (

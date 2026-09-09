@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,6 +54,8 @@ class ProjectServiceTest {
     private MongoCollection<ProjectSubject> subjects;
     private MongoCollection<ProjectSubjectAttribution> attributions;
     private MongoCollection<AgentDefinition> agents;
+    private ProjectAttributionStore attributionStore;
+    private ProjectArtifactBinder artifactBinder;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -72,6 +75,11 @@ class ProjectServiceTest {
         var userCollection = (MongoCollection<ai.core.server.domain.User>) mock(MongoCollection.class);
         service.userCollection = userCollection;
         service.stateService = mock(ProjectStateService.class);
+        attributionStore = mock(ProjectAttributionStore.class);
+        service.attributionStore = attributionStore;
+        artifactBinder = mock(ProjectArtifactBinder.class);
+        service.artifactBinder = artifactBinder;
+        when(attributionStore.attribute(any(), any(), any(), any(), any())).thenReturn(ProjectAttributionStore.Result.INSERTED);
         when(projects.get("p-1")).thenReturn(Optional.of(project("p-1")));
         when(subjects.count(any(Bson.class))).thenReturn(0L);
         when(attributions.count(any(Bson.class))).thenReturn(0L);
@@ -93,10 +101,29 @@ class ProjectServiceTest {
     }
 
     @Test
-    void attributeInsertsAttribution() {
+    void attributeInsertsAttributionAndCascadesToArtifacts() {
         when(subjects.get("s-1")).thenReturn(Optional.of(subject("s-1")));
         service.attribute("p-1", "s-1", "session", "session-1");
-        verify(attributions).insert(any());
+        verify(attributionStore).attribute("p-1", "s-1", "session", "session-1", ProjectAttributionStore.SOURCE_ATTRIBUTOR);
+        verify(artifactBinder).cascade("p-1", "s-1", "session", "session-1");
+    }
+
+    @Test
+    void attributeRejectsFileAlreadyHomedElsewhere() {
+        when(subjects.get("s-1")).thenReturn(Optional.of(subject("s-1")));
+        when(attributionStore.attribute("p-1", "s-1", "file", "f-1", ProjectAttributionStore.SOURCE_ATTRIBUTOR))
+            .thenReturn(ProjectAttributionStore.Result.CONFLICT);
+        assertThrows(BadRequestException.class, () -> service.attribute("p-1", "s-1", "file", "f-1"));
+        verify(artifactBinder, never()).cascade(any(), any(), any(), any());
+    }
+
+    @Test
+    void moveReportRehomesFileAndAllowsUnassigning() {
+        when(subjects.get("s-1")).thenReturn(Optional.of(subject("s-1")));
+        service.moveReport("p-1", "user-1", false, "f-1", "s-1");
+        verify(attributionStore).moveFile("p-1", "s-1", "f-1", ProjectAttributionStore.SOURCE_MANUAL);
+        service.moveReport("p-1", "user-1", false, "f-1", "");
+        verify(attributionStore).moveFile("p-1", null, "f-1", ProjectAttributionStore.SOURCE_MANUAL);
     }
 
     @Test
