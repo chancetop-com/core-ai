@@ -43,6 +43,9 @@ public class ProjectViewAssembler {
         view.description = subject.description;
         view.externalLink = subject.externalLink;
         view.status = subject.status;
+        view.source = subject.source;
+        view.proposalReason = subject.proposalReason;
+        view.proposedAt = subject.proposedAt;
         view.attributedCount = queryService.attributionCount(subject.id);
         view.profile = subject.profile;
         view.analyzedAt = subject.analyzedAt;

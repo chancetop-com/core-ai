@@ -140,7 +140,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVProjectAttributionScope(),
             new SchemaMigrationVProjectSubjectState(),
             new SchemaMigrationVProjectAttributionFileTime(),
-            new SchemaMigrationVProjectAttributionPurgeDangling()
+            new SchemaMigrationVProjectAttributionPurgeDangling(),
+            new SchemaMigrationVProjectAutoSubjects()
         );
     }
 }

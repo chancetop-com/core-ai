@@ -47,6 +47,14 @@ public class Project {
     @Field(name = "members")
     public List<ProjectMemberRef> members;
 
+    // subject auto-discovery mode: off | propose | create (null = propose); validated in the service layer
+    @Field(name = "auto_subjects")
+    public String autoSubjects;
+
+    // normalized names of rejected proposals: the attributor is told not to propose them again
+    @Field(name = "rejected_subject_names")
+    public List<String> rejectedSubjectNames;
+
     // active | archived; validated in service layer
     @NotNull
     @Field(name = "status")

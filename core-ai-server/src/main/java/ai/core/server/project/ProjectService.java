@@ -8,6 +8,7 @@ import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.workflow.WorkflowDefinitionService;
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
@@ -40,6 +41,25 @@ public class ProjectService {
     static final String STATUS_ACTIVE = "active";
     static final String STATUS_ARCHIVED = "archived";
     static final String ANALYSIS_RUNNING = "running";
+
+    // subject provenance: manual (null = manual) rows are human-created, auto rows come from the
+    // attribution stage's proposal pass
+    static final String SOURCE_MANUAL = "manual";
+    static final String SOURCE_AUTO = "auto";
+    // subject tracking status: proposed = an auto-discovered candidate waiting for review
+    static final String SUBJECT_PROPOSED = "proposed";
+    static final String SUBJECT_STARTED = "started";
+    // subject auto-discovery mode: off = never propose, propose = create as proposed, create = create started
+    static final String AUTO_SUBJECTS_PROPOSE = "propose";
+    static final String AUTO_SUBJECTS_CREATE = "create";
+    static final String AUTO_SUBJECTS_OFF = "off";
+    static final int DUPLICATE_KEY_CODE = 11000;
+
+    // null = propose: a missing value must behave like the default (no backfill migration)
+    public static String autoSubjectMode(Project project) {
+        if (project == null || project.autoSubjects == null || project.autoSubjects.isBlank()) return AUTO_SUBJECTS_PROPOSE;
+        return project.autoSubjects;
+    }
 
     @Inject
     MongoCollection<Project> projectCollection;
@@ -127,6 +147,17 @@ public class ProjectService {
         projectCollection.update(Filters.eq("_id", id), Updates.combine(updates));
     }
 
+    public void updateAutoSubjects(String projectId, String userId, boolean admin, String mode) {
+        var project = require(projectId);
+        requireAccess(project, userId, admin);
+        if (!AUTO_SUBJECTS_OFF.equals(mode) && !AUTO_SUBJECTS_PROPOSE.equals(mode) && !AUTO_SUBJECTS_CREATE.equals(mode)) {
+            throw new BadRequestException("invalid auto_subjects mode: " + mode);
+        }
+        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
+            Updates.set("auto_subjects", mode),
+            Updates.set("updated_at", ZonedDateTime.now())));
+    }
+
     // report sources must be addable members (own or shared); names are snapshotted so display survives removal
     private List<Document> resolveReportSources(String ownerUserId, List<ReportSourceRef> refs) {
         var sources = new ArrayList<Document>();
@@ -201,6 +232,45 @@ public class ProjectService {
         subject.updatedAt = subject.createdAt;
         subjectCollection.insert(subject);
         return subject;
+    }
+
+    /**
+     * Internal write of the attribution stage (no access check — the pipeline runs as the system):
+     * an auto-discovered subject, either a proposal awaiting review or directly started. The
+     * normalized name key backs the partial unique index that keeps proposals from duplicating.
+     */
+    public ProjectSubject createAutoSubject(String projectId, String name, String description, String reason, String status) {
+        var project = require(projectId);
+        var subject = new ProjectSubject();
+        subject.id = UUID.randomUUID().toString();
+        subject.projectId = projectId;
+        subject.userId = project.userId;
+        subject.name = name.trim();
+        subject.description = blankToNull(description);
+        subject.source = SOURCE_AUTO;
+        subject.nameKey = ProjectSubjectNames.normalize(subject.name);
+        subject.proposalReason = blankToNull(reason);
+        subject.status = status;
+        subject.proposedAt = SUBJECT_PROPOSED.equals(status) ? ZonedDateTime.now() : null;
+        subject.createdAt = ZonedDateTime.now();
+        subject.updatedAt = subject.createdAt;
+        try {
+            subjectCollection.insert(subject);
+        } catch (MongoWriteException e) {
+            // the partial unique index caught a concurrent run proposing the same entity: reuse it
+            if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
+            var existing = autoSubjectByNameKey(projectId, subject.nameKey);
+            if (existing == null) throw e;
+            return existing;
+        }
+        markStatsDirty(projectId);
+        return subject;
+    }
+
+    private ProjectSubject autoSubjectByNameKey(String projectId, String nameKey) {
+        var query = new Query();
+        query.filter = Filters.and(Filters.eq("project_id", projectId), Filters.eq("name_key", nameKey), Filters.eq("source", SOURCE_AUTO));
+        return subjectCollection.find(query).stream().findFirst().orElse(null);
     }
 
     public void updateSubject(String projectId, String userId, boolean admin, String subjectId, SubjectFields fields) {

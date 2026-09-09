@@ -20,12 +20,13 @@ public final class ProjectBuiltinAgents {
     public static final String SUBJECT_ANALYZER = "project-subject-analyzer";
     public static final String REPORT_RENDERER = "project-report-renderer";
 
-    public static final String ATTRIBUTOR_DESCRIPTION = "Attributes the targets listed in the query to project subjects. The query is the SUBJECTS list plus a digest of the unattributed targets; the result is applied to the attribution table automatically.";
+    public static final String ATTRIBUTOR_DESCRIPTION = "Attributes the targets listed in the query to project subjects and proposes new subjects for untracked entities. The query is the playbook + SUBJECTS list + digest of the unattributed targets; the result is applied to the attribution table automatically.";
     public static final String SUBJECT_ANALYZER_DESCRIPTION = "Derives ONE subject's status/KPIs/action items/notes from the query (playbook + subject context + current state + material digest); the result is applied automatically.";
 
     private static final String ATTRIBUTOR_PROMPT_HEAD = """
         You are an attribution classifier for a business project. Assign each listed target
-        (a conversation, run, workflow run or report) to the subject it belongs to.
+        (a conversation, run, workflow run or report) to the subject it belongs to, and propose
+        new subjects when the material clearly concerns an entity that is not tracked yet.
 
         Rules:
         """;
@@ -36,6 +37,16 @@ public final class ProjectBuiltinAgents {
         - A report (target_type "file") belongs to exactly ONE subject: emit at most one entry for it,
           choosing the subject it reports on; skip it when the subject is unclear.
         - target_id must be copied verbatim from the material.
+        - NEW SUBJECTS: when AUTO SUBJECTS is propose or create, material that matches no listed subject
+          but clearly concerns a distinct entity of the kind the PLAYBOOK describes may be proposed as a
+          new subject. Use the entity's canonical name as it appears in the material; one entry per
+          entity; list every target of this batch that belongs to it.
+        - Propose only when at least one run or report (target_type run/workflow_run/file) supports it;
+          conversations alone never justify a new subject.
+        - Never propose a subject that differs from a listed one only by case, spacing, punctuation or a
+          generic suffix (Inc, LLC, Spa, Restaurant): attribute to the listed subject instead.
+        - Never propose a subject named in the REJECTED list.
+        - When AUTO SUBJECTS is off, new_subjects must be an empty array.
         """;
 
     // prompts and schemas are split private halves + runtime-rebuilt accessors: public huge
@@ -104,7 +115,7 @@ public final class ProjectBuiltinAgents {
     private static final String ATTRIBUTION_SCHEMA_HEAD = """
         {"type":"object","additionalProperties":false,"properties":""";
     private static final String ATTRIBUTION_SCHEMA_TAIL = """
-        {"attributions":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"target_type":{"type":"string","enum":["session","run","workflow_run","file"]},"target_id":{"type":"string"},"subject_id":{"type":"string"}},"required":["target_type","target_id","subject_id"]}}},"required":["attributions"]}
+        {"attributions":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"target_type":{"type":"string","enum":["session","run","workflow_run","file"]},"target_id":{"type":"string"},"subject_id":{"type":"string"}},"required":["target_type","target_id","subject_id"]}},"new_subjects":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string"},"description":{"type":"string"},"reason":{"type":"string"},"targets":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"target_type":{"type":"string","enum":["session","run","workflow_run","file"]},"target_id":{"type":"string"}},"required":["target_type","target_id"]}}},"required":["name","targets"]}},"required":["attributions","new_subjects"]}
         """;
 
     private static final String SUBJECT_ANALYSIS_SCHEMA_HEAD = """

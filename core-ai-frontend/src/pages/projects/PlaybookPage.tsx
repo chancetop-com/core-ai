@@ -121,6 +121,13 @@ export default function PlaybookPage() {
 
       <div className="mb-6">
         <div className="text-sm font-medium mb-2">Playbook content</div>
+        <div className="mb-2 p-2 rounded-lg text-xs"
+          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+          Describe what a subject is (merchant, campaign, business line) and how to tell them apart — the attributor
+          uses this to discover new subjects from the material it scans.{(project.auto_subjects || 'propose') === 'off'
+            ? ' Auto subjects is off, so it only attributes to existing subjects.'
+            : ''}
+        </div>
         <textarea
           rows={20}
           placeholder={'Overall process:\n1. Monthly audit ...\n2. ...\n\nKPI evaluation methodology:\n- audit_score: 0-10 across broken links / content quality / page speed; record after every audit\n- ranking: primary keyword position; record weekly\n- traffic: organic sessions; record weekly'}

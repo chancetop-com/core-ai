@@ -22,6 +22,8 @@ import org.slf4j.LoggerFactory;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -54,6 +56,7 @@ public class ProjectAttributionStage {
     static final int MAX_RUNS = 30;
     static final int MAX_WORKFLOW_RUNS = 10;
     static final int MAX_DIGEST_CHARS = 80000;   // hard cap on the attribution input size
+    static final int MAX_PLAYBOOK_CHARS = 4000;  // proposals are only as good as the playbook describes
     static final ZonedDateTime EPOCH = ZonedDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneId.of("UTC"));
 
     @Inject
@@ -96,16 +99,27 @@ public class ProjectAttributionStage {
         if (definition == null) {
             throw new IllegalStateException("attribution writer definition is missing; reset builtin agents to restore it");
         }
-        var input = "SUBJECTS:\n" + subjectsText(projectId) + "\nNEW MATERIAL:\n" + material.digest();
+        var input = input(project, projectId, material);
         var output = llmCallExecutor.execute(definition, input, null, 900).output();
         var count = applyAttributions(projectId, output, material);
+        var proposed = applyProposals(projectId, project, output, material);
         // markers first (they make the run idempotent), then the cursor
         scanStore.markOffered(projectId, material.offered());
         reopenGrownTargets(projectId, material);
         advanceCursor(projectId, material.forwardLatest());
-        LOGGER.info("project attribution applied, projectId={}, offered={}, attributed={}, cursor={}",
-            projectId, material.offered().size(), count, material.forwardLatest());
+        LOGGER.info("project attribution applied, projectId={}, offered={}, attributed={}, proposed={}, cursor={}",
+            projectId, material.offered().size(), count, proposed, material.forwardLatest());
         return count;
+    }
+
+    private String input(Project project, String projectId, ProjectAttributionMaterial material) {
+        return new StringBuilder(4096)
+            .append("PLAYBOOK:\n").append(playbookText(project)).append('\n')
+            .append("SUBJECTS:\n").append(subjectsText(projectId)).append('\n')
+            .append("REJECTED:\n").append(rejectedText(project)).append('\n')
+            .append("AUTO SUBJECTS: ").append(ProjectService.autoSubjectMode(project)).append('\n')
+            .append("NEW MATERIAL:\n").append(material.digest())
+            .toString();
     }
 
     private void collect(ProjectAttributionMaterial material, Project project, ZonedDateTime cursor) {
@@ -195,6 +209,93 @@ public class ProjectAttributionStage {
         }
     }
 
+    /**
+     * Applies the proposer half of the attributor output. A proposal becomes a subject only when it
+     * is backed by a run, workflow run or report that this run actually offered (chat alone never
+     * justifies a tracked entity), it is not on the project's rejected list, and its normalized name
+     * matches no existing subject — in which case the material is attributed to that subject instead.
+     */
+    private int applyProposals(String projectId, Project project, String output, ProjectAttributionMaterial material) {
+        var mode = ProjectService.autoSubjectMode(project);
+        if (ProjectService.AUTO_SUBJECTS_OFF.equals(mode) || output == null || output.isBlank()) return 0;
+        if (project.playbook == null || project.playbook.isBlank()) {
+            LOGGER.warn("auto subject discovery is on but the playbook is empty; proposals can only guess, projectId={}", projectId);
+        }
+        int created = 0;
+        try {
+            var parsed = JsonUtil.toMap(output);
+            var proposals = parsed != null ? parsed.get("new_subjects") : null;
+            if (!(proposals instanceof List<?> list)) return 0;
+            var byKey = subjectKeys(projectId);
+            var rejected = project.rejectedSubjectNames != null ? project.rejectedSubjectNames : List.<String>of();
+            for (var item : list) {
+                if (!(item instanceof Map<?, ?> entry)) continue;
+                created += applyProposal(projectId, entry, material, mode, byKey, rejected);
+            }
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to parse subject proposals, projectId={}, error={}", projectId, e.getMessage());
+        }
+        return created;
+    }
+
+    private int applyProposal(String projectId, Map<?, ?> entry, ProjectAttributionMaterial material, String mode,
+                              Map<String, String> byKey, List<String> rejected) {
+        var name = str(entry.get("name"));
+        if (name == null) return 0;
+        name = name.trim();
+        var key = ProjectSubjectNames.normalize(name);
+        if (key == null || key.isBlank()) return 0;
+        var targets = proposalTargets(entry, material);
+        if (targets.stream().allMatch(target -> ProjectAttributionStore.TARGET_SESSION.equals(target.targetType()))) return 0;
+        if (rejected.contains(key)) {
+            LOGGER.info("subject proposal rejected by the rejected-name list, projectId={}, name={}", projectId, name);
+            return 0;
+        }
+        var existing = byKey.get(key);
+        if (existing != null) {
+            attributeAll(projectId, existing, targets);   // same entity: attribute, never duplicate
+            return 0;
+        }
+        var status = ProjectService.AUTO_SUBJECTS_CREATE.equals(mode) ? ProjectService.SUBJECT_STARTED : ProjectService.SUBJECT_PROPOSED;
+        var subject = projectService.createAutoSubject(projectId, name, str(entry.get("description")), str(entry.get("reason")), status);
+        byKey.put(key, subject.id);
+        attributeAll(projectId, subject.id, targets);
+        LOGGER.info("auto subject created, projectId={}, subjectId={}, name={}, status={}", projectId, subject.id, subject.name, status);
+        return 1;
+    }
+
+    // targets must have been offered to this run — the proposer may only reference material it saw
+    private List<ProjectAttributionMaterial.OfferedTarget> proposalTargets(Map<?, ?> entry, ProjectAttributionMaterial material) {
+        var targets = new ArrayList<ProjectAttributionMaterial.OfferedTarget>();
+        if (!(entry.get("targets") instanceof List<?> list)) return targets;
+        for (var item : list) {
+            if (!(item instanceof Map<?, ?> target)) continue;
+            var targetType = str(target.get("target_type"));
+            var targetId = str(target.get("target_id"));
+            if (targetType == null || targetId == null || !material.contains(targetType, targetId)) continue;
+            targets.add(new ProjectAttributionMaterial.OfferedTarget(targetType, targetId, null));
+        }
+        return targets;
+    }
+
+    private int attributeAll(String projectId, String subjectId, List<ProjectAttributionMaterial.OfferedTarget> targets) {
+        int count = 0;
+        for (var target : targets) count += attributeOne(projectId, subjectId, target.targetType(), target.targetId());
+        return count;
+    }
+
+    // normalized name/alias → subject id, so a proposal for an existing entity (or one created
+    // earlier in the same batch) attributes instead of duplicating
+    private Map<String, String> subjectKeys(String projectId) {
+        var byKey = new HashMap<String, String>();
+        for (var subject : projectService.subjects(projectId)) {
+            var key = subject.nameKey != null ? subject.nameKey : ProjectSubjectNames.normalize(subject.name);
+            if (key != null && !key.isBlank()) byKey.putIfAbsent(key, subject.id);
+            for (var alias : ProjectSubjectReviewService.aliasesOf(subject)) byKey.putIfAbsent(alias, subject.id);
+        }
+        return byKey;
+    }
+
     private int applyAttributions(String projectId, String output, ProjectAttributionMaterial material) {
         if (output == null || output.isBlank()) return 0;
         int count = 0;
@@ -249,6 +350,18 @@ public class ProjectAttributionStage {
             text.append("- ").append(subject.id).append(": ").append(subject.name).append('\n');
         }
         return text.length() == 0 ? "(none)\n" : text.toString();
+    }
+
+    private String playbookText(Project project) {
+        if (project.playbook == null || project.playbook.isBlank()) return "(none)";
+        return limit(project.playbook, MAX_PLAYBOOK_CHARS);
+    }
+
+    private String rejectedText(Project project) {
+        if (project.rejectedSubjectNames == null || project.rejectedSubjectNames.isEmpty()) return "(none)";
+        var text = new StringBuilder(128);
+        for (var name : project.rejectedSubjectNames) text.append("- ").append(name).append('\n');
+        return text.toString();
     }
 
     private List<String> artifactsOf(List<ai.core.server.domain.AgentRunArtifact> artifacts) {

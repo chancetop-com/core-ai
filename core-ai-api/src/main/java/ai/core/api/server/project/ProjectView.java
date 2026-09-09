@@ -27,6 +27,12 @@ public class ProjectView {
     @Property(name = "playbook")
     public String playbook;
 
+    @Property(name = "auto_subjects")
+    public String autoSubjects;   // off | propose | create; null behaves as propose
+
+    @Property(name = "rejected_subject_names")
+    public List<String> rejectedSubjectNames;   // normalized names the attributor must never re-propose
+
     @Property(name = "report_sources")
     public List<ProjectReportSourceView> reportSources;
 

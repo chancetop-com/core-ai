@@ -15,10 +15,13 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -81,6 +84,34 @@ class ProjectServiceTest {
         when(projects.get("p-1")).thenReturn(Optional.of(project("p-1")));
         when(subjects.count(any(Bson.class))).thenReturn(0L);
         when(attributions.count(any(Bson.class))).thenReturn(0L);
+    }
+
+    @Test
+    void createAutoSubjectStampsSourceNameKeyAndProposal() {
+        var subject = service.createAutoSubject("p-1", "Acme Spa Inc", "the spa account", "run mentions acme", ProjectService.SUBJECT_PROPOSED);
+
+        assertEquals(ProjectService.SOURCE_AUTO, subject.source);
+        assertEquals("acme", subject.nameKey);
+        assertEquals(ProjectService.SUBJECT_PROPOSED, subject.status);
+        assertNotNull(subject.proposedAt);
+        verify(subjects).insert(subject);
+        verify(projects).update(any(Bson.class), any(Bson.class));   // stats dirty
+    }
+
+    @Test
+    void updateAutoSubjectsValidatesMode() {
+        assertThrows(BadRequestException.class, () -> service.updateAutoSubjects("p-1", "user-1", false, "sometimes"));
+        service.updateAutoSubjects("p-1", "user-1", false, ProjectService.AUTO_SUBJECTS_CREATE);
+        verify(projects, times(1)).update(any(Bson.class), any(Bson.class));   // the invalid mode wrote nothing
+    }
+
+    @Test
+    void autoSubjectModeDefaultsToPropose() {
+        assertEquals(ProjectService.AUTO_SUBJECTS_PROPOSE, ProjectService.autoSubjectMode(new Project()));
+        assertEquals(ProjectService.AUTO_SUBJECTS_PROPOSE, ProjectService.autoSubjectMode(project("p-1")));
+        var off = project("p-1");
+        off.autoSubjects = ProjectService.AUTO_SUBJECTS_OFF;
+        assertEquals(ProjectService.AUTO_SUBJECTS_OFF, ProjectService.autoSubjectMode(off));
     }
 
     @Test

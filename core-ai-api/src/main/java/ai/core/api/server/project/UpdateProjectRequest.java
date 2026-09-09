@@ -25,4 +25,7 @@ public class UpdateProjectRequest {
 
     @Property(name = "status")
     public String status;
+
+    @Property(name = "auto_subjects")
+    public String autoSubjects;   // off | propose | create (null = keep current, which defaults to propose)
 }

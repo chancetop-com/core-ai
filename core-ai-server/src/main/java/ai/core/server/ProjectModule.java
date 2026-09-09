@@ -18,6 +18,7 @@ import ai.core.server.project.ProjectStateService;
 import ai.core.server.project.ProjectStatsQueryService;
 import ai.core.server.project.ProjectStatsRefreshJob;
 import ai.core.server.project.ProjectSubjectAnalysisStage;
+import ai.core.server.project.ProjectSubjectReviewService;
 import ai.core.server.project.ProjectTargetScanStore;
 import ai.core.server.project.ProjectToolDispatcher;
 import ai.core.server.project.ProjectTools;
@@ -54,6 +55,7 @@ public class ProjectModule extends Module {
         bind(ProjectSubjectAnalysisStage.class);
         bind(ProjectReportStage.class);
         bind(ProjectResetService.class);
+        bind(ProjectSubjectReviewService.class);
         bind(ProjectToolDispatcher.class);
         bind(ProjectAnalysisService.class);
         api().service(ProjectWebService.class, bind(ProjectWebServiceImpl.class));

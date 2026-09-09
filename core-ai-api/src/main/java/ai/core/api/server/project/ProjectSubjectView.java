@@ -23,6 +23,15 @@ public class ProjectSubjectView {
     @Property(name = "status")
     public String status;   // started after the first manual analysis; null/not_started = never analyzed
 
+    @Property(name = "source")
+    public String source;   // manual (null) or auto: discovered by the attribution stage
+
+    @Property(name = "proposal_reason")
+    public String proposalReason;   // why the attributor proposed this subject (auto rows only)
+
+    @Property(name = "proposed_at")
+    public ZonedDateTime proposedAt;   // set while status=proposed (the row waits for review)
+
     @Property(name = "attributed_count")
     public Long attributedCount;
 

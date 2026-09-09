@@ -83,6 +83,26 @@ public class ProjectTargetScanStore {
     }
 
     /**
+     * Deletes the markers of targets that have no attribution row in the project — they were offered
+     * but the attributor matched them to nothing. The next round offers them again, which is how
+     * material scanned before a subject existed (or before auto-discovery was enabled) gets
+     * reclassified. Explicit and costly: it re-runs the LLM over that material.
+     */
+    public long dropUnattributed(String projectId) {
+        var query = new Query();
+        query.filter = Filters.eq("project_id", projectId);
+        long dropped = 0;
+        for (var scan : scanCollection.find(query)) {
+            var attributed = attributionCollection.count(Filters.and(Filters.eq("project_id", projectId),
+                Filters.eq("target_type", scan.targetType), Filters.eq("target_id", scan.targetId))) > 0;
+            if (attributed) continue;
+            scanCollection.delete(Filters.eq("_id", scan.id));
+            dropped++;
+        }
+        return dropped;
+    }
+
+    /**
      * @param materialAt material time of the record when it was last offered (null = never offered)
      * @param attributed whether attribution rows exist for the target in the project
      */

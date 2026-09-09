@@ -44,6 +44,22 @@ public class ProjectSubject {
     @Field(name = "status")
     public String status;
 
+    // manual (default, null = manual) | auto — auto rows are created by the attribution stage
+    @Field(name = "source")
+    public String source;
+
+    // normalized name of auto-created subjects only: backs the partial unique index
+    // (project_id, name_key) with source=auto, manual subjects are not constrained
+    @Field(name = "name_key")
+    public String nameKey;
+
+    // why the attributor proposed this subject (shown on the review bar)
+    @Field(name = "proposal_reason")
+    public String proposalReason;
+
+    @Field(name = "proposed_at")
+    public ZonedDateTime proposedAt;
+
     // stable facts about the subject (JSON object text), extracted by the subject analyzer,
     // overwritten per analysis
     @Field(name = "profile")

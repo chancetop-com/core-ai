@@ -15,8 +15,10 @@ import ai.core.api.server.project.ListProjectExecutionsResponse;
 import ai.core.api.server.project.ListProjectMembersResponse;
 import ai.core.api.server.project.ListProjectReportsRequest;
 import ai.core.api.server.project.ListProjectReportsResponse;
+import ai.core.api.server.project.MergeSubjectRequest;
 import ai.core.api.server.project.MoveProjectReportRequest;
 import ai.core.api.server.project.ProjectReportStatsView;
+import ai.core.api.server.project.RescanUnassignedResponse;
 import ai.core.api.server.project.ListProjectSubjectsRequest;
 import ai.core.api.server.project.ListProjectSubjectsResponse;
 import ai.core.api.server.project.ListProjectsRequest;
@@ -69,6 +71,8 @@ public class ProjectWebServiceImpl implements ProjectWebService {
     @Inject
     ProjectResetService resetService;
     @Inject
+    ProjectSubjectReviewService reviewService;
+    @Inject
     ProjectViewAssembler assembler;
     @Inject
     MongoCollection<User> userCollection;
@@ -103,6 +107,8 @@ public class ProjectWebServiceImpl implements ProjectWebService {
         view.description = project.description;
         view.goal = project.goal;
         view.playbook = project.playbook;
+        view.autoSubjects = ProjectService.autoSubjectMode(project);
+        view.rejectedSubjectNames = project.rejectedSubjectNames;
         view.reportSources = streamOf(project.reportSources).map(assembler::toReportSourceView).toList();
         view.status = project.status;
         view.lastAnalyzedAt = project.lastAnalyzedAt;
@@ -135,6 +141,7 @@ public class ProjectWebServiceImpl implements ProjectWebService {
             .toList();
         var fields = new ProjectService.UpdateFields(request.name, request.description, request.goal, request.playbook, sources, request.status);
         projectService.update(id, userId(), admin(), fields);
+        if (request.autoSubjects != null) projectService.updateAutoSubjects(id, userId(), admin(), request.autoSubjects);
     }
 
     @Override
@@ -281,6 +288,32 @@ public class ProjectWebServiceImpl implements ProjectWebService {
     @PermissionsRequired(PermissionCodes.PROJECT_MANAGE)
     public void deleteSubject(String id, String subjectId) {
         projectService.deleteSubject(id, userId(), admin(), subjectId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.PROJECT_MANAGE)
+    public void acceptSubject(String id, String subjectId) {
+        reviewService.acceptSubject(id, userId(), admin(), subjectId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.PROJECT_MANAGE)
+    public void rejectSubject(String id, String subjectId) {
+        reviewService.rejectSubject(id, userId(), admin(), subjectId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.PROJECT_MANAGE)
+    public void mergeSubject(String id, String subjectId, MergeSubjectRequest request) {
+        reviewService.mergeSubject(id, userId(), admin(), subjectId, request.intoSubjectId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.PROJECT_MANAGE)
+    public RescanUnassignedResponse rescanUnassigned(String id) {
+        var response = new RescanUnassignedResponse();
+        response.dropped = reviewService.rescanUnassigned(id, userId(), admin());
+        return response;
     }
 
     @Override

@@ -64,6 +64,11 @@ export default function ProjectDetail() {
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editGoal, setEditGoal] = useState('');
+  const [editAutoSubjects, setEditAutoSubjects] = useState('propose');
+
+  // pending auto-discovered proposals: the merge target picked per proposal row
+  const [mergePicks, setMergePicks] = useState<Record<string, string>>({});
+  const [reviewBusy, setReviewBusy] = useState('');
 
   const [allAgents, setAllAgents] = useState<ProjectMember[]>([]);
   const [allWorkflows, setAllWorkflows] = useState<ProjectMember[]>([]);
@@ -229,6 +234,7 @@ export default function ProjectDetail() {
     setEditName(project?.name || '');
     setEditDesc(project?.description || '');
     setEditGoal(project?.goal || '');
+    setEditAutoSubjects(project?.auto_subjects || 'propose');
     setEditModal(true);
   };
 
@@ -237,9 +243,49 @@ export default function ProjectDetail() {
       name: editName,
       description: editDesc,
       goal: editGoal,
+      auto_subjects: editAutoSubjects,
     });
     setEditModal(false);
     load();
+  };
+
+  // proposals are subjects in status=proposed: accept promotes them, reject deletes them and
+  // remembers the name, merge re-homes their material onto a real subject
+  const reviewProposal = async (action: 'accept' | 'reject' | 'merge', subject: ProjectSubject) => {
+    setReviewBusy(subject.id);
+    try {
+      if (action === 'reject' && !confirm(`Reject proposal "${subject.name}"? It is deleted, its material goes back to unassigned and the name is remembered so it will not be proposed again.`)) return;
+      if (action === 'accept') {
+        await api.projects.acceptSubject(id, subject.id);
+      } else if (action === 'reject') {
+        await api.projects.rejectSubject(id, subject.id);
+      } else {
+        const into = mergePicks[subject.id];
+        if (!into) return;
+        const target = project?.subjects.find(s => s.id === into);
+        if (!confirm(`Merge "${subject.name}" into "${target?.name || into}"? Its material moves there and the name becomes an alias of the target.`)) return;
+        await api.projects.mergeSubject(id, subject.id, into);
+      }
+      load();
+    } catch (e) {
+      setError(String((e as Error).message || e));
+    } finally {
+      setReviewBusy('');
+    }
+  };
+
+  const rescanUnassigned = async () => {
+    if (!confirm('Re-offer every material that never got attributed? This re-runs the attributor over history — a real token cost on a large project.')) return;
+    setReviewBusy('rescan');
+    try {
+      const res = await api.projects.rescanUnassigned(id);
+      setAnalyzeMessage(`${res.dropped ?? 0} material marker(s) cleared — the next attribution round (every 10 minutes) re-offers them.`);
+      load();
+    } catch (e) {
+      setError(String((e as Error).message || e));
+    } finally {
+      setReviewBusy('');
+    }
   };
 
   const inputStyle = {
@@ -262,6 +308,9 @@ export default function ProjectDetail() {
   }
 
   const memberCount = members.agents.length + members.workflows.length;
+  const proposals = project.subjects.filter(s => s.status === 'proposed');
+  const mergeCandidates = project.subjects.filter(s => s.status !== 'proposed');
+  const autoSubjectsMode = project.auto_subjects || 'propose';
 
   return (
     <div className="p-6">
@@ -472,6 +521,13 @@ export default function ProjectDetail() {
         </button>
         {showPlaybook && (
           <div className="px-4 pb-4">
+            {!project.playbook && autoSubjectsMode !== 'off' && (
+              <div className="mb-3 p-2 rounded-lg text-xs"
+                style={{ background: 'rgba(234, 179, 8, 0.1)', color: '#b45309' }}>
+                Auto subjects is on ({autoSubjectsMode === 'create' ? 'create' : 'propose'}) but the playbook is empty —
+                describe what a subject is (merchant, campaign, business line) so the attributor has a basis for discovering new ones.
+              </div>
+            )}
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Process + KPI evaluation methodology</span>
               <button onClick={() => navigate(`/projects/${id}/playbook`)} className="text-xs px-2 py-1 rounded-lg border cursor-pointer"
@@ -522,7 +578,15 @@ export default function ProjectDetail() {
               reports the attributor could not place; file them under a subject
             </span>
           </span>
-          {showReports ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          <span className="flex items-center gap-2">
+            <button onClick={e => { e.stopPropagation(); rescanUnassigned(); }} disabled={reviewBusy === 'rescan'}
+              className="px-2 py-1 rounded-lg text-xs border cursor-pointer disabled:opacity-50"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+              title="Re-offer material that was scanned but never attributed (runs the attributor over history)">
+              {reviewBusy === 'rescan' ? 'Rescanning...' : 'Rescan unassigned'}
+            </button>
+            {showReports ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </span>
         </button>
         {showReports && (
           <div className="mt-3">
@@ -530,6 +594,64 @@ export default function ProjectDetail() {
           </div>
         )}
       </div>
+
+      {/* Auto-discovered proposals waiting for review: only rendered when there is something to decide */}
+      {proposals.length > 0 && (
+        <div className="p-4 rounded-xl border mb-4"
+          style={{ background: 'var(--color-bg-secondary)', borderColor: 'rgba(234, 179, 8, 0.4)' }}>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-medium">Proposed subjects</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded"
+              style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#b45309' }}>{proposals.length}</span>
+            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              discovered by the attributor — they are not analyzed or reported until you accept them
+            </span>
+          </div>
+          <div className="grid gap-2 mt-3">
+            {proposals.map(s => (
+              <div key={s.id} className="p-3 rounded-lg border flex flex-wrap items-center gap-2"
+                style={{ borderColor: 'var(--color-border)' }}>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{s.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded"
+                      style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#b45309' }}>proposed</span>
+                  </div>
+                  {s.proposal_reason && (
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{s.proposal_reason}</div>
+                  )}
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                    {s.attributed_count ?? 0} attributed item{s.attributed_count === 1 ? '' : 's'}
+                    {s.proposed_at && ` · ${new Date(s.proposed_at).toLocaleString()}`}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => reviewProposal('accept', s)} disabled={reviewBusy === s.id}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+                    style={{ background: 'var(--color-primary)' }}>
+                    Accept
+                  </button>
+                  <select value={mergePicks[s.id] || ''} onChange={e => setMergePicks({ ...mergePicks, [s.id]: e.target.value })}
+                    className="px-2 py-1.5 rounded-lg border text-xs" style={inputStyle}>
+                    <option value="">Merge into...</option>
+                    {mergeCandidates.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <button onClick={() => reviewProposal('merge', s)} disabled={!mergePicks[s.id] || reviewBusy === s.id}
+                    className="px-2.5 py-1.5 rounded-lg text-xs border cursor-pointer disabled:opacity-50"
+                    style={{ borderColor: 'var(--color-border)' }}>
+                    Merge
+                  </button>
+                  <button onClick={() => reviewProposal('reject', s)} disabled={reviewBusy === s.id}
+                    className="px-2.5 py-1.5 rounded-lg text-xs border cursor-pointer disabled:opacity-50"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-danger)' }}>
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Subjects at the bottom: the growing list, never pushed down by the sections above */}
       <div>
@@ -569,6 +691,13 @@ export default function ProjectDetail() {
                   <div className="flex items-center gap-3">
                     <CircleDot size={18} style={{ color: 'var(--color-primary)' }} />
                     <span className="font-medium">{s.name}</span>
+                    {s.status === 'proposed' && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#b45309' }}>proposed</span>
+                    )}
+                    {s.source === 'auto' && s.status !== 'proposed' && (
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>auto</span>
+                    )}
                     {status?.summary && (
                       <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{status.summary}</span>
                     )}
@@ -677,6 +806,23 @@ export default function ProjectDetail() {
                 onChange={e => setEditDesc(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={inputStyle} />
               <input type="text" placeholder="Goal (optional)" value={editGoal}
                 onChange={e => setEditGoal(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={inputStyle} />
+              <div>
+                <div className="text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Auto subjects</div>
+                <select value={editAutoSubjects} onChange={e => setEditAutoSubjects(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm" style={inputStyle}>
+                  <option value="off">Off — never propose new subjects</option>
+                  <option value="propose">Propose — create them as pending proposals (default)</option>
+                  <option value="create">Create — start tracking them immediately</option>
+                </select>
+                <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  The attributor can discover new subjects from the material. Proposals wait for your review; created ones are analyzed right away.
+                </div>
+                {editAutoSubjects !== 'off' && !project.playbook && (
+                  <div className="text-xs mt-1" style={{ color: '#b45309' }}>
+                    No playbook yet — without it the attributor has no definition of what a subject is, so proposals will be rough.
+                  </div>
+                )}
+              </div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setEditModal(false)} className="px-3 py-1.5 rounded-lg text-sm border cursor-pointer"
                   style={{ borderColor: 'var(--color-border)' }}>Cancel</button>

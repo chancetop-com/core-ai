@@ -1247,6 +1247,10 @@ export interface ProjectSubject {
   report_generated_at?: string;
   report_error?: string;
   report_run_id?: string;
+  // auto-discovery: 'auto' = proposed by the attribution pipeline, missing/'manual' = created by hand
+  source?: string;
+  proposal_reason?: string;
+  proposed_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -1305,6 +1309,9 @@ export interface ProjectView {
   description?: string;
   goal?: string;
   playbook?: string;
+  // off | propose | create; missing = propose (the server default)
+  auto_subjects?: string;
+  rejected_subject_names?: string[];
   report_sources: ProjectReportSource[];
   status: string;
   last_analyzed_at?: string;
@@ -1949,7 +1956,7 @@ export const api = {
       request<CreateProjectResponse>('/api/projects', { method: 'POST', body: JSON.stringify(data) }),
     get: (id: string, subjectId?: string) =>
       request<ProjectView>(`/api/projects/${id}${subjectId ? `?subject_id=${encodeURIComponent(subjectId)}` : ''}`),
-    update: (id: string, data: { name?: string; description?: string; goal?: string; playbook?: string; report_sources?: { type: 'agent' | 'workflow'; id: string }[]; status?: string }) =>
+    update: (id: string, data: { name?: string; description?: string; goal?: string; playbook?: string; auto_subjects?: string; report_sources?: { type: 'agent' | 'workflow'; id: string }[]; status?: string }) =>
       request<void>(`/api/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     archive: (id: string) => request<void>(`/api/projects/${id}/archive`, { method: 'POST' }),
     activate: (id: string) => request<void>(`/api/projects/${id}/activate`, { method: 'POST' }),
@@ -2013,6 +2020,17 @@ export const api = {
       request<void>(`/api/projects/${id}/subjects/${subjectId}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteSubject: (id: string, subjectId: string) =>
       request<void>(`/api/projects/${id}/subjects/${subjectId}`, { method: 'DELETE' }),
+    // auto-discovered proposals (status='proposed'): accept starts it, reject deletes it and
+    // remembers the name, merge re-homes its material onto an existing subject
+    acceptSubject: (id: string, subjectId: string) =>
+      request<void>(`/api/projects/${id}/subjects/${subjectId}/accept`, { method: 'POST' }),
+    rejectSubject: (id: string, subjectId: string) =>
+      request<void>(`/api/projects/${id}/subjects/${subjectId}/reject`, { method: 'POST' }),
+    mergeSubject: (id: string, subjectId: string, intoSubjectId: string) =>
+      request<void>(`/api/projects/${id}/subjects/${subjectId}/merge`, { method: 'POST', body: JSON.stringify({ into_subject_id: intoSubjectId }) }),
+    // explicit, costly rerun: clears the scan markers of material that never got attributed
+    rescanUnassigned: (id: string) =>
+      request<{ dropped?: number }>(`/api/projects/${id}/rescan-unassigned`, { method: 'POST' }),
     stats: (id: string, subjectId?: string) =>
       request<ProjectStatsView>(`/api/projects/${id}/stats${subjectId ? `?subject_id=${encodeURIComponent(subjectId)}` : ''}`),
     members: (id: string) => request<ListProjectMembersResponse>(`/api/projects/${id}/members`),

@@ -93,6 +93,22 @@ public interface ProjectWebService {
     @Path("/api/projects/:id/subjects/:subjectId")
     void deleteSubject(@PathParam("id") String id, @PathParam("subjectId") String subjectId);
 
+    @POST
+    @Path("/api/projects/:id/subjects/:subjectId/accept")
+    void acceptSubject(@PathParam("id") String id, @PathParam("subjectId") String subjectId);
+
+    @POST
+    @Path("/api/projects/:id/subjects/:subjectId/reject")
+    void rejectSubject(@PathParam("id") String id, @PathParam("subjectId") String subjectId);
+
+    @POST
+    @Path("/api/projects/:id/subjects/:subjectId/merge")
+    void mergeSubject(@PathParam("id") String id, @PathParam("subjectId") String subjectId, MergeSubjectRequest request);
+
+    @POST
+    @Path("/api/projects/:id/rescan-unassigned")
+    RescanUnassignedResponse rescanUnassigned(@PathParam("id") String id);
+
     @GET
     @Path("/api/projects/:id/stats")
     ProjectStatsView stats(@PathParam("id") String id, GetProjectStatsRequest request);
