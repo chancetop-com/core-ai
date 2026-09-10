@@ -96,23 +96,29 @@ public class SessionChannelService {
                         sessionId, sseEvent.getClass().getSimpleName());
                 return;
             }
-            // Merge consecutive text/reasoning chunks to conserve buffer space.
-            // This preserves total content while avoiding buffer slots being consumed
-            // by many small streaming chunks during long agent turns.
-            if (!state.eventBuffer.isEmpty() && mergeConsecutiveChunk(state.eventBuffer.peekLast(), sseEvent)) {
-                channelService.send(sessionId, sseEvent);
-                return;
-            }
-            if (state.eventBuffer.size() >= MAX_BUFFER_SIZE) {
-                state.eventBuffer.removeFirst();
-                if (!state.overflowLogged) {
-                    state.overflowLogged = true;
-                    LOGGER.warn("session event buffer overflow, oldest events will be lost on replay, sessionId={}, capacity={}", sessionId, MAX_BUFFER_SIZE);
-                }
-            }
-            state.eventBuffer.addLast(sseEvent);
-            channelService.send(sessionId, sseEvent);
+            bufferEvent(state, sessionId, sseEvent);
         }
+    }
+
+    /**
+     * Appends the event to the replay buffer, dropping the oldest one when the buffer is full, and
+     * forwards it to the channel. Consecutive streaming chunks are merged into the last buffered
+     * event first, so a long turn does not consume a buffer slot per token.
+     */
+    private void bufferEvent(SessionChannelState state, String sessionId, SseBaseEvent sseEvent) {
+        if (!state.eventBuffer.isEmpty() && mergeConsecutiveChunk(state.eventBuffer.peekLast(), sseEvent)) {
+            channelService.send(sessionId, sseEvent);
+            return;
+        }
+        if (state.eventBuffer.size() >= MAX_BUFFER_SIZE) {
+            state.eventBuffer.removeFirst();
+            if (!state.overflowLogged) {
+                state.overflowLogged = true;
+                LOGGER.warn("session event buffer overflow, oldest events will be lost on replay, sessionId={}, capacity={}", sessionId, MAX_BUFFER_SIZE);
+            }
+        }
+        state.eventBuffer.addLast(sseEvent);
+        channelService.send(sessionId, sseEvent);
     }
 
     private boolean isTurnActivityEvent(SseBaseEvent sseEvent) {

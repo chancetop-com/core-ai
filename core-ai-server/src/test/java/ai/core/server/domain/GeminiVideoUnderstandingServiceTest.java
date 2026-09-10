@@ -22,7 +22,7 @@ class GeminiVideoUnderstandingServiceTest {
         var config = new GatewayModelConfig();
         config.id = "gemini-video";
         config.providerId = "provider-1";
-        config.supportsVideo = true;
+        config.supportsVideo = Boolean.TRUE;
         var provider = new GatewayProviderConfig();
         provider.id = "provider-1";
         provider.type = "gemini";

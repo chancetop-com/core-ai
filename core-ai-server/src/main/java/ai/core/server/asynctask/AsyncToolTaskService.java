@@ -134,6 +134,7 @@ public class AsyncToolTaskService {
                 task.taskId(), toolName, sessionId, status);
             case ABANDONED -> manager().abandonNotification(task.taskId());
             case RETRY -> LOGGER.info("async task notification not accepted, will retry, taskId={}, session={}", task.taskId(), sessionId);
+            default -> throw new IllegalStateException("unknown notification outcome: " + outcome);
         }
     }
 

@@ -140,7 +140,7 @@ class InProcessCommandHandlerTest {
         var asyncToolTaskService = mock(AsyncToolTaskService.class);
         var session = mock(InProcessAgentSession.class);
         when(sessionManager.getSession("s-1", null, "u-1")).thenReturn(session);
-        when(asyncToolTaskService.claimNotificationDelivery("task-1")).thenReturn(true);
+        when(asyncToolTaskService.claimNotificationDelivery("task-1")).thenReturn(Boolean.TRUE);
         var handler = new InProcessCommandHandler(
                 new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, null, null, null, asyncToolTaskService),
                 new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null));
@@ -154,7 +154,7 @@ class InProcessCommandHandlerTest {
     void skipsTaskNotificationWhoseDeliveryWasAlreadyClaimed() {
         var sessionManager = mock(AgentSessionManager.class);
         var asyncToolTaskService = mock(AsyncToolTaskService.class);
-        when(asyncToolTaskService.claimNotificationDelivery("task-1")).thenReturn(false);
+        when(asyncToolTaskService.claimNotificationDelivery("task-1")).thenReturn(Boolean.FALSE);
         var handler = new InProcessCommandHandler(
                 new SessionCommandDependencies(sessionManager, null, mock(SessionOwnershipRegistry.class), null, null, null, null, asyncToolTaskService),
                 new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null));
@@ -169,7 +169,7 @@ class InProcessCommandHandlerTest {
         var sessionManager = mock(AgentSessionManager.class);
         var eventPublisher = mock(EventPublisher.class);
         var asyncToolTaskService = mock(AsyncToolTaskService.class);
-        when(asyncToolTaskService.claimNotificationDelivery("task-1")).thenReturn(true);
+        when(asyncToolTaskService.claimNotificationDelivery("task-1")).thenReturn(Boolean.TRUE);
         doThrow(new RuntimeException("rebuild failed")).when(sessionManager).getSession("s-1", null, "u-1");
         var handler = new InProcessCommandHandler(
                 new SessionCommandDependencies(sessionManager, null, mock(SessionOwnershipRegistry.class), null, eventPublisher, null, null, asyncToolTaskService),
