@@ -29,6 +29,19 @@ public class ToolCallAsyncTaskManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolCallAsyncTaskManager.class);
     private static final String TASK_PREFIX = "async_task:";
 
+    private static boolean isOpen(AsyncTaskData data) {
+        return data.status == ToolCallResult.Status.PENDING || data.status == ToolCallResult.Status.WAITING_FOR_INPUT;
+    }
+
+    private static boolean isTerminal(AsyncTaskData data) {
+        return data.status == ToolCallResult.Status.COMPLETED || data.status == ToolCallResult.Status.FAILED;
+    }
+
+    /** Terminal, addressed to a session, and no one has confirmed that the session took it. */
+    private static boolean isNotificationPending(AsyncTaskData data) {
+        return data.sessionId != null && data.notifiedAtMs == null && isTerminal(data);
+    }
+
     private final PersistenceProvider persistenceProvider;
     private final Map<String, ToolCall> toolRegistry = new HashMap<>();
     private final List<TerminalListener> listeners = new CopyOnWriteArrayList<>();
@@ -101,19 +114,6 @@ public class ToolCallAsyncTaskManager {
                 isNotificationPending(data), data.notifyAttempts, data.lastNotifyAttemptAtMs));
         }
         return snapshots;
-    }
-
-    private static boolean isOpen(AsyncTaskData data) {
-        return data.status == ToolCallResult.Status.PENDING || data.status == ToolCallResult.Status.WAITING_FOR_INPUT;
-    }
-
-    private static boolean isTerminal(AsyncTaskData data) {
-        return data.status == ToolCallResult.Status.COMPLETED || data.status == ToolCallResult.Status.FAILED;
-    }
-
-    /** Terminal, addressed to a session, and no one has confirmed that the session took it. */
-    private static boolean isNotificationPending(AsyncTaskData data) {
-        return isTerminal(data) && data.sessionId != null && data.notifiedAtMs == null;
     }
 
     /** Terminal tasks are kept for late readers; this drops the ones nobody will ask about any more. */
@@ -243,24 +243,28 @@ public class ToolCallAsyncTaskManager {
      * twice (two replicas polled it on the same tick) is still injected into its session once. The
      * winner calls {@link #reopenNotification} when the injection then fails.
      */
-    public synchronized boolean markNotificationDelivered(String taskId) {
-        var dataOpt = loadData(taskId);
-        if (dataOpt.isEmpty()) return false;
-        var data = dataOpt.get();
-        if (data.notifiedAtMs != null) return false;
-        data.notifiedAtMs = System.currentTimeMillis();
-        save(data);
-        return true;
+    public boolean markNotificationDelivered(String taskId) {
+        synchronized (this) {
+            var dataOpt = loadData(taskId);
+            if (dataOpt.isEmpty()) return false;
+            var data = dataOpt.get();
+            if (data.notifiedAtMs != null) return false;
+            data.notifiedAtMs = System.currentTimeMillis();
+            save(data);
+            return true;
+        }
     }
 
     /** Hands a claimed notification back to the retry sweep after the session refused it. */
-    public synchronized void reopenNotification(String taskId) {
-        var dataOpt = loadData(taskId);
-        if (dataOpt.isEmpty()) return;
-        var data = dataOpt.get();
-        if (data.notifiedAtMs == null) return;
-        data.notifiedAtMs = null;
-        save(data);
+    public void reopenNotification(String taskId) {
+        synchronized (this) {
+            var dataOpt = loadData(taskId);
+            if (dataOpt.isEmpty()) return;
+            var data = dataOpt.get();
+            if (data.notifiedAtMs == null) return;
+            data.notifiedAtMs = null;
+            save(data);
+        }
     }
 
     /** Stops re-announcing a task no one can take: its session is gone, or the retries ran out. */
