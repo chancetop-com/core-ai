@@ -4,6 +4,7 @@ import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.ProjectTargetScan;
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -87,8 +88,12 @@ public class ProjectTargetScanStore {
      * but the attributor matched them to nothing. The next round offers them again, which is how
      * material scanned before a subject existed (or before auto-discovery was enabled) gets
      * reclassified. Explicit and costly: it re-runs the LLM over that material.
+     *
+     * <p>The oldest marker is read BEFORE the drop and returned with the count: a caller rewinding the
+     * attribution cursor to it must not read it afterwards, when the marker is gone.
      */
-    public long dropUnattributed(String projectId) {
+    public Rescan dropUnattributed(String projectId) {
+        var oldest = oldestMarkerAt(projectId);
         var query = new Query();
         query.filter = Filters.eq("project_id", projectId);
         long dropped = 0;
@@ -99,7 +104,23 @@ public class ProjectTargetScanStore {
             scanCollection.delete(Filters.eq("_id", scan.id));
             dropped++;
         }
-        return dropped;
+        return new Rescan(oldest, dropped);
+    }
+
+    private ZonedDateTime oldestMarkerAt(String projectId) {
+        var query = new Query();
+        query.filter = Filters.eq("project_id", projectId);
+        query.sort = Sorts.ascending("material_at");
+        query.limit = 1;
+        var markers = scanCollection.find(query);
+        return markers.isEmpty() ? null : markers.getFirst().materialAt;
+    }
+
+    /**
+     * @param oldestMarkerAt material time of the project's oldest marker before the drop (null = nothing was scanned)
+     * @param dropped how many markers were deleted
+     */
+    public record Rescan(ZonedDateTime oldestMarkerAt, long dropped) {
     }
 
     /**

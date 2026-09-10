@@ -279,7 +279,10 @@ export default function ProjectDetail() {
     setReviewBusy('rescan');
     try {
       const res = await api.projects.rescanUnassigned(id);
-      setAnalyzeMessage(`${res.dropped ?? 0} material marker(s) cleared — the next attribution round (every 10 minutes) re-offers them.`);
+      const dropped = res.dropped ?? 0;
+      setAnalyzeMessage(dropped > 0
+        ? `${dropped} material marker(s) cleared and the attribution cursor rewound — the next round (every 10 minutes) re-offers that range.`
+        : 'Every scanned material already carries an attribution — nothing to re-offer.');
       load();
     } catch (e) {
       setError(String((e as Error).message || e));
@@ -595,18 +598,27 @@ export default function ProjectDetail() {
         )}
       </div>
 
-      {/* Auto-discovered proposals waiting for review: only rendered when there is something to decide */}
-      {proposals.length > 0 && (
-        <div className="p-4 rounded-xl border mb-4"
-          style={{ background: 'var(--color-bg-secondary)', borderColor: 'rgba(234, 179, 8, 0.4)' }}>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium">Proposed subjects</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded"
-              style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#b45309' }}>{proposals.length}</span>
-            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-              discovered by the attributor — they are not analyzed or reported until you accept them
-            </span>
+      {/* Auto-discovered proposals: always rendered so the review entry point stays discoverable — the
+          panel used to disappear when nothing was pending, hiding the whole accept/reject flow */}
+      <div className="p-4 rounded-xl border mb-4"
+        style={{ background: 'var(--color-bg-secondary)', borderColor: proposals.length > 0 ? 'rgba(234, 179, 8, 0.4)' : 'var(--color-border)' }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-medium">Proposed subjects</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded"
+            style={proposals.length > 0
+              ? { background: 'rgba(234, 179, 8, 0.15)', color: '#b45309' }
+              : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>{proposals.length}</span>
+          <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            discovered by the attributor — they are not analyzed or reported until you accept them
+          </span>
+        </div>
+        {proposals.length === 0 ? (
+          <div className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+            {autoSubjectsMode === 'off'
+              ? 'Auto discovery is off for this project: set "Auto subjects" to Propose (or Create) in Edit to have the attributor propose subjects it finds.'
+              : 'Nothing waiting for review. The attributor scans new material every 10 minutes and proposes a subject as soon as the material clearly concerns an entity that is not tracked yet.'}
           </div>
+        ) : (
           <div className="grid gap-2 mt-3">
             {proposals.map(s => (
               <div key={s.id} className="p-3 rounded-lg border flex flex-wrap items-center gap-2"
@@ -650,8 +662,8 @@ export default function ProjectDetail() {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Subjects at the bottom: the growing list, never pushed down by the sections above */}
       <div>

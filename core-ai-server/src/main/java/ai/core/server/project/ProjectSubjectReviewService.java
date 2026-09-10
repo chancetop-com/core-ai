@@ -106,11 +106,21 @@ public class ProjectSubjectReviewService {
             Updates.set("updated_at", ZonedDateTime.now())));
     }
 
-    /** clears the scan markers of targets that never produced an attribution (explicit, costly rerun) */
+    /**
+     * Clears the scan markers of targets that never produced an attribution and rewinds the attribution
+     * cursor to the oldest marker, so the rescan reaches the whole scanned range and not just the part
+     * the cursor happens to sit on. Explicit and costly: the material is offered to the LLM again.
+     */
     public long rescanUnassigned(String projectId, String userId, boolean admin) {
         var project = projectService.require(projectId);
         projectService.requireAccess(project, userId, admin);
-        return scanStore.dropUnattributed(projectId);
+        var rescan = scanStore.dropUnattributed(projectId);
+        if (rescan.dropped() > 0) {
+            // no marker at all means nothing was ever scanned: rewind to the start so the walk restarts
+            var oldest = rescan.oldestMarkerAt();
+            projectService.rewindAttributionBackfill(projectId, oldest != null ? oldest : ProjectAttributionStage.EPOCH);
+        }
+        return rescan.dropped();
     }
 
     // files keep the one-home rule (moveFile drops the old row first); session/run rows are

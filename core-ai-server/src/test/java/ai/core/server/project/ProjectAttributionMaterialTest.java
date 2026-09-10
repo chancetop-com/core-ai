@@ -97,4 +97,34 @@ class ProjectAttributionMaterialTest {
         assertTrue(material.contains("file", "f-1"));
         assertFalse(material.contains("file", "f-2"));
     }
+
+    // regression: types are batched differently (30 runs vs 20 sessions), so on one shared cursor the
+    // fast type walked ahead and dragged the cursor over the slow type's untouched backlog
+    @Test
+    void cursorFollowsTheSlowestTargetType() {
+        var material = new ProjectAttributionMaterial("p-1", 1000);
+        material.consider("run", "r-1", T1, null, true);
+        material.consider("run", "r-2", T2, null, true);
+        material.consider("run", "r-3", T3, null, true);
+        material.consider("session", "s-1", T1, null, true);
+
+        assertEquals(T1, material.forwardLatest());
+
+        material.consider("session", "s-2", T2, null, true);
+        material.consider("session", "s-3", T3, null, true);
+        assertEquals(T3, material.forwardLatest());
+    }
+
+    // a type whose walk the digest cap cut off before its first record still constrains the cursor:
+    // the stage seeds it with the oldest record its forward query returned
+    @Test
+    void typeStalledByTheDigestCapHoldsTheCursorBack() {
+        var material = new ProjectAttributionMaterial("p-1", 10);
+        material.consider("run", "r-1", T3, null, true);
+        material.append("0123456789ab");   // over the cap
+        material.coverThrough("session", T1);
+
+        assertEquals(ProjectAttributionMaterial.Decision.STOP, material.consider("session", "s-1", T2, null, true));
+        assertEquals(T1, material.forwardLatest());
+    }
 }

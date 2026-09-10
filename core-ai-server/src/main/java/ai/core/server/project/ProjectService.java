@@ -363,6 +363,16 @@ public class ProjectService {
             Updates.set("updated_at", ZonedDateTime.now())));
     }
 
+    /**
+     * Rewinds the attribution backfill cursor to {@code from} (never forward): the next rounds walk the
+     * scanned history again from there. Only a rescan needs it — records the cursor already passed are
+     * outside the newest batch and unreachable for good otherwise.
+     */
+    public void rewindAttributionBackfill(String projectId, ZonedDateTime from) {
+        projectCollection.update(Filters.and(Filters.eq("_id", projectId), Filters.gt("attribution_backfilled_at", from)),
+            Updates.set("attribution_backfilled_at", from));
+    }
+
     // ---- subject attribution (analysis output): rows in a side table, raw records stay untouched ----
 
     public void attribute(String projectId, String subjectId, String targetType, String targetId) {

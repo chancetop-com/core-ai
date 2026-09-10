@@ -9,6 +9,8 @@ import org.bson.conversions.Bson;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,6 +28,8 @@ import static org.mockito.Mockito.when;
  * @author core-ai
  */
 class ProjectSubjectReviewServiceTest {
+    private static final ZonedDateTime T1 = ZonedDateTime.of(2026, 9, 1, 10, 0, 0, 0, ZoneId.of("UTC"));
+
     private ProjectSubjectReviewService service;
     private MongoCollection<Project> projects;
     private MongoCollection<ProjectSubject> subjects;
@@ -108,10 +112,22 @@ class ProjectSubjectReviewServiceTest {
     }
 
     @Test
-    void rescanDropsUnattributedMarkers() {
-        when(scanStore.dropUnattributed("p-1")).thenReturn(3L);
+    void rescanDropsUnattributedMarkersAndRewindsTheCursor() {
+        when(scanStore.dropUnattributed("p-1")).thenReturn(new ProjectTargetScanStore.Rescan(T1, 3L));
 
         assertEquals(3L, service.rescanUnassigned("p-1", "user-1", false));
+
+        // markers alone cannot reach records the cursor already passed
+        verify(projectService).rewindAttributionBackfill("p-1", T1);
+    }
+
+    @Test
+    void rescanLeavesTheCursorAloneWithoutMarkersToDrop() {
+        when(scanStore.dropUnattributed("p-1")).thenReturn(new ProjectTargetScanStore.Rescan(null, 0L));
+
+        assertEquals(0L, service.rescanUnassigned("p-1", "user-1", false));
+
+        verify(projectService, never()).rewindAttributionBackfill(any(), any());
     }
 
     private ProjectSubject subject(String id, String status, String name) {

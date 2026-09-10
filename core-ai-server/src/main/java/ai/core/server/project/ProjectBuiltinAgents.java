@@ -114,8 +114,10 @@ public final class ProjectBuiltinAgents {
 
     private static final String ATTRIBUTION_SCHEMA_HEAD = """
         {"type":"object","additionalProperties":false,"properties":""";
+    // the tail closes "properties" before the root "required": a root-level keyword placed inside
+    // "properties" makes every property value parse as a JsonSchema, and the array value fails the run
     private static final String ATTRIBUTION_SCHEMA_TAIL = """
-        {"attributions":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"target_type":{"type":"string","enum":["session","run","workflow_run","file"]},"target_id":{"type":"string"},"subject_id":{"type":"string"}},"required":["target_type","target_id","subject_id"]}},"new_subjects":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string"},"description":{"type":"string"},"reason":{"type":"string"},"targets":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"target_type":{"type":"string","enum":["session","run","workflow_run","file"]},"target_id":{"type":"string"}},"required":["target_type","target_id"]}}},"required":["name","targets"]}},"required":["attributions","new_subjects"]}
+        {"attributions":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"target_type":{"type":"string","enum":["session","run","workflow_run","file"]},"target_id":{"type":"string"},"subject_id":{"type":"string"}},"required":["target_type","target_id","subject_id"]}},"new_subjects":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string"},"description":{"type":"string"},"reason":{"type":"string"},"targets":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"target_type":{"type":"string","enum":["session","run","workflow_run","file"]},"target_id":{"type":"string"}},"required":["target_type","target_id"]}}},"required":["name","targets"]}}},"required":["attributions","new_subjects"]}
         """;
 
     private static final String SUBJECT_ANALYSIS_SCHEMA_HEAD = """

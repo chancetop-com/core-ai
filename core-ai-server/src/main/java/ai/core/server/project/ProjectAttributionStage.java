@@ -34,8 +34,10 @@ import java.util.Map;
  * <ol>
  *   <li>FRESH: the newest records of every type, so new material never waits behind history;</li>
  *   <li>FORWARD: the oldest records after the cursor ({@code attribution_backfilled_at}), batch by
- *       batch; the cursor advances to the newest record covered, so history is walked exactly once
- *       and, once caught up, the forward pass simply picks up whatever arrived since.</li>
+ *       batch; the cursor advances to the oldest covered point across the target types, so a type
+ *       that walked ahead (runs and sessions are batched differently) can never drag the cursor over
+ *       another type's backlog — such records would be unreachable for good, behind the cursor and
+ *       outside the newest batch. Once caught up, the forward pass simply picks up new arrivals.</li>
  * </ol>
  * Every offered record gets a scan marker ({@link ProjectTargetScanStore}) whether the attributor
  * attributed it or skipped it, so a record costs at most one LLM pass — until it GROWS (a session
@@ -134,6 +136,7 @@ public class ProjectAttributionStage {
         if (agentIds.isEmpty()) return;
         var query = query(Filters.in("agent_id", agentIds), "started_at", cursor, MAX_RUNS);
         var runs = agentRunCollection.find(query);
+        seedCoverage(material, ProjectAttributionStore.TARGET_RUN, cursor, runs.isEmpty() ? null : runs.getFirst().startedAt);
         var states = scanStore.states(material.projectId(), ProjectAttributionStore.TARGET_RUN, runs.stream().map(r -> r.id).toList());
         for (var run : runs) {
             var decision = material.consider(ProjectAttributionStore.TARGET_RUN, run.id, run.startedAt, states.get(run.id), cursor != null);
@@ -149,6 +152,7 @@ public class ProjectAttributionStage {
         if (workflowIds.isEmpty()) return;
         var query = query(Filters.in("workflow_id", workflowIds), "started_at", cursor, MAX_WORKFLOW_RUNS);
         var runs = workflowRunCollection.find(query);
+        seedCoverage(material, ProjectAttributionStore.TARGET_WORKFLOW_RUN, cursor, runs.isEmpty() ? null : runs.getFirst().startedAt);
         var states = scanStore.states(material.projectId(), ProjectAttributionStore.TARGET_WORKFLOW_RUN, runs.stream().map(r -> r.id).toList());
         for (var run : runs) {
             var decision = material.consider(ProjectAttributionStore.TARGET_WORKFLOW_RUN, run.id, run.startedAt, states.get(run.id), cursor != null);
@@ -163,6 +167,7 @@ public class ProjectAttributionStage {
         if (agentIds.isEmpty()) return;
         var query = query(Filters.in("agent_id", agentIds), "last_message_at", cursor, MAX_SESSIONS);
         var sessions = chatSessionCollection.find(query);
+        seedCoverage(material, ProjectAttributionStore.TARGET_SESSION, cursor, sessions.isEmpty() ? null : sessions.getFirst().lastMessageAt);
         var states = scanStore.states(material.projectId(), ProjectAttributionStore.TARGET_SESSION, sessions.stream().map(s -> s.id).toList());
         for (var session : sessions) {
             var decision = material.consider(ProjectAttributionStore.TARGET_SESSION, session.id, session.lastMessageAt, states.get(session.id), cursor != null);
@@ -190,6 +195,14 @@ public class ProjectAttributionStage {
         query.sort = cursor == null ? Sorts.descending(timeField) : Sorts.ascending(timeField);
         query.limit = limit;
         return query;
+    }
+
+    // forward mode only: the oldest record the (ascending) query returned is the point the type's walk
+    // starts from, so the cursor stays behind it even when the digest cap cuts the walk before its
+    // first record — otherwise the untouched backlog would be skipped for good
+    private void seedCoverage(ProjectAttributionMaterial material, String targetType, ZonedDateTime cursor, ZonedDateTime oldest) {
+        if (cursor == null) return;
+        material.coverThrough(targetType, oldest);
     }
 
     private void advanceCursor(String projectId, ZonedDateTime next) {
