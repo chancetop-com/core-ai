@@ -1,5 +1,6 @@
 package ai.core.server;
 
+import ai.core.api.server.project.ProjectReportView;
 import ai.core.api.server.project.ProjectWebService;
 import ai.core.server.project.ProjectAnalysisJob;
 import ai.core.server.project.ProjectAnalysisMaterialLoader;
@@ -7,6 +8,7 @@ import ai.core.server.project.ProjectAnalysisService;
 import ai.core.server.project.ProjectAttributionJob;
 import ai.core.server.project.ProjectAttributionStage;
 import ai.core.server.project.ProjectMemberQueryService;
+import ai.core.server.project.ProjectPlaybookService;
 import ai.core.server.project.ProjectQueryService;
 import ai.core.server.project.ProjectReportCompletionJob;
 import ai.core.server.project.ProjectReportQueryService;
@@ -56,9 +58,14 @@ public class ProjectModule extends Module {
         bind(ProjectReportStage.class);
         bind(ProjectResetService.class);
         bind(ProjectSubjectReviewService.class);
+        bind(ProjectPlaybookService.class);
         bind(ProjectToolDispatcher.class);
         bind(ProjectAnalysisService.class);
         api().service(ProjectWebService.class, bind(ProjectWebServiceImpl.class));
+        // ProjectReportView is only referenced as a nested field of ListProjectReportsResponse, which the api()
+        // service registration does not register as a standalone response bean; the raw upload controller returns
+        // it directly, so it must be registered here
+        http().bean(ProjectReportView.class);
         // multipart report upload (CLI `report push` / UI upload): raw controller, JSON api cannot take files
         http().route(HTTPMethod.POST, "/api/projects/:id/subjects/:subjectId/reports", bind(ProjectReportUploadController.class));
         var projectTools = bind(ProjectTools.class);

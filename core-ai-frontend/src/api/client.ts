@@ -2031,6 +2031,10 @@ export const api = {
     // explicit, costly rerun: clears the scan markers of material that never got attributed
     rescanUnassigned: (id: string) =>
       request<{ dropped?: number }>(`/api/projects/${id}/rescan-unassigned`, { method: 'POST' }),
+    // drafts the playbook from the project's members, subjects and recent material — returns the
+    // text only, saving stays an explicit update
+    generatePlaybook: (id: string) =>
+      request<{ playbook: string }>(`/api/projects/${id}/playbook/generate`, { method: 'POST' }),
     stats: (id: string, subjectId?: string) =>
       request<ProjectStatsView>(`/api/projects/${id}/stats${subjectId ? `?subject_id=${encodeURIComponent(subjectId)}` : ''}`),
     members: (id: string) => request<ListProjectMembersResponse>(`/api/projects/${id}/members`),

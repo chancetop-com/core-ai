@@ -6,6 +6,7 @@ import ai.core.api.server.project.CreateProjectRequest;
 import ai.core.api.server.project.CreateProjectResponse;
 import ai.core.api.server.project.CreateSubjectRequest;
 import ai.core.api.server.project.CreateSubjectResponse;
+import ai.core.api.server.project.GeneratePlaybookResponse;
 import ai.core.api.server.project.GetProjectRequest;
 import ai.core.api.server.project.GetProjectStatsRequest;
 import ai.core.api.server.project.ListProjectEventsRequest;
@@ -72,6 +73,8 @@ public class ProjectWebServiceImpl implements ProjectWebService {
     ProjectResetService resetService;
     @Inject
     ProjectSubjectReviewService reviewService;
+    @Inject
+    ProjectPlaybookService playbookService;
     @Inject
     ProjectViewAssembler assembler;
     @Inject
@@ -313,6 +316,20 @@ public class ProjectWebServiceImpl implements ProjectWebService {
     public RescanUnassignedResponse rescanUnassigned(String id) {
         var response = new RescanUnassignedResponse();
         response.dropped = reviewService.rescanUnassigned(id, userId(), admin());
+        return response;
+    }
+
+    // a draft for the editor — the project is not touched here, saving stays an explicit update
+    @Override
+    @PermissionsRequired(PermissionCodes.PROJECT_MANAGE)
+    public GeneratePlaybookResponse generatePlaybook(String id) {
+        requireAccessible(id);
+        var response = new GeneratePlaybookResponse();
+        try {
+            response.playbook = playbookService.generate(id);
+        } catch (RuntimeException e) {
+            throw new BadRequestException("playbook generation failed: " + e.getMessage(), "PLAYBOOK_GENERATION_FAILED", e);
+        }
         return response;
     }
 

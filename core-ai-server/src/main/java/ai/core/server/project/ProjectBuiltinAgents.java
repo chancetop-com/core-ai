@@ -6,12 +6,12 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * The three builtin definitions behind the project feature: two LLM_CALL writers (attribution,
- * subject analysis) driven directly by the analysis jobs, and one AGENT renderer (report rendering —
- * a single LLM call cannot emit a full HTML report, so the renderer writes it section by section
- * through the append_report_section tool). Defaults live here so both the creation migrations and
- * the admin reset endpoint apply the same content; the prompts and response schemas are
- * user-editable in the UI (reset restores these defaults).
+ * The builtin definitions behind the project feature: three LLM_CALL writers (attribution, subject
+ * analysis, playbook drafting) driven directly by the analysis jobs or the playbook endpoint, and one
+ * AGENT renderer (report rendering — a single LLM call cannot emit a full HTML report, so the
+ * renderer writes it section by section through the append_report_section tool). Defaults live here
+ * so both the creation migrations and the admin reset endpoint apply the same content; the prompts
+ * and response schemas are user-editable in the UI (reset restores these defaults).
  *
  * @author stephen
  */
@@ -19,9 +19,11 @@ public final class ProjectBuiltinAgents {
     public static final String ATTRIBUTOR = "project-attributor";
     public static final String SUBJECT_ANALYZER = "project-subject-analyzer";
     public static final String REPORT_RENDERER = "project-report-renderer";
+    public static final String PLAYBOOK_WRITER = "project-playbook-writer";
 
     public static final String ATTRIBUTOR_DESCRIPTION = "Attributes the targets listed in the query to project subjects and proposes new subjects for untracked entities. The query is the playbook + SUBJECTS list + digest of the unattributed targets; the result is applied to the attribution table automatically.";
     public static final String SUBJECT_ANALYZER_DESCRIPTION = "Derives ONE subject's status/KPIs/action items/notes from the query (playbook + subject context + current state + material digest); the result is applied automatically.";
+    public static final String PLAYBOOK_WRITER_DESCRIPTION = "Drafts the project playbook (what a subject is, the process, the KPI methodology) from the query: project definition + members + existing subjects + samples of the members' recent material. The draft is returned to the editor for review — nothing is saved automatically.";
 
     private static final String ATTRIBUTOR_PROMPT_HEAD = """
         You are an attribution classifier for a business project. Assign each listed target
@@ -112,6 +114,40 @@ public final class ProjectBuiltinAgents {
         - Numbers and dates must come verbatim from the data; never invent values.
         """;
 
+    private static final String PLAYBOOK_WRITER_PROMPT_HEAD = """
+        You are the playbook writer of a business project. The playbook is the free-text definition
+        every writer of this project follows: what a subject (= the entity this project tracks) is,
+        how subjects are told apart, the process their work moves through, and the KPI evaluation
+        methodology (what to measure, how to score it, how often it is recorded).
+
+        You are given the project definition, its members (the agents/workflows whose work it
+        tracks), the subjects already tracked and samples of the members' recent material — that
+        material is the evidence of what this project actually does. Draft the playbook from it.
+
+        Rules:
+        """;
+    private static final String PLAYBOOK_WRITER_PROMPT_TAIL = """
+        - Ground EVERY rule in the material: name the entity kind the material shows, the metrics
+          and the artifacts it actually produces. Never invent tools, metrics or pipelines that do
+          not appear in the material.
+        - When CURRENT PLAYBOOK is given, keep what is correct and improve the rest — do not
+          rewrite from scratch and do not drop domain specifics it already has. When it is (none),
+          draft from scratch.
+        - Use exactly these markdown sections, in this order:
+          ## What is a subject — the entity kind, what makes two subjects distinct, and what must
+             NEVER become a subject (one-off topics, generic requests, questions).
+          ## Process — the stages the work of one subject moves through, in order.
+          ## KPIs — one bullet per metric: name, how it is measured, unit or scale, how often it is
+             recorded, and what counts as good/bad. Only metrics the material supports.
+          ## Reports — what a report of this project contains and which member produces it.
+          ## Naming — how a subject name is written (canonical form) and how to avoid duplicates.
+        - Be concrete and terse: short bullets, no filler, no repeated explanation of the rules.
+        - Keep the WHOLE playbook under 3500 characters — the readers truncate at 4000.
+        - Reply with the playbook markdown ONLY: no preamble, no closing remarks, no commentary
+          about the material, no code fences.
+        - Write in the language of the project definition and material (English when mixed).
+        """;
+
     private static final String ATTRIBUTION_SCHEMA_HEAD = """
         {"type":"object","additionalProperties":false,"properties":""";
     // the tail closes "properties" before the root "required": a root-level keyword placed inside
@@ -144,6 +180,17 @@ public final class ProjectBuiltinAgents {
 
     public static String reportRendererPrompt() {
         return new StringBuilder(REPORT_RENDERER_PROMPT_HEAD).append(REPORT_RENDERER_PROMPT_TAIL).toString();
+    }
+
+    public static String playbookWriterPrompt() {
+        return new StringBuilder(PLAYBOOK_WRITER_PROMPT_HEAD).append(PLAYBOOK_WRITER_PROMPT_TAIL).toString();
+    }
+
+    // the playbook writer emits long markdown, so it carries NO response schema: a JSON string
+    // holding thousands of characters of markdown is a needless escaping risk
+    public static Document playbookWriterDoc(Date now) {
+        return writerDoc("builtin-" + PLAYBOOK_WRITER, PLAYBOOK_WRITER, PLAYBOOK_WRITER_DESCRIPTION,
+            playbookWriterPrompt(), null, now);
     }
 
     // the report renderer is an AGENT (not a one-shot LLM_CALL): a single call cannot emit a full

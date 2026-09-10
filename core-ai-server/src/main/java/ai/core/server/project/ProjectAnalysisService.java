@@ -196,7 +196,7 @@ public class ProjectAnalysisService {
         return targets;
     }
 
-    // restores the three builtin definitions to their defaults (admin action; user edits are overwritten)
+    // restores the builtin definitions to their defaults (admin action; user edits are overwritten)
     public void resetBuiltinAgents() {
         var now = new java.util.Date();
         var docs = java.util.Map.of(
@@ -206,6 +206,7 @@ public class ProjectAnalysisService {
             ProjectBuiltinAgents.SUBJECT_ANALYZER, ProjectBuiltinAgents.writerDoc("builtin-" + ProjectBuiltinAgents.SUBJECT_ANALYZER,
                 ProjectBuiltinAgents.SUBJECT_ANALYZER, ProjectBuiltinAgents.SUBJECT_ANALYZER_DESCRIPTION,
                 ProjectBuiltinAgents.subjectAnalyzerPrompt(), ProjectBuiltinAgents.subjectAnalysisSchema(), now),
+            ProjectBuiltinAgents.PLAYBOOK_WRITER, ProjectBuiltinAgents.playbookWriterDoc(now),
             ProjectBuiltinAgents.REPORT_RENDERER, ProjectBuiltinAgents.reportRendererDoc(now));
         for (var entry : docs.entrySet()) {
             var doc = entry.getValue();

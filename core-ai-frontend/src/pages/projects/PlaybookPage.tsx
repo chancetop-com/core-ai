@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, Save } from 'lucide-react';
+import { ArrowLeft, Check, Save, Sparkles } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ProjectMember, ProjectView } from '../../api/client';
 
@@ -14,6 +14,7 @@ export default function PlaybookPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
 
   if (!id) return null;
@@ -65,6 +66,21 @@ export default function PlaybookPage() {
     }
   };
 
+  const generate = async () => {
+    if (playbook.trim() && !confirm('Replace the current playbook content with a generated draft? Nothing is saved until you click Save.')) return;
+    setGenerating(true);
+    setError('');
+    try {
+      const draft = await api.projects.generatePlaybook(id);
+      setPlaybook(draft.playbook || '');
+      setSaved(false);
+    } catch (e) {
+      setError(String((e as Error).message || e));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const inputStyle = {
     background: 'var(--color-bg-secondary)',
     borderColor: 'var(--color-border)',
@@ -101,6 +117,12 @@ export default function PlaybookPage() {
               <Check size={14} /> Saved
             </span>
           )}
+          <button onClick={generate} disabled={generating || saving}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border cursor-pointer disabled:opacity-50"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            title="Draft the playbook from this project's members, subjects and recent material">
+            <Sparkles size={14} /> {generating ? 'Generating...' : 'Generate'}
+          </button>
           <button onClick={save} disabled={saving}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
             style={{ background: 'var(--color-primary)' }}>
@@ -127,6 +149,8 @@ export default function PlaybookPage() {
           uses this to discover new subjects from the material it scans.{(project.auto_subjects || 'propose') === 'off'
             ? ' Auto subjects is off, so it only attributes to existing subjects.'
             : ''}
+          {' '}Click Generate to draft it from this project's members, tracked subjects and recent activity — review the
+          draft, then Save.
         </div>
         <textarea
           rows={20}

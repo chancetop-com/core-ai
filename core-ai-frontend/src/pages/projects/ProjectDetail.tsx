@@ -221,7 +221,7 @@ export default function ProjectDetail() {
   };
 
   const resetBuiltins = async () => {
-    if (!confirm('Reset the builtin project-attributor / project-subject-analyzer / project-report-renderer definitions to their default prompts and schemas? Your edits will be overwritten.')) return;
+    if (!confirm('Reset the builtin project-attributor / project-subject-analyzer / project-playbook-writer / project-report-renderer definitions to their default prompts and schemas? Your edits will be overwritten.')) return;
     try {
       await api.projects.resetBuiltinAgents();
       setAnalyzeMessage('Builtin agents reset.');
@@ -529,6 +529,7 @@ export default function ProjectDetail() {
                 style={{ background: 'rgba(234, 179, 8, 0.1)', color: '#b45309' }}>
                 Auto subjects is on ({autoSubjectsMode === 'create' ? 'create' : 'propose'}) but the playbook is empty —
                 describe what a subject is (merchant, campaign, business line) so the attributor has a basis for discovering new ones.
+                Open the playbook page and click Generate to draft it from this project's members and recent activity.
               </div>
             )}
             <div className="flex items-center justify-between mb-2">
@@ -542,7 +543,7 @@ export default function ProjectDetail() {
               {project.playbook ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{project.playbook}</ReactMarkdown>
               ) : (
-                'No playbook yet. Define the overall process and the KPI evaluation methodology (what to measure, how to score, how often).'
+                'No playbook yet. Define the overall process and the KPI evaluation methodology (what to measure, how to score, how often) — or open the editor and click Generate to draft one.'
               )}
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
@@ -831,7 +832,7 @@ export default function ProjectDetail() {
                 </div>
                 {editAutoSubjects !== 'off' && !project.playbook && (
                   <div className="text-xs mt-1" style={{ color: '#b45309' }}>
-                    No playbook yet — without it the attributor has no definition of what a subject is, so proposals will be rough.
+                    No playbook yet — without it the attributor has no definition of what a subject is, so proposals will be rough. The playbook page can generate one for you.
                   </div>
                 )}
               </div>

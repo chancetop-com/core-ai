@@ -19,8 +19,8 @@ Prerequisites: the `core-ai-cli` binary on PATH (see "Installing core-ai-cli" in
 | Kind | Subcommand | Status | Section |
 |------|-----------|--------|---------|
 | MCP tools | `core-ai-cli mcp …` | **Available** | MCP Hub |
-| Skills | `core-ai-cli skill …` | Planned (design: `docs/cn/design-skill-hub-cli.md`) | Skill Hub |
-| API tools | `core-ai-cli api-tool …` | Planned (design: `docs/cn/design-api-tool-hub-cli.md`) | API-Tool Hub |
+| Skills | `core-ai-cli skill …` | **Available** (CLI ≥ 2.0.8) | Skill Hub |
+| API tools | `core-ai-cli api-tool …` | **Available** (CLI ≥ 2.0.8) | API-Tool Hub |
 | Agents | `core-ai-cli agent …` | Planned (design: `docs/cn/design-agent-hub-cli.md`) | Agent Hub |
 
 Before relying on a planned kind, run `core-ai-cli <kind> --help`. If the CLI reports an unknown subcommand (exit code 2), that hub is not yet shipped in the installed version; fall back to the REPL commands or the Web UI.
@@ -122,7 +122,7 @@ core-ai-cli mcp search google --on-server google-gbp      # drill into one serve
 
 `core-ai-cli mcp …` talks to servers registered on core-ai-server. It does not see the local MCP servers configured in `mcp.servers.json` / `<workspace>/.core-ai/MCP.json`; those belong only to the local agent (see [mcp.md](mcp.md)). Credentials for hub servers live on the server; the CLI holds only your API key.
 
-## Skill Hub (`core-ai-cli skill`) — planned
+## Skill Hub (`core-ai-cli skill`)
 
 Server-side skills (`SKILL.md` + resources, the same format Claude Code and Codex use) become discoverable and installable from the shell. Permission: `skill.view` (the default `user` role has it); `push` needs `skill.manage`.
 
@@ -139,9 +139,9 @@ Server-side skills (`SKILL.md` + resources, the same format Claude Code and Code
 
 A bare name without `/` is accepted when it is unique on the server; if ambiguous the CLI exits 2 and lists candidates. Pulled skills carry a `.skill-hub.json` marker (id, digest, server) so `list`/`update` can detect server-side changes.
 
-Until this ships, use the REPL: `/skill` opens a menu to browse server skills and install them, and `/skill <name>` loads a local skill into the conversation.
+Inside the REPL, `/skill` still opens the interactive menu for the same operations, and `/skill <name>` loads a local skill into the conversation.
 
-## API-Tool Hub (`core-ai-cli api-tool`) — planned
+## API-Tool Hub (`core-ai-cli api-tool`)
 
 API tools are internal Service APIs imported into the server from core-ng applications (the same ones exposed at `/api/api-tools/mcp`). One app contains services, each with operations; the operation is the callable unit. Permission: `apitool.call`.
 

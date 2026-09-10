@@ -109,6 +109,10 @@ public interface ProjectWebService {
     @Path("/api/projects/:id/rescan-unassigned")
     RescanUnassignedResponse rescanUnassigned(@PathParam("id") String id);
 
+    @POST
+    @Path("/api/projects/:id/playbook/generate")
+    GeneratePlaybookResponse generatePlaybook(@PathParam("id") String id);
+
     @GET
     @Path("/api/projects/:id/stats")
     ProjectStatsView stats(@PathParam("id") String id, GetProjectStatsRequest request);

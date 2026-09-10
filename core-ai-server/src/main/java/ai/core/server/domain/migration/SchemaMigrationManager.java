@@ -142,7 +142,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVProjectAttributionFileTime(),
             new SchemaMigrationVProjectAttributionPurgeDangling(),
             new SchemaMigrationVProjectAutoSubjects(),
-            new SchemaMigrationVProjectAttributionRepair()
+            new SchemaMigrationVProjectAttributionRepair(),
+            new SchemaMigrationVProjectPlaybookWriter()
         );
     }
 }
