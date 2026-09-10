@@ -22,6 +22,14 @@ public final class HubInstructions {
               1. Discover: core-ai-cli skill search "<topic>" --json
               2. Read:     core-ai-cli skill show <namespace>/<name> --raw   # prints SKILL.md; follow its instructions
               3. Optional: core-ai-cli skill pull <namespace>/<name> --to .claude/skills   # install for reuse
+            Agents: when a sub-task fits a specialist better than you, delegate:
+              1. core-ai-cli agent search "<capability>" --json
+              2. core-ai-cli agent run <id> --task "<self-contained task with all context>" --json
+                 exit 0 = done (read "output"); exit 7 = it needs input: inspect "input_request", then
+                 core-ai-cli agent reply <task_id> --approve|--deny|--message "..." --json;
+                 exit 6 = still running: core-ai-cli agent status <task_id>
+              3. Continue the same conversation with --context-id <context_id>.
+              Never send local files wholesale; send the excerpt the agent needs.
             Exit code 0 = success; parse stdout as JSON. On 4 (permission) stop and tell the user.
             """;
 

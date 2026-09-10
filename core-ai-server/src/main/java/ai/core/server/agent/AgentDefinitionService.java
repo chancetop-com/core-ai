@@ -54,6 +54,18 @@ public class AgentDefinitionService {
     @Inject
     SystemPromptService systemPromptService;
 
+    private volatile Runnable catalogInvalidator;
+
+    /** Wired by {@code AgentHubModule}: the hub catalog is rebuilt lazily after any definition write. */
+    public void setCatalogInvalidator(Runnable catalogInvalidator) {
+        this.catalogInvalidator = catalogInvalidator;
+    }
+
+    private void notifyCatalogChanged() {
+        var invalidator = catalogInvalidator;
+        if (invalidator != null) invalidator.run();
+    }
+
     public AgentDefinitionView create(CreateAgentRequest request, String userId) {
         var existing = agentDefinitionCollection.findOne(Filters.and(
                 Filters.eq("user_id", userId),
@@ -102,6 +114,7 @@ public class AgentDefinitionService {
 
         requireAccessibleSkills(entity.skillIds, userId);
         agentDefinitionCollection.insert(entity);
+        notifyCatalogChanged();
         return toView(entity);
     }
 
@@ -269,6 +282,7 @@ public class AgentDefinitionService {
         entity.updatedBy = userId;
 
         agentDefinitionCollection.replace(entity);
+        notifyCatalogChanged();
         return toView(entity);
     }
 
@@ -296,6 +310,7 @@ public class AgentDefinitionService {
         entity.updatedBy = userId;
 
         agentDefinitionCollection.replace(entity);
+        notifyCatalogChanged();
         return toView(entity);
     }
 
@@ -366,6 +381,7 @@ public class AgentDefinitionService {
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
         requireAdminForSystemDefault(entity, userId);
         agentDefinitionCollection.delete(id);
+        notifyCatalogChanged();
     }
 
     @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")

@@ -13,6 +13,9 @@ import java.time.ZonedDateTime;
  * data) — only a sha256 hash and a truncated preview. {@code target} is the qualified
  * name ({@code server/tool} or {@code app/service/operation}), {@code group} the owning
  * server/app and {@code name} the executed tool/operation name.
+ * <p>
+ * An agent run additionally records the A2A {@code task_id} of the turn, the {@code context_id}
+ * that continues the conversation, and the token usage of the turn when it finished in-band.
  *
  * @author stephen
  */
@@ -70,6 +73,18 @@ public class HubCall {
 
     @Field(name = "error_message")
     public String errorMessage;
+
+    @Field(name = "task_id")
+    public String taskId;
+
+    @Field(name = "context_id")
+    public String contextId;
+
+    @Field(name = "input_tokens")
+    public Long inputTokens;
+
+    @Field(name = "output_tokens")
+    public Long outputTokens;
 
     @NotNull
     @Field(name = "created_at")

@@ -21,9 +21,9 @@ Prerequisites: the `core-ai-cli` binary on PATH (see "Installing core-ai-cli" in
 | MCP tools | `core-ai-cli mcp …` | **Available** | MCP Hub |
 | Skills | `core-ai-cli skill …` | **Available** (CLI ≥ 2.0.8) | Skill Hub |
 | API tools | `core-ai-cli api-tool …` | **Available** (CLI ≥ 2.0.8) | API-Tool Hub |
-| Agents | `core-ai-cli agent …` | Planned (design: `docs/cn/design-agent-hub-cli.md`) | Agent Hub |
+| Agents | `core-ai-cli agent …` | **Available** (CLI ≥ 2.0.10) | Agent Hub |
 
-Before relying on a planned kind, run `core-ai-cli <kind> --help`. If the CLI reports an unknown subcommand (exit code 2), that hub is not yet shipped in the installed version; fall back to the REPL commands or the Web UI.
+If your installed CLI reports an unknown subcommand (exit code 2), it predates that hub — upgrade with `core-ai-cli upgrade`, or fall back to the Web UI.
 
 ## Shared Conventions
 
@@ -155,32 +155,55 @@ API tools are internal Service APIs imported into the server from core-ng applic
 
 Names have three segments (`{app}/{service}/{operation}`). Calls carry your identity to the backend as caller headers, so data-scoping is enforced there.
 
-## Agent Hub (`core-ai-cli agent`) — planned
+## Agent Hub (`core-ai-cli agent`)
 
-Run published server-side agents as delegates, replacing the older `delegate_to_remote_agent` A2A path. Only agents that are published (or your own drafts) are visible; the catalog exposes capability summaries, never system prompts or tool lists. Permission: `chat.use`.
+Run published server-side agents as delegates, replacing the older `delegate_to_remote_agent` A2A path. Only agents that are published (or your own drafts, plus the system default) are visible; the catalog exposes capability summaries, never system prompts or tool lists. Permission: `chat.use`.
 
 | Command | Purpose |
 |---------|---------|
-| `agent search <query> [--type agent\|llm_call] [--limit N]` | Visible agents: id, name, description, type, skills |
-| `agent show <id \| name>` | Capability summary and input hint |
-| `agent run <id \| name> --task "…" [--task-file F\|-] [--context-id ID] [--timeout SEC] [--detach] --json` | Execute. Response `{task_id, context_id, status, output, input_request?, token_usage, duration_ms}` |
-| `agent status <task_id>` | Poll a run that returned `running` |
-| `agent reply <task_id> --approve \| --deny \| --message "…"` | Answer an `input_required` run (tool approval or missing information) |
-| `agent cancel <task_id>` | Cancel |
-| `agent instructions` | Paste-ready snippet |
+| `agent search [query] [--type agent\|llm_call] [--source server\|external] [--limit N]` | Visible agents: id, name, type, description, skills, sub agents |
+| `agent show <id \| name>` | Capability summary (id, type, status, source, skills, sub agents, input hint) |
+| `agent run <id \| name> --task "…"` | Execute and wait. Options: `--task-file F\|-`, `--context-id ID`, `--attach URL` (repeatable), `--timeout SEC` (default 120, max 300), `--detach`, `--max-output N`, `--json` |
+| `agent status <task_id>` | Poll a run that returned `running` (cheap; no new turn) |
+| `agent reply <task_id> --approve \| --deny \| --message "…"` | Answer an `input_required` run (tool approval or missing information); resumes the same conversation |
+| `agent cancel <task_id>` | Cancel a run |
+| `agent instructions [--format md\|claude\|codex]` | Paste-ready snippet |
 
-Status and exit codes: `completed` → 0, `failed`/`cancelled` → 1, `running` (wait limit hit, task continues) → 6, **`input_required` → 7**. Exit 7 is not a failure: read `input_request`, then `agent reply`. Reuse `context_id` on a later `run` to continue the same conversation. Keep `--task` self-contained; the agent cannot see your local files. A bare name is accepted when unique among visible agents; otherwise the CLI exits 2 and lists candidate ids.
+Result shape (`--json`): `{task_id, context_id, status, output, input_request?, token_usage, duration_ms}`, status ∈ `completed | failed | cancelled | input_required | running`.
+
+Status and exit codes: `completed` → 0, `failed`/`cancelled` → 1, `running` (wait limit hit, task continues) → 6, **`input_required` → 7**. Exit 7 is not a failure: read `input_request`, then `agent reply`. Reuse `context_id` on a later `run` to continue the same conversation. Keep `--task` self-contained; the agent cannot see your local files (pass a URL with `--attach` instead). A bare name is accepted when unique among visible agents; otherwise the CLI exits 2 and lists candidate ids.
+
+```bash
+core-ai-cli agent search "code review" --json
+core-ai-cli agent run code-reviewer --task "review https://github.com/org/repo/pull/12" --json
+core-ai-cli agent run <agent-id> --task-file - --context-id <context_id> < spec.md   # continue a conversation
+core-ai-cli agent reply <task_id> --approve --json
+```
 
 ## Snippet for other agents
 
-Output of `core-ai-cli mcp instructions --format claude` (extend with the skill and agent lines once those ship):
+Every hub prints the same merged snippet (`mcp | skill | api-tool | agent instructions`, `--format` only changes the heading). Current content:
 
 ```text
-## Company tools (core-ai MCP Hub)  # paste into CLAUDE.md
-You have access to internal tools via the `core-ai-cli mcp` command. Do NOT guess tool names.
-1. Discover:  core-ai-cli mcp search "<what you need>" --json
-2. Inspect:   core-ai-cli mcp describe <server>/<tool> --json      # read input_schema before calling
-3. Execute:   core-ai-cli mcp call <server>/<tool> --args '<json>' --json
+## Company tools & skills (core-ai Hub)  # paste into CLAUDE.md
+Tools:  core-ai-cli mcp search "<what you need>" --json
+        core-ai-cli mcp describe <server>/<tool> --json      # read input_schema before calling
+        core-ai-cli mcp call <server>/<tool> --args '<json>' --json
+Do NOT guess tool names.
+API tools: core-ai-cli api-tool search "<need>" --json -> api-tool describe <app>/<svc>/<op> --json -> api-tool call <app>/<svc>/<op> --args '<json>' --json
+Exit 1 with status_code >= 400 = the backend rejected the request; read "text" for the error body.
+Skills: when a task matches a known workflow, first check for a skill:
+  1. Discover: core-ai-cli skill search "<topic>" --json
+  2. Read:     core-ai-cli skill show <namespace>/<name> --raw   # prints SKILL.md; follow its instructions
+  3. Optional: core-ai-cli skill pull <namespace>/<name> --to .claude/skills   # install for reuse
+Agents: when a sub-task fits a specialist better than you, delegate:
+  1. core-ai-cli agent search "<capability>" --json
+  2. core-ai-cli agent run <id> --task "<self-contained task with all context>" --json
+     exit 0 = done (read "output"); exit 7 = it needs input: inspect "input_request", then
+     core-ai-cli agent reply <task_id> --approve|--deny|--message "..." --json;
+     exit 6 = still running: core-ai-cli agent status <task_id>
+  3. Continue the same conversation with --context-id <context_id>.
+  Never send local files wholesale; send the excerpt the agent needs.
 Exit code 0 = success; parse stdout as JSON. On 4 (permission) stop and tell the user.
 ```
 

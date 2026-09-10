@@ -1,6 +1,7 @@
 package ai.core.server;
 
 import ai.core.api.server.AgentDefinitionWebService;
+import ai.core.server.agent.AgentCallAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.GenerateService;
@@ -16,6 +17,8 @@ public class AgentDefinitionModule extends Module {
     @Override
     protected void initialize() {
         bind(AgentDefinitionService.class);
+        // shared by every agent execution surface (A2AModule's ServerA2AService, AgentHubModule)
+        bind(AgentCallAccessPolicy.class);
         // LLMCallExecutor must be bound before ToolRegistryModule, which injects it
         // for resolving llm-call:{id} tool refs at agent runtime.
         bind(LLMCallExecutor.class);

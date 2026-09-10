@@ -11,7 +11,7 @@
 | Login | `core-ai-cli --login [server-url]` | Authenticate with a core-ai-server and exit |
 | Hub | `core-ai-cli mcp …` (and `skill` / `api-tool` / `agent` as they ship) | Discover and call server-side resources without an agent session; see [hub.md](hub.md) |
 
-The former remote mode (`--server`, `--api-key`, `--agent-id`, REPL `/remote`) has been removed. Server-side tools are reached through the hub subcommands; server-side agents through the Web UI or, once shipped, `core-ai-cli agent run`.
+The former remote mode (`--server`, `--api-key`, `--agent-id`, REPL `/remote`) has been removed. Server-side tools are reached through the hub subcommands; server-side agents through `core-ai-cli agent run` (see [hub.md](hub.md)).
 
 ## Command-Line Flags (root command)
 

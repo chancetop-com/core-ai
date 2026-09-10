@@ -27,6 +27,8 @@ public class A2ATaskSnapshot {
         snapshot.awaitTool = state.getAwaitTool();
         snapshot.awaitArguments = state.getAwaitArguments();
         snapshot.errorMessage = state.errorMessage;
+        snapshot.inputTokens = state.inputTokens;
+        snapshot.outputTokens = state.outputTokens;
         snapshot.updatedAtMillis = state.updatedAtMillis();
         return snapshot;
     }
@@ -57,6 +59,12 @@ public class A2ATaskSnapshot {
 
     @Property(name = "errorMessage")
     public String errorMessage;
+
+    @Property(name = "inputTokens")
+    public Long inputTokens;
+
+    @Property(name = "outputTokens")
+    public Long outputTokens;
 
     @Property(name = "updatedAtMillis")
     public Long updatedAtMillis;

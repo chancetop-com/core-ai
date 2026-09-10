@@ -289,9 +289,8 @@ public class AgentSessionManager {
     private void renewSessionOwnership(String sessionId) {
         sessionAgentHelper.renewSessionOwnership(sessionId);
     }
-    // The session driver calls this both while idle and every few seconds during a turn. A long turn
-    // produces no commands, so without the activity touch below its sessionLastActivity would go stale
-    // and cleanupIdleSessions would close the session out from under a run that is still working.
+    // Called while idle and every few seconds during a turn: a long turn produces no commands, so the
+    // activity touch is what keeps cleanupIdleSessions from closing a session that is still working.
     void onSessionHeartbeat(String sessionId, InProcessAgentSession session) {
         renewSessionOwnership(sessionId);
         if (session.isTurnRunning()) touchActivity(sessionId);
@@ -357,13 +356,16 @@ public class AgentSessionManager {
             throw new ForbiddenException("session is unavailable");
         }
     }
+    /** Agent a session was created from — used to continue a conversation without the caller passing the agent id. */
+    public String sessionAgentId(String sessionId) {
+        return sessionRegistry.requireAgentId(sessionId);
+    }
     public void touchSession(String sessionId) {
         if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
     }
     public void closeSession(String sessionId) {
         cleanupRuntime(sessionId);
     }
-
     public void abortSessionCreation(String sessionId) {
         cleanupRuntime(sessionId);
         sessionRegistry.softDelete(null, sessionId);
@@ -371,12 +373,10 @@ public class AgentSessionManager {
 
     private void cleanupRuntime(String sessionId) {
         var session = sessions.remove(sessionId);
-        // close() aborts an in-flight turn and emits its terminal event first, so the persistence
-        // listener writes the partial reply and the turn state clears before the teardown below
-        // discards the buffers those listeners write into.
+        // close() aborts an in-flight turn and lets its terminal event flush first, so the listeners
+        // below still see the reply and the turn state before their buffers are discarded.
         if (session != null) session.close();
-        // Belt and braces: the turn key must never outlive the runtime that owns it, even if the
-        // session was already gone or its listener chain never fired.
+        // the turn key must never outlive the runtime that owns it
         if (turnStateRegistry != null) turnStateRegistry.clear(sessionId);
         chatMessageService.flushPendingTurn(sessionId);
         skillManager().removeSkillState(sessionId);

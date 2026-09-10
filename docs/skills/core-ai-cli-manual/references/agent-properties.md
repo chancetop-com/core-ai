@@ -121,7 +121,7 @@ Sub-agents are auto-discovered from any property starting with `agent.sub.`. The
 
 ## A2A Remote Agent Configuration
 
-Lets the local agent delegate to agents on a core-ai-server over A2A (`search_remote_agents` / `delegate_to_remote_agent` tools). Planned to be superseded by `core-ai-cli agent run` (see [hub.md](hub.md)).
+Lets the local agent delegate to agents on a core-ai-server over A2A (`search_remote_agents` / `delegate_to_remote_agent` tools). Superseded by `core-ai-cli agent run` (see [hub.md](hub.md)) — prefer the hub subcommand, which needs no per-agent configuration; these properties only remain for existing setups until the A2A client is removed.
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|

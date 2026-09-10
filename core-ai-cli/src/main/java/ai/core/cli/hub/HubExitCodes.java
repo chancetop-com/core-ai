@@ -17,7 +17,8 @@ public final class HubExitCodes {
     public static final int UNAUTHENTICATED = 3;   // no credentials or HTTP 401
     public static final int FORBIDDEN = 4;         // HTTP 403
     public static final int NOT_FOUND = 5;         // HTTP 404
-    public static final int TIMEOUT = 6;           // client timeout or HTTP 504
+    public static final int TIMEOUT = 6;           // client timeout or HTTP 504; for `agent` it means the task is still running
+    public static final int INPUT_REQUIRED = 7;    // `agent` only: the run is waiting for a reply (see `agent reply`)
 
     public static int forException(Throwable error) {
         if (error instanceof RemoteApiException apiError) {

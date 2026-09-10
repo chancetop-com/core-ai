@@ -3,6 +3,7 @@ package ai.core.server;
 import ai.core.McpServerModule;
 import ai.core.MultiAgentModule;
 import ai.core.server.asynctask.AsyncToolTaskRecord;
+import ai.core.server.agenthub.AgentHubModule;
 import ai.core.server.apimcp.mcp.McpModule;
 import ai.core.server.apimcp.serviceapi.ServiceApiModule;
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
@@ -145,6 +146,8 @@ public class ServerApp extends App {
         load(new PlatformApiModule());
         load(new SelfHarnessModule());
         load(new A2AModule());
+        // Agent Hub needs ServerA2AService (A2AModule) and AgentRunService (AgentRunnerModule)
+        load(new AgentHubModule());
         load(new NotificationModule());
         load(new CostAlertModule());
         load(new ForYouModule());

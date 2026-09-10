@@ -20,6 +20,7 @@ import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.file.FileService;
+import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
 import com.mongodb.client.model.Filters;
@@ -27,7 +28,10 @@ import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import core.framework.web.exception.ForbiddenException;
+import org.bson.conversions.Bson;
 
+import java.util.ArrayList;
 import java.util.Map;
 
 /**
@@ -70,16 +74,17 @@ public class AgentRunService {
         return response;
     }
 
-    public ListRunsResponse listByAgent(String agentId, ListRunsRequest request) {
+    public ListRunsResponse listByAgent(String agentId, ListRunsRequest request, String callerUserId) {
         var query = new Query();
+        var filters = new ArrayList<Bson>();
+        filters.add(Filters.eq("agent_id", agentId));
         if (request.status != null && !request.status.isBlank()) {
-            query.filter = Filters.and(
-                Filters.eq("agent_id", agentId),
-                Filters.eq("status", RunStatus.valueOf(request.status))
-            );
-        } else {
-            query.filter = Filters.eq("agent_id", agentId);
+            filters.add(Filters.eq("status", RunStatus.valueOf(request.status)));
         }
+        if (!canReadAgentRuns(callerUserId, agentId)) {
+            filters.add(Filters.eq("user_id", callerUserId));
+        }
+        query.filter = Filters.and(filters);
         query.sort = Sorts.descending("started_at");
         query.limit = request.limit != null ? request.limit : 20;
 
@@ -90,9 +95,10 @@ public class AgentRunService {
         return response;
     }
 
-    public AgentRunDetailView get(String id) {
+    public AgentRunDetailView get(String id, String callerUserId) {
         var entity = agentRunCollection.get(id)
             .orElseThrow(() -> new RuntimeException("run not found, id=" + id));
+        checkRunAccess(entity, callerUserId);
         return toDetailView(entity);
     }
 
@@ -180,8 +186,26 @@ public class AgentRunService {
             : definition.inputTemplate;
     }
 
-    public void cancel(String id) {
+    public void cancel(String id, String callerUserId) {
+        var entity = agentRunCollection.get(id)
+            .orElseThrow(() -> new RuntimeException("run not found, id=" + id));
+        checkRunAccess(entity, callerUserId);
         agentRunner.cancel(id);
+    }
+
+    /** A run is readable by the user who triggered it, by the owner of the agent it ran, and by agent managers. */
+    private void checkRunAccess(AgentRun run, String callerUserId) {
+        if (callerUserId == null || callerUserId.equals(run.userId)) return;
+        if (permissionService.has(callerUserId, PermissionCodes.AGENT_MANAGE)) return;
+        if (canReadAgentRuns(callerUserId, run.agentId)) return;
+        throw new ForbiddenException("run belongs to another user, id=" + run.id);
+    }
+
+    private boolean canReadAgentRuns(String callerUserId, String agentId) {
+        if (callerUserId == null) return true;
+        if (permissionService.has(callerUserId, PermissionCodes.AGENT_MANAGE)) return true;
+        var definition = agentDefinitionCollection.get(agentId).orElse(null);
+        return definition != null && callerUserId.equals(definition.userId);
     }
 
     private AgentRunView toView(AgentRun entity) {

@@ -93,7 +93,7 @@ core-ai-cli mcp search "jira" --json               # discover server-side tools 
 
 | Topic | File |
 |-------|------|
-| **Hub subcommands: `mcp` (available), `skill` / `api-tool` / `agent` (planned); auth precedence, `--json`, exit codes** | [references/hub.md](references/hub.md) |
+| **Hub subcommands: `mcp`, `skill`, `api-tool`, `agent`; auth precedence, `--json`, exit codes** | [references/hub.md](references/hub.md) |
 | **All agent.properties keys, defaults, and descriptions** | [references/agent-properties.md](references/agent-properties.md) |
 | **CLI modes (interactive, headless, ACP, hub), flags, slash commands, custom agents** | [references/cli-modes.md](references/cli-modes.md) |
 | **hooks.json format, events, environment variables** | [references/hooks.md](references/hooks.md) |

@@ -13,6 +13,7 @@ import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
+import ai.core.server.agent.AgentCallAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
@@ -57,7 +58,7 @@ import static org.mockito.Mockito.when;
 class ServerA2AServiceTest {
     @Test
     void agentCardUsesPublishedServerToolsAsSkills() {
-        var service = new ServerA2AService();
+        var service = service();
         service.agentDefinitionService = new FakeAgentDefinitionService(definition());
 
         var card = service.agentCard("agent-1");
@@ -85,7 +86,7 @@ class ServerA2AServiceTest {
 
     @Test
     void streamingResumeReusesExistingTaskAndRebindsStream() {
-        var service = new ServerA2AService();
+        var service = service();
         service.agentDefinitionService = new FakeAgentDefinitionService(definition());
         var session = mockSession(service);
 
@@ -118,7 +119,7 @@ class ServerA2AServiceTest {
 
     @Test
     void cancelCompletedLocalTaskKeepsTerminalState() {
-        var service = new ServerA2AService();
+        var service = service();
         service.agentDefinitionService = new FakeAgentDefinitionService(definition());
         var session = mockSession(service);
         var state = service.stream("agent-1", request("hello"), "user-1", event -> {
@@ -138,7 +139,7 @@ class ServerA2AServiceTest {
 
     @Test
     void getTaskFallsBackToSharedSnapshot() {
-        var service = new ServerA2AService();
+        var service = service();
         var registry = new FakeTaskRegistry();
         registry.snapshots.put("task-1", snapshot("task-1", "context-1", "pod-a", TaskState.COMPLETED, "done"));
         service.taskRegistry = registry;
@@ -155,7 +156,7 @@ class ServerA2AServiceTest {
 
     @Test
     void cancelTaskForwardsToOwnerPodWhenTaskIsNotLocal() {
-        var service = new ServerA2AService();
+        var service = service();
         var registry = new FakeTaskRegistry();
         registry.snapshots.put("task-1", snapshot("task-1", "context-1", "owner-pod", TaskState.WORKING, null));
         var rpcClient = mock(RpcClient.class);
@@ -183,7 +184,7 @@ class ServerA2AServiceTest {
 
     @Test
     void sendWithRemoteContextStartsTaskOnOwnerPod() {
-        var service = new ServerA2AService();
+        var service = service();
         var registry = new FakeTaskRegistry();
         var ownership = mock(SessionOwnershipRegistry.class);
         when(ownership.getOwner("context-1")).thenReturn("owner-pod");
@@ -219,7 +220,7 @@ class ServerA2AServiceTest {
 
     @Test
     void suppliedContextRequiresMatchingSessionCallerAndAgent() {
-        var service = new ServerA2AService();
+        var service = service();
         var manager = mock(AgentSessionManager.class);
         when(manager.getSessionForAgentCaller("victim-context", "agent-1", "attacker"))
                 .thenThrow(new ForbiddenException("session is unavailable"));
@@ -235,7 +236,7 @@ class ServerA2AServiceTest {
 
     @Test
     void taskResumeRequiresMatchingSessionCaller() {
-        var service = new ServerA2AService();
+        var service = service();
         service.agentDefinitionService = new FakeAgentDefinitionService(definition());
         var session = mockSession(service);
         var state = service.stream("agent-1", request("hello"), "user-1", event -> { }, () -> { });
@@ -255,7 +256,7 @@ class ServerA2AServiceTest {
 
     @Test
     void remoteTaskResumeDefersCallerAuthorizationToOwnerPod() {
-        var service = new ServerA2AService();
+        var service = service();
         var registry = new FakeTaskRegistry();
         registry.snapshots.put("task-1", snapshot(
                 "task-1", "context-1", "owner-pod", TaskState.INPUT_REQUIRED, null));
@@ -283,6 +284,12 @@ class ServerA2AServiceTest {
                         command.type() == CommandType.A2A_RESUME_TASK
                                 && "user-1".equals(command.userId())),
                 same(Task.class), any(Duration.class));
+    }
+
+    private ServerA2AService service() {
+        var service = new ServerA2AService();
+        service.accessPolicy = mock(AgentCallAccessPolicy.class);
+        return service;
     }
 
     private SendMessageRequest request(String text) {

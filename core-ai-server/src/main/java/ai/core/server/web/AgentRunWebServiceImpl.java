@@ -38,12 +38,12 @@ public class AgentRunWebServiceImpl implements AgentRunWebService {
 
     @Override
     public ListRunsResponse listByAgent(String agentId, ListRunsRequest request) {
-        return agentRunService.listByAgent(agentId, request);
+        return agentRunService.listByAgent(agentId, request, AuthContext.userId(webContext));
     }
 
     @Override
     public AgentRunDetailView get(String id) {
-        return agentRunService.get(id);
+        return agentRunService.get(id, AuthContext.userId(webContext));
     }
 
     @Override
@@ -67,6 +67,6 @@ public class AgentRunWebServiceImpl implements AgentRunWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("run_id", id);
-        agentRunService.cancel(id);
+        agentRunService.cancel(id, userId);
     }
 }

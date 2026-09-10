@@ -73,6 +73,21 @@ public class HubCallAuditService {
         callCollection.update(Filters.eq("_id", callId), Updates.combine(sets.toArray(new Bson[0])));
     }
 
+    /**
+     * Attaches the agent-run coordinates of a {@code kind=agent} row: the A2A task of this turn,
+     * the context that continues the conversation, and the token usage when it was reported.
+     */
+    public void attachRun(String callId, String taskId, String contextId, Long inputTokens, Long outputTokens) {
+        if (callId == null) return;
+        var sets = new ArrayList<Bson>();
+        if (taskId != null) sets.add(Updates.set("task_id", taskId));
+        if (contextId != null) sets.add(Updates.set("context_id", contextId));
+        if (inputTokens != null) sets.add(Updates.set("input_tokens", inputTokens));
+        if (outputTokens != null) sets.add(Updates.set("output_tokens", outputTokens));
+        if (sets.isEmpty()) return;
+        callCollection.update(Filters.eq("_id", callId), Updates.combine(sets.toArray(new Bson[0])));
+    }
+
     private String sha256(String value) {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
