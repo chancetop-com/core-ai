@@ -84,14 +84,14 @@ public class ProjectPlaybookService {
 
     private String buildInput(Project project) {
         var text = new StringBuilder(4096);
-        text.append("PROJECT:\nname: ").append(project.name).append('\n')
-            .append("description: ").append(orNone(project.description)).append('\n')
-            .append("goal: ").append(orNone(project.goal)).append('\n')
-            .append("auto subjects: ").append(ProjectService.autoSubjectMode(project)).append('\n');
-        text.append("\nCURRENT PLAYBOOK:\n").append(playbookText(project)).append('\n');
-        text.append("\nMEMBERS (whose work this project tracks):\n").append(membersText(project)).append('\n');
-        text.append("\nEXISTING SUBJECTS:\n").append(subjectsText(project.id)).append('\n');
-        text.append("\nRECENT MATERIAL:\n").append(materialText(project));
+        text.append("PROJECT:\nname: ").append(project.name)
+            .append("\ndescription: ").append(orNone(project.description))
+            .append("\ngoal: ").append(orNone(project.goal))
+            .append("\nauto subjects: ").append(ProjectService.autoSubjectMode(project))
+            .append("\n\nCURRENT PLAYBOOK:\n").append(playbookText(project))
+            .append("\n\nMEMBERS (whose work this project tracks):\n").append(membersText(project))
+            .append("\n\nEXISTING SUBJECTS:\n").append(subjectsText(project.id))
+            .append("\n\nRECENT MATERIAL:\n").append(materialText(project));
         return text.toString();
     }
 

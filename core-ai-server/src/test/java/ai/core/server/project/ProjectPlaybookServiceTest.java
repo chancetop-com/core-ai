@@ -40,11 +40,8 @@ import static org.mockito.Mockito.when;
  */
 class ProjectPlaybookServiceTest {
     private ProjectPlaybookService service;
-    private MongoCollection<Project> projects;
     private MongoCollection<ChatSession> sessions;
     private MongoCollection<ChatMessage> messages;
-    private MongoCollection<AgentRun> runs;
-    private MongoCollection<WorkflowRun> workflowRuns;
     private MongoCollection<FileRecord> files;
     private MongoCollection<AgentDefinition> agents;
     private MongoCollection<WorkflowDefinition> workflows;
@@ -55,15 +52,15 @@ class ProjectPlaybookServiceTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         service = new ProjectPlaybookService();
-        projects = (MongoCollection<Project>) mock(MongoCollection.class);
+        var projects = (MongoCollection<Project>) mock(MongoCollection.class);
         service.projectCollection = projects;
         sessions = (MongoCollection<ChatSession>) mock(MongoCollection.class);
         service.chatSessionCollection = sessions;
         messages = (MongoCollection<ChatMessage>) mock(MongoCollection.class);
         service.chatMessageCollection = messages;
-        runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
+        var runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
         service.agentRunCollection = runs;
-        workflowRuns = (MongoCollection<WorkflowRun>) mock(MongoCollection.class);
+        var workflowRuns = (MongoCollection<WorkflowRun>) mock(MongoCollection.class);
         service.workflowRunCollection = workflowRuns;
         files = (MongoCollection<FileRecord>) mock(MongoCollection.class);
         service.fileRecordCollection = files;
