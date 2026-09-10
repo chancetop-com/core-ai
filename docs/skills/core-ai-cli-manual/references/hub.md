@@ -184,6 +184,16 @@ You have access to internal tools via the `core-ai-cli mcp` command. Do NOT gues
 Exit code 0 = success; parse stdout as JSON. On 4 (permission) stop and tell the user.
 ```
 
+## Inside a core-ai sandbox (`core-ai-sandbox`) — planned
+
+Code running inside a server agent's sandbox (skill scripts, ad-hoc python) can use **exactly what the agent has configured**: its MCP servers, API tools, LLM_CALL definitions, sub-agents, and non-sandboxed builtin tools. There is no raw LLM endpoint; to use an LLM from a script, the agent author attaches an LLM_CALL definition (prompt, schema, model) and the script calls it. Scripts hold no credentials: the runtime exposes a loopback proxy at `CORE_AI_HUB` (`http://127.0.0.1:8081/hub`) and attaches the session token itself.
+
+- Python: `from core_ai_sandbox import session; s = session()` then `s.mcp["google-gbp"].get_reviews(location=...)`, `s.api["<app>"].<service>.<operation>(...)`, `s.llm_call["<definition>"](query=...)`, `s.agent["<name>"].run("...")`, `s.tool("<function name>")(...)`. Results are `ToolResult` (`.text`, `.data`); failures raise `ToolError`. `s.catalog()` shows everything available.
+- bash: `core-ai-sandbox catalog|tools|describe|call` (a Go CLI built into the runtime, not `core-ai-cli`), same `--json` envelope and exit codes as the hub commands above.
+- Plain HTTP: `POST $CORE_AI_HUB/tools/<function name>/call` with `{"arguments": {...}}`, no auth header needed.
+
+Calls carry the session user's caller headers automatically, run through the session's own tool executor, and count against the same quota and traces. This is separate from the user-level hubs: `core-ai-cli` is not present in the sandbox, and the session token is rejected outside `/api/sandbox-hub/*`. Design: `docs/cn/design-sandbox-hub.md`.
+
 ## MCP-native alternative
 
 Editors and agents that prefer MCP over a shell will be able to point one MCP server at `<server>/api/mcp-hub/mcp` with header `Authorization: Bearer <api key>` (planned; exposes `search_tools`, `describe_tool`, `call_tool`, later `search_skills`/`get_skill`). Today the shipped MCP endpoint is `<server>/api/api-tools/mcp` (API tools only).
