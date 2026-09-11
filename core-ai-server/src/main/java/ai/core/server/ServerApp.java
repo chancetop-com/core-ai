@@ -146,12 +146,13 @@ public class ServerApp extends App {
         load(new PlatformApiModule());
         load(new SelfHarnessModule());
         load(new A2AModule());
-        // Agent Hub needs ServerA2AService (A2AModule) and AgentRunService (AgentRunnerModule)
-        load(new AgentHubModule());
         load(new NotificationModule());
         load(new CostAlertModule());
         load(new ForYouModule());
         load(new AgentRunnerModule());
+        // Agent Hub needs ServerA2AService (A2AModule) and AgentRunService (AgentRunnerModule): core-ng
+        // resolves @Inject while binding, so it must load after both.
+        load(new AgentHubModule());
         load(new TriggerModule());
         load(new MessagingRuntimeModule());
         load(new SessionSchedulerModule());

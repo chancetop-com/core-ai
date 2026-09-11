@@ -10,9 +10,10 @@ import java.time.Duration;
  * Agent Hub surface: scoring search, bare-name lookup and task-based execution over the shared
  * agent registry, without touching the management CRUD surface ({@code /api/agents/*}).
  * <p>
- * Loads after {@code A2AModule}: {@link AgentHubService} runs AGENT tasks through
- * {@code ServerA2AService} and LLM calls through {@code AgentRunService}. The catalog is
- * invalidated from {@link AgentDefinitionService} write paths and refreshed every 30s.
+ * Loads after {@code A2AModule} and {@code AgentRunnerModule}: {@link AgentHubService} runs AGENT tasks
+ * through {@code ServerA2AService} and LLM calls through {@code AgentRunService}, and core-ng resolves
+ * {@code @Inject} fields while binding. The catalog is invalidated from
+ * {@link AgentDefinitionService} write paths and refreshed every 30s.
  *
  * @author stephen
  */
