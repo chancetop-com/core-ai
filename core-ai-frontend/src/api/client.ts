@@ -1984,6 +1984,11 @@ export const api = {
     // re-home a report under another subject; null = back to the unassigned bucket
     moveReport: (id: string, fileId: string, subjectId: string | null) =>
       request<void>(`/api/projects/${id}/reports/${encodeURIComponent(fileId)}/subject`, { method: 'PUT', body: JSON.stringify({ subject_id: subjectId }) }),
+    renameReport: (id: string, fileId: string, fileName: string) =>
+      request<void>(`/api/projects/${id}/reports/${encodeURIComponent(fileId)}?file_name=${encodeURIComponent(fileName)}`, { method: 'PUT' }),
+    // deletes the file record itself (content included), not just its place in the project
+    deleteReport: (id: string, fileId: string) =>
+      request<void>(`/api/projects/${id}/reports/${encodeURIComponent(fileId)}`, { method: 'DELETE' }),
     uploadReport: async (id: string, subjectId: string, file: File): Promise<ProjectReport> => {
       const form = new FormData();
       form.append('file', file, file.name);

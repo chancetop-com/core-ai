@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, RefreshCw, Lock } from 'lucide-react';
+import { Check, Copy, Eye, EyeOff, PlugZap, RefreshCw, Lock } from 'lucide-react';
 import { userApi, type ApiKeyInfo } from '../../api/client';
 import { useAuth } from '../../api/auth';
+
+// the gateway is served by the same host as this page, so the address the user is on is the one to hand to other tools
+const GATEWAY_BASE_URL = `${window.location.origin}/api/gateway/v1`;
 
 export default function ApiKeys() {
   const { login } = useAuth();
@@ -9,6 +12,7 @@ export default function ApiKeys() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -166,6 +170,41 @@ export default function ApiKeys() {
             No API key yet. One will be created on your next login.
           </div>
         )}
+      </div>
+
+      {/* Gateway Endpoint */}
+      <div className="mt-6 rounded-xl border p-5" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+        <div className="flex items-center gap-2 mb-4">
+          <PlugZap size={16} style={{ color: 'var(--color-text-secondary)' }} />
+          <h3 className="font-medium">Gateway API</h3>
+        </div>
+
+        <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+          OpenAI-compatible endpoint for external tools (DS Harness, Claude Code, Codex, Dify, ...).
+          Fill in this base URL and use your Default Key above as the API key.
+        </p>
+
+        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Base URL</label>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 px-3 py-2 rounded text-sm font-mono break-all" style={{ background: 'var(--color-bg-tertiary)' }}>
+            {GATEWAY_BASE_URL}
+          </code>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(GATEWAY_BASE_URL);
+              setCopiedUrl(true);
+              setTimeout(() => setCopiedUrl(false), 2000);
+            }}
+            className="p-2 rounded-lg cursor-pointer shrink-0"
+            style={{ color: copiedUrl ? '#16a34a' : 'var(--color-text-secondary)' }}
+            title="Copy base URL">
+            {copiedUrl ? <Check size={16} /> : <Copy size={16} />}
+          </button>
+        </div>
+
+        <div className="text-xs mt-3" style={{ color: 'var(--color-text-secondary)' }}>
+          Available models: GET <code className="font-mono">{GATEWAY_BASE_URL}/models</code>
+        </div>
       </div>
 
       {/* Change Password */}

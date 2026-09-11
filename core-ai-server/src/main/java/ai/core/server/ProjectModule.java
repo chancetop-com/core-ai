@@ -11,6 +11,8 @@ import ai.core.server.project.ProjectMemberQueryService;
 import ai.core.server.project.ProjectPlaybookService;
 import ai.core.server.project.ProjectQueryService;
 import ai.core.server.project.ProjectReportCompletionJob;
+import ai.core.server.project.ProjectReportFileController;
+import ai.core.server.project.ProjectReportFileService;
 import ai.core.server.project.ProjectReportQueryService;
 import ai.core.server.project.ProjectReportStage;
 import ai.core.server.project.ProjectReportUploadController;
@@ -47,6 +49,7 @@ public class ProjectModule extends Module {
         bind(ProjectStateService.class);
         bind(ProjectService.class);
         bind(ProjectReportQueryService.class);
+        bind(ProjectReportFileService.class);
         bind(ProjectQueryService.class);
         bind(ProjectMemberQueryService.class);
         bind(ProjectViewAssembler.class);
@@ -68,6 +71,11 @@ public class ProjectModule extends Module {
         http().bean(ProjectReportView.class);
         // multipart report upload (CLI `report push` / UI upload): raw controller, JSON api cannot take files
         http().route(HTTPMethod.POST, "/api/projects/:id/subjects/:subjectId/reports", bind(ProjectReportUploadController.class));
+        // report directory row actions (rename/delete): raw controller, one path split by method — the rename
+        // carries its new name in the query string, the same shape the upload endpoint uses for that field
+        var reportFileController = bind(ProjectReportFileController.class);
+        http().route(HTTPMethod.PUT, "/api/projects/:id/reports/:fileId", reportFileController);
+        http().route(HTTPMethod.DELETE, "/api/projects/:id/reports/:fileId", reportFileController);
         var projectTools = bind(ProjectTools.class);
         projectTools.initialize();
         // high-frequency attribution (tags new member material) + low-frequency subject analysis

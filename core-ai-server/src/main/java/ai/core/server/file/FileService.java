@@ -8,6 +8,7 @@ import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.util.Encodings;
+import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -34,6 +35,7 @@ public class FileService {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileService.class);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final String ARTIFACT_PREFIX = "artifacts/";
+    private static final int MAX_FILE_NAME_LENGTH = 255;
 
     @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     public static String extension(String contentType) {
@@ -255,6 +257,28 @@ public class FileService {
     public String downloadUrl(FileRecord record) {
         var credential = downloadCredential(record);
         return credential == null ? null : credential.downloadUrl();
+    }
+
+    /**
+     * Renames the display metadata of a record; the stored content keeps its id-keyed path. Authorization stays with
+     * the caller: a project manager may rename a report another user's agent produced.
+     */
+    public FileRecord rename(String id, String fileName) {
+        var name = validateFileName(fileName);
+        var record = get(id);
+        fileRecordCollection.update(Filters.eq("_id", id), Updates.set("file_name", name));
+        record.fileName = name;
+        LOGGER.info("file renamed, id={}, fileName={}", id, name);
+        return record;
+    }
+
+    // control characters never belong in a name (it can end up in a Content-Disposition header downstream)
+    private String validateFileName(String fileName) {
+        if (fileName == null) throw new BadRequestException("file name is required");
+        var name = fileName.replaceAll("\\p{Cntrl}", "").trim();
+        if (name.isEmpty()) throw new BadRequestException("file name is required");
+        if (name.length() > MAX_FILE_NAME_LENGTH) throw new BadRequestException("file name is too long, max=" + MAX_FILE_NAME_LENGTH);
+        return name;
     }
 
     public void delete(String id) {

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, ExternalLink, FileText, Link2, Loader2, Upload } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ExternalLink, FileText, Link2, Loader2, Pencil, Trash2, Upload, X } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ProjectReport, ProjectSubject } from '../../api/client';
 import type { ArtifactSpec } from '../chat/components/artifactTypes';
@@ -69,6 +69,8 @@ export default function ProjectReports({ projectId, subjectId, inbox = false, su
   const [active, setActive] = useState<ArtifactSpec | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
@@ -153,6 +155,44 @@ export default function ProjectReports({ projectId, subjectId, inbox = false, su
       onChanged?.();
     } catch (e) {
       alert(`Move failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const startRename = (r: ProjectReport) => {
+    setRenamingId(r.file_id);
+    setRenameName(r.file_name);
+  };
+
+  const saveRename = async (r: ProjectReport) => {
+    const name = renameName.trim();
+    if (!name || name === r.file_name) {
+      setRenamingId(null);
+      return;
+    }
+    setBusyId(r.file_id);
+    try {
+      await api.projects.renameReport(projectId, r.file_id, name);
+      setRenamingId(null);
+      await load();
+      onChanged?.();
+    } catch (e) {
+      alert(`Rename failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (r: ProjectReport) => {
+    if (!confirm(`Delete "${r.file_name}"?\n\nThe file is removed everywhere: this project's reports, shared links and the artifact lists it appeared in.`)) return;
+    setBusyId(r.file_id);
+    try {
+      await api.projects.deleteReport(projectId, r.file_id);
+      await load();
+      onChanged?.();
+    } catch (e) {
+      alert(`Delete failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       setBusyId(null);
     }
@@ -263,7 +303,18 @@ export default function ProjectReports({ projectId, subjectId, inbox = false, su
                       onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                       <FileText size={14} className="shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
-                      <span className="min-w-0 flex-1 truncate text-left">{r.file_name}</span>
+                      {renamingId === r.file_id ? (
+                        <input autoFocus value={renameName} disabled={busyId === r.file_id}
+                          onChange={e => setRenameName(e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveRename(r);
+                            if (e.key === 'Escape') setRenamingId(null);
+                          }}
+                          className="min-w-0 flex-1 px-1.5 py-0.5 rounded border text-sm" style={inputStyle} />
+                      ) : (
+                        <span className="min-w-0 flex-1 truncate text-left">{r.file_name}</span>
+                      )}
                       <span className="text-xs shrink-0 px-1.5 rounded"
                         style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                         {r.source === 'upload' ? 'upload' : (r.agent_name || 'agent')}
@@ -291,6 +342,29 @@ export default function ProjectReports({ projectId, subjectId, inbox = false, su
                           <ExternalLink size={14} />
                         </a>
                       ) : <span className="w-6" />}
+                      {renamingId === r.file_id ? (
+                        <>
+                          <button onClick={e => { e.stopPropagation(); saveRename(r); }} disabled={busyId === r.file_id}
+                            title="Save name" className="p-1 rounded cursor-pointer disabled:opacity-30" style={{ color: 'var(--color-primary)' }}>
+                            <Check size={14} />
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); setRenamingId(null); }}
+                            title="Cancel" className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+                            <X size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={e => { e.stopPropagation(); startRename(r); }} disabled={busyId === r.file_id}
+                            title="Rename report" className="p-1 rounded cursor-pointer disabled:opacity-30" style={{ color: 'var(--color-text-secondary)' }}>
+                            <Pencil size={14} />
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); remove(r); }} disabled={busyId === r.file_id}
+                            title="Delete report" className="p-1 rounded cursor-pointer disabled:opacity-30" style={{ color: 'var(--color-danger)' }}>
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
