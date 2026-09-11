@@ -46,6 +46,9 @@ class ManagedSkillProvisionerTest {
 
         assertTrue(adapted.contains("## Windows Usage"));
         assertTrue(adapted.contains("Get-Content bu.py -Raw | browser-use"));
+        assertTrue(adapted.contains("$env:USERPROFILE\\.core-ai\\browser-profiles"));
+        assertTrue(adapted.contains("browser-use --reload"));
+        assertTrue(adapted.contains("agent_helpers.py"));
     }
 
     @Test

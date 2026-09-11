@@ -55,6 +55,51 @@ public class ManagedSkillProvisioner {
             Set-Content -Path bu.py -Value "print(page_info())" -Encoding UTF8
             Get-Content bu.py -Raw | browser-use
             ```
+
+            ### One dedicated Edge instance per site
+
+            Chrome/Edge expose the default profile to automation only after someone clicks "Allow remote debugging?" in a popup, which no automated run can do. Start a separate Edge instance whose profile exists for exactly this purpose, and attach to it with BU_CDP_URL:
+
+            ```powershell
+            $site = "myapp"        # one profile per site, so a logged-in site keeps its login
+            $profile = "$env:USERPROFILE\\.core-ai\\browser-profiles\\$site"
+            Start-Process msedge.exe -ArgumentList "--remote-debugging-port=9222", "--user-data-dir=$profile", "--no-first-run", "--no-default-browser-check"
+            Invoke-RestMethod http://127.0.0.1:9222/json/version    # wait until this answers
+            $env:BU_CDP_URL = "http://127.0.0.1:9222"               # in the shell that runs browser-use
+            ```
+
+            - Check `%USERPROFILE%\\.core-ai\\browser-profiles` first: a profile for that site already carries its login. Never park a profile in `%TEMP%`, Windows cleanup deletes it.
+            - No login yet: open the site in that window, ask the user to sign in once, then continue. Never type credentials yourself, and never answer a login-walled question from search results or another site instead.
+            - The daemon keeps one browser connection: if it was attached elsewhere before this Edge instance started, run `browser-use --reload` once. A second site at the same time needs another port (9223) and its own `$env:BU_NAME`.
+            - Close an instance through its command line, never by killing every Edge process:
+
+            ```powershell
+            Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" |
+              Where-Object { $_.CommandLine -like '*--user-data-dir=*browser-profiles*' -and $_.CommandLine -notlike '*--type=*' } |
+              ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+            ```
+
+            ### Every call is a fresh script
+
+            Each `browser-use` call runs in a new process: tabs, page state and cookies stay in the daemon, Python variables do not. Do related steps in one call, print what the next decision needs, and keep shared state on the page or in files.
+
+            ### Helpers: reuse before writing your own
+
+            Pre-imported: `cdp, goto_url, page_info, list_tabs, current_tab, switch_tab, new_tab, close_tab, activate_tab, ensure_real_tab, iframe_target, click_at_xy, type_text, fill_input, press_key, dispatch_key, scroll, capture_screenshot, wait, wait_for_load, wait_for_element, wait_for_network_idle, js, upload_file, http_get, drain_events, start_recording, stop_recording, recordings`.
+
+            Also loaded from `$BH_AGENT_WORKSPACE\\agent_helpers.py`, wrapping the Page Workflow accessibility-tree loop into one call each: `ax_list(name=None, role=None)`, `ax_find(name, role=None, index=0, exact=False)`, `click_ax(name, role=None)` (find, scroll into view, click), `box_center(id)`, `dump()` (URL, title, visible text), `snap()` (screenshot path), `settle(sec)`, `console_errors()`, `api_log_errors()` (non-2xx fetch/XHR), `json_val(expr)`. Put reusable helpers in that file instead of re-writing them inline, it is loaded again on the next call.
+
+            ### Verify cheaply
+
+            - Prefer the accessibility tree over pixels, and take a screenshot (`snap()`) only when the visual result is the point. Read it with `read_file`.
+            - After an interaction take exactly one cheap state check - `dump()`, a title/URL change, `console_errors()`, an API result - not a dump plus a screenshot plus a `js` probe.
+            - One authoritative signal settles the question. Do not re-verify it through badges, a second page, or another snapshot.
+
+            ### When it does not work
+
+            - Element not found: re-read the AX tree, the page changed.
+            - `NameError`, `AttributeError` or bad arguments are your script's bug: fix the call, do not retry it.
+            - The user asked about UI or page behaviour: drive the page. Do not answer from source code, and do not swap in API calls for the UI they asked to see.
             """;
 
     private static final List<ManagedSkill> MANAGED_SKILLS = List.of(
