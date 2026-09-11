@@ -336,11 +336,11 @@ public class MediaJobService {
     }
 
     private Bson applyPrice(Bson updates, MediaPricingService.MediaPrice price) {
-        if (price == null || price.costUsd() == null) return updates;
+        if (price == null) return updates;
         var priced = Updates.combine(updates,
-                Updates.set("cost_usd", price.costUsd()),
                 Updates.set("cost_source", price.source()),
                 Updates.set("pricing_model_id", price.pricingModelId()));
+        if (price.costUsd() != null) priced = Updates.combine(priced, Updates.set("cost_usd", price.costUsd()));
         if (price.units() != null) priced = Updates.combine(priced, Updates.set("media_units", price.units()));
         if (price.unitType() != null) priced = Updates.combine(priced, Updates.set("media_unit_type", price.unitType()));
         return priced;

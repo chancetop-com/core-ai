@@ -74,13 +74,7 @@ public class LiteLLMMediaProvider implements MediaProvider {
                         (String) data.get("revised_prompt")));
             }
         }
-        var usageMap = (Map<String, Object>) responseMap.get("usage");
-        var usage = usageMap == null ? null : new Usage(
-                intValue(usageMap, "total_tokens"),
-                intValue(usageMap, "image_count"),
-                intValue(usageMap, "video_seconds"),
-                null, null, null, null,
-                responseCost(httpResponse));
+        var usage = usage(responseMap, httpResponse);
         return new ImageGenerationResponse(images, usage);
     }
 
@@ -100,18 +94,11 @@ public class LiteLLMMediaProvider implements MediaProvider {
         }
 
         var responseMap = (Map<String, Object>) JsonUtil.fromJson(Map.class, httpResponse.text());
-        var usageMap = (Map<String, Object>) responseMap.get("usage");
-        var usage = usageMap == null ? null : new Usage(
-                intValue(usageMap, "total_tokens"),
-                intValue(usageMap, "image_count"),
-                intValue(usageMap, "video_seconds"),
-                null, null, null, null,
-                responseCost(httpResponse));
         return new VideoGenerationResponse(
                 (String) responseMap.get("id"),
                 (String) responseMap.get("status"),
                 longValue(responseMap, "created_at"),
-                usage);
+                usage(responseMap, httpResponse));
     }
 
     @Override
@@ -133,7 +120,8 @@ public class LiteLLMMediaProvider implements MediaProvider {
                 (String) responseMap.get("error"),
                 longValue(responseMap, "completed_at"),
                 null,
-                responseCost(httpResponse));
+                responseCost(httpResponse),
+                usage(responseMap, httpResponse));
     }
 
     @Override
@@ -186,6 +174,31 @@ public class LiteLLMMediaProvider implements MediaProvider {
     private Integer intValue(Map<String, Object> map, String key) {
         var value = map.get(key);
         return value instanceof Number number ? number.intValue() : null;
+    }
+
+    /**
+     * OpenAI/Azure image responses carry token details (input_tokens_details.text_tokens/image_tokens) that the
+     * pricing catalog prices apart; a LiteLLM proxy may additionally report the settled cost in a header.
+     */
+    @SuppressWarnings("unchecked")
+    private Usage usage(Map<String, Object> responseMap, HTTPResponse response) {
+        var cost = responseCost(response);
+        if (!(responseMap.get("usage") instanceof Map<?, ?> map)) {
+            return cost == null ? null : new Usage(null, null, null, null, null, null, null, cost, null);
+        }
+        var usageMap = (Map<String, Object>) map;
+        var details = usageMap.get("input_tokens_details") instanceof Map<?, ?> detailMap
+                ? (Map<String, Object>) detailMap : Map.<String, Object>of();
+        return new Usage(
+                intValue(usageMap, "total_tokens"),
+                intValue(usageMap, "image_count"),
+                intValue(usageMap, "video_seconds"),
+                intValue(usageMap, "input_tokens"),
+                intValue(usageMap, "output_tokens"),
+                intValue(details, "text_tokens"),
+                intValue(details, "image_tokens"),
+                cost,
+                null);
     }
 
     private Long longValue(Map<String, Object> map, String key) {

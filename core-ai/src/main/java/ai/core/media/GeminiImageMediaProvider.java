@@ -128,7 +128,7 @@ public class GeminiImageMediaProvider implements MediaProvider {
         return new Usage(total instanceof Number number ? number.intValue() : null, null, null,
                 input instanceof Number number ? number.intValue() : null,
                 output instanceof Number number ? number.intValue() : null,
-                null, null, null);
+                null, null, null, null);
     }
 
     @SuppressWarnings("unchecked")

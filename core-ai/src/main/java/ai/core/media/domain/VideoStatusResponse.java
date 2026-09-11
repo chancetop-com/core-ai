@@ -4,8 +4,8 @@ package ai.core.media.domain;
  * @author stephen
  */
 public record VideoStatusResponse(String id, String status, Integer progress, String error, Long completedAt,
-                                  Double creditsConsumed, Double upstreamCostUsd) {
+                                  Double creditsConsumed, Double upstreamCostUsd, Usage usage) {
     public VideoStatusResponse(String id, String status, Integer progress, String error, Long completedAt) {
-        this(id, status, progress, error, completedAt, null, null);
+        this(id, status, progress, error, completedAt, null, null, null);
     }
 }

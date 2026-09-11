@@ -24,9 +24,9 @@ public class MediaCostSettler {
     GatewayRoutingEngine routingEngine;
 
     public MediaPricingService.MediaPrice settleVideo(MediaJob job, VideoStatusResponse status) {
-        var creditUsdRate = creditUsdRate(job.providerId);
-        return pricingService.resolveVideo(job.requestedModel, job.resolvedModel, job.requestedSeconds,
-                status.creditsConsumed(), creditUsdRate, status.upstreamCostUsd());
+        var request = new MediaPricingService.VideoPricingRequest(job.requestedModel, job.resolvedModel, job.requestedSeconds,
+                status.creditsConsumed(), creditUsdRate(job.providerId), status.upstreamCostUsd(), status.usage());
+        return pricingService.resolveVideo(request);
     }
 
     public MediaPricingService.MediaPrice settleImage(String requestedModel, String resolvedModel, Usage usage, int imageCount) {

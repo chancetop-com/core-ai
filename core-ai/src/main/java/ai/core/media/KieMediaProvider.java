@@ -284,7 +284,7 @@ public class KieMediaProvider implements MediaProvider {
         var task = client.recordInfo(videoId, "video status");
         var state = KieTaskClient.stringValue(task, "state");
         return new VideoStatusResponse(videoId, normalizeStatus(state), KieTaskClient.intValue(task, "progress"),
-                KieTaskClient.stringValue(task, "failMsg"), null, KieTaskClient.doubleValue(task, "creditsConsumed"), null);
+                KieTaskClient.stringValue(task, "failMsg"), null, KieTaskClient.doubleValue(task, "creditsConsumed"), null, null);
     }
 
     @Override

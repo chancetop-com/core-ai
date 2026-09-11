@@ -89,11 +89,14 @@ public final class LLMModelContextRegistry {
                 var outputCostPerSecond = mediaMode ? getDoubleOrNull(modelNode, "output_cost_per_second") : null;
                 var inputCostPerImageToken = getDoubleOrNull(modelNode, "input_cost_per_image_token");
                 var outputCostPerImageToken = getDoubleOrNull(modelNode, "output_cost_per_image_token");
+                // gemini omni style video output: output tokens are split by modality and the video ones are priced apart
+                var outputCostPerVideoToken = getDoubleOrNull(modelNode, "output_cost_per_video_token");
 
                 modelInfoMap.put(modelName, new ModelInfo(maxInputTokens, maxOutputTokens, provider, mode,
                     inputCostPerToken, outputCostPerToken, cacheReadInputTokenCost, peakPriceMultiplier,
                     supportsVision, supportsPdfInput, supportsVideoInput,
-                    outputCostPerImage, outputCostPerSecond, inputCostPerImageToken, outputCostPerImageToken));
+                    outputCostPerImage, outputCostPerSecond, inputCostPerImageToken, outputCostPerImageToken,
+                    outputCostPerVideoToken));
             }
 
             LOGGER.debug("Loaded {} model entries from context registry", modelInfoMap.size());
@@ -259,16 +262,32 @@ public final class LLMModelContextRegistry {
         return estimate == null ? null : estimate.costUsd();
     }
 
-    /** Video generation estimate: seconds x output_cost_per_second; null when the model or price is unavailable. */
-    public MediaCostEstimate estimateVideoCost(String modelName, Integer seconds) {
-        if (seconds == null || seconds <= 0) return null;
+    /**
+     * Video generation estimate. Token detail path first (gemini omni style, where usage splits output tokens by
+     * modality): inputTokens x input_cost_per_token + videoOutputTokens x output_cost_per_video_token
+     * + the remaining text output tokens x output_cost_per_token.
+     * Falls back to per-second pricing: seconds x output_cost_per_second. Null when neither path can price it.
+     */
+    public MediaCostEstimate estimateVideoCost(String modelName, Integer seconds, Integer inputTokens,
+                                               Integer outputTokens, Integer videoTokens) {
         var entry = findMediaEntry(modelName);
-        if (entry == null || entry.info().outputCostPerSecond() == null) return null;
-        return new MediaCostEstimate(entry.info().outputCostPerSecond() * seconds, entry.key(), (double) seconds, "second");
+        if (entry == null) return null;
+        var info = entry.info();
+        if (videoTokens != null && videoTokens > 0 && info.outputCostPerVideoToken() != null) {
+            var video = safeInt(videoTokens);
+            var textOutput = Math.max(safeInt(outputTokens) - video, 0);
+            var cost = safeInt(inputTokens) * info.inputCostPerToken()
+                    + video * info.outputCostPerVideoToken()
+                    + textOutput * info.outputCostPerToken();
+            return new MediaCostEstimate(cost, entry.key(), (double) video, "video_token");
+        }
+        if (seconds == null || seconds <= 0 || info.outputCostPerSecond() == null) return null;
+        return new MediaCostEstimate(info.outputCostPerSecond() * seconds, entry.key(), (double) seconds, "second");
     }
 
-    public Double estimateVideoCostUsd(String modelName, Integer seconds) {
-        var estimate = estimateVideoCost(modelName, seconds);
+    public Double estimateVideoCostUsd(String modelName, Integer seconds, Integer inputTokens,
+                                       Integer outputTokens, Integer videoTokens) {
+        var estimate = estimateVideoCost(modelName, seconds, inputTokens, outputTokens, videoTokens);
         return estimate == null ? null : estimate.costUsd();
     }
 
@@ -314,7 +333,8 @@ public final class LLMModelContextRegistry {
             Double outputCostPerImage,
             Double outputCostPerSecond,
             Double inputCostPerImageToken,
-            Double outputCostPerImageToken) {
+            Double outputCostPerImageToken,
+            Double outputCostPerVideoToken) {
         public int contextWindow() {
             return maxInputTokens;
         }

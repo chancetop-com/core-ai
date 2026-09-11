@@ -159,7 +159,7 @@ class LLMModelContextRegistryTest {
 
     @Test
     void testEstimateVideoCostVeoPreviewKey() {
-        var cost = registry.estimateVideoCostUsd("gemini/veo-3.1-generate-preview", 8);
+        var cost = registry.estimateVideoCostUsd("gemini/veo-3.1-generate-preview", 8, null, null, null);
 
         assertNotNull(cost);
         assertEquals(3.2, cost, 1e-12);
@@ -168,7 +168,7 @@ class LLMModelContextRegistryTest {
     @Test
     void testEstimateVideoCostVertexGaIdMapsToCatalogKey() {
         // Vertex GA id veo-3.1-generate-001 must resolve to the catalog key gemini/veo-3.1-generate-001 (0.4/s)
-        var estimate = registry.estimateVideoCost("veo-3.1-generate-001", 8);
+        var estimate = registry.estimateVideoCost("veo-3.1-generate-001", 8, null, null, null);
 
         assertNotNull(estimate);
         assertEquals("gemini/veo-3.1-generate-001", estimate.pricingModelId());
@@ -178,14 +178,34 @@ class LLMModelContextRegistryTest {
     }
 
     @Test
+    void testEstimateVideoCostGeminiOmniPricesVideoOutputTokens() {
+        // gemini omni (mode=chat): input 1.5e-6/token, text output 9e-6/token, video output 1.75e-5/token.
+        // Duration is unknown on the Interactions API, so the token path must win over any per-second price.
+        var cost = registry.estimateVideoCostUsd("gemini-omni-flash-preview", null, 5_000, 28_832, 28_832);
+
+        assertNotNull(cost);
+        assertEquals(5_000 * 1.5e-6 + 28_832 * 1.75e-5, cost, 1e-12);
+    }
+
+    @Test
+    void testEstimateVideoCostGeminiOmniSplitsTextAndVideoOutputTokens() {
+        var estimate = registry.estimateVideoCost("gemini-omni-flash-preview", null, 1_000, 3_000, 2_000);
+
+        assertNotNull(estimate);
+        assertEquals(1_000 * 1.5e-6 + 2_000 * 1.75e-5 + 1_000 * 9e-6, estimate.costUsd(), 1e-12);
+        assertEquals(2_000.0, estimate.units());
+        assertEquals("video_token", estimate.unitType());
+    }
+
+    @Test
     void testEstimateVideoCostIgnoresChatModelPerSecondPrice() {
         // bedrock commitment chat models carry a compute output_cost_per_second that must not be used as media pricing
-        assertNull(registry.estimateVideoCostUsd("bedrock/*/1-month-commitment/cohere.command-light-text-v14", 8));
+        assertNull(registry.estimateVideoCostUsd("bedrock/*/1-month-commitment/cohere.command-light-text-v14", 8, null, null, null));
     }
 
     @Test
     void testEstimateVideoCostUnknownModelOrMissingSecondsReturnsNull() {
-        assertNull(registry.estimateVideoCostUsd("no-such-video-model", 8));
-        assertNull(registry.estimateVideoCostUsd("gemini/veo-3.1-generate-preview", null));
+        assertNull(registry.estimateVideoCostUsd("no-such-video-model", 8, null, null, null));
+        assertNull(registry.estimateVideoCostUsd("gemini/veo-3.1-generate-preview", null, null, null, null));
     }
 }

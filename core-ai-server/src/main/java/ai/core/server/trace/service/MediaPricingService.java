@@ -30,20 +30,19 @@ public class MediaPricingService {
         return catalogImagePrice(resolvedModel, usage, imageCount, requestedModel);
     }
 
-    public MediaPrice resolveVideo(String requestedModel, String resolvedModel, Integer seconds,
-                                   Double creditsConsumed, Double creditUsdRate, Double upstreamCostUsd) {
-        var gatewayModel = gatewayModel(requestedModel);
-        if (gatewayModel != null && gatewayModel.videoPricePerSecond != null && seconds != null) {
-            return new MediaPrice(gatewayModel.videoPricePerSecond * seconds, "gateway_model", gatewayModel.modelId,
-                    (double) seconds, "second");
+    public MediaPrice resolveVideo(VideoPricingRequest request) {
+        var gatewayModel = gatewayModel(request.requestedModel());
+        if (gatewayModel != null && gatewayModel.videoPricePerSecond != null && request.seconds() != null) {
+            return new MediaPrice(gatewayModel.videoPricePerSecond * request.seconds(), "gateway_model", gatewayModel.modelId,
+                    (double) request.seconds(), "second");
         }
-        if (upstreamCostUsd != null) {
-            return new MediaPrice(upstreamCostUsd, "upstream", null, null, null);
+        if (request.upstreamCostUsd() != null) {
+            return new MediaPrice(request.upstreamCostUsd(), "upstream", null, null, null);
         }
-        if (creditsConsumed != null && creditUsdRate != null) {
-            return new MediaPrice(creditsConsumed * creditUsdRate, "upstream", null, creditsConsumed, "credit");
+        if (request.creditsConsumed() != null && request.creditUsdRate() != null) {
+            return new MediaPrice(request.creditsConsumed() * request.creditUsdRate(), "upstream", null, request.creditsConsumed(), "credit");
         }
-        return catalogVideoPrice(resolvedModel, seconds, requestedModel);
+        return catalogVideoPrice(request);
     }
 
     private MediaPrice catalogImagePrice(String model, Usage usage, int imageCount, String fallbackModel) {
@@ -61,13 +60,22 @@ public class MediaPricingService {
                 usage.outputTokens(), imageCount);
     }
 
-    private MediaPrice catalogVideoPrice(String model, Integer seconds, String fallbackModel) {
-        var estimate = LLMModelContextRegistry.getInstance().estimateVideoCost(model, seconds);
-        if (estimate == null && fallbackModel != null && !fallbackModel.equals(model)) {
-            estimate = LLMModelContextRegistry.getInstance().estimateVideoCost(fallbackModel, seconds);
+    private MediaPrice catalogVideoPrice(VideoPricingRequest request) {
+        var estimate = estimateVideo(request.resolvedModel(), request);
+        if (estimate == null && request.requestedModel() != null && !request.requestedModel().equals(request.resolvedModel())) {
+            estimate = estimateVideo(request.requestedModel(), request);
         }
         return estimate == null ? MediaPrice.unavailable() : new MediaPrice(estimate.costUsd(), "model_catalog",
                 estimate.pricingModelId(), estimate.units(), estimate.unitType());
+    }
+
+    private LLMModelContextRegistry.MediaCostEstimate estimateVideo(String model, VideoPricingRequest request) {
+        var usage = request.usage();
+        if (usage == null) {
+            return LLMModelContextRegistry.getInstance().estimateVideoCost(model, request.seconds(), null, null, null);
+        }
+        return LLMModelContextRegistry.getInstance().estimateVideoCost(model, request.seconds(),
+                usage.inputTokens(), usage.outputTokens(), usage.outputVideoTokens());
     }
 
     private GatewayModelConfig gatewayModel(String model) {
@@ -75,6 +83,10 @@ public class MediaPricingService {
         var models = gatewayModelCollection.find(Filters.eq("model_id", model));
         if (!models.isEmpty()) return models.getFirst();
         return null;
+    }
+
+    public record VideoPricingRequest(String requestedModel, String resolvedModel, Integer seconds,
+                                      Double creditsConsumed, Double creditUsdRate, Double upstreamCostUsd, Usage usage) {
     }
 
     public record MediaPrice(Double costUsd, String source, String pricingModelId, Double units, String unitType) {

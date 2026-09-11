@@ -119,7 +119,7 @@ public class OpenAIImageMediaProvider implements MediaProvider {
                     intValue(usageMap, "total_tokens"), intValue(usageMap, "image_count"), null,
                     intValue(usageMap, "input_tokens"), intValue(usageMap, "output_tokens"),
                     intValue(details, "text_tokens"), intValue(details, "image_tokens"),
-                    null);
+                    null, null);
         }
         return new ImageGenerationResponse(images, usage);
     }

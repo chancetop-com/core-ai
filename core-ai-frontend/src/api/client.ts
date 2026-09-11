@@ -1490,6 +1490,7 @@ export interface GatewayProvider {
   requestExtraBody?: string;
   timeoutSeconds?: number;
   connectTimeoutSeconds?: number;
+  creditUsdRate?: number;
   createdBy?: string;
   updatedBy?: string;
   createdAt?: string;
@@ -1522,6 +1523,7 @@ export interface GatewayProviderRequest {
   requestExtraBody?: string;
   timeoutSeconds?: number;
   connectTimeoutSeconds?: number;
+  creditUsdRate?: number;
 }
 
 export interface ListGatewayProvidersResponse {

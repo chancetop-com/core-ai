@@ -5,6 +5,7 @@ import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
+import ai.core.media.domain.Usage;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
@@ -55,7 +56,7 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
         }
         mergeProviderExtra(body, request.providerExtra());
         var response = responseMap(execute(HTTPMethod.POST, interactionsUrl, body, "image generation"));
-        return new ImageGenerationResponse(outputImages(response), null, stringValue(response, "id"));
+        return new ImageGenerationResponse(outputImages(response), usage(response), stringValue(response, "id"));
     }
 
     @Override
@@ -76,7 +77,7 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
 
         var response = execute(HTTPMethod.POST, interactionsUrl, body, "video generation");
         var responseMap = responseMap(response);
-        return new VideoGenerationResponse(stringValue(responseMap, "id"), stringValue(responseMap, "status"), null, null);
+        return new VideoGenerationResponse(stringValue(responseMap, "id"), stringValue(responseMap, "status"), null, usage(responseMap));
     }
 
     @Override
@@ -88,7 +89,10 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
                 normalizeStatus(stringValue(responseMap, "status")),
                 null,
                 error(responseMap),
-                null);
+                null,
+                null,
+                null,
+                usage(responseMap));
     }
 
     @Override
@@ -353,5 +357,45 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
     private String stringValue(Map<String, Object> map, String name) {
         var value = map.get(name);
         return value instanceof String string ? string : null;
+    }
+
+    /**
+     * Interactions usage: thinking tokens are billed as output tokens, tool-use tokens are input-side, and only the
+     * video output tokens are priced apart from the text ones (output_cost_per_video_token).
+     */
+    @SuppressWarnings("unchecked")
+    private Usage usage(Map<String, Object> interaction) {
+        if (!(interaction.get("usage") instanceof Map<?, ?> map)) return null;
+        var usage = (Map<String, Object>) map;
+        var totalTokens = intValue(usage, "total_tokens");
+        var inputTokens = sumOrNull(intValue(usage, "total_input_tokens"), intValue(usage, "total_tool_use_tokens"));
+        var outputTokens = sumOrNull(intValue(usage, "total_output_tokens"), intValue(usage, "total_thought_tokens"));
+        var inputTextTokens = modalityTokens(usage, "input_tokens_by_modality", "text");
+        var inputImageTokens = modalityTokens(usage, "input_tokens_by_modality", "image");
+        var outputVideoTokens = modalityTokens(usage, "output_tokens_by_modality", "video");
+        if (totalTokens == null && inputTokens == null && outputTokens == null && outputVideoTokens == null) return null;
+        return new Usage(totalTokens, null, null, inputTokens, outputTokens,
+                inputTextTokens, inputImageTokens, null, outputVideoTokens);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Integer modalityTokens(Map<String, Object> usage, String field, String modality) {
+        if (!(usage.get(field) instanceof List<?> entries)) return null;
+        for (var entry : entries) {
+            if (!(entry instanceof Map<?, ?> map)) continue;
+            var tokens = (Map<String, Object>) map;
+            if (modality.equals(tokens.get("modality"))) return intValue(tokens, "tokens");
+        }
+        return null;
+    }
+
+    private Integer sumOrNull(Integer first, Integer second) {
+        if (first == null && second == null) return null;
+        return (first == null ? 0 : first) + (second == null ? 0 : second);
+    }
+
+    private Integer intValue(Map<String, Object> map, String name) {
+        var value = map.get(name);
+        return value instanceof Number number ? number.intValue() : null;
     }
 }

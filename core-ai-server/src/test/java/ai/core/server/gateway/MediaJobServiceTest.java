@@ -129,7 +129,7 @@ class MediaJobServiceTest {
         var price = new MediaPricingService.MediaPrice(3.2, "model_catalog", "gemini/veo-3.1-generate-001", 8.0, "second");
         when(costSettler.settleVideo(any(), any())).thenReturn(price);
 
-        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, 12.5, null));
+        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, 12.5, null, null));
 
         var update = capturedUpdateText();
         assertTrue(update.contains("fieldName='completed_at'"));
@@ -143,12 +143,28 @@ class MediaJobServiceTest {
     }
 
     @Test
+    void updateVideoStatusRecordsUnavailablePriceSource() {
+        var job = new MediaJob();
+        job.id = "job-1";
+        job.providerId = "provider-1";
+        job.requestedModel = "gemini-omni-flash-preview";
+        when(costSettler.settleVideo(any(), any()))
+                .thenReturn(new MediaPricingService.MediaPrice(null, "unavailable", null, null, null));
+
+        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null, null));
+
+        var update = capturedUpdateText();
+        assertTrue(update.contains("fieldName='cost_source', operator='$set', value=unavailable"));
+        assertFalse(update.contains("cost_usd"));
+    }
+
+    @Test
     void updateVideoStatusDoesNotSettleTwice() {
         var job = new MediaJob();
         job.id = "job-1";
         job.completedAt = ZonedDateTime.now();
 
-        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null));
+        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null, null));
 
         verify(costSettler, never()).settleVideo(any(), any());
         assertFalse(capturedUpdateText().contains("cost_usd"));
@@ -161,7 +177,7 @@ class MediaJobServiceTest {
         job.providerId = "provider-1";
         when(costSettler.settleVideo(any(), any())).thenThrow(new IllegalStateException("catalog exploded"));
 
-        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null));
+        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null, null));
 
         var update = capturedUpdateText();
         assertTrue(update.contains("fieldName='state', operator='$set', value=completed"));
@@ -175,7 +191,7 @@ class MediaJobServiceTest {
         var job = new MediaJob();
         job.id = "job-1";
 
-        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "processing", 50, null, null, 3.0, null));
+        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "processing", 50, null, null, 3.0, null, null));
 
         var update = capturedUpdateText();
         assertTrue(update.contains("fieldName='state', operator='$set', value=processing"));

@@ -33,6 +33,12 @@ class MediaPricingServiceTest {
         service.gatewayModelCollection = models;
     }
 
+    private MediaPricingService.VideoPricingRequest videoRequest(String requestedModel, String resolvedModel, Integer seconds,
+                                                                 Double creditsConsumed, Double creditUsdRate, Double upstreamCostUsd) {
+        return new MediaPricingService.VideoPricingRequest(requestedModel, resolvedModel, seconds,
+                creditsConsumed, creditUsdRate, upstreamCostUsd, null);
+    }
+
     private GatewayModelConfig gatewayModel(String modelId, Double imagePrice, Double videoPricePerSecond) {
         var model = new GatewayModelConfig();
         model.id = "cfg-1";
@@ -46,7 +52,7 @@ class MediaPricingServiceTest {
     void resolveImagePrefersGatewayModelPrice() {
         when(models.find(any(Bson.class))).thenReturn(List.of(gatewayModel("gpt-image-2", 0.1, null)));
 
-        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 2, null, 150, 200, 100, 50, null), 2);
+        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 2, null, 150, 200, 100, 50, null, null), 2);
 
         assertEquals(0.2, price.costUsd());
         assertEquals("gateway_model", price.source());
@@ -59,7 +65,7 @@ class MediaPricingServiceTest {
     void resolveImagePrefersUpstreamCostOverCatalog() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
 
-        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 1, null, 150, 200, 100, 50, 0.42), 1);
+        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 1, null, 150, 200, 100, 50, 0.42, null), 1);
 
         assertEquals(0.42, price.costUsd());
         assertEquals("upstream", price.source());
@@ -70,7 +76,7 @@ class MediaPricingServiceTest {
     void resolveImageFallsBackToCatalogTokenPricing() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
 
-        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 1, null, 150, 200, 100, 50, null), 1);
+        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 1, null, 150, 200, 100, 50, null, null), 1);
 
         assertEquals(100 * 5e-6 + 50 * 8e-6 + 200 * 3e-5, price.costUsd(), 1e-12);
         assertEquals("model_catalog", price.source());
@@ -93,7 +99,7 @@ class MediaPricingServiceTest {
     void resolveVideoPrefersGatewayModelPrice() {
         when(models.find(any(Bson.class))).thenReturn(List.of(gatewayModel("veo", null, 0.5)));
 
-        var price = service.resolveVideo("veo", "veo-3.1-generate-001", 8, 10.0, 0.01, 0.2);
+        var price = service.resolveVideo(videoRequest("veo", "veo-3.1-generate-001", 8, 10.0, 0.01, 0.2));
 
         assertEquals(4.0, price.costUsd());
         assertEquals("gateway_model", price.source());
@@ -105,7 +111,7 @@ class MediaPricingServiceTest {
     void resolveVideoPrefersUpstreamCostHeaderOverCredits() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
 
-        var price = service.resolveVideo("veo", "veo-3.1-generate-001", 8, 10.0, 0.01, 0.2);
+        var price = service.resolveVideo(videoRequest("veo", "veo-3.1-generate-001", 8, 10.0, 0.01, 0.2));
 
         assertEquals(0.2, price.costUsd());
         assertEquals("upstream", price.source());
@@ -115,7 +121,7 @@ class MediaPricingServiceTest {
     void resolveVideoConvertsCreditsWithConfiguredRate() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
 
-        var price = service.resolveVideo("seedance", "bytedance/seedance-1-pro", 8, 10.0, 0.01, null);
+        var price = service.resolveVideo(videoRequest("seedance", "bytedance/seedance-1-pro", 8, 10.0, 0.01, null));
 
         assertEquals(0.1, price.costUsd());
         assertEquals("upstream", price.source());
@@ -127,7 +133,7 @@ class MediaPricingServiceTest {
     void resolveVideoFallsBackToCatalogPerSecond() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
 
-        var price = service.resolveVideo("veo-3.1-generate-001", "veo-3.1-generate-001", 8, null, null, null);
+        var price = service.resolveVideo(videoRequest("veo-3.1-generate-001", "veo-3.1-generate-001", 8, null, null, null));
 
         assertEquals(3.2, price.costUsd(), 1e-12);
         assertEquals("model_catalog", price.source());
@@ -140,7 +146,43 @@ class MediaPricingServiceTest {
     void resolveVideoReturnsUnavailableWithoutSecondsAndUpstreamData() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
 
-        var price = service.resolveVideo("veo-3.1-generate-001", "veo-3.1-generate-001", null, null, null, null);
+        var price = service.resolveVideo(videoRequest("veo-3.1-generate-001", "veo-3.1-generate-001", null, null, null, null));
+
+        assertNull(price.costUsd());
+        assertEquals("unavailable", price.source());
+    }
+
+    @Test
+    void resolveVideoPricesGeminiOmniFromVideoOutputTokens() {
+        when(models.find(any(Bson.class))).thenReturn(List.of());
+        var usage = new Usage(33_832, null, null, 5_000, 28_832, null, null, null, 28_832);
+
+        var price = service.resolveVideo(new MediaPricingService.VideoPricingRequest(
+                "gemini-omni-flash-preview", "gemini-omni-flash-preview", null, null, null, null, usage));
+
+        assertEquals(5_000 * 1.5e-6 + 28_832 * 1.75e-5, price.costUsd(), 1e-12);
+        assertEquals("model_catalog", price.source());
+        assertEquals("gemini-omni-flash-preview", price.pricingModelId());
+        assertEquals("video_token", price.unitType());
+    }
+
+    @Test
+    void resolveVideoPrefersUpstreamCostOverVideoTokens() {
+        when(models.find(any(Bson.class))).thenReturn(List.of());
+        var usage = new Usage(33_832, null, null, 5_000, 28_832, null, null, null, 28_832);
+
+        var price = service.resolveVideo(new MediaPricingService.VideoPricingRequest(
+                "gemini-omni-flash-preview", "gemini-omni-flash-preview", 10, null, null, 1.01, usage));
+
+        assertEquals(1.01, price.costUsd());
+        assertEquals("upstream", price.source());
+    }
+
+    @Test
+    void resolveVideoReturnsUnavailableWithoutCreditsRate() {
+        when(models.find(any(Bson.class))).thenReturn(List.of());
+
+        var price = service.resolveVideo(videoRequest("no-such-video-model", "no-such-video-model", 8, 252.0, null, null));
 
         assertNull(price.costUsd());
         assertEquals("unavailable", price.source());

@@ -20,6 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
@@ -98,6 +99,27 @@ class VertexGeminiOmniMediaProviderTest {
 
         assertEquals("processing", status.status());
         assertNull(status.error());
+    }
+
+    @Test
+    void completedInteractionExposesVideoOutputTokenUsage() {
+        interactionBody.set("""
+            {"id":"video-1","status":"completed","object":"interaction",
+             "usage":{"total_input_tokens":5000,"total_output_tokens":28832,"total_thought_tokens":1200,"total_tokens":35032,
+                      "input_tokens_by_modality":[{"modality":"text","tokens":4900},{"modality":"image","tokens":100}],
+                      "output_tokens_by_modality":[{"modality":"video","tokens":28832}]}}""");
+
+        var status = provider.getVideoStatus("video-1");
+
+        assertEquals("completed", status.status());
+        var usage = status.usage();
+        assertNotNull(usage);
+        assertEquals(35_032, usage.totalTokens());
+        assertEquals(5_000, usage.inputTokens());
+        assertEquals(30_032, usage.outputTokens());
+        assertEquals(4_900, usage.inputTextTokens());
+        assertEquals(100, usage.inputImageTokens());
+        assertEquals(28_832, usage.outputVideoTokens());
     }
 
     @Test

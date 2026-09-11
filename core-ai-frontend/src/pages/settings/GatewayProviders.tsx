@@ -61,6 +61,7 @@ type ProviderFormState = {
   vertexLocation: string;
   vertexGcsBucket: string;
   requestExtraBody: string;
+  creditUsdRate: string;
   timeoutSeconds: string;
   connectTimeoutSeconds: string;
 };
@@ -122,6 +123,7 @@ const emptyProviderForm: ProviderFormState = {
   vertexLocation: 'us-central1',
   vertexGcsBucket: '',
   requestExtraBody: '',
+  creditUsdRate: '',
   timeoutSeconds: '120',
   connectTimeoutSeconds: '10',
 };
@@ -240,6 +242,7 @@ export default function GatewayProviders() {
        vertexLocation: provider.vertexLocation || 'us-central1',
        vertexGcsBucket: provider.vertexGcsBucket || '',
        requestExtraBody: provider.requestExtraBody || '',
+       creditUsdRate: provider.creditUsdRate == null ? '' : String(provider.creditUsdRate),
       timeoutSeconds: String(provider.timeoutSeconds || 120),
       connectTimeoutSeconds: String(provider.connectTimeoutSeconds || 10),
     });
@@ -283,6 +286,7 @@ export default function GatewayProviders() {
         timeoutSeconds: Number(providerForm.timeoutSeconds || 120),
         connectTimeoutSeconds: Number(providerForm.connectTimeoutSeconds || 10),
       };
+      if (providerForm.creditUsdRate !== '') payload.creditUsdRate = Number(providerForm.creditUsdRate);
       if (providerForm.id) {
         await api.gateway.updateProvider(providerForm.id, payload);
       } else {
@@ -881,6 +885,22 @@ function renderProviderPanel(props: {
              </Field>
            )}
          </div>
+
+          <Field
+            label={form.id ? 'Credit USD Rate (leave empty to keep current)' : 'Credit USD Rate'}
+            hint="USD value of one upstream credit, used to price credit-metered media providers (KIE: 1 credit = 0.005)"
+          >
+            <input
+              className={inputClass}
+              style={inputStyle}
+              type="number"
+              min={0}
+              step="0.0001"
+              value={form.creditUsdRate}
+              placeholder="0.005"
+              onChange={e => setForm({ ...form, creditUsdRate: e.target.value })}
+            />
+          </Field>
 
           {isVertexMediaProtocol(form.mediaProtocol) && (
             <>
