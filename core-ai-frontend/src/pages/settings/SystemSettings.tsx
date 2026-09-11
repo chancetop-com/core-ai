@@ -38,6 +38,15 @@ export default function SystemSettings() {
     [models],
   );
 
+  // mirrors the server resolution for agents without a model: the model set here, then the gateway
+  // default (⭐, or the first by priority when none is starred), then the agent.properties fallback
+  const gatewayDefaultModel = useMemo(() => {
+    const starred = chatModels.find(model => model.isDefault);
+    if (starred) return starred.modelId;
+    const sorted = [...chatModels].sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100) || a.modelId.localeCompare(b.modelId));
+    return sorted[0]?.modelId || '';
+  }, [chatModels]);
+
   const imageGenerationModels = useMemo(
     () => models.filter(model => model.enabled !== false
         && ((model.endpointTypes || []).includes('image.generations') || (model.endpointTypes || []).includes('image.edits'))),
@@ -232,7 +241,7 @@ export default function SystemSettings() {
           <h2 className="font-semibold">Default LLM Model</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
             The default text model used by agents when no model is specified in the agent definition.
-            Falls back to the value from agent.properties if not set here.
+            Wins over the gateway default model; falls back to gateway routing and then to agent.properties when empty.
           </p>
         </div>
         <div className="p-5 space-y-5">
@@ -247,7 +256,7 @@ export default function SystemSettings() {
           </label>
           <div className="rounded-lg p-4 text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
             <div style={{ color: 'var(--color-text-secondary)' }}>Effective model</div>
-            <div className="font-mono mt-1">{llmModel || settings?.default_llm_model || 'Not configured'}</div>
+            <div className="font-mono mt-1">{llmModel || gatewayDefaultModel || settings?.default_llm_model || 'Not configured'}</div>
           </div>
         </div>
       </section>

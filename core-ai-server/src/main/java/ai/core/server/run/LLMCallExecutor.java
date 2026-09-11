@@ -125,8 +125,8 @@ public class LLMCallExecutor {
 
     private String resolveModel(AgentPublishedConfig config, String fallback) {
         var model = config != null ? config.model : fallback;
-        // gateway default wins over legacy config when the definition has no model of its own;
-        // treat blank as unset since the UI clears the field to an empty string
+        // mirrors AgentRunBuilder.resolveModel: settings page model, then gateway default, then legacy config
+        if (model == null || model.isBlank()) model = systemSettingsService.configuredLlmModel();
         if (model == null || model.isBlank()) model = gatewayRoutingEngine.defaultChatModelId();
         if (model == null || model.isBlank()) model = systemSettingsService.llmModel();
         return model;

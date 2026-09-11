@@ -154,9 +154,18 @@ public class SystemSettingsService {
         return configured == null ? defaultMemoryExtractionModel : configured;
     }
 
-    public String llmModel() {
+    /**
+     * Default chat model explicitly chosen on the settings page, null when never configured here.
+     * Callers prefer this choice over gateway routing defaults, while {@link #llmModel()} keeps the
+     * agent.properties fallback for deployments without a gateway.
+     */
+    public String configuredLlmModel() {
         var entity = entity();
-        var configured = entity == null ? null : normalizeModel(entity.llmModel);
+        return entity == null ? null : normalizeModel(entity.llmModel);
+    }
+
+    public String llmModel() {
+        var configured = configuredLlmModel();
         return configured == null ? defaultLlmModel : configured;
     }
 

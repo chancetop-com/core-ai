@@ -239,10 +239,11 @@ public class SubAgentAssembler {
         return builder.build();
     }
 
-    // mirrors AgentRunBuilder.resolveModel: gateway default wins over the legacy system setting,
-    // and the system setting wins over the static provider default (which is a legacy prefixed name)
+    // mirrors AgentRunBuilder.resolveModel: the settings page model wins over the gateway default,
+    // and the gateway default wins over the static provider default (which is a legacy prefixed name)
     private String resolveDefaultModel() {
-        var model = gatewayRoutingEngine.defaultChatModelId();
+        var model = systemSettingsService.configuredLlmModel();
+        if (model == null || model.isBlank()) model = gatewayRoutingEngine.defaultChatModelId();
         if (model == null || model.isBlank()) model = systemSettingsService.llmModel();
         return model;
     }

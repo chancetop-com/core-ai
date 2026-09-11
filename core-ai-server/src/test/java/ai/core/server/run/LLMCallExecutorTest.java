@@ -31,8 +31,18 @@ import static org.mockito.Mockito.when;
 
 class LLMCallExecutorTest {
     @Test
-    void usesGatewayDefaultModelWhenDefinitionHasNoModel() {
-        var executor = executor("deepseek-v4-flash", "deepseek/deepseek-v4-flash");
+    void usesSystemSettingsModelWhenDefinitionHasNoModel() {
+        var executor = executor("deepseek-flash", "deepseek-v4-flash", "deepseek/deepseek-v4-flash");
+        var stub = stub(executor);
+
+        executor.execute(definition(null), "hello");
+
+        assertEquals("deepseek-flash", stub.captured.model);
+    }
+
+    @Test
+    void fallsBackToGatewayDefaultWhenSystemSettingsHasNoModel() {
+        var executor = executor(null, "deepseek-v4-flash", "deepseek/deepseek-v4-flash");
         var stub = stub(executor);
 
         executor.execute(definition(null), "hello");
@@ -41,8 +51,8 @@ class LLMCallExecutorTest {
     }
 
     @Test
-    void fallsBackToSystemSettingsWhenGatewayHasNoDefaultModel() {
-        var executor = executor(null, "deepseek/deepseek-v4-flash");
+    void fallsBackToLegacyConfigWhenGatewayHasNoDefaultModel() {
+        var executor = executor(null, null, "deepseek/deepseek-v4-flash");
         var stub = stub(executor);
 
         executor.execute(definition(null), "hello");
@@ -52,17 +62,17 @@ class LLMCallExecutorTest {
 
     @Test
     void treatsBlankModelAsUnset() {
-        var executor = executor("deepseek-v4-flash", "deepseek/deepseek-v4-flash");
+        var executor = executor("deepseek-flash", null, "deepseek/deepseek-v4-flash");
         var stub = stub(executor);
 
         executor.execute(definition(" "), "hello");
 
-        assertEquals("deepseek-v4-flash", stub.captured.model);
+        assertEquals("deepseek-flash", stub.captured.model);
     }
 
     @Test
-    void definitionModelTakesPrecedenceOverGatewayDefault() {
-        var executor = executor("deepseek-v4-flash", "deepseek/deepseek-v4-flash");
+    void definitionModelTakesPrecedenceOverDefaultModel() {
+        var executor = executor("deepseek-flash", "deepseek-v4-flash", "deepseek/deepseek-v4-flash");
         var stub = stub(executor);
 
         executor.execute(definition("gpt-4o"), "hello");
@@ -70,12 +80,13 @@ class LLMCallExecutorTest {
         assertEquals("gpt-4o", stub.captured.model);
     }
 
-    private LLMCallExecutor executor(String gatewayDefaultModel, String systemSettingsModel) {
+    private LLMCallExecutor executor(String settingsModel, String gatewayDefaultModel, String legacyModel) {
         var executor = new LLMCallExecutor();
         var gateway = mock(GatewayRoutingEngine.class);
         var settings = mock(SystemSettingsService.class);
         when(gateway.defaultChatModelId()).thenReturn(gatewayDefaultModel);
-        when(settings.llmModel()).thenReturn(systemSettingsModel);
+        when(settings.configuredLlmModel()).thenReturn(settingsModel);
+        when(settings.llmModel()).thenReturn(legacyModel);
         executor.gatewayRoutingEngine = gateway;
         executor.systemSettingsService = settings;
         return executor;

@@ -254,11 +254,19 @@ public class SelfHarnessDispatcher {
 
     private Map<String, Object> defaultModels() {
         var defaults = new LinkedHashMap<String, Object>();
-        defaults.put("chat", gatewayRoutingEngine.defaultChatModelId());
+        defaults.put("chat", resolveDefaultChatModel());
         defaults.put("caption_image", systemSettingsService.captionImageModel());
         defaults.put("image_generation", systemSettingsService.imageGenerationModel());
         defaults.put("video_generation", systemSettingsService.videoGenerationModel());
         return defaults;
+    }
+
+    // mirrors AgentRunBuilder.resolveModel, so the builder reports the same default the runtime applies
+    private String resolveDefaultChatModel() {
+        var model = systemSettingsService.configuredLlmModel();
+        if (model == null || model.isBlank()) model = gatewayRoutingEngine.defaultChatModelId();
+        if (model == null || model.isBlank()) model = systemSettingsService.llmModel();
+        return model;
     }
 
     private Map<String, Object> modelRow(GatewayAvailableModelView model) {

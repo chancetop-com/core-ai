@@ -241,8 +241,9 @@ public class AgentRunBuilder {
 
     private String resolveModel(AgentPublishedConfig config, AgentDefinition definition) {
         var model = config != null ? config.model : definition.model;
-        // gateway default wins over legacy config when the definition has no model of its own;
-        // treat blank as unset since the UI clears the field to an empty string
+        // the model configured on the settings page wins over the gateway default, the gateway default
+        // wins over the legacy config; treat blank as unset since the UI clears the field to an empty string
+        if (model == null || model.isBlank()) model = systemSettingsService.configuredLlmModel();
         if (model == null || model.isBlank()) model = gatewayRoutingEngine.defaultChatModelId();
         if (model == null || model.isBlank()) model = systemSettingsService.llmModel();
         return model;
