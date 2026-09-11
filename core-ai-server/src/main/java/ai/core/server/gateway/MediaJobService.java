@@ -10,6 +10,7 @@ import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.MediaJob;
 import ai.core.server.file.FileService;
 import ai.core.server.trace.service.MediaPricingService;
+import ai.core.telemetry.TelemetryConfig;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
@@ -51,6 +52,8 @@ public class MediaJobService {
     MediaCostSettler costSettler;
     @Inject
     FileService fileService;
+    @Inject
+    TelemetryConfig telemetryConfig;
 
     // only external/upstream result URLs go through this; platform-owned bytes come from FileService
     RemoteMediaLoader remoteMediaLoader = new HttpRemoteMediaLoader();
@@ -115,6 +118,7 @@ public class MediaJobService {
             storeImage(job, image);
         }
         mediaJobCollection.insert(job);
+        MediaGenerationTrace.record(telemetryConfig, job);
         return job;
     }
 
@@ -322,10 +326,11 @@ public class MediaJobService {
         if (status.creditsConsumed() != null) {
             updates = Updates.combine(updates, Updates.set("credits_consumed", status.creditsConsumed()));
         }
+        MediaPricingService.MediaPrice settled = null;
         if (completed) {
             updates = Updates.combine(updates, Updates.set("completed_at", now));
-            var price = settlePrice(job, status);
-            updates = applyPrice(updates, price);
+            settled = settlePrice(job, status);
+            updates = applyPrice(updates, settled);
         }
         mediaJobCollection.update(Filters.eq("_id", job.id), updates);
         job.state = state;
@@ -333,6 +338,19 @@ public class MediaJobService {
         job.error = status.error();
         job.updatedAt = now;
         if (completed) job.completedAt = now;
+        // only a settled generation is reported: an unsettled one would misreport its cost
+        if (settled != null) {
+            applyPriceToJob(job, settled);
+            MediaGenerationTrace.record(telemetryConfig, job);
+        }
+    }
+
+    private void applyPriceToJob(MediaJob job, MediaPricingService.MediaPrice price) {
+        job.costSource = price.source();
+        job.pricingModelId = price.pricingModelId();
+        if (price.costUsd() != null) job.costUsd = price.costUsd();
+        if (price.units() != null) job.mediaUnits = price.units();
+        if (price.unitType() != null) job.mediaUnitType = price.unitType();
     }
 
     private Bson applyPrice(Bson updates, MediaPricingService.MediaPrice price) {

@@ -15,5 +15,7 @@ public enum SpanType {
     @MongoEnumValue("FLOW")
     FLOW,
     @MongoEnumValue("GROUP")
-    GROUP
+    GROUP,
+    @MongoEnumValue("MEDIA")
+    MEDIA
 }

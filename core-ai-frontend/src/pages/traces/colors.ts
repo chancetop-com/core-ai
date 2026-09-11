@@ -21,6 +21,8 @@ export function typeColors(type?: string): TypePalette {
       return { label: 'LLM Call', dot: '#0891b2', bg: 'rgba(8, 145, 178, 0.12)', text: '#0e7490' };
     case 'external':
       return { label: 'External', dot: '#64748b', bg: 'rgba(100, 116, 139, 0.12)', text: '#475569' };
+    case 'media':
+      return { label: 'Media', dot: '#c026d3', bg: 'rgba(192, 38, 211, 0.12)', text: '#a21caf' };
     default:
       return { label: 'Unknown', dot: '#94a3b8', bg: 'rgba(148, 163, 184, 0.12)', text: '#64748b' };
   }

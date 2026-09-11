@@ -27,6 +27,7 @@ const TRACE_TYPE_TABS: { key: string; label: string }[] = [
   { key: 'agent', label: 'Agent' },
   { key: 'llm_call', label: 'LLM Call' },
   { key: 'external', label: 'External' },
+  { key: 'media', label: 'Media' },
 ];
 
 // Source dropdown is intentionally trimmed to entry-point sources; llm_*/external are expressed via type tab

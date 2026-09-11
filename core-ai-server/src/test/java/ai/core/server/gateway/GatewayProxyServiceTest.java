@@ -39,8 +39,7 @@ import static org.mockito.Mockito.when;
 
 class GatewayProxyServiceTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    // buildAndRegisterGlobal can only run once per JVM; all span tests share this instance
-    private static final TelemetryConfig TELEMETRY = TelemetryConfig.builder().enabled(true).build();
+    private static final TelemetryConfig TELEMETRY = SpanTestTelemetry.INSTANCE;
 
     private static byte[] json(Object value) {
         try {

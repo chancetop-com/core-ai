@@ -2,8 +2,13 @@ package ai.core.server.trace.service;
 
 import io.opentelemetry.proto.common.v1.AnyValue;
 import io.opentelemetry.proto.common.v1.KeyValue;
+import io.opentelemetry.proto.trace.v1.Status;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import ai.core.server.trace.domain.SpanStatus;
+import ai.core.server.trace.domain.TraceStatus;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -105,5 +110,33 @@ class OTLPParseHelper {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    static String resolveInput(Map<String, String> attrs) {
+        var input = attrs.get("gen_ai.prompt");
+        if (input != null) return input;
+        return attrs.get("langfuse.observation.input");
+    }
+
+    static String resolveOutput(Map<String, String> attrs) {
+        var output = attrs.get("gen_ai.completion");
+        if (output != null) return output;
+        return attrs.get("langfuse.observation.output");
+    }
+
+    static SpanStatus mapSpanStatus(Status.StatusCode code, Map<String, String> attrs) {
+        if (isCancelled(attrs)) return SpanStatus.CANCELLED;
+        if (code == Status.StatusCode.STATUS_CODE_ERROR) return SpanStatus.ERROR;
+        return SpanStatus.OK;
+    }
+
+    static TraceStatus mapTraceStatus(Status.StatusCode code, Map<String, String> attrs) {
+        if (isCancelled(attrs)) return TraceStatus.CANCELLED;
+        if (code == Status.StatusCode.STATUS_CODE_ERROR) return TraceStatus.ERROR;
+        return TraceStatus.COMPLETED;
+    }
+
+    private static boolean isCancelled(Map<String, String> attrs) {
+        return "true".equalsIgnoreCase(attrs.get("core_ai.cancelled"));
     }
 }

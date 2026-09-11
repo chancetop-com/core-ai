@@ -4,6 +4,7 @@ import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.trace.domain.Span;
+import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
 import com.google.protobuf.ByteString;
 import core.framework.mongo.MongoCollection;
@@ -224,6 +225,40 @@ class OTLPIngestServiceTest {
         verify(service.spanCollection).insert(inserted.capture());
         // agent spans with a session.id keep their real trace id (16 zero bytes in this test)
         assertEquals("0".repeat(32), inserted.getValue().traceId);
+    }
+
+    @Test
+    void mediaSpanKeepsSettledPriceAndBecomesMediaTrace() {
+        var service = service();
+        // a media model may also exist as a gateway chat model; its token price must NOT price the media span
+        var model = new GatewayModelConfig();
+        model.modelId = "seedance-2";
+        model.inputPricePer1MTokens = 1D;
+        model.outputPricePer1MTokens = 2D;
+        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        service.ingest(request(span("flash_to_video",
+            attr("media.type", "video"),
+            attr("media.units", "5.0"),
+            attr("gen_ai.operation.name", "video_generation"),
+            attr("gen_ai.request.model", "seedance-2"),
+            attr("gen_ai.usage.cost_usd", "0.42"),
+            attr("gen_ai.usage.cost_source", "upstream"),
+            attr("gen_ai.usage.pricing_model_id", "seedance-2"))));
+
+        var insertedSpan = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection).insert(insertedSpan.capture());
+        assertEquals(SpanType.MEDIA, insertedSpan.getValue().type);
+        assertEquals(0.42D, insertedSpan.getValue().costUsd, 1e-9);
+        assertEquals("upstream", insertedSpan.getValue().costSource);
+        assertEquals("seedance-2", insertedSpan.getValue().pricingModelId);
+
+        var insertedTrace = ArgumentCaptor.forClass(Trace.class);
+        verify(service.traceCollection).insert(insertedTrace.capture());
+        assertEquals("media", insertedTrace.getValue().type);
+        assertEquals("seedance-2", insertedTrace.getValue().model);
     }
 
     private OTLPIngestService service() {

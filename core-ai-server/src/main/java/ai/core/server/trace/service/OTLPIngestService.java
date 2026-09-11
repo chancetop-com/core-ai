@@ -12,7 +12,6 @@ import org.bson.conversions.Bson;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.trace.v1.ResourceSpans;
 import io.opentelemetry.proto.trace.v1.ScopeSpans;
-import io.opentelemetry.proto.trace.v1.Status;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +38,6 @@ import java.util.concurrent.TimeUnit;
  */
 public class OTLPIngestService {
     private static final Logger LOGGER = LoggerFactory.getLogger(OTLPIngestService.class);
-    private static final String CORE_AI_CANCELLED = "core_ai.cancelled";
     private static final String CORE_AI_RUN_ID = "core_ai.run_id";
     private static final String CORE_AI_WORKFLOW_ID = "core_ai.workflow_id";
     private static final String CORE_AI_WORKFLOW_RUN_ID = "core_ai.workflow_run_id";
@@ -121,7 +119,7 @@ public class OTLPIngestService {
         trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = TraceStatus.RUNNING;
-        trace.input = resolveInput(attrs);
+        trace.input = OTLPParseHelper.resolveInput(attrs);
         trace.metadata = traceMetadata(attrs, resourceAttrs);
         trace.durationMs = 0L;
         trace.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
@@ -163,10 +161,10 @@ public class OTLPIngestService {
         span.name = protoSpan.getName();
         span.type = resolveSpanType(attrs);
         span.model = attrs.get("gen_ai.request.model");
-        span.input = resolveInput(attrs);
-        span.output = resolveOutput(attrs);
+        span.input = OTLPParseHelper.resolveInput(attrs);
+        span.output = OTLPParseHelper.resolveOutput(attrs);
         span.durationMs = endMs - startMs;
-        span.status = mapSpanStatus(protoSpan.getStatus().getCode(), attrs);
+        span.status = OTLPParseHelper.mapSpanStatus(protoSpan.getStatus().getCode(), attrs);
         span.errorMessage = span.status == SpanStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
         span.toolCallId = toolCallId;
         span.attributes = attrs;
@@ -219,10 +217,10 @@ public class OTLPIngestService {
         // has many root spans that can be ingested concurrently, and a replace would overwrite
         // the atomic $inc token/cost counters with a stale snapshot.
         var updates = new ArrayList<Bson>();
-        var status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
+        var status = OTLPParseHelper.mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
         updates.add(Updates.set("status", status));
         updates.add(Updates.set("error_message", status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null));
-        var output = resolveOutput(attrs);
+        var output = OTLPParseHelper.resolveOutput(attrs);
         if (output != null) updates.add(Updates.set("output", output));
         updates.add(Updates.set("duration_ms", endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano())));
         updates.add(Updates.set("completed_at", OTLPParseHelper.toZonedDateTime(endMs)));
@@ -260,7 +258,7 @@ public class OTLPIngestService {
         updates.add(Updates.set("source", source));
         updates.add(Updates.set("type", resolveType(source, attrs, Map.of())));
         if (trace.input == null || trace.input.isEmpty()) {
-            var input = resolveInput(attrs);
+            var input = OTLPParseHelper.resolveInput(attrs);
             if (input != null) updates.add(Updates.set("input", input));
         }
     }
@@ -279,10 +277,10 @@ public class OTLPIngestService {
         trace.model = attrs.get("gen_ai.request.model");
         trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
-        trace.status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
+        trace.status = OTLPParseHelper.mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
         trace.errorMessage = trace.status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
-        trace.input = resolveInput(attrs);
-        trace.output = resolveOutput(attrs);
+        trace.input = OTLPParseHelper.resolveInput(attrs);
+        trace.output = OTLPParseHelper.resolveOutput(attrs);
         trace.metadata = traceMetadata(attrs, resourceAttrs);
         trace.durationMs = endMs - startMs;
         trace.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
@@ -349,6 +347,7 @@ public class OTLPIngestService {
     }
 
     private SpanType resolveSpanType(Map<String, String> attrs) {
+        if (attrs.get("media.type") != null) return SpanType.MEDIA;
         var obsType = attrs.get("langfuse.observation.type");
         if (obsType != null) {
             return switch (obsType) {
@@ -364,18 +363,6 @@ public class OTLPIngestService {
         if ("tool".equals(opName)) return SpanType.TOOL;
         if ("agent".equals(opName)) return SpanType.AGENT;
         return SpanType.AGENT;
-    }
-
-    private String resolveInput(Map<String, String> attrs) {
-        var input = attrs.get("gen_ai.prompt");
-        if (input != null) return input;
-        return attrs.get("langfuse.observation.input");
-    }
-
-    private String resolveOutput(Map<String, String> attrs) {
-        var output = attrs.get("gen_ai.completion");
-        if (output != null) return output;
-        return attrs.get("langfuse.observation.output");
     }
 
     @SuppressWarnings("unused")
@@ -397,6 +384,8 @@ public class OTLPIngestService {
     }
 
     private String resolveType(String source, Map<String, String> attrs, Map<String, String> resourceAttrs) {
+        // must precede the llm_call check: a media span also carries gen_ai.request.model
+        if (attrs.get("media.type") != null) return "media";
         if (attrs.get("gen_ai.agent.id") != null || attrs.get("gen_ai.agent.name") != null) return "agent";
         if (isLLMCall(attrs)) return "llm_call";
         var serviceName = resourceAttrs.get("service.name");
@@ -415,28 +404,20 @@ public class OTLPIngestService {
         return serviceName == null || serviceName.isBlank() || "core-ai".equals(serviceName) || serviceName.startsWith("core-ai-");
     }
 
-    private SpanStatus mapSpanStatus(Status.StatusCode code, Map<String, String> attrs) {
-        if (isCancelled(attrs)) return SpanStatus.CANCELLED;
-        if (code == Status.StatusCode.STATUS_CODE_ERROR) return SpanStatus.ERROR;
-        return SpanStatus.OK;
-    }
-
-    private TraceStatus mapTraceStatus(Status.StatusCode code, Map<String, String> attrs) {
-        if (isCancelled(attrs)) return TraceStatus.CANCELLED;
-        if (code == Status.StatusCode.STATUS_CODE_ERROR) return TraceStatus.ERROR;
-        if (code == Status.StatusCode.STATUS_CODE_OK) return TraceStatus.COMPLETED;
-        return TraceStatus.COMPLETED;
-    }
-
-    private boolean isCancelled(Map<String, String> attrs) {
-        return "true".equalsIgnoreCase(attrs.get(CORE_AI_CANCELLED));
-    }
-
     private void applyCost(Span span, Map<String, String> attrs) {
         var attrCost = OTLPParseHelper.parseDoubleAttr(attrs,
             "gen_ai.usage.cost_usd",
             "gen_ai.usage.cost",
             "langfuse.observation.total_cost");
+        // Media generations settle their price upstream of the gateway (provider credits, per-second, per-image),
+        // so the span carries the authoritative cost and its provenance instead of a token-derived estimate.
+        var attrCostSource = attrs.get("gen_ai.usage.cost_source");
+        if (attrCostSource != null) {
+            span.costUsd = attrCost;
+            span.costSource = attrCostSource;
+            span.pricingModelId = attrs.get("gen_ai.usage.pricing_model_id");
+            return;
+        }
         var price = modelPricingService.resolve(span.model, span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
         span.costUsd = price.costUsd();
         span.costSource = price.source();

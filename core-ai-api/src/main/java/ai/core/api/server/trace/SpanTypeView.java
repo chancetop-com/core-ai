@@ -17,5 +17,7 @@ public enum SpanTypeView {
     @Property(name = "FLOW")
     FLOW,
     @Property(name = "GROUP")
-    GROUP
+    GROUP,
+    @Property(name = "MEDIA")
+    MEDIA
 }
