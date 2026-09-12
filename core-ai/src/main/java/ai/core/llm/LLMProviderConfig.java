@@ -19,6 +19,8 @@ public class LLMProviderConfig {
     private Duration timeout = Duration.ofSeconds(300);
     private Duration connectTimeout = Duration.ofSeconds(3);
     private int streamBufferSize = 0;
+    private int maxInlineImages = InlineImagePruner.DEFAULT_MAX_IMAGES;
+    private long maxInlineImageBytes = InlineImagePruner.DEFAULT_MAX_BYTES;
 
     public LLMProviderConfig(String model, Double temperature, String embeddingModel) {
         this.model = model;
@@ -36,6 +38,8 @@ public class LLMProviderConfig {
         this.timeout = other.timeout;
         this.connectTimeout = other.connectTimeout;
         this.streamBufferSize = other.streamBufferSize;
+        this.maxInlineImages = other.maxInlineImages;
+        this.maxInlineImageBytes = other.maxInlineImageBytes;
     }
 
     public Duration getConnectTimeout() {
@@ -125,5 +129,21 @@ public class LLMProviderConfig {
 
     public void setStreamBufferSize(int streamBufferSize) {
         this.streamBufferSize = streamBufferSize;
+    }
+
+    public int getMaxInlineImages() {
+        return maxInlineImages;
+    }
+
+    public void setMaxInlineImages(int maxInlineImages) {
+        this.maxInlineImages = maxInlineImages;
+    }
+
+    public long getMaxInlineImageBytes() {
+        return maxInlineImageBytes;
+    }
+
+    public void setMaxInlineImageBytes(long maxInlineImageBytes) {
+        this.maxInlineImageBytes = maxInlineImageBytes;
     }
 }

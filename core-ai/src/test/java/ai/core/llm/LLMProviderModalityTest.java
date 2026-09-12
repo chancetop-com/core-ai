@@ -23,15 +23,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies the request-time modality enforcement wired into the LLMProvider base class,
- * including the passthrough exemption and the 400 auto-heal retry.
+ * including the passthrough exemption, the inline image budget and the auto-heal retries.
  *
  * @author Xander
  */
 class LLMProviderModalityTest {
+    private static final String PAYLOAD_TOO_LARGE = "invalid sse response, statusCode=413, content-type=text/html, "
+            + "body=<html><head><title>413 Request Entity Too Large</title></head>"
+            + "<body><center><h1>413 Request Entity Too Large</h1></center><hr><center>openresty</center></body></html>";
+
     private static final ModelModalityRegistry IMAGE_UNSUPPORTED = (model, modality) ->
             modality == InputModality.TEXT ? ModalitySupport.SUPPORTED : ModalitySupport.UNSUPPORTED;
     private static final ModelModalityRegistry ALL_UNKNOWN = (model, modality) ->
@@ -96,7 +102,7 @@ class LLMProviderModalityTest {
     @Test
     void incidentModelDowngradesThroughDefaultSeedRegistry() {
         // no setModalityRegistry call: exercises SeedModelModalityRegistry.INSTANCE end to end
-        provider.completion(imageRequest("deepseek/deepseek-v4-flash"));
+        provider.completion(imageRequest("deepseek/deepseek-v4-pro"));
 
         assertTrue(hasNoImagePart(provider.seenMessages.getFirst()));
     }
@@ -108,9 +114,49 @@ class LLMProviderModalityTest {
         provider.failureMessage = "invalid sse response, statusCode=400, body={\"error\":{\"message\":\"context length exceeded\"}}";
 
         var request = imageRequest("mystery-model");
-        org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () -> provider.completion(request));
+        assertThrows(RuntimeException.class, () -> provider.completion(request));
 
         assertEquals(1, provider.seenMessages.size());
+    }
+
+    @Test
+    void requestTooLarge413RetriesWithoutInlineImages() {
+        provider.setModalityRegistry(ALL_UNKNOWN);
+        provider.failuresRemaining = 1;
+        provider.failureMessage = PAYLOAD_TOO_LARGE;
+
+        var response = provider.completion(inlineImageRequest("mystery-model", 1));
+
+        assertEquals("ok", response.choices.getFirst().message.content);
+        assertEquals(2, provider.seenMessages.size());
+        assertTrue(hasImagePart(provider.seenMessages.get(0)));
+        assertTrue(hasNoImagePart(provider.seenMessages.get(1)));
+    }
+
+    @Test
+    void requestTooLarge413WithoutInlineImagesIsNotRetried() {
+        provider.setModalityRegistry(ALL_UNKNOWN);
+        provider.failuresRemaining = 1;
+        provider.failureMessage = PAYLOAD_TOO_LARGE;
+        var request = CompletionRequest.of(List.of(Message.of(RoleType.USER, "hello")), List.of(), null, "mystery-model", "test");
+
+        assertThrows(RuntimeException.class, () -> provider.completion(request));
+
+        assertEquals(1, provider.seenMessages.size());
+    }
+
+    @Test
+    void providerBudgetPrunesOlderInlineImages() {
+        provider.setModalityRegistry(ALL_UNKNOWN);
+        provider.config.setMaxInlineImages(1);
+
+        provider.completion(inlineImageRequest("mystery-model", 2));
+
+        assertEquals(1, provider.seenMessages.size());
+        var messages = provider.seenMessages.getFirst();
+        assertFalse(messageHasImagePart(messages.get(0)));
+        assertTrue(messages.get(0).content.get(1).text.contains("Image omitted"));
+        assertTrue(messageHasImagePart(messages.get(1)));
     }
 
     private CompletionRequest imageRequest(String model) {
@@ -120,9 +166,23 @@ class LLMProviderModalityTest {
         return CompletionRequest.of(List.of(message), List.of(), null, model, "test");
     }
 
+    private CompletionRequest inlineImageRequest(String model, int images) {
+        var messages = new ArrayList<Message>();
+        for (var i = 0; i < images; i++) {
+            messages.add(Message.of(new Message.MessageRecord(RoleType.USER,
+                    List.of(Content.of("look " + i), Content.of(Content.ImageUrl.of("data:image/png;base64,QUJD", "image/png"))),
+                    null, null, null, null)));
+        }
+        return CompletionRequest.of(messages, List.of(), null, model, "test");
+    }
+
     private boolean hasImagePart(List<Message> messages) {
-        return messages.stream().anyMatch(m -> m.content != null
-                && m.content.stream().anyMatch(c -> c.type == Content.ContentType.IMAGE_URL));
+        return messages.stream().anyMatch(this::messageHasImagePart);
+    }
+
+    private boolean messageHasImagePart(Message message) {
+        return message.content != null
+                && message.content.stream().anyMatch(c -> c.type == Content.ContentType.IMAGE_URL);
     }
 
     private boolean hasNoImagePart(List<Message> messages) {

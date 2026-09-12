@@ -20,6 +20,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.CaptionImageTool;
 import ai.core.tool.tools.GenerateImageTool;
+import ai.core.utils.ImageDownscaler;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -133,11 +134,10 @@ public class AgentHelper {
     }
 
     private static List<Content> buildImageContent(ToolCallResult result) {
-        return List.of(Content.of(Prompts.IMAGE_CAPTIONING_PROMPT), Content.of(Content.ImageUrl.of(buildImageUrl(result), result.getImageFormat())));
-    }
-
-    private static String buildImageUrl(ToolCallResult result) {
-        return Strings.format("data:{};base64,{}", result.getImageFormat(), result.getImageBase64());
+        // the image is carried in the history and resent on every later turn, so shrink it once here
+        var image = ImageDownscaler.shrink(result.getImageBase64(), result.getImageFormat());
+        return List.of(Content.of(Prompts.IMAGE_CAPTIONING_PROMPT),
+                Content.of(Content.ImageUrl.of(Strings.format("data:{};base64,{}", image.format(), image.data()), image.format())));
     }
 
     public static Message buildUserMessage(String query, ExecutionContext context) {
@@ -226,8 +226,9 @@ public class AgentHelper {
         if (referenceUrl != null) {
             return Content.of(imageReferenceText(referenceUrl));
         }
-        var dataUri = Strings.format("data:{};base64,{}", attachedContent.mediaType, attachedContent.data);
-        return Content.of(Content.ImageUrl.of(dataUri, attachedContent.mediaType));
+        var image = ImageDownscaler.shrink(attachedContent.data, attachedContent.mediaType);
+        var dataUri = Strings.format("data:{};base64,{}", image.format(), image.data());
+        return Content.of(Content.ImageUrl.of(dataUri, image.format()));
     }
 
     private static String imageReferenceText(String url) {

@@ -3,18 +3,25 @@ package ai.core.server;
 import ai.core.server.sandbox.terminal.SandboxTerminalService;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionRegistry;
+import ai.core.utils.ImageDownscaler;
 import core.framework.module.APIConfig;
 import core.framework.module.HTTPConfig;
 import core.framework.module.SchedulerConfig;
 import org.junit.jupiter.api.Test;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -47,6 +54,39 @@ class SessionModuleTest {
         module.initializeForTest();
 
         assertArrayEquals("aabbccdd".getBytes(StandardCharsets.UTF_8), module.capturedService.ticketSecret);
+    }
+
+    /**
+     * Regression guard for the oversized-history-image 413: the JVM-only AWT encoder must be wired here,
+     * because core-ai deliberately ships no encoder of its own (the native CLI cannot link AWT natives).
+     */
+    @Test
+    void registersTheJvmOnlyImageShrinker() throws Exception {
+        var module = new RecordingSessionModule();
+        var image = noisePng();
+
+        try {
+            module.initializeForTest();
+
+            var shrunk = ImageDownscaler.shrink(Base64.getEncoder().encodeToString(image), "image/png");
+            assertEquals("image/jpeg", shrunk.format());
+        } finally {
+            ImageDownscaler.register(null);
+        }
+    }
+
+    private byte[] noisePng() throws Exception {
+        // 1600 px wide: over the downscale edge limit while staying a tiny file, so the encoder runs
+        var source = new BufferedImage(1600, 100, BufferedImage.TYPE_INT_RGB);
+        var random = new Random(42);
+        for (var y = 0; y < 100; y++) {
+            for (var x = 0; x < 1600; x++) {
+                source.setRGB(x, y, random.nextInt(0xFFFFFF));
+            }
+        }
+        var output = new ByteArrayOutputStream();
+        ImageIO.write(source, "png", output);
+        return output.toByteArray();
     }
 
     private static final class RecordingSessionModule extends SessionModule {

@@ -11,6 +11,7 @@ import ai.core.server.sandbox.terminal.SandboxTerminalWebServiceImpl;
 import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.session.AwtImageShrinker;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionActivityRegistry;
 import ai.core.server.session.SessionAgentHelper;
@@ -21,6 +22,7 @@ import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.web.sse.AgentSessionChannelListener;
 import ai.core.server.web.sse.CliProxyChannelListener;
 import ai.core.server.web.sse.SseAuthInterceptor;
+import ai.core.utils.ImageDownscaler;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import redis.clients.jedis.JedisPool;
@@ -61,6 +63,9 @@ public class SessionModule extends Module {
     private void bindSessionRuntime() {
         bind(SubAgentAssembler.class);
         bind(SessionAgentHelper.class);
+        // history images are resent on every later turn, so oversized ones are re-encoded as they enter
+        // a session; the AWT encoder is JVM-only, which is why it is registered here and not in core-ai
+        ImageDownscaler.register(new AwtImageShrinker());
         sessionRegistry = bind(SessionRegistry.class);
         bind(ChatMessageService.class);
         activityRegistry = bind(new SessionActivityRegistry(bean(JedisPool.class)));

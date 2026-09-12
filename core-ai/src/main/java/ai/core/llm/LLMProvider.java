@@ -40,7 +40,16 @@ public abstract class LLMProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(LLMProvider.class);
     private static final Pattern IMAGE_REJECTION_PATTERN = Pattern.compile(
             "unknown variant .{0,2}image_url|image[ _a-z]{0,24}not supported|does not support image", Pattern.CASE_INSENSITIVE);
+    // an oversized body is rejected by the upstream edge (openresty/nginx) before the model endpoint
+    // runs, so the failure carries a status code and an html body instead of a json error
+    private static final Pattern REQUEST_TOO_LARGE_PATTERN = Pattern.compile(
+            "statusCode=413|request entity too large|request body too large|payload too large|content too large", Pattern.CASE_INSENSITIVE);
     private static final Set<String> UNKNOWN_MODALITY_WARNED = ConcurrentHashMap.newKeySet();
+
+    private static boolean isRequestTooLarge(RuntimeException e) {
+        return e.getMessage() != null && REQUEST_TOO_LARGE_PATTERN.matcher(e.getMessage()).find();
+    }
+
     protected LLMTracer tracer;
     protected ModelModalityRegistry modalityRegistry = SeedModelModalityRegistry.INSTANCE;
     public LLMProviderConfig config;
@@ -145,16 +154,30 @@ public abstract class LLMProvider {
         try {
             response = invokeCompletionStream(request, wrappedCallback, llmSpanContextSink, withTracing);
         } catch (RuntimeException e) {
-            if (request.isPassthrough() || !shouldRetryWithoutImages(request, e)) throw e;
-            // safe to reuse the wrapped callback: image-rejection 400s fail at connection time,
-            // before any SSE data reaches the callback; mid-stream failures never match the pattern check above
-            LOGGER.warn("upstream rejected image input, marking model={} as text-only and retrying downgraded, error={}", request.model, e.getMessage());
-            ModalityRuntimeOverrides.markUnsupported(request.model, InputModality.IMAGE);
-            enforceModalities(request);
+            if (request.isPassthrough() || !healRequest(request, e)) throw e;
+            // safe to reuse the wrapped callback: image-rejection 400s and oversized-body 413s both fail
+            // at connection time, before any SSE data reaches the callback; mid-stream failures never
+            // match the pattern checks in healRequest
             response = invokeCompletionStream(request, wrappedCallback, llmSpanContextSink, withTracing);
         }
         postprocess(request, response);
         return response;
+    }
+
+    private boolean healRequest(CompletionRequest request, RuntimeException e) {
+        if (isRequestTooLarge(e)) {
+            var pruned = InlineImagePruner.prune(request.messages, 0, 0);
+            if (pruned.prunedCount() == 0) return false;
+            LOGGER.warn("upstream rejected the request as too large, retrying without {} inline image(s), model={}, error={}",
+                    pruned.prunedCount(), request.model, e.getMessage());
+            request.messages = pruned.messages();
+            return true;
+        }
+        if (!shouldRetryWithoutImages(request, e)) return false;
+        LOGGER.warn("upstream rejected image input, marking model={} as text-only and retrying downgraded, error={}", request.model, e.getMessage());
+        ModalityRuntimeOverrides.markUnsupported(request.model, InputModality.IMAGE);
+        enforceModalities(request);
+        return true;
     }
 
     private CompletionResponse invokeCompletionStream(CompletionRequest request, StreamingCallback wrappedCallback, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
@@ -173,7 +196,16 @@ public abstract class LLMProvider {
         if (result.unknownModalityPresent() && UNKNOWN_MODALITY_WARNED.add(request.model)) {
             LOGGER.warn("model modality unknown, passing non-text content through, model={}", request.model);
         }
-        request.messages = result.messages();
+        request.messages = pruneInlineImages(result.messages(), request.model);
+    }
+
+    private List<Message> pruneInlineImages(List<Message> messages, String model) {
+        var pruned = InlineImagePruner.prune(messages, config.getMaxInlineImages(), config.getMaxInlineImageBytes());
+        if (pruned.prunedCount() > 0) {
+            LOGGER.warn("dropped {} inline image(s) totalling {} bytes over the request budget, model={}",
+                    pruned.prunedCount(), pruned.prunedBytes(), model);
+        }
+        return pruned.messages();
     }
 
     private boolean shouldRetryWithoutImages(CompletionRequest request, RuntimeException e) {
