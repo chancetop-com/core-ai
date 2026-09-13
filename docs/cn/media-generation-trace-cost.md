@@ -115,7 +115,9 @@ attributes 也同步存一份 OpenTelemetry 风格属性，便于查询、调试
   ```
 
 > mediaRequest 不保存图片 base64、API key 或完整 prompt input image 内容。
-> 建议保存 model、size、quality、n、seconds、是否有 input image / mask 等计费相关参数。prompt 可以沿用 Trace 的数据脱敏策略，第一期不额外记录。
+> 建议保存 model、size、quality、n、seconds、是否有 input image / mask 等计费相关参数。
+> prompt 记录在 `MediaJob.prompt` 上并作为 media trace 的 input 上报(见 3.2),使 media trace 与 LLM trace 一样自带输入输出;
+> input image / mask 等二进制内容仍不进 trace,只记录计费相关参数。
 
 3.2 扩展 MediaJob
 
@@ -136,6 +138,9 @@ attributes 也同步存一份 OpenTelemetry 风格属性，便于查询、调试
 
   @Field(name = "resolved_model")
   public String resolvedModel; // 已有
+
+  @Field(name = "prompt")
+  public String prompt; // 提交时的生成 prompt
 
   @Field(name = "input_tokens")
   public Long inputTokens;
@@ -1709,7 +1714,8 @@ Trace correlation
   output_format, background, has_input_images, has_mask
   ```
 
-不存储 prompt，因为 agent tool input 已由现有 trace/agent execution 链路处理；避免无谓复制潜在敏感数据。
+payload 部分记录生成 prompt 作为 input、产物链接作为 output（图片取 `/api/files/{file_id}/content`，视频取 `/api/media-jobs/{id}/content`），
+使 media trace 在 Trace 详情页与 LLM trace 一样可直接读到输入输出；input image / mask 等二进制内容仍不进 trace。
 
 失败时也记录 error Span，但默认：
 

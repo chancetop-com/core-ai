@@ -62,13 +62,15 @@ class MediaJobServiceTest {
 
     @Test
     void createVideoJobRecordsTypeAndRequestedSeconds() {
-        var job = service.createVideoJob(new MediaJobOwner("user-1", "session-1", null), route(), "requested-model", "upstream-id", null, 8);
+        var submission = new MediaJobService.VideoJobSubmission("upstream-id", null, 8, "a cat surfing");
+        var job = service.createVideoJob(new MediaJobOwner("user-1", "session-1", null), route(), "requested-model", submission);
 
         assertEquals("video", job.mediaType);
         assertEquals(8, job.requestedSeconds);
         assertEquals("submitted", job.state);
         assertEquals("user-1", job.userId);
         assertEquals("session-1", job.sessionId);
+        assertEquals("a cat surfing", job.prompt);
         verify(collection).insert(job);
     }
 
@@ -76,7 +78,7 @@ class MediaJobServiceTest {
     void createImageJobRecordsCompletedImageJobWithCostFields() {
         var price = new MediaPricingService.MediaPrice(0.042, "model_catalog", "gpt-image-2", 200.0, "token");
 
-        var job = service.createImageJob(new MediaJobOwner("user-1", "session-1", null), route(), "gpt-image-2", price, null);
+        var job = service.createImageJob(new MediaJobOwner("user-1", "session-1", null), route(), "gpt-image-2", price, null, "a red fox");
 
         assertEquals("image", job.mediaType);
         assertEquals("completed", job.state);
@@ -85,6 +87,7 @@ class MediaJobServiceTest {
         assertEquals("gpt-image-2", job.pricingModelId);
         assertEquals(200.0, job.mediaUnits);
         assertEquals("token", job.mediaUnitType);
+        assertEquals("a red fox", job.prompt);
         assertNotNull(job.completedAt);
         assertNull(job.fileId);
         verify(collection).insert(job);
@@ -101,7 +104,7 @@ class MediaJobServiceTest {
         var image = new ImageData(Base64.getEncoder().encodeToString("png-bytes".getBytes(StandardCharsets.UTF_8)), null, null);
         var response = new ImageGenerationResponse(List.of(image), null);
 
-        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(), "gpt-image-2", price, response);
+        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(), "gpt-image-2", price, response, "a red fox");
 
         assertEquals("file-1", job.fileId);
         assertEquals("generated-image.png", job.fileName);
@@ -112,7 +115,7 @@ class MediaJobServiceTest {
     void createImageJobSkipsArtifactWhenImageMissing() {
         var price = new MediaPricingService.MediaPrice(0.042, "model_catalog", "gpt-image-2", 200.0, "token");
 
-        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(), "gpt-image-2", price, new ImageGenerationResponse(List.of(), null));
+        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(), "gpt-image-2", price, new ImageGenerationResponse(List.of(), null), "a red fox");
 
         assertNull(job.fileId);
         verify(service.fileService, never()).upload(any(), any(), any(), any());

@@ -23,7 +23,9 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -259,6 +261,35 @@ class OTLPIngestServiceTest {
         verify(service.traceCollection).insert(insertedTrace.capture());
         assertEquals("media", insertedTrace.getValue().type);
         assertEquals("seedance-2", insertedTrace.getValue().model);
+    }
+
+    @Test
+    void mediaSpanPayloadBecomesSpanAndTraceInputOutput() {
+        var service = service();
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        service.ingest(request(span("Video generation",
+            attr("media.type", "video"),
+            attr("gen_ai.operation.name", "video_generation"),
+            attr("gen_ai.request.model", "gemini-omni-1.1-flash"),
+            attr("langfuse.observation.input", "a cat surfing"),
+            attr("langfuse.observation.output", "/api/media-jobs/job-1/content"))));
+
+        var insertedSpan = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection).insert(insertedSpan.capture());
+        assertEquals("a cat surfing", insertedSpan.getValue().input);
+        assertEquals("/api/media-jobs/job-1/content", insertedSpan.getValue().output);
+
+        var insertedTrace = ArgumentCaptor.forClass(Trace.class);
+        verify(service.traceCollection).insert(insertedTrace.capture());
+        assertEquals("a cat surfing", insertedTrace.getValue().input);
+
+        var traceUpdates = ArgumentCaptor.forClass(Bson.class);
+        verify(service.traceCollection, atLeastOnce()).update(any(Bson.class), traceUpdates.capture());
+        assertTrue(traceUpdates.getAllValues().stream()
+            .map(Object::toString)
+            .anyMatch(update -> update.contains("/api/media-jobs/job-1/content")));
     }
 
     private OTLPIngestService service() {

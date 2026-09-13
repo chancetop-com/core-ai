@@ -167,7 +167,9 @@ public class OTLPIngestService {
         span.status = OTLPParseHelper.mapSpanStatus(protoSpan.getStatus().getCode(), attrs);
         span.errorMessage = span.status == SpanStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
         span.toolCallId = toolCallId;
-        span.attributes = attrs;
+        // own copy: the payload attributes below are stripped from the stored copy only, the caller still
+        // needs them to derive the trace input/output from the same span
+        span.attributes = new LinkedHashMap<>(attrs);
         span.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
         span.completedAt = OTLPParseHelper.toZonedDateTime(endMs);
         span.createdAt = ZonedDateTime.now();

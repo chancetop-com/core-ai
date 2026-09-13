@@ -178,7 +178,7 @@ public class GatewayProxyService {
             span.setAttribute(LANGFUSE_OUTPUT, new String(upstream.body == null ? new byte[0] : upstream.body, StandardCharsets.UTF_8));
             markUpstreamStatus(span, upstream.statusCode);
             if (endpoint == GatewayEndpointType.VIDEO_GENERATION && upstream.statusCode >= 200 && upstream.statusCode < 300) {
-                return gatewayVideoResponse(upstream, call, owner, videoSeconds(body));
+                return gatewayVideoResponse(upstream, call, owner, videoSeconds(body), videoPrompt(body));
             }
             return response(upstream);
         } catch (RuntimeException e) {
@@ -332,12 +332,14 @@ public class GatewayProxyService {
                 string(body.get("id")), string(body.get("status")), integer(body.get("progress")), string(body.get("error")), null));
     }
 
-    private Response gatewayVideoResponse(HTTPResponse upstream, GatewayUpstreamCall call, MediaJobOwner owner, Integer seconds) {
+    private Response gatewayVideoResponse(HTTPResponse upstream, GatewayUpstreamCall call, MediaJobOwner owner,
+                                          Integer seconds, String prompt) {
         var body = parseBody(upstream.body == null ? new byte[0] : upstream.body);
         var upstreamVideoId = string(body.get("id"));
         if (!hasText(upstreamVideoId)) throw new BadRequestException("upstream video response is missing id");
         var route = new GatewayRoute(call.provider(), call.upstreamModel());
-        var job = mediaJobService.createVideoJob(owner, route, call.requestedModel(), upstreamVideoId, null, seconds);
+        var submission = new MediaJobService.VideoJobSubmission(upstreamVideoId, null, seconds, prompt);
+        var job = mediaJobService.createVideoJob(owner, route, call.requestedModel(), submission);
         body.put("id", GatewayVideoHandle.encode(job.id));
         var response = Response.bytes(writeJson(body));
         response.status(status(upstream.statusCode));
@@ -349,6 +351,14 @@ public class GatewayProxyService {
         try {
             var value = parseBody(requestBody).get("seconds");
             return value instanceof Number number ? number.intValue() : null;
+        } catch (BadRequestException e) {
+            return null;
+        }
+    }
+
+    private String videoPrompt(byte[] requestBody) {
+        try {
+            return string(parseBody(requestBody).get("prompt"));
         } catch (BadRequestException e) {
             return null;
         }

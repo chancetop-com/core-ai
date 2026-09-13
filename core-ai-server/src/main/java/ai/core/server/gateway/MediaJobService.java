@@ -58,16 +58,7 @@ public class MediaJobService {
     // only external/upstream result URLs go through this; platform-owned bytes come from FileService
     RemoteMediaLoader remoteMediaLoader = new HttpRemoteMediaLoader();
 
-    public MediaJob createVideoJob(MediaJobOwner owner, GatewayRoute route, String requestedModel, String upstreamVideoId) {
-        return createVideoJob(owner, route, requestedModel, upstreamVideoId, null, null);
-    }
-
-    public MediaJob createVideoJob(MediaJobOwner owner, GatewayRoute route, String requestedModel, String upstreamVideoId, String parentJobId) {
-        return createVideoJob(owner, route, requestedModel, upstreamVideoId, parentJobId, null);
-    }
-
-    public MediaJob createVideoJob(MediaJobOwner owner, GatewayRoute route, String requestedModel, String upstreamVideoId,
-                                   String parentJobId, Integer requestedSeconds) {
+    public MediaJob createVideoJob(MediaJobOwner owner, GatewayRoute route, String requestedModel, VideoJobSubmission submission) {
         var jobOwner = owner == null ? MediaJobOwner.UNKNOWN : owner;
         var now = ZonedDateTime.now();
         var job = new MediaJob();
@@ -76,13 +67,14 @@ public class MediaJobService {
         job.sessionId = jobOwner.sessionId();
         job.agentRunId = jobOwner.agentRunId();
         job.providerId = route.provider().id;
-        job.upstreamVideoId = upstreamVideoId;
-        job.parentJobId = parentJobId;
+        job.upstreamVideoId = submission.upstreamVideoId();
+        job.parentJobId = submission.parentJobId();
         job.requestedModel = requestedModel;
         job.resolvedModel = route.upstreamModel();
+        job.prompt = submission.prompt();
         job.state = "submitted";
         job.mediaType = "video";
-        job.requestedSeconds = requestedSeconds;
+        job.requestedSeconds = submission.requestedSeconds();
         job.createdAt = now;
         job.updatedAt = now;
         mediaJobCollection.insert(job);
@@ -90,7 +82,7 @@ public class MediaJobService {
     }
 
     public MediaJob createImageJob(MediaJobOwner owner, GatewayRoute route, String requestedModel,
-                                   MediaPricingService.MediaPrice price, ImageGenerationResponse response) {
+                                   MediaPricingService.MediaPrice price, ImageGenerationResponse response, String prompt) {
         var jobOwner = owner == null ? MediaJobOwner.UNKNOWN : owner;
         var now = ZonedDateTime.now();
         var job = new MediaJob();
@@ -101,6 +93,7 @@ public class MediaJobService {
         job.providerId = route.provider().id;
         job.requestedModel = requestedModel;
         job.resolvedModel = route.upstreamModel();
+        job.prompt = prompt;
         job.state = "completed";
         job.mediaType = "image";
         job.createdAt = now;
@@ -385,5 +378,12 @@ public class MediaJobService {
     }
 
     public record MediaJobList(long total, List<MediaJob> jobs) {
+    }
+
+    /**
+     * Upstream identity of a submitted video generation: the upstream video the job settles against, its parent
+     * job when the request edits an existing video, and the parameters that drive its pricing and trace payload.
+     */
+    public record VideoJobSubmission(String upstreamVideoId, String parentJobId, Integer requestedSeconds, String prompt) {
     }
 }

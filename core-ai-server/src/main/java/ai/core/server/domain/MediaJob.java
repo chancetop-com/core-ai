@@ -50,6 +50,10 @@ public class MediaJob {
     @Field(name = "resolved_model")
     public String resolvedModel;
 
+    // generation prompt; carried into the media trace as its input payload
+    @Field(name = "prompt")
+    public String prompt;
+
     @Field(name = "state")
     public String state;
 

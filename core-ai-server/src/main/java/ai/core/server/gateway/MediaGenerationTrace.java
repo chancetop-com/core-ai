@@ -11,16 +11,21 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 
+import static ai.core.server.gateway.GatewaySupport.hasText;
+
 /**
  * Emits one standalone trace per settled media generation, so image/video cost is auditable per generation
  * and flows into the trace-based cost statistics (daily analytics, by-model/provider dashboards) next to LLM cost.
  * Media is priced by its own pipeline (provider credits, per-second, per-image) rather than by tokens, so the
- * span carries the settled cost and its provenance as authoritative attributes.
+ * span carries the settled cost and its provenance as authoritative attributes. The trace payload carries the
+ * generation prompt and a content link to the produced artifact, so the trace is as self-contained as an LLM call.
  *
  * @author stephen
  */
 final class MediaGenerationTrace {
     private static final Logger LOGGER = LoggerFactory.getLogger(MediaGenerationTrace.class);
+    private static final AttributeKey<String> LANGFUSE_INPUT = AttributeKey.stringKey("langfuse.observation.input");
+    private static final AttributeKey<String> LANGFUSE_OUTPUT = AttributeKey.stringKey("langfuse.observation.output");
     private static final AttributeKey<String> GEN_AI_OPERATION_NAME = AttributeKey.stringKey("gen_ai.operation.name");
     private static final AttributeKey<String> GEN_AI_REQUEST_MODEL = AttributeKey.stringKey("gen_ai.request.model");
     private static final AttributeKey<Double> GEN_AI_COST_USD = AttributeKey.doubleKey("gen_ai.usage.cost_usd");
@@ -69,5 +74,19 @@ final class MediaGenerationTrace {
         if (job.costUsd != null) builder.setAttribute(GEN_AI_COST_USD, job.costUsd);
         if (job.costSource != null) builder.setAttribute(GEN_AI_COST_SOURCE, job.costSource);
         if (job.pricingModelId != null) builder.setAttribute(GEN_AI_PRICING_MODEL_ID, job.pricingModelId);
+        if (hasText(job.prompt)) builder.setAttribute(LANGFUSE_INPUT, job.prompt);
+        var contentUrl = contentUrl(job);
+        if (contentUrl != null) builder.setAttribute(LANGFUSE_OUTPUT, contentUrl);
+    }
+
+    /**
+     * Platform link to the generated artifact, the same one the generations UI opens: stored bytes are served
+     * from their file record, a video is streamed from the producing provider on demand. An image whose bytes
+     * were never stored has nothing to serve, so it reports no output instead of a link that would 404.
+     */
+    private static String contentUrl(MediaJob job) {
+        if (job.id == null) return null;
+        if (hasText(job.fileId)) return "/api/files/" + job.fileId + "/content";
+        return "image".equals(job.mediaType) ? null : "/api/media-jobs/" + job.id + "/content";
     }
 }

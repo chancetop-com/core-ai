@@ -88,7 +88,7 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
         try {
             var price = costSettler.settleImage(request.model(), resolved.upstreamModel(), response.usage(),
                     response.data() == null ? 0 : response.data().size());
-            return mediaJobService.createImageJob(owner, resolved, request.model(), price, response);
+            return mediaJobService.createImageJob(owner, resolved, request.model(), price, response, request.prompt());
         } catch (RuntimeException e) {
             LOGGER.warn("image cost recording failed, model={}", request.model(), e);
             return null;
@@ -114,8 +114,9 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
         var upstream = upstreamProvider(resolved.provider());
         var response = upstream.generateVideo(rewrite(request, resolved.upstreamModel(), compiled, previousInteractionId));
         if (response == null || !hasText(response.id())) throw new IllegalStateException("upstream video response is missing id");
-        var job = mediaJobService.createVideoJob(owner, resolved, request.model(), response.id(),
-                parentJob == null ? null : parentJob.id, request.seconds());
+        var submission = new MediaJobService.VideoJobSubmission(response.id(), parentJob == null ? null : parentJob.id,
+                request.seconds(), request.prompt());
+        var job = mediaJobService.createVideoJob(owner, resolved, request.model(), submission);
         var videoId = GatewayMediaHandle.encodeVideo(job.id);
         return new VideoGenerationResponse(videoId, response.status(), response.createdAt(), response.usage(), compiled.notes());
     }

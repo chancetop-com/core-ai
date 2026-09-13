@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -31,6 +32,7 @@ class MediaGenerationTraceTest {
         var exported = exportSpan(job -> {
             job.mediaType = "video";
             job.completedAt = ZonedDateTime.parse("2026-09-11T10:01:40Z");
+            job.prompt = "a cat surfing";
         });
 
         assertEquals("Video generation", exported.getName());
@@ -49,6 +51,8 @@ class MediaGenerationTraceTest {
         assertEquals("0.42", attrs.get("gen_ai.usage.cost_usd"));
         assertEquals("upstream", attrs.get("gen_ai.usage.cost_source"));
         assertEquals("seedance-2", attrs.get("gen_ai.usage.pricing_model_id"));
+        assertEquals("a cat surfing", attrs.get("langfuse.observation.input"));
+        assertEquals("/api/media-jobs/job-1/content", attrs.get("langfuse.observation.output"));
     }
 
     @Test
@@ -56,6 +60,8 @@ class MediaGenerationTraceTest {
         var exported = exportSpan(job -> {
             job.mediaType = "image";
             job.requestedModel = null;
+            job.fileId = "file-1";
+            job.prompt = "a red fox";
         });
 
         assertEquals("Image generation", exported.getName());
@@ -64,6 +70,17 @@ class MediaGenerationTraceTest {
         assertEquals("image", attrs.get("media.type"));
         assertEquals("seedance-2-5", attrs.get("gen_ai.request.model"));
         assertEquals("seedance-2-5", attrs.get("media.resolved_model"));
+        assertEquals("a red fox", attrs.get("langfuse.observation.input"));
+        assertEquals("/api/files/file-1/content", attrs.get("langfuse.observation.output"));
+    }
+
+    @Test
+    void omitsPayloadAttributesForImageWithoutStoredArtifact() throws Exception {
+        var exported = exportSpan(job -> job.mediaType = "image");
+
+        var attrs = spanAttributes(exported);
+        assertNull(attrs.get("langfuse.observation.input"), "no prompt recorded when the job carries none");
+        assertNull(attrs.get("langfuse.observation.output"), "an image without a stored file has no reachable content");
     }
 
     private Span exportSpan(Consumer<MediaJob> customize) throws Exception {
