@@ -23,6 +23,9 @@ public class MediaJobView {
     @Property(name = "resolvedModel")
     public String resolvedModel;
 
+    @Property(name = "prompt")
+    public String prompt;
+
     @Property(name = "mediaType")
     public String mediaType;
 

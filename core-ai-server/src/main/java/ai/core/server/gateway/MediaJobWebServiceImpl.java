@@ -21,6 +21,7 @@ public class MediaJobWebServiceImpl implements MediaJobWebService {
         view.providerId = job.providerId;
         view.requestedModel = job.requestedModel;
         view.resolvedModel = job.resolvedModel;
+        view.prompt = job.prompt;
         view.mediaType = job.mediaType == null ? "video" : job.mediaType;
         view.state = job.state;
         view.requestedSeconds = job.requestedSeconds;

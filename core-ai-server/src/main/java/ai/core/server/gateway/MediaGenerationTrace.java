@@ -19,6 +19,8 @@ import static ai.core.server.gateway.GatewaySupport.hasText;
  * Media is priced by its own pipeline (provider credits, per-second, per-image) rather than by tokens, so the
  * span carries the settled cost and its provenance as authoritative attributes. The trace payload carries the
  * generation prompt and a content link to the produced artifact, so the trace is as self-contained as an LLM call.
+ * Generation is emitted wherever the job settles - often inside the agent run that requested it - so the span
+ * explicitly starts its own root trace instead of nesting into the caller's trace, which would hide the payload.
  *
  * @author stephen
  */
@@ -54,6 +56,7 @@ final class MediaGenerationTrace {
         var builder = telemetry.getOpenTelemetry().getTracer("core-ai-server")
             .spanBuilder("video".equals(job.mediaType) ? "Video generation" : "Image generation")
             .setSpanKind(SpanKind.CLIENT)
+            .setNoParent()
             .setAttribute(GEN_AI_OPERATION_NAME, "video".equals(job.mediaType) ? "video_generation" : "image_generation")
             .setAttribute(MEDIA_TYPE, job.mediaType != null ? job.mediaType : "media");
         applyNullableAttributes(builder, job);

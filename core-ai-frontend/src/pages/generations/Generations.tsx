@@ -125,6 +125,7 @@ export default function Generations() {
           <thead>
             <tr style={{ background: 'var(--color-bg-tertiary)' }}>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Output</th>
+              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Prompt</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Time</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Type</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>State</th>
@@ -138,9 +139,9 @@ export default function Generations() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
+              <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
             ) : jobs.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>No media generations found</td></tr>
+              <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>No media generations found</td></tr>
             ) : jobs.map(job => {
               const sourceColor = SOURCE_COLORS[job.costSource ?? ''] ?? SOURCE_COLORS.unavailable;
               const stateColor = STATE_COLORS[job.state ?? ''] ?? STATE_COLORS.submitted;
@@ -167,6 +168,11 @@ export default function Generations() {
                           : <div className="h-16 w-28 rounded border flex items-center justify-center" style={{ borderColor: 'var(--color-border)' }}>
                               <Film size={14} style={{ color: 'var(--color-text-secondary)' }} />
                             </div>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {job.prompt
+                      ? <div className="truncate" title={job.prompt} style={{ maxWidth: '260px' }}>{job.prompt}</div>
+                      : <span style={{ color: 'var(--color-text-secondary)' }}>-</span>}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(job.createdAt)}</td>
                   <td className="px-4 py-3">
@@ -235,6 +241,10 @@ export default function Generations() {
                 className="max-h-[85vh] max-w-[90vw] rounded object-contain" onClick={e => e.stopPropagation()} />
             : <video src={`/api/media-jobs/${preview.id}/content`} controls autoPlay
                 className="max-h-[85vh] max-w-[90vw] rounded" onClick={e => e.stopPropagation()} />}
+          {preview.prompt && (
+            <div className="mt-3 max-w-[80vw] text-center text-sm whitespace-pre-wrap" style={{ color: '#e2e8f0' }}
+              onClick={e => e.stopPropagation()}>{preview.prompt}</div>
+          )}
           <div className="mt-3 text-sm" style={{ color: '#cbd5e1' }} onClick={e => e.stopPropagation()}>
             {preview.requestedModel} · {formatTime(preview.createdAt)}
             <a href={preview.mediaType === 'image' && preview.fileId

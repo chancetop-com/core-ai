@@ -4,6 +4,7 @@ import ai.core.server.domain.MediaJob;
 import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
 import ai.core.telemetry.TelemetryConfig;
+import io.opentelemetry.api.trace.TraceId;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.trace.v1.Span;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -81,6 +83,22 @@ class MediaGenerationTraceTest {
         var attrs = spanAttributes(exported);
         assertNull(attrs.get("langfuse.observation.input"), "no prompt recorded when the job carries none");
         assertNull(attrs.get("langfuse.observation.output"), "an image without a stored file has no reachable content");
+    }
+
+    @Test
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    void startsItsOwnTraceWhenEmittedInsideAnActiveAgentSpan() throws Exception {
+        var agentSpan = TELEMETRY.getOpenTelemetry().getTracer("test").spanBuilder("Short-Drama-Director").startSpan();
+        Span exported;
+        try (var scope = agentSpan.makeCurrent()) {
+            exported = exportSpan(job -> job.prompt = "a red fox");
+        } finally {
+            agentSpan.end();
+        }
+
+        assertEquals("", exported.getParentSpanId().toStringUtf8(), "media generation must not nest into the caller trace");
+        var exportedTraceId = TraceId.fromBytes(exported.getTraceId().toByteArray());
+        assertNotEquals(agentSpan.getSpanContext().getTraceId(), exportedTraceId, "media generation owns its trace");
     }
 
     private Span exportSpan(Consumer<MediaJob> customize) throws Exception {
