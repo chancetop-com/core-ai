@@ -46,6 +46,7 @@ public class GeminiImageMediaProvider implements MediaProvider {
     public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
         var body = new LinkedHashMap<String, Object>();
         body.put("contents", List.of(Map.of("role", "user", "parts", parts(request))));
+        body.put("generationConfig", generationConfig(request));
         if (request.providerExtra() != null && !request.providerExtra().isBlank()) mergeExtra(body, request.providerExtra());
         var httpRequest = new HTTPRequest(HTTPMethod.POST, baseUrl + "/models/" + request.model() + ":generateContent");
         httpRequest.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
@@ -81,6 +82,24 @@ public class GeminiImageMediaProvider implements MediaProvider {
         return parts;
     }
 
+    /**
+     * Gemini image output is off unless responseModalities asks for it, and the frame shape only follows the
+     * request through imageConfig; providerExtra still replaces the whole block when a caller needs to.
+     */
+    private Map<String, Object> generationConfig(ImageGenerationRequest request) {
+        var config = new LinkedHashMap<String, Object>();
+        config.put("responseModalities", List.of("TEXT", "IMAGE"));
+        var aspectRatio = GeminiImageSize.aspectRatio(request.size());
+        var imageSize = GeminiImageSize.imageSize(request.size());
+        if (aspectRatio != null || imageSize != null) {
+            var imageConfig = new LinkedHashMap<String, Object>();
+            if (aspectRatio != null) imageConfig.put("aspectRatio", aspectRatio);
+            if (imageSize != null) imageConfig.put("imageSize", imageSize);
+            config.put("imageConfig", imageConfig);
+        }
+        return config;
+    }
+
     private Map<String, Object> inlineData(MediaReference reference) {
         if (reference.b64Json() == null || reference.b64Json().isBlank()) {
             throw new IllegalArgumentException("Gemini image inputs require base64 data");
@@ -106,16 +125,25 @@ public class GeminiImageMediaProvider implements MediaProvider {
         var candidates = (List<Map<String, Object>>) response.get("candidates");
         if (candidates != null) {
             for (var candidate : candidates) {
-                var content = (Map<String, Object>) candidate.get("content");
-                var parts = content == null ? null : (List<Map<String, Object>>) content.get("parts");
-                if (parts == null) continue;
-                for (var part : parts) {
-                    var inlineData = (Map<String, Object>) part.get("inlineData");
-                    if (inlineData != null && inlineData.get("data") instanceof String data) images.add(new ImageData(data, null, null));
-                }
+                var image = outputImage(candidate);
+                if (image != null) images.add(image);
             }
         }
         return new ImageGenerationResponse(images, usage(response));
+    }
+
+    /** A candidate can carry intermediate renders before the final one, which is the output the caller asked for. */
+    @SuppressWarnings("unchecked")
+    private ImageData outputImage(Map<String, Object> candidate) {
+        var content = (Map<String, Object>) candidate.get("content");
+        var parts = content == null ? null : (List<Map<String, Object>>) content.get("parts");
+        if (parts == null) return null;
+        ImageData image = null;
+        for (var part : parts) {
+            var inlineData = (Map<String, Object>) part.get("inlineData");
+            if (inlineData != null && inlineData.get("data") instanceof String data) image = new ImageData(data, null, null);
+        }
+        return image;
     }
 
     @SuppressWarnings("unchecked")
