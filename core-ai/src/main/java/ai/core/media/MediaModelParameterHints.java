@@ -132,8 +132,12 @@ public final class MediaModelParameterHints {
 
     public static String imageHint(String upstreamModel) {
         if (upstreamModel == null) return null;
+        if (upstreamModel.startsWith("gpt-image-2.5")) {
+            return "quality (low/medium/high/auto, or xhigh/max which cost many more output tokens), size (WxH, multiples of 16, "
+                + "longest edge 3840), output_format (png/jpeg), output_compression (jpeg only, 0-100), background (transparent, png only)";
+        }
         if (upstreamModel.startsWith("gpt-image") || upstreamModel.startsWith("dall-e")) {
-            return "quality (low/medium/high/auto), output_format (png/jpeg), output_compression, background (transparent)";
+            return "quality (low/medium/high/auto), output_format (png/jpeg), output_compression (jpeg only, 0-100), background (transparent, png only)";
         }
         if (upstreamModel.startsWith("seedream/")) return KIE_SEEDREAM_HINT;
         if (upstreamModel.startsWith("seedream")) {

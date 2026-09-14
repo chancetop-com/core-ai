@@ -59,7 +59,7 @@ public final class GenerateImageTool extends ToolCall {
             whatever token the target model actually understands. Without a role sentence per
             reference the model guesses, and guesses wrong silently.
 
-            For gpt-image-2, do not include the quality parameter unless the user explicitly requests a quality level. When requested, quality must be exactly one of: low, medium, high, or auto. Never send standard or hd; they are invalid for gpt-image-2.
+            For gpt-image-2, do not include the quality parameter unless the user explicitly requests a quality level. When requested, quality must be exactly one of: low, medium, high, or auto. gpt-image-2.5 additionally accepts xhigh and max, which spend many more image output tokens — use them only when the user asks for the highest quality. Never send standard or hd; they are invalid.
 
             Parameters:
             - prompt (required): A detailed text description of the desired image
@@ -72,10 +72,10 @@ public final class GenerateImageTool extends ToolCall {
               model_scope="session" to clear the session default and fall back to the system default.
             - n: Number of images to generate (1-10, default 1)
             - size: Image dimensions, e.g. "1024x1024", "1792x1024", "1024x1792"
-            - quality: Optional output quality. For gpt-image-2, use only "low", "medium", "high", or "auto". Omit it unless the user requests a quality preference. Never use "standard" or "hd".
+            - quality: Optional output quality. For gpt-image-2, use only "low", "medium", "high", or "auto"; gpt-image-2.5 also accepts "xhigh" and "max", which cost many more output tokens. Omit it unless the user requests a quality preference. Never use "standard" or "hd".
             - output_format: Image format — "png" or "jpeg" (default depends on model)
-            - output_compression: PNG compression level 0–9 where 0 is no compression
-            - background: Set to "transparent" to generate PNGs with transparent backgrounds
+            - output_compression: Optional JPEG compression level 0–100; only valid together with output_format "jpeg"
+            - background: Set to "transparent" to generate PNGs with transparent backgrounds (requires output_format "png")
             - input_images: Input images for image-to-image editing (not all models support this).
               Either the literal string "attached" to edit the images attached to this conversation,
               or a JSON array whose items are:
@@ -405,10 +405,10 @@ public final class GenerateImageTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "model_scope", "once (default) or session; session sets the model as the conversation default for subsequent calls, empty model clears it"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "n", "Number of images to generate (1-10, default 1)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Image dimensions, e.g. 1024x1024, 1792x1024, 1024x1792"),
-                    ToolCallParameters.ParamSpec.of(String.class, "quality", "Optional output quality. For gpt-image-2 use only low, medium, high, or auto. Omit it when no quality preference was requested; do not use standard or hd."),
+                    ToolCallParameters.ParamSpec.of(String.class, "quality", "Optional output quality. For gpt-image-2 use only low, medium, high, or auto; gpt-image-2.5 also accepts xhigh and max, which cost many more output tokens. Omit it when no quality preference was requested; do not use standard or hd."),
                     ToolCallParameters.ParamSpec.of(String.class, "output_format", "Image format — png or jpeg"),
-                    ToolCallParameters.ParamSpec.of(Integer.class, "output_compression", "PNG compression level 0-9 where 0 is no compression"),
-                    ToolCallParameters.ParamSpec.of(String.class, "background", "Set to 'transparent' for transparent PNG backgrounds"),
+                    ToolCallParameters.ParamSpec.of(Integer.class, "output_compression", "Optional JPEG compression level 0-100; only valid with output_format jpeg"),
+                    ToolCallParameters.ParamSpec.of(String.class, "background", "Set to 'transparent' for transparent PNG backgrounds (requires output_format png)"),
                     ToolCallParameters.ParamSpec.of(String.class, "input_images", "Input images for image-to-image editing: \"attached\" for this conversation's attached images, or a JSON array of {\"media_id\":\"gateway-media-v1...\",\"name\":\"char_lin\",\"role\":\"subject\"} / \"last\" (preferred, for images this tool produced) or {\"url\":\"https://...\"} / {\"b64Json\":\"data:...\"} (external content only); omit for text-to-image"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_interaction_id", "Gemini Interactions API ID to continue a multi-turn image edit"),
                     ToolCallParameters.ParamSpec.of(String.class, "mask", "Mask image for inpainting, same format as one input_images item"),
