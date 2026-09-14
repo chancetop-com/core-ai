@@ -18,10 +18,14 @@ final class GatewaySupport {
     static final long DEFAULT_TIMEOUT_SECONDS = 120;
     static final int MAX_SYNTHESIZED_TOOL_CALLS = 20;
 
-    // Per-conversation session headers sent by LLM CLI terminals (Claude Code, Codex, ...).
-    // cc-switch forwards them upstream; extend this table when supporting new terminals.
+    // Per-conversation session headers sent by LLM CLI terminals (Claude Code, Codex, ...) and by the
+    // protocol-converting proxies in front of them (cc-switch, routatic-proxy); extend this table when
+    // supporting new terminals.
     private static final String[] CLIENT_SESSION_HEADERS = {
         "X-Claude-Code-Session-Id",
+        // routatic-proxy reads the Claude Code conversation UUID and forwards it under the OpenCode name
+        // instead (it never forwards the original header)
+        "x-opencode-session",
         "session_id",
         "x-session-id",
         "session-id"
@@ -48,6 +52,8 @@ final class GatewaySupport {
     // Chat requests replay the previous tool executions as messages: the assistant message holds
     // tool_calls (id + function.name + function.arguments) and the tool message holds the result.
     // Pairing them lets the gateway synthesize tool spans without any extra client reporting.
+    // The replay grows with every turn, so keep the most recent executions: the tail carries the calls
+    // that are new since the previous request, while the ingest dedupe ignores the replayed ones.
     static List<GatewayToolCall> parseToolCalls(Map<String, Object> body, int maxCalls) {
         var messages = body.get("messages");
         if (!(messages instanceof List<?> messageList) || messageList.isEmpty()) return List.of();
@@ -62,9 +68,9 @@ final class GatewaySupport {
             var definition = calls.remove(id);
             if (definition == null) continue;
             results.add(new GatewayToolCall(id, definition[0], definition[1], contentText(message.get("content"))));
-            if (results.size() >= maxCalls) break;
         }
-        return results;
+        if (results.size() <= maxCalls) return results;
+        return new ArrayList<>(results.subList(results.size() - maxCalls, results.size()));
     }
 
     // message content arrives either as a plain string or as OpenAI content parts

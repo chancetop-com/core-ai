@@ -34,6 +34,12 @@ class GatewaySupportTest {
     }
 
     @Test
+    void clientSessionIdAcceptsHeaderForwardedByConvertingProxy() {
+        // routatic-proxy relays the Claude Code conversation UUID as x-opencode-session and drops the original header
+        assertEquals("claude-session-1", GatewaySupport.clientSessionId(requestWith("x-opencode-session", "claude-session-1")));
+    }
+
+    @Test
     void clientSessionIdSkipsBlankHeaders() {
         var request = requestWith("X-Claude-Code-Session-Id", " ");
         when(request.header("session_id")).thenReturn(Optional.of("codex-session-1"));
@@ -83,7 +89,7 @@ class GatewaySupportTest {
     }
 
     @Test
-    void parseToolCallsSkipsOrphanedToolMessagesAndCapsCount() {
+    void parseToolCallsSkipsOrphanedToolMessagesAndKeepsMostRecentCalls() {
         var messages = new java.util.ArrayList<Object>();
         for (int i = 0; i < 30; i++) {
             messages.add(Map.of("role", "assistant", "content", "", "tool_calls", List.of(
@@ -95,8 +101,24 @@ class GatewaySupportTest {
         var calls = GatewaySupport.parseToolCalls(bodyOf("messages", messages), 25);
 
         assertEquals(25, calls.size());
+        assertEquals("tool-5", calls.getFirst().name());
+        assertEquals("tool-29", calls.getLast().name());
+    }
+
+    @Test
+    void parseToolCallsReturnsAllCallsWhenUnderTheCap() {
+        var messages = new java.util.ArrayList<Object>();
+        for (int i = 0; i < 3; i++) {
+            messages.add(Map.of("role", "assistant", "content", "", "tool_calls", List.of(
+                    Map.of("id", "call-" + i, "type", "function", "function", Map.of("name", "tool-" + i, "arguments", "{}")))));
+            messages.add(Map.of("role", "tool", "tool_call_id", "call-" + i, "content", "result-" + i));
+        }
+
+        var calls = GatewaySupport.parseToolCalls(bodyOf("messages", messages), 20);
+
+        assertEquals(3, calls.size());
         assertEquals("tool-0", calls.getFirst().name());
-        assertEquals("tool-24", calls.getLast().name());
+        assertEquals("tool-2", calls.getLast().name());
     }
 
     @Test
