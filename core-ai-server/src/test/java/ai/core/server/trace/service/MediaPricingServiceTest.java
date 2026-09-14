@@ -86,6 +86,22 @@ class MediaPricingServiceTest {
     }
 
     @Test
+    void resolveImagePricesGptImage25DeploymentFromCatalog() {
+        when(models.find(any(Bson.class))).thenReturn(List.of());
+
+        // UAT routes gpt-image-2.5-flare/sunburst by deployment name and carries no gateway price, so the catalog
+        // entry is the only price source - without it the job settles as unavailable, i.e. no usage and no cost
+        var price = service.resolveImage("gpt-image-2.5-flare", "gpt-image-2.5-flare",
+                new Usage(3_150, 1, null, 50, 3_100, 50, null, null, null), 1);
+
+        assertEquals(50 * 5e-6 + 3_100 * 3e-5, price.costUsd(), 1e-12);
+        assertEquals("model_catalog", price.source());
+        assertEquals("gpt-image-2.5-flare", price.pricingModelId());
+        assertEquals(3_100.0, price.units());
+        assertEquals("token", price.unitType());
+    }
+
+    @Test
     void resolveImageReturnsUnavailableForUnknownModel() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
 

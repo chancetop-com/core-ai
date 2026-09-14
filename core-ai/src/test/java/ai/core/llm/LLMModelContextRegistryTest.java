@@ -143,6 +143,26 @@ class LLMModelContextRegistryTest {
     }
 
     @Test
+    void testEstimateImageCostGptImage25DeploymentPricedByTokens() {
+        // azure gpt-image-2.5 deployments are their own catalog keys: text 5e-6/token, image input 8e-6/token,
+        // image output 3e-5/token — the token path prices the real usage the response reports
+        var estimate = registry.estimateImageCost("gpt-image-2.5-flare", 100, 1_024, 3_100, 1);
+
+        assertNotNull(estimate);
+        assertEquals("gpt-image-2.5-flare", estimate.pricingModelId());
+        assertEquals(100 * 5e-6 + 1_024 * 8e-6 + 3_100 * 3e-5, estimate.costUsd(), 1e-12);
+        assertEquals(3_100.0, estimate.units());
+        assertEquals("token", estimate.unitType());
+    }
+
+    @Test
+    void testEstimateImageCostGptImage25DeploymentVariants() {
+        assertNotNull(registry.estimateImageCostUsd("gpt-image-2.5-sunburst", 100, null, 196, 1));
+        assertNotNull(registry.estimateImageCostUsd("gpt-image-2.5-flare-2026-09-08", 100, null, 196, 1));
+        assertNotNull(registry.estimateImageCostUsd("gpt-image-2.5-sunburst-2026-09-08", 100, null, 196, 1));
+    }
+
+    @Test
     void testEstimateImageCostFallsBackToPerImage() {
         // aiml/dall-e-3 has no image-token prices but output_cost_per_image=0.052
         var cost = registry.estimateImageCostUsd("aiml/dall-e-3", null, null, null, 2);
