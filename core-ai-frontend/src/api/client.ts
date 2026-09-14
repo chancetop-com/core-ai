@@ -298,6 +298,7 @@ export interface MediaJob {
   providerId?: string;
   requestedModel?: string;
   resolvedModel?: string;
+  prompt?: string;
   mediaType?: string;
   state?: string;
   requestedSeconds?: number;
