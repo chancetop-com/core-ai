@@ -26,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -164,15 +165,7 @@ public class ToolExecutor {
             LOGGER.debug("sandbox intercepting tool: {}", tool.getName());
             // a sandbox that cannot be acquired (docker daemon unreachable, pool exhausted) is a failed tool call the
             // agent can report and route around — not a dead turn with nothing shown to the user
-            result = traceToolSpan(functionCall, tool.isSubAgent(), () -> {
-                try {
-                    return sandbox.execute(tool.getName(), functionCall.function.arguments, context);
-                } catch (RuntimeException e) {
-                    LOGGER.warn("sandbox execution failed, tool={}", tool.getName(), e);
-                    return ToolCallResult.failed("SANDBOX_UNAVAILABLE: the sandbox could not run this tool (" + e.getMessage()
-                        + "). Tell the user; do not retry sandbox tools until it is fixed.", e);
-                }
-            });
+            result = traceToolSpan(functionCall, tool.isSubAgent(), () -> executeInSandbox(tool, functionCall, context, sandbox));
             result.withStats("executionMode", "sandbox");
             result.withStats("sandboxId", sandbox.getId());
         } else {
@@ -260,6 +253,49 @@ public class ToolExecutor {
             return traceToolSpan(functionCall, tool.isSubAgent(), () -> tool.execute(functionCall.function.arguments, context));
         } finally {
             context.clearCurrentToolCallId();
+        }
+    }
+
+    // The sandbox HTTP call has no per-call timeout of its own (the runtime bounds the command), so a run that is
+    // cancelled or timed out must not stay parked on it: the wait is bound to the cancellation token and returns
+    // as soon as the token fires, while the abandoned call finishes on its own thread and is discarded.
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    private ToolCallResult executeInSandbox(ToolCall tool, FunctionCall functionCall, ExecutionContext context, ai.core.sandbox.Sandbox sandbox) {
+        var token = context.getCancellationToken();
+        if (token == null) {
+            return callSandbox(tool, functionCall, context, sandbox);
+        }
+        var otelContext = Context.current();
+        var future = CompletableFuture.supplyAsync(() -> {
+            try (var scope = otelContext.makeCurrent()) {
+                return callSandbox(tool, functionCall, context, sandbox);
+            }
+        }, AsyncToolTaskExecutor.getInstance().getExecutor());
+        var unbind = token.onCancel(() -> future.cancel(true));
+        try {
+            return future.get();
+        } catch (CancellationException e) {
+            LOGGER.warn("sandbox tool call abandoned after cancel, tool={}, reason={}", tool.getName(), token.getReason());
+            return ToolCallResult.failed(Strings.format("tool call cancelled while running in sandbox (reason={}): {}", token.getReason(), tool.getName()));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            future.cancel(true);
+            return ToolCallResult.failed(Strings.format("tool call interrupted: {}", tool.getName()));
+        } catch (ExecutionException e) {
+            var cause = e.getCause();
+            return ToolCallResult.failed(Strings.format("tool call failed<sandbox>: {}", cause != null ? cause.getMessage() : e.getMessage()), cause instanceof Exception ex ? ex : e);
+        } finally {
+            unbind.run();
+        }
+    }
+
+    private ToolCallResult callSandbox(ToolCall tool, FunctionCall functionCall, ExecutionContext context, ai.core.sandbox.Sandbox sandbox) {
+        try {
+            return sandbox.execute(tool.getName(), functionCall.function.arguments, context);
+        } catch (RuntimeException e) {
+            LOGGER.warn("sandbox execution failed, tool={}", tool.getName(), e);
+            return ToolCallResult.failed("SANDBOX_UNAVAILABLE: the sandbox could not run this tool (" + e.getMessage()
+                + "). Tell the user; do not retry sandbox tools until it is fixed.", e);
         }
     }
 

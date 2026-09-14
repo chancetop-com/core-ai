@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -582,6 +583,23 @@ func bashTimeout(requestedMs int) time.Duration {
 	return min(time.Duration(requestedMs)*time.Millisecond, maxBashTimeout)
 }
 
+// outputPipeGrace bounds how long a timed-out command may keep the call blocked after its
+// process group has been killed: descendants that survive the kill (or are mid-exit) still hold
+// the combined output pipe, and without this bound CombinedOutput waits for them forever.
+const outputPipeGrace = 2 * time.Second
+
+// runBounded runs cmd like CombinedOutput but makes the context deadline a real bound. The command
+// gets its own process group so cancellation kills every descendant (bash -c spawning chromium or
+// ffmpeg), not only the direct child, and WaitDelay caps the wait on the output pipe afterwards.
+func runBounded(cmd *exec.Cmd) ([]byte, error) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = outputPipeGrace
+	return cmd.CombinedOutput()
+}
+
 func executeBash(args string) (string, string) {
 	var parsed struct {
 		Command      string `json:"command"`
@@ -602,7 +620,7 @@ func executeBash(args string) (string, string) {
 	cmd.Dir = sanitizePath(parsed.WorkspaceDir, workspaceDir)
 	cmd.Env = minimalEnv()
 
-	output, err := cmd.CombinedOutput()
+	output, err := runBounded(cmd)
 	result := string(output)
 
 	if ctx.Err() == context.DeadlineExceeded {
@@ -659,7 +677,7 @@ func executePython(args string) (string, string) {
 	cmd.Dir = sanitizePath(parsed.WorkspaceDir, workspaceDir)
 	cmd.Env = minimalEnv()
 
-	output, err := cmd.CombinedOutput()
+	output, err := runBounded(cmd)
 	result := string(output)
 
 	if ctx.Err() == context.DeadlineExceeded {

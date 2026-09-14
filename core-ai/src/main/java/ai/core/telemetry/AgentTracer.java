@@ -1,6 +1,7 @@
 package ai.core.telemetry;
 
 import ai.core.telemetry.context.AgentTraceContext;
+import ai.core.tool.ToolCallResult;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
@@ -179,6 +180,11 @@ public class AgentTracer extends Tracer {
             // Add output as attribute for Langfuse (tool result)
             if (result != null) {
                 span.setAttribute(OUTPUT_VALUE, result.toString());
+            }
+            // Tools report most failures (sandbox timeouts, HTTP errors) as a FAILED result rather than
+            // by throwing, so the span has to read the result to show the failure in the trace UI.
+            if (result instanceof ToolCallResult toolResult && toolResult.isFailed()) {
+                span.setStatus(StatusCode.ERROR, toolResult.getResult());
             }
 
             return result;
