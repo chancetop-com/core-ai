@@ -136,6 +136,12 @@ public class LiteLLMMediaProvider implements MediaProvider {
         return httpResponse.body;
     }
 
+    /** Images go out as a JSON body without any reference field; video requests do carry theirs. */
+    @Override
+    public boolean acceptsImageReferences() {
+        return false;
+    }
+
     private Map<String, Object> imageRequestBody(ImageGenerationRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
         putIfNotNull(body, "model", request.model());

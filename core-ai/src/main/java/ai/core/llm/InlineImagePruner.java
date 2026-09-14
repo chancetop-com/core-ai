@@ -60,7 +60,6 @@ public final class InlineImagePruner {
 
     private static boolean[] selectKept(List<ImageSlot> slots, int maxImages, long maxBytes) {
         var kept = new boolean[slots.size()];
-        if (maxImages == 0) return kept;
         var maxCount = maxImages < 0 ? Integer.MAX_VALUE : maxImages;
         long bytes = 0;
         var count = 0;
@@ -68,8 +67,9 @@ public final class InlineImagePruner {
             var slot = slots.get(i);
             // the newest image is resent even when it alone exceeds the budget: hiding what the agent
             // just looked at makes it read the same file again, and a request that is still too large
-            // is recovered by the 413 retry instead
-            var newest = i == slots.size() - 1;
+            // is recovered by the 413 retry instead. a zero count budget drops every image including
+            // the newest, which is exactly what that retry asks for
+            var newest = maxImages != 0 && i == slots.size() - 1;
             if (!newest && (count >= maxCount || maxBytes > 0 && bytes + slot.bytes() > maxBytes)) continue;
             kept[i] = true;
             count++;

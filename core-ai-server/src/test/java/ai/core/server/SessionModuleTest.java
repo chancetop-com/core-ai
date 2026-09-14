@@ -26,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 class SessionModuleTest {
+    private static final Random RANDOM = new Random(42);
+
     @Test
     void bindsSessionRegistryBeforeRuntimeConsumers() {
         var module = new RecordingSessionModule();
@@ -78,10 +80,9 @@ class SessionModuleTest {
     private byte[] noisePng() throws Exception {
         // 1600 px wide: over the downscale edge limit while staying a tiny file, so the encoder runs
         var source = new BufferedImage(1600, 100, BufferedImage.TYPE_INT_RGB);
-        var random = new Random(42);
         for (var y = 0; y < 100; y++) {
             for (var x = 0; x < 1600; x++) {
-                source.setRGB(x, y, random.nextInt(0xFFFFFF));
+                source.setRGB(x, y, RANDOM.nextInt(0xFFFFFF));
             }
         }
         var output = new ByteArrayOutputStream();

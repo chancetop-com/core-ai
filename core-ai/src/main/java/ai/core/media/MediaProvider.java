@@ -17,4 +17,13 @@ public interface MediaProvider {
     VideoStatusResponse getVideoStatus(String videoId);
 
     byte[] downloadVideo(String videoId);
+
+    /**
+     * Whether {@link #generateImage} hands image references to the model. A protocol whose image request
+     * body has no place for them reports false, so the routing layer can refuse an edit rather than
+     * generate an unrelated image from the prompt alone.
+     */
+    default boolean acceptsImageReferences() {
+        return true;
+    }
 }

@@ -24,6 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 class AwtImageShrinkerTest {
+    private static final Random RANDOM = new Random(42);
+
     private final AwtImageShrinker shrinker = new AwtImageShrinker();
 
     @Test
@@ -89,10 +91,9 @@ class AwtImageShrinkerTest {
 
     private BufferedImage noise(int width, int height) {
         var image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        var random = new Random(42);
         for (var y = 0; y < height; y++) {
             for (var x = 0; x < width; x++) {
-                image.setRGB(x, y, random.nextInt(0xFFFFFF));
+                image.setRGB(x, y, RANDOM.nextInt(0xFFFFFF));
             }
         }
         return image;

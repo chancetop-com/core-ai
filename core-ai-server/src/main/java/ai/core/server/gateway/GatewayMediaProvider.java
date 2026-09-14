@@ -64,6 +64,13 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
         var endpoint = request.inputImages() != null && !request.inputImages().isEmpty() || request.mask() != null
                 ? GatewayEndpointType.IMAGE_EDIT : GatewayEndpointType.IMAGE_GENERATION;
         var resolved = route(request.model(), endpoint);
+        var upstream = upstreamProvider(resolved.provider());
+        if (endpoint == GatewayEndpointType.IMAGE_EDIT && !upstream.acceptsImageReferences()) {
+            throw new BadRequestException("provider " + resolved.provider().name + " (media protocol "
+                    + resolved.provider().mediaProtocol + ") cannot send reference images to the model, so an image edit"
+                    + " cannot run on it; use a provider whose media protocol supports image edits, or generate without"
+                    + " reference images");
+        }
 
         // representation is chosen here, where the destination provider is finally known
         var references = referenceResolver.resolve(request.inputImages(), MediaModality.IMAGE, resolved, owner, this::videoBytes);
@@ -72,7 +79,6 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
                 resolved.upstreamModel(), resolved.model());
         var interactionId = hasText(request.previousInteractionId()) ? request.previousInteractionId() : references.interactionId();
 
-        var upstream = upstreamProvider(resolved.provider());
         var response = upstream.generateImage(rewrite(request, resolved.upstreamModel(), compiled, mask, interactionId));
         var job = recordImageCost(request, resolved, response, owner);
         return response.with(job == null ? null : GatewayMediaHandle.encodeImage(job.id), compiled.notes());
