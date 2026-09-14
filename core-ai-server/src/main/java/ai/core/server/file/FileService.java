@@ -4,9 +4,11 @@ import ai.core.server.blob.ObjectStorageService.DownloadCredential;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.FileRecord;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.util.Encodings;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
@@ -126,10 +128,16 @@ public class FileService {
         spellings.add(contentHash);
         spellings.add(contentHash.toUpperCase(java.util.Locale.ROOT));
         spellings.add(contentHash.toLowerCase(java.util.Locale.ROOT));
-        return fileRecordCollection.findOne(Filters.and(
+        // the compound index is not unique, so a user can own several records of identical content; findOne() raises
+        // Error("more than one row returned") for those, which turned a dedupe hit into a failed submit_artifacts
+        var query = new Query();
+        query.filter = Filters.and(
                 Filters.eq("user_id", userId),
                 Filters.in("content_hash", spellings),
-                Filters.type("content_hash", "string")));
+                Filters.type("content_hash", "string"));
+        query.sort = Sorts.ascending("created_at", "_id");
+        query.limit = 1;
+        return fileRecordCollection.find(query).stream().findFirst();
     }
 
     private String computeContentHash(Path tempFile) {

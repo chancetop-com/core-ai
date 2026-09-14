@@ -100,7 +100,7 @@ class MediaJobServiceTest {
         record.id = "file-1";
         record.fileName = "generated-image.png";
         record.contentType = "image/png";
-        when(service.fileService.upload(any(), any(), any(), any())).thenReturn(record);
+        when(service.fileService.uploadIfAbsent(any(), any(), any(), any())).thenReturn(record);
         var image = new ImageData(Base64.getEncoder().encodeToString("png-bytes".getBytes(StandardCharsets.UTF_8)), null, null);
         var response = new ImageGenerationResponse(List.of(image), null);
 
@@ -118,7 +118,7 @@ class MediaJobServiceTest {
         var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(), "gpt-image-2", price, new ImageGenerationResponse(List.of(), null), "a red fox");
 
         assertNull(job.fileId);
-        verify(service.fileService, never()).upload(any(), any(), any(), any());
+        verify(service.fileService, never()).uploadIfAbsent(any(), any(), any(), any());
     }
 
     @Test

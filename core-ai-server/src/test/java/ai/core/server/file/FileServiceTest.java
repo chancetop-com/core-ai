@@ -4,12 +4,14 @@ import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.FileRecord;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.util.Encodings;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +21,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.ZonedDateTime;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -225,7 +228,7 @@ class FileServiceTest {
     @Test
     void uploadIfAbsentReusesExistingRecordWhenContentMatches() throws IOException {
         var existing = file("file-1");
-        when(service.fileRecordCollection.findOne(any(Bson.class))).thenReturn(Optional.of(existing));
+        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
         var tempFile = tempFile("same content".getBytes(StandardCharsets.UTF_8));
 
         var record = service.uploadIfAbsent("user-1", "v.mp4", "video/mp4", tempFile);
@@ -237,7 +240,7 @@ class FileServiceTest {
 
     @Test
     void uploadIfAbsentUploadsWhenNoContentMatch() throws IOException {
-        when(service.fileRecordCollection.findOne(any(Bson.class))).thenReturn(Optional.empty());
+        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of());
         when(resolver.artifactContainer()).thenReturn("artifacts");
         var tempFile = tempFile("new content".getBytes(StandardCharsets.UTF_8));
 
@@ -245,6 +248,20 @@ class FileServiceTest {
 
         assertNotNull(record.id);
         verify(service.fileRecordCollection).insert(record);
+    }
+
+    @Test
+    void findByContentHashReturnsOldestRecordWhenDuplicatesExist() {
+        var oldest = file("file-1");
+        var duplicate = file("file-2");
+        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(oldest, duplicate));
+
+        var found = service.findByContentHash("user-1", "3eb9aacdd2227af48c8948c2c5d9f2fd");
+
+        assertSame(oldest, found.orElseThrow());
+        var query = ArgumentCaptor.forClass(Query.class);
+        verify(service.fileRecordCollection).find(query.capture());
+        assertEquals(1, query.getValue().limit);
     }
 
     @SuppressWarnings("unchecked")

@@ -129,7 +129,7 @@ public class MediaJobService {
             var tempFile = Files.createTempFile("media-image-", ".bin");
             Files.write(tempFile, bytes);
             var contentType = imageContentType(image);
-            var record = fileService.upload(job.userId, "generated-image" + FileService.extension(contentType), contentType, tempFile);
+            var record = fileService.uploadIfAbsent(job.userId, "generated-image" + FileService.extension(contentType), contentType, tempFile);
             job.fileId = record.id;
             job.fileName = record.fileName;
             job.contentType = record.contentType;

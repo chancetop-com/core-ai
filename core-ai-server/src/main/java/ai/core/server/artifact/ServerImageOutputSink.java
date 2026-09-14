@@ -31,7 +31,7 @@ public final class ServerImageOutputSink implements GenerateImageTool.ImageOutpu
         try {
             var tempFile = Files.createTempFile("core-ai-image-", "." + extension(fileName));
             Files.write(tempFile, bytes);
-            var record = fileService.upload(userId, fileName, contentType, tempFile);
+            var record = fileService.uploadIfAbsent(userId, fileName, contentType, tempFile);
             var artifact = new AgentRunArtifact();
             artifact.fileId = record.id;
             artifact.fileName = record.fileName;
