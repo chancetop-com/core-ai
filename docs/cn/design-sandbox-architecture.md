@@ -73,6 +73,7 @@ Sandbox 是 Core AI Server 的**隔离执行层**。Agent 在运行过程中会�
 | `execute(toolName, args, ctx)` | 在沙箱里执行工具，返回 `ToolCallResult` |
 | `materializeSkill(name, version, tar)` | 把 skill 投递进沙箱 |
 | `downloadFile(path)` | 从沙箱取回产物文件 |
+| `bind(SandboxBinding)` / `unbind()` | 把会话的 Sandbox Hub 身份（server 地址 + 会话令牌）交给 runtime，启用其回环代理；会话释放沙箱时清除。仅内存态，不落盘 |
 | `getStatus / getId / hostname / ip / image / close` | 状态与元信息 |
 
 被拦截的工具集合定义在 `SandboxConstants.INTERCEPTED_TOOLS`：shell、python、read/edit/write/glob/grep file。边界即「碰文件系统 + 跑代码」的工具。
@@ -136,11 +137,33 @@ ToolExecutor.doExecute
   ├─ sandbox = context.getSandbox()
   ├─ useSandbox = sandbox.shouldIntercept("shell")        // true
   └─ sandbox.execute(...)  →  LazySandbox.execute
-        ├─ ensureReady()                                   // 懒建 / 自愈
+        ├─ ensureReady()                                   // 懒建 / 自愈；就绪后钩子 onSandboxReady 里 bind 会话身份（替换后 rebind）
         └─ AgentSandbox.execute
               └─ SandboxClient HTTP POST podIP:8080/execute
                     └─ {status: completed | failed | timeout | pending}
 ```
+
+### 6.1 反向链路：沙箱内的脚本调会话能力（Sandbox Hub）
+
+沙箱里的脚本（skill 脚本、临时 python/bash）通过 **回环 hub** 使用本会话 agent 已配置的能力（MCP / API 工具 / LLM_CALL / sub-agent / 非沙箱 builtin），脚本本身不持有任何凭据：
+
+```
+脚本 (python: core_ai_sandbox SDK / bash: core-ai-sandbox CLI)
+  │  HTTP，无 Authorization
+  ▼
+runtime 127.0.0.1:8081/hub/*            ← 只监听回环；从内存 binding 取令牌，覆盖脚本传来的 Authorization
+  │  Bearer cst_…（会话令牌）
+  ▼
+server /api/sandbox-hub/*（仅此路径接受 cst_）
+  ├─ 校验令牌 + 会话/沙箱绑定（本 pod 无该会话时回退 Redis 里存下的绑定，避免已释放/已替换的沙箱复活）
+  ├─ 目录类请求（me/catalog/tools/describe）由任意 pod 直接用持有会话 pod 发布的目录快照回答
+  └─ 执行类请求经 messaging RPC 转发到持有会话的 pod（SANDBOX_TOOL_CALL / SANDBOX_TOOL_POLL）
+        └─ 用会话自己的 ExecutionContext 执行工具，审计写 hub_calls（source=sandbox），与 agent 调用同配额/同 trace
+```
+
+- 环境变量只注入 `CORE_AI_HUB`（以及信息性的 `CORE_AI_SESSION_ID` / `CORE_AI_AGENT_NAME`）；不注入任何指向原始 LLM 的变量。
+- 长任务（async 工具、慢 sub-agent）返回 `pending + task_id`，调用方轮询 `/tasks/:id`。
+- 完整设计（契约、SDK、迁移路径、风险）见 `docs/cn/design-sandbox-hub.md`。
 
 ## 7. 生命周期管理
 

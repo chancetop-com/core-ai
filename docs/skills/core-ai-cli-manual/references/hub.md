@@ -207,15 +207,115 @@ Agents: when a sub-task fits a specialist better than you, delegate:
 Exit code 0 = success; parse stdout as JSON. On 4 (permission) stop and tell the user.
 ```
 
-## Inside a core-ai sandbox (`core-ai-sandbox`) — planned
+## Inside a core-ai sandbox (`core-ai-sandbox`)
 
-Code running inside a server agent's sandbox (skill scripts, ad-hoc python) can use **exactly what the agent has configured**: its MCP servers, API tools, LLM_CALL definitions, sub-agents, and non-sandboxed builtin tools. There is no raw LLM endpoint; to use an LLM from a script, the agent author attaches an LLM_CALL definition (prompt, schema, model) and the script calls it. Scripts hold no credentials: the runtime exposes a loopback proxy at `CORE_AI_HUB` (`http://127.0.0.1:8081/hub`) and attaches the session token itself.
+Code running inside a server agent's sandbox (skill scripts, ad-hoc python, shell) can use **exactly what the agent has configured**: its MCP servers, API tools, LLM_CALL definitions, sub-agents, and non-sandboxed builtin tools. There is no raw LLM endpoint — a script reaches an LLM only through an LLM_CALL definition the agent author attached.
 
-- Python: `from core_ai_sandbox import session; s = session()` then `s.mcp["google-gbp"].get_reviews(location=...)`, `s.api["<app>"].<service>.<operation>(...)`, `s.llm_call["<definition>"](query=...)`, `s.agent["<name>"].run("...")`, `s.tool("<function name>")(...)`. Results are `ToolResult` (`.text`, `.data`); failures raise `ToolError`. `s.catalog()` shows everything available.
-- bash: `core-ai-sandbox catalog|tools|describe|call` (a Go CLI built into the runtime, not `core-ai-cli`), same `--json` envelope and exit codes as the hub commands above.
-- Plain HTTP: `POST $CORE_AI_HUB/tools/<function name>/call` with `{"arguments": {...}}`, no auth header needed.
+```text
+script (python/bash)  ──▶  127.0.0.1:8081/hub/*  (in-pod runtime)  ──Bearer cst_…──▶  core-ai-server /api/sandbox-hub/*
+                                                                                     └─ runs on the pod that owns the session
+```
 
-Calls carry the session user's caller headers automatically, run through the session's own tool executor, and count against the same quota and traces. This is separate from the user-level hubs: `core-ai-cli` is not present in the sandbox, and the session token is rejected outside `/api/sandbox-hub/*`. Design: `docs/cn/design-sandbox-hub.md`.
+- **Scripts hold no credentials.** The runtime injects `CORE_AI_HUB=http://127.0.0.1:8081/hub` (plus `CORE_AI_SESSION_ID` / `CORE_AI_AGENT_NAME` for logging) and attaches the session token itself — it also replaces any `Authorization` header a script sends.
+- The hub listener is **loopback-only** (`127.0.0.1:8081`), so nothing outside the pod can borrow the session identity.
+- Session tokens (`cst_…`) are accepted **only** on `/api/sandbox-hub/*`; user API keys are rejected there, and a session token is rejected on every other path.
+- Calls run on the pod owning the session — same session state, same quota, same traces — and are recorded in the Hub Call list with `source=sandbox`.
+- When the session releases its sandbox the binding is dropped: calls fail with 401 `sandbox is no longer bound` (Python raises `NotBoundError`).
+
+### Discover, then call
+
+Everything is driven by the session catalog — never hardcode tool names or endpoints:
+
+```bash
+core-ai-sandbox catalog                                  # every callable tool, grouped by kind
+core-ai-sandbox tools "review" --kind mcp                # search within a kind
+core-ai-sandbox describe google_gbp_get_reviews          # description + input_schema
+core-ai-sandbox call google_gbp_get_reviews --arg location=locations/123 --json
+```
+
+| Kind | Python | What it is |
+|------|--------|-----------|
+| `mcp` | `s.mcp["<server>"]["<tool>"](...)` | Tools of the session's configured MCP servers |
+| `api` | `s.api["<app>"]["<service>"]["<operation>"](...)` | Service API operations; caller identity is forwarded to the backend |
+| `llm_call` | `s.llm_call["<definition>"](query=..., image_url=...)` | LLM_CALL definitions — the only LLM path for a script |
+| `agent` | `s.agent["<name>"].run("...")` | Sub-agent delegation; usually long-running (see tasks) |
+| `builtin` | `s.tool("<tool name>")(...)` | The agent's non-sandboxed builtin tools |
+
+Tool names come from the catalog and are unique across kinds, so `s.tool("<name>")` / `core-ai-sandbox call <name>` reach any of them.
+
+### Python SDK
+
+`core_ai_sandbox` is preinstalled in the sandbox image (the same wheel is attached to runtime releases for local runs).
+
+```python
+from core_ai_sandbox import session, ToolError, NotBoundError, ToolNotFoundError
+
+s = session()                       # reads CORE_AI_HUB; session(hub_url=...) for tests
+s.me()                              # session_id, agent_name, tool_count, contract_version
+s.catalog()                         # full catalog; s.refresh() re-reads it after tool changes
+s.tools("review", kind="mcp")       # search
+s.describe("google_gbp_get_reviews")
+
+r = s.mcp["google-gbp"]["get_reviews"](location="locations/123", limit=5)
+r.text                              # text content, joined
+r.data                              # parsed JSON when the text is JSON, else None — the only parse entry
+r.call_id, r.duration_ms, r.llm_usage
+str(r)                              # == r.text
+
+try:
+    s.api["crm"]["leads"]["create"](name="Acme")
+except ToolError as e:              # is_error=true and HTTP 4xx/5xx always raise
+    e.message, e.status_code, e.call_id
+```
+
+- Missing required arguments are caught locally against `describe`'s `input_schema`, with no round trip.
+- Long calls (async builtin tools, slow sub-agents) return a `Task` instead of a result: `t.status`, `t.poll()`, `t.wait(timeout=600)`. `s.agent["<name>"].run("...", wait=False)` returns one immediately.
+- `AsyncSession` (`async_session()`) mirrors the same API with `await`, for scripts that already use `asyncio`.
+- Files: `s.files.publish("/workspace/report.html", title="月报")` uploads through the session's `submit_artifacts` tool and returns a `download_url` usable as an `image_url`-style argument.
+- `s.close()`; `session()` also works as a context manager.
+
+### Testing a skill script locally
+
+```python
+from core_ai_sandbox.testing import FakeSession
+
+fake = FakeSession.from_fixture("catalog")              # or FakeSession(catalog_json)
+fake.mcp["google-gbp"]["get_reviews"].returns({"reviews": [...]})
+fake.calls                                              # assert call sequence and arguments
+run_audit(session=fake)                                 # script receives the session as a parameter
+```
+
+Export one real catalog per agent (`core-ai-sandbox catalog --json > catalog.json`) so the fake exposes the same namespaces as production.
+
+### Limits
+
+- A sandbox cannot change its own capability set: no loading tools or skills, no creating LLM_CALL definitions, no user-level hub access.
+- `core-ai-cli` is not installed in the sandbox; conversely session tokens do not work against `/api/mcp-hub/*`, `/api/skill-hub/*`, `/api/api-tools/*`, or `/api/agents/*`.
+- Sandbox calls count against the session's quota and traces exactly like the agent's own tool calls; tools that are not attached to the agent are simply absent from the catalog.
+
+### Migrating a skill to the hub
+
+| In the script today | Replace with |
+|---------------------|--------------|
+| Hand-rolled MCP clients (`mcp_client.py`, `gbp_client.py`) plus `MCP_URL` / `*_AUTH_HEADER` env vars | `s.mcp["<server>"]["<tool>"](...)`; delete the client files and the env vars |
+| Direct LiteLLM calls with prompts hardcoded in the script | One LLM_CALL definition per purpose (`seo-title-semantics`, `gbp-photo-quality`, …) attached to the agent; `s.llm_call["seo-title-semantics"](query=...)` |
+| `*_BASE_URL` / `*_TOKEN` for internal services | `s.api["<app>"]["<service>"]["<operation>"](...)` with the app attached to the agent |
+| Third-party endpoints with their own API keys (e.g. a vision API) | Register the capability as an MCP server or Service API and attach it to the agent (preferred); `sandboxConfig.env` only as a last resort, since any custom env bypasses the warm pool |
+| SKILL.md telling the reader to "check whether these MCPs are configured" | Tell it to run `core-ai-sandbox catalog` and to ask the user to attach whatever is missing |
+
+Migration is complete when `grep -E "LITELLM|MCP_URL|_TOKEN|_KEY|openai"` over the skill directory finds nothing and the agent's `sandboxConfig.env` is empty. Design: `docs/cn/design-sandbox-hub.md`.
+
+### `core-ai-sandbox` CLI reference
+
+| Option | Effect |
+|--------|--------|
+| `--args '<json object>'` / `--args-file F\|-` / `--arg k=v` (repeatable) | Call arguments; later sources win, `--arg` values are coerced using the tool's `input_schema` |
+| `--kind mcp\|api\|llm_call\|agent\|builtin` | `tools`: restrict to one kind |
+| `--timeout SEC` | `call`: total wait budget, default 120, max 600. On expiry the task keeps running |
+| `--max-output N` | Truncate printed text (default 65536 chars) |
+| `--json` / `--raw` / `--quiet` | Same meanings as the user-level hub commands |
+
+Exit codes match the table above (0 success, 1 tool error, 2 usage, 3 not bound, 4 forbidden, 5 tool not found, 6 timeout). On 6 the call is still running server-side: the `--json` envelope carries `task_id` and `status`, and the Python SDK can keep polling that task (`Task.poll()` / `Task.wait()`); the CLI itself has no separate task subcommand yet.
 
 ## MCP-native alternative
 
