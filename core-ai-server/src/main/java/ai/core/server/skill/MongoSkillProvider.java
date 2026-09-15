@@ -61,7 +61,8 @@ public class MongoSkillProvider {
         public String readResource(SkillMetadata skill, String resourcePath) {
             var def = skillService.findByQualifiedName(skill.getQualifiedName());
             if (def.resources == null || def.resources.isEmpty()) {
-                throw new SkillLoadException("skill has no resources: " + skill.getQualifiedName());
+                throw new SkillLoadException("resource not found: " + resourcePath + " in " + skill.getQualifiedName()
+                    + " (this skill has no resources; only SKILL.md is available)");
             }
             return def.resources.stream()
                 .filter(r -> r.path.equals(resourcePath))
