@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +40,7 @@ Usage:
   core-ai-sandbox catalog                  List every callable tool, grouped by kind
   core-ai-sandbox tools [query]            Search tools
   core-ai-sandbox describe <tool>          Show a tool's metadata and input_schema
-  core-ai-sandbox call <tool> [args]       Call a tool
+  core-ai-sandbox call <tool> [options]    Call a tool
 
 Call arguments (merged, later sources win):
   --args JSON            Arguments as a JSON object
@@ -53,6 +54,7 @@ Options:
   --json                 Print the raw server response as one JSON line
   --raw                  Print only the tool text content
   --quiet                Print nothing; the exit code is the result
+  --help, -h             Print this usage
 
 Exit codes:
   0 success  1 tool error  2 usage  3 not bound (or unauthenticated)  4 forbidden
@@ -74,7 +76,12 @@ type cliOptions struct {
 	json       bool
 	raw        bool
 	quiet      bool
+	help       bool
 }
+
+// cliToolKinds mirrors the kinds the hub reports; the CLI rejects anything else so a typo cannot
+// look like a legitimately empty result.
+var cliToolKinds = []string{"mcp", "api", "llm_call", "agent", "builtin"}
 
 type cliError struct {
 	code    int
@@ -125,6 +132,9 @@ func parseCliArgs(args []string) (cliOptions, *cliError) {
 	if len(args) > 0 {
 		opts.command = args[0]
 		index = 1
+		if isHelpFlag(args[0]) {
+			opts.help = true
+		}
 	}
 	needsValue := func(flag string, rest []string) (string, *cliError) {
 		if len(rest) == 0 {
@@ -157,6 +167,9 @@ func parseCliArgs(args []string) (cliOptions, *cliError) {
 			v, err := value()
 			if err != nil {
 				return opts, err
+			}
+			if !slices.Contains(cliToolKinds, v) {
+				return opts, usageError("--kind must be one of %s, got: %s", strings.Join(cliToolKinds, "|"), v)
 			}
 			opts.kind = v
 		case "--args":
@@ -198,8 +211,7 @@ func parseCliArgs(args []string) (cliOptions, *cliError) {
 			}
 			opts.maxOutput = size
 		case "--help", "-h":
-			fmt.Fprint(os.Stdout, cliUsage)
-			os.Exit(exitSuccess)
+			opts.help = true
 		default:
 			if strings.HasPrefix(arg, "-") {
 				return opts, usageError("unknown option: %s", arg)
@@ -223,7 +235,14 @@ func splitFlag(arg string) (name, value string, hasValue bool) {
 	return arg, "", false
 }
 
+func isHelpFlag(arg string) bool {
+	return arg == "--help" || arg == "-h"
+}
+
 func (env *cliEnv) dispatch() *cliError {
+	if env.opts.help {
+		return env.showUsage()
+	}
 	switch env.opts.command {
 	case "me":
 		return env.showMe()
@@ -385,6 +404,11 @@ func (env *cliEnv) toolPath(name string) string {
 }
 
 // ---------- commands ----------
+
+func (env *cliEnv) showUsage() *cliError {
+	fmt.Fprint(env.stdout, cliUsage)
+	return nil
+}
 
 func (env *cliEnv) showMe() *cliError {
 	var me hubMeResponse

@@ -400,6 +400,40 @@ func TestCliUsageErrors(t *testing.T) {
 	}
 }
 
+func TestCliHelpPrintsUsageWithoutTouchingTheHub(t *testing.T) {
+	stub := &hubStub{}
+	stub.start(t)
+
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"call", "--help"}, {"call", "some_tool", "-h"}} {
+		code, stdout, _ := runCLI(t, args...)
+		if code != exitSuccess {
+			t.Fatalf("args %v exit = %d, want 0", args, code)
+		}
+		if !strings.Contains(stdout, "core-ai-sandbox call <tool> [options]") {
+			t.Fatalf("args %v did not print the usage:\n%s", args, stdout)
+		}
+	}
+	if len(stub.requests) != 0 {
+		t.Fatalf("help must not reach the hub, got %v", stub.requests)
+	}
+}
+
+func TestCliRejectsUnknownKind(t *testing.T) {
+	stub := &hubStub{}
+	stub.start(t)
+
+	code, _, stderr := runCLI(t, "tools", "--kind", "bogus")
+	if code != exitUsage {
+		t.Fatalf("unknown --kind exit = %d, want 2", code)
+	}
+	if !strings.Contains(stderr, "--kind must be one of mcp|api|llm_call|agent|builtin") {
+		t.Fatalf("unknown --kind stderr = %q", stderr)
+	}
+	if len(stub.requests) != 0 {
+		t.Fatalf("rejected --kind must not reach the hub, got %v", stub.requests)
+	}
+}
+
 func TestCliArgCoercionUsesSchema(t *testing.T) {
 	schema := `{"properties":{"limit":{"type":"integer"},"flag":{"type":"boolean"},` +
 		`"query":{"type":"string"},"filters":{"type":"object"}}}`
