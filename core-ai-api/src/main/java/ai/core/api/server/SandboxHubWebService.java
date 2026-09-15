@@ -47,6 +47,6 @@ public interface SandboxHubWebService {
     SandboxHubCallResponse call(@PathParam("name") String name, HubCallRequest request);
 
     @GET
-    @Path("/api/sandbox-hub/tasks/:task_id")
-    SandboxHubCallResponse task(@PathParam("task_id") String taskId);
+    @Path("/api/sandbox-hub/tasks/:taskId")
+    SandboxHubCallResponse task(@PathParam("taskId") String taskId);
 }
