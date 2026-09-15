@@ -335,11 +335,54 @@ export interface TraceFilter {
 export interface TraceFacet {
   value: string;
   count: number;
-}
-
-export interface TraceListResponse {
+}export interface TraceListResponse {
   traces: Trace[];
   // -1 when the server could not count this filter combination; UI falls back to prev/next paging
+  total: number;
+}
+
+// Audit record of one hub tool execution (kind: mcp_tool | api_tool | agent) — executions made by
+// remote clients directly, which never show up in Traces. Args/results are not stored: argsPreview
+// is truncated to 512 chars, argsHash is the sha256 of the full arguments.
+export interface HubCall {
+  id: string;
+  kind?: string;
+  source?: string;      // cli | mcp | hub | unknown
+  target?: string;      // server/tool or app/service/operation
+  group?: string;       // owning mcp server / api app
+  name?: string;
+  refId?: string;       // caller credential or tool ref
+  userId?: string;
+  userType?: string;
+  userName?: string;
+  userEmail?: string;
+  success?: boolean;    // undefined when the call never completed (interrupted run)
+  isError?: boolean;
+  statusCode?: number;
+  durationMs?: number;
+  outputBytes?: number;
+  errorMessage?: string;
+  argsHash?: string;
+  argsPreview?: string;
+  taskId?: string;
+  contextId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  createdAt?: string;
+}
+
+export interface HubCallFilter {
+  kind?: string;        // mcp_tool | api_tool | agent
+  source?: string;      // cli | mcp | hub
+  userId?: string;      // admin only; a non-admin caller is always scoped to its own calls
+  state?: string;       // completed | failed | unknown
+  range?: string;       // 1h | 24h | 7d | 30d | 90d (defaults to 7d on the server)
+  startFrom?: string;
+  startTo?: string;
+}
+
+export interface HubCallListResponse {
+  calls: HubCall[];
   total: number;
 }
 
@@ -1783,6 +1826,15 @@ export const api = {
         Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
       }
       return request<{ total: number; jobs: MediaJob[] }>(`/api/media-jobs?${params}`);
+    },
+  },
+  hubCalls: {
+    list: (offset = 0, limit = 20, filters?: HubCallFilter) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+      }
+      return request<HubCallListResponse>(`/api/hub/calls?${params}`);
     },
   },
   prompts: {

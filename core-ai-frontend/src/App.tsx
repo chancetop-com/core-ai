@@ -12,6 +12,7 @@ import { authApi } from './api/client';
 const TraceList = lazy(() => import('./pages/traces/TraceList'));
 const TraceDetail = lazy(() => import('./pages/traces/TraceDetail'));
 const Generations = lazy(() => import('./pages/generations/Generations'));
+const HubCalls = lazy(() => import('./pages/calls/HubCalls'));
 const PromptList = lazy(() => import('./pages/prompts/PromptList'));
 const PromptEditor = lazy(() => import('./pages/prompts/PromptEditor'));
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
@@ -161,6 +162,7 @@ export default function App() {
                     {caps.traces && <Route path="/traces" element={<RequirePermission permission="trace.view"><TraceList /></RequirePermission>} />}
                     {caps.traces && <Route path="/traces/:id" element={<RequirePermission permission="trace.view"><TraceDetail /></RequirePermission>} />}
                     {caps.traces && <Route path="/generations" element={<RequirePermission permission="trace.view"><Generations /></RequirePermission>} />}
+                    {caps.traces && <Route path="/calls" element={<RequirePermission permission="trace.view"><HubCalls /></RequirePermission>} />}
                     {caps.traces && <Route path="/observability" element={<Navigate to="/traces" replace />} />}
                     {/* Sessions page removed - session list now in Chat sidebar */}
                     {caps.prompts && <Route path="/prompts" element={<RequirePermission permission="prompt.view"><PromptList /></RequirePermission>} />}

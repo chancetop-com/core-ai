@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bell, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Files, FlaskConical, FolderKanban, Gauge, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bell, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Files, FlaskConical, FolderKanban, Gauge, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -31,6 +31,7 @@ export default function Layout() {
       '/observability': 'Observability',
       '/traces': 'Traces',
       '/generations': 'Generations',
+      '/calls': 'Hub Calls',
       '/agents': 'Agents',
       '/system-prompts': 'System Prompts',
       '/login': 'Login',
@@ -74,7 +75,7 @@ export default function Layout() {
 
   const isRouteActive = (to: string, pathname: string): boolean => {
     if (to === '/traces') return pathname === '/traces' || pathname.startsWith('/traces/');
-    if (to === '/observability') return pathname === '/traces' || pathname.startsWith('/traces/') || pathname === '/generations' || pathname.startsWith('/generations/');
+    if (to === '/observability') return pathname === '/traces' || pathname.startsWith('/traces/') || pathname === '/generations' || pathname.startsWith('/generations/') || pathname === '/calls';
     if (to === '/agents') return pathname === '/agents' || pathname.startsWith('/agents/');
     if (to === '/system-prompts') return pathname === '/system-prompts' || pathname.startsWith('/system-prompts/');
     if (to === '/tools') return pathname === '/tools' || pathname.startsWith('/tools/');
@@ -99,6 +100,7 @@ export default function Layout() {
     { to: '/observability', icon: Gauge, label: 'Observability', show: caps.traces, permission: 'trace.view', children: [
       { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces, permission: 'trace.view' },
       { to: '/generations', icon: Cpu, label: 'Generations', show: caps.traces, permission: 'trace.view' },
+      { to: '/calls', icon: Terminal, label: 'Hub Calls', show: caps.traces, permission: 'trace.view' },
     ]},
     { to: '/agents', icon: Bot, label: 'Agents', show: true, permission: 'agent.view' },
     { to: '/workflows', icon: Workflow, label: 'Workflows', show: true, permission: 'workflow.view' },

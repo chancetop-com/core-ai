@@ -50,6 +50,7 @@ import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.HubCall;
+import ai.core.server.hub.HubCallModule;
 import ai.core.server.mcphub.McpHubModule;
 import ai.core.server.skillhub.SkillHubModule;
 import ai.core.server.domain.User;
@@ -139,6 +140,8 @@ public class ServerApp extends App {
         // API-Tool Hub needs ToolRegistryService + HubCallAuditService (McpHubModule); loads after
         // WebFoundationModule so its /api/api-tools/mcp interceptor runs inside the auth chain.
         load(new ApiToolHubModule());
+        // read side of the hub call audit records (hub_calls) — follows the modules that write them
+        load(new HubCallModule());
         load(new AsyncToolTaskModule());
         load(new SessionModule());
         load(new BuilderToolsModule());
