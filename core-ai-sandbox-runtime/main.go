@@ -37,8 +37,11 @@ const maxUploadFileSize = 20 << 20 // 20 MB
 // ---- Request / Response ----
 
 type HealthResponse struct {
-	Status  string `json:"status"`
-	Version string `json:"version"`
+	Status         string `json:"status"`
+	Version        string `json:"version"`
+	RuntimeVersion string `json:"runtime_version"`
+	// true once the server bound this sandbox to a session (see bind.go)
+	Bound bool `json:"bound"`
 	// empty / 0 when the image ships no ffmpeg — assembly jobs are then not routed here
 	FfmpegVersion string `json:"ffmpeg_version,omitempty"`
 	FfmpegMajor   int    `json:"ffmpeg_major,omitempty"`
@@ -169,6 +172,12 @@ var toolMap = map[string]toolExecutor{
 // ---- Main ----
 
 func main() {
+	// `core-ai-sandbox` is a symlink to this binary; the CLI adds ~no size and needs the same
+	// build-time version, so it dispatches on the invoked name instead of shipping separately.
+	if filepath.Base(os.Args[0]) == cliBinaryName {
+		os.Exit(runCli(os.Args[1:], os.Stdout, os.Stderr))
+	}
+
 	port := envOrDefault("PORT", "8080")
 	if ws := os.Getenv("WORKSPACE_DIR"); ws != "" {
 		workspaceDir = ws
@@ -207,6 +216,7 @@ func main() {
 	}
 
 	http.HandleFunc("/health", handleHealth)
+	http.HandleFunc("/bind", handleBind)
 	http.HandleFunc("/ocg/callback/", handleOcgCallbackProxy)
 	http.HandleFunc("/execute", handleExecute)
 	http.HandleFunc("/tasks/", handleTaskPoll)
@@ -219,6 +229,8 @@ func main() {
 	http.HandleFunc("/snapshot", handleSnapshot)
 	http.HandleFunc("/snapshot/restore", handleSnapshotRestore)
 	registerTerminalWs(http.DefaultServeMux, terminalRegistry)
+
+	startHubProxy()
 
 	probeFfmpeg()
 
@@ -299,10 +311,12 @@ func loggingMiddleware(next http.Handler) http.Handler {
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(HealthResponse{
-		Status:        "ok",
-		Version:       runtimeVersion,
-		FfmpegVersion: ffmpegVersion,
-		FfmpegMajor:   ffmpegMajor,
+		Status:         "ok",
+		Version:        runtimeVersion,
+		RuntimeVersion: runtimeVersion,
+		Bound:          hubBound(),
+		FfmpegVersion:  ffmpegVersion,
+		FfmpegMajor:    ffmpegMajor,
 	})
 }
 
@@ -1149,6 +1163,13 @@ func minimalEnv() []string {
 		"PYTHONIOENCODING":        "utf-8",
 		"PYTHONDONTWRITEBYTECODE": "1",
 		"PIP_USER":                "1",
+		// Only the loopback hub is advertised: the session token stays in this process, so a
+		// script can use the session's agent-configured capabilities without holding credentials.
+		"CORE_AI_HUB": "http://127.0.0.1:" + envOrDefault("HUB_PORT", "8081") + hubPathPrefix,
+	}
+	if b := currentBinding.Load(); b != nil {
+		overrides["CORE_AI_SESSION_ID"] = b.SessionID
+		overrides["CORE_AI_AGENT_NAME"] = b.AgentName
 	}
 	result := make([]string, 0, len(parent)+len(overrides))
 	for _, e := range parent {

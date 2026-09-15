@@ -1,0 +1,4 @@
+{
+  "error": "forbidden",
+  "message": "this tool is not exposed to the sandbox hub"
+}

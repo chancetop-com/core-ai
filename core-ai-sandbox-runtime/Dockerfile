@@ -78,6 +78,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends xz-utils \
          || { echo "ffmpeg major mismatch: want ${FFMPEG_MAJOR}, got $(ffmpeg -version | head -1)"; exit 1; }; }
 
 COPY --from=builder /core-ai-sandbox-runtime /usr/local/bin/core-ai-sandbox-runtime
+# argv[0] dispatch: scripts call the hub CLI as `core-ai-sandbox`
+RUN ln -sf /usr/local/bin/core-ai-sandbox-runtime /usr/local/bin/core-ai-sandbox
+
+# Layer 7: session hub SDK (design §5.7) — baked in so a script can reach this session's
+# agent-configured capabilities through the loopback proxy without holding any credential.
+# Installed system-wide (scripts run as root with a minimal env, and $HOME is /tmp at runtime),
+# and versioned with the runtime so X-Core-AI-Client identifies the exact image.
+COPY VERSION /tmp/core-ai-sandbox-sdk/VERSION
+COPY sdk/python /tmp/core-ai-sandbox-sdk
+RUN RUNTIME_VERSION="$(cat /tmp/core-ai-sandbox-sdk/VERSION)" \
+    && sed -i "s/^version = \"0.0.0\"/version = \"${RUNTIME_VERSION}\"/" /tmp/core-ai-sandbox-sdk/pyproject.toml \
+    && pip install --no-cache-dir --no-user "httpx>=0.27" /tmp/core-ai-sandbox-sdk \
+    && python -c "import core_ai_sandbox; print('core-ai-sandbox SDK', core_ai_sandbox.sdk_version())" \
+    && rm -rf /tmp/core-ai-sandbox-sdk
 
 # python:3.12-slim has pyvenv.cfg which makes pip refuse --user installs
 RUN rm -f /usr/local/pyvenv.cfg

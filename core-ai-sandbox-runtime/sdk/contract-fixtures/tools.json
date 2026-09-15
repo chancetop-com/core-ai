@@ -1,0 +1,34 @@
+{
+  "query": "reviews",
+  "kind": "",
+  "total": 3,
+  "tools": [
+    {
+      "name": "google_gbp_list_reviews",
+      "kind": "mcp",
+      "group": "google-gbp",
+      "path": "google-gbp/list_reviews",
+      "ref_id": "mcp:google-gbp:list_reviews",
+      "description": "List the reviews of a business location.",
+      "exposure": "direct"
+    },
+    {
+      "name": "google_gbp_reply_review",
+      "kind": "mcp",
+      "group": "google-gbp",
+      "path": "google-gbp/reply_review",
+      "ref_id": "mcp:google-gbp:reply_review",
+      "description": "Publish a reply to a review.",
+      "exposure": "direct"
+    },
+    {
+      "name": "restaurant_api_reviews_get_reviews",
+      "kind": "api",
+      "group": "restaurant-api",
+      "path": "restaurant-api/reviews/get_reviews",
+      "ref_id": "restaurant-api/reviews/get_reviews",
+      "description": "Read the store's own review records.",
+      "exposure": "direct"
+    }
+  ]
+}

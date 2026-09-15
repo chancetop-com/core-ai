@@ -1,0 +1,7 @@
+.git
+.gitignore
+core-ai-sandbox-runtime
+*.md
+sdk/python/**/__pycache__
+sdk/python/**/*.egg-info
+sdk/python/**/*.pyc

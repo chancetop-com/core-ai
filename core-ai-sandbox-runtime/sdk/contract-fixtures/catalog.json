@@ -1,0 +1,94 @@
+{
+  "session_id": "b7f1c0e2-3a44-4f7b-9c1d-8e2a5d6b7c80",
+  "agent_name": "restaurant-local-seo",
+  "sandbox_id": "sbx-9f0c1d2e",
+  "sandbox_state": "ready",
+  "expires_at": "2026-09-15T11:30:00Z",
+  "contract_version": "1.0",
+  "groups": [
+    { "kind": "mcp", "group": "google-gbp", "path": "google-gbp", "count": 2 },
+    { "kind": "mcp", "group": "google-places", "path": "google-places", "count": 1 },
+    { "kind": "api", "group": "restaurant-api", "path": "restaurant-api", "count": 1 },
+    { "kind": "llm_call", "count": 1 },
+    { "kind": "agent", "count": 1 },
+    { "kind": "builtin", "count": 3 }
+  ],
+  "tools": [
+    {
+      "name": "google_gbp_list_reviews",
+      "kind": "mcp",
+      "group": "google-gbp",
+      "path": "google-gbp/list_reviews",
+      "ref_id": "mcp:google-gbp:list_reviews",
+      "description": "List the reviews of a business location.",
+      "exposure": "direct"
+    },
+    {
+      "name": "google_gbp_reply_review",
+      "kind": "mcp",
+      "group": "google-gbp",
+      "path": "google-gbp/reply_review",
+      "ref_id": "mcp:google-gbp:reply_review",
+      "description": "Publish a reply to a review.",
+      "exposure": "direct"
+    },
+    {
+      "name": "google_places_search_places",
+      "kind": "mcp",
+      "group": "google-places",
+      "path": "google-places/search_places",
+      "ref_id": "mcp:google-places:search_places",
+      "description": "Find a place id by name and address.",
+      "exposure": "deferred"
+    },
+    {
+      "name": "restaurant_api_reviews_get_reviews",
+      "kind": "api",
+      "group": "restaurant-api",
+      "path": "restaurant-api/reviews/get_reviews",
+      "ref_id": "restaurant-api/reviews/get_reviews",
+      "description": "Read the store's own review records.",
+      "exposure": "direct"
+    },
+    {
+      "name": "seo_title_semantics",
+      "kind": "llm_call",
+      "path": "seo-title-semantics",
+      "ref_id": "seo-title-semantics",
+      "description": "Rewrite a page title for search intent.",
+      "exposure": "direct"
+    },
+    {
+      "name": "review_responder",
+      "kind": "agent",
+      "path": "review-responder",
+      "ref_id": "review-responder",
+      "description": "Draft a reply for one review.",
+      "exposure": "direct"
+    },
+    {
+      "name": "web_search",
+      "kind": "builtin",
+      "path": "web_search",
+      "ref_id": "web_search",
+      "description": "Search the web.",
+      "exposure": "direct"
+    },
+    {
+      "name": "submit_artifacts",
+      "kind": "builtin",
+      "path": "submit_artifacts",
+      "ref_id": "submit_artifacts",
+      "description": "Publish a file as a session artifact.",
+      "exposure": "direct"
+    },
+    {
+      "name": "activate_tools",
+      "kind": "builtin",
+      "path": "activate_tools",
+      "ref_id": "activate_tools",
+      "description": "Registry control tool, never callable from a script.",
+      "exposure": "hidden"
+    }
+  ]
+}

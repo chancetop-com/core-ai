@@ -1,0 +1,12 @@
+{
+  "name": "google_gbp_list_reviews",
+  "kind": "mcp",
+  "group": "google-gbp",
+  "path": "google-gbp/list_reviews",
+  "ref_id": "mcp:google-gbp:list_reviews",
+  "description": "List the reviews of a business location.",
+  "exposure": "direct",
+  "callable": true,
+  "timeout_seconds": 120,
+  "input_schema": "{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"Google location id\"},\"page_size\":{\"type\":\"integer\"},\"min_rating\":{\"type\":\"number\"}},\"required\":[\"location\"]}"
+}

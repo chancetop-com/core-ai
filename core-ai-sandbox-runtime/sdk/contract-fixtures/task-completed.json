@@ -1,0 +1,15 @@
+{
+  "call_id": "c1a4e7f2-8b3d-4a5e-9f6c-1d2e3f4a5b6c",
+  "status": "completed",
+  "success": true,
+  "is_error": false,
+  "task_id": "task-4f2a1b7c",
+  "duration_ms": 8410,
+  "text": "{\"summary\":\"2 new reviews, one needs a reply\"}",
+  "llm_usage": {
+    "model": "gpt-5.6-terra",
+    "input_tokens": 1284,
+    "output_tokens": 96,
+    "cost": 0.0041
+  }
+}

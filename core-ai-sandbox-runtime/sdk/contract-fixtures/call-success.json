@@ -1,0 +1,14 @@
+{
+  "call_id": "0f8c2b1d-5e6a-4c7d-9a3f-2b4c6d8e0f12",
+  "status": "completed",
+  "success": true,
+  "is_error": false,
+  "text": "{\"reviews\":[{\"review_id\":\"r1\",\"rating\":5,\"comment\":\"Great service\",\"create_time\":\"2026-09-01T08:12:00Z\"},{\"review_id\":\"r2\",\"rating\":2,\"comment\":\"Slow at lunch\",\"create_time\":\"2026-09-03T12:41:00Z\"}]}",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"reviews\":[{\"review_id\":\"r1\",\"rating\":5},{\"review_id\":\"r2\",\"rating\":2}]}"
+    }
+  ],
+  "duration_ms": 842
+}

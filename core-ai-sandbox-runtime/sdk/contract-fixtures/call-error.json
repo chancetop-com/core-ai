@@ -1,0 +1,9 @@
+{
+  "call_id": "7d3a9c44-1b2f-4e5a-8c9d-0e1f2a3b4c5d",
+  "status": "completed",
+  "success": false,
+  "is_error": true,
+  "error_code": "UPSTREAM_ERROR",
+  "error_message": "google people api: 500 internal error (rate limited?)",
+  "duration_ms": 1180
+}
