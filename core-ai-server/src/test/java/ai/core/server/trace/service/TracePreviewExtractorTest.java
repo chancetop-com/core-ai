@@ -43,6 +43,31 @@ class TracePreviewExtractorTest {
     }
 
     @Test
+    void extractLastUserInputFromUntypedItems() {
+        var input = """
+            {"input": [
+               {"role": "system", "content": "Return only evidence-grounded structured data."},
+               {"role": "user", "content": "Evaluate this already-qualified creator."}
+             ],
+             "model": "gpt-5.5",
+             "text": {"format": {"name": "CreatorPublicFitRefResult", "type": "json_schema"}}}""";
+        assertThat(TracePreviewExtractor.extract(input)).isEqualTo("Evaluate this already-qualified creator.");
+    }
+
+    @Test
+    void extractLastUserInputFromUntypedItemsWithToolCalls() {
+        var input = """
+            {"instructions": "You are the bounded Conversation Agent.",
+             "input": [
+               {"role": "user", "content": "Prepare the next internal recommendation."},
+               {"type": "function_call", "call_id": "call_1", "name": "get_campaign_context", "arguments": "{}"},
+               {"type": "function_call_output", "call_id": "call_1", "output": "{\\"campaign\\": {}}"}
+             ],
+             "model": "gpt-5.5"}""";
+        assertThat(TracePreviewExtractor.extract(input)).isEqualTo("Prepare the next internal recommendation.");
+    }
+
+    @Test
     void extractStringResponsesInput() {
         assertThat(TracePreviewExtractor.extract("{\"input\": \"plain responses input\"}")).isEqualTo("plain responses input");
     }

@@ -47,7 +47,8 @@ public final class TracePreviewExtractor {
         return null;
     }
 
-    // the responses endpoint sends the conversation as instructions plus an input array of typed items
+    // the responses endpoint sends the conversation as instructions plus an input array of messages,
+    // message items may omit type and carry only role/content
     private static String lastUserInput(JsonNode root) {
         var input = root.get("input");
         if (input == null) return null;
@@ -55,11 +56,17 @@ public final class TracePreviewExtractor {
         if (!input.isArray()) return null;
         for (int i = input.size() - 1; i >= 0; i--) {
             var item = input.get(i);
-            if (!"message".equals(item.path("type").asText()) || !"user".equals(item.path("role").asText())) continue;
+            if (!isMessageItem(item) || !"user".equals(item.path("role").asText())) continue;
             var content = messageContent(item.get("content"));
             if (content != null && !content.isBlank()) return content;
         }
         return null;
+    }
+
+    // tool calls and other typed items carry no user text, an untyped item is a plain message
+    private static boolean isMessageItem(JsonNode item) {
+        var type = item.path("type").asText();
+        return type.isBlank() || "message".equals(type);
     }
 
     private static String messageContent(JsonNode content) {
