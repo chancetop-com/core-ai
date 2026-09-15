@@ -2,6 +2,7 @@ package ai.core.server.sandbox;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
+import ai.core.sandbox.SandboxBinding;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxProvider;
@@ -204,6 +205,16 @@ class SandboxServiceTerminalResolveTest {
         @Override
         public String getMcpEndpoint() {
             throw new UnsupportedOperationException("resolver must never fetch the mcp endpoint");
+        }
+
+        @Override
+        public void bind(SandboxBinding binding) {
+            throw new UnsupportedOperationException("resolver must never bind the hub");
+        }
+
+        @Override
+        public void unbind() {
+            throw new UnsupportedOperationException("resolver must never unbind the hub");
         }
 
         @Override

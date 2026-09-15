@@ -13,6 +13,7 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.sandbox.PendingFile;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandboxhub.SandboxHubCommands;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.tool.LoadedToolRefNames;
@@ -48,6 +49,7 @@ public class InProcessCommandHandler {
     private final ObjectStorageServiceResolver objectStorageResolver;
     private final ai.core.server.domain.SessionAttachmentRefRepository attachmentRepository;
     private final ai.core.server.asynctask.AsyncToolTaskService asyncToolTaskService;
+    private final SandboxHubCommands sandboxHubCommands;
 
     public InProcessCommandHandler(SessionCommandDependencies sessionDependencies, CommandRpcDependencies rpcDependencies) {
         this.sessionManager = sessionDependencies.sessionManager();
@@ -63,6 +65,7 @@ public class InProcessCommandHandler {
         this.attachmentRepository = sessionDependencies.attachmentRepository();
         this.toolRegistryService = rpcDependencies.toolRegistryService();
         this.asyncToolTaskService = sessionDependencies.asyncToolTaskService();
+        this.sandboxHubCommands = new SandboxHubCommands(rpcDependencies.sandboxHubService());
     }
 
     /**
@@ -88,6 +91,9 @@ public class InProcessCommandHandler {
                 case A2A_START_TASK -> handleA2AStartTask(command);
                 case A2A_CANCEL_TASK -> handleA2ACancelTask(command);
                 case A2A_RESUME_TASK -> handleA2AResumeTask(command);
+                case SANDBOX_CATALOG -> respondOk(command, sandboxHubCommands.catalog(command));
+                case SANDBOX_TOOL_CALL -> respondOk(command, sandboxHubCommands.call(command));
+                case SANDBOX_TOOL_POLL -> respondOk(command, sandboxHubCommands.poll(command));
                 default -> LOGGER.warn("unknown command type: {}", command.type());
             }
         } catch (Throwable t) {

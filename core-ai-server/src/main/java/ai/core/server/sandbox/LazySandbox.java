@@ -4,6 +4,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.SandboxEventType;
 import ai.core.sandbox.Sandbox;
+import ai.core.sandbox.SandboxBinding;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxFile;
@@ -132,6 +133,22 @@ public class LazySandbox implements Sandbox {
             throw new IllegalStateException("sandbox not ready, cannot get MCP endpoint");
         }
         return current.getMcpEndpoint();
+    }
+
+    @Override
+    public void bind(SandboxBinding binding) {
+        var current = delegate;
+        if (current != null) {
+            current.bind(binding);
+        }
+    }
+
+    @Override
+    public void unbind() {
+        var current = delegate;
+        if (current != null) {
+            current.unbind();
+        }
     }
 
     @Override

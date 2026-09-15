@@ -28,6 +28,7 @@ public class HubCallAuditService {
     public static final String KIND_MCP_TOOL = "mcp_tool";
     public static final String KIND_API_TOOL = "api_tool";
     public static final String KIND_AGENT = "agent";   // reserved for later agent-run audit
+    public static final String KIND_SANDBOX_TOOL = "sandbox_tool";   // calls a script inside a sandbox makes for its session
 
     private static final int PREVIEW_MAX_CHARS = 512;
 
@@ -49,6 +50,9 @@ public class HubCallAuditService {
         audit.refId = request.refId();
         audit.group = request.group();
         audit.name = request.name();
+        audit.sandboxId = request.sandboxId();
+        audit.toolKind = request.toolKind();
+        audit.sessionId = request.sessionId();
         audit.argsHash = sha256(request.argumentsJson());
         audit.argsPreview = truncate(request.argumentsJson(), PREVIEW_MAX_CHARS);
         audit.createdAt = ZonedDateTime.now();
@@ -102,8 +106,12 @@ public class HubCallAuditService {
         return value.length() <= maxChars ? value : value.substring(0, maxChars);
     }
 
-    /** Everything known about a hub call before it executes; kept as one value so the audit row is built in one place. */
+    /**
+     * Everything known about a hub call before it executes; kept as one value so the audit row is built in one place.
+     * {@code sandboxId}/{@code toolKind}/{@code sessionId} are only set by sandbox hub calls.
+     */
     public record BeginRequest(String callId, String kind, String userId, String userType, String source,
-                               String target, String refId, String group, String name, String argumentsJson) {
+                               String target, String refId, String group, String name, String argumentsJson,
+                               String sandboxId, String toolKind, String sessionId) {
     }
 }

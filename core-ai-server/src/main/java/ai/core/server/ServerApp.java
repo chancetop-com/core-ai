@@ -52,6 +52,7 @@ import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.HubCall;
 import ai.core.server.hub.HubCallModule;
 import ai.core.server.mcphub.McpHubModule;
+import ai.core.server.sandboxhub.SandboxHubModule;
 import ai.core.server.skillhub.SkillHubModule;
 import ai.core.server.domain.User;
 import ai.core.server.domain.UserReport;
@@ -144,6 +145,9 @@ public class ServerApp extends App {
         load(new HubCallModule());
         load(new AsyncToolTaskModule());
         load(new SessionModule());
+        // Sandbox Hub serves the owning session's tools and needs AgentSessionManager (SessionModule)
+        // and HubCallAuditService (McpHubModule), so it follows both.
+        load(new SandboxHubModule());
         load(new BuilderToolsModule());
         load(new OpenClawModule());
         load(new PlatformApiModule());

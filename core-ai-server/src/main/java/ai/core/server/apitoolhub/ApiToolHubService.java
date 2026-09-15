@@ -117,7 +117,7 @@ public class ApiToolHubService {
         String callId = UUID.randomUUID().toString();
         String auditId = auditService.begin(new HubCallAuditService.BeginRequest(callId, HubCallAuditService.KIND_API_TOOL,
                 userId, accessPolicy.isApiUser(userId) ? "api" : "internal", source,
-                entry.qualifiedName(), entry.refId(), entry.app(), entry.name(), argumentsJson));
+                entry.qualifiedName(), entry.refId(), entry.app(), entry.name(), argumentsJson, null, null, null));
 
         var watch = new StopWatch();
         Future<HTTPResponse> future = CALL_EXECUTOR.submit(() -> {

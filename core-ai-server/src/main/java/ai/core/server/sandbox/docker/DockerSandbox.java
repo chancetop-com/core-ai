@@ -2,6 +2,7 @@ package ai.core.server.sandbox.docker;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
+import ai.core.sandbox.SandboxBinding;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxStatus;
@@ -125,6 +126,16 @@ public class DockerSandbox implements Sandbox {
     @Override
     public String getMcpEndpoint() {
         return runtimeClient.getMcpEndpoint();
+    }
+
+    @Override
+    public void bind(SandboxBinding binding) {
+        runtimeClient.bind(binding);
+    }
+
+    @Override
+    public void unbind() {
+        runtimeClient.unbind();
     }
 
     @Override

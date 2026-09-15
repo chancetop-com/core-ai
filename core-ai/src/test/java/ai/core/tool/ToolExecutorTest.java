@@ -6,6 +6,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Usage;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.sandbox.Sandbox;
+import ai.core.sandbox.SandboxBinding;
 import ai.core.session.SessionStreamingCallback;
 import ai.core.sandbox.SandboxFile;
 import ai.core.tool.tools.AsyncTaskOutputTool;
@@ -367,6 +368,14 @@ class ToolExecutorTest {
         @Override
         public String getMcpEndpoint() {
             return "http://127.0.0.1:8080/mcp";
+        }
+
+        @Override
+        public void bind(SandboxBinding binding) {
+        }
+
+        @Override
+        public void unbind() {
         }
 
         @Override

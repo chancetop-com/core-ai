@@ -1,6 +1,7 @@
 package ai.core.server.llmcall;
 
 import ai.core.api.server.run.LLMCallRequest;
+import ai.core.llm.domain.Usage;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.run.LLMCallExecutor;
@@ -49,10 +50,13 @@ public final class LLMCallTool extends ToolCall {
             var imageUrl = getStringValue(args, "image_url");
             var attachments = imageUrl != null ? List.of(toImageAttachment(imageUrl)) : null;
             var result = executor.execute(definition, buildInput(query), attachments);
+            // the usage rides the result so the tool executor books it against the session (tokens, cost, quota)
             return ToolCallResult.completed(result.output())
                     .withToolName(getName())
                     .withStats("llm_call_input_tokens", result.inputTokens())
-                    .withStats("llm_call_output_tokens", result.outputTokens());
+                    .withStats("llm_call_output_tokens", result.outputTokens())
+                    .withLlmUsage(result.model(), new Usage((int) result.inputTokens(), (int) result.outputTokens(),
+                            (int) (result.inputTokens() + result.outputTokens())));
         } catch (Exception e) {
             return ToolCallResult.failed("LLM call tool '" + getName() + "' execution error: " + e.getMessage(), e)
                     .withToolName(getName());

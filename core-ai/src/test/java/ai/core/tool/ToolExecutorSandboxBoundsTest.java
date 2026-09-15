@@ -5,6 +5,7 @@ import ai.core.agent.CancellationToken;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.sandbox.Sandbox;
+import ai.core.sandbox.SandboxBinding;
 import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.telemetry.AgentTracer;
@@ -174,6 +175,14 @@ class ToolExecutorSandboxBoundsTest {
         @Override
         public String getMcpEndpoint() {
             return null;
+        }
+
+        @Override
+        public void bind(SandboxBinding binding) {
+        }
+
+        @Override
+        public void unbind() {
         }
 
         @Override

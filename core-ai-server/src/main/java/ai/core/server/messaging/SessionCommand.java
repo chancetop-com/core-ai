@@ -118,6 +118,19 @@ public record SessionCommand(CommandType type, String sessionId, String userId, 
         return new SessionCommand(CommandType.A2A_RESUME_TASK, sessionId, userId, messageJson, requestId);
     }
 
+    public static SessionCommand sandboxCatalog(String sessionId, String userId, String requestId) {
+        return new SessionCommand(CommandType.SANDBOX_CATALOG, sessionId, userId, "{}", requestId);
+    }
+
+    public static SessionCommand sandboxToolCall(String sessionId, String userId, String payloadJson, String requestId) {
+        return new SessionCommand(CommandType.SANDBOX_TOOL_CALL, sessionId, userId, payloadJson, requestId);
+    }
+
+    public static SessionCommand sandboxToolPoll(String sessionId, String userId, String taskId, String requestId) {
+        var payload = JsonUtil.toJson(Map.of("taskId", taskId));
+        return new SessionCommand(CommandType.SANDBOX_TOOL_POLL, sessionId, userId, payload, requestId);
+    }
+
     public Map<String, String> toStreamMap() {
         var map = new HashMap<String, String>();
         map.put("sessionId", sessionId);

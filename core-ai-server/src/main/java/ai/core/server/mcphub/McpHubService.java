@@ -197,7 +197,7 @@ public class McpHubService {
                               CatalogTool tool, String argumentsJson, String callId) {
         return auditService.begin(new HubCallAuditService.BeginRequest(callId, HubCallAuditService.KIND_MCP_TOOL, userId,
                 accessPolicy.isApiUser(userId) ? "api" : "internal", source,
-                entry.name + "/" + tool.name(), tool.refId(), entry.name, tool.name(), argumentsJson));
+                entry.name + "/" + tool.name(), tool.refId(), entry.name, tool.name(), argumentsJson, null, null, null));
     }
 
     private void finishAudit(String auditId, long durationMs, String text, boolean success, String errorMessage) {

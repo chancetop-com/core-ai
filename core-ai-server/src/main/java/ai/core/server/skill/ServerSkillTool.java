@@ -28,6 +28,14 @@ public class ServerSkillTool extends ToolCall {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerSkillTool.class);
     private static final String SANDBOX_SKILL_BASE = "/skill";
+    private static final String SANDBOX_HUB_HINT = """
+
+            Scripts of this skill run inside the sandbox. Call this session's configured MCP servers, API tools,
+            LLM_CALL definitions, sub-agents and non-sandboxed builtin tools through the sandbox hub instead of
+            hardcoding endpoints or credentials: `from core_ai_sandbox import session` (python) or
+            `core-ai-sandbox catalog|describe|call` (bash). Check `core-ai-sandbox catalog` for what this agent
+            has attached before writing calls; there is no direct LLM access in a sandbox script.
+            """;
 
     public static Builder builder() {
         return new Builder();
@@ -106,6 +114,9 @@ public class ServerSkillTool extends ToolCall {
             for (var r : def.resources) {
                 sb.append("- ").append(r.path).append('\n');
             }
+        }
+        if (baseDir != null) {
+            sb.append(SANDBOX_HUB_HINT);
         }
         sb.append("</skill>");
         return sb.toString();

@@ -19,6 +19,7 @@ import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionCommandDependencies;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandboxhub.SandboxHubService;
 import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
@@ -26,7 +27,6 @@ import ai.core.server.session.SessionRegistry;
 import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.AgentSessionWebServiceImpl;
-import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.sse.AgentMessageStreamChannelListener;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.api.server.session.sse.SseBaseEvent;
@@ -63,7 +63,7 @@ class MessagingRuntimeModule extends Module {
                 ownershipRegistry, sandboxService, bean(EventPublisher.class), bean(ObjectStorageServiceResolver.class),
                 bean(SessionAttachmentRefRepository.class), asyncToolTaskService);
         var rpcDependencies = new CommandRpcDependencies(bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class),
-                bean(ServerA2AService.class), jedisPool, bean(ToolRegistryService.class));
+                bean(ServerA2AService.class), jedisPool, bean(ToolRegistryService.class), bean(SandboxHubService.class));
         var commandHandler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
         // unowned sessions run on the instance that received the request (its SSE channel is here; nothing else on the
         // same Redis can race for the turn); false restores distribution through the shared unowned stream
@@ -74,7 +74,6 @@ class MessagingRuntimeModule extends Module {
         // dropped when the session is not live in this JVM
         asyncToolTaskService.setNotificationDispatcher(
                 new CommandBusTaskNotificationDispatcher(commandPublisher, bean(SessionRegistry.class)));
-        bind(PodLocalExecutor.class);
         api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
         registerSseEndpoints();
         setupCommandConsumer(jedisPool, ownershipRegistry, commandHandler);

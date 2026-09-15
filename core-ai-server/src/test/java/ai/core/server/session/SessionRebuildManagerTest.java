@@ -191,12 +191,12 @@ class SessionRebuildManagerTest {
                 config != null && "hardened-image".equals(config.image) && Boolean.FALSE.equals(config.networkEnabled)));
         verify(sandboxService).createSessionSandbox(argThat(config ->
                         config != null && "hardened-image".equals(config.image) && Boolean.FALSE.equals(config.networkEnabled)),
-                eq("session-1"), eq("user-1"), any());
+                eq("session-1"), eq("user-1"), eq("Agent One"), any());
         verify(sandboxService).reattachOrCreateSandbox(eq("sandbox-1"),
                 argThat(config -> config != null
                         && "hardened-image".equals(config.image)
                         && Boolean.FALSE.equals(config.networkEnabled)),
-                eq("session-1"), eq("user-1"), any());
+                eq("session-1"), eq("user-1"), eq("Agent One"), any());
         rebuilt.close();
     }
 
@@ -229,8 +229,8 @@ class SessionRebuildManagerTest {
 
         assertNotNull(rebuilt);
         verify(sandboxService).invalidateSandboxBinding("session-1");
-        verify(sandboxService, never()).reattachOrCreateSandbox(any(), any(), any(), any(), any());
-        verify(sandboxService).createSessionSandbox(any(), eq("session-1"), eq("user-1"), any());
+        verify(sandboxService, never()).reattachOrCreateSandbox(any(), any(), any(), any(), any(), any());
+        verify(sandboxService).createSessionSandbox(any(), eq("session-1"), eq("user-1"), any(), any());
         rebuilt.close();
     }
 
@@ -283,12 +283,12 @@ class SessionRebuildManagerTest {
         verify(subAgentManager).applySubAgentsToSession(any(),
                 argThat(values -> values.size() == 1 && "safe-sub-agent".equals(values.getFirst().id)),
                 eq("viewer"));
-        verify(sandboxService, never()).reattachOrCreateSandbox(any(), any(), any(), any(), any());
+        verify(sandboxService, never()).reattachOrCreateSandbox(any(), any(), any(), any(), any(), any());
         verify(sandboxService).invalidateSandboxBinding("session-1");
         verify(sandboxService).createSessionSandbox(argThat(config -> config != null
                         && "safe-image".equals(config.image)
                         && Boolean.FALSE.equals(config.networkEnabled)),
-                eq("session-1"), eq("viewer"), any());
+                eq("session-1"), eq("viewer"), eq("Agent One"), any());
         rebuilt.close();
     }
 
@@ -340,7 +340,7 @@ class SessionRebuildManagerTest {
         assertNull(manager.rebuildSession("session-1", state, "viewer"));
         verify(agents, never()).get("agent-1");
         verify(subAgentManager, never()).buildAgent(any());
-        verify(sandboxService, never()).createSessionSandbox(any(), any(), any(), any());
+        verify(sandboxService, never()).createSessionSandbox(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -520,7 +520,7 @@ class SessionRebuildManagerTest {
 
         assertNull(manager.rebuildSession("session-1", state, "viewer"));
         verify(subAgentManager, never()).buildAgent(any());
-        verify(sandboxService, never()).reattachOrCreateSandbox(any(), any(), any(), any(), any());
+        verify(sandboxService, never()).reattachOrCreateSandbox(any(), any(), any(), any(), any(), any());
     }
 
     @Test

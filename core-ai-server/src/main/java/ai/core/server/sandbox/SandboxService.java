@@ -4,13 +4,13 @@ import ai.core.api.server.session.SandboxEvent;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConfig;
-import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
+import ai.core.server.sandboxhub.SessionTokenService;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,27 +41,17 @@ public class SandboxService {
         config.timeoutSeconds = 3900;
         return config;
     }
-    private static SandboxConfig createDiscoveryConfig() {
-        var config = new SandboxConfig();
-        config.enabled = Boolean.TRUE;
-        config.memoryLimitMb = 512;
-        config.cpuLimitMillicores = 500;
-        config.networkEnabled = Boolean.FALSE;
-        config.timeoutSeconds = 86_400; // 24 hours
-        return config;
-    }
-
     private final SandboxManager sandboxManager;
     private final SandboxConfig defaultConfig;
     private final ScheduledExecutorService cleanupScheduler;
     private final String serverUrlFromSandbox;
     private final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
     private final Set<String> persistentSessionIds = ConcurrentHashMap.newKeySet();
+    private final Map<String, String> sessionAgentNames = new ConcurrentHashMap<>();
     @SuppressWarnings("this-escape")
     private final SandboxFileService sandboxFileService = new SandboxFileService(this);
-    private final Map<String, McpClientManager> sessionMcpManagers = new ConcurrentHashMap<>();
-    private final Map<String, Set<String>> sessionMcpServerIds = new ConcurrentHashMap<>();
-    private volatile LazySandbox discoverySandbox;
+    private final SessionMcpProcesses sessionMcpProcesses = new SessionMcpProcesses();
+    private final DiscoverySandbox discoverySandbox;
     @SuppressFBWarnings("PME_POOR_MANS_ENUM")
     private final boolean enabled;
     ObjectStorageServiceResolver storageResolver;
@@ -69,6 +59,7 @@ public class SandboxService {
     final SessionAttachmentRefRepository attachmentRepository;
     private final SandboxSnapshotService snapshotService;
     private SandboxRedisStore redisStore;
+    private volatile SandboxHubBinding hubBinding;
 
     public SandboxService() {
         this((JedisPool) null, null, null, null, null);
@@ -83,6 +74,7 @@ public class SandboxService {
                           ObjectStorageServiceResolver storageResolver, FileService fileService,
                           SessionAttachmentRefRepository attachmentRepository) {
         this.sandboxManager = null;
+        this.discoverySandbox = new DiscoverySandbox(null);
         this.defaultConfig = new SandboxConfig();
         this.defaultConfig.enabled = Boolean.FALSE;
         this.cleanupScheduler = null;
@@ -114,6 +106,7 @@ public class SandboxService {
     SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox,
                    SandboxServiceDependencies dependencies, ScheduledExecutorService cleanupScheduler) {
         this.sandboxManager = new SandboxManager(provider);
+        this.discoverySandbox = new DiscoverySandbox(sandboxManager);
         this.defaultConfig = defaultConfig != null ? defaultConfig : createDefaultConfig();
         this.serverUrlFromSandbox = serverUrlFromSandbox;
         this.enabled = true;
@@ -154,6 +147,13 @@ public class SandboxService {
     }
 
     public Sandbox createSessionSandbox(SandboxConfig config, String sessionId, String userId, Consumer<SandboxEvent> eventDispatcher) {
+        return createSessionSandbox(config, sessionId, userId, null, eventDispatcher);
+    }
+
+    /** {@code agentName} is informational only — it reaches scripts as {@code CORE_AI_AGENT_NAME}. */
+    public Sandbox createSessionSandbox(SandboxConfig config, String sessionId, String userId, String agentName,
+                                        Consumer<SandboxEvent> eventDispatcher) {
+        rememberAgentName(sessionId, agentName);
         return create(config, sessionId, userId, eventDispatcher, snapshotService);
     }
 
@@ -216,26 +216,18 @@ public class SandboxService {
         var id = sandbox.getId();
         if ("pending".equals(id)) return; // not yet acquired, nothing to renew
         sandboxManager.renew(id);
+        rebindSandboxHub(sessionId, sandbox);
     }
 
     public void releaseSandbox(String sessionId) {
         if (!enabled) return;
         var sandbox = sessionSandboxes.remove(sessionId);
         persistentSessionIds.remove(sessionId);
+        sessionAgentNames.remove(sessionId);
         sandboxFileService.clear(sessionId);
-        var startedIds = sessionMcpServerIds.remove(sessionId);
-        if (sandbox != null && startedIds != null && !startedIds.isEmpty()) {
-            stopSessionMcpProcesses(sessionId, sandbox, startedIds);
-        }
-        var sessionMgr = sessionMcpManagers.remove(sessionId);
-        if (sessionMgr != null) {
-            try {
-                sessionMgr.close();
-            } catch (Exception e) {
-                LOGGER.warn("failed to close session mcp manager for session {}", sessionId, e);
-            }
-        }
+        sessionMcpProcesses.stopAll(sessionId, sandbox);
         deleteSandboxBinding(sessionId);
+        unbindSandboxHub(sessionId, sandbox);
         if (sandbox != null) {
             if (sandbox instanceof LazySandbox) {
                 sandbox.close();
@@ -248,22 +240,12 @@ public class SandboxService {
 
     /** Returns the McpClientManager scoped to this session, creating it if needed. */
     public McpClientManager getOrCreateSessionMcpManager(String sessionId) {
-        return sessionMcpManagers.computeIfAbsent(sessionId, sid -> new McpClientManager());
+        return sessionMcpProcesses.managerFor(sessionId);
     }
 
     /** Record that an MCP server id was started on the session's sandbox so we can stop it on release. */
     public void recordSessionMcpServer(String sessionId, String serverId) {
-        sessionMcpServerIds.computeIfAbsent(sessionId, k -> ConcurrentHashMap.newKeySet()).add(serverId);
-    }
-
-    private void stopSessionMcpProcesses(String sessionId, Sandbox sandbox, Set<String> serverIds) {
-        for (var id : serverIds) {
-            try {
-                sandbox.stopMcpServer(id);
-            } catch (Exception e) {
-                LOGGER.warn("failed to stop mcp server in session sandbox: session={}, serverId={}: {}", sessionId, id, e.getMessage());
-            }
-        }
+        sessionMcpProcesses.record(sessionId, serverId);
     }
 
     // Called by LazySandbox post-acquire hook after the sandbox materializes.
@@ -273,45 +255,50 @@ public class SandboxService {
         sandboxFileService.restoreAttachments(sessionId, userId, restoreResult.snapshotCreatedAt());
         sandboxFileService.ensurePendingFilesUploaded(sessionId);
         storeSandboxBinding(sessionId);
+        bindSandboxHub(sessionId, userId, sessionSandboxes.get(sessionId));
+    }
+
+    // ---- Sandbox hub binding (session identity for the sandbox runtime's loopback hub proxy) ----
+
+    /** Wires the session tokens minted for the sandbox hub; without it scripts cannot reach the hub. */
+    public void sessionTokens(SessionTokenService sessionTokenService) {
+        hubBinding = new SandboxHubBinding(sessionTokenService, serverUrlFromSandbox,
+                () -> SandboxHubBinding.ttlSeconds(defaultConfig), sessionAgentNames::get);
+    }
+
+    /** True while (session, sandbox) still matches the identity held by the sandbox runtime. */
+    public boolean isBound(String sessionId, String sandboxId) {
+        if (hubBinding == null || sessionId == null || sandboxId == null || sandboxId.isBlank()) return false;
+        var sandbox = sessionSandboxes.get(sessionId);
+        if (sandbox != null) return hubBinding.isBound(sandbox, sandboxId);
+        // The session may live on another replica: the binding stored when the sandbox was acquired is
+        // the same identity this pod would see locally, so a replaced or released sandbox still fails.
+        return hubBinding.isBound(redisStore != null ? redisStore.getBinding(sessionId) : null, sandboxId);
+    }
+
+    private void bindSandboxHub(String sessionId, String userId, Sandbox sandbox) {
+        if (hubBinding != null) hubBinding.bind(sandbox, sessionId, userId);
+    }
+
+    private void rebindSandboxHub(String sessionId, Sandbox sandbox) {
+        if (hubBinding != null) hubBinding.rebindIfNeeded(sandbox, sessionId);
+    }
+
+    private void unbindSandboxHub(String sessionId, Sandbox sandbox) {
+        if (hubBinding != null) hubBinding.unbind(sandbox, sessionId);
+    }
+
+    private void rememberAgentName(String sessionId, String agentName) {
+        if (sessionId != null && agentName != null && !agentName.isBlank()) {
+            sessionAgentNames.put(sessionId, agentName);
+        }
     }
 
     // ---- Discovery sandbox (global, long-running) ----
 
     public SandboxClient getDiscoverySandboxClient() {
-        synchronized (this) {
-            if (!enabled) throw new IllegalStateException("sandbox is not enabled");
-            final int maxAttempts = 3;
-            for (int attempt = 0; attempt < maxAttempts; attempt++) {
-                if (discoverySandbox == null) {
-                    var discoveryConfig = createDiscoveryConfig();
-                    discoverySandbox = new LazySandbox(discoveryConfig, sandboxManager, null, new LazySandbox.SessionIdentity("discovery", "system"), null);
-                    LOGGER.info("discovery sandbox created (attempt {}/{})", attempt + 1, maxAttempts);
-                }
-                discoverySandbox.ensureReady();
-                var ip = discoverySandbox.ip();
-                var port = discoverySandbox.port();
-                if (ip == null || port == 0) {
-                    throw new IllegalStateException("discovery sandbox ip/port not available");
-                }
-                var client = new SandboxClient(ip, port, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
-                // Quick health check — ensures the sandbox runtime is actually reachable.
-                // When the underlying pod has been deleted (e.g. warm-pool template update),
-                // the LazySandbox still reports READY with the stale IP. In that case the
-                // health check fails, we close & reset discoverySandbox and retry with a
-                // freshly acquired pod.
-                try {
-                    client.waitForReady(5_000);
-                    LOGGER.info("discovery sandbox ready: ip={}, port={}", ip, port);
-                    return client;
-                } catch (Exception e) {
-                    LOGGER.warn("discovery sandbox unreachable (attempt {}/{}): ip={}, port={}, error={}",
-                            attempt + 1, maxAttempts, ip, port, e.getMessage());
-                    discoverySandbox.close();
-                    discoverySandbox = null;
-                }
-            }
-            throw new IllegalStateException("discovery sandbox failed after " + maxAttempts + " attempts");
-        }
+        if (!enabled) throw new IllegalStateException("sandbox is not enabled");
+        return discoverySandbox.client();
     }
 
     public boolean hasSandbox(String sessionId) {
@@ -352,6 +339,12 @@ public class SandboxService {
     /** Reattaches during rebuild, returning a LazySandbox around the delegate or null when unavailable. */
     public Sandbox reattachOrCreateSandbox(String sandboxId, SandboxConfig config, String sessionId, String userId,
                                            Consumer<SandboxEvent> eventDispatcher) {
+        return reattachOrCreateSandbox(sandboxId, config, sessionId, userId, null, eventDispatcher);
+    }
+
+    /** {@code agentName} is informational only — it reaches scripts as {@code CORE_AI_AGENT_NAME}. */
+    public Sandbox reattachOrCreateSandbox(String sandboxId, SandboxConfig config, String sessionId, String userId, String agentName,
+                                           Consumer<SandboxEvent> eventDispatcher) {
         if (!enabled) return null;
         var effectiveConfig = config != null ? config : defaultConfig;
         if (Boolean.FALSE.equals(effectiveConfig.enabled)) return null;
@@ -360,6 +353,7 @@ public class SandboxService {
             LOGGER.info("sandbox no longer available for reattach, sessionId={}, sandboxId={}", sessionId, sandboxId);
             return null;
         }
+        rememberAgentName(sessionId, agentName);
         var sandbox = attached.get();
         long snapshotEpoch = 0;
         if (snapshotService != null) {
@@ -375,6 +369,7 @@ public class SandboxService {
                 outcome -> onSandboxReady(sessionId, userId, outcome), snapshotService, snapshotEpoch));
         sessionSandboxes.put(sessionId, lazy);
         storeSandboxBinding(sessionId);
+        bindSandboxHub(sessionId, userId, lazy);
         LOGGER.info("reattached to existing sandbox, sessionId={}, sandboxId={}", sessionId, sandbox.getId());
         return lazy;
     }
@@ -416,25 +411,8 @@ public class SandboxService {
         sessionSandboxes.clear();
         persistentSessionIds.clear();
         sandboxFileService.clearAll();
-        for (var mgr : sessionMcpManagers.values()) {
-            try {
-                mgr.close();
-            } catch (Exception e) {
-                LOGGER.warn("failed to close session mcp manager on shutdown", e);
-            }
-        }
-        sessionMcpManagers.clear();
-        sessionMcpServerIds.clear();
-
-        if (discoverySandbox != null) {
-            try {
-                discoverySandbox.close();
-            } catch (Exception e) {
-                LOGGER.warn("failed to close discovery sandbox", e);
-            }
-            discoverySandbox = null;
-        }
-
+        sessionMcpProcesses.closeAll();
+        discoverySandbox.close();
         cleanupScheduler.shutdown();
         try {
             if (!cleanupScheduler.awaitTermination(5, TimeUnit.SECONDS)) {

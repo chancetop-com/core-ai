@@ -16,6 +16,9 @@ import java.time.ZonedDateTime;
  * <p>
  * An agent run additionally records the A2A {@code task_id} of the turn, the {@code context_id}
  * that continues the conversation, and the token usage of the turn when it finished in-band.
+ * <p>
+ * A sandbox hub call ({@code kind=sandbox_tool}) records the sandbox it came from
+ * ({@code sandbox_id}) and the kind of capability it reached ({@code tool_kind}).
  *
  * @author stephen
  */
@@ -49,6 +52,15 @@ public class HubCall {
 
     @Field(name = "name")
     public String name;
+
+    @Field(name = "sandbox_id")
+    public String sandboxId;
+
+    @Field(name = "tool_kind")
+    public String toolKind;
+
+    @Field(name = "session_id")
+    public String sessionId;
 
     @Field(name = "args_hash")
     public String argsHash;

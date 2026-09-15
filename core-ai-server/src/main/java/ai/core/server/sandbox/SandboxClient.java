@@ -2,6 +2,7 @@ package ai.core.server.sandbox;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.internal.http.CustomHTTPClientImpl;
+import ai.core.sandbox.SandboxBinding;
 import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.tool.ToolCallResult;
@@ -281,6 +282,55 @@ public class SandboxClient {
 
     public String getBaseUrl() {
         return baseUrl;
+    }
+
+    // ---- sandbox hub binding ----
+
+    /**
+     * Hands the session identity to the runtime, which keeps it in memory and uses it as the
+     * Authorization header of every hub call a script makes through the loopback proxy.
+     * Runtimes that predate this endpoint answer 404, reported as {@link UnsupportedOperationException}.
+     */
+    public void bind(SandboxBinding binding) {
+        var request = new BindRequest();
+        request.serverUrl = binding.serverUrl();
+        request.token = binding.token();
+        request.sessionId = binding.sessionId();
+        request.agentName = binding.agentName();
+        request.expiresAt = binding.expiresAt();
+
+        var req = new HTTPRequest(HTTPMethod.POST, baseUrl + "/bind");
+        req.body(JSON.toJSON(request), ContentType.APPLICATION_JSON);
+        var response = httpClient.execute(req);
+        if (response.statusCode == 404 || response.statusCode == 405) {
+            throw new UnsupportedOperationException("sandbox runtime does not support /bind: status=" + response.statusCode);
+        }
+        if (response.statusCode != 200 && response.statusCode != 204) {
+            throw new RuntimeException("sandbox hub bind failed: status=" + response.statusCode
+                    + ", body=" + response.text());
+        }
+    }
+
+    public void unbind() {
+        var req = new HTTPRequest(HTTPMethod.DELETE, baseUrl + "/bind");
+        var response = httpClient.execute(req);
+        if (response.statusCode != 200 && response.statusCode != 204 && response.statusCode != 404) {
+            throw new RuntimeException("sandbox hub unbind failed: status=" + response.statusCode
+                    + ", body=" + response.text());
+        }
+    }
+
+    public static class BindRequest {
+        @Property(name = "server_url")
+        public String serverUrl;
+        @Property(name = "token")
+        public String token;
+        @Property(name = "session_id")
+        public String sessionId;
+        @Property(name = "agent_name")
+        public String agentName;
+        @Property(name = "expires_at")
+        public long expiresAt;
     }
 
     public static class ExecuteRequest {

@@ -97,7 +97,7 @@ public class LLMCallExecutor {
             inputTokens = response.usage.getPromptTokens();
             outputTokens = response.usage.getCompletionTokens();
         }
-        return new Result(output, inputTokens, outputTokens);
+        return new Result(output, effectiveModel, inputTokens, outputTokens);
     }
 
     private Message buildUserMessage(String input, List<LLMCallRequest.Attachment> attachments) {
@@ -286,5 +286,10 @@ public class LLMCallExecutor {
         };
     }
 
-    public record Result(String output, long inputTokens, long outputTokens) { }
+    public record Result(String output, String model, long inputTokens, long outputTokens) {
+        /** Token accounting without a model, for callers that only consume the output. */
+        public Result(String output, long inputTokens, long outputTokens) {
+            this(output, null, inputTokens, outputTokens);
+        }
+    }
 }

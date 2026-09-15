@@ -2,6 +2,8 @@ package ai.core.server.web.auth;
 
 import ai.core.server.domain.ApiKey;
 import ai.core.server.domain.User;
+import ai.core.server.sandboxhub.SessionTokenCodec;
+import ai.core.server.sandboxhub.SessionTokenService;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
@@ -34,10 +36,17 @@ public class RequestAuthenticator {
         }
     }
 
+    public static boolean carriesSandboxSessionToken(Request request) {
+        var auth = request.header("Authorization");
+        return auth.isPresent() && auth.get().startsWith("Bearer " + SessionTokenCodec.PREFIX);
+    }
+
     @Inject
     MongoCollection<User> userCollection;
     @Inject
     MongoCollection<ApiKey> apiKeyCollection;
+    @Inject
+    SessionTokenService sessionTokenService;
 
     public String authenticate(Request request) {
         var userId = authenticateFromAzureAD(request);
@@ -82,6 +91,23 @@ public class RequestAuthenticator {
         }
         updateLastUsed(record);
         return new AuthResult(user.get().id, record.id, record.scope);
+    }
+
+    /**
+     * Verifies a sandbox session token and returns the (session, user, sandbox) it names, or
+     * {@code null} when the request carries no sandbox token at all — an unreadable token is a
+     * 401, never a silently anonymous request. Signature and expiry only: whether the sandbox is
+     * still the one bound to the session is the caller's check.
+     */
+    public SandboxPrincipal authenticateSandboxSession(Request request) {
+        if (!carriesSandboxSessionToken(request)) return null;
+        var token = request.header("Authorization").orElse("").substring("Bearer ".length());
+        try {
+            var sessionToken = sessionTokenService.verify(token);
+            return new SandboxPrincipal(sessionToken.sid(), sessionToken.uid(), sessionToken.sbid());
+        } catch (IllegalArgumentException e) {
+            throw new UnauthorizedException("invalid sandbox session token: " + e.getMessage(), e);
+        }
     }
 
     private String authenticateFromAzureAD(Request request) {

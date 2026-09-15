@@ -9,6 +9,7 @@ import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
 import ai.core.server.schedule.MongoScheduledTaskStore;
+import ai.core.server.web.PodLocalExecutor;
 import core.framework.module.Module;
 import redis.clients.jedis.JedisPool;
 
@@ -29,6 +30,9 @@ class MessagingInfrastructureModule extends Module {
         bind(new A2ATaskRegistry(jedisPool, ownershipRegistry));
         bind(new A2AEventRelay(jedisPool));
         bind(new RpcClient(jedisPool, ownershipRegistry));
+        // generic "run locally when this pod owns the session, otherwise RPC to the owner" helper; bound
+        // here so modules loaded before MessagingRuntimeModule can inject it
+        bind(PodLocalExecutor.class);
         bind(JedisPool.class, jedisPool);
         onShutdown(jedisPool::close);
         // bound early so session/tool assembly paths (AgentSessionManager, ToolRegistryService)

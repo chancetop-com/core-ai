@@ -7,6 +7,7 @@ import ai.core.context.Compression;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
@@ -19,6 +20,7 @@ import ai.core.reflection.ReflectionListener;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
 import ai.core.tool.ToolExecutor;
 import ai.core.tool.ToolOrchestration;
 import ai.core.tool.registry.ListToolProvider;
@@ -207,6 +209,16 @@ public class Agent extends Node<Agent> {
         if (isCancelled()) return List.of();
         var orchestration = new ToolOrchestration(dispatchMap, agentLifecycles, getToolExecutor(), getExecutionContext());
         return orchestration.execute(funcMsg.toolCalls);
+    }
+
+    /**
+     * Runs one tool outside any turn, for callers that act on behalf of the session but are not the
+     * model (the sandbox Hub). Skips lifecycle hooks and orchestration so nothing is appended to the
+     * agent's conversation, and executes against the session's own {@link ExecutionContext} so caller
+     * identity, tracing, async-task registration and token accounting behave exactly as inside a turn.
+     */
+    public ToolCallResult executeToolOutsideTurn(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
+        return getToolExecutor().executeWithoutLifecycle(tool, functionCall, context);
     }
 
     private ToolExecutor getToolExecutor() {

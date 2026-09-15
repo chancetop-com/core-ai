@@ -2,6 +2,7 @@ package ai.core.server.web.auth;
 
 import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.domain.User;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.web.session.SessionIdentity;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -9,6 +10,7 @@ import core.framework.web.Interceptor;
 import core.framework.web.Invocation;
 import core.framework.web.Response;
 import core.framework.web.exception.ForbiddenException;
+import core.framework.web.exception.UnauthorizedException;
 
 /**
  * @author stephen
@@ -16,6 +18,7 @@ import core.framework.web.exception.ForbiddenException;
 public class AuthInterceptor implements Interceptor {
     private static final String API_USERS_PREFIX = "/api/api-users";
     private static final String ADMIN_API_USERS_PREFIX = "/api/admin/api-users";
+    private static final String SANDBOX_HUB_PREFIX = "/api/sandbox-hub";
     private static final String USER_TYPE_API = "api";
 
     public static boolean isPublicPath(String path) {
@@ -59,6 +62,9 @@ public class AuthInterceptor implements Interceptor {
     @Inject
     SessionIdentity sessionIdentity;
 
+    @Inject
+    SandboxService sandboxService;
+
     @Override
     public Response intercept(Invocation invocation) throws Exception {
         var request = invocation.context().request();
@@ -70,6 +76,16 @@ public class AuthInterceptor implements Interceptor {
 
         if (isPublicPath(path) || isAnonymousChannelPath(path, channelConfigStore)) {
             return invocation.proceed();
+        }
+
+        if (path.startsWith(SANDBOX_HUB_PREFIX)) {
+            return interceptSandboxHub(invocation);
+        }
+
+        // a sandbox session token is scoped to the sandbox hub: it must never authenticate any
+        // other route, and it must never be mistaken for a user credential
+        if (RequestAuthenticator.carriesSandboxSessionToken(request)) {
+            throw new UnauthorizedException("sandbox session token is only valid on " + SANDBOX_HUB_PREFIX);
         }
 
         if (path.startsWith(API_USERS_PREFIX)) {
@@ -100,6 +116,23 @@ public class AuthInterceptor implements Interceptor {
         if (path.startsWith(ADMIN_API_USERS_PREFIX)) {
             requireAdmin(AuthContext.userId(invocation.context()));
         }
+        return invocation.proceed();
+    }
+
+    /**
+     * The sandbox hub accepts one credential only: the session token the sandbox runtime replays
+     * for the sandbox it belongs to. A user key, browser session or management key is rejected —
+     * those capabilities already exist on the user-facing APIs.
+     */
+    private Response interceptSandboxHub(Invocation invocation) throws Exception {
+        var principal = requestAuthenticator.authenticateSandboxSession(invocation.context().request());
+        if (principal == null) {
+            throw new ForbiddenException("sandbox session token required");
+        }
+        if (!sandboxService.isBound(principal.sessionId(), principal.sandboxId())) {
+            throw new UnauthorizedException("sandbox is no longer bound to the session");
+        }
+        invocation.context().put(AuthContext.SANDBOX_PRINCIPAL_KEY, principal);
         return invocation.proceed();
     }
 

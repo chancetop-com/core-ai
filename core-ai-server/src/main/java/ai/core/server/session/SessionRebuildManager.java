@@ -213,7 +213,7 @@ public class SessionRebuildManager {
                 "default", null, null, null, true));
     }
     private SandboxSetup setupSandboxContext(String sessionId, String userId, SandboxConfig sandboxConfig,
-                                             boolean allowSandboxReattach) {
+                                             String agentName, boolean allowSandboxReattach) {
         var context = userId != null ? contextBuilder.build(sessionId, userId) : null;
         if (context != null) {
             context.setCaller(CallerContexts.fromUser(userCollection.get(userId).orElse(null)));
@@ -221,30 +221,30 @@ public class SessionRebuildManager {
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(sandboxConfig);
         var sessionRef = new InProcessAgentSession[1];
         if (context != null) {
-            var sandbox = createOrReattachSandbox(sessionId, userId, sandboxConfig, sessionRef,
+            var sandbox = createOrReattachSandbox(sessionId, userId, sandboxConfig, agentName, sessionRef,
                     allowSandboxReattach);
             if (sandbox != null) context.sandbox(sandbox);
         }
         return new SandboxSetup(context, sessionRef, sandboxOn);
     }
-    private Sandbox createOrReattachSandbox(String sessionId, String userId, SandboxConfig sandboxConfig,
+    private Sandbox createOrReattachSandbox(String sessionId, String userId, SandboxConfig sandboxConfig, String agentName,
                                             InProcessAgentSession[] sessionRef,
                                             boolean allowSandboxReattach) {
         var sandbox = allowSandboxReattach
-                ? reattachExistingSandbox(sessionId, userId, sandboxConfig, sessionRef) : null;
+                ? reattachExistingSandbox(sessionId, userId, sandboxConfig, agentName, sessionRef) : null;
         if (sandbox == null) {
-            sandbox = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId,
+            sandbox = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId, agentName,
                     event -> {
                         if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
                     });
         }
         return sandbox;
     }
-    private Sandbox reattachExistingSandbox(String sessionId, String userId, SandboxConfig sandboxConfig,
+    private Sandbox reattachExistingSandbox(String sessionId, String userId, SandboxConfig sandboxConfig, String agentName,
                                             InProcessAgentSession[] sessionRef) {
         var existingSandboxId = sandboxService.getSandboxId(sessionId);
         if (existingSandboxId == null) return null;
-        var sandbox = sandboxService.reattachOrCreateSandbox(existingSandboxId, sandboxConfig, sessionId, userId,
+        var sandbox = sandboxService.reattachOrCreateSandbox(existingSandboxId, sandboxConfig, sessionId, userId, agentName,
                 event -> {
                     if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
                 });
@@ -266,7 +266,7 @@ public class SessionRebuildManager {
         var agentId = params.state != null && params.state.fromAgent && params.state.agentConfig != null ? params.state.agentConfig.agentId : null;
         var effectiveConfig = params.config != null ? params.config : new SessionConfig();
         var sandbox = setupSandboxContext(params.sessionId, params.userId, params.sandboxConfig,
-                params.allowSandboxReattach);
+                params.agentName, params.allowSandboxReattach);
         List<ToolCall> tools = (params.toolRefs != null && !params.toolRefs.isEmpty())
                 ? toolRegistryService.resolveToolRefs(params.toolRefs, params.sessionId, params.userId)
                 : new ArrayList<>();

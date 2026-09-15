@@ -16,11 +16,13 @@ import ai.core.server.sandbox.docker.DockerSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
+import ai.core.server.sandboxhub.SessionTokenService;
 import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.JedisPool;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -37,6 +39,7 @@ class SandboxModule extends Module {
 
     @Override
     protected void initialize() {
+        var sessionTokenService = bindSessionTokens();
         var providerName = property("sys.sandbox.provider").orElse(null);
         // declared in sys.properties so env/-D overrides work; touched before branching (core-ng fails on declared-but-unread)
         property("sys.sandbox.docker.socket");
@@ -47,6 +50,7 @@ class SandboxModule extends Module {
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
                     bean(SessionAttachmentRefRepository.class));
             bind(sandboxService);
+            sandboxService.sessionTokens(sessionTokenService);
             return;
         }
 
@@ -70,6 +74,7 @@ class SandboxModule extends Module {
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
                     bean(SessionAttachmentRefRepository.class));
             bind(sandboxService);
+            sandboxService.sessionTokens(sessionTokenService);
             return;
         }
         sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox,
@@ -77,8 +82,23 @@ class SandboxModule extends Module {
                         bean(ObjectStorageServiceResolver.class), bean(FileService.class),
                         bean(SessionAttachmentRefRepository.class)));
         bind(sandboxService);
+        sandboxService.sessionTokens(sessionTokenService);
 
         onShutdown(sandboxService::shutdown);
+    }
+
+    // Both sides read the SAME property value as raw UTF-8 bytes -- the Go runtime's hub proxy
+    // replays whatever this server minted, so no hex decoding is allowed here. An empty secret
+    // disables the sandbox hub entirely (SessionTokenService treats it as "not configured").
+    private SessionTokenService bindSessionTokens() {
+        var service = new SessionTokenService();
+        service.secret = parseSecret(property("sys.sandbox.sessionToken.secret").orElse(""));
+        service.previousSecret = parseSecret(property("sys.sandbox.sessionToken.secret.previous").orElse(""));
+        return bind(service);
+    }
+
+    private byte[] parseSecret(String raw) {
+        return raw == null || raw.isBlank() ? new byte[0] : raw.getBytes(StandardCharsets.UTF_8);
     }
 
     // Sandbox lifetime in seconds, overridable via SYS_SANDBOX_TIMEOUT; defaults to createDefaultConfig (3900s).

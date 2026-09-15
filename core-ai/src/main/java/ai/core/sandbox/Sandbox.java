@@ -55,6 +55,14 @@ public interface Sandbox extends AutoCloseable {
     /** Returns the base endpoint for the runtime's MCP JSON-RPC bridge, e.g. {@code http://ip:port/mcp}. */
     String getMcpEndpoint();
 
+    // ---- Sandbox hub binding (session identity handed to the runtime, memory only) ----
+
+    /** Hands the session's hub identity to the sandbox runtime, enabling its loopback hub proxy. */
+    void bind(SandboxBinding binding);
+
+    /** Clears a previous {@link #bind}; called when the session lets go of the sandbox. */
+    void unbind();
+
     @Override
     void close();
 }

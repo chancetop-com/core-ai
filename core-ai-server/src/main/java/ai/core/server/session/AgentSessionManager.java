@@ -238,7 +238,7 @@ public class AgentSessionManager {
         var sandboxConfig = sandboxService.getEffectiveConfig(definition);
         var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
         var sessionRef = new InProcessAgentSession[1];
-        var sandbox2 = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId, event -> {
+        var sandbox2 = sandboxService.createSessionSandbox(sandboxConfig, sessionId, userId, definition.name, event -> {
             if (sessionRef[0] != null) sessionRef[0].dispatchEvent(event);
         });
         var toolRegistry = subAgentManager().resolveTopLevelToolsToRegistry(definition, sessionId, userId);

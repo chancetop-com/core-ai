@@ -177,7 +177,7 @@ public class AgentHubService {
                                       Supplier<AgentHubRunResult> execution) {
         String auditId = auditService.begin(new HubCallAuditService.BeginRequest(UUID.randomUUID().toString(),
                 HubCallAuditService.KIND_AGENT, userId, accessPolicy.isApiUser(userId) ? USER_TYPE_API : USER_TYPE_INTERNAL,
-                SOURCE_HUB, agent.id(), agent.definition().id, null, agent.name(), task));
+                SOURCE_HUB, agent.id(), agent.definition().id, null, agent.name(), task, null, null, null));
         return execute(auditId, execution);
     }
 
@@ -185,7 +185,7 @@ public class AgentHubService {
                                             Supplier<AgentHubRunResult> execution) {
         String auditId = auditService.begin(new HubCallAuditService.BeginRequest(UUID.randomUUID().toString(),
                 HubCallAuditService.KIND_AGENT, userId, accessPolicy.isApiUser(userId) ? USER_TYPE_API : USER_TYPE_INTERNAL,
-                SOURCE_HUB, null, null, null, null, arguments));
+                SOURCE_HUB, null, null, null, null, arguments, null, null, null));
         return execute(auditId, execution);
     }
 
