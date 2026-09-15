@@ -43,6 +43,7 @@ import {
   formatTokenPair,
   getSpanTiming,
   getTimelineBounds,
+  isReplayableRequest,
   prettyContent,
   resolveTraceSource,
   resolveTraceType,
@@ -502,7 +503,7 @@ function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?:
   const [replayError, setReplayError] = useState('');
   // the payload arrives via lazy fetch: keep the button visible (disabled) meanwhile
   const isLlm = span.type === 'LLM';
-  const replayable = isLlm && messages.length > 0;
+  const replayable = isLlm && isReplayableRequest(span.input);
 
   const setTab = (nextTab: SpanTab) => {
     setTabState({ spanId: span.spanId, tab: nextTab });

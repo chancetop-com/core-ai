@@ -270,6 +270,20 @@ class GatewayProxyServiceTest {
     }
 
     @Test
+    void parsesUsageNestedInResponsesCompletedEvent() {
+        var usage = GatewaySupport.parseUsage(Map.of(
+                "type", "response.completed",
+                "response", Map.of("usage", Map.of(
+                        "input_tokens", 12,
+                        "output_tokens", 34,
+                        "input_tokens_details", Map.of("cached_tokens", 5)))));
+
+        assertEquals(12, usage.inputTokens());
+        assertEquals(34, usage.outputTokens());
+        assertEquals(5, usage.cachedTokens());
+    }
+
+    @Test
     void recordsSpanWithModelAndUserAttribution() throws Exception {
         var latch = new CountDownLatch(1);
         var exportRequest = new AtomicReference<ExportTraceServiceRequest>();
@@ -432,6 +446,54 @@ class GatewayProxyServiceTest {
             assertTrue(latch.await(15, TimeUnit.SECONDS), "span export timed out");
             var recorded = spanAttributes(protoSpan(exportRequest.get()));
             assertEquals("hello world", recorded.get("langfuse.observation.output"));
+        } finally {
+            LocalSpanProcessorRegistry.clear();
+        }
+    }
+
+    @Test
+    void streamingResponsesRecordsAssistantOutputAndUsage() throws Exception {
+        var latch = new CountDownLatch(1);
+        var exportRequest = new AtomicReference<ExportTraceServiceRequest>();
+        var ingestService = mock(OTLPIngestService.class);
+        doAnswer(invocation -> {
+            exportRequest.set(invocation.getArgument(0));
+            latch.countDown();
+            return null;
+        }).when(ingestService).ingest(any(ExportTraceServiceRequest.class));
+        LocalSpanProcessorRegistry.register(ingestService);
+        var provider = provider("LiteLLM", "litellm", "https://litellm.example.com", "litellm/", "deepseek/default");
+        var service = new CapturingStreamingGatewayProxyService();
+        service.routingEngine = routingEngine(List.of(provider),
+                List.of(model("deepseek-flash", provider.id, "deepseek/response-model", List.of("responses"))));
+        service.secretProtector = new GatewaySecretProtector("test-secret");
+        service.telemetryConfig = TELEMETRY;
+        var source = mock(EventSource.class);
+        when(source.iterator()).thenReturn(List.of(
+                new EventSource.Event(null, "response.created", "{\"type\":\"response.created\"}"),
+                new EventSource.Event(null, "response.output_text.delta",
+                        "{\"type\":\"response.output_text.delta\",\"delta\":\"hello \"}"),
+                new EventSource.Event(null, "response.output_text.delta",
+                        "{\"type\":\"response.output_text.delta\",\"delta\":\"world\"}"),
+                new EventSource.Event(null, "response.completed",
+                        "{\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":12,\"output_tokens\":34,"
+                                + "\"input_tokens_details\":{\"cached_tokens\":5}}}}")
+        ).iterator());
+        service.source = source;
+        try {
+            service.proxyResponses(json(Map.of(
+                    "model", "deepseek-flash",
+                    "stream", Boolean.TRUE,
+                    "input", "hi"
+            )), "user-1", null, null);
+
+            assertTrue(latch.await(15, TimeUnit.SECONDS), "span export timed out");
+            var recorded = spanAttributes(protoSpan(exportRequest.get()));
+            assertEquals("gateway.responses", protoSpan(exportRequest.get()).getName());
+            assertEquals("hello world", recorded.get("langfuse.observation.output"));
+            assertEquals("12", recorded.get("gen_ai.usage.input_tokens"));
+            assertEquals("34", recorded.get("gen_ai.usage.output_tokens"));
+            assertEquals("5", recorded.get("gen_ai.usage.cached_tokens"));
         } finally {
             LocalSpanProcessorRegistry.clear();
         }

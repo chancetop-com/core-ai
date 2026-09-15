@@ -264,24 +264,22 @@ export function extractTracePreview(trace: Trace): string {
 export function extractMessages(input?: string | null): ExtractedMessage[] {
   if (!input) return [];
   const parsed = tryParseJson(input);
-  if (!parsed || typeof parsed !== 'object' || !('messages' in parsed)) return [];
+  if (!parsed || typeof parsed !== 'object') return [];
 
-  const messages = (parsed as { messages?: unknown }).messages;
-  if (!Array.isArray(messages)) return [];
+  const body = parsed as { messages?: unknown; instructions?: unknown; input?: unknown };
+  if (Array.isArray(body.messages)) return chatMessages(body.messages);
+  // The responses endpoint describes the conversation as instructions plus typed input items
+  // (message / function_call / function_call_output) instead of chat-style messages.
+  if ('input' in body || 'instructions' in body) return responsesMessages(body);
+  return [];
+}
 
-  return messages.map(message => {
-    const msg = message as Record<string, unknown>;
-    const result: ExtractedMessage = {
-      role: String(msg.role || 'unknown'),
-      content: extractMessageContent(msg.content),
-    };
-    if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-      result.tool_calls = msg.tool_calls as ExtractedMessage['tool_calls'];
-    }
-    if (msg.tool_call_id) result.tool_call_id = String(msg.tool_call_id);
-    if (msg.name) result.name = String(msg.name);
-    return result;
-  });
+// Replay runs the stored request through the ChatML codec, so responses-style inputs are not replayable yet.
+export function isReplayableRequest(input?: string | null): boolean {
+  if (!input) return false;
+  const parsed = tryParseJson(input);
+  if (!parsed || typeof parsed !== 'object') return false;
+  return Array.isArray((parsed as { messages?: unknown }).messages);
 }
 
 export function extractAssistantContent(output?: string | null): ExtractedAssistantOutput | null {
@@ -289,6 +287,7 @@ export function extractAssistantContent(output?: string | null): ExtractedAssist
   const parsed = tryParseJson(output);
   if (parsed && typeof parsed === 'object') {
     const obj = parsed as Record<string, unknown>;
+    if (Array.isArray(obj.output)) return responsesOutput(obj.output, output);
     const result: ExtractedAssistantOutput = {
       content: typeof obj.content === 'string' ? obj.content : output,
       reasoning: typeof obj.reasoning_content === 'string' ? obj.reasoning_content : undefined,
@@ -361,6 +360,90 @@ function tryParseJson(str: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+function chatMessages(messages: unknown[]): ExtractedMessage[] {
+  return messages.map(message => {
+    const msg = message as Record<string, unknown>;
+    const result: ExtractedMessage = {
+      role: String(msg.role || 'unknown'),
+      content: extractMessageContent(msg.content),
+    };
+    if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      result.tool_calls = msg.tool_calls as ExtractedMessage['tool_calls'];
+    }
+    if (msg.tool_call_id) result.tool_call_id = String(msg.tool_call_id);
+    if (msg.name) result.name = String(msg.name);
+    return result;
+  });
+}
+
+function responsesMessages(body: { instructions?: unknown; input?: unknown }): ExtractedMessage[] {
+  const messages: ExtractedMessage[] = [];
+  if (typeof body.instructions === 'string' && body.instructions.trim()) {
+    messages.push({ role: 'system', content: body.instructions });
+  }
+  if (typeof body.input === 'string') {
+    messages.push({ role: 'user', content: body.input });
+    return messages;
+  }
+  if (!Array.isArray(body.input)) return messages;
+  for (const item of body.input) {
+    const message = responsesItemMessage(item);
+    if (message) messages.push(message);
+  }
+  return messages;
+}
+
+function responsesItemMessage(item: unknown): ExtractedMessage | null {
+  if (!item || typeof item !== 'object') return null;
+  const obj = item as Record<string, unknown>;
+  const type = String(obj.type || 'message');
+  if (type === 'function_call') {
+    return { role: 'assistant', content: '', tool_calls: [responsesToolCall(obj)] };
+  }
+  if (type === 'function_call_output') {
+    return {
+      role: 'tool',
+      content: typeof obj.output === 'string' ? obj.output : extractMessageContent(obj.output),
+      tool_call_id: String(obj.call_id || ''),
+    };
+  }
+  if (type !== 'message') return null;
+  // responses marks developer instructions with a dedicated role that renders as system
+  const role = String(obj.role || 'user');
+  return { role: role === 'developer' ? 'system' : role, content: extractMessageContent(obj.content) };
+}
+
+function responsesToolCall(obj: Record<string, unknown>): { id: string; function: { name: string; arguments: string } } {
+  return {
+    id: String(obj.call_id || obj.id || ''),
+    function: {
+      name: String(obj.name || ''),
+      arguments: typeof obj.arguments === 'string' ? obj.arguments : '',
+    },
+  };
+}
+
+function responsesOutput(items: unknown[], raw: string): ExtractedAssistantOutput {
+  const texts: string[] = [];
+  const reasoning: string[] = [];
+  const toolCalls: NonNullable<ExtractedAssistantOutput['tool_calls']> = [];
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as Record<string, unknown>;
+    const type = String(obj.type || '');
+    if (type === 'message') texts.push(extractMessageContent(obj.content));
+    else if (type === 'function_call') toolCalls.push(responsesToolCall(obj));
+    else if (type === 'reasoning') reasoning.push(extractMessageContent(obj.summary));
+  }
+
+  const content = texts.filter(Boolean).join('\n');
+  const result: ExtractedAssistantOutput = { content: content || raw };
+  const reasoningText = reasoning.filter(Boolean).join('\n');
+  if (reasoningText) result.reasoning = reasoningText;
+  if (toolCalls.length > 0) result.tool_calls = toolCalls;
+  return result;
 }
 
 function extractMessageContent(content: unknown): string {

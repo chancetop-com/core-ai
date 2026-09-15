@@ -30,6 +30,24 @@ class TracePreviewExtractorTest {
     }
 
     @Test
+    void extractLastUserInputFromResponsesRequest() {
+        var input = """
+            {"instructions": "You are Codex, a coding agent.",
+             "input": [
+               {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "repo rules"}]},
+               {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "first question"}]},
+               {"type": "function_call_output", "call_id": "call_1", "output": "a.txt"},
+               {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "second   question"}]}
+             ]}""";
+        assertThat(TracePreviewExtractor.extract(input)).isEqualTo("second question");
+    }
+
+    @Test
+    void extractStringResponsesInput() {
+        assertThat(TracePreviewExtractor.extract("{\"input\": \"plain responses input\"}")).isEqualTo("plain responses input");
+    }
+
+    @Test
     void extractFirstStringValueFromObject() {
         var input = "{\"query\": \"plain object input\", \"limit\": 5}";
         assertThat(TracePreviewExtractor.extract(input)).isEqualTo("plain object input");

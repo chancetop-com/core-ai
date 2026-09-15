@@ -292,25 +292,40 @@ public class GatewayProxyService {
         builder.append('\n');
     }
 
-    // Streaming chat chunks carry the assistant text in choices[].delta.content (or choices[].message.content);
-    // concatenate them so the span output holds the final assistant response instead of nothing.
+    // Streaming chat chunks carry the assistant text in choices[].delta.content (or choices[].message.content),
+    // the responses endpoint streams it as response.output_text.delta events; concatenate either shape so the
+    // span output holds the final assistant response instead of nothing.
     private void appendStreamOutput(StringBuilder output, String data) {
-        if (data == null || "[DONE]".equals(data) || output.length() >= MAX_SPAN_OUTPUT_LENGTH || !data.contains("content")) return;
+        if (data == null || "[DONE]".equals(data) || output.length() >= MAX_SPAN_OUTPUT_LENGTH) return;
+        var body = parseStreamChunk(data);
+        if (body == null) return;
+        var content = chatChunkContent(body);
+        if (content == null) content = responsesDeltaText(body);
+        if (content != null && !content.isBlank()) {
+            output.append(content);
+        }
+    }
+
+    private Map<String, Object> parseStreamChunk(String data) {
         try {
-            var body = GatewayJson.MAPPER.readValue(data, GatewaySupport.MAP_TYPE);
-            var choices = body.get("choices");
-            if (!(choices instanceof List<?> list) || list.isEmpty()) return;
-            var choice = list.getFirst();
-            if (!(choice instanceof Map<?, ?> choiceMap)) return;
-            var content = contentText(choiceMap.get("delta"));
-            if (content == null) content = contentText(choiceMap.get("message"));
-            if (content != null && !content.isBlank()) {
-                output.append(content);
-            }
+            return GatewayJson.MAPPER.readValue(data, GatewaySupport.MAP_TYPE);
         } catch (JsonProcessingException e) {
             // non-JSON chunk (e.g. keepalive), nothing to record
             LOGGER.debug("stream chunk is not a JSON payload, skipped from span output", e);
+            return null;
         }
+    }
+
+    private String chatChunkContent(Map<String, Object> body) {
+        if (!(body.get("choices") instanceof List<?> choices) || choices.isEmpty()) return null;
+        if (!(choices.getFirst() instanceof Map<?, ?> choice)) return null;
+        var content = contentText(choice.get("delta"));
+        return content == null ? contentText(choice.get("message")) : content;
+    }
+
+    private String responsesDeltaText(Map<String, Object> body) {
+        if (!"response.output_text.delta".equals(body.get("type"))) return null;
+        return body.get("delta") instanceof String delta ? delta : null;
     }
 
     private String contentText(Object value) {

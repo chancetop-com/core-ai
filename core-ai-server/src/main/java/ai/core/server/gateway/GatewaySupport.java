@@ -193,7 +193,9 @@ final class GatewaySupport {
 
     // OpenAI chat/completions uses prompt_tokens/completion_tokens, responses uses input_tokens/output_tokens
     static GatewayUsage parseUsage(Map<String, Object> body) {
-        if (body == null || !(body.get("usage") instanceof Map<?, ?> usage)) return null;
+        if (body == null) return null;
+        var usage = body.get("usage") instanceof Map<?, ?> direct ? direct : nestedResponseUsage(body);
+        if (usage == null) return null;
         long input = number(usage.get("prompt_tokens"), usage.get("input_tokens"));
         long output = number(usage.get("completion_tokens"), usage.get("output_tokens"));
         if (input == 0 && output == 0) return null;
@@ -201,6 +203,12 @@ final class GatewaySupport {
         if (cached == null) cached = detailValue(usage, "prompt_tokens_details");
         if (cached == null) cached = detailValue(usage, "input_tokens_details");
         return new GatewayUsage(input, output, number(cached, null));
+    }
+
+    // a streaming responses payload reports the usage inside the terminal response.completed event
+    private static Map<?, ?> nestedResponseUsage(Map<String, Object> body) {
+        if (!(body.get("response") instanceof Map<?, ?> response)) return null;
+        return response.get("usage") instanceof Map<?, ?> usage ? usage : null;
     }
 
     private static long number(Object primary, Object fallback) {

@@ -17,8 +17,9 @@ public final class TracePreviewExtractor {
         if (input == null || input.isBlank()) return null;
         JsonNode root = parse(input);
         if (root != null) {
-            var fromMessages = lastUserMessage(root);
-            if (fromMessages != null) return compact(fromMessages);
+            var userText = lastUserMessage(root);
+            if (userText == null) userText = lastUserInput(root);
+            if (userText != null) return compact(userText);
             if (root.isTextual()) return compact(root.asText());
             var firstString = firstStringValue(root);
             if (firstString != null) return compact(firstString);
@@ -41,6 +42,21 @@ public final class TracePreviewExtractor {
             var message = messages.get(i);
             if (!"user".equals(message.path("role").asText())) continue;
             var content = messageContent(message.get("content"));
+            if (content != null && !content.isBlank()) return content;
+        }
+        return null;
+    }
+
+    // the responses endpoint sends the conversation as instructions plus an input array of typed items
+    private static String lastUserInput(JsonNode root) {
+        var input = root.get("input");
+        if (input == null) return null;
+        if (input.isTextual()) return input.asText();
+        if (!input.isArray()) return null;
+        for (int i = input.size() - 1; i >= 0; i--) {
+            var item = input.get(i);
+            if (!"message".equals(item.path("type").asText()) || !"user".equals(item.path("role").asText())) continue;
+            var content = messageContent(item.get("content"));
             if (content != null && !content.isBlank()) return content;
         }
         return null;
