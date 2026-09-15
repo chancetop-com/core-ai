@@ -177,11 +177,11 @@ class SandboxHubServiceTest {
 
         var snapshot = service.snapshot(session());
 
-        assertEquals("menu-agent", snapshot.agentName());
-        assertEquals(1, snapshot.details().size());
-        assertEquals("menu_hub_search", snapshot.details().getFirst().name);
-        assertEquals("mcp", snapshot.details().getFirst().kind);
-        assertEquals(120, snapshot.details().getFirst().timeoutSeconds);
+        assertEquals("menu-agent", snapshot.agentName);
+        assertEquals(1, snapshot.detailsOrEmpty().size());
+        assertEquals("menu_hub_search", snapshot.detailsOrEmpty().getFirst().name);
+        assertEquals("mcp", snapshot.detailsOrEmpty().getFirst().kind);
+        assertEquals(120, snapshot.detailsOrEmpty().getFirst().timeoutSeconds);
     }
 
     @Test

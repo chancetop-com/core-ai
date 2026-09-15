@@ -151,7 +151,7 @@ class SandboxHubWebServiceImplTest {
         var detail = new SandboxHubToolDetail();
         detail.name = "menu_hub_search";
         detail.kind = "mcp";
-        var snapshot = new SandboxHubCatalogSnapshot("menu-agent", List.of(detail));
+        var snapshot = SandboxHubCatalogSnapshot.of("menu-agent", List.of(detail));
         doReturn(snapshot).when(podLocalExecutor).execute(anyString(), any(), any(), any(), any());
 
         var catalog = impl.catalog();
@@ -167,7 +167,7 @@ class SandboxHubWebServiceImplTest {
 
     @Test
     void meReportsTheLiveBindingFromTheToken() {
-        when(hubService.snapshot(any())).thenReturn(new SandboxHubCatalogSnapshot("menu-agent", List.of()));
+        when(hubService.snapshot(any())).thenReturn(SandboxHubCatalogSnapshot.of("menu-agent", List.of()));
 
         SandboxHubSessionView view = impl.me();
 

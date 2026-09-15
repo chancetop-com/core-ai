@@ -138,7 +138,7 @@ public class SandboxHubService {
      */
     public SandboxHubCatalogSnapshot snapshot(SandboxHubSession session) {
         var agentSession = agentSession(session);
-        return new SandboxHubCatalogSnapshot(agentSession.agent().getName(), catalogOf(agentSession).details());
+        return SandboxHubCatalogSnapshot.of(agentSession.agent().getName(), catalogOf(agentSession).details());
     }
 
     public SandboxHubCallResponse call(SandboxHubSession session, String name, HubCallRequest request) {

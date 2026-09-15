@@ -29,11 +29,11 @@ public final class SandboxHubViews {
     public static SandboxHubSessionView me(SandboxHubCatalogSnapshot snapshot, String sessionId, String sandboxId, String expiresAt) {
         var view = new SandboxHubSessionView();
         view.sessionId = sessionId;
-        view.agentName = snapshot.agentName();
+        view.agentName = snapshot.agentName;
         view.sandboxId = sandboxId;
         view.sandboxState = SANDBOX_STATE_READY;
         view.expiresAt = expiresAt;
-        view.toolCount = snapshot.details().size();
+        view.toolCount = snapshot.detailsOrEmpty().size();
         view.contractVersion = SandboxHubService.CONTRACT_VERSION;
         return view;
     }
@@ -41,13 +41,13 @@ public final class SandboxHubViews {
     public static SandboxHubCatalogResponse catalog(SandboxHubCatalogSnapshot snapshot, String sessionId, String sandboxId, String expiresAt) {
         var response = new SandboxHubCatalogResponse();
         response.sessionId = sessionId;
-        response.agentName = snapshot.agentName();
+        response.agentName = snapshot.agentName;
         response.sandboxId = sandboxId;
         response.sandboxState = SANDBOX_STATE_READY;
         response.expiresAt = expiresAt;
         response.contractVersion = SandboxHubService.CONTRACT_VERSION;
-        response.groups = groups(snapshot.details());
-        response.tools = summaries(snapshot.details());
+        response.groups = groups(snapshot.detailsOrEmpty());
+        response.tools = summaries(snapshot.detailsOrEmpty());
         return response;
     }
 
@@ -58,7 +58,7 @@ public final class SandboxHubViews {
         limit = Math.max(1, Math.min(limit, MAX_SEARCH_LIMIT));
 
         var matched = new ArrayList<SandboxHubToolDetail>();
-        for (var detail : snapshot.details()) {
+        for (var detail : snapshot.detailsOrEmpty()) {
             if (kind != null && !kind.isBlank() && !detail.kind.equalsIgnoreCase(kind.trim())) continue;
             if (query != null && !query.isBlank() && !matches(detail, query.trim())) continue;
             matched.add(detail);
@@ -73,13 +73,13 @@ public final class SandboxHubViews {
     }
 
     public static SandboxHubToolDetail describe(SandboxHubCatalogSnapshot snapshot, String name) {
-        for (var detail : snapshot.details()) {
+        for (var detail : snapshot.detailsOrEmpty()) {
             if (detail.name != null && detail.name.equals(name)) {
                 if (!detail.callable) throw new BadRequestException("tool is not callable in a script: " + name);
                 return detail;
             }
         }
-        throw new NotFoundException("tool not found in this session: " + name + ", available: " + snapshot.details().size() + " tools");
+        throw new NotFoundException("tool not found in this session: " + name + ", available: " + snapshot.detailsOrEmpty().size() + " tools");
     }
 
     public static List<SandboxHubToolSummary> summaries(List<SandboxHubToolDetail> details) {
