@@ -50,6 +50,9 @@ final class AgentAssembler {
         agent.setPersistence(new AgentPersistence());
         agent.agentLifecycles = new ArrayList<>(builder.agentLifecycles);
         agent.compression = builder.compression;
+        if (agent.compression != null) {
+            agent.compression.onLlmUsage(agent::addLlmUsage);
+        }
         agent.reasoningEffort = builder.reasoningEffort;
         if (builder.reflectionConfig == null && Boolean.TRUE.equals(builder.enableReflection)) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();

@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -299,6 +300,57 @@ class CompressionTest {
         LOGGER.info("Update model repoints context window test passed");
     }
 
+    @Test
+    void testSummaryCallUsageIsReported() {
+        var usage = new Usage(1200, 300, 1500);
+        var provider = new MockLLMProvider("Compressed summary", usage);
+        Compression target = new Compression(provider, "test-model");
+        var reported = new ArrayList<String>();
+        target.onLlmUsage((model, reportedUsage) -> reported.add(model + ":" + reportedUsage.getTotalTokens()));
+
+        var messages = createTestMessages(10);
+        var result = target.forceCompress(messages);
+
+        assertNotEquals(messages, result);
+        assertEquals(List.of("test-model:1500"), reported);
+        assertNull(target.getLastFailure());
+
+        LOGGER.info("Summary call usage reported test passed");
+    }
+
+    @Test
+    void testLastFailureExplainsEmptySummary() {
+        Compression target = new Compression(new MockLLMProvider(""), "test-model");
+        var messages = createTestMessages(10);
+
+        var result = target.forceCompress(messages);
+
+        assertEquals(messages, result);
+        assertEquals("summarization returned an empty result", target.getLastFailure());
+
+        LOGGER.info("Last failure explains empty summary test passed");
+    }
+
+    @Test
+    void testCompressionConfigOverridesDefaults() {
+        var provider = new MockLLMProvider("Summary", new Usage(10, 5, 15));
+        var config = new CompressionConfig(true, 0.5, 2, 1000, 32000, "cheap-summary-model");
+        Compression target = new Compression(config, provider, "unknown-model-xyz");
+
+        assertEquals(32000, target.getMaxContextTokens());
+        assertEquals(16000, target.getMaxToolResultTokens());
+        assertEquals(0.5, target.getTriggerThreshold(), 0.0001);
+        assertEquals(2, target.getKeepRecentTurns());
+        assertFalse(target.shouldCompress(15000));
+        assertTrue(target.shouldCompress(16000));
+
+        target.forceCompress(createTestMessages(10));
+
+        assertEquals("cheap-summary-model", provider.getLastRequestModel());
+
+        LOGGER.info("Compression config overrides defaults test passed");
+    }
+
     private void verifyToolPairsIntact(List<Message> messages) {
         for (int i = 0; i < messages.size(); i++) {
             Message msg = messages.get(i);
@@ -453,18 +505,30 @@ class CompressionTest {
 
     static class MockLLMProvider extends LLMProvider {
         private final String summaryResponse;
+        private final Usage usage;
+        private String lastRequestModel;
 
         MockLLMProvider(String summaryResponse) {
+            this(summaryResponse, null);
+        }
+
+        MockLLMProvider(String summaryResponse, Usage usage) {
             super(new LLMProviderConfig("test-model", 0.7, null));
             this.summaryResponse = summaryResponse;
+            this.usage = usage;
+        }
+
+        String getLastRequestModel() {
+            return lastRequestModel;
         }
 
         @Override
         protected CompletionResponse doCompletion(CompletionRequest request) {
+            lastRequestModel = request.model;
             if (summaryResponse != null) {
                 var response = new CompletionResponse();
                 response.choices = List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, summaryResponse)));
-                response.usage = new Usage();
+                response.usage = usage != null ? usage : new Usage();
                 return response;
             }
             return null;

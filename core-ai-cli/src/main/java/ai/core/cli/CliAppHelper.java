@@ -7,6 +7,7 @@ import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.context.CompressionConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.providers.LiteLLMMediaProvider;
@@ -55,6 +56,16 @@ public class CliAppHelper {
     private static final Logger LOGGER = LoggerFactory.getLogger(CliAppHelper.class);
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter SESSION_ID_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+
+    public static CompressionConfig compressionConfig(PropertiesFileSource props) {
+        return new CompressionConfig(
+                props.property("agent.compression.enabled").map(Boolean::parseBoolean).orElse(null),
+                props.property("agent.compression.threshold").map(Double::parseDouble).orElse(null),
+                props.property("agent.compression.keep.recent.turns").map(Integer::parseInt).orElse(null),
+                props.property("agent.compression.keep.tokens").map(Integer::parseInt).orElse(null),
+                props.property("agent.compression.context.window").map(Integer::parseInt).orElse(null),
+                props.property("agent.compression.summary.model").map(String::trim).filter(model -> !model.isEmpty()).orElse(null));
+    }
 
     public static void mergeWorkspaceConfig(PropertiesFileSource global, Path workspace) {
         Path localConfig = workspace.resolve(".core-ai").resolve("agent.properties");

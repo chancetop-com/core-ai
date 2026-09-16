@@ -76,6 +76,7 @@ public class CliAgent {
                 .temperature(0.8);
         configureSystemPrompt(builder, config, hookOutput);
         configureLifecycles(builder, config, hookLifecycle);
+        builder.compression(config.compressionConfig);
         if (config.persistenceProvider != null) builder.persistenceProvider(config.persistenceProvider);
         if (config.modelOverride != null) builder.model(config.modelOverride);
         var multiModalModel = config.providers.getDefaultProvider().config.getMultiModalModel();
@@ -86,6 +87,11 @@ public class CliAgent {
         if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
             agent.addLifecycle(new TraceCollectorLifecycle(new HttpTraceUploader(auth.serverUrl(), auth.apiKey())));
         }
+        configureExecutionContext(agent, config, auth, hookOutput);
+        return agent;
+    }
+
+    private static void configureExecutionContext(Agent agent, Config config, AuthConfig auth, String hookOutput) {
         var execCtx = ExecutionContext.builder()
                 .sessionId(config.sessionId)
                 .userId(auth != null ? auth.userId() : null)
@@ -104,7 +110,6 @@ public class CliAgent {
         execCtx.setSubAgentConfigs(config.subAgentConfigs);
         execCtx.setAgentProfileRegistry(buildAgentProfileRegistry(config));
         agent.setExecutionContext(execCtx);
-        return agent;
     }
 
     private static void configureLifecycles(AgentBuilder builder, Config config, ScriptHookLifecycle hookLifecycle) {
@@ -218,6 +223,7 @@ public class CliAgent {
                              MediaProvider videoMediaProvider,
                              String defaultImageModel,
                             String defaultVideoModel,
-                            ai.core.schedule.ScheduledTaskStore scheduledTaskStore) {
+                            ai.core.schedule.ScheduledTaskStore scheduledTaskStore,
+                            ai.core.context.CompressionConfig compressionConfig) {
     }
 }

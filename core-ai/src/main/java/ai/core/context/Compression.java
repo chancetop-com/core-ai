@@ -1,23 +1,21 @@
 package ai.core.context;
 
-import ai.core.document.Tokenizer;
 import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.Usage;
 import ai.core.prompt.Prompts;
 import ai.core.utils.MessageTokenCounterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 /**
  * @author xander
@@ -30,9 +28,6 @@ public class Compression {
     private static final double DEFAULT_TOOL_RESULT_RATIO = 0.5;
     private static final int FALLBACK_MAX_TOOL_RESULT_TOKENS = 64000;
     private static final int FALLBACK_MAX_CONTEXT_TOKENS = 128000;
-    private static final int HEAD_TOKENS = 500;
-    private static final int TAIL_TOKENS = 500;
-    private static final String TEMP_DIR_NAME = "core-ai";
     private static final int DEFAULT_KEEP_RECENT_TURNS = 5;
     private static final int DEFAULT_KEEP_TOKENS = 15000;
     private static final int MIN_SUMMARY_TOKENS = 500;
@@ -45,6 +40,10 @@ public class Compression {
     private int maxToolResultTokens;
     private LLMProvider llmProvider;
     private String summaryModel;
+    private String contextModel;
+    private Integer contextWindowOverride;
+    private BiConsumer<String, Usage> llmUsageSink;
+    private volatile String lastFailure;
     private final List<CompressionListener> listeners = new ArrayList<>();
 
     public Compression(LLMProvider llmProvider, String agentModel) {
@@ -60,9 +59,27 @@ public class Compression {
         this.toolResultRatio = DEFAULT_TOOL_RESULT_RATIO;
         this.llmProvider = llmProvider;
         this.summaryModel = summaryModel;
-        var modelInfo = agentModel != null ? LLMModelContextRegistry.getInstance().getModelInfo(agentModel) : null;
-        this.maxContextTokens = modelInfo != null ? modelInfo.contextWindow() : FALLBACK_MAX_CONTEXT_TOKENS;
+        this.contextModel = agentModel;
+        this.maxContextTokens = resolveContextWindow();
         this.maxToolResultTokens = calculateMaxToolResultTokens();
+    }
+    public Compression(CompressionConfig config, LLMProvider llmProvider, String agentModel) {
+        this(config != null && config.triggerThreshold() != null ? config.triggerThreshold() : DEFAULT_TRIGGER_THRESHOLD,
+            config != null && config.keepRecentTurns() != null ? config.keepRecentTurns() : DEFAULT_KEEP_RECENT_TURNS,
+            config != null && config.keepMinTokens() != null ? config.keepMinTokens() : DEFAULT_KEEP_TOKENS,
+            llmProvider, agentModel, config != null && config.summaryModel() != null ? config.summaryModel() : agentModel);
+        this.contextWindowOverride = config != null ? config.contextWindowTokens() : null;
+        if (contextWindowOverride != null) {
+            this.maxContextTokens = contextWindowOverride;
+            this.maxToolResultTokens = calculateMaxToolResultTokens();
+        }
+    }
+    private int resolveContextWindow() {
+        if (contextWindowOverride != null) {
+            return contextWindowOverride;
+        }
+        var modelInfo = contextModel != null ? LLMModelContextRegistry.getInstance().getModelInfo(contextModel) : null;
+        return modelInfo != null ? modelInfo.contextWindow() : FALLBACK_MAX_CONTEXT_TOKENS;
     }
     private int calculateMaxToolResultTokens() {
         if (maxContextTokens <= 0) {
@@ -78,14 +95,27 @@ public class Compression {
         this.listeners.add(listener);
     }
     /**
+     * Reports every summarization LLM call to the owning agent so its usage and cost stay complete.
+     */
+    public void onLlmUsage(BiConsumer<String, Usage> sink) {
+        this.llmUsageSink = sink;
+    }
+    /**
+     * The last summarization failure, so callers can surface it instead of reporting a silent no-op.
+     */
+    public String getLastFailure() {
+        return lastFailure;
+    }
+    /**
      * Repoints compression at a provider/model selected after the agent was built.
      */
     public void updateModel(LLMProvider llmProvider, String agentModel) {
         if (llmProvider != null) this.llmProvider = llmProvider;
         if (agentModel == null || agentModel.isBlank()) return;
         this.summaryModel = agentModel;
-        var modelInfo = LLMModelContextRegistry.getInstance().getModelInfo(agentModel);
-        this.maxContextTokens = modelInfo != null ? modelInfo.contextWindow() : FALLBACK_MAX_CONTEXT_TOKENS;
+        this.contextModel = agentModel;
+        this.contextWindowOverride = null;
+        this.maxContextTokens = resolveContextWindow();
         this.maxToolResultTokens = calculateMaxToolResultTokens();
     }
     public boolean shouldCompress(int currentTokens) {
@@ -114,61 +144,61 @@ public class Compression {
         return doCompress(messages, true);
     }
     private List<Message> doCompress(List<Message> messages, boolean force) {
+        lastFailure = null;
         var systemMsg = extractSystemMessage(messages);
         var conversationMsgs = extractConversationMessages(messages);
-
         if (conversationMsgs.size() <= 2) {
-            return messages;
+            return skip(messages, "not enough conversation to summarize");
         }
-
         int lastUserIndex = findLastUserIndex(conversationMsgs);
         if (lastUserIndex < 0) {
-            return messages;
+            return skip(messages, "no user message to anchor the kept window");
         }
-
-        int keepFromIndex;
-        if (force) {
-            keepFromIndex = calculateForceKeepFromIndex(conversationMsgs);
-        } else {
-            keepFromIndex = calculateKeepFromIndex(conversationMsgs, lastUserIndex);
-        }
+        int keepFromIndex = force
+                ? calculateForceKeepFromIndex(conversationMsgs)
+                : calculateKeepFromIndex(conversationMsgs, lastUserIndex);
         keepFromIndex = ToolCallPruning.alignToToolSegmentStart(conversationMsgs, keepFromIndex);
         if (keepFromIndex <= 0) {
-            return messages;
+            return skip(messages, "nothing before the kept window to summarize");
         }
-
         List<Message> toCompress = new ArrayList<>(conversationMsgs.subList(0, keepFromIndex));
         List<Message> toKeep = new ArrayList<>(conversationMsgs.subList(keepFromIndex, conversationMsgs.size()));
         if (toCompress.isEmpty()) {
-            return messages;
+            return skip(messages, "nothing before the kept window to summarize");
         }
-
         Message preservedUserMsg = findPreservedUserMessage(toCompress, toKeep);
         if (preservedUserMsg != null) {
             toCompress.remove(preservedUserMsg);
         }
-
         int overhead = 2 + (preservedUserMsg != null ? 1 : 0) + (systemMsg != null ? 1 : 0);
         if (toCompress.size() <= overhead) {
-            LOGGER.debug("Too few messages to compress effectively, skipping");
-            return messages;
+            return skip(messages, "too few messages to summarize");
         }
-
+        return applySummary(messages, systemMsg, preservedUserMsg, toKeep, toCompress);
+    }
+    private List<Message> applySummary(List<Message> messages, Message systemMsg, Message preservedUserMsg,
+                                       List<Message> toKeep, List<Message> toCompress) {
         notifyListener(messages.size(), toCompress.size(), false);
         var summary = summarize(toCompress);
         if (summary.isBlank()) {
+            if (lastFailure == null) lastFailure = "summarization returned an empty result";
             LOGGER.warn("Summarization returned empty result, keeping original messages");
             return messages;
         }
-
         var result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
         if (result.size() >= messages.size()) {
+            lastFailure = "compression would not shrink the conversation";
             LOGGER.debug("Compression did not reduce message count, keeping original");
             return messages;
         }
         notifyListener(messages.size(), result.size(), true);
         LOGGER.debug("Compression complete: {} -> {} messages", messages.size(), result.size());
         return result;
+    }
+    private List<Message> skip(List<Message> messages, String reason) {
+        lastFailure = reason;
+        LOGGER.debug("Compression skipped: {}", reason);
+        return messages;
     }
     private Message findPreservedUserMessage(List<Message> toCompress, List<Message> toKeep) {
         boolean hasUserInKeep = toKeep.stream().anyMatch(m -> m.role == RoleType.USER);
@@ -297,7 +327,10 @@ public class Compression {
     }
     private String summarize(List<Message> messagesToSummarize) {
         String content = formatMessages(messagesToSummarize);
-        if (content.isBlank()) return "";
+        if (content.isBlank()) {
+            lastFailure = "the summarized segment contained no text";
+            return "";
+        }
         int targetTokens = Math.min(MAX_SUMMARY_TOKENS, Math.max(MIN_SUMMARY_TOKENS, maxContextTokens / 10));
         String prompt = String.format(Prompts.COMPRESSION_PROMPT, (int) (targetTokens * 0.75), content);
         String summary = callLLM(prompt);
@@ -309,6 +342,7 @@ public class Compression {
             var msgs = List.of(Message.of(RoleType.USER, prompt));
             var request = CompletionRequest.of(msgs, null, 0.3, summaryModel, "memory-compressor");
             var response = llmProvider.completion(request);
+            reportUsage(response);
 
             if (response != null && response.choices != null && !response.choices.isEmpty()) {
                 var choice = response.choices.getFirst();
@@ -317,9 +351,20 @@ public class Compression {
                 }
             }
         } catch (Exception e) {
+            lastFailure = "summarization call failed: " + e.getMessage();
             LOGGER.error("Failed to call LLM for compression", e);
         }
         return "";
+    }
+    private void reportUsage(CompletionResponse response) {
+        if (llmUsageSink == null || response == null || response.usage == null) {
+            return;
+        }
+        try {
+            llmUsageSink.accept(summaryModel, response.usage);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to report compression usage", e);
+        }
     }
     private String formatMessages(List<Message> messages) {
         StringBuilder sb = new StringBuilder(1024);
@@ -350,88 +395,10 @@ public class Compression {
         return sb.toString();
     }
     public String compressToolResult(String toolName, String result, String sessionId) {
-        if (result == null || result.isEmpty()) {
-            return result;
-        }
-
-        int tokenCount = Tokenizer.tokenCount(result);
-
-        if (tokenCount <= maxToolResultTokens) {
-            return result;
-        }
-
-        try {
-            Path filePath = writeToolResultToFile(toolName, result, sessionId);
-            String summary = buildToolResultSummary(toolName, result, tokenCount, filePath);
-
-            LOGGER.debug("Long tool result from {} saved to file: {} ({} tokens, max: {})",
-                toolName, filePath, tokenCount, maxToolResultTokens);
-
-            return summary;
-        } catch (IOException e) {
-            LOGGER.error("Failed to write long tool result to file, keeping original", e);
-            return result;
-        }
+        return ToolResultSpill.compress(toolName, result, sessionId, maxToolResultTokens);
     }
     public boolean shouldCompressToolResult(String result) {
-        if (result == null || result.isEmpty()) {
-            return false;
-        }
-        int tokenCount = Tokenizer.tokenCount(result);
-        return tokenCount > maxToolResultTokens;
-    }
-    private Path writeToolResultToFile(String toolName, String content, String sessionId) throws IOException {
-        String sid = sessionId != null ? sessionId : "default";
-        Path baseTempDir = Path.of(System.getProperty("java.io.tmpdir"), TEMP_DIR_NAME);
-        Path sessionDir = baseTempDir.resolve(sid);
-
-        if (!Files.exists(sessionDir)) {
-            Files.createDirectories(sessionDir);
-        }
-
-        String fileName = String.format("%s_%d.txt", sanitizeFileName(toolName), Instant.now().toEpochMilli());
-        Path filePath = sessionDir.resolve(fileName);
-        Files.writeString(filePath, content);
-        return filePath;
-    }
-    private String buildToolResultSummary(String toolName, String content, int tokenCount, Path filePath) {
-        String headContent = truncateToTokens(content);
-        String tailContent = extractTailTokens(content);
-
-        return String.format("[Tool result truncated - full content saved to file]%n"
-            + "Tool: %s%n"
-            + "File: %s%n"
-            + "Total: %d tokens (exceeds %d token limit)%n%n"
-            + "=== HEAD (first %d tokens) ===%n"
-            + "%s%n%n"
-            + "=== ... truncated ... ===%n%n"
-            + "=== TAIL (last %d tokens) ===%n"
-            + "%s%n%n"
-            + "[WARNING: This is a large file. Do NOT read the full file directly as it will be truncated again."
-            + " Use file related tools to read specific parts of the file as needed.],%n"
-            + "File path: %s",
-            toolName, filePath, tokenCount, maxToolResultTokens,
-            HEAD_TOKENS, headContent,
-            TAIL_TOKENS, tailContent,
-            filePath);
-    }
-    private String truncateToTokens(String content) {
-        List<Integer> tokens = Tokenizer.encode(content);
-        if (tokens.size() <= HEAD_TOKENS) {
-            return content;
-        }
-        return Tokenizer.decode(tokens.subList(0, HEAD_TOKENS));
-    }
-    private String extractTailTokens(String content) {
-        List<Integer> tokens = Tokenizer.encode(content);
-        if (tokens.size() <= TAIL_TOKENS) {
-            return content;
-        }
-        int startIndex = tokens.size() - TAIL_TOKENS;
-        return Tokenizer.decode(tokens.subList(startIndex, tokens.size()));
-    }
-    private String sanitizeFileName(String name) {
-        return name.replaceAll("[^a-zA-Z0-9_-]", "_");
+        return ToolResultSpill.exceedsLimit(result, maxToolResultTokens);
     }
     public int getMaxContextTokens() {
         return maxContextTokens;

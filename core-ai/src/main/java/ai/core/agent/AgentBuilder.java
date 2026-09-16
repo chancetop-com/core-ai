@@ -3,6 +3,7 @@ package ai.core.agent;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.lifecycle.ResponseValidationLifecycle;
 import ai.core.context.Compression;
+import ai.core.context.CompressionConfig;
 import ai.core.context.CompressionLifecycle;
 import ai.core.context.ToolCallPruning;
 import ai.core.llm.LLMProvider;
@@ -83,28 +84,22 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
-    public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String summaryModel) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, llmProvider, resolveCompressionModel(), summaryModel);
-        return this;
-    }
-
-    public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens, LLMProvider llmProvider, String summaryModel) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, llmProvider, resolveCompressionModel(), summaryModel);
-        return this;
-    }
-
-    public AgentBuilder compression(double triggerThreshold, int keepRecentTurns) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, this.llmProvider, resolveCompressionModel(), resolveCompressionModel());
-        return this;
-    }
-
-    public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, this.llmProvider, resolveCompressionModel(), resolveCompressionModel());
-        return this;
-    }
-
     public AgentBuilder compression(boolean enabled) {
         this.compressionEnabled = enabled;
+        return this;
+    }
+
+    /**
+     * Applies configured compression settings; null fields keep their defaults.
+     */
+    public AgentBuilder compression(CompressionConfig config) {
+        if (config == null) {
+            return this;
+        }
+        if (config.enabled() != null) {
+            this.compressionEnabled = config.enabled();
+        }
+        this.compression = new Compression(config, this.llmProvider, resolveCompressionModel());
         return this;
     }
 

@@ -206,14 +206,19 @@ class AcpSlashCommandHandler {
     private String handleCompact(ai.core.agent.Agent agent, AcpSession session) {
         var msgs = agent.getMessages();
         var compression = agent.getCompression();
-        if (msgs.size() <= 4 || compression == null) return "Nothing to compact.";
+        if (compression == null || msgs.size() <= 4) return "Nothing to compact.";
         int before = msgs.size();
         var compressed = compression.forceCompress(msgs);
-        if (compressed.equals(msgs)) return "Nothing to compact.";
+        if (compressed.equals(msgs)) return nothingToCompact(compression);
         msgs.clear();
         msgs.addAll(compressed);
         if (agent.hasPersistenceProvider()) agent.save(session.sessionId());
         return "Compacted: " + before + " \u2192 " + msgs.size() + " messages.";
+    }
+
+    private String nothingToCompact(ai.core.context.Compression compression) {
+        var reason = compression.getLastFailure();
+        return reason != null ? "Nothing to compact (" + reason + ")." : "Nothing to compact.";
     }
 
     private String handleExport(String[] parts, AcpSession session, ai.core.agent.Agent agent) {

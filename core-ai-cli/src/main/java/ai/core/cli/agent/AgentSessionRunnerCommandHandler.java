@@ -6,6 +6,7 @@ import ai.core.cli.memory.MemorySectionManager;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.TextUtil;
+import ai.core.context.Compression;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
@@ -176,14 +177,14 @@ class AgentSessionRunnerCommandHandler {
         var messages = agent.getMessages();
         var compression = agent.getCompression();
         if (messages.size() <= 4 || compression == null) {
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact.\n" + AnsiTheme.RESET);
+            printNothingToCompact(null);
             return;
         }
         int beforeCount = messages.size();
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Compacting...\n" + AnsiTheme.RESET);
         var compressed = compression.forceCompress(messages);
         if (compressed.equals(messages)) {
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact.\n" + AnsiTheme.RESET);
+            printNothingToCompact(compression);
             return;
         }
         messages.clear();
@@ -194,6 +195,12 @@ class AgentSessionRunnerCommandHandler {
         }
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Compacted: "
                 + beforeCount + " → " + messages.size() + " messages\n\n");
+    }
+
+    private void printNothingToCompact(Compression compression) {
+        var reason = compression != null ? compression.getLastFailure() : null;
+        var detail = reason != null ? " (" + reason + ")" : "";
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact" + detail + ".\n" + AnsiTheme.RESET);
     }
 
     void handleUndo() {

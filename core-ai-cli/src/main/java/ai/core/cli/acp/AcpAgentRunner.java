@@ -18,6 +18,7 @@ import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteAgentConfigLoader;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
 import ai.core.cli.utils.PathUtils;
+import ai.core.context.CompressionConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManager;
@@ -140,7 +141,8 @@ public class AcpAgentRunner {
                 CliAppHelper.imageMediaProvider(props),
                 CliAppHelper.videoMediaProvider(props),
                 props.property("media.image.model").orElse(null),
-                props.property("media.video.model").orElse(null));
+                props.property("media.video.model").orElse(null),
+                CliAppHelper.compressionConfig(props));
         restoreActiveProvider(props, result.llmProviders);
 
         var agent = buildAgent(ctx);
@@ -206,7 +208,8 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                    Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null);
+                    Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null,
+                    ctx.compressionConfig());
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -246,7 +249,8 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null);
+                Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null,
+                ctx.compressionConfig());
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -414,6 +418,7 @@ public class AcpAgentRunner {
                                 MediaProvider imageMediaProvider,
                                 MediaProvider videoMediaProvider,
                                 String defaultImageModel,
-                                String defaultVideoModel) {
+                                String defaultVideoModel,
+                                CompressionConfig compressionConfig) {
     }
 }
