@@ -174,7 +174,7 @@ public class ToolRefResolver {
         if (entry != null) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
-                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService, this::enhanceBuiltinTools);
+                var provider = BuiltinToolProvider.refreshing(setName, mediaProvider, gitHubTokenProvider, videoService, this::enhanceBuiltinTools);
                 result.addAll(provider.provide().values());
             }
             return;
@@ -310,7 +310,7 @@ public class ToolRefResolver {
             case MCP -> result.addAll(resolveMcpTools(entry, sessionMgr));
             case BUILTIN -> {
                 var setName = entry.config != null ? entry.config.get("set") : null;
-                var provider = BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService, this::enhanceBuiltinTools);
+                var provider = BuiltinToolProvider.refreshing(setName, mediaProvider, gitHubTokenProvider, videoService, this::enhanceBuiltinTools);
                 result.addAll(provider.provide().values());
             }
             case API -> result.addAll(resolveApiTools(entry));

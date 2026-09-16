@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -84,6 +85,39 @@ class ToolRegistryTest {
 
             assertTrue(names.contains("read_file"));
             assertTrue(names.contains("write_file"));
+        }
+
+        @Test
+        void shouldApplyEnhancerOnceForStaticProvider() {
+            var applied = new AtomicInteger();
+            registry.registerProvider(BuiltinToolProvider.fromSet(ToolProvider.BUILTIN_MEDIA_GENERATION, null, null, null,
+                    tools -> enhance(tools, applied)));
+
+            assertEquals("generation 1", description(registry, "generate_image"));
+            assertEquals("generation 1", description(registry, "generate_image"));
+            assertEquals(1, applied.get());
+        }
+
+        @Test
+        void shouldReapplyEnhancerOnEveryMaterializeForRefreshingProvider() {
+            var applied = new AtomicInteger();
+            registry.registerProvider(BuiltinToolProvider.refreshing(ToolProvider.BUILTIN_MEDIA_GENERATION, null, null, null,
+                    tools -> enhance(tools, applied)));
+
+            assertEquals("generation 1", description(registry, "generate_image"));
+            assertEquals("generation 2", description(registry, "generate_image"));
+            assertEquals(2, applied.get());
+        }
+
+        private List<ToolCall> enhance(List<ToolCall> tools, AtomicInteger applied) {
+            var generation = applied.incrementAndGet();
+            return tools.stream()
+                    .map(tool -> newEchoTool(tool.getName(), "generation " + generation, ToolExposure.DIRECT))
+                    .toList();
+        }
+
+        private String description(ToolRegistry registry, String toolName) {
+            return registry.materialize().getDispatchMap().get(toolName).getDescription();
         }
     }
 

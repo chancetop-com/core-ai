@@ -157,11 +157,12 @@ public class SystemSettingsService {
     /**
      * Default chat model explicitly chosen on the settings page, null when never configured here.
      * Callers prefer this choice over gateway routing defaults, while {@link #llmModel()} keeps the
-     * agent.properties fallback for deployments without a gateway.
+     * agent.properties fallback for deployments without a gateway. A disabled gateway model reads as
+     * unset as well, so disabling a model degrades every run to the gateway default instead of failing.
      */
     public String configuredLlmModel() {
         var entity = entity();
-        return entity == null ? null : normalizeModel(entity.llmModel);
+        return entity == null ? null : enabledModel(normalizeModel(entity.llmModel));
     }
 
     public String llmModel() {
@@ -179,14 +180,35 @@ public class SystemSettingsService {
         return entity == null ? null : normalizeModel(entity.summarizePdfModel);
     }
 
+    /**
+     * Configured default image model, resolved per call so admin changes apply without a restart.
+     * A model that has been disabled in the gateway reads as unset, which keeps it out of the agent
+     * variables; callers then fall back to the gateway's own default.
+     */
     public String imageGenerationModel() {
         var entity = entity();
-        return entity == null ? null : normalizeModel(entity.imageGenerationModel);
+        return entity == null ? null : enabledModel(normalizeModel(entity.imageGenerationModel));
     }
 
+    /** Configured default video model, disabled models read as unset - see {@link #imageGenerationModel()}. */
     public String videoGenerationModel() {
         var entity = entity();
-        return entity == null ? null : normalizeModel(entity.videoGenerationModel);
+        return entity == null ? null : enabledModel(normalizeModel(entity.videoGenerationModel));
+    }
+
+    /**
+     * Model id while the gateway still routes it, null once it is disabled.
+     * Only an explicit false hides a model: legacy documents without the enabled field keep routing.
+     */
+    private String enabledModel(String model) {
+        if (model == null) return null;
+        var query = new Query();
+        query.filter = Filters.and(
+                Filters.eq("model_id", model),
+                Filters.ne("enabled", Boolean.FALSE)
+        );
+        query.limit = 1;
+        return gatewayModelCollection.find(query).isEmpty() ? null : model;
     }
 
     public String videoUnderstandingModel() {
@@ -283,7 +305,7 @@ public class SystemSettingsService {
         var query = new Query();
         query.filter = Filters.and(
                 Filters.eq("model_id", model),
-                Filters.eq("enabled", Boolean.TRUE),
+                Filters.ne("enabled", Boolean.FALSE),
                 Filters.eq("endpoint_types", "chat.completions")
         );
         query.limit = 1;
@@ -297,7 +319,7 @@ public class SystemSettingsService {
         var query = new Query();
         query.filter = Filters.and(
                 Filters.eq("model_id", model),
-                Filters.eq("enabled", Boolean.TRUE),
+                Filters.ne("enabled", Boolean.FALSE),
                 Filters.eq("endpoint_types", "chat.completions")
         );
         query.limit = 1;
@@ -311,7 +333,7 @@ public class SystemSettingsService {
         var query = new Query();
         query.filter = Filters.and(
                 Filters.eq("model_id", model),
-                Filters.eq("enabled", Boolean.TRUE)
+                Filters.ne("enabled", Boolean.FALSE)
         );
         query.limit = 1;
         if (gatewayModelCollection.find(query).isEmpty()) {

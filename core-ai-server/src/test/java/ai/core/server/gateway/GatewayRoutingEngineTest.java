@@ -2,6 +2,7 @@ package ai.core.server.gateway;
 
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.tool.tools.MediaModelHint;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
@@ -10,8 +11,10 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -49,6 +52,39 @@ class GatewayRoutingEngineTest {
         var engine = engine(List.of(videoOnly));
 
         assertNull(engine.defaultChatModelId());
+    }
+
+    @Test
+    void mediaModelHintsExcludeDisabledModels() {
+        var enabled = model("gemini-3.1-flash-image", false, 100);
+        enabled.endpointTypes = List.of("image.generations");
+        var disabled = model("gpt-image-2", false, 200);
+        disabled.endpointTypes = List.of("image.generations");
+        disabled.enabled = Boolean.FALSE;
+        var unset = model("seedream-5-pro", false, 300);
+        unset.endpointTypes = List.of("image.generations");
+        unset.enabled = null;
+        var engine = engine(List.of(enabled, disabled, unset));
+
+        var hints = engine.mediaModelHints(GatewayEndpointType.IMAGE_GENERATION);
+
+        assertEquals(List.of("gemini-3.1-flash-image", "seedream-5-pro"),
+                hints.stream().map(MediaModelHint::modelId).toList());
+    }
+
+    @Test
+    void routeRejectsDisabledModelInsteadOfFallingBackToTheProviderPrefix() {
+        var disabled = model("gemini-3.1-flash-image", false, 100);
+        disabled.endpointTypes = List.of("image.generations");
+        disabled.enabled = Boolean.FALSE;
+        var engine = engine(List.of(disabled), "gemini-");
+
+        var error = assertThrows(BadRequestException.class,
+                () -> engine.route("gemini-3.1-flash-image", GatewayEndpointType.IMAGE_GENERATION));
+
+        assertEquals("gateway model is disabled: gemini-3.1-flash-image", error.getMessage());
+        assertTrue(engine.isDisabled("gemini-3.1-flash-image"));
+        assertFalse(engine.isDisabled("never-registered"));
     }
 
     @Test

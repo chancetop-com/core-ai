@@ -599,7 +599,10 @@ function ModelSelect({ value, models, defaultModel, onChange }: {
     })),
   ];
 
-  const selectedLabel = options.find(o => o.value === value)?.label || 'Select model...';
+  // the stored model may be missing from the options because it was disabled on the gateway page;
+  // keep naming it instead of showing an empty selection, and the value is saved back unchanged
+  const selectedLabel = options.find(o => o.value === value)?.label
+    || (value ? `${value} (disabled)` : 'Select model...');
 
   return (
     <div className="relative" ref={ref}>

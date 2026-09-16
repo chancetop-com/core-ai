@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CheckCircle2, CircleAlert, KeyRound, Pencil, PlugZap, Plus, RefreshCw, Save, Star, Trash2, X } from 'lucide-react';
+import { Ban, CheckCircle2, CircleAlert, KeyRound, Pencil, PlugZap, Plus, Power, RefreshCw, Save, Star, Trash2, X } from 'lucide-react';
 import { api, type GatewayDiscoveredModel, type GatewayModel, type GatewayModelRequest, type GatewayProvider, type GatewayProviderRequest } from '../../api/client';
 
 const PROVIDER_TYPES = [
@@ -534,6 +534,18 @@ export default function GatewayProviders() {
     }
   };
 
+  // disabled models stop routing and disappear from every agent-facing list: the model
+  // dropdowns, the generate_image / generate_video descriptions and the drama model hints
+  const toggleModel = async (model: GatewayModel) => {
+    setError('');
+    try {
+      await api.gateway.updateModel(model.id, { enabled: model.enabled === false });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update gateway model');
+    }
+  };
+
   const toggleEndpoint = (endpoint: string, checked: boolean) => {
     setModelForm(current => {
       const next = checked
@@ -608,6 +620,7 @@ export default function GatewayProviders() {
           openEditModel,
           removeModel,
           setDefaultModel,
+          toggleModel,
         })}
       </div>
 
@@ -739,8 +752,9 @@ function renderModelsTable(props: {
   openEditModel: (model: GatewayModel) => void;
   removeModel: (model: GatewayModel) => void;
   setDefaultModel: (model: GatewayModel) => void;
+  toggleModel: (model: GatewayModel) => void;
 }) {
-  const { models, loading, providerById, openEditModel, removeModel, setDefaultModel } = props;
+  const { models, loading, providerById, openEditModel, removeModel, setDefaultModel, toggleModel } = props;
   return (
     <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
       <table className="w-full text-sm">
@@ -764,12 +778,12 @@ function renderModelsTable(props: {
           ) : models.map(model => {
             const provider = providerById.get(model.providerId);
             return (
-              <tr key={model.id} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <tr key={model.id} className="border-t" style={{ borderColor: 'var(--color-border)', opacity: model.enabled === false ? 0.55 : 1 }}>
                 <td className="px-4 py-3">
                   <span className="font-medium font-mono">
                     {model.modelId}
                   </span>
-                  {model.enabled === false && <span className="text-xs ml-1" style={{ color: 'var(--color-text-secondary)' }}>· disabled</span>}
+                  {model.enabled === false && <span className="text-xs ml-1" style={{ color: 'var(--color-warning)' }}>· disabled</span>}
                 </td>
                 <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
                   {model.displayName || '-'}
@@ -795,6 +809,16 @@ function renderModelsTable(props: {
                   <div className="flex items-center justify-end gap-1">
                     <IconButton title={model.isDefault ? 'Default model' : 'Set as default'} onClick={() => { if (!model.isDefault) setDefaultModel(model); }}>
                       <Star size={15} style={model.isDefault ? { color: 'var(--color-warning)', fill: 'var(--color-warning)' } : undefined} />
+                    </IconButton>
+                    <IconButton
+                      title={model.enabled === false
+                        ? 'Enable — model becomes routable and visible to agents again'
+                        : 'Disable — model stops routing and is hidden from agents (model lists, generate_image / generate_video)'}
+                      onClick={() => toggleModel(model)}
+                    >
+                      {model.enabled === false
+                        ? <Power size={15} />
+                        : <Ban size={15} />}
                     </IconButton>
                     <IconButton title="Edit" onClick={() => openEditModel(model)}>
                       <Pencil size={15} />
@@ -1014,6 +1038,9 @@ function renderModelPanel(props: {
         <div className="grid grid-cols-2 gap-4">
           <Field label="Enabled">
             <Checkbox checked={form.enabled} onChange={checked => setForm({ ...form, enabled: checked })}>Accept traffic</Checkbox>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+              Disabled models stop routing and disappear from every agent-facing list — the model dropdowns and the generate_image / generate_video model lists.
+            </p>
           </Field>
           <Field label="Priority">
             <input className={inputClass} style={inputStyle} type="number" min={0} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} />

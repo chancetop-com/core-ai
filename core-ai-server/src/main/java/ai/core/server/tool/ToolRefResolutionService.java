@@ -280,7 +280,7 @@ class ToolRefResolutionService {
         if (entry != null && entry.type == ToolType.BUILTIN) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             if (setName != null) {
-                registry.registerProvider(BuiltinToolProvider.fromSet(setName, mediaProvider, gitHubTokenProvider, videoService,
+                registry.registerProvider(BuiltinToolProvider.refreshing(setName, mediaProvider, gitHubTokenProvider, videoService,
                         this::enhanceMediaToolDescription));
                 return;
             }

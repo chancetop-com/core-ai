@@ -108,6 +108,8 @@ public class GatewayRoutingEngine {
             // endpoint and hides which endpoint_types registration is actually missing
             if (modelExists) throw new BadRequestException("gateway model does not support endpoint, model=" + requestedModel
                     + ", endpoint=" + endpoint.id + ", registered=" + registeredEndpoints(registeredModels, requestedModel));
+            // a disabled model must not be served by provider-prefix or provider-fallback routing either
+            if (isDisabled(requestedModel)) throw new BadRequestException("gateway model is disabled: " + requestedModel);
             if (!registeredModels.isEmpty()) throw new BadRequestException("no enabled gateway model matches model: " + requestedModel);
             return legacyRoute(requestedModel, endpoint, snapshot.providers);
         }
@@ -160,6 +162,17 @@ public class GatewayRoutingEngine {
     public boolean knowsModel(String modelId) {
         if (!hasText(modelId)) return false;
         return snapshot().models.stream().anyMatch(model -> modelId.equals(model.modelId));
+    }
+
+    /**
+     * Whether this registered modelId was explicitly disabled by an admin. Lets a request that names a
+     * disabled model fail with that reason, instead of the misleading "no enabled gateway model matches"
+     * or a legacy provider-prefix route that silently keeps serving it.
+     */
+    public boolean isDisabled(String modelId) {
+        if (!hasText(modelId)) return false;
+        return snapshot().models.stream()
+                .anyMatch(model -> modelId.equals(model.modelId) && Boolean.FALSE.equals(model.enabled));
     }
 
     /**

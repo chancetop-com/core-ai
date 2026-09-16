@@ -7,16 +7,23 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
+import ai.core.server.gateway.GatewayEndpointType;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.registry.ToolProvider;
+import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.tools.MediaModelHint;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -110,6 +117,35 @@ class ToolRefResolutionServiceTest {
                 List.of(ToolRef.of("builtin:self-harness:list_agents", ToolSourceType.BUILTIN)), null);
 
         assertEquals(List.of("list_agents"), registry.getToolCalls().stream().map(ToolCall::getName).toList());
+    }
+
+    @Test
+    void disablingGatewayImageModelDropsItFromLiveToolRegistryDescription() {
+        var entry = new ToolRegistryEntry();
+        entry.id = "builtin:builtin-media-generation";
+        entry.type = ToolType.BUILTIN;
+        entry.config = Map.of("set", ToolProvider.BUILTIN_MEDIA_GENERATION);
+        var service = service(mock(AgentDefinitionService.class), Map.of(entry.id, entry));
+        var enabledModels = new ArrayList<>(List.of(
+                new MediaModelHint("gemini-3.1-flash-image", "gemini-3.1-flash-image", "google"),
+                new MediaModelHint("gpt-image-2", "gpt-image-2", "openai")));
+        service.setMediaModelHintsProvider(endpoint -> GatewayEndpointType.IMAGE_GENERATION == endpoint
+                ? List.copyOf(enabledModels)
+                : List.of());
+
+        var registry = service.resolveToToolRegistry(
+                List.of(ToolRef.of("builtin-media-generation", ToolSourceType.BUILTIN)), null);
+        assertTrue(imageToolDescription(registry).contains("gemini-3.1-flash-image"));
+
+        enabledModels.removeFirst();
+
+        var description = imageToolDescription(registry);
+        assertFalse(description.contains("gemini-3.1-flash-image"));
+        assertTrue(description.contains("gpt-image-2"));
+    }
+
+    private String imageToolDescription(ToolRegistry registry) {
+        return registry.materialize().getDispatchMap().get("generate_image").getDescription();
     }
 
     private ToolRefResolutionService service(AgentDefinitionService definitions) {
