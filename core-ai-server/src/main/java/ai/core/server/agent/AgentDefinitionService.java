@@ -151,7 +151,7 @@ public class AgentDefinitionService {
             }
         } else {
             Bson projection = summary ? AgentQueryHelper.SUMMARY_PROJECTION : null;
-            var assistant = personalAssistantService.findOrFork(listHelper.findDefaultAssistant(combinedFilter), userId);
+            var assistant = forkPersonalAssistant(listHelper, userId, effectiveRequest);
             paged = assistant != null
                 ? listHelper.listWithAssistantFirst(combinedFilter, sortField, skip, limit, assistant, projection)
                 : listHelper.findAgents(combinedFilter, sortField, skip, limit, projection);
@@ -172,6 +172,13 @@ public class AgentDefinitionService {
         response.page = paginated ? pageNum : null;
         response.limit = paginated ? pageSize : null;
         return response;
+    }
+
+    // the list hides the shared template in favour of the caller's own copy, so the fork lookup reads the template
+    // through the visibility filter alone: re-applying the list's template exclusion makes the query unsatisfiable
+    private AgentDefinition forkPersonalAssistant(AgentListHelper listHelper, String userId, ListAgentsRequest request) {
+        var lookupFilter = AgentQueryHelper.buildAssistantLookupFilter(userId, request);
+        return personalAssistantService.findOrFork(listHelper.findDefaultAssistant(lookupFilter), userId);
     }
 
     public void favorite(String agentId, String userId) {

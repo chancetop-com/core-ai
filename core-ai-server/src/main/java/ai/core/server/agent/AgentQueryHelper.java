@@ -20,6 +20,14 @@ final class AgentQueryHelper {
     static final Bson SUMMARY_PROJECTION = Projections.include("_id", "name");
 
     static Bson buildAccessFilter(String userId, ListAgentsRequest request) {
+        return combineFilters(buildVisibilityFilter(userId, request), excludeForkableTemplatesFilter());
+    }
+
+    /**
+     * Visibility without the template exclusion, for lookups that have to see the assistant template itself: the
+     * list hides it in favour of the caller's own copy, but the fork decision still reads it by id.
+     */
+    static Bson buildVisibilityFilter(String userId, ListAgentsRequest request) {
         Boolean myAgents = myAgentsFilter(request.myAgents);
         if (myAgents != null && myAgents) {
             if (Boolean.FALSE.equals(request.includeSystemDefault)) {
@@ -28,13 +36,9 @@ final class AgentQueryHelper {
                     Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
                 );
             }
-            return Filters.and(
-                Filters.or(
-                    Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
-                    Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
-                ),
-                // the shared template is replaced by the caller's own copy, it must not show up as a selectable agent
-                Filters.nin("_id", PersonalAssistantService.forkableTemplateIds())
+            return Filters.or(
+                Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
+                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
             );
         } else if (myAgents != null) {
             return Filters.and(
@@ -43,6 +47,16 @@ final class AgentQueryHelper {
             );
         }
         return Filters.empty();
+    }
+
+    // the shared template is replaced by the caller's own copy, it must not show up as a selectable agent
+    private static Bson excludeForkableTemplatesFilter() {
+        return Filters.nin("_id", PersonalAssistantService.forkableTemplateIds());
+    }
+
+    static Bson buildAssistantLookupFilter(String userId, ListAgentsRequest request) {
+        return combineFilters(buildVisibilityFilter(userId, request),
+            combineFilters(buildTypeFilter(request.type), buildIdsFilter(request.ids)));
     }
 
     static Boolean myAgentsFilter(String myAgents) {

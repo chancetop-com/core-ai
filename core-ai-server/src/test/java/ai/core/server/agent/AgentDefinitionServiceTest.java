@@ -249,6 +249,29 @@ class AgentDefinitionServiceTest {
     }
 
     @Test
+    void listLooksUpTheAssistantTemplateWithAFilterThatCanMatchIt() {
+        var collection = agentCollection();
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(collection.find(any(Query.class))).thenReturn(new ArrayList<>(List.of(assistant)));
+        when(collection.count(any(Bson.class))).thenReturn(1L);
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.of(assistant));
+        var service = service(collection);
+        when(service.personalAssistantService.findOrFork(any(), eq("user-1"))).thenReturn(assistant);
+        var request = new ListAgentsRequest();
+        request.myAgents = "true";
+
+        service.list("user-1", request);
+
+        var filters = ArgumentCaptor.forClass(Bson.class);
+        verify(collection).findOne(filters.capture());
+        var lookupFilter = filters.getValue().toBsonDocument().toJson();
+        assertTrue(lookupFilter.contains(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID));
+        assertFalse(lookupFilter.contains("$nin"),
+            "the chat selector hides the shared template, so the fork lookup must not re-apply that exclusion: " + lookupFilter);
+    }
+
+    @Test
     void deleteRejectsPersonalAssistantForItsOwner() {
         var collection = agentCollection();
         var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
