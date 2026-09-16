@@ -16,6 +16,7 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.session.ChatMessageService;
 import core.framework.inject.Inject;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import core.framework.web.exception.BadRequestException;
@@ -89,6 +90,8 @@ public class ServerA2AService {
     AgentDefinitionService agentDefinitionService;
     @Inject
     AgentSessionManager sessionManager;
+    @Inject
+    ChatMessageService chatMessageService;
     @Inject
     AgentCallAccessPolicy accessPolicy;
 
@@ -222,8 +225,18 @@ public class ServerA2AService {
 
         var userText = request.extractUserText();
         LOGGER.info("creating server A2A task, agentId={}, taskId={}, contextId={}", agentId, resolvedTaskId, session.id());
+        recordUserTurn(session.id(), userText);
         session.sendMessage(userText);
         return state;
+    }
+
+    /**
+     * A2A sessions are real conversations: without this the history of a hub/A2A run shows an agent answer
+     * with no question (and no title) in the Chat page. Approval replies are not user turns and are left out.
+     */
+    private void recordUserTurn(String sessionId, String userText) {
+        if (userText == null || userText.isBlank()) return;
+        chatMessageService.writeUserMessage(sessionId, userText);
     }
 
     private ai.core.api.server.session.AgentSession session(String contextId, String agentId, String userId, String source) {

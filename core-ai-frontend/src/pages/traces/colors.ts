@@ -34,6 +34,7 @@ export function sourceColors(source?: string): SourcePalette {
     case 'test':     return { label: 'Test',      color: '#8b5cf6' };
     case 'api':      return { label: 'API',       color: '#f59e0b' };
     case 'a2a':      return { label: 'A2A',       color: '#ec4899' };
+    case 'hub':      return { label: 'Hub',       color: '#0ea5e9' };
     case 'scheduled':return { label: 'Scheduled', color: '#eab308' };
     case 'workflow': return { label: 'Workflow',  color: '#10b981' };
     case 'llm_test': return { label: 'LLM Test',  color: '#8b5cf6' };

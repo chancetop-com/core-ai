@@ -24,6 +24,7 @@ import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.session.ChatMessageService;
 import ai.core.session.InProcessAgentSession;
 import ai.core.utils.JsonUtil;
 import core.framework.web.Request;
@@ -52,6 +53,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -85,6 +87,31 @@ class ServerA2AServiceTest {
     }
 
     @Test
+    void newTaskIsRecordedAsAUserTurnInTheChatHistory() {
+        var service = service();
+        service.agentDefinitionService = new FakeAgentDefinitionService(definition());
+        mockSession(service);
+
+        service.stream("agent-1", request("review the diff"), "user-1", event -> { }, () -> { });
+
+        verify(service.chatMessageService).writeUserMessage("context-1", "review the diff");
+    }
+
+    @Test
+    void taskWithoutTextRecordsNoUserTurn() {
+        var service = service();
+        service.agentDefinitionService = new FakeAgentDefinitionService(definition());
+        mockSession(service);
+        var request = new SendMessageRequest();
+        request.message = new ai.core.api.a2a.Message();
+        request.message.parts = List.of(Part.data(Map.of("decision", "approve")));
+
+        service.stream("agent-1", request, "user-1", event -> { }, () -> { });
+
+        verify(service.chatMessageService, never()).writeUserMessage(any(), any());
+    }
+
+    @Test
     void streamingResumeReusesExistingTaskAndRebindsStream() {
         var service = service();
         service.agentDefinitionService = new FakeAgentDefinitionService(definition());
@@ -109,6 +136,8 @@ class ServerA2AServiceTest {
 
         assertSame(state, resumed);
         verify(session.session).approveToolCall("call-1", ApprovalDecision.APPROVE);
+        // an approval resumes the turn; it is not a second user turn in the conversation
+        verify(service.chatMessageService, times(1)).writeUserMessage("context-1", "hello");
 
         fire(session.listeners, listener -> listener.onTextChunk(TextChunkEvent.of("context-1", "done")));
         fire(session.listeners, listener -> listener.onTurnComplete(TurnCompleteEvent.of("context-1", "done")));
@@ -289,6 +318,7 @@ class ServerA2AServiceTest {
     private ServerA2AService service() {
         var service = new ServerA2AService();
         service.accessPolicy = mock(AgentCallAccessPolicy.class);
+        service.chatMessageService = mock(ChatMessageService.class);
         return service;
     }
 

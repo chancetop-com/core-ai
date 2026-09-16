@@ -35,6 +35,7 @@ const SOURCE_OPTIONS: { key: string; label: string }[] = [
   { key: '', label: 'All sources' },
   { key: 'chat', label: 'Chat' },
   { key: 'a2a', label: 'A2A' },
+  { key: 'hub', label: 'Hub' },
   { key: 'api', label: 'API' },
   { key: 'scheduled', label: 'Scheduled' },
   { key: 'workflow', label: 'Workflow' },

@@ -3,6 +3,7 @@ import { MessageSquare, Plus, Loader2, MoreHorizontal, Pencil, Trash2, CheckSqua
 import { sessionApi } from '../../api/session';
 import type { ChatSessionSummary } from '../../api/session';
 import { formatMessageTimeFull } from './utils';
+import { sourceColors } from '../traces/colors';
 
 interface Props {
   currentSessionId: string | null;
@@ -27,6 +28,18 @@ function formatTime(iso?: string): string {
 
 const PAGE_SIZE = 50;
 
+// Default is unfiltered: hub/A2A/API runs are conversations too, and the user may want to continue them.
+const SOURCE_FILTERS: { key: string; label: string }[] = [
+  { key: '', label: 'All sources' },
+  { key: 'chat', label: 'Chat' },
+  { key: 'hub', label: 'Hub' },
+  { key: 'a2a', label: 'A2A' },
+  { key: 'api', label: 'API' },
+  { key: 'channel', label: 'Channel' },
+  { key: 'scheduled', label: 'Scheduled' },
+  { key: 'workflow', label: 'Workflow' },
+];
+
 export default function ChatSessionsSidebar({ currentSessionId, draftSession, refreshKey, onOpen, onNewChat, onDraftResolved, onDeleted }: Props) {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -40,6 +53,7 @@ export default function ChatSessionsSidebar({ currentSessionId, draftSession, re
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletingBatch, setDeletingBatch] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState('');
   const menuRef = useRef<HTMLDivElement | null>(null);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -47,7 +61,7 @@ export default function ChatSessionsSidebar({ currentSessionId, draftSession, re
   const loadInitial = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await sessionApi.listChatSessions(0, PAGE_SIZE);
+      const res = await sessionApi.listChatSessions(0, PAGE_SIZE, sourceFilter ? [sourceFilter] : undefined);
       setSessions(res.sessions || []);
       setTotal(res.total);
     } catch (e) {
@@ -55,13 +69,13 @@ export default function ChatSessionsSidebar({ currentSessionId, draftSession, re
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sourceFilter]);
 
   const loadMore = useCallback(async () => {
     setLoadingMore(true);
     try {
       const offset = sessionsRef.current.length;
-      const res = await sessionApi.listChatSessions(offset, PAGE_SIZE);
+      const res = await sessionApi.listChatSessions(offset, PAGE_SIZE, sourceFilter ? [sourceFilter] : undefined);
       setSessions(prev => [...prev, ...(res.sessions || [])]);
       setTotal(res.total);
     } catch (e) {
@@ -69,7 +83,7 @@ export default function ChatSessionsSidebar({ currentSessionId, draftSession, re
     } finally {
       setLoadingMore(false);
     }
-  }, []);
+  }, [sourceFilter]);
 
   useEffect(() => { loadInitial(); }, [loadInitial, refreshKey]);
 
@@ -78,7 +92,8 @@ export default function ChatSessionsSidebar({ currentSessionId, draftSession, re
     if (sessions.some(s => s.id === draftSession.id)) onDraftResolved?.();
   }, [draftSession, onDraftResolved, sessions]);
 
-  const visibleSessions = draftSession
+  const showDraft = sourceFilter === '' || sourceFilter === 'chat';
+  const visibleSessions = draftSession && showDraft
     ? [draftSession, ...sessions.filter(s => s.id !== draftSession.id)]
     : sessions;
 
@@ -209,6 +224,12 @@ export default function ChatSessionsSidebar({ currentSessionId, draftSession, re
             </button>
           </div>
         )}
+        <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
+          className="mt-2 w-full px-2 py-1.5 rounded-md border text-xs cursor-pointer"
+          style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
+          title="Filter conversations by where they were started">
+          {SOURCE_FILTERS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}
+        </select>
       </div>
       <div className="flex-1 overflow-auto">
         {loading && visibleSessions.length === 0 && (
@@ -251,10 +272,18 @@ export default function ChatSessionsSidebar({ currentSessionId, draftSession, re
                 <div className="text-sm truncate" title={s.title || s.id}>
                   {s.title || '(untitled)'}
                 </div>
-                <div className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}
+                <div className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}
                   title={formatMessageTimeFull(s.last_message_at || s.created_at)}>
-                  {formatTime(s.last_message_at || s.created_at)}
-                  {s.message_count ? ` · ${s.message_count} msg` : ''}
+                  {s.source && s.source !== 'chat' && (
+                    <span className="px-1 rounded shrink-0"
+                      style={{ background: 'var(--color-bg-tertiary)', color: sourceColors(s.source).color }}>
+                      {sourceColors(s.source).label}
+                    </span>
+                  )}
+                  <span className="truncate">
+                    {formatTime(s.last_message_at || s.created_at)}
+                    {s.message_count ? ` · ${s.message_count} msg` : ''}
+                  </span>
                 </div>
               </div>
               {!selecting && !isDraft && (
