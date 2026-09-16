@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRef } from 'react';
@@ -49,7 +49,7 @@ function typeInto(value: string) {
   fireEvent.keyUp(element, { key: value.at(-1) ?? '' });
 }
 
-describe('ChatComposer attachment mentions', () => {
+describe('ChatComposer', () => {
   beforeEach(() => {
     // jsdom under this vitest version exposes a localStorage without getItem; the composer reads the api key from it
     vi.stubGlobal('localStorage', { getItem: () => 'test-key' });
@@ -115,6 +115,61 @@ describe('ChatComposer attachment mentions', () => {
 
     const options = screen.getAllByRole('option');
     expect(options.map(option => option.getAttribute('aria-selected'))).toEqual(['false', 'true']);
+  });
+
+  it.each([
+    { phase: 'during composition', isComposing: true, keyCode: 13 },
+    { phase: 'after compositionend with an IME key code', isComposing: false, keyCode: 229 },
+  ])('leaves IME Enter $phase to the input method and sends only on the next Enter', ({ isComposing, keyCode }) => {
+    const { onSend } = renderComposer();
+    const element = textarea();
+    fireEvent.compositionStart(element);
+    typeInto('就是dui');
+    if (!isComposing) fireEvent.compositionEnd(element, { data: 'dui' });
+
+    const confirm = createEvent.keyDown(element, { key: 'Enter', isComposing, keyCode });
+    fireEvent(element, confirm);
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(element.value).toBe('就是dui');
+    expect(confirm.defaultPrevented).toBe(false);
+
+    if (isComposing) fireEvent.compositionEnd(element, { data: 'dui' });
+    fireEvent.keyUp(element, { key: 'Enter' });
+    fireEvent.keyDown(element, { key: 'Enter', isComposing: false, keyCode: 13 });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith('就是dui', []);
+    expect(element.value).toBe('');
+  });
+
+  it.each([
+    { phase: 'during composition', isComposing: true, keyCode: 13 },
+    { phase: 'after compositionend with an IME key code', isComposing: false, keyCode: 229 },
+  ])('does not select an attachment on IME Enter $phase', async ({ isComposing, keyCode }) => {
+    const { onSend } = renderComposer();
+    await upload('menu.png', 'image/png');
+    typeInto('make @me');
+    await screen.findByRole('option', { name: /menu\.png/ });
+
+    const confirm = createEvent.keyDown(textarea(), { key: 'Enter', isComposing, keyCode });
+    fireEvent(textarea(), confirm);
+
+    expect(textarea().value).toBe('make @me');
+    expect(screen.getByRole('option', { name: /menu\.png/ })).not.toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(confirm.defaultPrevented).toBe(false);
+  });
+
+  it('keeps Shift+Enter available for a newline without sending', async () => {
+    const { onSend } = renderComposer();
+    const user = userEvent.setup();
+    typeInto('hello');
+    await user.click(textarea());
+    await user.keyboard('{Shift>}{Enter}{/Shift}');
+
+    expect(textarea().value).toBe('hello\n');
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it('still sends on Enter when no mention menu is open', () => {

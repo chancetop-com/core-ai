@@ -555,7 +555,8 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
   }, [input, mention]);
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing) return;
+    // The IME confirmation key can arrive after compositionend, when isComposing is already false.
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (menuOpen && mention) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
