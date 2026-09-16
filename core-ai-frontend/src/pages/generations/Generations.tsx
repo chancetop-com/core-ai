@@ -119,7 +119,7 @@ export default function Generations() {
 
       {error && <div className="mb-4 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700">{error}</div>}
 
-      <div className="rounded-xl border overflow-hidden"
+      <div className="rounded-xl border overflow-x-auto"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         <table className="w-full text-sm">
           <thead>
@@ -127,29 +127,30 @@ export default function Generations() {
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Output</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Prompt</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Time</th>
+              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>User</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Type</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>State</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Model</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Usage</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Source</th>
-              <th className="text-right px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+              <th className="text-right px-4 py-3 font-medium sticky right-0"
+                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                 <span className="inline-flex items-center gap-1"><DollarSign size={14} /> Cost</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
+              <tr><td colSpan={10} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
             ) : jobs.length === 0 ? (
-              <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>No media generations found</td></tr>
+              <tr><td colSpan={10} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>No media generations found</td></tr>
             ) : jobs.map(job => {
               const sourceColor = SOURCE_COLORS[job.costSource ?? ''] ?? SOURCE_COLORS.unavailable;
               const stateColor = STATE_COLORS[job.state ?? ''] ?? STATE_COLORS.submitted;
               const isImage = job.mediaType === 'image';
               return (
-                <tr key={job.id} className="border-t" style={{ borderColor: 'var(--color-border)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                <tr key={job.id} className="group border-t hover:bg-[var(--color-bg-tertiary)]"
+                  style={{ borderColor: 'var(--color-border)' }}>
                   <td className="px-4 py-2">
                     {isImage && job.fileId
                       ? <img src={`/api/files/${job.fileId}/content`} alt={job.fileName ?? 'generated'}
@@ -175,6 +176,11 @@ export default function Generations() {
                       : <span style={{ color: 'var(--color-text-secondary)' }}>-</span>}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(job.createdAt)}</td>
+                  <td className="px-4 py-3">
+                    <div className="truncate" title={job.userId ?? ''} style={{ maxWidth: '140px' }}>
+                      {job.userName || job.userId || '-'}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
                       style={{ background: 'var(--color-bg-tertiary)' }}>
@@ -207,7 +213,7 @@ export default function Generations() {
                       {job.costSource ?? '-'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right font-medium">{formatCostUsd(job.costUsd)}</td>
+                  <td className="px-4 py-3 text-right font-medium whitespace-nowrap sticky right-0 z-10 bg-[var(--color-bg-secondary)] group-hover:bg-[var(--color-bg-tertiary)]">{formatCostUsd(job.costUsd)}</td>
                 </tr>
               );
             })}

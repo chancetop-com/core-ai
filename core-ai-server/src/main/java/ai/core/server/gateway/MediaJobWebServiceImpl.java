@@ -5,19 +5,28 @@ import ai.core.api.server.media.ListMediaJobsResponse;
 import ai.core.api.server.media.MediaJobView;
 import ai.core.api.server.media.MediaJobWebService;
 import ai.core.server.domain.MediaJob;
+import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
+import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
+import core.framework.mongo.MongoCollection;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author Stephen
  */
 @PermissionsRequired(PermissionCodes.TRACE_VIEW)
 public class MediaJobWebServiceImpl implements MediaJobWebService {
-    private static MediaJobView toView(MediaJob job) {
+    private static MediaJobView toView(MediaJob job, Map<String, String> userNames) {
         var view = new MediaJobView();
         view.id = job.id;
         view.userId = job.userId;
+        view.userName = job.userId == null ? null : userNames.get(job.userId);
         view.providerId = job.providerId;
         view.requestedModel = job.requestedModel;
         view.resolvedModel = job.resolvedModel;
@@ -43,15 +52,32 @@ public class MediaJobWebServiceImpl implements MediaJobWebService {
 
     @Inject
     MediaJobService mediaJobService;
+    @Inject
+    MongoCollection<User> userCollection;
 
     @Override
     public ListMediaJobsResponse list(ListMediaJobsRequest request) {
         var offset = request.offset == null ? 0 : Math.max(request.offset, 0);
         var limit = request.limit == null ? 20 : Math.clamp(request.limit, 1, 100);
         var result = mediaJobService.list(offset, limit, request.mediaType, request.costSource, request.userId);
+        var userNames = resolveUserNames(result.jobs());
         var response = new ListMediaJobsResponse();
         response.total = result.total();
-        response.jobs = result.jobs().stream().map(MediaJobWebServiceImpl::toView).toList();
+        response.jobs = result.jobs().stream().map(job -> toView(job, userNames)).toList();
         return response;
+    }
+
+    // batch resolve owner display names so the list can show who generated what without an N+1 query
+    private Map<String, String> resolveUserNames(List<MediaJob> jobs) {
+        var userIds = new HashSet<String>();
+        for (var job : jobs) {
+            if (job.userId != null && !job.userId.isBlank()) userIds.add(job.userId);
+        }
+        if (userIds.isEmpty()) return Map.of();
+        var names = new HashMap<String, String>();
+        for (var user : userCollection.find(Filters.in("_id", userIds))) {
+            names.put(user.id, user.name);
+        }
+        return names;
     }
 }

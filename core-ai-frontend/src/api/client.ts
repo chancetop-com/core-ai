@@ -295,6 +295,7 @@ export interface Span {
 export interface MediaJob {
   id: string;
   userId?: string;
+  userName?: string;
   providerId?: string;
   requestedModel?: string;
   resolvedModel?: string;

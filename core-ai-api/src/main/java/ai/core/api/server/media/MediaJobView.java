@@ -14,6 +14,9 @@ public class MediaJobView {
     @Property(name = "userId")
     public String userId;
 
+    @Property(name = "userName")
+    public String userName;
+
     @Property(name = "providerId")
     public String providerId;
 
