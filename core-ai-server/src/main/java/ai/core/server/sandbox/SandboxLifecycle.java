@@ -28,18 +28,59 @@ public final class SandboxLifecycle extends AbstractLifecycle {
 
             Code you run in the sandbox (bash, python, skill scripts) can call everything this session has
             configured — its MCP servers, API tools, LLM_CALL definitions, sub-agents, and non-sandboxed builtin
-            tools — through the sandbox hub. Scripts hold no credentials; the platform attaches the session's
-            identity to every call.
+            tools — through the sandbox hub. Scripts hold no credentials: the platform attaches the session's
+            identity to every call, and there is no direct LLM access (a script reaches an LLM only through an
+            LLM_CALL definition or a sub-agent attached to this agent).
 
-            - Python: `from core_ai_sandbox import session`, `s = session()`, then `s.mcp["<server>"]["<tool>"](...)`,
-              `s.api["<app>"]["<service>"]["<operation>"](...)`, `s.llm_call["<definition>"](query=...)`,
-              `s.agent["<name>"].run("...")`, `s.tool("<tool name>")(...)`.
-            - bash: `core-ai-sandbox catalog` to discover, `core-ai-sandbox describe <tool>`,
-              `core-ai-sandbox call <tool> --args '<json>'`.
+            Discover what is attached before writing calls; never guess tool names:
 
-            Discover available capabilities with `core-ai-sandbox catalog` / `s.catalog()` instead of guessing
-            names, and never hardcode service endpoints or credentials in sandbox scripts. There is no direct
-            LLM access: a script reaches an LLM only through an LLM_CALL definition attached to this agent.
+            - Python: `s.catalog()`, `s.tools(query="pod", kind="mcp")`, `s.describe("<name|ref_id|path>")` to
+              see a tool's `input_schema` and `timeout_seconds`.
+            - Bash: `core-ai-sandbox catalog`, `core-ai-sandbox tools <query> [--kind K]`,
+              `core-ai-sandbox describe <tool>`.
+
+            Call a tool with the arguments its `input_schema` declares, passed as keyword arguments. Every
+            namespace accepts item and attribute access, and `-`/`_` are interchangeable in every name:
+
+            ```python
+            from core_ai_sandbox import session
+            from core_ai_sandbox.errors import ToolError
+
+            s = session()
+            try:
+                pods = s.mcp["kubernetes"]["pods_list_in_namespace"](namespace="dev-ai")  # <server>/<tool>
+                print(pods.data or pods.text)        # .data = .text parsed as JSON, else None
+            except ToolError as error:               # a failed call raises, it never returns
+                print("failed:", error)              # error.tool / .status_code / .task_id
+
+            page = s.api["<app>"]["<service>"]["<operation>"](...)   # <app>/<service>/<operation>
+            answer = s.llm_call["<definition>"](query="...")         # .text is the model's answer
+            review = s.agent["<name>"].run("...")                    # sub-agent, the SDK waits for it
+            url = s.files.publish("report.html", title="Weekly")     # sandbox file -> download_url
+            ```
+
+            - `ToolResult`: `.text` (raw payload), `.data` (text parsed as JSON, else None), `.content`,
+              `.duration_ms`, `.llm_usage`. Print `.data` or a short summary, not whole payloads.
+            - Failures raise `ToolError` (`.tool`, `.error_code`, `.status_code`, `.task_id`);
+              `ToolNotFoundError` when the name is not attached; `TypeError` when an argument is missing or has
+              the wrong type. Catch `ToolError` when one forbidden or broken item should become data instead of
+              aborting the script, and treat a permission error as final for that capability rather than
+              probing alternatives.
+            - Slow tools: `wait=False` returns a `Task` to poll (`task.poll()`, `task.result`), and a call still
+              pending after `wait_timeout` raises a `ToolError` carrying its `task_id`. `timeout=`, `wait=` and
+              `wait_timeout=` belong to the SDK unless the tool's `input_schema` declares them, so
+              `run_bash(timeout=5000)` stays the sandbox bash timeout.
+            - `s.files.publish(path)` makes a script's output file a session artifact and returns its
+              `download_url`, for tools that need to fetch a file the script produced.
+
+            From bash, `core-ai-sandbox call <tool> --arg k=v` (repeatable, values coerced from the
+            input_schema) or `--args '<json>'`; `--json`, `--raw`, `--quiet` and `--timeout N` shape the output.
+            The exit code is the result — 0 ok, 1 tool error, 2 usage, 3 not bound, 4 forbidden, 5 not found,
+            6 timeout (the task may still be running) — so branch on it instead of scraping text.
+
+            This reference covers the whole hub surface: use it instead of reading the installed SDK source,
+            keep endpoints and credentials out of scripts, and prefer one script that prints a compact result
+            over many one-off calls.
             """;
 
     public static String appendHubInstructions(String systemPrompt) {

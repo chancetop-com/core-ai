@@ -34,7 +34,10 @@ public class ServerSkillTool extends ToolCall {
             LLM_CALL definitions, sub-agents and non-sandboxed builtin tools through the sandbox hub instead of
             hardcoding endpoints or credentials: `from core_ai_sandbox import session` (python) or
             `core-ai-sandbox catalog|describe|call` (bash). Check `core-ai-sandbox catalog` for what this agent
-            has attached before writing calls; there is no direct LLM access in a sandbox script.
+            has attached before writing calls. Arguments are keyword arguments matching the tool's
+            `input_schema`, `.data` holds the response parsed as JSON, and a failed call raises `ToolError` in
+            python (the CLI exits non-zero) instead of returning an error result; there is no direct LLM access
+            in a sandbox script.
             """;
 
     public static Builder builder() {

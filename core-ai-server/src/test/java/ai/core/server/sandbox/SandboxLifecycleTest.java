@@ -27,8 +27,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * A sandbox-enabled session must tell the agent that its configured capabilities are reachable from
- * inside the sandbox through the sandbox hub, and must keep receiving the artifact delivery
- * instruction — each exactly once.
+ * inside the sandbox through the sandbox hub — including how to call, read and recover from a hub call —
+ * and must keep receiving the artifact delivery instruction, each exactly once.
  *
  * @author xander
  */
@@ -98,6 +98,27 @@ class SandboxLifecycleTest {
 
         assertEquals(List.of(SubmitArtifactsTool.TOOL_NAME),
                 tools.stream().map(ToolCall::getName).toList());
+    }
+
+    @Test
+    void hubInstructionsTeachTheSdkCallResultAndErrorContract() {
+        lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"), context("u1"));
+
+        var prompt = agent.getSystemPrompt();
+        assertTrue(prompt.contains("input_schema"), "arguments come from the tool's schema");
+        assertTrue(prompt.contains("ToolError"), "a failed call must be known to raise");
+        assertTrue(prompt.contains(".data"), "a script must know how to read a result");
+        assertTrue(prompt.contains("wait=False"), "long calls must be pollable instead of blocking");
+        assertTrue(prompt.contains("s.files.publish"), "script output must be publishable as an artifact");
+        assertTrue(prompt.contains("6 timeout"), "bash skills branch on the CLI exit code");
+    }
+
+    @Test
+    void hubInstructionsStayWithinPromptBudget() {
+        lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"), context("u1"));
+
+        assertTrue(agent.getSystemPrompt().length() < 6000,
+                "hub instructions are appended to every sandbox session; keep them a reference, not a handbook");
     }
 
     @Test
