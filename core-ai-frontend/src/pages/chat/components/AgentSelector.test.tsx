@@ -55,4 +55,26 @@ describe('AgentSelector', () => {
 
     expect(onSelectAgent).toHaveBeenCalledWith(sharedAgent.id, sharedAgent);
   });
+
+  it('lists a pinned agent under Favorites only, never twice', () => {
+    const assistant = agent({ id: 'assistant:user-1', name: "Alice's Assistant", system_default: true });
+    const pinned = agent({ id: 'pinned-agent', name: 'Pinned Agent' });
+
+    render(
+      <AgentSelector
+        status="idle"
+        myAgents={[assistant, pinned]}
+        favoriteAgents={[pinned]}
+        selectedAgentId=""
+        onSelectAgent={vi.fn()}
+        onToggleFavorite={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /select agent/i }));
+
+    expect(screen.getAllByText('Pinned Agent')).toHaveLength(1);
+    expect(screen.getByText('Favorites')).toBeTruthy();
+    expect(screen.getByText("Alice's Assistant")).toBeTruthy();
+  });
 });

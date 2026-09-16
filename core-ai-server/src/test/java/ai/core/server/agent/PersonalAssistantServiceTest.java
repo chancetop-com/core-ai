@@ -24,9 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -165,12 +167,12 @@ class PersonalAssistantServiceTest {
         service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
 
         var update = ArgumentCaptor.forClass(Bson.class);
-        verify(users).update(any(Bson.class), update.capture());
-        assertTrue(update.getValue().toString().contains("assistant:user-1"), update.getValue().toString());
+        verify(users, atLeastOnce()).update(any(Bson.class), update.capture());
+        assertTrue(contains(update.getAllValues(), "permissions", "assistant:user-1"), update.getAllValues().toString());
     }
 
     @Test
-    void forkKeepsUnrestrictedUsersUntouched() {
+    void forkPinsTheCopyIntoTheCallersFavorites() {
         var service = service();
         var users = users();
         service.userCollection = users;
@@ -179,7 +181,24 @@ class PersonalAssistantServiceTest {
 
         service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
 
-        verify(users, never()).update(any(Bson.class), any(Bson.class));
+        var update = ArgumentCaptor.forClass(Bson.class);
+        verify(users, times(2)).update(any(Bson.class), update.capture());
+        assertTrue(contains(update.getAllValues(), "favorite_agent_ids", "assistant:user-1"), update.getAllValues().toString());
+    }
+
+    @Test
+    void forkKeepsUnrestrictedUsersPermissionless() {
+        var service = service();
+        var users = users();
+        service.userCollection = users;
+        when(users.get("user-1")).thenReturn(Optional.of(platformUser("user-1")));
+        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
+
+        service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
+
+        var update = ArgumentCaptor.forClass(Bson.class);
+        verify(users, times(2)).update(any(Bson.class), update.capture());
+        assertFalse(contains(update.getAllValues(), "permissions", "assistant:user-1"), update.getAllValues().toString());
     }
 
     @Test
@@ -251,6 +270,13 @@ class PersonalAssistantServiceTest {
         var captor = ArgumentCaptor.forClass(AgentDefinition.class);
         verify(service.agentDefinitionCollection).insert(captor.capture());
         return captor.getValue();
+    }
+
+    private boolean contains(List<Bson> updates, String field, String value) {
+        return updates.stream().anyMatch(update -> {
+            var document = update.toBsonDocument().toJson();
+            return document.contains(field) && document.contains(value);
+        });
     }
 
     @SuppressWarnings("unchecked")

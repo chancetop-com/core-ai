@@ -57,6 +57,20 @@ final class AgentListHelper {
         return text != null && text.toLowerCase(Locale.ROOT).contains(lowerKeyword);
     }
 
+    // the fork pins the caller's own assistant, the star toggle pins anything else
+    static void addFavorite(MongoCollection<User> userCollection, String userId, String agentId) {
+        initializeFavoritesIfNull(userCollection, userId);
+        userCollection.update(Filters.eq("_id", userId), Updates.addToSet(FAVORITE_AGENT_IDS_FIELD, agentId));
+    }
+
+    // core-ng writes null fields explicitly on entity replace, so existing user documents may carry
+    // favorite_agent_ids=null; $addToSet/$pull reject non-array fields, so normalize null to [] first.
+    private static void initializeFavoritesIfNull(MongoCollection<User> userCollection, String userId) {
+        var filter = Filters.and(Filters.eq("_id", userId),
+                Filters.or(Filters.exists(FAVORITE_AGENT_IDS_FIELD, false), Filters.type(FAVORITE_AGENT_IDS_FIELD, "null")));
+        userCollection.update(filter, Updates.set(FAVORITE_AGENT_IDS_FIELD, List.of()));
+    }
+
     static Map<String, String> resolveSkillNames(SkillService skillService, List<AgentDefinition> entities) {
         var skillIds = new HashSet<String>();
         for (var entity : entities) {
@@ -130,21 +144,12 @@ final class AgentListHelper {
     void favorite(String agentId, String userId) {
         agentDefinitionCollection.get(agentId)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + agentId));
-        initializeFavoritesIfNull(userId);
-        userCollection.update(Filters.eq("_id", userId), Updates.addToSet(FAVORITE_AGENT_IDS_FIELD, agentId));
+        addFavorite(userCollection, userId, agentId);
     }
 
     void unfavorite(String agentId, String userId) {
-        initializeFavoritesIfNull(userId);
+        initializeFavoritesIfNull(userCollection, userId);
         userCollection.update(Filters.eq("_id", userId), Updates.pull(FAVORITE_AGENT_IDS_FIELD, agentId));
-    }
-
-    // core-ng writes null fields explicitly on entity replace, so existing user documents may carry
-    // favorite_agent_ids=null; $addToSet/$pull reject non-array fields, so normalize null to [] first.
-    private void initializeFavoritesIfNull(String userId) {
-        var filter = Filters.and(Filters.eq("_id", userId),
-                Filters.or(Filters.exists(FAVORITE_AGENT_IDS_FIELD, false), Filters.type(FAVORITE_AGENT_IDS_FIELD, "null")));
-        userCollection.update(filter, Updates.set(FAVORITE_AGENT_IDS_FIELD, List.of()));
     }
 
     ListAgentsResponse listFavorites(String userId) {

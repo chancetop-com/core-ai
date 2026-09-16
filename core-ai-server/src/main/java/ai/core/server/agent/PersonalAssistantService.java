@@ -114,6 +114,8 @@ public class PersonalAssistantService {
             return existing;
         }
         grantAgentPermission(user, fork.id);
+        // the copy is the user's everyday entry point, so it starts pinned above the rest of the selector
+        AgentListHelper.addFavorite(userCollection, user.id, fork.id);
         LOGGER.info("personal assistant forked, userId={}, agentId={}, templateId={}", user.id, fork.id, template.id);
         return fork;
     }

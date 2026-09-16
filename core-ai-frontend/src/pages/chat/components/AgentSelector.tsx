@@ -33,21 +33,24 @@ const AgentSelector = memo(function AgentSelector({
   const [searchedAgents, setSearchedAgents] = useState<AgentDefinition[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const defaultAgents = useMemo(
-    () => myAgents.filter(agent => agent.system_default && canChatWithAgent(agent)),
-    [myAgents],
-  );
-  const ownedAgents = useMemo(
-    () => myAgents.filter(agent => !agent.system_default && canChatWithAgent(agent)),
-    [myAgents],
-  );
   const favorites = useMemo(
     () => favoriteAgents.filter(agent => canChatWithAgent(agent)),
     [favoriteAgents],
   );
+  // a pinned agent is listed under Favorites only, so the selector never shows the same agent twice
+  const pinnedIds = useMemo(() => new Set(favorites.map(agent => agent.id)), [favorites]);
   const favoriteIds = useMemo(() => new Set(favoriteAgents.map(agent => agent.id)), [favoriteAgents]);
+  const defaultAgents = useMemo(
+    () => myAgents.filter(agent => agent.system_default && canChatWithAgent(agent) && !pinnedIds.has(agent.id)),
+    [myAgents, pinnedIds],
+  );
+  const ownedAgents = useMemo(
+    () => myAgents.filter(agent => !agent.system_default && canChatWithAgent(agent) && !pinnedIds.has(agent.id)),
+    [myAgents, pinnedIds],
+  );
 
   // Debounced server-side search for shared agents
+
   useEffect(() => {
     if (searchQuery.trim().length === 0) {
       setSearchedAgents([]);
