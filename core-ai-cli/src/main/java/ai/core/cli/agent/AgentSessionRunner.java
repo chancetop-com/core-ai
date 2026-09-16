@@ -7,13 +7,13 @@ import ai.core.cli.command.ReplCommandHandler;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.listener.CliEventListener;
+import ai.core.cli.listener.CompressionProgressListener;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.memory.SessionCloseExtractor;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.FileReferenceExpander;
-import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.upgrade.VersionUtil;
@@ -358,21 +358,9 @@ public class AgentSessionRunner {
     private void setupCompressionListener(CliEventListener listener) {
         var compression = agent.getCompression();
         if (compression == null) return;
-        OutputPanel panel = listener.getPanel();
         // addListener instead of setListener: the memory trigger registers its own listener during
         // agent build, setListener would silently drop it
-        compression.addListener((beforeCount, afterCount, completed) -> {
-            boolean wasSpinning = panel.stopSpinnerIfActive();
-            String msg = completed
-                    ? "\n  " + AnsiTheme.SUCCESS + "\u2726" + AnsiTheme.RESET + AnsiTheme.MUTED + " Compressed: " + beforeCount + " \u2192 " + afterCount + " messages" + AnsiTheme.RESET + "\n"
-                    : "\n  " + AnsiTheme.MUTED + "\u2726 Compressing " + afterCount + " messages..." + AnsiTheme.RESET;
-            ui.printStreamingChunk(msg);
-            // only resume the spinner of a running turn; outside a turn (e.g. /compact) it would
-            // never be stopped again before the input prompt is redrawn
-            if (wasSpinning) {
-                panel.startSpinner();
-            }
-        });
+        compression.addListener(new CompressionProgressListener(listener.getPanel(), ui));
     }
 
     public record Config(String modelName, boolean autoApproveAll, String sessionId,

@@ -180,12 +180,14 @@ public class Compression {
         if (summary.isBlank()) {
             if (lastFailure == null) lastFailure = "summarization returned an empty result";
             LOGGER.warn("Summarization returned empty result, keeping original messages");
+            notifySkipped(messages.size(), lastFailure);
             return messages;
         }
         var result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
         if (result.size() >= messages.size()) {
             lastFailure = "compression would not shrink the conversation";
             LOGGER.debug("Compression did not reduce message count, keeping original");
+            notifySkipped(messages.size(), lastFailure);
             return messages;
         }
         notifyCompleted(messages.size(), result.size());
@@ -415,6 +417,12 @@ public class Compression {
     private void notifyCompleted(int beforeCount, int afterCount) {
         for (CompressionListener l : listeners) {
             l.onCompression(beforeCount, afterCount, true);
+        }
+    }
+
+    private void notifySkipped(int beforeCount, String reason) {
+        for (CompressionListener l : listeners) {
+            l.onCompressionSkipped(beforeCount, reason);
         }
     }
 }

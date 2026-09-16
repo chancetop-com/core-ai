@@ -338,6 +338,32 @@ class CompressionTest {
     }
 
     @Test
+    void testSkippedCompressionIsReportedAfterItStarts() {
+        Compression target = new Compression(new MockLLMProvider(""), "test-model");
+        var events = new ArrayList<String>();
+        target.addListener(new CompressionListener() {
+            @Override
+            public void onCompression(int beforeCount, int afterCount, boolean completed) {
+                events.add((completed ? "completed " : "started ") + beforeCount + ":" + afterCount);
+            }
+
+            @Override
+            public void onCompressionSkipped(int beforeCount, String reason) {
+                events.add("skipped " + beforeCount + ":" + reason);
+            }
+        });
+
+        var messages = createTestMessages(10);
+        target.forceCompress(messages);
+
+        assertEquals(2, events.size(), events.toString());
+        assertTrue(events.get(0).startsWith("started "), events.toString());
+        assertEquals("skipped " + messages.size() + ":summarization returned an empty result", events.get(1));
+
+        LOGGER.info("Skipped compression reported test passed");
+    }
+
+    @Test
     void testCompressionConfigOverridesDefaults() {
         var provider = new MockLLMProvider("Summary", new Usage(10, 5, 15));
         var config = new CompressionConfig(true, 0.5, 2, 1000, 32000, "cheap-summary-model");
