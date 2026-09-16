@@ -9,6 +9,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.prompt.Prompts;
+import ai.core.sandbox.Sandbox;
 import ai.core.utils.MessageTokenCounterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,10 +89,6 @@ public class Compression {
         return (int) (maxContextTokens * toolResultRatio);
     }
     public void addListener(CompressionListener listener) {
-        this.listeners.add(listener);
-    }
-    public void setListener(CompressionListener listener) {
-        this.listeners.clear();
         this.listeners.add(listener);
     }
     /**
@@ -178,7 +175,7 @@ public class Compression {
     }
     private List<Message> applySummary(List<Message> messages, Message systemMsg, Message preservedUserMsg,
                                        List<Message> toKeep, List<Message> toCompress) {
-        notifyListener(messages.size(), toCompress.size(), false);
+        notifyStarted(messages.size(), toCompress.size());
         var summary = summarize(toCompress);
         if (summary.isBlank()) {
             if (lastFailure == null) lastFailure = "summarization returned an empty result";
@@ -191,7 +188,7 @@ public class Compression {
             LOGGER.debug("Compression did not reduce message count, keeping original");
             return messages;
         }
-        notifyListener(messages.size(), result.size(), true);
+        notifyCompleted(messages.size(), result.size());
         LOGGER.debug("Compression complete: {} -> {} messages", messages.size(), result.size());
         return result;
     }
@@ -395,7 +392,10 @@ public class Compression {
         return sb.toString();
     }
     public String compressToolResult(String toolName, String result, String sessionId) {
-        return ToolResultSpill.compress(toolName, result, sessionId, maxToolResultTokens);
+        return compressToolResult(toolName, result, sessionId, null);
+    }
+    public String compressToolResult(String toolName, String result, String sessionId, Sandbox sandbox) {
+        return ToolResultSpill.compress(toolName, result, sessionId, maxToolResultTokens, sandbox);
     }
     public boolean shouldCompressToolResult(String result) {
         return ToolResultSpill.exceedsLimit(result, maxToolResultTokens);
@@ -406,9 +406,15 @@ public class Compression {
     public int getMaxToolResultTokens() {
         return maxToolResultTokens;
     }
-    private void notifyListener(int beforeCount, int afterCount, boolean completed) {
+    private void notifyStarted(int beforeCount, int compressingCount) {
         for (CompressionListener l : listeners) {
-            l.onCompression(beforeCount, afterCount, completed);
+            l.onCompression(beforeCount, compressingCount, false);
+        }
+    }
+
+    private void notifyCompleted(int beforeCount, int afterCount) {
+        for (CompressionListener l : listeners) {
+            l.onCompression(beforeCount, afterCount, true);
         }
     }
 }

@@ -50,10 +50,11 @@ public class CompressionLifecycle extends AbstractLifecycle {
         }
 
         String sessionId = executionContext != null ? executionContext.getSessionId() : null;
+        var sandbox = executionContext != null ? executionContext.getSandbox() : null;
         String toolName = functionCall.function != null ? functionCall.function.name : "unknown";
 
         try {
-            String compressed = compression.compressToolResult(toolName, result, sessionId);
+            String compressed = compression.compressToolResult(toolName, result, sessionId, sandbox);
             if (!compressed.equals(result)) {
                 toolResult.withResult(compressed);
                 LOGGER.debug("Tool result compressed for {}", toolName);

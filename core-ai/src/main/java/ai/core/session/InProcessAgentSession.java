@@ -353,7 +353,7 @@ public class InProcessAgentSession implements AgentSession {
     private void setupCompressionListener() {
         var compression = agent.getCompression();
         if (compression == null) return;
-        compression.setListener((beforeCount, afterCount, completed) ->
+        compression.addListener((beforeCount, afterCount, completed) ->
             dispatch(CompressionEvent.of(sessionId, beforeCount, afterCount, completed)));
     }
 

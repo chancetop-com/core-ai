@@ -18,6 +18,7 @@ import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
+import ai.core.sandbox.Sandbox;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -35,6 +36,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 
 /**
  * @author xander
@@ -491,6 +497,37 @@ class CompressionTest {
         }
 
         LOGGER.info("Compress tool result default session test passed");
+    }
+
+    @Test
+    void testCompressToolResultSpillsIntoTheSandbox() {
+        Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
+        Sandbox sandbox = mock(Sandbox.class);
+        List<String> uploaded = new ArrayList<>();
+        doAnswer(invocation -> {
+            uploaded.add(invocation.getArgument(0));
+            return null;
+        }).when(sandbox).uploadFile(anyString(), any(byte[].class));
+
+        String compressed = compressionWithProvider.compressToolResult("run_bash_command", "word ".repeat(100000), "session-9", sandbox);
+
+        assertEquals(1, uploaded.size());
+        assertTrue(uploaded.getFirst().startsWith("/tmp/core-ai/session-9/"));
+        assertTrue(compressed.contains(uploaded.getFirst()));
+        assertFalse(compressed.contains(System.getProperty("java.io.tmpdir")));
+    }
+
+    @Test
+    void testCompressToolResultWithoutStorageStillTruncates() throws Exception {
+        Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
+        Sandbox sandbox = mock(Sandbox.class);
+        doThrow(new IllegalStateException("sandbox is down")).when(sandbox).uploadFile(anyString(), any(byte[].class));
+
+        String compressed = compressionWithProvider.compressToolResult("run_bash_command", "word ".repeat(100000), "session-9", sandbox);
+
+        assertFalse(compressed.contains("File:"));
+        assertTrue(compressed.contains("Re-run the tool with a narrower"));
+        assertTrue(compressed.contains("HEAD (first 500 tokens)"));
     }
 
     private String extractFilePath(String summary) {
