@@ -40,11 +40,11 @@ public class Compression {
     private final double triggerThreshold;
     private final int keepRecentTurns;
     private final int keepTokens;
-    private final int maxContextTokens;
+    private int maxContextTokens;
     private final double toolResultRatio;
-    private final int maxToolResultTokens;
-    private final LLMProvider llmProvider;
-    private final String summaryModel;
+    private int maxToolResultTokens;
+    private LLMProvider llmProvider;
+    private String summaryModel;
     private final List<CompressionListener> listeners = new ArrayList<>();
 
     public Compression(LLMProvider llmProvider, String agentModel) {
@@ -76,6 +76,17 @@ public class Compression {
     public void setListener(CompressionListener listener) {
         this.listeners.clear();
         this.listeners.add(listener);
+    }
+    /**
+     * Repoints compression at a provider/model selected after the agent was built.
+     */
+    public void updateModel(LLMProvider llmProvider, String agentModel) {
+        if (llmProvider != null) this.llmProvider = llmProvider;
+        if (agentModel == null || agentModel.isBlank()) return;
+        this.summaryModel = agentModel;
+        var modelInfo = LLMModelContextRegistry.getInstance().getModelInfo(agentModel);
+        this.maxContextTokens = modelInfo != null ? modelInfo.contextWindow() : FALLBACK_MAX_CONTEXT_TOKENS;
+        this.maxToolResultTokens = calculateMaxToolResultTokens();
     }
     public boolean shouldCompress(int currentTokens) {
         if (llmProvider == null) {
@@ -121,6 +132,7 @@ public class Compression {
         } else {
             keepFromIndex = calculateKeepFromIndex(conversationMsgs, lastUserIndex);
         }
+        keepFromIndex = ToolCallPruning.alignToToolSegmentStart(conversationMsgs, keepFromIndex);
         if (keepFromIndex <= 0) {
             return messages;
         }

@@ -42,6 +42,17 @@ public class ToolCallPruning {
         return sanitized;
     }
 
+    // A kept slice that starts with a tool result whose assistant tool_calls message was summarized away
+    // loses that result entirely: it is neither kept nor part of the summary. Move the boundary back to
+    // the assistant that declared the calls so the whole tool segment stays together.
+    public static int alignToToolSegmentStart(List<Message> messages, int index) {
+        int aligned = Math.min(index, messages.size() - 1);
+        while (aligned > 0 && RoleType.TOOL == messages.get(aligned).role) {
+            aligned--;
+        }
+        return aligned;
+    }
+
     private final int keepRecentSegments;
     private final Set<String> excludeToolNames;
 

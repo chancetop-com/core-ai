@@ -49,10 +49,7 @@ class ModelPicker {
             return;
         } else if ("b".equalsIgnoreCase(input)) {
             var result = configurator.configure();
-            if (result != null) {
-                agent.setLlmProvider(llmProviders.getProvider(result.type()));
-                agent.setModel(result.model());
-            }
+            if (result != null) applySelectedModel(result.type(), result.model());
             return;
         } else if ("c".equalsIgnoreCase(input)) {
             configurator.removeModelFromProvider();
@@ -87,9 +84,23 @@ class ModelPicker {
             ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "!" + AnsiTheme.RESET + " Model not in registry, using current provider.\n");
         }
         agent.setModel(newModel);
+        updateCompressionModel();
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model switched: "
                 + currentModel + " → " + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n");
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Restart CLI to persist across sessions.\n\n" + AnsiTheme.RESET);
+    }
+
+    private void applySelectedModel(LLMProviderType providerType, String model) {
+        agent.setLlmProvider(llmProviders.getProvider(providerType));
+        agent.setModel(model);
+        updateCompressionModel();
+    }
+
+    private void updateCompressionModel() {
+        var compression = agent.getCompression();
+        if (compression != null) {
+            compression.updateModel(agent.getLLMProvider(), getCurrentModelName());
+        }
     }
 
     String getCurrentModelName() {

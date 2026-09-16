@@ -359,13 +359,19 @@ public class AgentSessionRunner {
         var compression = agent.getCompression();
         if (compression == null) return;
         OutputPanel panel = listener.getPanel();
-        compression.setListener((beforeCount, afterCount, completed) -> {
-            panel.stopSpinnerIfActive();
+        // addListener instead of setListener: the memory trigger registers its own listener during
+        // agent build, setListener would silently drop it
+        compression.addListener((beforeCount, afterCount, completed) -> {
+            boolean wasSpinning = panel.stopSpinnerIfActive();
             String msg = completed
                     ? "\n  " + AnsiTheme.SUCCESS + "\u2726" + AnsiTheme.RESET + AnsiTheme.MUTED + " Compressed: " + beforeCount + " \u2192 " + afterCount + " messages" + AnsiTheme.RESET + "\n"
                     : "\n  " + AnsiTheme.MUTED + "\u2726 Compressing " + afterCount + " messages..." + AnsiTheme.RESET;
             ui.printStreamingChunk(msg);
-            panel.startSpinner();
+            // only resume the spinner of a running turn; outside a turn (e.g. /compact) it would
+            // never be stopped again before the input prompt is redrawn
+            if (wasSpinning) {
+                panel.startSpinner();
+            }
         });
     }
 

@@ -438,10 +438,10 @@ public class OutputPanel {
         }
     }
 
-    public void stopSpinnerIfActive() {
-        if (spinnerActive.compareAndSet(true, false)) {
-            spinner.stop();
-        }
+    public boolean stopSpinnerIfActive() {
+        if (!spinnerActive.compareAndSet(true, false)) return false;
+        spinner.stop();
+        return true;
     }
 
     private String indentAfterNewline(String text) {

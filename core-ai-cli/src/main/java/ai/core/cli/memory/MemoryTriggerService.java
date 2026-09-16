@@ -120,6 +120,9 @@ public final class MemoryTriggerService {
 
     public void init(Agent agent) {
         this.mainAgent = agent;
+        // every build creates a fresh agent (and compression), so the listener must be attached per
+        // agent, not only for the first one
+        attachCompressionListener();
         if (this.scheduler != null) return;
 
         if (dailyLogsEnabled) {
@@ -147,8 +150,6 @@ public final class MemoryTriggerService {
         });
 
         LOGGER.debug("MemoryTriggerService initialized");
-
-        attachCompressionListener();
     }
 
     public void ensureDirectories() {

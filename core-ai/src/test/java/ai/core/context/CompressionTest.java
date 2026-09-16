@@ -1,5 +1,6 @@
 package ai.core.context;
 
+import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
@@ -245,6 +246,57 @@ class CompressionTest {
 
         verifyToolPairsIntact(sanitized);
         LOGGER.info("Drop orphan tool messages test passed: {} -> {} messages", messages.size(), sanitized.size());
+    }
+
+    @Test
+    void testCompressKeepsToolResultTogetherWithItsAssistant() {
+        // the conversation tail ends with a tool result: if the kept slice started at that result, the
+        // assistant declaring the call would be summarized away and the result itself dropped as an orphan
+        Compression testCompression = new Compression(0.0001, 1, 100,
+            createMockProviderWithSummary("Summary"), "test-model", "test-model");
+
+        String longResult = "detail ".repeat(2000);
+        String toolCallId = "call_tail";
+        FunctionCall toolCall = FunctionCall.of(toolCallId, "function", "read", "{}");
+
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.of(RoleType.SYSTEM, "System prompt"));
+        for (int i = 0; i < 5; i++) {
+            messages.add(Message.of(RoleType.USER, "User " + i));
+            messages.add(Message.of(RoleType.ASSISTANT, "Assistant " + i));
+        }
+        messages.add(Message.of(RoleType.USER, "Final user message"));
+        messages.add(Message.of(RoleType.ASSISTANT, null, null, null, List.of(toolCall)));
+        messages.add(Message.of(RoleType.TOOL, longResult, "read", toolCallId, null));
+
+        List<Message> result = testCompression.compress(messages);
+
+        verifyToolPairsIntact(result);
+        Message keptToolResult = result.stream()
+            .filter(m -> m.role == RoleType.TOOL && toolCallId.equals(m.toolCallId))
+            .findFirst()
+            .orElse(null);
+        assertNotNull(keptToolResult, "tool result must not be dropped by compression");
+        assertEquals(longResult, keptToolResult.getTextContent());
+
+        LOGGER.info("Kept tool result with its assistant test passed: {} -> {} messages", messages.size(), result.size());
+    }
+
+    @Test
+    void testUpdateModelRepointsContextWindow() {
+        Compression target = new Compression(createMockProvider(), "unknown-model-xyz");
+        assertEquals(128000, target.getMaxContextTokens());
+
+        var modelInfo = LLMModelContextRegistry.getInstance().getModelInfo("gpt-3.5-turbo");
+        assertNotNull(modelInfo, "test model must be present in the context registry");
+        target.updateModel(createMockProviderWithSummary("Summary"), "gpt-3.5-turbo");
+
+        assertEquals(modelInfo.contextWindow(), target.getMaxContextTokens());
+        assertEquals(modelInfo.contextWindow() / 2, target.getMaxToolResultTokens());
+        assertTrue(target.shouldCompress(modelInfo.contextWindow()));
+        assertFalse(target.shouldCompress(modelInfo.contextWindow() / 5));
+
+        LOGGER.info("Update model repoints context window test passed");
     }
 
     private void verifyToolPairsIntact(List<Message> messages) {
