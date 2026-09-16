@@ -4,6 +4,7 @@ import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.memory.experiment.MemoryLayer;
@@ -64,7 +65,6 @@ public class AgentMemoryConsolidationJob implements Job {
     private static final int TRAJECTORY_MAX_CHARS = 500;
     private static final int PROCESSING_TIMEOUT_SECONDS = 55;
     public static final String DEFAULT_EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
-    private static final String EXCLUDED_AGENT_NAME = "assistant";
 
     @Inject
     LLMProviders llmProviders;
@@ -137,7 +137,7 @@ public class AgentMemoryConsolidationJob implements Job {
         var ids = new HashSet<String>();
         for (var trace : traces) {
             if (trace.agentId != null && !trace.agentId.isBlank()
-                    && !EXCLUDED_AGENT_NAME.equalsIgnoreCase(trace.agentName)) {
+                    && !PersonalAssistantService.isForkableTemplate(trace.agentId)) {
                 ids.add(trace.agentId);
             }
         }

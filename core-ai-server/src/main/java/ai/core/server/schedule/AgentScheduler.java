@@ -1,6 +1,7 @@
 package ai.core.server.schedule;
 
 import ai.core.schedule.CronExpression;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
@@ -36,6 +37,9 @@ public class AgentScheduler {
 
     @Inject
     AgentRunner agentRunner;
+
+    @Inject
+    PersonalAssistantService personalAssistantService;
 
     public void evaluate() {
         var now = ZonedDateTime.now();
@@ -93,22 +97,23 @@ public class AgentScheduler {
     }
 
     private void fireClaimed(AgentSchedule schedule) {
-        if (schedule.concurrencyPolicy == ConcurrencyPolicy.SKIP && agentRunner.isRunning(schedule.agentId, schedule.id)) {
+        var agentId = personalAssistantService.resolve(schedule.agentId, schedule.userId);
+        if (schedule.concurrencyPolicy == ConcurrencyPolicy.SKIP && agentRunner.isRunning(agentId, schedule.id)) {
             recordSkippedRun(schedule, "previous run of this schedule is still running");
-            LOGGER.info("skipping schedule, previous run still running, scheduleId={}, agentId={}", schedule.id, schedule.agentId);
+            LOGGER.info("skipping schedule, previous run still running, scheduleId={}, agentId={}", schedule.id, agentId);
             return;
         }
 
-        var definition = agentDefinitionCollection.get(schedule.agentId);
+        var definition = agentDefinitionCollection.get(agentId);
         if (definition.isEmpty()) {
-            recordSkippedRun(schedule, "agent not found, agentId=" + schedule.agentId);
-            LOGGER.warn("agent not found for schedule, scheduleId={}, agentId={}", schedule.id, schedule.agentId);
+            recordSkippedRun(schedule, "agent not found, agentId=" + agentId);
+            LOGGER.warn("agent not found for schedule, scheduleId={}, agentId={}", schedule.id, agentId);
             return;
         }
 
         if (definition.get().publishedConfig == null) {
             recordSkippedRun(schedule, "agent not published");
-            LOGGER.warn("agent not published, skipping schedule, scheduleId={}, agentId={}", schedule.id, schedule.agentId);
+            LOGGER.warn("agent not published, skipping schedule, scheduleId={}, agentId={}", schedule.id, agentId);
             return;
         }
 
@@ -116,7 +121,7 @@ public class AgentScheduler {
         var input = schedule.input != null && !schedule.input.isBlank() ? schedule.input : publishedConfig.inputTemplate;
         agentRunner.run(definition.get(), input, TriggerType.SCHEDULE, schedule.id, schedule.variables,
                 schedule.channelTarget());
-        LOGGER.info("triggered scheduled run, scheduleId={}, agentId={}", schedule.id, schedule.agentId);
+        LOGGER.info("triggered scheduled run, scheduleId={}, agentId={}", schedule.id, agentId);
     }
 
     private void rollbackClaim(AgentSchedule schedule, ZonedDateTime claimedNextRunAt) {

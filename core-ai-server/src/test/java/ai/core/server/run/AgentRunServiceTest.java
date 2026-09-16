@@ -3,6 +3,7 @@ package ai.core.server.run;
 import ai.core.api.server.run.AgentCallRequest;
 import ai.core.api.server.run.LLMCallRequest;
 import ai.core.api.server.run.TriggerRunRequest;
+import ai.core.server.agent.PersonalAssistantStubs;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
@@ -234,6 +235,7 @@ class AgentRunServiceTest {
         service.skillService = mock(SkillService.class);
         service.permissionService = mock(ai.core.server.apiuser.PermissionService.class);
         service.apiUserQuotaService = mock(ai.core.server.apiuser.ApiUserQuotaService.class);
+        service.personalAssistantService = PersonalAssistantStubs.passThrough();
         return service;
     }
 

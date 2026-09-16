@@ -10,6 +10,7 @@ import ai.core.api.server.schedule.ListSessionSchedulesResponse;
 import ai.core.api.server.schedule.SessionScheduleView;
 import ai.core.api.server.schedule.UpdateScheduleRequest;
 import ai.core.api.server.schedule.UpdateSessionScheduleRequest;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.SessionSchedule;
@@ -45,6 +46,8 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     MongoCollection<AgentDefinition> agentDefinitionCollection;
     @Inject
     MongoCollection<SessionSchedule> sessionScheduleCollection;
+    @Inject
+    PersonalAssistantService personalAssistantService;
 
     @Override
     @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
@@ -136,11 +139,12 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
         var schedule = agentScheduleCollection.get(id)
             .orElseThrow(() -> new RuntimeException("schedule not found, id=" + id));
 
-        var definition = agentDefinitionCollection.get(schedule.agentId)
-            .orElseThrow(() -> new RuntimeException("agent not found, agentId=" + schedule.agentId));
+        var agentId = personalAssistantService.resolve(schedule.agentId, schedule.userId);
+        var definition = agentDefinitionCollection.get(agentId)
+            .orElseThrow(() -> new RuntimeException("agent not found, agentId=" + agentId));
 
         if (definition.publishedConfig == null) {
-            throw new RuntimeException("agent not published, agentId=" + schedule.agentId);
+            throw new RuntimeException("agent not published, agentId=" + agentId);
         }
 
         var publishedConfig = definition.publishedConfig;

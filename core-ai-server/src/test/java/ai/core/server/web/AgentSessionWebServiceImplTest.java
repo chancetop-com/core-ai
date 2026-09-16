@@ -8,6 +8,7 @@ import ai.core.api.server.session.UnloadSkillsRequest;
 import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.apiuser.PermissionService;
 import ai.core.server.agent.AgentDraftGenerator;
+import ai.core.server.agent.PersonalAssistantStubs;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.DatasetPermission;
@@ -190,6 +191,26 @@ class AgentSessionWebServiceImplTest {
         verify(service.commandPublisher).publish(any());
     }
 
+    // an old CLI still asks for the shared template id; the session has to end up on the caller's own copy,
+    // otherwise personalization and memory would leak into the shared record again
+    @Test
+    void createRedirectsSharedAssistantTemplateToCallersCopy() {
+        var service = createService();
+        when(service.personalAssistantService.resolve("default-assistant", "user-1")).thenReturn("assistant:user-1");
+        var request = new CreateSessionRequest();
+        request.agentId = "default-assistant";
+        request.config = new SessionConfig();
+        when(service.createHelper.createSessionFromAgent(
+                org.mockito.ArgumentMatchers.eq("assistant:user-1"), any(), any(), any(), any(), any()))
+                .thenReturn("s-1");
+
+        var response = service.create(request);
+
+        assertEquals("s-1", response.sessionId);
+        verify(service.permissionService).check("user-1", PermissionService.RESOURCE_TYPE_AGENT, "assistant:user-1");
+        verify(service.sessionManager, never()).abortSessionCreation(any());
+    }
+
     private AgentSessionWebServiceImpl createService() {
         var service = new AgentSessionWebServiceImpl();
         service.webContext = mock(WebContext.class);
@@ -198,6 +219,7 @@ class AgentSessionWebServiceImplTest {
         service.createHelper = mock(SessionCreateHelper.class);
         service.permissionService = mock(PermissionService.class);
         service.apiUserQuotaService = mock(ApiUserQuotaService.class);
+        service.personalAssistantService = PersonalAssistantStubs.passThrough();
         return service;
     }
 }

@@ -36,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -153,25 +154,25 @@ class AgentDefinitionServiceTest {
     }
 
     @Test
-    void prioritizeDefaultAssistantMovesAssistantToFirst() {
+    void prioritizeAssistantMovesPersonalCopyToFirst() {
         var recent = agent("recent-agent");
-        var assistant = agent("default-assistant");
+        var assistant = agent("assistant:user-1");
         var old = agent("old-agent");
         var agents = new ArrayList<>(List.of(recent, assistant, old));
 
-        AgentListHelper.prioritizeDefaultAssistant(agents);
+        AgentListHelper.prioritizeAssistant(agents, assistant.id);
 
         assertSame(assistant, agents.get(0));
         assertEquals(List.of(assistant, recent, old), agents);
     }
 
     @Test
-    void prioritizeDefaultAssistantKeepsOrderWithoutAssistant() {
+    void prioritizeAssistantKeepsOrderWithoutAssistant() {
         var recent = agent("recent-agent");
         var old = agent("old-agent");
         var agents = new ArrayList<>(List.of(recent, old));
 
-        AgentListHelper.prioritizeDefaultAssistant(agents);
+        AgentListHelper.prioritizeAssistant(agents, "assistant:user-1");
 
         assertEquals(List.of(recent, old), agents);
     }
@@ -222,6 +223,60 @@ class AgentDefinitionServiceTest {
         assertEquals(List.of("HR Agent agent-3", "HR Agent agent-4"), response.agents.stream().map(a -> a.name).toList());
         assertEquals(2, response.page);
         assertEquals(2, response.limit);
+    }
+
+    @Test
+    void listPrioritizesTheCallersPersonalAssistantCopy() {
+        var collection = agentCollection();
+        var recent = definition("recent-agent", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        recent.name = "Recent Agent";
+        recent.updatedAt = ZonedDateTime.parse("2026-08-06T10:00:00Z");
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        assistant.name = "Alice's Assistant";
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        assistant.updatedAt = ZonedDateTime.parse("2026-08-01T10:00:00Z");
+        when(collection.find(any(Query.class))).thenReturn(new ArrayList<>(List.of(recent, assistant)));
+        when(collection.count(any(Bson.class))).thenReturn(2L);
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.of(assistant));
+        var service = service(collection);
+        when(service.personalAssistantService.findOrFork(any(), eq("user-1"))).thenReturn(assistant);
+
+        var response = service.list("user-1", new ListAgentsRequest());
+
+        assertEquals(List.of("assistant:user-1", "recent-agent"), response.agents.stream().map(a -> a.id).toList());
+        assertEquals("assistant:user-1", response.agents.get(0).id);
+        assertEquals(2, response.total);
+    }
+
+    @Test
+    void deleteRejectsPersonalAssistantForItsOwner() {
+        var collection = agentCollection();
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(collection.get(assistant.id)).thenReturn(Optional.of(assistant));
+        var service = service(collection);
+
+        var error = assertThrows(ForbiddenException.class, () -> service.delete(assistant.id, "user-1"));
+
+        assertEquals("personal assistant cannot be deleted", error.getMessage());
+        verify(collection, never()).delete(assistant.id);
+    }
+
+    @Test
+    void deleteAllowsPersonalAssistantForAdmin() {
+        var collection = agentCollection();
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(collection.get(assistant.id)).thenReturn(Optional.of(assistant));
+        var service = service(collection);
+        var admin = new User();
+        admin.id = "admin-1";
+        admin.role = "admin";
+        when(service.userCollection.get("admin-1")).thenReturn(Optional.of(admin));
+
+        service.delete(assistant.id, "admin-1");
+
+        verify(collection).delete(assistant.id);
     }
 
     @Test
@@ -579,6 +634,7 @@ class AgentDefinitionServiceTest {
         service.userCollection = mock(MongoCollection.class);
         service.skillService = mock(SkillService.class);
         service.systemPromptService = mock(SystemPromptService.class);
+        service.personalAssistantService = mock(PersonalAssistantService.class);
         return service;
     }
 

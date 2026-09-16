@@ -15,6 +15,7 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.server.agent.AgentCallAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.PersonalAssistantStubs;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.ToolRef;
@@ -319,6 +320,7 @@ class ServerA2AServiceTest {
         var service = new ServerA2AService();
         service.accessPolicy = mock(AgentCallAccessPolicy.class);
         service.chatMessageService = mock(ChatMessageService.class);
+        service.personalAssistantService = PersonalAssistantStubs.passThrough();
         return service;
     }
 

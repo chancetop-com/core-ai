@@ -14,6 +14,7 @@ import ai.core.api.server.run.LLMCallResponse;
 import ai.core.server.a2a.A2ATaskView;
 import ai.core.server.a2a.ServerA2ACallerService;
 import ai.core.server.agent.AgentCallAccessPolicy;
+import ai.core.server.agent.PersonalAssistantStubs;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.hub.HubCallAuditService;
@@ -77,6 +78,7 @@ class AgentHubServiceTest {
         hub.callerService = callerService;
         hub.agentRunService = agentRunService;
         hub.auditService = auditService;
+        hub.personalAssistantService = PersonalAssistantStubs.passThrough();
         when(auditService.begin(any())).thenReturn("audit-1");
         when(catalog.capabilityFor(any(), any())).thenReturn(AgentCatalogService.Capability.empty());
     }

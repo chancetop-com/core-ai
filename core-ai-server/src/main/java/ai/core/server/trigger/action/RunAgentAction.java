@@ -1,6 +1,7 @@
 package ai.core.server.trigger.action;
 
 import ai.core.server.agent.AgentDependencyAccessPolicy;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.run.AgentRunner;
@@ -31,6 +32,9 @@ public class RunAgentAction implements TriggerAction {
     @Inject
     SkillService skillService;
 
+    @Inject
+    PersonalAssistantService personalAssistantService;
+
     @Override
     public String type() {
         return "RUN_AGENT";
@@ -43,11 +47,12 @@ public class RunAgentAction implements TriggerAction {
             LOGGER.warn("trigger {} has no agent_id configured, skipping", trigger.id);
             return TriggerActionResult.skipped();
         }
+        var resolvedAgentId = personalAssistantService.resolve(agentId, trigger.userId);
 
-        var storedDefinition = agentDefinitionCollection.get(agentId)
+        var storedDefinition = agentDefinitionCollection.get(resolvedAgentId)
                 .orElse(null);
         if (storedDefinition == null) {
-            LOGGER.warn("agent not found for trigger {}, agentId={}", trigger.id, agentId);
+            LOGGER.warn("agent not found for trigger {}, agentId={}", trigger.id, resolvedAgentId);
             return TriggerActionResult.skipped();
         }
 

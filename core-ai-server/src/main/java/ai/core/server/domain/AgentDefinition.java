@@ -99,6 +99,12 @@ public class AgentDefinition {
     @Field(name = "dataset_config")
     public List<AgentDatasetConfig> datasetConfig;
 
+    @Field(name = "forked_from")
+    public String forkedFrom;
+
+    @Field(name = "forked_at")
+    public ZonedDateTime forkedAt;
+
     @Field(name = "published_at")
     public ZonedDateTime publishedAt;
 

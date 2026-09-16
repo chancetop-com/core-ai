@@ -6,6 +6,7 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.GenerateService;
 import ai.core.server.agent.JavaToSchemaService;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
 import core.framework.module.Module;
@@ -16,6 +17,9 @@ import core.framework.module.Module;
 public class AgentDefinitionModule extends Module {
     @Override
     protected void initialize() {
+        // resolved by AgentDefinitionService, and later by every agent execution surface (SessionModule,
+        // AgentRunnerModule, A2AModule, AgentHubModule, ChannelModule, TriggerModule)
+        bind(PersonalAssistantService.class);
         bind(AgentDefinitionService.class);
         // shared by every agent execution surface (A2AModule's ServerA2AService, AgentHubModule)
         bind(AgentCallAccessPolicy.class);

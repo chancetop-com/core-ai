@@ -12,6 +12,8 @@ import ai.core.api.server.memory.ListExperimentRunsRequest;
 import ai.core.api.server.memory.ListExperimentRunsResponse;
 import ai.core.api.server.memory.MemoryLayerView;
 import ai.core.api.server.memory.RankingStrategyView;
+import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.User;
 import ai.core.server.memory.experiment.AgentMemoryExperimentConfig;
 import ai.core.server.memory.experiment.AgentMemoryExperimentRun;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
@@ -19,7 +21,12 @@ import ai.core.server.memory.experiment.MemoryLayer;
 import ai.core.server.memory.experiment.RankingStrategy;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
+import ai.core.server.rbac.RoleRegistry;
+import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
+import core.framework.mongo.MongoCollection;
+import core.framework.web.WebContext;
+import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 
 /**
@@ -127,9 +134,35 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     @Inject
     AgentMemoryExperimentService agentMemoryExperimentService;
 
+    @Inject
+    MongoCollection<AgentDefinition> agentDefinitionCollection;
+
+    @Inject
+    MongoCollection<User> userCollection;
+
+    @Inject
+    WebContext webContext;
+
+    // A personal assistant's memory is private to its owner: before the fork feature every memory bucket
+    // belonged to a shared agent, so no ownership check existed.
+    private void requireAgentAccess(String agentId) {
+        if (agentId == null || agentId.isBlank()) return;
+        var definition = agentDefinitionCollection.get(agentId)
+            .orElseThrow(() -> new NotFoundException("agent not found: " + agentId));
+        if (Boolean.TRUE.equals(definition.systemDefault)) return;
+        var userId = AuthContext.userId(webContext);
+        if (userId != null && (userId.equals(definition.userId) || isAdmin(userId))) return;
+        throw new ForbiddenException("no access to memories of agent: " + agentId);
+    }
+
+    private boolean isAdmin(String userId) {
+        return userCollection.get(userId).map(user -> RoleRegistry.ROLE_ADMIN.equals(user.role)).orElse(Boolean.FALSE);
+    }
+
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public ListAgentMemoriesResponse listMemories(String agentId) {
+        requireAgentAccess(agentId);
         var memories = agentMemoryService.findByAgentId(agentId);
         var views = memories.stream().map(m -> {
             var v = new AgentMemoryView();
@@ -151,6 +184,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public AgentMemoryExperimentConfigView getExperimentConfig(String agentId) {
+        requireAgentAccess(agentId);
         var config = agentMemoryExperimentService.getConfig(agentId);
         if (config == null) config = agentMemoryExperimentService.resolveConfig(agentId);
         return toView(config);
@@ -159,18 +193,21 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public void deleteMemory(String agentId, String memoryId) {
+        requireAgentAccess(agentId);
         agentMemoryService.deleteMemory(memoryId);
     }
 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public void deleteAllMemories(String agentId) {
+        requireAgentAccess(agentId);
         agentMemoryService.deleteAllByAgentId(agentId);
     }
 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
     public AgentMemoryExperimentConfigView saveExperimentConfig(String agentId, AgentMemoryExperimentConfigView request) {
+        requireAgentAccess(agentId);
         var config = toEntity(request, agentId);
         var saved = agentMemoryExperimentService.saveConfig(config);
         return toView(saved);
@@ -180,6 +217,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     @PermissionsRequired(PermissionCodes.EXPERIMENT_VIEW)
     public ListExperimentRunsResponse listRuns(ListExperimentRunsRequest request) {
         var agentId = request.agentId;
+        requireAgentAccess(agentId);
         int skip = parseIntOrDefault(request.skip, 0);
         int limit = parseIntOrDefault(request.limit, 10);
         var runs = agentMemoryExperimentService.findAllRuns(agentId, skip, limit);
@@ -196,6 +234,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     public ExperimentRunView getRun(String id) {
         var run = agentMemoryExperimentService.getRunById(id);
         if (run == null) throw new NotFoundException("not found: " + id);
+        requireAgentAccess(run.agentId);
         return toRunView(run);
     }
 
@@ -216,6 +255,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     @Override
     @PermissionsRequired(PermissionCodes.EXPERIMENT_VIEW)
     public void deleteExperimentConfig(String agentId) {
+        requireAgentAccess(agentId);
         agentMemoryExperimentService.deleteConfig(agentId);
     }
 }

@@ -3,6 +3,7 @@ package ai.core.server.channel;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.session.AgentSessionManager;
@@ -32,6 +33,9 @@ public class ChannelDispatcher {
 
     @Inject
     AgentDefinitionService agentDefinitionService;
+
+    @Inject
+    PersonalAssistantService personalAssistantService;
 
     @Inject
     ChannelRegistry channelRegistry;
@@ -113,16 +117,17 @@ public class ChannelDispatcher {
         config.channelType = channel.channelType;
 
         if (channel.agentId != null && !channel.agentId.isBlank()) {
-            var definition = agentDefinitionService.getEntity(channel.agentId);
+            var agentId = personalAssistantService.resolve(channel.agentId, userId);
+            var definition = agentDefinitionService.getEntity(agentId);
             if (definition == null) {
-                throw new IllegalStateException("agent not found: " + channel.agentId);
+                throw new IllegalStateException("agent not found: " + agentId);
             }
             var result = sessionManager.createSessionFromAgent(definition, config, userId, "channel");
             var sessionId = result.sessionId();
 
             conversationSessionMap.put(conversationKey, sessionId);
             LOGGER.info("created channel session, channelId={}, type={}, sessionId={}, userId={}, agent={}",
-                    channel.channelId, channel.channelType, sessionId, userId, channel.agentId);
+                    channel.channelId, channel.channelType, sessionId, userId, agentId);
             return sessionId;
         }
 

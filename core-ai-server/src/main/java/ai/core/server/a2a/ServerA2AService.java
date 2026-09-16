@@ -13,6 +13,7 @@ import ai.core.api.a2a.TaskState;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.server.agent.AgentCallAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.session.AgentSessionManager;
@@ -94,6 +95,8 @@ public class ServerA2AService {
     ChatMessageService chatMessageService;
     @Inject
     AgentCallAccessPolicy accessPolicy;
+    @Inject
+    PersonalAssistantService personalAssistantService;
 
     @Inject
     A2ATaskRegistry taskRegistry;
@@ -121,9 +124,10 @@ public class ServerA2AService {
         return ServerA2AAgentCardFactory.from(agentDefinitionService.getEntity(agentId));
     }
 
-    public A2AInvocationResult send(String agentId, SendMessageRequest request, String userId) {
+    public A2AInvocationResult send(String rawAgentId, SendMessageRequest request, String userId) {
         pruneTerminalTasks();
         validateMessageRequest(request);
+        var agentId = personalAssistantService.resolve(rawAgentId, userId);
         accessPolicy.checkCanRun(userId, agentId);
         if (request.message.taskId != null && !request.message.taskId.isBlank()) {
             return A2AInvocationResult.ofTask(resumeTask(request.message, userId));
@@ -139,10 +143,11 @@ public class ServerA2AService {
         return A2AInvocationResult.ofTask(createSyncTask(agentId, request, userId));
     }
 
-    public A2ATaskState stream(String agentId, SendMessageRequest request, String userId,
+    public A2ATaskState stream(String rawAgentId, SendMessageRequest request, String userId,
                                Consumer<StreamResponse> streamSender, Runnable closeStream) {
         pruneTerminalTasks();
         validateMessageRequest(request);
+        var agentId = personalAssistantService.resolve(rawAgentId, userId);
         accessPolicy.checkCanRun(userId, agentId);
         if (request.message.taskId != null && !request.message.taskId.isBlank()) {
             return resumeTask(request.message, userId, streamSender, closeStream);

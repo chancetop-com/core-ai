@@ -22,9 +22,6 @@ import core.framework.web.exception.ForbiddenException;
 import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -53,6 +50,8 @@ public class AgentDefinitionService {
     SkillService skillService;
     @Inject
     SystemPromptService systemPromptService;
+    @Inject
+    PersonalAssistantService personalAssistantService;
 
     private volatile Runnable catalogInvalidator;
 
@@ -142,7 +141,9 @@ public class AgentDefinitionService {
         List<AgentDefinition> paged;
         long total;
         if (keyword != null) {
-            paged = listHelper.searchAgents(combinedFilter, keyword, sortField);
+            var assistant = personalAssistantService.findPersonalAssistant(userId);
+            paged = listHelper.searchAgents(combinedFilter, keyword, sortField,
+                assistant != null ? assistant.id : PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID);
             total = paged.size();
             if (skip != null) {
                 int from = Math.min(skip, paged.size());
@@ -150,9 +151,9 @@ public class AgentDefinitionService {
             }
         } else {
             Bson projection = summary ? AgentQueryHelper.SUMMARY_PROJECTION : null;
-            var defaultAssistant = listHelper.findDefaultAssistant(combinedFilter);
-            paged = defaultAssistant != null
-                ? listHelper.listWithDefaultAssistantFirst(combinedFilter, sortField, skip, limit, defaultAssistant, projection)
+            var assistant = personalAssistantService.findOrFork(listHelper.findDefaultAssistant(combinedFilter), userId);
+            paged = assistant != null
+                ? listHelper.listWithAssistantFirst(combinedFilter, sortField, skip, limit, assistant, projection)
                 : listHelper.findAgents(combinedFilter, sortField, skip, limit, projection);
             total = agentDefinitionCollection.count(combinedFilter);
         }
@@ -162,8 +163,8 @@ public class AgentDefinitionService {
             response.agents = paged.stream().map(AgentListHelper::toSummaryView).toList();
         } else {
             var userNameMap = listHelper.resolveUserNames(paged);
-            var subAgentNameMap = resolveSubAgentNames(paged);
-            var skillNameMap = resolveSkillNames(paged);
+            var subAgentNameMap = listHelper.resolveSubAgentNames(paged);
+            var skillNameMap = AgentListHelper.resolveSkillNames(skillService, paged);
             response.agents = paged.stream().map(e -> toView(e, userNameMap, subAgentNameMap, skillNameMap)).toList();
         }
         listHelper.markFavorites(response, userId);
@@ -186,32 +187,6 @@ public class AgentDefinitionService {
     public ListAgentsResponse favorites(String userId) {
         var listHelper = new AgentListHelper(agentDefinitionCollection, userCollection);
         return listHelper.listFavorites(userId);
-    }
-
-    private Map<String, String> resolveSubAgentNames(List<AgentDefinition> entities) {
-        var agentIds = new HashSet<String>();
-        for (var entity : entities) {
-            if (entity.subAgentIds != null) agentIds.addAll(entity.subAgentIds);
-        }
-        if (agentIds.isEmpty()) return Map.of();
-        var map = new HashMap<String, String>();
-        for (var a : agentDefinitionCollection.find(new org.bson.Document("_id", new org.bson.Document("$in", new ArrayList<>(agentIds))))) {
-            map.put(a.id, a.name);
-        }
-        return map;
-    }
-
-    private Map<String, String> resolveSkillNames(List<AgentDefinition> entities) {
-        var skillIds = new HashSet<String>();
-        for (var entity : entities) {
-            if (entity.skillIds != null) skillIds.addAll(entity.skillIds);
-        }
-        if (skillIds.isEmpty()) return Map.of();
-        try {
-            return skillService.batchResolve(skillIds);
-        } catch (Exception e) {
-            return Map.of();
-        }
     }
 
     public AgentDefinitionView get(String id) {
@@ -380,6 +355,7 @@ public class AgentDefinitionService {
         var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
         requireAdminForSystemDefault(entity, userId);
+        requireAdminForPersonalAssistant(entity, userId);
         agentDefinitionCollection.delete(id);
         notifyCatalogChanged();
     }
@@ -441,6 +417,15 @@ public class AgentDefinitionService {
         if (!Boolean.TRUE.equals(entity.systemDefault)) return;
         if (userId == null || !isAdmin(userId)) {
             throw new ForbiddenException("only admin can modify built-in agents");
+        }
+    }
+
+    // A personal assistant lives as long as its owner account, and nothing cleans up chat sessions
+    // that still reference it, so only an admin may delete one (design-default-assistant-fork 9.2).
+    private void requireAdminForPersonalAssistant(AgentDefinition entity, String userId) {
+        if (entity.forkedFrom == null) return;
+        if (userId == null || !isAdmin(userId)) {
+            throw new ForbiddenException("personal assistant cannot be deleted");
         }
     }
 

@@ -20,6 +20,7 @@ import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.artifact.ServerImageOutputSink;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.SubAgentAssembler;
+import ai.core.server.agent.UserIdentityPrompt;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.AgentDefinition;
@@ -176,6 +177,10 @@ public class AgentRunBuilder {
         if (AgentMemoryService.memoryEnabled(enableMemory)) {
             attachMemoryExperiment(builder, definition, runEntity.id);
         }
+        if (context.getPromptSections() != null) {
+            // execution context sections (caller identity, and any per-request context added later)
+            context.getPromptSections().forEach(builder::systemPromptSection);
+        }
         if (sandbox != null) {
             builder.addAgentLifecycle(new SandboxLifecycle(fileService,
                     new AgentRunArtifactSink(runEntity.id, agentRunCollection, artifactBinder), publicUrlConfiguration));
@@ -216,7 +221,9 @@ public class AgentRunBuilder {
         context.setTokenCostCallback(usage -> apiUserQuotaService.recordUsage(runEntity.userId,
                 usage.getPromptTokens(), usage.getCompletionTokens()));
         // caller identity follows the run initiator (runEntity.userId), not the agent definition owner
-        context.setCaller(CallerContexts.fromUser(userCollection.get(runEntity.userId).orElse(null)));
+        var caller = userCollection.get(runEntity.userId).orElse(null);
+        context.setCaller(CallerContexts.fromUser(caller));
+        UserIdentityPrompt.attach(context, definition, caller);
         if (sandbox != null) context.sandbox(sandbox);
         if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
             var contextualProvider = new ContextualMediaProvider(gatewayMediaProvider,

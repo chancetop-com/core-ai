@@ -12,6 +12,7 @@ import ai.core.api.server.run.TriggerRunRequest;
 import ai.core.api.server.run.TriggerRunResponse;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.apiuser.PermissionService;
 import ai.core.server.domain.AgentDefinition;
@@ -56,11 +57,14 @@ public class AgentRunService {
     PermissionService permissionService;
     @Inject
     ApiUserQuotaService apiUserQuotaService;
+    @Inject
+    PersonalAssistantService personalAssistantService;
 
     public TriggerRunResponse trigger(String agentId, TriggerRunRequest request, String callerUserId) {
-        permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, agentId);
+        var resolvedAgentId = personalAssistantService.resolve(agentId, callerUserId);
+        permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, resolvedAgentId);
         apiUserQuotaService.checkQuota(callerUserId);
-        var source = agentDefinitionCollection.get(agentId).orElse(null);
+        var source = agentDefinitionCollection.get(resolvedAgentId).orElse(null);
         var definition = AgentDependencyAccessPolicy.executableTopLevelAgent(
             source, callerUserId);
         requireAccessibleEditableSkills(source, definition, callerUserId);
@@ -123,9 +127,10 @@ public class AgentRunService {
     }
 
     public AgentCallResponse call(String agentId, AgentCallRequest request, String callerUserId) {
-        permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, agentId);
+        var resolvedAgentId = personalAssistantService.resolve(agentId, callerUserId);
+        permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, resolvedAgentId);
         apiUserQuotaService.checkQuota(callerUserId);
-        var source = agentDefinitionCollection.get(agentId).orElse(null);
+        var source = agentDefinitionCollection.get(resolvedAgentId).orElse(null);
         var definition = AgentDependencyAccessPolicy.executableTopLevelCallable(
             source, callerUserId);
         requireAccessibleEditableSkills(source, definition, callerUserId);

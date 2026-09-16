@@ -5,6 +5,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.media.MediaProvider;
+import ai.core.prompt.PromptInject;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.apiuser.ApiUserQuotaService;
@@ -12,6 +13,7 @@ import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
+import ai.core.server.agent.UserIdentityPrompt;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
@@ -20,6 +22,7 @@ import ai.core.server.domain.User;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
+import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.sandbox.Sandbox;
@@ -69,6 +72,7 @@ public class SessionRebuildManager {
     private final SessionOwnershipRegistry ownershipRegistry;
     private final SystemSettingsService systemSettingsService;
     private final MongoCollection<User> userCollection;
+    private final AgentMemoryExperimentService memoryExperimentService;
     private final SessionContextBuilder contextBuilder;
     private final TurnStateRegistry turnStateRegistry;
     private SessionDatasetHelper datasetHelper;
@@ -90,6 +94,7 @@ public class SessionRebuildManager {
         this.ownershipRegistry = deps.ownershipRegistry;
         this.systemSettingsService = deps.systemSettingsService;
         this.userCollection = deps.userCollection;
+        this.memoryExperimentService = deps.memoryExperimentService;
         this.turnStateRegistry = deps.turnStateRegistry;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
                 systemSettingsService, deps.mediaProvider, deps.quotaService).withAsyncTaskManager(deps.asyncTaskManager);
@@ -212,11 +217,20 @@ public class SessionRebuildManager {
         return doRebuild(new RebuildParams(sessionId, config, null, userId, null, state,
                 "default", null, null, null, true));
     }
+    // the rebuilt prompt must carry the sections the session was created with, otherwise memory knowledge
+    // and the channel identity silently disappear from every session that outlives a restart or an idle cleanup
+    private PromptInject memoryInject(String agentId) {
+        if (!hasText(agentId)) return null;
+        var injectionResult = memoryExperimentService.prepareInjection(agentId);
+        return injectionResult.injected ? injectionResult.promptInject : null;
+    }
     private SandboxSetup setupSandboxContext(String sessionId, String userId, SandboxConfig sandboxConfig,
-                                             String agentName, boolean allowSandboxReattach) {
+                                             String agentName, boolean allowSandboxReattach, String agentId) {
         var context = userId != null ? contextBuilder.build(sessionId, userId) : null;
         if (context != null) {
-            context.setCaller(CallerContexts.fromUser(userCollection.get(userId).orElse(null)));
+            var user = userCollection.get(userId).orElse(null);
+            context.setCaller(CallerContexts.fromUser(user));
+            UserIdentityPrompt.attach(context, agentId, agentDefinitionCollection, user);
         }
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(sandboxConfig);
         var sessionRef = new InProcessAgentSession[1];
@@ -266,7 +280,7 @@ public class SessionRebuildManager {
         var agentId = params.state != null && params.state.fromAgent && params.state.agentConfig != null ? params.state.agentConfig.agentId : null;
         var effectiveConfig = params.config != null ? params.config : new SessionConfig();
         var sandbox = setupSandboxContext(params.sessionId, params.userId, params.sandboxConfig,
-                params.agentName, params.allowSandboxReattach);
+                params.agentName, params.allowSandboxReattach, agentId);
         List<ToolCall> tools = (params.toolRefs != null && !params.toolRefs.isEmpty())
                 ? toolRegistryService.resolveToolRefs(params.toolRefs, params.sessionId, params.userId)
                 : new ArrayList<>();
@@ -284,7 +298,7 @@ public class SessionRebuildManager {
                 effectiveConfig, toolRegistry,
                 sandbox.context, params.agentName, extraVars, agentId,
                 sandbox.sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(params.sessionId), publicUrlConfiguration)) : null,
-                null, null));
+                memoryInject(agentId), SessionSubAgentManager.channelInject(effectiveConfig)));
         var session = new InProcessAgentSession(params.sessionId, agent, true, new InMemoryToolPermissionStore());
         sandbox.sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(params.sessionId));
@@ -417,6 +431,7 @@ public class SessionRebuildManager {
                         SessionOwnershipRegistry ownershipRegistry,
                         SystemSettingsService systemSettingsService,
                         MongoCollection<User> userCollection,
+                        AgentMemoryExperimentService memoryExperimentService,
                         MediaProvider mediaProvider,
                         ApiUserQuotaService quotaService,
                         TurnStateRegistry turnStateRegistry,

@@ -17,6 +17,7 @@ import ai.core.server.a2a.A2ATaskView;
 import ai.core.server.a2a.ServerA2ACallerService;
 import ai.core.server.a2a.ServerA2ATaskOptions;
 import ai.core.server.agent.AgentCallAccessPolicy;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.hub.HubCallAuditService;
@@ -68,6 +69,8 @@ public class AgentHubService {
     @Inject
     AgentCallAccessPolicy accessPolicy;
     @Inject
+    PersonalAssistantService personalAssistantService;
+    @Inject
     ServerA2ACallerService callerService;
     @Inject
     AgentRunService agentRunService;
@@ -111,7 +114,7 @@ public class AgentHubService {
 
     /** The visible and runnable agent behind an id, or 404 — the entry point of a run by id. */
     public AgentCatalogService.CatalogAgent resolve(String userId, String id) {
-        var agent = catalog.find(userId, id);
+        var agent = catalog.find(userId, personalAssistantService.resolve(id, userId));
         if (agent == null || !accessPolicy.canAccess(userId, agent.id())) {
             throw new NotFoundException("agent not found, id=" + id);
         }

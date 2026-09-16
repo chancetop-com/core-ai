@@ -28,9 +28,13 @@ final class AgentQueryHelper {
                     Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
                 );
             }
-            return Filters.or(
-                Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
-                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
+            return Filters.and(
+                Filters.or(
+                    Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
+                    Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
+                ),
+                // the shared template is replaced by the caller's own copy, it must not show up as a selectable agent
+                Filters.nin("_id", PersonalAssistantService.forkableTemplateIds())
             );
         } else if (myAgents != null) {
             return Filters.and(

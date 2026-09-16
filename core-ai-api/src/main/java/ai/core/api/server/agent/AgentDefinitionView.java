@@ -90,6 +90,12 @@ public class AgentDefinitionView {
     @Property(name = "status")
     public String status;
 
+    @Property(name = "forked_from")
+    public String forkedFrom;
+
+    @Property(name = "forked_at")
+    public ZonedDateTime forkedAt;
+
     @Property(name = "published_at")
     public ZonedDateTime publishedAt;
 

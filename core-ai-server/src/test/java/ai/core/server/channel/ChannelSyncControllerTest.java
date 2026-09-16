@@ -1,6 +1,7 @@
 package ai.core.server.channel;
 
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.PersonalAssistantStubs;
 import ai.core.server.channel.openclaw.OcgCallbackPool;
 import ai.core.server.channel.openclaw.OcgConfigStore;
 import ai.core.server.channel.openclaw.OcgConfigView;
@@ -34,6 +35,7 @@ class ChannelSyncControllerTest {
         controller.commandPublisher = mock(CommandPublisher.class);
         controller.ocgCallbackPool = mock(OcgCallbackPool.class);
         controller.ocgConfigStore = mock(OcgConfigStore.class);
+        controller.personalAssistantService = PersonalAssistantStubs.passThrough();
 
         var channelA = channel("channel-a", "agent-a", "owner-a");
         var channelB = channel("channel-b", "agent-b", "owner-b");
@@ -71,6 +73,7 @@ class ChannelSyncControllerTest {
         controller.commandPublisher = mock(CommandPublisher.class);
         controller.ocgCallbackPool = mock(OcgCallbackPool.class);
         controller.ocgConfigStore = mock(OcgConfigStore.class);
+        controller.personalAssistantService = PersonalAssistantStubs.passThrough();
         var channel = channel("channel-a", "agent-a", null);
         var agent = agent("agent-a");
         when(controller.channelConfigStore.load("channel-a")).thenReturn(channel);

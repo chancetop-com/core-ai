@@ -91,12 +91,25 @@ public class AgentCatalogService {
                 .toList();
     }
 
+    /**
+     * The agent behind an id, or null. The snapshot miss falls back to a direct read, so an agent written
+     * outside {@code AgentDefinitionService} — a personal assistant forked on first use — is runnable
+     * immediately instead of waiting for the next snapshot refresh.
+     */
     public CatalogAgent find(String userId, String id) {
         if (id == null || id.isBlank()) return null;
         for (var agent : visibleRunnable(userId, null, null)) {
             if (id.equals(agent.id())) return agent;
         }
-        return null;
+        return loadMissing(userId, id);
+    }
+
+    private CatalogAgent loadMissing(String userId, String id) {
+        var definition = agentDefinitionCollection.get(id).orElse(null);
+        if (definition == null) return null;
+        if (!AgentVisibility.isVisible(definition, userId) || !AgentVisibility.isRunnable(definition, userId)) return null;
+        var definitions = List.of(definition);
+        return toCatalogAgent(definition, resolveSkillNames(definitions), resolveAgentNames(definitions));
     }
 
     /**

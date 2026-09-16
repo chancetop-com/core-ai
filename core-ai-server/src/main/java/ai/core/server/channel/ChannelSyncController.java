@@ -2,6 +2,7 @@ package ai.core.server.channel;
 
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.channel.openclaw.OcgCallbackPool;
 import ai.core.server.channel.openclaw.OcgConfigStore;
 import ai.core.server.domain.AgentDefinition;
@@ -61,6 +62,8 @@ public class ChannelSyncController implements Controller {
     OcgCallbackPool ocgCallbackPool;
     @Inject
     OcgConfigStore ocgConfigStore;
+    @Inject
+    PersonalAssistantService personalAssistantService;
 
     @Override
     @SuppressWarnings("unchecked")
@@ -76,11 +79,13 @@ public class ChannelSyncController implements Controller {
             authenticateOcg(channelId);
         }
         var channel = loadChannel(channelId, callbackUrl);
-        var agent = agentDefinitionService.getEntity(channel.agentId);
-        if (agent == null) throw new NotFoundException("agent not found: " + channel.agentId);
 
         var userField = (String) payload.get("user");
         var userId = resolveUserId(channel, channelId, userField);
+        var agentId = personalAssistantService.resolve(channel.agentId, userId);
+        var agent = agentDefinitionService.getEntity(agentId);
+        if (agent == null) throw new NotFoundException("agent not found: " + agentId);
+
         var cacheKey = sessionCacheKey(channelId, channel.agentId, userId, userField);
         var asyncOcg = callbackUrl != null && !callbackUrl.isBlank();
         var isNewConversation = !asyncOcg && countUserMessages(payload) == 1

@@ -20,11 +20,15 @@ public final class CallerContexts {
         return new Caller(user.externalId, user.id, managerId, user.metadata);
     }
 
-    /** Resolves the caller identity from the authenticated user and attaches it to the execution context. */
-    public static void attach(ExecutionContext context, MongoCollection<User> userCollection, String userId) {
-        if (userId != null) {
-            context.setCaller(fromUser(userCollection.get(userId).orElse(null)));
-        }
+    /**
+     * Resolves the caller identity from the authenticated user and attaches it to the execution context.
+     *
+     * @return the resolved user, so callers that need it for the prompt do not read it a second time
+     */
+    public static User attach(ExecutionContext context, MongoCollection<User> userCollection, String userId) {
+        var user = userId != null ? userCollection.get(userId).orElse(null) : null;
+        context.setCaller(fromUser(user));
+        return user;
     }
 
     private CallerContexts() {

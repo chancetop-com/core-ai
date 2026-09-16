@@ -10,6 +10,7 @@ import ai.core.server.dataset.DatasetService;
 import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.SubAgentAssembler;
+import ai.core.server.agent.UserIdentityPrompt;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
@@ -32,7 +33,6 @@ import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.web.sse.SseEventBridge;
-import ai.core.prompt.PromptInject;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import core.framework.inject.Inject;
@@ -132,7 +132,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userCollection, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager()));
+                    ownershipRegistry, systemSettingsService, userCollection, memoryExperimentService, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager()));
         }
         return rebuildManager;
     }
@@ -143,10 +143,6 @@ public class AgentSessionManager {
     private SessionDatasetHelper datasetHelper() {
         if (datasetHelper == null) datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
         return datasetHelper;
-    }
-    private PromptInject channelInject(SessionConfig config) {
-        if (config == null || config.channelType == null || config.channelType.isBlank()) return null;
-        return () -> "You are communicating with the user through the " + config.channelType + " channel.";
     }
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
         // Turn-state listener goes first so the Redis turn key is written before the
@@ -177,7 +173,7 @@ public class AgentSessionManager {
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry, context, null, extraVars, null,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
-                null, channelInject(effectiveConfig)));
+                null, SessionSubAgentManager.channelInject(effectiveConfig)));
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
         attachSessionListeners(session, sessionId);
@@ -245,8 +241,9 @@ public class AgentSessionManager {
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
         var extraVars = datasetHelper().buildExtraVars(config, datasetConfig);
         var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId);
-        CallerContexts.attach(context, userCollection, userId);
+        var caller = CallerContexts.attach(context, userCollection, userId);
         if (sandbox2 != null) context.sandbox(sandbox2);
+        UserIdentityPrompt.attach(context, definition, caller);
 
         var injectionResult = memoryExperimentService.prepareInjection(definition.id);
         var memoryInject = injectionResult.injected ? injectionResult.promptInject : null;
@@ -254,7 +251,7 @@ public class AgentSessionManager {
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 config, toolRegistry, context, definition.name, extraVars, definition.id,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
-                memoryInject, channelInject(config)));
+                memoryInject, SessionSubAgentManager.channelInject(config)));
 
         var experimentConfig = memoryExperimentService.getConfig(definition.id);
         if (experimentConfig != null) memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);

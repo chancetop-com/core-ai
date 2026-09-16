@@ -144,7 +144,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVProjectAutoSubjects(),
             new SchemaMigrationVProjectAttributionRepair(),
             new SchemaMigrationVProjectPlaybookWriter(),
-            new SchemaMigrationVHubCallKindIndex()
+            new SchemaMigrationVHubCallKindIndex(),
+            new SchemaMigrationVSystemAgentMemoryOff()
         );
     }
 }

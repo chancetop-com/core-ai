@@ -6,6 +6,7 @@ import ai.core.api.a2a.Part;
 import ai.core.api.a2a.SendMessageRequest;
 import ai.core.api.a2a.Task;
 import ai.core.api.a2a.TaskState;
+import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.session.AgentSessionManager;
 import core.framework.inject.Inject;
 import core.framework.web.exception.BadRequestException;
@@ -41,14 +42,17 @@ public class ServerA2ACallerService {
     ServerA2AService a2aService;
     @Inject
     AgentSessionManager sessionManager;
+    @Inject
+    PersonalAssistantService personalAssistantService;
 
     /**
      * Sends a task on behalf of a caller: the wait behaviour is tunable and a timed-out run stays
      * alive for {@link #viewTask} to pick up.
      */
-    public A2ATaskView sendForCaller(String agentId, SendMessageRequest request, String userId, ServerA2ATaskOptions options) {
+    public A2ATaskView sendForCaller(String rawAgentId, SendMessageRequest request, String userId, ServerA2ATaskOptions options) {
         a2aService.pruneTerminalTasks();
         a2aService.validateMessageRequest(request);
+        var agentId = personalAssistantService.resolve(rawAgentId, userId);
         a2aService.checkCanRun(userId, agentId);
         boolean local = !a2aService.remote().ownedByAnotherPod(request.message.contextId);
         if (options.isDetached()) {

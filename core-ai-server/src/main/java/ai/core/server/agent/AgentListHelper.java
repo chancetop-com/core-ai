@@ -4,6 +4,7 @@ import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.User;
+import ai.core.server.skill.SkillService;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
@@ -25,12 +26,12 @@ import java.util.Set;
  * @author stephen
  */
 final class AgentListHelper {
-    static final String DEFAULT_ASSISTANT_AGENT_ID = "default-assistant";
     private static final String FAVORITE_AGENT_IDS_FIELD = "favorite_agent_ids";
 
-    static void prioritizeDefaultAssistant(List<AgentDefinition> agents) {
+    static void prioritizeAssistant(List<AgentDefinition> agents, String agentId) {
+        if (agentId == null) return;
         for (int i = 0; i < agents.size(); i++) {
-            if (DEFAULT_ASSISTANT_AGENT_ID.equals(agents.get(i).id)) {
+            if (agentId.equals(agents.get(i).id)) {
                 agents.add(0, agents.remove(i));
                 return;
             }
@@ -56,6 +57,19 @@ final class AgentListHelper {
         return text != null && text.toLowerCase(Locale.ROOT).contains(lowerKeyword);
     }
 
+    static Map<String, String> resolveSkillNames(SkillService skillService, List<AgentDefinition> entities) {
+        var skillIds = new HashSet<String>();
+        for (var entity : entities) {
+            if (entity.skillIds != null) skillIds.addAll(entity.skillIds);
+        }
+        if (skillIds.isEmpty()) return Map.of();
+        try {
+            return skillService.batchResolve(skillIds);
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
     private final MongoCollection<AgentDefinition> agentDefinitionCollection;
     private final MongoCollection<User> userCollection;
 
@@ -65,20 +79,21 @@ final class AgentListHelper {
     }
 
     AgentDefinition findDefaultAssistant(Bson filter) {
-        return agentDefinitionCollection.findOne(AgentQueryHelper.combineFilters(filter, Filters.eq("_id", DEFAULT_ASSISTANT_AGENT_ID))).orElse(null);
+        return agentDefinitionCollection.findOne(AgentQueryHelper.combineFilters(filter,
+            Filters.eq("_id", PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID))).orElse(null);
     }
 
-    List<AgentDefinition> listWithDefaultAssistantFirst(Bson filter, String sortField, Integer skip, Integer limit, AgentDefinition defaultAssistant, Bson projection) {
+    List<AgentDefinition> listWithAssistantFirst(Bson filter, String sortField, Integer skip, Integer limit, AgentDefinition assistant, Bson projection) {
         if (limit == null) {
             var agents = findAgents(filter, sortField, null, null, projection);
-            prioritizeDefaultAssistant(agents);
+            prioritizeAssistant(agents, assistant.id);
             return agents;
         }
         if (skip != null && skip > 0) {
-            return findAgents(excludeDefaultAssistant(filter), sortField, skip - 1, limit, projection);
+            return findAgents(excludeAssistant(filter, assistant.id), sortField, skip - 1, limit, projection);
         }
-        var agents = limit > 1 ? findAgents(excludeDefaultAssistant(filter), sortField, 0, limit - 1, projection) : new ArrayList<AgentDefinition>();
-        agents.add(0, defaultAssistant);
+        var agents = limit > 1 ? findAgents(excludeAssistant(filter, assistant.id), sortField, 0, limit - 1, projection) : new ArrayList<AgentDefinition>();
+        agents.add(0, assistant);
         return agents;
     }
 
@@ -94,13 +109,13 @@ final class AgentListHelper {
 
     // Mongo cannot use an index for an unanchored case-insensitive regex, so keyword search is rejected by
     // notablescan. Fetch the index-backed access matches and filter in Java instead, like TraceService does.
-    List<AgentDefinition> searchAgents(Bson filter, String keyword, String sortField) {
+    List<AgentDefinition> searchAgents(Bson filter, String keyword, String sortField, String priorityAgentId) {
         var lower = keyword.toLowerCase(Locale.ROOT);
         var matches = new ArrayList<AgentDefinition>();
         for (var agent : findAgents(filter, sortField, null, null, null)) {
             if (contains(agent.name, lower) || contains(agent.description, lower)) matches.add(agent);
         }
-        prioritizeDefaultAssistant(matches);
+        prioritizeAssistant(matches, priorityAgentId);
         return matches;
     }
 
@@ -160,6 +175,19 @@ final class AgentListHelper {
         return response;
     }
 
+    Map<String, String> resolveSubAgentNames(List<AgentDefinition> entities) {
+        var agentIds = new HashSet<String>();
+        for (var entity : entities) {
+            if (entity.subAgentIds != null) agentIds.addAll(entity.subAgentIds);
+        }
+        if (agentIds.isEmpty()) return Map.of();
+        var map = new HashMap<String, String>();
+        for (var agent : agentDefinitionCollection.find(new org.bson.Document("_id", new org.bson.Document("$in", new ArrayList<>(agentIds))))) {
+            map.put(agent.id, agent.name);
+        }
+        return map;
+    }
+
     Map<String, String> resolveUserNames(List<AgentDefinition> entities) {
         var userIds = new HashSet<String>();
         for (var entity : entities) {
@@ -174,7 +202,7 @@ final class AgentListHelper {
         return map;
     }
 
-    private Bson excludeDefaultAssistant(Bson filter) {
-        return AgentQueryHelper.combineFilters(filter, Filters.ne("_id", DEFAULT_ASSISTANT_AGENT_ID));
+    private Bson excludeAssistant(Bson filter, String assistantId) {
+        return AgentQueryHelper.combineFilters(filter, Filters.ne("_id", assistantId));
     }
 }

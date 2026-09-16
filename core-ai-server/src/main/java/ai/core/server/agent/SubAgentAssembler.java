@@ -236,6 +236,11 @@ public class SubAgentAssembler {
         if (c.channelInject != null) {
             builder.systemPromptSection(c.channelInject);
         }
+        // execution context sections (caller identity, and any per-request context added later) come last,
+        // so every session path that owns a context gets them without an extra build parameter
+        if (c.context != null) {
+            c.context.getPromptSections().forEach(builder::systemPromptSection);
+        }
         return builder.build();
     }
 

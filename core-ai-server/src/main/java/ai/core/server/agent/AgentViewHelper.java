@@ -67,6 +67,8 @@ final class AgentViewHelper {
                 })
                 .toList() : null;
         view.status = entity.status != null ? entity.status.name() : null;
+        view.forkedFrom = entity.forkedFrom;
+        view.forkedAt = entity.forkedAt;
         view.publishedAt = entity.publishedAt;
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;

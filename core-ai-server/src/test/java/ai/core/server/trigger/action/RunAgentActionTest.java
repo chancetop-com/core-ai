@@ -1,5 +1,6 @@
 package ai.core.server.trigger.action;
 
+import ai.core.server.agent.PersonalAssistantStubs;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
@@ -89,6 +90,7 @@ class RunAgentActionTest {
         action.agentDefinitionCollection = collection;
         action.agentRunner = runner;
         action.skillService = skillService;
+        action.personalAssistantService = PersonalAssistantStubs.passThrough();
         return new Harness(action, runner, skillService);
     }
 
