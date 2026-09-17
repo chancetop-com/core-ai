@@ -33,7 +33,8 @@ public class SchemaMigrationVPresetSkills implements SchemaMigration {
         // 20260830001: camera-language upgraded to 24-move dictionary; added ai-shot-language (shot sizes/angles/composition/shot-reverse-shot)
         // 20260907001: ai-character-sheet — three clean single-subject images for video references; the 4-panel sheet is design-only
         // 20260917001: ai-scene-sheet — separate clean scene references instead of one 4-panel sheet; indoor/outdoor topology recipes, anchor block, drift fixes
-        return "20260917001";
+        // 20260917002: ai-camera-language — multi-shot segmentation (timecodes vs shot labels), negative-prompt buckets, emotion→camera map, director signatures, camera replication from a reference video
+        return "20260917002";
     }
 
     @Override
