@@ -1,103 +1,107 @@
 ---
 name: ai-shot-language
-description: 镜头语言词典：九档景别、机位角度、人物朝向与正反打、构图法则的提示词写法与叙事用途，含景别节奏规律与关键帧八模块模板。适用于写分镜 framing 字段与关键帧生成。
+description: Shot framing language that AI video models actually obey — the shot-size, angle and movement vocabulary that lands, crop-line and lens phrasing for real precision, headroom and lead-room wording, the vendor-published prompt ordering contracts (Veo, Runway, Kling, MiniMax, Seedance), shot-to-shot grammar for eyelines and screen direction, and the ranked framing failure modes with fixes. Use whenever a shot's framing must be specified or a frame comes back wrong.
 ---
 
-# 镜头语言词典（Shot Language）
+# Shot language
 
-专业平台"景别/机位"预设的提示词等价物。一个镜头 = **景别 + 机位 + 运镜 + 光线**四轴齐全；运镜见 ai-camera-language，光线见 ai-lighting-looks，本 skill 管前两轴与构图。
+## Vocabulary that lands
 
-## 三轴铁律
+**Shot sizes** (most reliable parameter after the angle):
 
-每个镜头景别、机位、运镜三轴必须有值——缺任何一轴，模型就替你乱决定：
-- 景别管"画面装多少"：`wide shot / medium shot / close-up`；
-- 机位管"从哪看"：`eye level / low angle / over-the-shoulder`；
-- 运镜管"动不动"：见 ai-camera-language；不动要显式写 `static locked shot`。
-
-## 景别词典（从远到近，按人物切线）
-
-| 景别 | 提示词 | 叙事用途 |
+| Term | Renders as | Use |
 |---|---|---|
-| 大远景 | extreme wide shot / establishing shot | 交代世界与地点，人如一点，环境是主角 |
-| 远景 | wide shot / long shot, full body visible | 人物与环境关系、角色登场 |
-| 全景 | full shot | 全身动作、服装站位、立人物 |
-| 中全景 | medium wide shot / cowboy shot, framed from the knees up | 动作准备、对峙 |
-| 中景 | medium shot, waist up | 对话主力档位（全片约六成镜头） |
-| 中近景 | medium close-up, chest up | 情绪开始集中，肩线体态仍在 |
-| 近景 | close-up / face focus | 情绪爆点，全靠表演撑 |
-| 大特写 | extreme close-up, eye focus / detail shot | 线索、钩子、反转点 |
-| 微距/插入 | macro shot / insert shot | 道具细节：手机屏幕、戒指、伤口 |
+| Extreme close-up / macro | One detail fills the frame | tension, texture, product |
+| Close-up | Shoulders up | emotion, dialogue |
+| Medium close-up | Chest up | dialogue, interviews |
+| Medium shot | Waist up | the default workhorse |
+| Medium-wide / "cowboy" | Knees up | action with context |
+| Full shot | Head to toe | wardrobe, physicality |
+| Wide / establishing | Full body plus environment | openings, geography |
+| Extreme wide | Subject tiny in frame | isolation, scale |
 
-- 景别放句首、主体之前（模型对靠前词权重更高）；
-- 与焦段景深同给才够约束：`close-up, 85mm, shallow depth of field`；
-- 切线写不清就用切位描述：`framed from the knees up`；
-- 特写必须写清"拍什么"：面部特写 / 手部特写 / 信件特写 / 眼神特写，不是泛泛 close-up。
+**Angles**: eye-level, low, high, overhead, Dutch, over-the-shoulder, POV, two-shot. Put the emotional intent here — it is the most obeyed parameter.
 
-## 机位角度词典
+**Movements**: push in, pull out, pan, whip pan, tilt, truck, pedestal, orbit, crane, zoom, handheld, static. **Always attach a speed** ("slow push in over five seconds") — models have no default speed.
 
-| 角度 | 提示词 | 心理效果 |
-|---|---|---|
-| 平视 | eye level shot | 平等、中立、日常 |
-| 仰拍 | low angle shot, looking up at character | 强大、权威、英雄/反派气场 |
-| 俯拍 | high angle shot, looking down at character | 渺小、脆弱、被压制 |
-| 鸟瞰 | overhead / top-down / bird's-eye view | 上帝视角、宿命、全局调度 |
-| 贴地仰 | worm's-eye view, extreme low angle | 极致压迫、怪物威胁、史诗登场 |
-| 荷兰角 | dutch angle, tilted frame | 不安、混乱、精神失衡 |
-| 过肩 | over-the-shoulder shot | 对话空间、观察关系 |
-| 主观 | POV shot, first-person view | 代入、恐惧、隐藏信息 |
+**Weak wording that gets ignored**: "cinematic", "dynamic", "a nice angle" (produces random drift), anatomical paraphrases ("head to waist" crops at the nostrils), and counts or numbers — Kling's own documentation says models are not sensitive to numbers.
 
-权力反转：开场 A 仰拍强势、B 俯拍弱势，结尾对调——角度本身就是剧情。
+## Framing precision
 
-## 人物朝向与正反打
+- **Give the term and the crop line**: "medium shot, framed from the waist up" beats "medium shot" alone.
+- **One framing per shot.** "A wide that pushes into a close-up" usually delivers neither; split it into two shots.
+- **Lens vocabulary is functional**: 24mm for establishing, 35mm walk-and-talk, 50mm neutral, 85mm for close-ups (compression and shallow depth of field; also the safest for faces — 50–85mm avoids wide-lens stretch). Add shallow or deep focus, bokeh, rack focus, foreground occlusion where they serve the beat.
+- **Frame anchors**: eyes on the upper third, headroom above the hairline, and lead room — place the subject on the third opposite the direction of travel, or a pan pushes them out of frame. Add 10–15% padding when movement is planned.
 
-| 朝向 | 提示词 | 用途 |
-|---|---|---|
-| 正面 | front view, facing the camera | 直面观众、展示 |
-| 3/4 侧面 | three-quarter view | 最经典肖像角度 |
-| 纯侧面 | profile view / side view | 正反打、剪影 |
-| 背影 | back view, from behind | 悬念、离去、隐藏表情 |
+## Prompt ordering
 
-正反打对齐四件套（对谈镜头两镜必须成对写，缺一项就穿帮）：
-1. 视线相反：正打 `looking frame right`，反打 `looking frame left`；
-2. 机位同高：两镜都 `eye level`；
-3. 站位不越轴：正打 `character on the left`，反打 `character on the right`；
-4. 前景肩：两镜都 `shoulder in foreground, blurred`。
+Where a model publishes a contract, follow it:
 
-## 构图法则
+| Model family | Order |
+|---|---|
+| Veo, Runway | camera first: shot size → angle → movement with direction and speed → subject and action → lens and look → lighting → what the shot reveals |
+| Kling | subject → subject movement → scene → camera language + lighting + atmosphere |
+| MiniMax / Hailuo | reference alignment first, then camera motion written as a natural part of the action — never stacked labels at the end of the sentence |
+| Seedance | preservation → subject → action → camera → mood, with named references per file |
 
-| 法则 | 提示词 | 效果 |
-|---|---|---|
-| 三分法 | rule of thirds, subject on right third | 平衡，电影感默认 |
-| 引导线 | leading lines toward subject | 引导视线 |
-| 框内框 | frame within frame | 窥视感、层次 |
-| 对称 | symmetrical composition | 秩序、仪式感 |
-| 负空间 | negative space around subject | 孤立、脆弱 |
-| 视线留白 | looking room, headroom | 人物看向处留空 |
+Cross-platform synthesis:
 
-## 景别节奏
+- **Attach every directive to the clause it modifies.** Camera specs that float at the end of a sentence get diluted.
+- Lead with the camera spec when a model over-weights early words; put style and audio last.
+- Roughly 40–80 words per shot. Shot size plus one move plus one action is the working ceiling — constraint pile-up degrades all of them.
+- **In image-to-video, never re-describe the frame** that the image already fixes: describe motion only, since composition fixes belong in a new first frame.
 
-- 漏斗形推进（经典）：establishing/wide → medium 带进对话 → OTS 承接 → 情绪转折才给 close-up——"切进去"；
-- 从紧到宽 = 释放/抛弃：特写拉到大全景读作"个人在世界中的位置"；
-- 全景直切大特写突兀（除非刻意震惊）；连续两镜同景别同机位是剪辑事故；
-- 正反打情绪递进：A中景 → B中近景 → A近景 → B特写——景别随情绪收紧。
+**Weak versus specified** — the difference is almost always vocabulary, not adjectives:
 
-## 关键帧八模块模板
+```
+weak:   cinematic dynamic shot of the CEO looking powerful
+better: Medium close-up, framed from the chest up, slight low angle, 85mm lens. The CEO stops
+        mid-step and turns her head to camera. Slow push in over four seconds, one move only.
+        Hard practical light from screen right. She realises the contract is gone.
+```
 
-写关键帧 prompt 按八模块填，缺一不可：
+**Shot list for one beat** — write it out before generating anything:
 
-1. 剧情任务（purpose：戏剧目的，不是画面描述）
-2. 固定角色（引用角色设定表，不重新描述）
-3. 场景环境（地点/时段/背景元素）
-4. 动作与情绪（具体连续动词 + 表情细节）
-5. 景别与构图（景别 + 机位 + 朝向 + 构图法则）
-6. 光线与色调（引用 ai-lighting-looks 预设）
-7. 画风词（引用 styleBible，全片锁定）
-8. 负面限制（不换脸/不换发型/无多余人物/不夸张表情）
+```
+Shot 1 (master): wide, eye level, 24mm - establish the room; she enters frame left, stops at the desk.
+Shot 2: medium shot, framed from the waist up, 50mm - she opens the folder; static camera,
+        motion comes only from her hands.
+Shot 3: close-up, 85mm - eyeline screen right toward the door; slow push in.
+```
 
-组合公式：`[景别] + [机位] + [朝向] + [主体] + [动作] + [光学] + [光线]`。
+## Shot-to-shot grammar
 
-## 纪律
+- No model keeps a persistent camera rig, so write continuity into every shot: "A is on screen-left looking right; B is on screen-right looking left".
+- **Master shot first.** Establish the geography wide, then cover — that is what makes the closer shots land in the same space.
+- Keep every camera on one side of the line for a scene, and log screen direction outside the tool so a later session cannot flip it.
+- **Over-the-shoulder spec includes**: whose shoulder, which side of frame, roughly a third of the width, what must stay clear, and the subject's eyeline.
+- **Match across cuts**: screen sides, gazes, shoulder pattern, camera height, head size, lens family, lighting side and set anchors.
+- **Cut only for new information** — a change of space, state, viewpoint or time. A mere size change is better served by a push-in. Keep dialogue singles short (4–6 seconds) and low-motion; hard cuts usually beat crossfades on generated footage.
 
-- 每镜必有 purpose——没有戏剧目的的镜删掉，不是渲染；
-- 景别是叙事选择不是术语堆砌：开场要远、对话要中、情绪要近、线索要特写；
-- 构图拿不准先走 ai-contact-sheet 九宫格选版，别为试错烧视频钱。
+## Failure modes
+
+| Failure | Fix |
+|---|---|
+| Shot size ignored, drifts to the model's default | Add the crop line and lens; lock the first frame; change one variable per retry |
+| Head or hands cropped | Medium or medium close-up plus explicit headroom, or lock a reference frame |
+| Eyeline breaks or the composition mirrors | Master shot first, per-shot screen direction, working-side instruction, continuity checklist |
+| A "static" shot drifts | "Camera entirely motionless for the duration; movement only from the subject" |
+| Two or more moves warp the frame | One move per clip — reliability degrades sharply per added axis; two moves is the ceiling |
+| Identity drifts across cuts | Verbatim character block, same reference, similar crops; re-roll rather than re-prompt |
+| Prompt fights the UI sliders | Keep one source of truth per parameter |
+| Image-to-video prompt fights the frame | Motion only; if the composition is wrong, generate a new first frame |
+| "Cinematic" produces mush | Name the technique, the lens and the lighting instead |
+| Wide shots unstable | Use wides for geography only, anchor with silhouettes, then cut closer |
+| Subject pushed out of frame during a move | Offset them to the opposite third and phrase the move as tracking the subject |
+
+## Community disagreements worth knowing
+
+- Camera first versus last versus in-place: the vendor contracts disagree; the safe rule is to attach each instruction to its own clause rather than front-loading a block of moves.
+- One move per clip versus compounds: compound presets exist and marketing claims they work; measured reliability still degrades with each added axis.
+- Rule of thirds versus centre bias: models recentre by default, so slight off-centre framing is safer than extreme thirds — and a reference image is the only reliable enforcement.
+- Image-to-video "motion only" versus anchor-then-action: follow the contract of the model being used.
+
+## Cross-skill
+
+- Camera movement techniques and multi-shot structure: `ai-camera-language`.
+- Location geography behind the eyelines: `ai-scene-sheet`. Faces: `ai-character-sheet`. Light: `ai-lighting-looks`.

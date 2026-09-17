@@ -1,60 +1,139 @@
 ---
 name: ai-character-sheet
-description: 角色参考资产生成：三张干净单人图（面部特写 / 去头正面全身 / 背面全身）锁定视频一致性，四格三视图设定表用于设计定稿，表情九宫格与漂移修复词典。适用于任何需要跨图/跨镜角色一致的生成任务。
+description: Character reference assets and the pipeline that holds a face across shots — the reference pack (canonical portrait, face close-up, headless front full-body, back view, turnaround, expression grid) with the prompt that generates each, sheet hygiene, the verbatim identity block with role-labeled references, the measured fact that named traits survive while unnamed ones decay, ranked drift fixes, per-model reference ceilings for 2026, the video handoff (frames vs references, clip length, the fix ladder), what is wasted effort, and the house rules for scale, lighting and aspect ratio. Use for any task that needs the same person across images or shots.
 ---
 
-# 角色参考资产（Character References）
+# Character references
 
-一致性不靠 prompt 描述，靠**引用图锚定**。但喂给**视频模型**的参考图必须是干净的单人单图——拼贴设定表会被当成画面内容（分栏、灰底、多个人像），还占满引用槽。业界产线（Hell Grind 制作手册、story-video-director、MiniMax 官方）都是这一套。
+Consistency comes from **reference images, not from description** — but a description still decides what the references cannot protect. Name the traits you cannot lose; anchor the rest with clean assets.
 
-## 视频参考三件套（generate_image，3 次；挂进角色的 refImageFileIds）
+Consistency is a property of the pipeline, not a prompt trick. Four layers, each with one owner:
+
+| Layer | Owns | Asset |
+|---|---|---|
+| Identity | Face, hair, body, marks | This pack — locked once, reused byte-identical |
+| Look | Style, grade, palette | A style anchor or locked style line (`ai-lighting-looks`, `ai-scene-sheet`) |
+| Story | Pose, action, camera, place | Storyboard or keyframes, then video (`ai-shot-language`, `ai-contact-sheet`) |
+| Polish | Small repairs | An edit model — never a re-roll of identity |
+
+Three rules follow, and most failures are a violation of one of them:
+
+1. **Lock once, reuse forever.** Approve one canonical set, then re-attach the *exact same files* to every generation. Never swap the reference mid-project, and never overwrite the master with a "better" rollout.
+2. **Change one variable at a time.** Scene, action and light vary; the identity text and the files do not. Descriptions are locked word-for-word — "auburn" and "reddish-brown" read as two different people.
+3. **Reference beats text — but text must not fight the reference.** Keep the identity block aligned with the sheet and describe only what the reference cannot show: the scene. Re-describing the face while a reference is attached makes the two argue, and the model invents a compromise.
+
+## The reference pack
+
+| Asset | Its one job | Verdict |
+|---|---|---|
+| Canonical portrait (or full-body) | The face, and the design | Essential — keep **exactly one**. Several "ideal" faces make the model average them |
+| Face close-up, head-and-shoulders | Identity carrier | Holds best; this is the only face asset |
+| Front full-body, **head cropped at the chin** | Wardrobe, silhouette, shoes | Useful: with no head the model can only take the face from the close-up |
+| Back full-body | Back of the hair, coat back, straps | Useful: vet the invented back once, then lock it |
+| Turnaround, front / three-quarter / side / back in one row | Three-dimensional consistency | Useful when the asset will be re-angled |
+| Expression grid, 2 rows × 3 columns | Face plasticity | Holds best in measurement |
+| Props panel | Draws the signature object once | Only when the character owns a prop |
+| Pose sheet, 9-panel poster | — | **Wasted effort**: three of four poses unusable, detail crushed (a notebook renders at 32 px on a sheet versus 71 px as a single) |
 
 ```
-1. 面部特写：[角色描述]。3/4 侧面头肩特写，中性表情，灰色影棚背景，柔和定向光，真实皮肤质感（毛孔、细纹，不磨皮），眼神光清晰。单人，无文字。
-2. 去头正面全身：[角色描述]。正面全身站姿，画面从锁骨以下裁切（不含头部），灰色影棚背景，均匀光，服装细节、鞋、配饰完整可见。单人，无文字。
-3. 背面全身：[角色描述]。背面全身站姿，含后脑发型剪影，灰色影棚背景，均匀光。单人，无文字。
+1. Canonical: Create a single full-body image. Framing: vertical 3:4, whole character head to toe,
+   relaxed pose, arms slightly away from the body, plain light grey background, soft even light.
+   Avoid any face that resembles a real or famous person. (generate 4-6, keep one)
+2. Face: Head-and-shoulders close-up of this exact character: [face shape, eyes, skin, hair
+   details], neutral expression, plain light grey background, soft even light.
+3. Front: Full body, head cropped at the chin, front view, relaxed neutral pose, arms slightly
+   away from the body, plain light neutral background. Same height and scale as the other views.
+4. Back: Full body, back view, same height and scale as the front view, relaxed neutral pose.
+5. Turnaround: Create a turnaround: front, three-quarter, side and back in one row, all the same
+   height, standing on one baseline, every detail on the same side of the body in every view.
+6. Expressions: Six head-and-shoulders portraits in a grid of two rows and three columns, evenly
+   spaced, same scale: neutral, happy, angry, sad, surprised, embarrassed - same face shape and
+   hairstyle in every panel, no text, no labels.
 ```
 
-要点：**去了头，模型只能从特写里取脸**——这是三件套比一张全身图更稳的原因；三张同一光线、同一服装；用 `caption_image` 验图（同一人？服装一致？）后再挂；特写排第一。
+Build it in **two stages**: draw all views in one pass so they agree with each other, then feed that sheet back as the reference and redraw each view individually at full resolution — consistency from the sheet, resolution from the redraw. Generating front, then side, then back one by one drifts between cuts, and a dense panel sheet crushes detail; the redraw recovers it. The individual redraws are what you mount as reference files; the composite sheet is the design artifact.
 
-状态分身（湿身 / 带血 / 换装 / 老化）各出一套独立三件套，命名 `林晚_湿`，不要在一段文字里混写多个状态。
+**House rules**
 
-## 三视图设定表（设计定稿用，给人看；generate_image，1 次）
+- Every asset at the deliverable's aspect ratio (3:4 or 4:5 portrait for stills, 9:16 for vertical video); all figures share one scale and one baseline.
+- Plain grey or white background, soft even light (~5500 K, no colour cast), **one subject and no prop in hand** — held objects and extra figures create inconsistency across angles, and studio shadows and backdrops leak into every later scene.
+- Upload originals, not screenshots or recompressed copies; reference quality bounds output quality, and a face too small to read is the most common drift cause.
+- **Never promote a drifting image into the pack**, and vet the invented back of the hair and coat once before locking it. A silently swapped master invalidates the run.
+- Test drift with close-ups before wides — wide shots hide a failing face until it is too late to fix cheaply.
+- **Expression grids are image-stage only — never mount them as video references.** Six panels is the ceiling; re-run detail-critical frames as singles.
+- Verify each asset before mounting it (same person? same wardrobe? face visible?) rather than assuming the set is coherent.
+- **State variants are separate packs**: wet, bloodied, changed, aged — each gets its own face/front/back set with an explicit name (for example `LinWan_wet`). Never describe several states in one prompt.
+- After the pack exists, the scene prompt becomes: `Show the character from the attached sheet in [scene]. From the sheet, keep the face, proportions, outfit and colours exactly the same, and change only the pose and expression. One image, the character once, without the sheet's labels, swatches or extra poses.`
 
-```
-[角色描述：年龄/体型/发型/服装/标志物]。
-角色设计图，横屏 16:9，纯白背景，固定 4 格分屏布局，从左到右：
-左侧第 1 格为脸部超大特写（五官锚点），
-右侧一字排开正面、侧面、背面全身三视图。
-三视图站姿统一、人物高度一致、四格宽度均等；
-所有视图中五官、身材比例、服装缝线、颜色、配饰完全一致。
-中性表情，均匀顶光。[风格词]
-```
+## The identity block
 
-设定表定稿后，以它为 input_images 生成上面的三件套（"以参考图中的角色为准，生成…"），保证同一人。设定表本身可以作为**关键帧图像模型**的参考，不要作为视频模型的参考。
-
-## 表情九宫格（以特写为 input_images，1 次，可选）
+Reuse verbatim in every shot:
 
 ```
-以参考图中的角色为准，生成 3x3 九宫格表情表，每格为头肩特写：
-微笑 / 大笑 / 平静 / 严肃 / 愤怒 / 担忧 / 哭泣 / 惊讶 / 轻蔑。
-严格复制参考图的脸型、五官、年龄感、发型、服装与机位，
-只允许改变眉、眼睑、视线、嘴、脸颊与头部微倾——其余一律不变。
-横屏，纯白背景，格宽均等。
+IDENTITY (unchanged): [Name], [age], [gender/ethnicity], [face shape], [eye colour and shape],
+[brows/nose/lips], [skin tone and marks], [hair colour, texture, length, parting],
+[distinguishing feature], [signature accessory]. Same person and identical facial features as
+the reference - do not invent, restyle or alter the face.
+WARDROBE LOCK (unchanged): [outfit, colours, materials].
+SCENE (the only part that changes): [location, action, camera, light].
 ```
 
-## 一句锚定描述（consistencyClause）
+- **Bind every reference to one role and name it**: `@Image 1 is the character`, `@Image 2 is the location`. Close with the anti-reinterpretation clause: *"use the provided image as the authoritative reference — do not redesign, age-shift, or beautify."* Unlabeled references get averaged and "use this as reference" is too vague to defend a face.
+- **Named traits survive; unnamed ones decay.** In a measured test, traits named in the prompt held 100% across runs, while reference-only traits decayed — a notebook and a strap mostly held, but hair asymmetry showed in only 14 of 26 front views. Name what you cannot lose, and put identity on objects the character keeps.
+- **Placement**: keep the same order every time (description → action and setting → style). Do not alternate synonyms between shots. For stills use the full block; for reference-conditioned video compress it to a one or two-line "same person as the reference" anchor, since long descriptive text pulls the model off the anchor. Video models that are not reference-conditioned need the full block.
+- Wardrobe changes are new assets, not new sentences.
 
-三件套之外，写一句**跨镜逐字不变**的外观锚定："27 岁女性，齐肩黑发，左眉有疤，黑色高领毛衣，无首饰"。只写不变的东西；服装变化 = 新资产，不是改句子。
+## Drift fixes, in order
 
-## 漂移修复（单变量重试，别全部重写）
+1. **Edit the exact wrong panel in the source sheet** — everything downstream inherits the fix.
+2. Regenerate reference-first (the sheet or an approved still), never text-first.
+3. Frame-chaining: export an approved face frame and use it as the next shot's reference; hand off the last frame for shots longer than five to ten seconds.
+4. Open a fresh session when accumulated follow-up drift sets in, and re-attach the sheet.
+5. Re-run the failing frame alone at full resolution.
+6. Name the specific missing detail. (Trade-off warning: fixing the back of a coat once cost two front details.)
+7. Swap in a closer face view for stubborn shots.
+8. Change one variable per retry. The working checklist: prompt consistency → isolate the problem area → describe it more strongly → upload past successes as references → lower variation.
+9. When references conflict, reduce them — the strongest face plus the body is often enough.
+10. Seeds are diagnostics, not guarantees: neither a repeated prompt nor a fixed seed ensures continuity.
+11. Design around blind spots: detail carried only in silhouette is the first thing lost.
 
-| 崩坏 | 追加约束 / 修法 |
+## Reference ceilings (2026-09)
+
+| Model family | Feature | Reference ceiling |
+|---|---|---|
+| Nano Banana Pro class | Multi-reference plus conversational editing — the best pack builder and repair tool | ≤14 references, ≤5 people |
+| Veo 3.1 | Ingredients to video | 3 references officially, 4 on some surfaces |
+| Kling | Subject binding, Elements | 4 references per clip, 1–4 images per element |
+| Midjourney V7 | `--oref` omni reference with `--ow` weight | 1 image; the older character-reference flag does not work in V7 |
+| Seedance 2.x | Multimodal reference-to-video with appearance lock | Around 9 images plus video and audio references |
+| GPT Image 2.5 class | Subject preservation across edits | Not published |
+
+More slots do not mean better consistency: two to four well-chosen references usually outperform a large set, and conflicting references average into a stranger.
+
+## Video handoff
+
+- **Frames and references are different inputs.** Frames buy local control — exact composition and identity at the boundary instants; references buy flexibility — the model re-stages the subject for you. Identity-critical shots default to frames. On APIs that separate them, the two styles cannot be mixed in one call.
+- **Approve the still before paying to animate.** Fix a drifting shot by adjusting the motion prompt first; regenerate the source still only when the visual design itself is wrong. Video is the expensive step, and the image stage exists to catch identity failures before you pay to animate them.
+- **Prompt motion, not identity.** With a first frame attached, the text carries action, camera, environment motion and audio; appearance belongs to the reference.
+- **Re-attach the master to every shot.** Chaining clip→clip alone compounds drift; when you chain, keep the returned frame *and* the master, and never overwrite the master with it. Clip length converges on ~8 seconds — single-pass identity holds 10–20 seconds at best; a stricter camp cuts 2–3 second micro-shots on the logic that every new frame is a chance to deviate.
+- **The fix ladder, cheapest first**: relabel reference roles → restage in a medium shot before attempting close-ups, emotion or angle extremes → adjust the motion prompt → reject and re-roll → swap or regenerate the sheet.
+- Budget reality: about **three generations per usable shot** and roughly a keeper per 3–5 attempts; a documented 4K two-character production spent ~5 generations to lock one character. Judge a clip against the brief, not against its best frame — one good frame can hide a broken hand at second eight. Realistic curation gets ~85–90% identity consistency; trained identity (LoRA, Soul ID) is the escalation path past that, at ~95–97%.
+
+## Failure modes
+
+| Failure | Fix |
 |---|---|
-| 脸不像 | 换更清晰、光更平的 3/4 侧特写做第一张；检查是否有别的图在"抢脸"（去头全身是否露了下巴） |
-| 侧脸不像同一人 | "侧视图与正面特写保持同一眼位线、鼻梁、下颌长度、发型剪影" |
-| 服装细节漂移 | 把漂移项写成明确特征（如"左襟三颗金扣"）加进锚定句和全身图提示词 |
-| 视图高低错位（设定表） | "全身三视图人物高度一致，脚底对齐同一地平线" |
-| 年龄变化需求 | "只老化皮肤、软组织与发色；颅骨比例、眼距、鼻梁、下颌不变" |
+| Face drifts across shots | Re-feed the sheet, chain from an approved frame, name the missing feature; never re-prompt from text alone |
+| Face becomes over-rigid or plastic | Lower variation, add expression guidance, keep at least one natural-pose reference |
+| "Same face, different person" (identity right, casting wrong) | Fix the canonical portrait itself; downstream assets cannot repair a bad root |
+| Wardrobe or hair drifts | Move the item into the wardrobe lock line and the identity block; describe it as a feature, not a mood; if the reference keeps forcing the old outfit, reduce its scope to face-only (Midjourney `--cw 0`, lower `--ow`) |
+| Profile and back shots are a different person | Unseen angles get guessed — add the missing view to the sheet (front/side/back/detail) instead of prompting around it |
+| Every shot mirrors the reference's pose or framing | Reference scope or weight is too high: moderate it (`--ow` around 200–400, 500+ only while the face keeps slipping) or regenerate a neutral master |
+| Studio backdrop or shadows appear in scenes | Environment bleed from a busy or lit reference — regenerate the sheet cleanly |
+| Age shifts | State the age in the identity block and lock skull proportions, eye spacing and nose bridge explicitly |
+| Expression lost in video | Reference the expression grid only at the image stage; describe the expression in words for video |
+| Real-person likeness | Generate fictional faces; avoid named or celebrity faces in the canonical portrait; treat real-person references as consent-gated |
 
-2 轮修不好就换 seed 重生成整张图，不要在坏图上叠补丁。
+## Cross-skill
+
+- Location assets: `ai-scene-sheet`. Light and palette: `ai-lighting-looks`. Framing: `ai-shot-language` and `ai-camera-language`. Coverage grids: `ai-contact-sheet`.
