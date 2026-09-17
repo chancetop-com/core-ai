@@ -538,9 +538,14 @@ class CompressionTest {
         String compressed = compressionWithProvider.compressToolResult("run_bash_command", "word ".repeat(100000), "session-9", sandbox);
 
         assertEquals(1, uploaded.size());
-        assertTrue(uploaded.getFirst().startsWith("/tmp/core-ai/session-9/"));
-        assertTrue(compressed.contains(uploaded.getFirst()));
-        assertFalse(compressed.contains(System.getProperty("java.io.tmpdir")));
+        String sandboxPath = uploaded.getFirst();
+        assertTrue(sandboxPath.startsWith("/tmp/core-ai/session-9/"));
+        assertTrue(compressed.contains(sandboxPath));
+        assertFalse(Files.exists(localSpillPath(sandboxPath)), "a result spilled into the sandbox must not also be written to the local temp directory");
+    }
+
+    private Path localSpillPath(String sandboxPath) {
+        return Path.of(System.getProperty("java.io.tmpdir"), "core-ai", "session-9", Path.of(sandboxPath).getFileName().toString());
     }
 
     @Test
