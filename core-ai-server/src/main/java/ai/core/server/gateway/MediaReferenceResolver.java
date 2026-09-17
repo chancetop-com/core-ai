@@ -29,7 +29,9 @@ import java.util.Locale;
  *       just the upstream interaction id. Zero bytes moved, best fidelity.</li>
  *   <li>upstream-side asset reuse — same provider, its own result asset is still valid.</li>
  *   <li>pre-signed public URL — the provider fetches from the public internet and the source is in
- *       our object storage. Minted per call, never cached: the signature expires.</li>
+ *       our object storage. Minted per call, never cached: the signature expires. Skipped for a
+ *       destination that cannot be relied on to download it (KIE), which takes the inline path and
+ *       lets its adapter upload the bytes to the provider's own file host instead.</li>
  *   <li>inline base64 — the provider requires inline data, or the source is not in object storage.
  *       The only path before this design, demoted to last resort.</li>
  * </ol>
@@ -111,8 +113,10 @@ public class MediaReferenceResolver {
             throw new BadRequestException("media reference has no stored content, media_id=" + reference.mediaId());
         }
         // tier 3: the destination fetches from the public internet and we hold the bytes — hand it a
-        // pre-signed URL it can actually reach and move zero bytes ourselves
-        if (remote) {
+        // pre-signed URL it can actually reach and move zero bytes ourselves. A provider whose fetcher
+        // cannot be trusted with that URL (KIE) skips straight to inlining, because a task that dies
+        // minutes later on a download timeout costs a re-render and a re-settled bill
+        if (remote && !capabilities.remoteFetchUnreliable()) {
             var url = mediaJobService.downloadUrl(record);
             if (hasText(url)) return reference.withContent(url, null, modality);
         }

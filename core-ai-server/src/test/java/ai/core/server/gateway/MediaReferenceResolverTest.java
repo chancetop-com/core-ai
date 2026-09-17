@@ -92,10 +92,23 @@ class MediaReferenceResolverTest {
         jobService.record = record();
         jobService.presignedUrl = "https://storage.example/signed";
 
-        var resolved = resolve(route("provider-a", "KIE"));
+        var resolved = resolve(route("provider-a", "OPENAI_COMPATIBLE"));
 
         assertEquals("https://storage.example/signed", resolved.references().getFirst().url());
         assertNull(resolved.references().getFirst().b64Json(), "no bytes are moved on the URL path");
+    }
+
+    @Test
+    void kieReferencesAreInlinedBecauseItsFetcherTimesOutOnOurStorage() {
+        jobService.job = job("provider-b");
+        jobService.record = record();
+        jobService.presignedUrl = "https://storage.example/signed";
+
+        var resolved = resolve(route("provider-a", "KIE"));
+
+        var reference = resolved.references().getFirst();
+        assertNull(reference.url(), "a task that dies on a download timeout costs a re-render, so KIE uploads our bytes instead");
+        assertTrue(reference.b64Json().startsWith("data:image/png;base64,"));
     }
 
     @Test
