@@ -1,6 +1,5 @@
 package ai.core.server.session;
 
-import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.domain.ReasoningEffort;
@@ -77,6 +76,8 @@ public class SessionRebuildManager {
     private final MongoCollection<User> userCollection;
     private final AgentMemoryExperimentService memoryExperimentService;
     private final AgentMemoryService agentMemoryService;
+    private final SessionSearchService sessionSearchService;
+    private final SessionRestoreHelper restoreHelper;
     private final SessionContextBuilder contextBuilder;
     private final TurnStateRegistry turnStateRegistry;
     private SessionDatasetHelper datasetHelper;
@@ -100,9 +101,12 @@ public class SessionRebuildManager {
         this.userCollection = deps.userCollection;
         this.memoryExperimentService = deps.memoryExperimentService;
         this.agentMemoryService = deps.agentMemoryService;
+        this.sessionSearchService = deps.sessionSearchService;
         this.turnStateRegistry = deps.turnStateRegistry;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
                 systemSettingsService, deps.mediaProvider, deps.quotaService).withAsyncTaskManager(deps.asyncTaskManager);
+        this.restoreHelper = new SessionRestoreHelper(chatMessageService, toolRegistryService, skillManager,
+                subAgentManager, agentDefinitionCollection);
     }
 
     private SessionDatasetHelper datasetHelper() {
@@ -227,7 +231,7 @@ public class SessionRebuildManager {
     private PromptInject attachMemory(ToolRegistry toolRegistry, ExecutionContext context, String agentId) {
         if (!hasText(agentId)) return null;
         if (context != null) {
-            MemoryCapability.attach(toolRegistry, context, agentDefinitionCollection.get(agentId).orElse(null), agentMemoryService);
+            MemoryCapability.attach(toolRegistry, context, agentDefinitionCollection.get(agentId).orElse(null), agentMemoryService, sessionSearchService);
         }
         var injectionResult = memoryExperimentService.prepareInjection(agentId);
         return injectionResult.injected ? injectionResult.promptInject : null;
@@ -321,10 +325,10 @@ public class SessionRebuildManager {
         if (eventPublisher != null) {
             session.onEvent(new SseEventBridge(params.sessionId, eventPublisher));
         }
-        restoreAgentHistory(agent, params.sessionId);
+        restoreHelper.restoreAgentHistory(agent, params.sessionId);
         skillManager.restoreDefinitionSkills(session, params.state != null && params.state.agentConfig != null
                 ? params.state.agentConfig.skillIds : null);
-        restoreDynamicallyLoaded(params.state, params.sessionId, session, params.userId);
+        restoreHelper.restoreDynamicallyLoaded(params.state, params.sessionId, session, params.userId);
         logger.info("doRebuild done, sessionId={}, elapsedMs={}", params.sessionId, System.currentTimeMillis() - start);
         return session;
     }
@@ -339,64 +343,6 @@ public class SessionRebuildManager {
     private void renewSessionOwnership(String sessionId) {
         if (ownershipRegistry != null) {
             ownershipRegistry.claimOrRenew(sessionId);
-        }
-    }
-    void restoreDynamicallyLoaded(SessionState state, String sessionId, InProcessAgentSession session,
-                                  String callerUserId) {
-        if (state == null) return;
-        if (state.tools != null && !state.tools.isEmpty()) {
-            try {
-                logger.info("restore tools: {} ref(s) to resolve for session {}, refs={}", state.tools.size(), sessionId, state.tools);
-                var resolved = toolRegistryService.resolveToolRefs(state.tools, sessionId, callerUserId);
-                if (!resolved.isEmpty()) {
-                    session.loadTools(resolved);
-                    logger.info("restored {} dynamically loaded tools for session {}", resolved.size(), sessionId);
-                } else {
-                    logger.warn("restore tools: resolution returned empty for {} ref(s), sessionId={}, refs={}", state.tools.size(), sessionId, state.tools);
-                }
-            } catch (Exception e) {
-                logger.warn("failed to restore dynamically loaded tools, sessionId={}", sessionId, e);
-            }
-        }
-        if (state.skillIds != null && !state.skillIds.isEmpty()) {
-            try {
-                skillManager.applyCallerSkillsToSession(session, state.skillIds, callerUserId);
-                logger.info("restored {} dynamically loaded skills for session {}", state.skillIds.size(), sessionId);
-            } catch (Exception e) {
-                logger.warn("failed to restore dynamically loaded skills, sessionId={}", sessionId, e);
-            }
-        }
-        if (state.subAgentIds != null && !state.subAgentIds.isEmpty()) {
-            try {
-                var definitions = IdLists.clean(state.subAgentIds).stream()
-                        .map(id -> agentDefinitionCollection.get(id).orElse(null))
-                        .filter(def -> def != null)
-                        .toList();
-                if (!definitions.isEmpty()) {
-                    subAgentManager.applySubAgentsToSession(session, definitions, callerUserId);
-                    logger.info("restored {} dynamically loaded sub-agents for session {}", definitions.size(), sessionId);
-                }
-            } catch (Exception e) {
-                logger.warn("failed to restore dynamically loaded sub-agents, sessionId={}", sessionId, e);
-            }
-        }
-    }
-    private void restoreAgentHistory(Agent agent, String sessionId) {
-        try {
-            var records = chatMessageService.history(sessionId);
-            if (records.isEmpty()) return;
-            List<ai.core.llm.domain.Message> restored = new ArrayList<>(records.size());
-            for (var r : records) {
-                if (r.content == null || r.content.isBlank()) continue;
-                var role = "user".equals(r.role) ? ai.core.llm.domain.RoleType.USER : ai.core.llm.domain.RoleType.ASSISTANT;
-                restored.add(ai.core.llm.domain.Message.of(role, r.content));
-            }
-            if (!restored.isEmpty()) {
-                agent.restoreHistory(restored);
-                logger.info("restored {} historical messages for session {}", restored.size(), sessionId);
-            }
-        } catch (Exception e) {
-            logger.warn("failed to restore agent history, sessionId={}", sessionId, e);
         }
     }
     private AgentDatasetConfig createConfig(String datasetId, DatasetPermission permission) {
@@ -442,6 +388,7 @@ public class SessionRebuildManager {
                         MongoCollection<User> userCollection,
                         AgentMemoryExperimentService memoryExperimentService,
                         AgentMemoryService agentMemoryService,
+                        SessionSearchService sessionSearchService,
                         MediaProvider mediaProvider,
                         ApiUserQuotaService quotaService,
                         TurnStateRegistry turnStateRegistry,

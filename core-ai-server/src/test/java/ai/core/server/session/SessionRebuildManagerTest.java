@@ -76,7 +76,7 @@ class SessionRebuildManagerTest {
         var skillManager = mock(SessionSkillManager.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null, users, null, null, null, mock(ApiUserQuotaService.class), null, null));
+                null, null, null, null, null, null, null, users, null, null, null, null, mock(ApiUserQuotaService.class), null, null));
 
         var state = manager.buildStateFromDb("session-1");
 
@@ -115,7 +115,7 @@ class SessionRebuildManagerTest {
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, users, null, null, null, mock(ApiUserQuotaService.class), null, null));
+            null, null, null, null, null, null, null, users, null, null, null, null, mock(ApiUserQuotaService.class), null, null));
 
         var state = manager.buildStateFromDb("session-1");
         var restored = SessionState.fromJson(state.toJson());
@@ -171,7 +171,7 @@ class SessionRebuildManagerTest {
             chatMessageService, agents, mock(SessionSkillManager.class), subAgentManager,
             sandboxService, artifactSetup, mock(ToolRegistryService.class), mock(SystemPromptService.class),
             mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
-            publicUrlConfiguration, null, null, systemSettingsService, users, memoryExperimentService(), agentMemoryService(), mediaProvider,
+            publicUrlConfiguration, null, null, systemSettingsService, users, memoryExperimentService(), agentMemoryService(), sessionSearchService(), mediaProvider,
             mock(ApiUserQuotaService.class), null, null));
         var state = new SessionState();
         state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;
@@ -465,7 +465,7 @@ class SessionRebuildManagerTest {
                 .thenThrow(new ForbiddenException("skill is unavailable"));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null, users, null, null, null, mock(ApiUserQuotaService.class), null, null));
+                null, null, null, null, null, null, null, users, null, null, null, null, mock(ApiUserQuotaService.class), null, null));
 
         var error = assertThrows(ForbiddenException.class,
                 () -> manager.buildStateFromDb("session-1"));
@@ -567,9 +567,7 @@ class SessionRebuildManagerTest {
     void dynamicRestoreUsesAuthoritativeRebuildUserWhenSerializedStateUserIsMissing() {
         var toolRegistry = mock(ToolRegistryService.class);
         var skillManager = mock(SessionSkillManager.class);
-        var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
-            mock(ChatMessageService.class), mock(), skillManager, null, null, null, toolRegistry, null,
-            null, null, null, null, null, null, null, users, null, null, null, mock(ApiUserQuotaService.class), null, null));
+        var restoreHelper = new SessionRestoreHelper(mock(ChatMessageService.class), toolRegistry, skillManager, null, null);
         var ref = ToolRef.fromLegacyToolId("llm-call:published-llm");
         var state = new SessionState();
         state.userId = null;
@@ -577,7 +575,7 @@ class SessionRebuildManagerTest {
         state.skillIds = java.util.List.of("dynamic-skill");
         var session = mock(InProcessAgentSession.class);
 
-        manager.restoreDynamicallyLoaded(state, "session-1", session, "caller-1");
+        restoreHelper.restoreDynamicallyLoaded(state, "session-1", session, "caller-1");
 
         verify(toolRegistry).resolveToolRefs(java.util.List.of(ref), "session-1", "caller-1");
         verify(skillManager).applyCallerSkillsToSession(session,
@@ -693,6 +691,7 @@ class SessionRebuildManagerTest {
                 mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
                 mock(PublicUrlConfiguration.class), null, null, mock(SystemSettingsService.class), users, memoryExperimentService(),
                 agentMemoryService(),
+                sessionSearchService(),
                 mock(MediaProvider.class), mock(ApiUserQuotaService.class), null, null));
     }
 
@@ -702,7 +701,7 @@ class SessionRebuildManagerTest {
         var users = (MongoCollection<User>) mock(MongoCollection.class);
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, users, memoryExperimentService(), null, null, mock(ApiUserQuotaService.class), null, null));
+            null, null, null, null, null, null, null, users, memoryExperimentService(), null, null, null, mock(ApiUserQuotaService.class), null, null));
     }
 
     private AgentMemoryExperimentService memoryExperimentService() {
@@ -713,5 +712,9 @@ class SessionRebuildManagerTest {
 
     private AgentMemoryService agentMemoryService() {
         return mock(AgentMemoryService.class);
+    }
+
+    private SessionSearchService sessionSearchService() {
+        return mock(SessionSearchService.class);
     }
 }

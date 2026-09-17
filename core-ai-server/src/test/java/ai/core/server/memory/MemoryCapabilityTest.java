@@ -4,6 +4,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.prompt.PromptInject;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
+import ai.core.server.session.SessionSearchService;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolRegistry;
 import org.junit.jupiter.api.Test;
@@ -16,12 +17,13 @@ import static org.mockito.Mockito.mock;
 
 class MemoryCapabilityTest {
     private final AgentMemoryService agentMemoryService = mock(AgentMemoryService.class);
+    private final SessionSearchService sessionSearchService = mock(SessionSearchService.class);
     private final ToolRegistry registry = new ToolRegistry();
     private final ExecutionContext context = context();
 
     @Test
     void memoryDisabledRegistersNothing() {
-        MemoryCapability.attach(registry, context, definition(Boolean.FALSE, true), agentMemoryService);
+        MemoryCapability.attach(registry, context, definition(Boolean.FALSE, true), agentMemoryService, sessionSearchService);
 
         assertEquals(List.of(), toolNames());
         assertEquals(0, context.getPromptSections().size());
@@ -29,19 +31,26 @@ class MemoryCapabilityTest {
 
     @Test
     void sharedAgentGetsTheReadToolsOnly() {
-        MemoryCapability.attach(registry, context, definition(Boolean.TRUE, false), agentMemoryService);
+        MemoryCapability.attach(registry, context, definition(Boolean.TRUE, false), agentMemoryService, sessionSearchService);
 
-        assertEquals(List.of("read_memory", "search_memory"), toolNames());
+        assertEquals(List.of("read_memory", "search_memory", "search_sessions"), toolNames());
         assertEquals(0, context.getPromptSections().size(), "a shared agent must not be told to remember");
     }
 
     @Test
     void forkedAssistantAlsoGetsTheWriteToolAndInstruction() {
-        MemoryCapability.attach(registry, context, definition(Boolean.TRUE, true), agentMemoryService);
+        MemoryCapability.attach(registry, context, definition(Boolean.TRUE, true), agentMemoryService, sessionSearchService);
 
-        assertEquals(List.of("extract_memory_now", "read_memory", "search_memory"), toolNames());
+        assertEquals(List.of("extract_memory_now", "read_memory", "search_memory", "search_sessions"), toolNames());
         assertEquals(1, context.getPromptSections().size());
         assertEquals(PromptInject.SectionType.MEMORY, context.getPromptSections().getFirst().type());
+    }
+
+    @Test
+    void sessionSearchIsSkippedWhenNotWired() {
+        MemoryCapability.attach(registry, context, definition(Boolean.TRUE, false), agentMemoryService, null);
+
+        assertEquals(List.of("read_memory", "search_memory"), toolNames());
     }
 
     @Test
@@ -50,15 +59,15 @@ class MemoryCapabilityTest {
         definition.publishedConfig = new AgentPublishedConfig();
         definition.publishedConfig.enableMemory = Boolean.FALSE;
 
-        MemoryCapability.attach(registry, context, definition, agentMemoryService);
+        MemoryCapability.attach(registry, context, definition, agentMemoryService, sessionSearchService);
 
         assertEquals(List.of(), toolNames());
     }
 
     @Test
     void missingDefinitionOrRegistryIsIgnored() {
-        MemoryCapability.attach(null, context, definition(Boolean.TRUE, true), agentMemoryService);
-        MemoryCapability.attach(registry, context, null, agentMemoryService);
+        MemoryCapability.attach(null, context, definition(Boolean.TRUE, true), agentMemoryService, sessionSearchService);
+        MemoryCapability.attach(registry, context, null, agentMemoryService, sessionSearchService);
 
         assertEquals(List.of(), toolNames());
         assertEquals(0, context.getPromptSections().size());

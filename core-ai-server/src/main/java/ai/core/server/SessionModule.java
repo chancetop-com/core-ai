@@ -16,6 +16,7 @@ import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionActivityRegistry;
 import ai.core.server.session.SessionAgentHelper;
 import ai.core.server.session.SessionRegistry;
+import ai.core.server.session.SessionSearchService;
 import ai.core.server.web.ChatSessionWebServiceImpl;
 import ai.core.server.web.SessionCreateHelper;
 import ai.core.server.web.auth.RequestAuthenticator;
@@ -68,6 +69,7 @@ public class SessionModule extends Module {
         ImageDownscaler.register(new AwtImageShrinker());
         sessionRegistry = bind(SessionRegistry.class);
         bind(ChatMessageService.class);
+        bind(SessionSearchService.class);
         activityRegistry = bind(new SessionActivityRegistry(bean(JedisPool.class)));
         agentSessionManager = bind(AgentSessionManager.class);
         // finished async tool calls are delivered over the command bus; MessagingRuntimeModule wires

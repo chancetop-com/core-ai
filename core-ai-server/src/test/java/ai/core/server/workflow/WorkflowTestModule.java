@@ -3,6 +3,7 @@ package ai.core.server.workflow;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
+import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.Notification;
@@ -29,6 +30,7 @@ import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.HumanInputExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
 import ai.core.server.workflow.executor.WorkflowExecutor;
+import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import core.framework.mongo.Mongo;
 import core.framework.mongo.module.MongoConfig;
@@ -56,6 +58,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(ToolRegistryEntry.class);      // injected by WorkflowPortService for MCP reference resolution
         mongo.collection(Notification.class);            // injected by NotificationService (bound below)
         mongo.collection(ChatSession.class);             // shared by SessionRegistry Mongo integration tests
+        mongo.collection(ChatMessage.class);             // shared by the cross-session search integration test
         mongo.collection(Project.class);                 // project feature: SessionRegistry/WorkflowRunService injections
         mongo.collection(ProjectSubject.class);
         mongo.collection(ProjectSubjectAttribution.class);
@@ -69,40 +72,46 @@ public class WorkflowTestModule extends AbstractTestModule {
 
         bindWorkflowServices();
 
-        // The test connects to a real Mongo (localhost:27017) which has notablescan=1,
-        // so every query must be covered by an index. These indexes are normally created
-        // by schema migrations in the main app database but are not applied to wftest.
-        context.startupHook.initialize.add(() -> {
-            var mongoBean = this.<Mongo>bean(Mongo.class);
-            // workflow_definitions
-            mongoBean.createIndex("workflow_definitions", Indexes.ascending("user_id"));
-            mongoBean.createIndex("workflow_definitions", Indexes.ascending("published_version_id"));
-            mongoBean.createIndex("workflow_definitions", Indexes.compoundIndex(
-                Indexes.ascending("visibility"), Indexes.ascending("status"), Indexes.ascending("published_version_id")));
-            // workflow_published_versions
-            mongoBean.createIndex("workflow_published_versions", Indexes.ascending("workflow_id"));
-            mongoBean.createIndex("workflow_published_versions", Indexes.compoundIndex(
-                Indexes.ascending("workflow_id"), Indexes.ascending("preview"), Indexes.ascending("status")));
-            // workflow_runs
-            mongoBean.createIndex("workflow_runs", Indexes.ascending("workflow_id"));
-            mongoBean.createIndex("workflow_runs", Indexes.ascending("user_id"));
-            mongoBean.createIndex("workflow_runs", Indexes.ascending("visibility"));
-            mongoBean.createIndex("workflow_runs", Indexes.ascending("parent_run_id"));
-            mongoBean.createIndex("workflow_runs", Indexes.compoundIndex(Indexes.ascending("status"), Indexes.ascending("lease_until")));
-            mongoBean.createIndex("workflow_runs", Indexes.descending("created_at"));
-            // workflow_node_runs
-            mongoBean.createIndex("workflow_node_runs", Indexes.ascending("run_id"));
-            mongoBean.createIndex("workflow_node_runs", Indexes.compoundIndex(
-                Indexes.ascending("run_id"), Indexes.ascending("node_id"), Indexes.ascending("scope_path_key")));
-            mongoBean.createIndex("workflow_node_runs", Indexes.ascending("child_run_id"));
-            // agents
-            mongoBean.createIndex("agents", Indexes.compoundIndex(
-                Indexes.ascending("user_id"), Indexes.ascending("type"),
+        context.startupHook.initialize.add(() -> createIndexes(this.<Mongo>bean(Mongo.class)));
+    }
+
+    // The test connects to a real Mongo (localhost:27017) which has notablescan=1, so every query must be covered
+    // by an index. These indexes are normally created by schema migrations in the main app database but are not
+    // applied to wftest.
+    private void createIndexes(Mongo mongoBean) {
+        // workflow_definitions
+        mongoBean.createIndex("workflow_definitions", Indexes.ascending("user_id"));
+        mongoBean.createIndex("workflow_definitions", Indexes.ascending("published_version_id"));
+        mongoBean.createIndex("workflow_definitions", Indexes.compoundIndex(
+            Indexes.ascending("visibility"), Indexes.ascending("status"), Indexes.ascending("published_version_id")));
+        // workflow_published_versions
+        mongoBean.createIndex("workflow_published_versions", Indexes.ascending("workflow_id"));
+        mongoBean.createIndex("workflow_published_versions", Indexes.compoundIndex(
+            Indexes.ascending("workflow_id"), Indexes.ascending("preview"), Indexes.ascending("status")));
+        // workflow_runs
+        mongoBean.createIndex("workflow_runs", Indexes.ascending("workflow_id"));
+        mongoBean.createIndex("workflow_runs", Indexes.ascending("user_id"));
+        mongoBean.createIndex("workflow_runs", Indexes.ascending("visibility"));
+        mongoBean.createIndex("workflow_runs", Indexes.ascending("parent_run_id"));
+        mongoBean.createIndex("workflow_runs", Indexes.compoundIndex(Indexes.ascending("status"), Indexes.ascending("lease_until")));
+        mongoBean.createIndex("workflow_runs", Indexes.descending("created_at"));
+        // workflow_node_runs
+        mongoBean.createIndex("workflow_node_runs", Indexes.ascending("run_id"));
+        mongoBean.createIndex("workflow_node_runs", Indexes.compoundIndex(
+            Indexes.ascending("run_id"), Indexes.ascending("node_id"), Indexes.ascending("scope_path_key")));
+        mongoBean.createIndex("workflow_node_runs", Indexes.ascending("child_run_id"));
+        // chat_sessions / chat_messages (SchemaMigrationVChatSessionIndexes, SchemaMigrationVChatMessageIndexes)
+        mongoBean.createIndex("chat_sessions", Indexes.compoundIndex(
+            Indexes.ascending("user_id"), Indexes.descending("last_message_at")));
+        mongoBean.createIndex("chat_messages", Indexes.compoundIndex(
+            Indexes.ascending("session_id"), Indexes.ascending("seq")), new IndexOptions().unique(true));
+        // agents
+        mongoBean.createIndex("agents", Indexes.compoundIndex(
+            Indexes.ascending("user_id"), Indexes.ascending("type"),
+            Indexes.ascending("name_key"), Indexes.ascending("_id")));
+        mongoBean.createIndex("agents", Indexes.compoundIndex(
+            Indexes.ascending("status"), Indexes.ascending("type"),
                 Indexes.ascending("name_key"), Indexes.ascending("_id")));
-            mongoBean.createIndex("agents", Indexes.compoundIndex(
-                Indexes.ascending("status"), Indexes.ascending("type"),
-                Indexes.ascending("name_key"), Indexes.ascending("_id")));
-        });
     }
 
     private void bindWorkflowServices() {
