@@ -5,6 +5,7 @@ import ai.core.api.server.memory.AgentMemoryView;
 import ai.core.api.server.memory.AgentMemoryWebService;
 import ai.core.api.server.memory.ExperimentConfigListItemView;
 import ai.core.api.server.memory.ExperimentRunView;
+import ai.core.api.server.memory.InjectionModeView;
 import ai.core.api.server.memory.ListAgentMemoriesResponse;
 import ai.core.api.server.memory.ListExperimentConfigsRequest;
 import ai.core.api.server.memory.ListExperimentConfigsResponse;
@@ -17,6 +18,7 @@ import ai.core.server.domain.User;
 import ai.core.server.memory.experiment.AgentMemoryExperimentConfig;
 import ai.core.server.memory.experiment.AgentMemoryExperimentRun;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
+import ai.core.server.memory.experiment.InjectionMode;
 import ai.core.server.memory.experiment.MemoryLayer;
 import ai.core.server.memory.experiment.RankingStrategy;
 import ai.core.server.rbac.PermissionCodes;
@@ -49,6 +51,14 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
         return RankingStrategy.valueOf(view.name());
     }
 
+    private static InjectionModeView toModeView(InjectionMode mode) {
+        return mode == null ? null : InjectionModeView.valueOf(mode.name());
+    }
+
+    private static InjectionMode toModeEntity(InjectionModeView view) {
+        return view == null ? null : InjectionMode.valueOf(view.name());
+    }
+
     private static AgentMemoryExperimentConfigView toView(AgentMemoryExperimentConfig config) {
         var v = new AgentMemoryExperimentConfigView();
         v.id = config.id;
@@ -62,6 +72,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
         v.rankingStrategy = config.rankingStrategy != null
                 ? toStrategyView(config.rankingStrategy)
                 : null;
+        v.injectionMode = toModeView(config.injectionMode);
         return v;
     }
 
@@ -78,6 +89,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
         config.rankingStrategy = view.rankingStrategy != null
                 ? toStrategyEntity(view.rankingStrategy)
                 : null;
+        config.injectionMode = toModeEntity(view.injectionMode);
         return config;
     }
 
@@ -96,6 +108,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
                 : null;
         v.topK = r.topK;
         v.injectionProbability = r.injectionProbability;
+        v.injectionMode = toModeView(r.injectionMode);
         v.injectionDecision = r.injectionDecision;
         v.injectedMemoryIds = r.injectedMemoryIds;
         v.injectedMemoryCount = r.injectedMemoryCount;

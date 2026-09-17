@@ -1,5 +1,6 @@
 package ai.core.server.memory.experiment;
 
+import ai.core.prompt.PromptInject;
 import ai.core.server.memory.AgentMemory;
 import ai.core.server.memory.AgentMemoryService;
 import com.mongodb.client.model.Filters;
@@ -34,6 +35,14 @@ import java.util.stream.Collectors;
  */
 @SuppressFBWarnings("MDM_RANDOM_SEED")
 public class AgentMemoryExperimentService {
+    private static int compareNewestFirst(AgentMemory a, AgentMemory b) {
+        var ta = a.createdAt != null ? a.createdAt : a.updatedAt;
+        var tb = b.createdAt != null ? b.createdAt : b.updatedAt;
+        if (ta == null && tb == null) return 0;
+        if (ta == null) return 1;
+        if (tb == null) return -1;
+        return tb.compareTo(ta);
+    }
 
     @Inject
     MongoCollection<AgentMemoryExperimentConfig> configCollection;
@@ -85,6 +94,7 @@ public class AgentMemoryExperimentService {
         defaults.rankingStrategy = MemoryPolicy.DEFAULT_RANKING;
         defaults.topK = MemoryPolicy.DEFAULT_TOP_K;
         defaults.injectionProbability = MemoryPolicy.DEFAULT_INJECTION_PROBABILITY;
+        defaults.injectionMode = MemoryPolicy.DEFAULT_INJECTION_MODE;
         return defaults;
     }
 
@@ -106,7 +116,10 @@ public class AgentMemoryExperimentService {
         var activeLayers = config.enabledLayers;
         if (activeLayers == null || activeLayers.isEmpty()) return MemoryInjectionResult.skipped();
 
-        // Fetch all memories from active layers
+        // Layer 5: How the selected memories are rendered
+        var mode = config.injectionMode != null ? config.injectionMode : MemoryPolicy.DEFAULT_INJECTION_MODE;
+        if (mode == InjectionMode.LAYERED) return layeredInjection(agentId, config, activeLayers);
+
         var allMemories = fetchMemoryPool(agentId, activeLayers);
         if (allMemories.isEmpty()) return MemoryInjectionResult.skipped();
 
@@ -115,19 +128,64 @@ public class AgentMemoryExperimentService {
 
         // Layer 4: Ranking
         var ranked = rankMemories(allMemories, config.rankingStrategy, topK);
+        return buildResult(formatAsMarkdown(ranked), ranked);
+    }
 
-        // Layer 5: Format (always Markdown)
-        var formatted = formatAsMarkdown(ranked);
+    /**
+     * Prepares injection for a run and records the experiment run when the agent is under experiment.
+     * Returns the prompt section to inject, or null when nothing is injected.
+     */
+    public PromptInject prepareAndRecord(String agentId, String sessionId, String runId) {
+        var result = prepareInjection(agentId);
+        var config = getConfig(agentId);
+        if (config != null) startRun(agentId, sessionId, runId, config, result);
+        return result.injected ? result.promptInject : null;
+    }
 
-        // Build result
-        var memoryIds = ranked.stream().map(m -> m.id).collect(Collectors.toList());
+    /**
+     * Knowledge is written out in full, the other layers only as an id index: a memory the user asked to keep
+     * must survive the newest distilled sessions, while methods and trajectories are cheap to list and read on
+     * demand through read_memory.
+     */
+    private MemoryInjectionResult layeredInjection(String agentId, AgentMemoryExperimentConfig config, List<MemoryLayer> activeLayers) {
+        var knowledge = activeLayers.contains(MemoryLayer.KNOWLEDGE)
+                ? newestFirst(memoryService.findByAgentIdAndLayer(agentId, MemoryLayer.KNOWLEDGE.mongoValue()), MemoryPolicy.KNOWLEDGE_FULL_MAX)
+                : List.<AgentMemory>of();
+        var indexed = selectIndexEntries(agentId, config, activeLayers);
+        if (knowledge.isEmpty() && indexed.isEmpty()) return MemoryInjectionResult.skipped();
+
+        var injected = new ArrayList<>(knowledge);
+        injected.addAll(indexed);
+        return buildResult(formatLayered(knowledge, indexed), injected);
+    }
+
+    private List<AgentMemory> selectIndexEntries(String agentId, AgentMemoryExperimentConfig config, List<MemoryLayer> activeLayers) {
+        var indexable = new ArrayList<MemoryLayer>();
+        for (var layer : activeLayers) {
+            if (layer != MemoryLayer.KNOWLEDGE) indexable.add(layer);
+        }
+        if (indexable.isEmpty()) return List.of();
+
+        var pool = fetchMemoryPool(agentId, indexable);
+        pool.sort(AgentMemoryExperimentService::compareNewestFirst);
+        return rankMemories(pool, config.rankingStrategy, MemoryPolicy.INDEX_MAX);
+    }
+
+    private MemoryInjectionResult buildResult(String formatted, List<AgentMemory> memories) {
+        var memoryIds = memories.stream().map(memory -> memory.id).collect(Collectors.toList());
         var layerBreakdown = new LinkedHashMap<String, Integer>();
-        for (var m : ranked) {
-            var key = m.layer != null ? m.layer.mongoValue() : MemoryLayer.KNOWLEDGE.mongoValue();
+        for (var memory : memories) {
+            var key = memory.layer != null ? memory.layer.mongoValue() : MemoryLayer.KNOWLEDGE.mongoValue();
             layerBreakdown.merge(key, 1, Integer::sum);
         }
-        int estimatedTokens = estimateTokens(formatted);
-        return MemoryInjectionResult.injected(formatted, memoryIds, layerBreakdown, estimatedTokens);
+        return MemoryInjectionResult.injected(formatted, memoryIds, layerBreakdown, estimateTokens(formatted));
+    }
+
+    private List<AgentMemory> newestFirst(List<AgentMemory> memories, int max) {
+        return memories.stream()
+                .sorted(AgentMemoryExperimentService::compareNewestFirst)
+                .limit(max)
+                .collect(Collectors.toList());
     }
 
     private List<AgentMemory> fetchMemoryPool(String agentId, List<MemoryLayer> layers) {
@@ -147,14 +205,7 @@ public class AgentMemoryExperimentService {
                 || effective == RankingStrategy.IMPORTANCE) {
             // All non-random strategies fall back to recency until vector search is available
             return memories.stream()
-                    .sorted((a, b) -> {
-                        var ta = a.createdAt != null ? a.createdAt : a.updatedAt;
-                        var tb = b.createdAt != null ? b.createdAt : b.updatedAt;
-                        if (ta == null && tb == null) return 0;
-                        if (ta == null) return 1;
-                        if (tb == null) return -1;
-                        return tb.compareTo(ta); // newest first
-                    })
+                    .sorted(AgentMemoryExperimentService::compareNewestFirst)
                     .limit(topK)
                     .collect(Collectors.toList());
         }
@@ -166,6 +217,45 @@ public class AgentMemoryExperimentService {
     }
 
     // ── Prompt formatting (always Markdown for best readability and token efficiency) ──
+
+    private String formatLayered(List<AgentMemory> knowledge, List<AgentMemory> indexed) {
+        var sb = new StringBuilder(1024);
+        if (!knowledge.isEmpty()) {
+            sb.append(memoryService.formatKnowledgePrompt(knowledge));
+        }
+        if (!indexed.isEmpty()) {
+            sb.append("## Indexed Memory\n\n"
+                    + "Distilled methods and past sessions, listed by id — the memory holds the conclusion, its\n"
+                    + "trace id holds the session behind it. Call read_memory with an id before relying on one.\n\n");
+            for (var memory : indexed) {
+                sb.append("- ").append(memory.id)
+                        .append(" [").append(layerKey(memory)).append('/').append(text(memory.type)).append("] ")
+                        .append(recency(memory)).append(" — ").append(summary(memory.content))
+                        .append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    private String layerKey(AgentMemory memory) {
+        return memory.layer != null ? memory.layer.mongoValue() : MemoryLayer.KNOWLEDGE.mongoValue();
+    }
+
+    private String recency(AgentMemory memory) {
+        var time = memory.createdAt != null ? memory.createdAt : memory.updatedAt;
+        return time == null ? "-" : time.toLocalDate().toString();
+    }
+
+    private String summary(String content) {
+        var collapsed = text(content).replaceAll("\\s+", " ").strip();
+        return collapsed.length() <= MemoryPolicy.INDEX_SUMMARY_MAX_CHARS
+                ? collapsed
+                : collapsed.substring(0, MemoryPolicy.INDEX_SUMMARY_MAX_CHARS) + "...";
+    }
+
+    private String text(String value) {
+        return value == null ? "" : value;
+    }
 
     private String formatAsMarkdown(List<AgentMemory> memories) {
         var byLayer = groupByLayer(memories);
@@ -224,6 +314,7 @@ public class AgentMemoryExperimentService {
         record.rankingStrategy = config.rankingStrategy;
         record.topK = config.topK;
         record.injectionProbability = config.injectionProbability;
+        record.injectionMode = config.injectionMode != null ? config.injectionMode : MemoryPolicy.DEFAULT_INJECTION_MODE;
         record.injectionDecision = result.injected;
         record.injectedMemoryIds = result.injectedMemoryIds;
         record.injectedMemoryCount = result.injectedMemoryIds != null ? result.injectedMemoryIds.size() : 0;

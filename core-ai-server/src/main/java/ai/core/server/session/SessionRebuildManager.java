@@ -22,6 +22,8 @@ import ai.core.server.domain.User;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
+import ai.core.server.memory.AgentMemoryService;
+import ai.core.server.memory.MemoryCapability;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
@@ -36,6 +38,7 @@ import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.ToolCall;
+import ai.core.tool.registry.ToolRegistry;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +76,7 @@ public class SessionRebuildManager {
     private final SystemSettingsService systemSettingsService;
     private final MongoCollection<User> userCollection;
     private final AgentMemoryExperimentService memoryExperimentService;
+    private final AgentMemoryService agentMemoryService;
     private final SessionContextBuilder contextBuilder;
     private final TurnStateRegistry turnStateRegistry;
     private SessionDatasetHelper datasetHelper;
@@ -95,6 +99,7 @@ public class SessionRebuildManager {
         this.systemSettingsService = deps.systemSettingsService;
         this.userCollection = deps.userCollection;
         this.memoryExperimentService = deps.memoryExperimentService;
+        this.agentMemoryService = deps.agentMemoryService;
         this.turnStateRegistry = deps.turnStateRegistry;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
                 systemSettingsService, deps.mediaProvider, deps.quotaService).withAsyncTaskManager(deps.asyncTaskManager);
@@ -217,10 +222,13 @@ public class SessionRebuildManager {
         return doRebuild(new RebuildParams(sessionId, config, null, userId, null, state,
                 "default", null, null, null, true));
     }
-    // the rebuilt prompt must carry the sections the session was created with, otherwise memory knowledge
-    // and the channel identity silently disappear from every session that outlives a restart or an idle cleanup
-    private PromptInject memoryInject(String agentId) {
+    // the rebuilt session loses the whole memory capability unless the tools, the remember instructions and
+    // the injected memories are attached again
+    private PromptInject attachMemory(ToolRegistry toolRegistry, ExecutionContext context, String agentId) {
         if (!hasText(agentId)) return null;
+        if (context != null) {
+            MemoryCapability.attach(toolRegistry, context, agentDefinitionCollection.get(agentId).orElse(null), agentMemoryService);
+        }
         var injectionResult = memoryExperimentService.prepareInjection(agentId);
         return injectionResult.injected ? injectionResult.promptInject : null;
     }
@@ -287,6 +295,7 @@ public class SessionRebuildManager {
         var toolRegistry = SessionSubAgentManager.toolsToRegistry(tools);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, params.datasetConfig,
                 hasText(agentId) ? agentId : "default", params.sessionId);
+        var memoryInject = attachMemory(toolRegistry, sandbox.context, agentId);
         Map<String, Object> extraVars = null;
         if (params.datasetConfig != null && !params.datasetConfig.isEmpty()) {
             effectiveConfig.systemPrompt = datasetHelper().appendDatasetInstructions(effectiveConfig.systemPrompt, params.datasetConfig);
@@ -298,7 +307,7 @@ public class SessionRebuildManager {
                 effectiveConfig, toolRegistry,
                 sandbox.context, params.agentName, extraVars, agentId,
                 sandbox.sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(params.sessionId), publicUrlConfiguration)) : null,
-                memoryInject(agentId), SessionSubAgentManager.channelInject(effectiveConfig)));
+                memoryInject, SessionSubAgentManager.channelInject(effectiveConfig)));
         var session = new InProcessAgentSession(params.sessionId, agent, true, new InMemoryToolPermissionStore());
         sandbox.sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(params.sessionId));
@@ -432,6 +441,7 @@ public class SessionRebuildManager {
                         SystemSettingsService systemSettingsService,
                         MongoCollection<User> userCollection,
                         AgentMemoryExperimentService memoryExperimentService,
+                        AgentMemoryService agentMemoryService,
                         MediaProvider mediaProvider,
                         ApiUserQuotaService quotaService,
                         TurnStateRegistry turnStateRegistry,

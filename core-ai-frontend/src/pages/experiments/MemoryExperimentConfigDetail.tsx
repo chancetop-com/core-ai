@@ -20,6 +20,13 @@ const RANKING_LABELS: Record<string, string> = {
 const ALL_LAYERS = ['knowledge', 'methods', 'trajectories'] as const;
 const ALL_RANKING = ['SEMANTIC', 'BM25', 'RECENCY', 'IMPORTANCE', 'HYBRID', 'RANDOM'] as const;
 
+const MODE_LABELS: Record<string, string> = {
+  LAYERED: 'Layered (knowledge in full, other layers as an id index)',
+  FULL: 'Full text (top-K memories written out)',
+};
+
+const ALL_MODES = ['LAYERED', 'FULL'] as const;
+
 const DEFAULT_CONFIG: AgentMemoryExperimentConfig = {
   id: '',
   agent_id: '',
@@ -28,6 +35,7 @@ const DEFAULT_CONFIG: AgentMemoryExperimentConfig = {
   enabled_layers: ['knowledge', 'methods', 'trajectories'],
   top_k: 5,
   ranking_strategy: 'SEMANTIC',
+  injection_mode: 'LAYERED',
 };
 
 export default function MemoryExperimentConfigDetail() {
@@ -178,6 +186,22 @@ export default function MemoryExperimentConfigDetail() {
           </div>
         </div>
 
+        {/* Injection Mode */}
+        <div className="bg-gray-800/50 rounded p-4">
+          <div className="text-sm text-white mb-2">Injection Mode</div>
+          <select
+            className="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm text-white w-full max-w-md"
+            value={draft.injection_mode}
+            onChange={e => setDraft(prev => ({ ...prev, injection_mode: e.target.value }))}
+          >
+            {ALL_MODES.map(m => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}
+          </select>
+          <div className="text-xs text-gray-500 mt-1">
+            Layered keeps knowledge verbatim and lists methods/trajectories by id (read_memory opens one on demand);
+            full text writes the top-K memories out instead. Runs record which mode produced their prompt.
+          </div>
+        </div>
+
         {/* Top-K */}
         <div className="bg-gray-800/50 rounded p-4">
           <div className="text-sm text-white mb-2">Top-K</div>
@@ -188,7 +212,7 @@ export default function MemoryExperimentConfigDetail() {
           >
             {[1, 3, 5, 10, 20].map(k => <option key={k} value={k}>{k}</option>)}
           </select>
-          <div className="text-xs text-gray-500 mt-1">Max memories to inject per run</div>
+          <div className="text-xs text-gray-500 mt-1">Max memories written out in full per run (full-text mode)</div>
         </div>
 
         {/* Ranking Strategy */}

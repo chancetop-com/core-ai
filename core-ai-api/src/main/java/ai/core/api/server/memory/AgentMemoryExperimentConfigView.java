@@ -30,4 +30,7 @@ public class AgentMemoryExperimentConfigView {
 
     @Property(name = "ranking_strategy")
     public RankingStrategyView rankingStrategy;
+
+    @Property(name = "injection_mode")
+    public InjectionModeView injectionMode;
 }

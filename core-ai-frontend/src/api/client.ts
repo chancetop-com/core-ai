@@ -566,6 +566,7 @@ export interface ExperimentRun {
   ranking_strategy: string;
   top_k: number;
   injection_probability: number;
+  injection_mode: string;
   injection_decision: boolean;
   injected_memory_ids: string[];
   injected_memory_count: number;
@@ -694,6 +695,7 @@ export interface AgentMemoryExperimentConfig {
   enabled_layers: string[];
   top_k: number;
   ranking_strategy: string;
+  injection_mode: string;
 }
 
 export interface ConvertJavaToSchemaResponse {

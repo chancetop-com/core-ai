@@ -64,6 +64,7 @@ export default function MemoryExperimentRunDetail() {
           <KV label="Layers" value={run.enabled_layers?.map(l => LAYER_LABELS[l] ?? l).join(', ') || '-'} />
           <KV label="Ranking" value={RANKING_LABELS[run.ranking_strategy] ?? run.ranking_strategy} />
           <KV label="Top-K" value={String(run.top_k ?? '-')} />
+          <KV label="Injection Mode" value={run.injection_mode === 'FULL' ? 'Full text' : 'Layered'} />
         </div>
       </Section>
 

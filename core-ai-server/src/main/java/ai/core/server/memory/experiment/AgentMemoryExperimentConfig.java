@@ -46,6 +46,10 @@ public class AgentMemoryExperimentConfig {
     @Field(name = "ranking_strategy")
     public RankingStrategy rankingStrategy;
 
+    // ── Layer 5: How the selected memories are rendered ──
+    @Field(name = "injection_mode")
+    public InjectionMode injectionMode;
+
     @Field(name = "created_at")
     public ZonedDateTime createdAt;
 

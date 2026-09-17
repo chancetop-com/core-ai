@@ -33,9 +33,9 @@ import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.User;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
-import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.memory.AgentMemoryService;
-import ai.core.server.memory.SearchMemoryTool;
+import ai.core.server.memory.MemoryCapability;
+import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.skill.SkillToolAssembler;
@@ -155,7 +155,7 @@ public class AgentRunBuilder {
         var thinkingEffort = resolveThinkingEffort(config, definition);
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
         attachSkillsAndSubAgents(config, definition, registry, runEntity);
-        attachMemorySearch(registry, enableMemory, definition.id);
+        MemoryCapability.attach(registry, context, definition, agentMemoryService);
         var builder = createBaseBuilder(definition, registry, context);
         if (systemPrompt != null) builder.systemPrompt(systemPrompt);
         if (model != null) builder.model(model);
@@ -277,20 +277,10 @@ public class AgentRunBuilder {
         }
     }
 
-    private void attachMemorySearch(ToolRegistry registry, Boolean enableMemory, String agentId) {
-        if (!AgentMemoryService.memoryEnabled(enableMemory)) return;
-        var searchTool = new SearchMemoryTool(agentId, agentMemoryService);
-        registry.registerProvider(ListToolProvider.of("search-memory", List.of(searchTool)));
-    }
-
     private void attachMemoryExperiment(AgentBuilder builder, AgentDefinition definition, String runId) {
-        var injectionResult = memoryExperimentService.prepareInjection(definition.id);
-        if (injectionResult.injected && injectionResult.promptInject != null) {
-            builder.systemPromptSection(injectionResult.promptInject);
-        }
-        var experimentConfig = memoryExperimentService.getConfig(definition.id);
-        if (experimentConfig != null) {
-            memoryExperimentService.startRun(definition.id, "run:" + runId, runId, experimentConfig, injectionResult);
+        var memoryInject = memoryExperimentService.prepareAndRecord(definition.id, "run:" + runId, runId);
+        if (memoryInject != null) {
+            builder.systemPromptSection(memoryInject);
         }
     }
 

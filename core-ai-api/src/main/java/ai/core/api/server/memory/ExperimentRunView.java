@@ -39,6 +39,9 @@ public class ExperimentRunView {
     @Property(name = "injection_probability")
     public Double injectionProbability;
 
+    @Property(name = "injection_mode")
+    public InjectionModeView injectionMode;
+
     @Property(name = "injection_decision")
     public Boolean injectionDecision;
 

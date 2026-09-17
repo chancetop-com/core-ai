@@ -31,6 +31,8 @@ import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.web.sse.SessionChannelService;
+import ai.core.server.memory.AgentMemoryService;
+import ai.core.server.memory.MemoryCapability;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
@@ -114,6 +116,8 @@ public class AgentSessionManager {
     @Inject
     ai.core.server.asynctask.AsyncToolTaskService asyncToolTaskService;
     @Inject SessionActivityRegistry sessionActivityRegistry;
+    @Inject
+    AgentMemoryService agentMemoryService;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -132,7 +136,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userCollection, memoryExperimentService, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager()));
+                    ownershipRegistry, systemSettingsService, userCollection, memoryExperimentService, agentMemoryService, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager()));
         }
         return rebuildManager;
     }
@@ -244,17 +248,14 @@ public class AgentSessionManager {
         var caller = CallerContexts.attach(context, userCollection, userId);
         if (sandbox2 != null) context.sandbox(sandbox2);
         UserIdentityPrompt.attach(context, definition, caller);
+        MemoryCapability.attach(toolRegistry, context, definition, agentMemoryService);
 
-        var injectionResult = memoryExperimentService.prepareInjection(definition.id);
-        var memoryInject = injectionResult.injected ? injectionResult.promptInject : null;
+        var memoryInject = memoryExperimentService.prepareAndRecord(definition.id, sessionId, "session:" + sessionId);
 
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 config, toolRegistry, context, definition.name, extraVars, definition.id,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
                 memoryInject, SessionSubAgentManager.channelInject(config)));
-
-        var experimentConfig = memoryExperimentService.getConfig(definition.id);
-        if (experimentConfig != null) memoryExperimentService.startRun(definition.id, sessionId, "session:" + sessionId, experimentConfig, injectionResult);
         return new AgentBuildResult(agent, sessionRef);
     }
 

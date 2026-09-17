@@ -32,6 +32,8 @@ final class MemoryConsolidationPrompt {
             - Skip patterns already obvious from the SOP or system prompt
             - Keep each pattern under 200 words
             - Be specific and actionable
+            - Under "source_sessions", list the sessions each pattern was observed in, copying the exact
+              session ids shown above (use an empty list when a pattern is not tied to a specific session)
 
             Output ONLY valid JSON (no markdown fences, no extra text):
             {
@@ -39,8 +41,8 @@ final class MemoryConsolidationPrompt {
                 { "session_id": "...", "summary": "..." }
               ],
               "patterns": [
-                { "type": "EFFICIENCY", "content": "..." },
-                { "type": "TOOL_USAGE", "content": "..." }
+                { "type": "EFFICIENCY", "content": "...", "source_sessions": ["..."] },
+                { "type": "TOOL_USAGE", "content": "...", "source_sessions": ["..."] }
               ]
             }
             """;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Brain, Calendar, GitBranch, Layers, Tag, Trash2 } from 'lucide-react';
+import { ArrowLeft, Brain, Calendar, GitBranch, Layers, Link, Tag, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentMemoryView } from '../../api/client';
 
@@ -59,6 +59,7 @@ export default function AgentMemory() {
       case 'TOOL_USAGE': return { bg: '#fef3c7', fg: '#d97706' };
       case 'EFFICIENCY': return { bg: '#d1fae5', fg: '#059669' };
       case 'DOMAIN_KNOWLEDGE': return { bg: '#ede9fe', fg: '#7c3aed' };
+      case 'USER_PREFERENCE': return { bg: '#fce7f3', fg: '#db2777' };
       case 'TRAJECTORY': return { bg: '#f3f4f6', fg: '#4b5563' };
       default: return { bg: '#f3f4f6', fg: '#6b7280' };
     }
@@ -66,7 +67,7 @@ export default function AgentMemory() {
 
   const layerInfo = (layer: string) => {
     switch (layer) {
-      case 'knowledge': return { label: 'Layer 1 - Knowledge', color: { bg: '#ede9fe', fg: '#7c3aed' }, desc: 'Auto-injected into system prompt. SOP-safe facts & gotchas.' };
+      case 'knowledge': return { label: 'Layer 1 - Knowledge', color: { bg: '#ede9fe', fg: '#7c3aed' }, desc: 'Auto-injected into system prompt. Preferences, facts & gotchas.' };
       case 'methods': return { label: 'Layer 2 - Methods', color: { bg: '#dbeafe', fg: '#1d4ed8' }, desc: 'On-demand via search_memory tool. Patterns, tool tips, efficiencies.' };
       case 'trajectories': return { label: 'Layer 3 - Trajectories', color: { bg: '#d1fae5', fg: '#059669' }, desc: 'On-demand via search_memory tool. Raw session summaries, append-only.' };
       default: return { label: layer || 'Legacy', color: { bg: '#f3f4f6', fg: '#6b7280' }, desc: 'Pre-V2 memory (no layer assigned)' };
@@ -189,9 +190,22 @@ export default function AgentMemory() {
                         <div className="flex items-center gap-4 mt-3 text-xs flex-wrap"
                           style={{ color: 'var(--color-text-secondary)' }}>
                           {m.source_trace_ids && m.source_trace_ids.length > 0 && (
-                            <span className="inline-flex items-center gap-1">
-                              <GitBranch size={12} />
-                              {m.source_trace_ids.length} source trace{m.source_trace_ids.length !== 1 ? 's' : ''}
+                            <span className="inline-flex items-center gap-2 flex-wrap">
+                              <span className="inline-flex items-center gap-1">
+                                <GitBranch size={12} />
+                                {m.source_trace_ids.length} source trace{m.source_trace_ids.length !== 1 ? 's' : ''}
+                              </span>
+                              {m.source_trace_ids.slice(0, 3).map(traceId => (
+                                <a key={traceId} href={`/traces/${encodeURIComponent(traceId)}`}
+                                  target="_blank" rel="noopener noreferrer" title={traceId}
+                                  className="inline-flex items-center gap-1 font-mono hover:underline"
+                                  style={{ color: 'var(--color-primary)' }}>
+                                  <Link size={11} /> {traceId.slice(0, 8)}
+                                </a>
+                              ))}
+                              {m.source_trace_ids.length > 3 && (
+                                <span>+{m.source_trace_ids.length - 3} more</span>
+                              )}
                             </span>
                           )}
                           <span className="inline-flex items-center gap-1">

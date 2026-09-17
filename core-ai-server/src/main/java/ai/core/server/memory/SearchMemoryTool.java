@@ -37,7 +37,8 @@ public final class SearchMemoryTool extends ToolCall {
             - Layer "all": search both layers.
 
             Results are returned with their source layer so you know whether a result
-            is a distilled pattern or a raw session record.
+            is a distilled pattern or a raw session record. Pass a result's id to
+            read_memory when you need the sessions it came from.
             """;
 
     private static List<ToolCallParameter> parameters() {
@@ -105,7 +106,9 @@ public final class SearchMemoryTool extends ToolCall {
         sb.append("Found ").append(results.size()).append(" matching memories:\n\n");
         for (int i = 0; i < results.size(); i++) {
             var m = results.get(i);
-            sb.append("--- Memory ").append(i + 1).append(" ---\nLayer: ").append(m.layer).append('\n');
+            sb.append("--- Memory ").append(i + 1)
+                    .append(" ---\nId: ").append(m.id)
+                    .append("\nLayer: ").append(m.layer).append('\n');
             if (m.type != null) {
                 sb.append("Type: ").append(m.type).append('\n');
             }

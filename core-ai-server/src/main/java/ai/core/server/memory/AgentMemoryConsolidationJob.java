@@ -7,7 +7,6 @@ import ai.core.llm.domain.RoleType;
 import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatMessage;
-import ai.core.server.memory.experiment.MemoryLayer;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanType;
@@ -35,7 +34,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -62,7 +60,6 @@ public class AgentMemoryConsolidationJob implements Job {
     private static final int MIN_TOOL_CALLS_FOR_SHORT_SESSION = 5;
     private static final int MESSAGE_LOOKBACK_SECONDS = 5;
     private static final int MESSAGE_LOOKAHEAD_SECONDS = 30;
-    private static final int TRAJECTORY_MAX_CHARS = 500;
     private static final int PROCESSING_TIMEOUT_SECONDS = 55;
     public static final String DEFAULT_EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
 
@@ -189,9 +186,10 @@ public class AgentMemoryConsolidationJob implements Job {
             return;
         }
         var tracesText = buildSessionLog(traces);
-        var prompt = MemoryConsolidationPrompt.EXTRACTION_PROMPT.formatted(TRAJECTORY_MAX_CHARS, tracesText, TRAJECTORY_MAX_CHARS);
+        int trajectoryMaxChars = MemoryExtractionParser.TRAJECTORY_MAX_CHARS;
+        var prompt = MemoryConsolidationPrompt.EXTRACTION_PROMPT.formatted(trajectoryMaxChars, tracesText, trajectoryMaxChars);
         var response = callLLM(prompt);
-        var result = parseV2Response(response, agentId, traces);
+        var result = MemoryExtractionParser.parse(response, agentId, traces);
         if (!result.isEmpty()) {
             agentMemoryService.appendMemories(agentId, result);
         }
@@ -377,68 +375,5 @@ public class AgentMemoryConsolidationJob implements Job {
         }
         return "";
     }
-
-    @SuppressFBWarnings({"VA_FORMAT_STRING_USES_NEWLINE", "REC_CATCH_EXCEPTION"})
-    private List<AgentMemory> parseV2Response(String response, String agentId, List<Trace> traces) {
-        var memories = new ArrayList<AgentMemory>();
-        try {
-            var json = extractJson(response);
-            var om = new ObjectMapper();
-            var node = om.readTree(json);
-            var now = ZonedDateTime.now();
-            var trajectories = node.get("trajectories");
-            if (trajectories != null && trajectories.isArray()) {
-                for (var item : trajectories) {
-                    var memory = new AgentMemory();
-                    memory.id = UUID.randomUUID().toString();
-                    memory.agentId = agentId;
-                    memory.type = "TRAJECTORY";
-                    memory.layer = MemoryLayer.TRAJECTORIES;
-                    memory.content = formatTrajectoryContent(item);
-                    memory.createdAt = now;
-                    memory.updatedAt = now;
-                    memory.sourceTraceIds = traces.stream().map(t -> t.traceId).toList();
-                    memories.add(memory);
-                }
-            }
-            var patterns = node.get("patterns");
-            if (patterns != null && patterns.isArray()) {
-                for (var item : patterns) {
-                    var memory = new AgentMemory();
-                    memory.id = UUID.randomUUID().toString();
-                    memory.agentId = agentId;
-                    memory.type = item.has("type") ? item.get("type").asText() : null;
-                    memory.layer = MemoryLayer.METHODS;
-                    memory.content = item.get("content").asText();
-                    memory.createdAt = now;
-                    memory.updatedAt = now;
-                    memory.sourceTraceIds = traces.stream().map(t -> t.traceId).toList();
-                    memories.add(memory);
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.error("failed to parse V2 extraction response", e);
-        }
-        return memories;
-    }
-
-    private String formatTrajectoryContent(JsonNode item) {
-        var sessionId = item.has("session_id") ? item.get("session_id").asText() : "unknown";
-        var summary = item.has("summary") ? item.get("summary").asText() : "";
-        if (summary.length() > TRAJECTORY_MAX_CHARS) {
-            summary = summary.substring(0, TRAJECTORY_MAX_CHARS);
-        }
-        return "[session=" + sessionId + "] " + summary;
-    }
-
-    private String extractJson(String response) {
-        if (response == null) return "{}";
-        var trimmed = response.trim();
-        var start = trimmed.indexOf('{');
-        var end = trimmed.lastIndexOf('}');
-        if (start >= 0 && end > start) {
-            return trimmed.substring(start, end + 1);
-        }
-        return "{}";
-    }
 }
+

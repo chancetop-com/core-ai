@@ -46,6 +46,9 @@ public class AgentMemoryExperimentRun {
     @Field(name = "injection_probability")
     public Double injectionProbability;
 
+    @Field(name = "injection_mode")
+    public InjectionMode injectionMode;
+
     @Field(name = "injection_decision")
     public Boolean injectionDecision;
 
