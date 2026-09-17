@@ -153,6 +153,7 @@ public final class AgentDependencyAccessPolicy {
         executable.type = definition.type;
         executable.status = definition.status;
         executable.systemDefault = definition.systemDefault;
+        executable.forkedFrom = definition.forkedFrom;
         executable.publishedConfig = config;
         executable.sandboxConfig = executable.publishedConfig.sandboxConfig;
         executable.createdAt = definition.createdAt;
