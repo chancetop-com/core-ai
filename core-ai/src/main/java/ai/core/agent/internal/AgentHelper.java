@@ -21,6 +21,7 @@ import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.CaptionImageTool;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.utils.ImageDownscaler;
+import ai.core.utils.ImageFormats;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,8 +135,19 @@ public class AgentHelper {
     }
 
     private static List<Content> buildImageContent(ToolCallResult result) {
+        // the image is carried in the history and resent on every later turn, so an unreadable payload (an
+        // error body saved as probe.png, a non-image MCP content part) must not reach the model: the API
+        // rejects the whole request with HTTP 400 and the run dies far away from the mistake
+        var format = ImageFormats.detectBase64(result.getImageBase64());
+        if (!ImageFormats.isModelReadable(format)) {
+            LOGGER.warn("dropping image content that is not a readable image, tool={}, declaredFormat={}, detectedFormat={}",
+                    result.getToolName(), result.getImageFormat(), format);
+            return List.of(Content.of(Strings.format(
+                    "[Image result from tool {} was dropped: its content is not a readable image ({}), so it was not sent to the model.]",
+                    result.getToolName(), ImageFormats.READABLE_FORMAT_LIST)));
+        }
         // the image is carried in the history and resent on every later turn, so shrink it once here
-        var image = ImageDownscaler.shrink(result.getImageBase64(), result.getImageFormat());
+        var image = ImageDownscaler.shrink(result.getImageBase64(), ImageFormats.mimeType(format));
         return List.of(Content.of(Prompts.IMAGE_CAPTIONING_PROMPT),
                 Content.of(Content.ImageUrl.of(Strings.format("data:{};base64,{}", image.format(), image.data()), image.format())));
     }
@@ -226,7 +238,16 @@ public class AgentHelper {
         if (referenceUrl != null) {
             return Content.of(imageReferenceText(referenceUrl));
         }
-        var image = ImageDownscaler.shrink(attachedContent.data, attachedContent.mediaType);
+        var format = ImageFormats.detectBase64(attachedContent.data);
+        if (!ImageFormats.isModelReadable(format)) {
+            LOGGER.warn("dropping attachment that is not a readable image, filename={}, declaredMediaType={}, detectedFormat={}",
+                    attachedContent.filename, attachedContent.mediaType, format);
+            var name = attachedContent.filename == null || attachedContent.filename.isBlank()
+                    ? "Image attachment" : "Image attachment " + attachedContent.filename;
+            return Content.of(Strings.format("[{} was dropped: its content is not a readable image ({}), so it was not sent to the model.]",
+                    name, ImageFormats.READABLE_FORMAT_LIST));
+        }
+        var image = ImageDownscaler.shrink(attachedContent.data, ImageFormats.mimeType(format));
         var dataUri = Strings.format("data:{};base64,{}", image.format(), image.data());
         return Content.of(Content.ImageUrl.of(dataUri, image.format()));
     }

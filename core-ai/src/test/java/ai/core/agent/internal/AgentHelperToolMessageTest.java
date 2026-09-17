@@ -11,6 +11,9 @@ import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.GenerateImageTool;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -19,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author Xander
  */
 class AgentHelperToolMessageTest {
+    private static final String PNG_BASE64 = Base64.getEncoder().encodeToString(
+            new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02});
     private static final ModelModalityRegistry IMAGE_UNSUPPORTED = (model, modality) ->
             modality == InputModality.TEXT ? ModalitySupport.SUPPORTED : ModalitySupport.UNSUPPORTED;
     private static final ModelModalityRegistry ALL_UNKNOWN = (model, modality) ->
@@ -127,7 +132,19 @@ class AgentHelperToolMessageTest {
     }
 
     private ToolCallResult imageResult() {
-        return ToolCallResult.completed("image loaded").withImage("QUJD", "image/png");
+        return ToolCallResult.completed("image loaded").withImage(PNG_BASE64, "image/png");
+    }
+
+    @Test
+    void unreadableImageResultIsDroppedInsteadOfBeingSentToTheModel() {
+        var errorBody = Base64.getEncoder().encodeToString("{\"errorCode\":\"NOT_FOUND\",\"message\":\"shared file not found\"}".getBytes(StandardCharsets.UTF_8));
+
+        var message = AgentHelper.buildToolMessage(toolCall(),
+                ToolCallResult.completed("image loaded").withImage(errorBody, "image/png"), false, null);
+
+        assertFalse(hasImagePart(message.content));
+        assertEquals(1, message.content.size());
+        assertTrue(message.content.getFirst().text.contains("not a readable image"));
     }
 
     private boolean hasImagePart(java.util.List<Content> content) {

@@ -1,5 +1,6 @@
 package ai.core.tool.tools;
 
+import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,7 +14,9 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -22,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 class ReadFileToolTest {
+    private static final byte[] PNG_BYTES = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02};
     private final Logger logger = LoggerFactory.getLogger(ReadFileToolTest.class);
     private ReadFileTool readFileTool;
 
@@ -233,5 +237,73 @@ class ReadFileToolTest {
         assertNotNull(result, "Result should not be null");
         // Check for cat -n style formatting with arrow
         assertTrue(result.contains("Test line"), "Result should contain the test line");
+    }
+
+    @Test
+    void testReadImageFileWithRealImageContent() throws IOException {
+        Path testFile = tempDir.resolve("photo.png");
+        Files.write(testFile, PNG_BYTES);
+
+        var result = readFileTool.execute(JSON.toJSON(argsOf(testFile)));
+
+        assertEquals(ToolCallResult.ContentType.IMAGE, result.getType());
+        assertEquals("image/png", result.getImageFormat());
+        assertNotNull(result.getImageBase64(), "Image payload should be attached");
+    }
+
+    @Test
+    void testImageFileNameHoldingAnErrorBodyIsReturnedAsText() throws IOException {
+        // an artifact download that failed and stored its error body under a .png name
+        Path testFile = tempDir.resolve("probe_teacher.png");
+        Files.writeString(testFile, "{\"errorCode\":\"NOT_FOUND\",\"message\":\"shared file not found\"}");
+
+        var result = readFileTool.execute(JSON.toJSON(argsOf(testFile)));
+
+        assertEquals(ToolCallResult.ContentType.TEXT, result.getType());
+        assertNull(result.getImageBase64(), "A non-image payload must never be attached as an image");
+        assertTrue(result.getResult().contains("not an image"), "Result should say the content is not an image");
+        assertTrue(result.getResult().contains("shared file not found"), "Result should show the error body as text");
+    }
+
+    @Test
+    void testBinaryFileWithAnImageFileNameIsReportedInsteadOfAttached() throws IOException {
+        Path testFile = tempDir.resolve("archive.png");
+        Files.write(testFile, new byte[]{0x00, 0x01, 0x02, 0x00, 0x00, 0x03});
+
+        var result = readFileTool.execute(JSON.toJSON(argsOf(testFile)));
+
+        assertEquals(ToolCallResult.ContentType.TEXT, result.getType());
+        assertNull(result.getImageBase64());
+        assertTrue(result.getResult().contains("neither an image"), "Result should say the payload is neither image nor text");
+    }
+
+    @Test
+    void testImageInAFormatTheModelCannotReadIsReported() throws IOException {
+        Path testFile = tempDir.resolve("scan.bmp");
+        Files.write(testFile, new byte[]{'B', 'M', 0x36, 0x00, 0x00, 0x00});
+
+        var result = readFileTool.execute(JSON.toJSON(argsOf(testFile)));
+
+        assertEquals(ToolCallResult.ContentType.TEXT, result.getType());
+        assertNull(result.getImageBase64());
+        assertTrue(result.getResult().contains("BMP"), "Result should name the format that was found");
+        assertTrue(result.getResult().contains("convert"), "Result should tell the agent how to recover");
+    }
+
+    @Test
+    void testEmptyFileWithAnImageFileNameIsReported() throws IOException {
+        Path testFile = tempDir.resolve("empty.png");
+        Files.writeString(testFile, "");
+
+        var result = readFileTool.execute(JSON.toJSON(argsOf(testFile)));
+
+        assertEquals(ToolCallResult.ContentType.TEXT, result.getType());
+        assertTrue(result.getResult().contains("empty"), "Result should indicate the file is empty");
+    }
+
+    private Map<String, Object> argsOf(Path file) {
+        Map<String, Object> args = new HashMap<>();
+        args.put("file_path", file.toString());
+        return args;
     }
 }

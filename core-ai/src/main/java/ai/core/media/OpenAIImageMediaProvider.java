@@ -71,7 +71,7 @@ public class OpenAIImageMediaProvider implements MediaProvider {
         put(body, "model", request.model());
         put(body, "prompt", request.prompt());
         put(body, "n", request.n());
-        put(body, "size", request.size());
+        put(body, "size", OpenAIImageSize.snap(request.size()));
         put(body, "quality", normalizedQuality(request.quality()));
         put(body, "output_format", request.outputFormat());
         put(body, "output_compression", request.outputCompression());
@@ -88,7 +88,7 @@ public class OpenAIImageMediaProvider implements MediaProvider {
         field(body, boundary, "model", request.model());
         field(body, boundary, "prompt", request.prompt());
         field(body, boundary, "n", request.n());
-        field(body, boundary, "size", request.size());
+        field(body, boundary, "size", OpenAIImageSize.snap(request.size()));
         field(body, boundary, "quality", normalizedQuality(request.quality()));
         field(body, boundary, "output_format", request.outputFormat());
         field(body, boundary, "output_compression", request.outputCompression());

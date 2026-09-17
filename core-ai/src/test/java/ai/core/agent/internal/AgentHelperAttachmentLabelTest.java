@@ -5,6 +5,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.llm.domain.Content;
 import org.junit.jupiter.api.Test;
 
+import java.util.Base64;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,6 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author Xander
  */
 class AgentHelperAttachmentLabelTest {
+    private static final String PNG_BASE64 = Base64.getEncoder().encodeToString(
+            new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02});
 
     @Test
     void visionNativeImagesGetAdjacentLabelsInOrder() {
@@ -66,7 +69,7 @@ class AgentHelperAttachmentLabelTest {
 
     @Test
     void labelOmitsNameWhenFilenameIsMissing() {
-        var context = context(AttachedContent.ofBase64("QUJD", "image/png", AttachedContent.AttachedContentType.IMAGE));
+        var context = context(AttachedContent.ofBase64(PNG_BASE64, "image/png", AttachedContent.AttachedContentType.IMAGE));
 
         var content = AgentHelper.buildUserMessage("look", context).content;
 
@@ -96,7 +99,7 @@ class AgentHelperAttachmentLabelTest {
     }
 
     private AttachedContent image(String filename) {
-        return AttachedContent.ofBase64("QUJD", "image/png", AttachedContent.AttachedContentType.IMAGE, filename);
+        return AttachedContent.ofBase64(PNG_BASE64, "image/png", AttachedContent.AttachedContentType.IMAGE, filename);
     }
 
     private List<Content.ContentType> types(List<Content> content) {

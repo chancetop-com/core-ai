@@ -6,6 +6,8 @@ import ai.core.llm.domain.Content;
 import ai.core.tool.tools.GenerateImageTool;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,6 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author Xander
  */
 class AgentHelperAttachmentTest {
+    private static final String PNG_BASE64 = Base64.getEncoder().encodeToString(
+            new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02});
 
     @Test
     void base64ImageAttachmentStaysNativeWhenVisionNative() {
@@ -132,8 +136,26 @@ class AgentHelperAttachmentTest {
         if (sink != null) builder.customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, sink);
         var context = builder.build();
         context.setAttachedContents(List.of(AttachedContent.ofBase64(
-                "QUJD", "image/png", AttachedContent.AttachedContentType.IMAGE, "photo.png")));
+                PNG_BASE64, "image/png", AttachedContent.AttachedContentType.IMAGE, "photo.png")));
         return context;
+    }
+
+    @Test
+    void unreadableBase64AttachmentIsDroppedInsteadOfBeingSentToTheModel() {
+        var errorBody = Base64.getEncoder().encodeToString("{\"errorCode\":\"NOT_FOUND\",\"message\":\"shared file not found\"}".getBytes(StandardCharsets.UTF_8));
+        var context = ExecutionContext.builder().sessionId("test").build();
+        context.setAttachedContents(List.of(AttachedContent.ofBase64(
+                errorBody, "image/png", AttachedContent.AttachedContentType.IMAGE, "probe_teacher.png")));
+
+        var message = AgentHelper.buildUserMessage("look at this", context);
+
+        assertFalse(hasImagePart(message.content));
+        var text = message.content.stream()
+                .filter(c -> c.type == Content.ContentType.TEXT)
+                .map(c -> c.text)
+                .reduce("", (a, b) -> a + "\n" + b);
+        assertTrue(text.contains("probe_teacher.png"));
+        assertTrue(text.contains("not a readable image"));
     }
 
     private boolean hasImagePart(List<Content> content) {

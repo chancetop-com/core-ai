@@ -3,6 +3,7 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.utils.ImageFormats;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,7 @@ public class ReadFileTool extends ToolCall {
     private static final Logger LOGGER = LoggerFactory.getLogger(ReadFileTool.class);
     private static final int DEFAULT_LINE_LIMIT = 2000;
     private static final int MAX_LINE_LENGTH = 2000;
+    private static final int TEXT_INSPECTION_BYTES = 4096;
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
 
     private static final String TOOL_DESC = """
@@ -53,6 +55,10 @@ public class ReadFileTool extends ToolCall {
             
             - This tool allows agent to read images (eg PNG, JPG, etc). When reading
             an image file the contents are presented visually.
+
+            - An image is recognized by its content, not by its name: placeholders and
+            error bodies saved as .png are returned as text, and a real image in a format
+            the model cannot read (bmp, tiff) is reported instead of being sent.
             
             - This tool can read PDF files (.pdf). PDFs are processed page by page,
             extracting both text and visual content for analysis.
@@ -74,6 +80,17 @@ public class ReadFileTool extends ToolCall {
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    private static boolean looksLikeText(byte[] bytes) {
+        var inspected = Math.min(bytes.length, TEXT_INSPECTION_BYTES);
+        var controlBytes = 0;
+        for (var i = 0; i < inspected; i++) {
+            var value = bytes[i];
+            if (value == '\n' || value == '\r' || value == '\t') continue;
+            if (value < 0x20) controlBytes++;
+        }
+        return inspected == 0 || controlBytes * 10 < inspected;
     }
 
     @Override
@@ -109,14 +126,6 @@ public class ReadFileTool extends ToolCall {
         return IMAGE_EXTENSIONS.contains(ext);
     }
 
-    private String getImageMimeType(String filePath) {
-        var lowerPath = filePath.toLowerCase(Locale.getDefault());
-        var dotIndex = lowerPath.lastIndexOf('.');
-        var ext = lowerPath.substring(dotIndex + 1);
-        if ("jpg".equals(ext)) ext = "jpeg";
-        return "image/" + ext;
-    }
-
     private ToolCallResult readImageFile(String filePath, long startTime) {
         var file = new File(filePath);
         if (!file.exists()) {
@@ -130,9 +139,20 @@ public class ReadFileTool extends ToolCall {
 
         try {
             var bytes = Files.readAllBytes(Path.of(filePath));
-            var originalSize = bytes.length;
-            var mimeType = getImageMimeType(filePath);
-
+            if (bytes.length == 0) {
+                return ToolCallResult.completed("Warning: File exists but is empty: " + filePath)
+                        .withDuration(System.currentTimeMillis() - startTime);
+            }
+            var format = ImageFormats.detect(bytes);
+            if (format == null) {
+                return readNonImageFile(filePath, bytes, startTime);
+            }
+            if (!ImageFormats.isModelReadable(format)) {
+                return ToolCallResult.failed("Error: " + filePath + " is a " + format.toUpperCase(Locale.ROOT)
+                                + " image, which the model cannot read; convert it to " + ImageFormats.READABLE_FORMAT_LIST + " first")
+                        .withDuration(System.currentTimeMillis() - startTime);
+            }
+            var mimeType = ImageFormats.mimeType(format);
             var base64 = Base64.getEncoder().encodeToString(bytes);
             LOGGER.debug("Successfully read image file: {}, mimeType: {}, size: {} bytes", filePath, mimeType, bytes.length);
 
@@ -141,13 +161,34 @@ public class ReadFileTool extends ToolCall {
                     .withDuration(System.currentTimeMillis() - startTime)
                     .withStats("filePath", filePath)
                     .withStats("imageSize", bytes.length)
-                    .withStats("originalSize", originalSize);
+                    .withStats("originalSize", bytes.length);
         } catch (IOException e) {
             var error = "Error reading image file: " + e.getMessage();
             LOGGER.error(error, e);
             return ToolCallResult.failed(error)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    /**
+     * A file named like an image that is not one, e.g. a JSON error body saved as probe.png. Declaring it an
+     * image would put bytes in the chat history that the model API rejects with HTTP 400 ("You have uploaded
+     * an unsupported image") turns later, failing a run far away from the mistake, so the payload is reported
+     * for what it is instead.
+     */
+    private ToolCallResult readNonImageFile(String filePath, byte[] bytes, long startTime) {
+        var size = bytes.length;
+        if (!looksLikeText(bytes)) {
+            return ToolCallResult.failed("Error: " + filePath + " has an image file name but is neither an image ("
+                            + ImageFormats.READABLE_FORMAT_LIST + ") nor text (" + size + " bytes)")
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+        var text = readFile(filePath, null, null);
+        LOGGER.warn("Image file name but no image content, returning text instead: {}, size: {} bytes", filePath, size);
+        return ToolCallResult.completed("Warning: " + filePath + " has an image file name but its content is not an image; showing it as text instead:\n" + text)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("filePath", filePath)
+                .withStats("originalSize", size);
     }
 
     private String readFile(String filePath, Integer offset, Integer limit) {
