@@ -133,6 +133,9 @@ class LLMModelContextRegistryTest {
         assertTrue(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T09:59:59Z")));   // Beijing 17:59
         assertFalse(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T10:00:00Z")));  // Beijing 18:00
         assertFalse(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-18T12:00:00Z")));  // Beijing 20:00
+        assertFalse(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-22T02:00:00Z")));  // Beijing Saturday 10:00, weekends are off-peak
+        assertFalse(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-23T06:00:00Z")));  // Beijing Sunday 14:00, weekends are off-peak
+        assertTrue(LLMModelContextRegistry.isPeakHour(Instant.parse("2026-08-24T02:00:00Z")));   // Beijing Monday 10:00
     }
 
     @Test

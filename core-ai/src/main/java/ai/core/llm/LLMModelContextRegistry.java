@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Map;
@@ -37,9 +38,14 @@ public final class LLMModelContextRegistry {
         return instance;
     }
 
-    // Peak hours follow the DeepSeek 2026-08 peak/off-peak scheme: Beijing time 9:00-12:00 and 14:00-18:00.
+    // Peak hours follow the DeepSeek peak/off-peak scheme: Beijing time 9:00-12:00 and 14:00-18:00 on weekdays only,
+    // which is the official UTC 01:00-04:00 and 06:00-10:00, Monday through Friday.
     public static boolean isPeakHour(Instant when) {
         var time = when.atZone(SHANGHAI);
+        var day = time.getDayOfWeek();
+        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+            return false;
+        }
         var hour = time.getHour();
         return hour >= 9 && hour < 12 || hour >= 14 && hour < 18;
     }
