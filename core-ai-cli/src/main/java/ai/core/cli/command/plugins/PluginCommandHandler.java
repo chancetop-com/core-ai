@@ -301,7 +301,7 @@ public class PluginCommandHandler {
                 + "    --global  %s- Install to ~/.core-ai/plugins/ (user, default)%s%n"
                 + "  %sSources:%s%n"
                 + "    git:<url>                  %s- Git repository%s%n"
-                + "    npm:<package>              %s- NPM package (with optional registry)%n"
+                + "    npm:<package>              %s- NPM package (with optional registry)%s%n"
                 + "    ./path                     %s- Local directory%s%n"
                 + "    github:<owner/repo>        %s- GitHub shorthand%s%n"
                 + "  %sExamples:%s%n"
@@ -309,6 +309,11 @@ public class PluginCommandHandler {
                 + "    /plugins install npm:@my-org/my-skill --local%n"
                 + "    /plugins install ./my-local-plugin%n%n",
                 AnsiTheme.PROMPT, AnsiTheme.RESET,
+                AnsiTheme.MUTED, AnsiTheme.RESET,
+                AnsiTheme.MUTED, AnsiTheme.RESET,
+                AnsiTheme.MUTED, AnsiTheme.RESET,
+                AnsiTheme.MUTED, AnsiTheme.RESET,
+                AnsiTheme.MUTED, AnsiTheme.RESET,
                 AnsiTheme.MUTED, AnsiTheme.RESET,
                 AnsiTheme.MUTED, AnsiTheme.RESET,
                 AnsiTheme.MUTED, AnsiTheme.RESET,

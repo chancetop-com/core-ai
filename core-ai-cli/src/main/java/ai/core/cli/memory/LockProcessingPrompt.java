@@ -11,7 +11,7 @@ final class LockProcessingPrompt {
             + "daily-logs that need deep knowledge extraction. The lock file is a work queue —%n"
             + "process each listed daily-log, extract knowledge into wiki pages, update episodes,%n"
             + "then **delete the lock file**.%n"
-            + MemoryExtractionSpecs.EXTRACTION_SPEC + "%n"
+            + "%s%n"
             + "## Allowed Tools%n"
             + "Only use these tools — all others are forbidden for extraction:%n"
             + "- File: read_file, write_file, edit_file, glob_file, grep_file%n"
@@ -36,7 +36,7 @@ final class LockProcessingPrompt {
     @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("VA_FORMAT_STRING_USES_NEWLINE")
     static String format(Path lockFile, String lockContent, Path workspace,
                          ZonedDateTime now, int maxTurns) {
-        return TEMPLATE.formatted(lockFile.toAbsolutePath(), lockContent,
+        return TEMPLATE.formatted(MemoryExtractionSpecs.EXTRACTION_SPEC, lockFile.toAbsolutePath(), lockContent,
                 workspace.toAbsolutePath(), now.format(DATETIME_FMT), maxTurns);
     }
 
