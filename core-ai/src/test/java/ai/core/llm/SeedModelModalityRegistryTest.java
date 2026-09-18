@@ -20,7 +20,8 @@ class SeedModelModalityRegistryTest {
 
     @Test
     void knownTextOnlyModelIsUnsupportedForImage() {
-        assertEquals(ModalitySupport.UNSUPPORTED, REGISTRY.supports("deepseek/deepseek-v4-flash", InputModality.IMAGE));
+        // deepseek-v4-flash became multimodal with V4.1-Flash; v4-pro is still text-only
+        assertEquals(ModalitySupport.UNSUPPORTED, REGISTRY.supports("deepseek/deepseek-v4-pro", InputModality.IMAGE));
     }
 
     @Test

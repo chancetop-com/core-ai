@@ -100,16 +100,28 @@ class LLMModelContextRegistryTest {
         var cost = registry.estimateCostUsd("deepseek-v4-pro", 1_000_000, 0, 0, Instant.parse("2026-08-18T12:00:00Z"));
 
         assertNotNull(cost);
-        assertEquals(6.521739e-07 * 1_000_000, cost, 1e-9);
+        assertEquals(6.6e-07 * 1_000_000, cost, 1e-9);
     }
 
     @Test
     void testEstimateCostUsdDeepSeekPeakAppliesMultiplier() {
-        // 2026-08-18T02:00:00Z = Beijing 10:00, peak hour
+        // 2026-08-18T02:00:00Z = Beijing 10:00 Tuesday, peak hour
         var cost = registry.estimateCostUsd("deepseek-v4-pro", 1_000_000, 0, 0, Instant.parse("2026-08-18T02:00:00Z"));
 
         assertNotNull(cost);
-        assertEquals(6.521739e-07 * 1_000_000 * 2, cost, 1e-9);
+        assertEquals(6.6e-07 * 1_000_000 * 2, cost, 1e-9);
+    }
+
+    @Test
+    void testDeepSeekFlashCarriesOffPeakBasePriceWithPeakMultiplier() {
+        // Official off-peak: $0.15/M input, $0.003/M cached input, $0.6/M output; peak is twice the off-peak rate
+        var info = registry.getModelInfo("deepseek-flash");
+
+        assertNotNull(info);
+        assertEquals(1.5e-07, info.inputCostPerToken(), 1e-12);
+        assertEquals(3e-09, info.cacheReadInputTokenCost(), 1e-12);
+        assertEquals(6e-07, info.outputCostPerToken(), 1e-12);
+        assertEquals(2.0, info.peakPriceMultiplier(), 1e-12);
     }
 
     @Test

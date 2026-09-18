@@ -19,14 +19,14 @@ class GatewayModelCatalogTest {
 
     @Test
     void backfillKnownTextOnlyModelAsNotVisionCapable() {
-        var enriched = GatewayModelCatalog.enrich(metadata("deepseek/deepseek-v4-flash", null, null));
+        var enriched = GatewayModelCatalog.enrich(metadata("deepseek/deepseek-v4-pro", null, null));
 
         assertEquals(Boolean.FALSE, enriched.supportsVision());
     }
 
     @Test
     void providerDeclaredCapabilityWinsOverSeed() {
-        var enriched = GatewayModelCatalog.enrich(metadata("deepseek/deepseek-v4-flash", Boolean.TRUE, null));
+        var enriched = GatewayModelCatalog.enrich(metadata("deepseek/deepseek-v4-pro", Boolean.TRUE, null));
 
         assertEquals(Boolean.TRUE, enriched.supportsVision());
     }

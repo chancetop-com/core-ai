@@ -50,7 +50,7 @@ class GatewayModalityRegistryTest {
     @Test
     void nullDeclarationFallsBackToSeedByUpstreamModel() {
         var config = new GatewayModelConfig();
-        config.upstreamModel = "deepseek/deepseek-v4-flash";
+        config.upstreamModel = "deepseek/deepseek-v4-pro";
         when(routingEngine.modelConfig("my-model")).thenReturn(config);
 
         assertEquals(ModalitySupport.UNSUPPORTED, registry.supports("my-model", InputModality.IMAGE));
@@ -58,11 +58,18 @@ class GatewayModalityRegistryTest {
 
     @Test
     void unknownGatewayModelFallsBackToSeedByRequestedName() {
-        when(routingEngine.modelConfig("deepseek/deepseek-v4-flash")).thenReturn(null);
+        when(routingEngine.modelConfig("deepseek/deepseek-v4-pro")).thenReturn(null);
         when(routingEngine.modelConfig("no-such-model")).thenReturn(null);
 
-        assertEquals(ModalitySupport.UNSUPPORTED, registry.supports("deepseek/deepseek-v4-flash", InputModality.IMAGE));
+        assertEquals(ModalitySupport.UNSUPPORTED, registry.supports("deepseek/deepseek-v4-pro", InputModality.IMAGE));
         assertEquals(ModalitySupport.UNKNOWN, registry.supports("no-such-model", InputModality.IMAGE));
+    }
+
+    @Test
+    void seedSaysV41FlashIsVisionCapable() {
+        when(routingEngine.modelConfig("deepseek/deepseek-v4-flash")).thenReturn(null);
+
+        assertEquals(ModalitySupport.SUPPORTED, registry.supports("deepseek/deepseek-v4-flash", InputModality.IMAGE));
     }
 
     @Test
