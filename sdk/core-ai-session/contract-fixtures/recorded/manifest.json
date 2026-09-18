@@ -1,0 +1,242 @@
+{
+  "captured": {
+    "cli": "core-ai-cli",
+    "version": "2.0.12",
+    "date": "2026-09-18",
+    "exchanges": 48
+  },
+  "curated_by": "curate_recordings.py",
+  "redaction": {
+    "placeholder": "[redacted in the recorded fixture]",
+    "renames": {
+      "order-service": "restaurant-api",
+      "order_service": "restaurant_api",
+      "BOOrderWebService": "reviews",
+      "project-playbook-writer": "seo-title-semantics"
+    },
+    "keys_replaced": [
+      "base_url",
+      "description",
+      "display_name",
+      "error_detail",
+      "output",
+      "request_type",
+      "response_type",
+      "text",
+      "title"
+    ],
+    "json_string_keys": [
+      "input_schema"
+    ],
+    "route_keys": [
+      "path"
+    ],
+    "also": "absolute paths, private URLs, emails, UUIDs and 24+ hex ids are replaced; list payloads are cut to 3 entries unless a fixture asks for fewer; a final audit refuses to write a fixture that still shows any of those, a private host or a name from `renames`"
+  },
+  "cases": [
+    {
+      "file": "mcp-servers.json",
+      "argv": [
+        "mcp",
+        "servers"
+      ],
+      "exit": 0,
+      "note": "every server the CLI lists, trimmed to the kept ones",
+      "keys_kept": []
+    },
+    {
+      "file": "mcp-search-mongodb.json",
+      "argv": [
+        "mcp",
+        "search",
+        "--on-server",
+        "MongoDB",
+        "--limit",
+        "200"
+      ],
+      "exit": 0,
+      "note": "a server's tools, with ref_id; `list-databases` stays so its describe is reachable",
+      "keys_kept": []
+    },
+    {
+      "file": "mcp-search-elasticsearch.json",
+      "argv": [
+        "mcp",
+        "search",
+        "--on-server",
+        "elasticsearch",
+        "--limit",
+        "200"
+      ],
+      "exit": 0,
+      "note": "a server with a handful of tools",
+      "keys_kept": []
+    },
+    {
+      "file": "mcp-search-kubernetes.json",
+      "argv": [
+        "mcp",
+        "search",
+        "--on-server",
+        "kubernetes",
+        "--limit",
+        "200"
+      ],
+      "exit": 0,
+      "note": "a server whose tools take arguments",
+      "keys_kept": []
+    },
+    {
+      "file": "mcp-describe-kubernetes-namespaces-list.json",
+      "argv": [
+        "mcp",
+        "describe",
+        "kubernetes/namespaces_list"
+      ],
+      "exit": 0,
+      "note": "a real input_schema string",
+      "keys_kept": []
+    },
+    {
+      "file": "mcp-describe-mongodb-list-databases.json",
+      "argv": [
+        "mcp",
+        "describe",
+        "MongoDB/list-databases"
+      ],
+      "exit": 0,
+      "note": "the smallest schema: required and additionalProperties",
+      "keys_kept": []
+    },
+    {
+      "file": "mcp-describe-unknown.json",
+      "argv": [
+        "mcp",
+        "describe",
+        "no-such-server/no-such-tool"
+      ],
+      "exit": 5,
+      "note": "the not-found envelope",
+      "keys_kept": []
+    },
+    {
+      "file": "mcp-call-kubernetes-namespaces-list.json",
+      "argv": [
+        "mcp",
+        "call",
+        "kubernetes/namespaces_list",
+        "--args-file",
+        "-",
+        "--timeout",
+        "120",
+        "--max-output",
+        "1000000"
+      ],
+      "exit": 0,
+      "note": "a successful HubCallResponse (output redacted)",
+      "keys_kept": []
+    },
+    {
+      "file": "mcp-call-business-failure.json",
+      "argv": [
+        "mcp",
+        "call",
+        "MongoDB/list-databases",
+        "--args-file",
+        "-",
+        "--timeout",
+        "120",
+        "--max-output",
+        "1000000"
+      ],
+      "exit": 1,
+      "note": "exit 1 *with* a payload: the message arrives in `text` (kept: it only quotes our own argument)",
+      "keys_kept": [
+        "text"
+      ]
+    },
+    {
+      "file": "api-tool-apps.json",
+      "argv": [
+        "api-tool",
+        "apps"
+      ],
+      "exit": 0,
+      "note": "the app list, renamed",
+      "keys_kept": []
+    },
+    {
+      "file": "api-tool-search.json",
+      "argv": [
+        "api-tool",
+        "search",
+        "--on-app",
+        "restaurant-api",
+        "--limit",
+        "200"
+      ],
+      "exit": 0,
+      "note": "one operation of one app, renamed; the one its describe covers",
+      "keys_kept": []
+    },
+    {
+      "file": "api-tool-describe.json",
+      "argv": [
+        "api-tool",
+        "describe",
+        "restaurant-api/reviews/batchUpdateOrderItemQuantity"
+      ],
+      "exit": 0,
+      "note": "an operation's input_schema string",
+      "keys_kept": []
+    },
+    {
+      "file": "agent-search-agents.json",
+      "argv": [
+        "agent",
+        "search",
+        "--type",
+        "agent",
+        "--limit",
+        "200"
+      ],
+      "exit": 0,
+      "note": "two agents, as the hub lists them",
+      "keys_kept": []
+    },
+    {
+      "file": "agent-search-llm-calls.json",
+      "argv": [
+        "agent",
+        "search",
+        "--type",
+        "llm_call",
+        "--limit",
+        "200"
+      ],
+      "exit": 0,
+      "note": "one llm_call, renamed",
+      "keys_kept": []
+    },
+    {
+      "file": "cli-usage-error.json",
+      "argv": [
+        "definitely-not-a-command"
+      ],
+      "exit": 2,
+      "note": "the usage envelope (exit 2)",
+      "keys_kept": []
+    },
+    {
+      "file": "agent-status-unknown.json",
+      "argv": [
+        "agent",
+        "status",
+        "000000000000000000000004"
+      ],
+      "exit": 5,
+      "note": "polling a run that does not exist",
+      "keys_kept": []
+    }
+  ]
+}

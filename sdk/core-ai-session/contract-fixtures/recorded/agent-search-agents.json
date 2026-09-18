@@ -1,0 +1,51 @@
+{
+  "note": "two agents, as the hub lists them",
+  "argv": [
+    "agent",
+    "search",
+    "--type",
+    "agent",
+    "--limit",
+    "200"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "agents": [
+      {
+        "id": "agent-builder",
+        "name": "Agent Builder",
+        "description": "[redacted in the recorded fixture]",
+        "type": "agent",
+        "source": "server",
+        "status": "published",
+        "published_at": "2026-08-26T03:46:28.524Z",
+        "owner_is_me": false,
+        "system_default": true,
+        "tool_count": 15,
+        "skill_names": [],
+        "sub_agent_names": [],
+        "has_sandbox": false
+      },
+      {
+        "id": "default-assistant",
+        "name": "Assistant",
+        "description": "[redacted in the recorded fixture]",
+        "type": "agent",
+        "source": "server",
+        "status": "published",
+        "published_at": "2026-08-06T03:04:30.034Z",
+        "owner_is_me": false,
+        "system_default": true,
+        "tool_count": 1,
+        "skill_names": [
+          "markmap-mindmap",
+          "minimax-docx"
+        ],
+        "sub_agent_names": [],
+        "has_sandbox": false
+      }
+    ]
+  },
+  "stderr": ""
+}

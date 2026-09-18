@@ -22,6 +22,9 @@ public final class HubInstructions {
               1. Discover: core-ai-cli skill search "<topic>" --json
               2. Read:     core-ai-cli skill show <namespace>/<name> --raw   # prints SKILL.md; follow its instructions
               3. Optional: core-ai-cli skill pull <namespace>/<name> --to .claude/skills   # install for reuse
+            Skill scripts: write them with the core_ai_session Python SDK — `from core_ai_session import session`
+              picks the transport (session hub in a sandbox, this CLI on your machine), so one script runs in both places;
+              never read *_TOKEN/*_KEY env vars or hand-roll HTTP clients. How-to: core-ai-cli skill show Stephen/core-ai-cli-manual
             Agents: when a sub-task fits a specialist better than you, delegate:
               1. core-ai-cli agent search "<capability>" --json
               2. core-ai-cli agent run <id> --task "<self-contained task with all context>" --json

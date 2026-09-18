@@ -1,0 +1,21 @@
+{
+  "note": "the app list, renamed",
+  "argv": [
+    "api-tool",
+    "apps"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "apps": [
+      {
+        "name": "restaurant-api",
+        "base_url": "[redacted in the recorded fixture]",
+        "version": "00000000-0000-4000-8000-000000000003",
+        "service_count": 6,
+        "operation_count": 55
+      }
+    ]
+  },
+  "stderr": ""
+}

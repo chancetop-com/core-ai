@@ -1,0 +1,15 @@
+# Build context is the repository root (see core-ai-sandbox-runtime/Dockerfile).
+# The sandbox image needs core-ai-sandbox-runtime/ (Go sources, VERSION, go.mod/sum) and
+# sdk/core-ai-session/ (the Python SDK). Everything heavy or irrelevant is kept out of the context.
+.git
+.gitignore
+.core-ai
+build
+.gradle
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+core-ai-frontend
+sdk/vectorstores
+**/*.md

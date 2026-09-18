@@ -1,0 +1,31 @@
+{
+  "note": "exit 1 *with* a payload: the message arrives in `text` (kept: it only quotes our own argument)",
+  "argv": [
+    "mcp",
+    "call",
+    "MongoDB/list-databases",
+    "--args-file",
+    "-",
+    "--timeout",
+    "120",
+    "--max-output",
+    "1000000"
+  ],
+  "stdin": "{\"connectionId\": \"no-such-value\"}",
+  "exit": 1,
+  "stdout": {
+    "call_id": "00000000-0000-4000-8000-000000000002",
+    "success": false,
+    "is_error": true,
+    "content": [
+      {
+        "type": "text",
+        "text": "Error: Error: Connection \"no-such-value\" does not exist or has expired. Call the \"list-connections\" tool to see the active connections, or establish a new one and retry with the connectionId it returns."
+      }
+    ],
+    "text": "Error: Error: Connection \"no-such-value\" does not exist or has expired. Call the \"list-connections\" tool to see the active connections, or establish a new one and retry with the connectionId it returns.",
+    "duration_ms": 4,
+    "server_state": "CONNECTED"
+  },
+  "stderr": ""
+}

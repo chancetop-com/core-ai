@@ -32,7 +32,7 @@ public class ServerSkillTool extends ToolCall {
 
             Scripts of this skill run inside the sandbox. Call this session's configured MCP servers, API tools,
             LLM_CALL definitions, sub-agents and non-sandboxed builtin tools through the sandbox hub instead of
-            hardcoding endpoints or credentials: `from core_ai_sandbox import session` (python) or
+            hardcoding endpoints or credentials: `from core_ai_session import session` (python) or
             `core-ai-sandbox catalog|describe|call` (bash). Check `core-ai-sandbox catalog` for what this agent
             has attached before writing calls. Arguments are keyword arguments matching the tool's
             `input_schema`, `.data` holds the response parsed as JSON, and a failed call raises `ToolError` in

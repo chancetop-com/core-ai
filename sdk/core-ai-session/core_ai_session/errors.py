@@ -1,4 +1,4 @@
-"""Exception hierarchy of the core-ai sandbox hub SDK.
+"""Exception hierarchy of the core-ai session SDK.
 
 Every failure raises: a script must never see a half-filled ``ToolResult`` and continue as if
 the call succeeded. `ToolError`, `NotBoundError` and `ToolNotFoundError` map one-to-one onto
@@ -10,19 +10,19 @@ from __future__ import annotations
 from typing import Optional
 
 
-class CoreAiSandboxError(Exception):
+class CoreAiSessionError(Exception):
     """Base class of every error raised by this package."""
 
 
-class NotBoundError(CoreAiSandboxError):
+class NotBoundError(CoreAiSessionError):
     """The sandbox is not bound to a session yet (runtime 503 ``not_bound``)."""
 
 
-class ToolNotFoundError(CoreAiSandboxError):
+class ToolNotFoundError(CoreAiSessionError):
     """The requested tool is not in this session's catalog."""
 
 
-class ToolError(CoreAiSandboxError):
+class ToolError(CoreAiSessionError):
     """The tool ran and failed, or the hub rejected the call."""
 
     def __init__(

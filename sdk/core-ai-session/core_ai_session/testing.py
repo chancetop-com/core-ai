@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from .errors import CoreAiSandboxError
+from .errors import CoreAiSessionError
 from .models import Catalog, SessionInfo, Task, ToolDetail, ToolResult, ToolSummary
 from .tree import (
     CONTRACT_VERSION,
@@ -31,15 +31,24 @@ from .tree import (
     parse_session_info,
 )
 
-FIXTURE_DIR = Path(__file__).resolve().parents[2] / "contract-fixtures"
+FIXTURE_DIR = Path(__file__).resolve().parents[1] / "contract-fixtures"  # a source checkout only
 
 
 def _read_fixture(name: str) -> dict[str, Any]:
     path = Path(name)
     if not path.is_absolute():
         path = FIXTURE_DIR / name
-    with path.open(encoding="utf-8") as handle:
-        return json.load(handle)
+    try:
+        with path.open(encoding="utf-8") as handle:
+            return json.load(handle)
+    except FileNotFoundError:
+        # An installed wheel ships the package, not the repository's fixtures: say so instead of
+        # letting a reader hunt for the path.
+        raise FileNotFoundError(
+            f"no contract fixture {name!r} at {path}: `from_fixture()`/`fixture=` read the fixtures of "
+            "a source checkout (sdk/core-ai-session/contract-fixtures). An installed wheel has none of them — build the "
+            "payload yourself (`FakeSession(catalog={...})`, `FakeNode.returns(...)`) instead."
+        ) from None
 
 
 @dataclass
@@ -92,7 +101,7 @@ class FakeNode(Node):
         session = self._session
         assert isinstance(session, FakeSession)
         if self._entry is None:
-            raise CoreAiSandboxError(f"{self._entry_path()} is a group; script a tool instead")
+            raise CoreAiSessionError(f"{self._entry_path()} is a group; script a tool instead")
         return session.script.setdefault(self._entry.name, _Scripted())
 
 
@@ -126,6 +135,8 @@ class FakeFilesNamespace(FilesNamespace):
 class FakeSession(_SessionBase):
     """Records every call and answers from scripts, with no network access at all."""
 
+    backend = "fake"
+
     _node_class = FakeNode
     _agent_node_class = FakeAgentNode
     _files_class = FakeFilesNamespace
@@ -142,6 +153,7 @@ class FakeSession(_SessionBase):
 
     @classmethod
     def from_fixture(cls, name: str, details: Optional[list[str]] = None) -> "FakeSession":
+        """Read the checked-in contract fixtures of a source checkout (`sdk/core-ai-session/contract-fixtures`)."""
         return cls(catalog=_read_fixture(name), details=[_read_fixture(item) for item in details or []])
 
     # ---------- catalog ----------
@@ -178,7 +190,7 @@ class FakeSession(_SessionBase):
 
     def _fetch_task(self, task_id: str) -> dict[str, Any]:
         if task_id not in self.tasks:
-            raise CoreAiSandboxError(f"task {task_id} has no scripted payload")
+            raise CoreAiSessionError(f"task {task_id} has no scripted payload")
         return self.tasks[task_id]
 
     # ---------- transport ----------
@@ -197,7 +209,7 @@ class FakeSession(_SessionBase):
         )
         behaviour = self.script.get(entry.name, _Scripted()).next()
         if behaviour is None:
-            raise CoreAiSandboxError(
+            raise CoreAiSessionError(
                 f"{entry.name} has no scripted answer; call `.returns(...)` or `.raises(...)` first"
             )
         if isinstance(behaviour, _AsReturn):
@@ -237,7 +249,7 @@ class FakeSession(_SessionBase):
             for tool in self._require_catalog().tools:
                 if tool.kind == kind and (tool.name == leaf or tool.name.endswith(leaf)):
                     return tool
-        raise CoreAiSandboxError(f"'{name}' is not in this fake catalog")
+        raise CoreAiSessionError(f"'{name}' is not in this fake catalog")
 
     def me(self) -> SessionInfo:
         return parse_session_info(

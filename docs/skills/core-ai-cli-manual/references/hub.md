@@ -196,6 +196,9 @@ Skills: when a task matches a known workflow, first check for a skill:
   1. Discover: core-ai-cli skill search "<topic>" --json
   2. Read:     core-ai-cli skill show <namespace>/<name> --raw   # prints SKILL.md; follow its instructions
   3. Optional: core-ai-cli skill pull <namespace>/<name> --to .claude/skills   # install for reuse
+Skill scripts: write them with the core_ai_session Python SDK — `from core_ai_session import session`
+  picks the transport (session hub in a sandbox, this CLI on your machine), so one script runs in both places;
+  never read *_TOKEN/*_KEY env vars or hand-roll HTTP clients. How-to: core-ai-cli skill show Stephen/core-ai-cli-manual
 Agents: when a sub-task fits a specialist better than you, delegate:
   1. core-ai-cli agent search "<capability>" --json
   2. core-ai-cli agent run <id> --task "<self-contained task with all context>" --json
@@ -241,16 +244,16 @@ core-ai-sandbox call google_gbp_get_reviews --arg location=locations/123 --json
 | `agent` | `s.agent["<name>"].run("...")` | Sub-agent delegation; usually long-running (see tasks) |
 | `builtin` | `s.tool("<tool name>")(...)` | The agent's non-sandboxed builtin tools |
 
-Tool names come from the catalog and are unique across kinds, so `s.tool("<name>")` / `core-ai-sandbox call <name>` reach any of them.
+Tool names come from the catalog and are unique across kinds, so `s.tool("<name>")` / `core-ai-sandbox call <name>` reach any of them. Out of a sandbox the same discovery happens through the user-level hub commands (the local `CliSession` drives them for you): `core-ai-cli mcp servers` + `mcp search --on-server`, `api-tool apps` + `api-tool search --on-app`, `agent search --type agent|llm_call`.
 
 ### Python SDK
 
-`core_ai_sandbox` is preinstalled in the sandbox image (the same wheel is attached to runtime releases for local runs).
+One package for both places: `core_ai_session` is preinstalled in the sandbox image, and the same wheel is attached to each runtime release — `pip install https://github.com/chancetop-com/core-ai/releases/download/sandbox-v<runtime version>/core_ai_session-<runtime version>-py3-none-any.whl` (from a checkout: `pip install -e sdk/core-ai-session`). A skill script is therefore written once and runs either way — see "Running the same script locally" below.
 
 ```python
-from core_ai_sandbox import session, ToolError, NotBoundError, ToolNotFoundError
+from core_ai_session import session, ToolError, NotBoundError, ToolNotFoundError
 
-s = session()                       # reads CORE_AI_HUB; session(hub_url=...) for tests
+s = session()                       # sandbox: the session hub; local shell: core-ai-cli
 s.me()                              # session_id, agent_name, tool_count, contract_version
 s.catalog()                         # full catalog; s.refresh() re-reads it after tool changes
 s.tools("review", kind="mcp")       # search
@@ -274,22 +277,71 @@ except ToolError as e:              # is_error=true and HTTP 4xx/5xx always rais
 - Files: `s.files.publish("/workspace/report.html", title="月报")` uploads through the session's `submit_artifacts` tool and returns a `download_url` usable as an `image_url`-style argument.
 - `s.close()`; `session()` also works as a context manager.
 
-### Testing a skill script locally
+### Running the same script locally
+
+The script is written once: `session()` picks the transport from the environment, and the three transports share one API (namespace tree, `input_schema` pre-validation, result and error mapping, `Task` polling), so what runs here runs in the sandbox unchanged.
+
+| Transport | Selected when | Executes as |
+|-----------|---------------|-------------|
+| `FakeSession` | imported explicitly from `core_ai_session.testing` | nothing — in-process fixtures; no credentials, no network |
+| `CliSession` / `AsyncCliSession` | `CORE_AI_HUB` **not** set (or `session(backend="cli")`) | `core-ai-cli … --json` subprocesses, with **your** identity |
+| `Session` / `AsyncSession` | `CORE_AI_HUB` set — the sandbox runtime sets it | the session hub, as the **session's** caller |
 
 ```python
-from core_ai_sandbox.testing import FakeSession
-
-fake = FakeSession.from_fixture("catalog")              # or FakeSession(catalog_json)
+# offline unit test: the fake exposes the same namespaces as production
+import json
+from core_ai_session.testing import FakeSession
+fake = FakeSession(catalog=json.load(open("catalog.json")))   # exported from a real session (below)
 fake.mcp["google-gbp"]["get_reviews"].returns({"reviews": [...]})
 fake.calls                                              # assert call sequence and arguments
-run_audit(session=fake)                                 # script receives the session as a parameter
+fake.describe("google-gbp/list_reviews").input_schema   # offline details: FakeSession(details=[...])
+run_audit(session=fake)                                 # the script takes the session as a parameter
+
+# the same script against the real tools, on this machine
+run_audit()                                             # session() -> CliSession -> core-ai-cli
 ```
+
+Inside this repository `FakeSession.from_fixture("catalog")` is a shortcut for the same thing: it reads
+the checked-in `sdk/core-ai-session/contract-fixtures/*.json`. An installed wheel ships the package but not those
+files, so use the exported-catalog form there (`from_fixture` says so if it cannot find them).
 
 Export one real catalog per agent (`core-ai-sandbox catalog --json > catalog.json`) so the fake exposes the same namespaces as production.
 
+A local catalog is enumerated on the fly, so it is best effort: each source is listed separately, a
+source that errors is retried once, and one that answers with fewer tools than it advertises (a
+flapping live index), hits the page limit, or shrinks between two enumerations of the same session is
+kept but flagged. Either way the source ends up in `session.catalog_gaps` with one warning. Check that
+list before believing a local `ToolNotFoundError`; the sandbox catalogs are the authoritative ones.
+
+`CORE_AI_HUB` always wins and there is no fallback: while it is set, `backend="cli"` is refused and a dead sandbox raises `NotBoundError` — calls never quietly re-run under your local identity. Point the SDK at another binary with `CORE_AI_CLI=/path/to/cli` (tests use this to run a fake CLI). The local backend needs `core-ai-cli` ≥ 2.0.10 (`api-tool` and `agent` subcommands); if a command is rejected, the error names the installed version and the required one.
+
+#### Checking the local transport
+
+- `python -m unittest discover -s sdk/core-ai-session/tests` — the whole SDK suite, offline and credential-free: every transport is replayed against the same `sdk/core-ai-session/contract-fixtures/*.json` that the Go runtime and the server assert against. CI runs it, plus the Go tests, on every change under `core-ai-sandbox-runtime/` (`.github/workflows/sandbox-check.yml`).
+- `python sdk/core-ai-session/tests/verify_live_cli.py [--tool <name> [--call --arg k=v]] [--dump DIR]` — the same code against your **installed** `core-ai-cli`, printing `me`, the catalog, one `describe`, and optionally one real call, so a drifted envelope is visible at once. Read-only unless `--call` is passed.
+
+#### What stays different locally
+
+The script API is unified; the identity and the reach are not, deliberately and loudly:
+
+| | In a sandbox | Locally |
+|---|---|---|
+| Catalog means | what the **agent mounts** | what **you can see** (`mcp servers`, `api-tool apps`, visible agents), enumerated best effort — see `session.catalog_gaps` |
+| `s.me()` | session id, agent name, `contract_version` | `sandbox_state="local"`, no session; one warning is logged |
+| Identity | the session's caller; backend data scoping applies | you — caller headers, permissions and data scoping are yours |
+| `llm_call` / `agent` | everything the agent mounts | only what you can run yourself |
+| `mcp.call` permission | comes with the agent's mount | admin-only until granted to your role, so a local 403 is not a production 403 |
+| `builtin` tools | `web_search`, `submit_artifacts`, `files.publish` | absent from the local catalog; calling one raises `ToolNotFoundError`, never a fake success |
+| Call timeout | up to 600 s | capped at 300 s by `--timeout`: the SDK clamps it with one warning, returns a `Task`, and the work keeps running |
+| Quota and traces | the session's | yours |
+| Windows argv limits | n/a (Linux pod) | names, JSON arguments and task text travel on **stdin** (`--args-file -`, `--task-file -`); nothing long ever goes into argv |
+| Lifetime | tied to the session binding: releasing the sandbox ⇒ `NotBoundError` | one subprocess per call — nothing to bind, nothing to release |
+
+A run that waits for input behaves the same in both places (`status="pending"`, keep polling), except that locally there is no chat caller to answer it: the SDK logs once how to unblock it with `core-ai-cli agent reply <task_id> --approve|--deny|--message "…"`.
+
 ### Limits
 
-- A sandbox cannot change its own capability set: no loading tools or skills, no creating LLM_CALL definitions, no user-level hub access.
+- A sandbox cannot change its own capability set: no loading tools or skills, no creating LLM_CALL definitions, no user-level hub access. The local backend is equally read-only — it can only call what your own account already reaches.
 - `core-ai-cli` is not installed in the sandbox; conversely session tokens do not work against `/api/mcp-hub/*`, `/api/skill-hub/*`, `/api/api-tools/*`, or `/api/agents/*`.
 - Sandbox calls count against the session's quota and traces exactly like the agent's own tool calls; tools that are not attached to the agent are simply absent from the catalog.
 
@@ -302,6 +354,7 @@ Export one real catalog per agent (`core-ai-sandbox catalog --json > catalog.jso
 | `*_BASE_URL` / `*_TOKEN` for internal services | `s.api["<app>"]["<service>"]["<operation>"](...)` with the app attached to the agent |
 | Third-party endpoints with their own API keys (e.g. a vision API) | Register the capability as an MCP server or Service API and attach it to the agent (preferred); `sandboxConfig.env` only as a last resort, since any custom env bypasses the warm pool |
 | SKILL.md telling the reader to "check whether these MCPs are configured" | Tell it to run `core-ai-sandbox catalog` and to ask the user to attach whatever is missing |
+| SKILL.md telling the reader to test by running it in a sandbox | Keep the sandbox as the integration test, but develop with `FakeSession` unit tests and a plain `python script.py` locally — the SDK routes that through `core-ai-cli` (see "Running the same script locally") |
 
 Migration is complete when `grep -E "LITELLM|MCP_URL|_TOKEN|_KEY|openai"` over the skill directory finds nothing and the agent's `sandboxConfig.env` is empty. Design: `docs/cn/design-sandbox-hub.md`.
 

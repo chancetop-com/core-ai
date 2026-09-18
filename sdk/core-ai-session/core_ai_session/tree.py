@@ -15,7 +15,7 @@ from typing import Any, Optional, Union
 from .errors import ToolNotFoundError
 from .models import Catalog, CatalogGroup, LlmUsage, SessionInfo, ToolDetail, ToolResult, ToolSummary, content_parts
 
-LOGGER = logging.getLogger("core_ai_sandbox")
+LOGGER = logging.getLogger("core_ai_session")
 
 RESERVED_CALL_ARGS = ("timeout", "wait", "wait_timeout")
 CONTRACT_VERSION = "1"
@@ -270,9 +270,7 @@ class _SessionBase:
     def tool(self, name: str):
         entry = self.find_entry(name)
         if entry is None:
-            catalog = self._require_catalog()
-            close = difflib.get_close_matches(name, catalog.names(), n=3, cutoff=0.3)
-            raise ToolNotFoundError(f"'{name}' is not in this session's catalog; did you mean: {', '.join(close) or '(none)'}")
+            raise self._unknown_tool(name)
 
         def call(**kwargs: Any) -> Any:
             return self._invoke_node(None, entry, dict(kwargs))
@@ -280,6 +278,30 @@ class _SessionBase:
         call.__name__ = entry.name
         call.__doc__ = entry.description
         return call
+
+    def describe(self, name: str) -> ToolDetail:
+        """The tool's full record: description, `input_schema`, timeout, `path`.
+
+        Offline transports answer from what they were given; the HTTP and CLI transports override
+        this with a real round trip.
+        """
+        entry = self.find_entry(name)
+        if entry is None:
+            raise self._unknown_tool(name)
+        detail = self._detail(entry)
+        if detail is None:
+            raise ToolNotFoundError(
+                f"'{entry.name}' has no detail in this session; FakeSession(details=[...]) supplies them "
+                f"(calling the tool works without one)"
+            )
+        return detail
+
+    def _unknown_tool(self, name: str) -> ToolNotFoundError:
+        catalog = self._require_catalog()
+        close = difflib.get_close_matches(name, catalog.names(), n=3, cutoff=0.3)
+        return ToolNotFoundError(
+            f"'{name}' is not in this session's catalog; did you mean: {', '.join(close) or '(none)'}"
+        )
 
     # ---------- invocation ----------
 

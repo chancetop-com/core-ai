@@ -43,8 +43,8 @@ public final class SandboxLifecycle extends AbstractLifecycle {
             namespace accepts item and attribute access, and `-`/`_` are interchangeable in every name:
 
             ```python
-            from core_ai_sandbox import session
-            from core_ai_sandbox.errors import ToolError
+            from core_ai_session import session
+            from core_ai_session.errors import ToolError
 
             s = session()
             try:

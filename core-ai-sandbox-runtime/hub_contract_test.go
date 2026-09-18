@@ -10,10 +10,10 @@ import (
 	"testing"
 )
 
-// sdk/contract-fixtures is the single source of truth for the hub wire format: the Python SDK
-// (sdk/python/tests) and this CLI are both tested against the same bytes, so a one-sided change
+// ../sdk/core-ai-session/contract-fixtures is the single source of truth for the hub wire format: the Python SDK
+// (../sdk/core-ai-session/tests) and this CLI are both tested against the same bytes, so a one-sided change
 // to a field name or status value fails one of the two suites.
-const contractFixtureDir = "sdk/contract-fixtures"
+const contractFixtureDir = "../sdk/core-ai-session/contract-fixtures"
 
 func contractFixture(t *testing.T, name string) []byte {
 	t.Helper()

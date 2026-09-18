@@ -1,0 +1,46 @@
+{
+  "note": "a server with a handful of tools",
+  "argv": [
+    "mcp",
+    "search",
+    "--on-server",
+    "elasticsearch",
+    "--limit",
+    "200"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "servers": [],
+    "tools": [
+      {
+        "qualified_name": "elasticsearch/esql",
+        "ref_id": "mcp-tool:000000000000000000000002:esql",
+        "server": "elasticsearch",
+        "name": "esql",
+        "description": "[redacted in the recorded fixture]",
+        "score": 0,
+        "stale": false
+      },
+      {
+        "qualified_name": "elasticsearch/get_mappings",
+        "ref_id": "mcp-tool:000000000000000000000002:get_mappings",
+        "server": "elasticsearch",
+        "name": "get_mappings",
+        "description": "[redacted in the recorded fixture]",
+        "score": 0,
+        "stale": false
+      },
+      {
+        "qualified_name": "elasticsearch/get_shards",
+        "ref_id": "mcp-tool:000000000000000000000002:get_shards",
+        "server": "elasticsearch",
+        "name": "get_shards",
+        "description": "[redacted in the recorded fixture]",
+        "score": 0,
+        "stale": false
+      }
+    ]
+  },
+  "stderr": ""
+}

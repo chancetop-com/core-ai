@@ -1,0 +1,37 @@
+{
+  "note": "a server's tools, with ref_id; `list-databases` stays so its describe is reachable",
+  "argv": [
+    "mcp",
+    "search",
+    "--on-server",
+    "MongoDB",
+    "--limit",
+    "200"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "servers": [],
+    "tools": [
+      {
+        "qualified_name": "MongoDB/aggregate",
+        "ref_id": "mcp-tool:000000000000000000000001:aggregate",
+        "server": "MongoDB",
+        "name": "aggregate",
+        "description": "[redacted in the recorded fixture]",
+        "score": 0,
+        "stale": false
+      },
+      {
+        "qualified_name": "MongoDB/list-databases",
+        "ref_id": "mcp-tool:000000000000000000000001:list-databases",
+        "server": "MongoDB",
+        "name": "list-databases",
+        "description": "[redacted in the recorded fixture]",
+        "score": 0,
+        "stale": false
+      }
+    ]
+  },
+  "stderr": ""
+}

@@ -148,7 +148,7 @@ ToolExecutor.doExecute
 沙箱里的脚本（skill 脚本、临时 python/bash）通过 **回环 hub** 使用本会话 agent 已配置的能力（MCP / API 工具 / LLM_CALL / sub-agent / 非沙箱 builtin），脚本本身不持有任何凭据：
 
 ```
-脚本 (python: core_ai_sandbox SDK / bash: core-ai-sandbox CLI)
+脚本 (python: core_ai_session SDK / bash: core-ai-sandbox CLI)
   │  HTTP，无 Authorization
   ▼
 runtime 127.0.0.1:8081/hub/*            ← 只监听回环；从内存 binding 取令牌，覆盖脚本传来的 Authorization
@@ -163,6 +163,7 @@ server /api/sandbox-hub/*（仅此路径接受 cst_）
 
 - 环境变量只注入 `CORE_AI_HUB`（以及信息性的 `CORE_AI_SESSION_ID` / `CORE_AI_AGENT_NAME`）；不注入任何指向原始 LLM 的变量。
 - 长任务（async 工具、慢 sub-agent）返回 `pending + task_id`，调用方轮询 `/tasks/:id`。
+- 同一个 python 脚本在本机也能跑：`CORE_AI_HUB` 未设置时 SDK 改走 `core-ai-cli … --json`（本机用户身份），离线单测用 `FakeSession`；三者在同一份 `sdk/core-ai-session/contract-fixtures/*.json` 上断言（§ 详见 design-sandbox-hub.md §5.8/§5.10）。
 - 完整设计（契约、SDK、迁移路径、风险）见 `docs/cn/design-sandbox-hub.md`。
 
 ## 7. 生命周期管理

@@ -1,0 +1,20 @@
+{
+  "note": "a real input_schema string",
+  "argv": [
+    "mcp",
+    "describe",
+    "kubernetes/namespaces_list"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "qualified_name": "kubernetes/namespaces_list",
+    "ref_id": "mcp-tool:000000000000000000000003:namespaces_list",
+    "server": "kubernetes",
+    "name": "namespaces_list",
+    "description": "[redacted in the recorded fixture]",
+    "input_schema": "{\"type\":\"object\",\"properties\":{\"fieldSelector\":{\"type\":\"string\",\"description\":\"[redacted in the recorded fixture]\",\"pattern\":\"^[.\\\\-A-Za-z0-9]+([=!,]{1,2}[./\\\\-A-Za-z0-9]+)+$\"}}}",
+    "server_state": "CONNECTED"
+  },
+  "stderr": ""
+}

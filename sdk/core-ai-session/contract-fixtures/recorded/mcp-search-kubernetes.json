@@ -1,0 +1,46 @@
+{
+  "note": "a server whose tools take arguments",
+  "argv": [
+    "mcp",
+    "search",
+    "--on-server",
+    "kubernetes",
+    "--limit",
+    "200"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "servers": [],
+    "tools": [
+      {
+        "qualified_name": "kubernetes/configuration_view",
+        "ref_id": "mcp-tool:000000000000000000000003:configuration_view",
+        "server": "kubernetes",
+        "name": "configuration_view",
+        "description": "[redacted in the recorded fixture]",
+        "score": 0,
+        "stale": false
+      },
+      {
+        "qualified_name": "kubernetes/events_list",
+        "ref_id": "mcp-tool:000000000000000000000003:events_list",
+        "server": "kubernetes",
+        "name": "events_list",
+        "description": "[redacted in the recorded fixture]",
+        "score": 0,
+        "stale": false
+      },
+      {
+        "qualified_name": "kubernetes/namespaces_list",
+        "ref_id": "mcp-tool:000000000000000000000003:namespaces_list",
+        "server": "kubernetes",
+        "name": "namespaces_list",
+        "description": "[redacted in the recorded fixture]",
+        "score": 0,
+        "stale": false
+      }
+    ]
+  },
+  "stderr": ""
+}

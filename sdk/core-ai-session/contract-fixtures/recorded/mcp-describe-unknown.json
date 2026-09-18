@@ -1,0 +1,18 @@
+{
+  "note": "the not-found envelope",
+  "argv": [
+    "mcp",
+    "describe",
+    "no-such-server/no-such-tool"
+  ],
+  "stdin": "{}",
+  "exit": 5,
+  "stdout": {
+    "error": {
+      "code": "not_found",
+      "status": 404,
+      "message": "mcp server not found: no-such-server"
+    }
+  },
+  "stderr": "[WARN 11:42:24.234] ai.core.cli.http.RemoteApiClient - API error: 404 {\"errorCode\":\"NOT_FOUND\",\"message\":\"mcp server not found: no-such-server\"}\r\n"
+}

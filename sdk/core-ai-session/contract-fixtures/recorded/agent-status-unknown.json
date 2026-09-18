@@ -1,0 +1,18 @@
+{
+  "note": "polling a run that does not exist",
+  "argv": [
+    "agent",
+    "status",
+    "000000000000000000000004"
+  ],
+  "stdin": "{}",
+  "exit": 5,
+  "stdout": {
+    "error": {
+      "code": "not_found",
+      "status": 404,
+      "message": "task not found"
+    }
+  },
+  "stderr": "[WARN 11:42:25.984] ai.core.cli.http.RemoteApiClient - API error: 404 {\"errorCode\":\"NOT_FOUND\",\"message\":\"task not found\"}\r\n"
+}

@@ -165,9 +165,9 @@ class Task:
 
 def _require_sync_task(session: Any) -> None:
     if session.is_async():
-        from .errors import CoreAiSandboxError
+        from .errors import CoreAiSessionError
 
-        raise CoreAiSandboxError("an AsyncSession cannot block on a task; use wait=False and poll again")
+        raise CoreAiSessionError("an AsyncSession cannot block on a task; use wait=False and poll again")
 
 
 def content_parts(raw: Optional[Iterable[dict[str, Any]]]) -> list[ContentPart]:

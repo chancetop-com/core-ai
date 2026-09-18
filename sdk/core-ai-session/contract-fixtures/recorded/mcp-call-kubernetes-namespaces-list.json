@@ -1,0 +1,31 @@
+{
+  "note": "a successful HubCallResponse (output redacted)",
+  "argv": [
+    "mcp",
+    "call",
+    "kubernetes/namespaces_list",
+    "--args-file",
+    "-",
+    "--timeout",
+    "120",
+    "--max-output",
+    "1000000"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "call_id": "00000000-0000-4000-8000-000000000001",
+    "success": true,
+    "is_error": false,
+    "content": [
+      {
+        "type": "text",
+        "text": "[redacted in the recorded fixture]"
+      }
+    ],
+    "text": "[redacted in the recorded fixture]",
+    "duration_ms": 20,
+    "server_state": "CONNECTED"
+  },
+  "stderr": ""
+}

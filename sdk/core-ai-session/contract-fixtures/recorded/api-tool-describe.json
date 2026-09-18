@@ -1,0 +1,26 @@
+{
+  "note": "an operation's input_schema string",
+  "argv": [
+    "api-tool",
+    "describe",
+    "restaurant-api/reviews/batchUpdateOrderItemQuantity"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "qualified_name": "restaurant-api/reviews/batchUpdateOrderItemQuantity",
+    "tool_name": "restaurant_api_reviews_batchUpdateOrderItemQuantity",
+    "ref_id": "api-operation:restaurant-api:reviews:batchUpdateOrderItemQuantity",
+    "app": "restaurant-api",
+    "service": "reviews",
+    "name": "batchUpdateOrderItemQuantity",
+    "method": "PUT",
+    "path": "/[route]/batch",
+    "description": "[redacted in the recorded fixture]",
+    "deprecated": false,
+    "request_type": "[redacted in the recorded fixture]",
+    "response_type": "[redacted in the recorded fixture]",
+    "input_schema": "{\"type\":\"object\",\"properties\":{\"is_need_print\":{\"type\":\"boolean\",\"description\":\"[redacted in the recorded fixture]\"},\"id\":{\"type\":\"string\",\"description\":\"[redacted in the recorded fixture]\"},\"order_item_quantities\":{\"type\":\"array\",\"description\":\"[redacted in the recorded fixture]\",\"items\":{\"type\":\"object\",\"properties\":{\"order_item_id\":{\"type\":\"string\",\"description\":\"[redacted in the recorded fixture]\"},\"quantity\":{\"type\":\"integer\",\"description\":\"[redacted in the recorded fixture]\"}},\"required\":[\"order_item_id\",\"quantity\"]}},\"operator\":{\"type\":\"string\",\"description\":\"[redacted in the recorded fixture]\"}},\"required\":[\"id\",\"is_need_print\",\"order_item_quantities\",\"operator\"]}"
+  },
+  "stderr": ""
+}

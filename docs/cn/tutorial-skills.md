@@ -283,6 +283,7 @@ SkillLifecycle 在 Compression **之前**执行，确保 system prompt 中的 Sk
 3. **使用分步工作流** — 结构化的步骤更容易被 Agent 遵循。
 4. **按名称引用工具** — 明确提到使用哪些 ToolCall（如"使用 `web_search` 查找信息源"）。
 5. **包含示例** — 为复杂步骤展示期望的输入/输出。
+6. **脚本不持有凭据** — 脚本要调 MCP / API / LLM_CALL / sub-agent 时，只写 `from core_ai_session import session`，由 `session()` 按环境选通道（沙箱内走会话 hub，本机走 `core-ai-cli`）；不要在脚本里读 `*_TOKEN` / `*_API_KEY` 之类的环境变量，也不要自己拼 HTTP 客户端。完整契约与迁移清单见 `docs/skills/core-ai-cli-manual/references/hub.md`。
 
 ### 目录组织
 

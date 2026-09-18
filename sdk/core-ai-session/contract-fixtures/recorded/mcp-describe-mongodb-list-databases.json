@@ -1,0 +1,20 @@
+{
+  "note": "the smallest schema: required and additionalProperties",
+  "argv": [
+    "mcp",
+    "describe",
+    "MongoDB/list-databases"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "qualified_name": "MongoDB/list-databases",
+    "ref_id": "mcp-tool:000000000000000000000001:list-databases",
+    "server": "MongoDB",
+    "name": "list-databases",
+    "description": "[redacted in the recorded fixture]",
+    "input_schema": "{\"type\":\"object\",\"properties\":{\"connectionId\":{\"type\":\"string\"}},\"required\":[\"connectionId\"],\"additionalProperties\":false}",
+    "server_state": "CONNECTED"
+  },
+  "stderr": ""
+}

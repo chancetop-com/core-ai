@@ -4,7 +4,7 @@ import core.framework.api.json.Property;
 
 /**
  * One callable capability of the session's sandbox, as the runtime contract describes it
- * ({@code sdk/contract-fixtures/catalog.json}). Field names are frozen: the Go runtime,
+ * ({@code sdk/core-ai-session/contract-fixtures/catalog.json}). Field names are frozen: the Go runtime,
  * the thin CLI and the Python SDK all decode this shape.
  *
  * @author stephen

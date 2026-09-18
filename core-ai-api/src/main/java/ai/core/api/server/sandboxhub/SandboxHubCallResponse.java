@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * Outcome of one sandbox hub call, shape shared by the tool-call response and the task poll
- * ({@code sdk/contract-fixtures/call-success.json}, {@code pending-call.json}).
+ * ({@code sdk/core-ai-session/contract-fixtures/call-success.json}, {@code pending-call.json}).
  * <p>
  * Deliberately not {@code mcphub.HubCallResponse}: that DTO is the wire contract of the four
  * user-facing hubs (CLI {@code --json} output included), while this one carries the sandbox-only

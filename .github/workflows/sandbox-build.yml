@@ -34,7 +34,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: core-ai-sandbox-runtime
+          context: .
+          file: core-ai-sandbox-runtime/Dockerfile
           platforms: linux/amd64
           push: true
           tags: |
@@ -42,3 +43,55 @@ jobs:
             ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  sdk:
+    # The same Python SDK the image bakes in (design-sandbox-hub.md §5.2), released so a developer
+    # can run a skill script on their own machine through core-ai-cli ('Running the same script
+    # locally' in the core-ai-cli manual). Same version number as the image on purpose: one package,
+    # one contract.
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Read version
+        id: version
+        run: echo "value=$(cat core-ai-sandbox-runtime/VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Build the wheel
+        run: |
+          cp -r sdk/core-ai-session /tmp/sdk
+          sed -i "s/^version = \"0.0.0\"/version = \"${{ steps.version.outputs.value }}\"/" /tmp/sdk/pyproject.toml
+          python -m pip install --upgrade build
+          python -m build --wheel --outdir dist /tmp/sdk
+          ls -l dist
+
+      - name: Check the wheel installs and reports its version
+        run: |
+          python -m venv /tmp/check
+          /tmp/check/bin/pip install dist/*.whl
+          /tmp/check/bin/python - <<'PY'
+          import core_ai_session
+          from core_ai_session import CliSession, FakeSession, Session
+
+          version = core_ai_session.sdk_version()
+          print("core-ai-session", version, "- transports:", CliSession.__name__, FakeSession.__name__, Session.__name__)
+          assert version == "${{ steps.version.outputs.value }}", version
+          PY
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sandbox-v${{ steps.version.outputs.value }}
+          name: Sandbox runtime v${{ steps.version.outputs.value }}
+          files: dist/*.whl
+          generate_release_notes: true
+          fail_on_unmatched_files: true

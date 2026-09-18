@@ -6,7 +6,7 @@ on:
     paths:
       - 'core-ai/**'
       - 'core-ai-api/**'
-      - 'vectorstores/**'
+      - 'sdk/vectorstores/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
@@ -20,7 +20,7 @@ on:
     paths:
       - 'core-ai/**'
       - 'core-ai-api/**'
-      - 'vectorstores/**'
+      - 'sdk/vectorstores/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'

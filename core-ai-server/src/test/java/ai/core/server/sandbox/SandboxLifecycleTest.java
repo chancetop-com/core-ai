@@ -92,7 +92,7 @@ class SandboxLifecycleTest {
 
         var prompt = agent.getSystemPrompt();
         assertTrue(prompt.contains(HUB_MARKER));
-        assertTrue(prompt.contains("core_ai_sandbox"));
+        assertTrue(prompt.contains("core_ai_session"));
         assertTrue(prompt.contains("core-ai-sandbox catalog"));
         assertTrue(prompt.contains("Platform artifact delivery"));
 

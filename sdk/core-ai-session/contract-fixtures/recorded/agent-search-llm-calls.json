@@ -1,0 +1,33 @@
+{
+  "note": "one llm_call, renamed",
+  "argv": [
+    "agent",
+    "search",
+    "--type",
+    "llm_call",
+    "--limit",
+    "200"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "agents": [
+      {
+        "id": "builtin-seo-title-semantics",
+        "name": "seo-title-semantics",
+        "description": "[redacted in the recorded fixture]",
+        "type": "llm_call",
+        "source": "server",
+        "status": "published",
+        "published_at": "2026-09-14T06:47:05.609Z",
+        "owner_is_me": false,
+        "system_default": true,
+        "tool_count": 0,
+        "skill_names": [],
+        "sub_agent_names": [],
+        "has_sandbox": false
+      }
+    ]
+  },
+  "stderr": ""
+}

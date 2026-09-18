@@ -1,0 +1,36 @@
+{
+  "note": "every server the CLI lists, trimmed to the kept ones",
+  "argv": [
+    "mcp",
+    "servers"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "servers": [
+      {
+        "name": "MongoDB",
+        "state": "CONNECTED",
+        "tool_count": 18,
+        "stale": false
+      },
+      {
+        "name": "elasticsearch",
+        "description": "[redacted in the recorded fixture]",
+        "category": "ops",
+        "state": "CONNECTED",
+        "tool_count": 5,
+        "stale": false
+      },
+      {
+        "name": "kubernetes",
+        "description": "[redacted in the recorded fixture]",
+        "category": "ops",
+        "state": "CONNECTED",
+        "tool_count": 13,
+        "stale": false
+      }
+    ]
+  },
+  "stderr": ""
+}

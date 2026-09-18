@@ -5,7 +5,7 @@ VERSION ?= latest
 FULL_IMAGE = $(DOCKER_USER)/$(IMAGE_NAME):$(VERSION)
 SANDBOX_FULL_IMAGE = $(DOCKER_USER)/$(SANDBOX_IMAGE_NAME):$(VERSION)
 DOCKER_DIR = build/core-ai-server/docker
-SANDBOX_DIR = core-ai-sandbox-runtime
+SANDBOX_DIR = .
 
 REPO = chancetop-com/core-ai
 CLI_NAME = core-ai-cli
@@ -52,6 +52,7 @@ sandbox: builder
 		--platform linux/amd64 \
 		-t $(SANDBOX_FULL_IMAGE) \
 		--push \
+		-f core-ai-sandbox-runtime/Dockerfile \
 		$(SANDBOX_DIR)
 
 builder:

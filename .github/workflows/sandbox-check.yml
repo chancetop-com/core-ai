@@ -1,0 +1,72 @@
+name: Check Sandbox Runtime
+
+# The runtime has no other gate: the Gradle check covers core-ai/core-ai-api and the image build only
+# runs when VERSION changes. This runs the Go tests (which assert the sandbox CLI against
+# sdk/core-ai-session/contract-fixtures) and the Python SDK tests (which assert every transport against the same
+# fixtures), so a change to the hub wire format has to keep all of them agreeing.
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'core-ai-sandbox-runtime/**'
+      - 'sdk/core-ai-session/**'
+      - '.github/workflows/sandbox-check.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'core-ai-sandbox-runtime/**'
+      - 'sdk/core-ai-session/**'
+      - '.github/workflows/sandbox-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core-ai-sandbox-runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: core-ai-sandbox-runtime/go.mod
+          cache-dependency-path: core-ai-sandbox-runtime/go.sum
+
+      - name: Vet and test
+        run: |
+          go vet ./...
+          go test ./...
+
+  sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the SDK
+        run: python -m pip install -e sdk/core-ai-session
+
+      - name: Run the SDK tests
+        # Unset so the CLI backend is what a bare `session()` picks on a developer machine; the tests
+        # that want the sandbox transport set it themselves.
+        run: |
+          unset CORE_AI_HUB
+          python -m unittest discover -s sdk/core-ai-session/tests -v

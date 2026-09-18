@@ -1,15 +1,20 @@
-"""`core_ai_sandbox` — call this session's agent-configured capabilities from a sandbox script.
+"""`core_ai_session` — call this session's agent-configured capabilities from a sandbox script.
 
 A script never holds credentials and never imports vendor SDKs: it talks to the sandbox
 runtime's loopback proxy (``CORE_AI_HUB``), which forwards to the core-ai server's
 ``/api/sandbox-hub/*`` with a session token the runtime injected, not the script.
 
-    from core_ai_sandbox import session
+    from core_ai_session import session
 
     s = session()
     reviews = s.mcp["google-gbp"].get_reviews(location="ChIJ...")
     page = s.llm_call["seo-title-semantics"](query=reviews.text[:2000])
     s.files.publish("report.html", title="月报")
+
+The same script also runs outside a sandbox: when ``CORE_AI_HUB`` is unset, `session()` returns a
+`CliSession <core_ai_session.cli.CliSession>` that submits the very same calls through
+``core-ai-cli`` and the CLI user's own credentials — see ``cli.py`` for what does and does not
+carry over (the script API does, the identity and the tool set do not).
 
 Call parameters follow the tool's own schema; ``timeout``/``wait``/``wait_timeout`` are the
 SDK's own arguments unless the tool declares them (``run_bash(timeout=5000)`` stays the
@@ -28,7 +33,7 @@ from urllib.parse import quote
 
 import httpx
 
-from .errors import CoreAiSandboxError, NotBoundError, ToolError, ToolNotFoundError
+from .errors import CoreAiSessionError, NotBoundError, ToolError, ToolNotFoundError
 from .models import Catalog, SessionInfo, Task, ToolDetail, ToolResult, ToolSummary
 from .tree import (
     CONTRACT_VERSION,
@@ -60,13 +65,15 @@ __all__ = [
     "async_session",
     "Session",
     "AsyncSession",
+    "CliSession",
+    "AsyncCliSession",
     "Task",
     "ToolResult",
     "ToolSummary",
     "ToolDetail",
     "Catalog",
     "SessionInfo",
-    "CoreAiSandboxError",
+    "CoreAiSessionError",
     "NotBoundError",
     "ToolError",
     "ToolNotFoundError",
@@ -75,7 +82,7 @@ __all__ = [
 
 def sdk_version() -> str:
     try:
-        return package_version("core-ai-sandbox")
+        return package_version("core-ai-session")
     except PackageNotFoundError:
         return "0.0.0"
 
@@ -83,10 +90,11 @@ def sdk_version() -> str:
 def _resolve_hub_url(hub_url: Optional[str]) -> str:
     url = hub_url or os.environ.get("CORE_AI_HUB") or ""
     if not url:
-        raise CoreAiSandboxError(
+        raise CoreAiSessionError(
             "CORE_AI_HUB is not set, so this process is not running inside a core-ai sandbox. "
             "Scripts must run through the session's sandbox (for example the run_bash tool); "
-            "the hub cannot be reached from anywhere else."
+            "the hub cannot be reached from anywhere else. To run the same script on this machine, "
+            "use `session(backend='cli')` (or just `session()`, which detects it)."
         )
     return url.rstrip("/")
 
@@ -124,6 +132,8 @@ def _error_payload(response: httpx.Response) -> tuple[str, str]:
 class Session(_SessionBase):
     """Synchronous hub session. One ``httpx.Client`` per session, closed via ``close()``."""
 
+    backend = "hub"
+
     def __init__(self, hub_url: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT,
                  script: Optional[str] = None, wait_timeout: float = DEFAULT_WAIT_TIMEOUT,
                  client: Optional[httpx.Client] = None) -> None:
@@ -143,7 +153,7 @@ class Session(_SessionBase):
             try:
                 response = self._client.request(method, self.hub_url + path, json=json_body, headers=self._headers)
             except httpx.HTTPError as error:
-                raise CoreAiSandboxError(f"hub request {method} {path} failed: {error}") from error
+                raise CoreAiSessionError(f"hub request {method} {path} failed: {error}") from error
             if response.status_code == 503 and self._is_not_bound(response):
                 if attempt <= NOT_BOUND_RETRIES:
                     time.sleep(NOT_BOUND_RETRY_DELAY)
@@ -164,9 +174,9 @@ class Session(_SessionBase):
         try:
             payload = response.json()
         except ValueError as error:
-            raise CoreAiSandboxError(f"hub returned a non-JSON body for {path}: {response.text[:200]}") from error
+            raise CoreAiSessionError(f"hub returned a non-JSON body for {path}: {response.text[:200]}") from error
         if not isinstance(payload, dict):
-            raise CoreAiSandboxError(f"hub returned an unexpected body for {path}")
+            raise CoreAiSessionError(f"hub returned an unexpected body for {path}")
         return payload
 
     def _raise_http_error(self, response: httpx.Response, path: str) -> None:
@@ -178,7 +188,7 @@ class Session(_SessionBase):
             raise ToolNotFoundError(f"not found: {message}")
         if status in (429, 403, 408, 504):
             raise ToolError(message, status_code=status)
-        raise CoreAiSandboxError(f"hub request {path} failed with HTTP {status}: {message} ({code})")
+        raise CoreAiSessionError(f"hub request {path} failed with HTTP {status}: {message} ({code})")
 
     # ---------- session metadata ----------
 
@@ -231,7 +241,7 @@ class Session(_SessionBase):
     def _fetch_detail(self, entry: ToolSummary) -> Optional[ToolDetail]:
         try:
             payload = self._request("GET", f"/tools/{quote(entry.name, safe='')}")
-        except (ToolNotFoundError, CoreAiSandboxError):
+        except (ToolNotFoundError, CoreAiSessionError):
             return None
         return parse_detail(payload)
 
@@ -270,7 +280,7 @@ class Session(_SessionBase):
 
     def __repr__(self) -> str:
         state = "loaded" if self._catalog is not None else "lazy"
-        return f"<core_ai_sandbox.Session {self.hub_url} catalog={state}>"
+        return f"<core_ai_session.Session {self.hub_url} catalog={state}>"
 
 
 class AsyncSession(Session):
@@ -291,7 +301,7 @@ class AsyncSession(Session):
             try:
                 response = await self._client.request(method, self.hub_url + path, json=json_body, headers=self._headers)
             except httpx.HTTPError as error:
-                raise CoreAiSandboxError(f"hub request {method} {path} failed: {error}") from error
+                raise CoreAiSessionError(f"hub request {method} {path} failed: {error}") from error
             if response.status_code == 503 and self._is_not_bound(response):
                 if attempt <= NOT_BOUND_RETRIES:
                     await _async_sleep(NOT_BOUND_RETRY_DELAY)
@@ -337,7 +347,7 @@ class AsyncSession(Session):
 
     def _require_catalog(self) -> Catalog:
         if self._catalog is None:
-            raise CoreAiSandboxError(
+            raise CoreAiSessionError(
                 "an AsyncSession loads its catalog asynchronously: use `s = await async_session()` "
                 "or `await s.refresh()` before touching namespaces"
             )
@@ -402,7 +412,7 @@ class AsyncSession(Session):
         await self._client.aclose()
 
     def close(self) -> None:
-        raise CoreAiSandboxError("AsyncSession must be closed with `await s.aclose()`")
+        raise CoreAiSessionError("AsyncSession must be closed with `await s.aclose()`")
 
     async def __aenter__(self) -> "AsyncSession":
         await self.refresh()
@@ -418,15 +428,87 @@ async def _async_sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
+CLI_BACKEND = "cli"
+HUB_BACKEND = "hub"
+BACKEND_ALIASES = {
+    "cli": CLI_BACKEND, "local": CLI_BACKEND, "core-ai-cli": CLI_BACKEND, "core_ai_cli": CLI_BACKEND,
+    "hub": HUB_BACKEND, "http": HUB_BACKEND, "session": HUB_BACKEND, "sandbox": HUB_BACKEND,
+}
+
+
+def _resolve_backend(backend: Optional[str]) -> str:
+    """Pick the transport: ``hub`` inside a sandbox, ``cli`` on a machine with a logged-in CLI.
+
+    ``CORE_AI_HUB`` is the sandbox's own marker, and it always wins: a script running inside a
+    sandbox must never quietly run its calls under the *reader's* local identity instead of the
+    session's agent, so asking for the CLI backend there is an error rather than a fallback.
+    """
+    hub = (os.environ.get("CORE_AI_HUB") or "").strip()
+    if backend is None or not str(backend).strip():
+        if hub and hub.lower() != CLI_BACKEND:
+            return HUB_BACKEND
+        return CLI_BACKEND
+    chosen = (str(backend).strip().lower())
+    resolved = BACKEND_ALIASES.get(chosen)
+    if resolved is None:
+        raise CoreAiSessionError(
+            f"unknown backend {backend!r}: use backend='hub' (talk to CORE_AI_HUB, i.e. inside a "
+            "sandbox) or backend='cli' (run the same calls through core-ai-cli on this machine)"
+        )
+    if resolved == CLI_BACKEND and hub and hub.lower() != CLI_BACKEND:
+        raise CoreAiSessionError(
+            "CORE_AI_HUB is set, so this process runs inside a core-ai sandbox and its calls must go "
+            "to the session's agent — backend='cli' would run them as the local user instead. Drop "
+            "backend='cli' (the hub is picked automatically inside a sandbox), or unset CORE_AI_HUB "
+            "if you really mean to run locally."
+        )
+    return resolved
+
+
 def session(hub_url: Optional[str] = None, *, timeout: int = DEFAULT_TIMEOUT,
-            script: Optional[str] = None) -> Session:
-    """Open the hub session of this sandbox. The catalog is fetched on first use."""
-    return Session(hub_url=hub_url, timeout=timeout, script=script)
+            script: Optional[str] = None, backend: Optional[str] = None,
+            cli: Optional[Any] = None) -> Session:
+    """Open this session: the sandbox hub where there is one, else the local ``core-ai-cli``.
+
+    The catalog is fetched on first use, so opening a session is cheap. Pass
+    ``backend="cli"`` / ``backend="hub"`` (or ``hub_url="cli"``) to name the transport outright —
+    useful in tests and CI, where "am I in a sandbox?" must not be guessed.
+    """
+    url = (hub_url or "").strip()
+    if url.lower() == CLI_BACKEND:
+        if backend is not None and BACKEND_ALIASES.get(str(backend).strip().lower()) != CLI_BACKEND:
+            raise CoreAiSessionError(
+                f"hub_url='cli' asks for the local CLI backend, but backend={backend!r} says otherwise"
+            )
+        backend, url = CLI_BACKEND, ""
+    if backend is None and not url:
+        backend = _resolve_backend(None)
+    if backend is not None:
+        if _resolve_backend(backend) == CLI_BACKEND:
+            from .cli import CliSession
+
+            return CliSession(cli=cli, timeout=timeout, script=script)
+    return Session(hub_url=url or None, timeout=timeout, script=script)
 
 
 async def async_session(hub_url: Optional[str] = None, *, timeout: int = DEFAULT_TIMEOUT,
-                        script: Optional[str] = None) -> AsyncSession:
-    """Open the hub session and load its catalog (required before namespace access)."""
-    opened = AsyncSession(hub_url=hub_url, timeout=timeout, script=script)
+                        script: Optional[str] = None, backend: Optional[str] = None,
+                        cli: Optional[Any] = None) -> AsyncSession:
+    """Open the session and load its catalog (required before namespace access)."""
+    url = (hub_url or "").strip()
+    if url.lower() == CLI_BACKEND:
+        if backend is not None and BACKEND_ALIASES.get(str(backend).strip().lower()) != CLI_BACKEND:
+            raise CoreAiSessionError(
+                f"hub_url='cli' asks for the local CLI backend, but backend={backend!r} says otherwise"
+            )
+        backend, url = CLI_BACKEND, ""
+    if backend is None and not url:
+        backend = _resolve_backend(None)
+    if backend is not None and _resolve_backend(backend) == CLI_BACKEND:
+        from .cli import AsyncCliSession
+
+        opened = AsyncCliSession(cli=cli, timeout=timeout, script=script)
+    else:
+        opened = AsyncSession(hub_url=url or None, timeout=timeout, script=script)
     await opened.refresh()
     return opened

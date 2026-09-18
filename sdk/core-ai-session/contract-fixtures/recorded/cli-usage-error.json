@@ -1,0 +1,10 @@
+{
+  "note": "the usage envelope (exit 2)",
+  "argv": [
+    "definitely-not-a-command"
+  ],
+  "stdin": "{}",
+  "exit": 2,
+  "stdout": null,
+  "stderr": "Unmatched arguments from index 0: 'definitely-not-a-command', '--json'\r\nUsage: core-ai-cli [-chV] [--acp-agent] [--dangerously-skip-permissions]\r\n                   [--debug] [--resume] [--upgrade] [--login[=server-url]]\r\n                   [--config=<configFile>] [--model=<model>]\r\n                   [--prompt=<prompt>]\r\n                   [--time-limit-seconds=<timeLimitSeconds>]\r\n              "
+}

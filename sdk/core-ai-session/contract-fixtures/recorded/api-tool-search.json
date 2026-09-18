@@ -1,0 +1,32 @@
+{
+  "note": "one operation of one app, renamed; the one its describe covers",
+  "argv": [
+    "api-tool",
+    "search",
+    "--on-app",
+    "restaurant-api",
+    "--limit",
+    "200"
+  ],
+  "stdin": "{}",
+  "exit": 0,
+  "stdout": {
+    "apps": [],
+    "operations": [
+      {
+        "qualified_name": "restaurant-api/reviews/batchUpdateOrderItemQuantity",
+        "tool_name": "restaurant_api_reviews_batchUpdateOrderItemQuantity",
+        "ref_id": "api-operation:restaurant-api:reviews:batchUpdateOrderItemQuantity",
+        "app": "restaurant-api",
+        "service": "reviews",
+        "name": "batchUpdateOrderItemQuantity",
+        "method": "PUT",
+        "path": "/[route]/batch",
+        "description": "[redacted in the recorded fixture]",
+        "deprecated": false,
+        "score": 0
+      }
+    ]
+  },
+  "stderr": ""
+}

@@ -283,6 +283,7 @@ SkillLifecycle runs **before** Compression so that skill metadata in the system 
 3. **Use step-by-step workflows** - Structured steps are easier for agents to follow.
 4. **Reference tools by name** - Mention which ToolCalls to use (e.g., "Use `web_search` to find sources").
 5. **Include examples** - Show expected inputs/outputs for complex steps.
+6. **Scripts hold no credentials** - When a script calls MCP tools, API tools, LLM_CALL definitions or sub-agents, it writes nothing but `from core_ai_session import session` and lets `session()` pick the transport (the session hub inside a sandbox, `core-ai-cli` on your machine). Do not read `*_TOKEN` / `*_API_KEY` style env vars in a script or hand-roll HTTP clients. Full contract and migration checklist: `docs/skills/core-ai-cli-manual/references/hub.md`.
 
 ### Directory Organization
 
