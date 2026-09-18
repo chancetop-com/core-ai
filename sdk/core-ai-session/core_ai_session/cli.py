@@ -48,7 +48,7 @@ import shutil
 import subprocess
 import threading
 import time
-from typing import Any, Iterable, Optional, Sequence, Union
+from typing import Any, Callable, Iterable, Optional, Sequence, Union
 
 from .errors import CoreAiSessionError, NotBoundError, ToolError, ToolNotFoundError
 from .models import Catalog, SessionInfo, Task, ToolDetail, ToolResult, ToolSummary
@@ -630,12 +630,20 @@ class CliSession(_SessionBase):
         return entries
 
     def describe(self, name: str) -> ToolDetail:
+        return self._describe(name, self._fetch_detail)
+
+    def _describe(self, name: str, fetch: Callable[[ToolSummary], Optional[ToolDetail]]) -> ToolDetail:
+        """Look the name up, then fetch its detail with ``fetch``.
+
+        ``fetch`` is the caller's blocking fetcher: ``_fetch_detail`` for a synchronous session,
+        the same function bound inside the caller's worker thread for an asynchronous one.
+        """
         entry = self.find_entry(name) or self._require_catalog().find(name)
         if entry is None:
             raise ToolNotFoundError(
                 f"'{name}' is not in this local catalog; s.tools() lists everything you can call"
             )
-        detail = self._fetch_detail(entry)
+        detail = fetch(entry)
         if detail is None:
             raise ToolNotFoundError(f"'{name}' cannot be described from this machine")
         self._details[entry.name] = detail
@@ -833,7 +841,16 @@ class AsyncCliSession(CliSession):
         return await asyncio.to_thread(CliSession.tools, self, query, kind)
 
     async def describe(self, name: str) -> ToolDetail:  # type: ignore[override]
-        return await asyncio.to_thread(CliSession.describe, self, name)
+        return await asyncio.to_thread(self._describe, name, self._fetch_detail_blocking)
+
+    def _fetch_detail_blocking(self, entry: ToolSummary) -> Optional[ToolDetail]:
+        """The synchronous fetcher, for use inside a worker thread.
+
+        ``_fetch_detail`` has to answer ``None`` here because the lazy namespace tree resolves
+        details from a synchronous path that must not run a subprocess on the event loop;
+        ``describe`` is awaited and can afford the round trip, so it asks for this version.
+        """
+        return CliSession._fetch_detail(self, entry)
 
     def _invoke(self, entry: ToolSummary, arguments: dict[str, Any], *, timeout: Optional[int] = None,
                 wait: bool = True, wait_timeout: float = DEFAULT_WAIT_TIMEOUT) -> Any:

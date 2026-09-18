@@ -684,6 +684,22 @@ class CliSessionTest(unittest.TestCase):
             opened.mcp["google-gbp"]
         asyncio.run(opened.aclose())
 
+    def test_async_cli_describe_reads_the_schema_off_the_event_loop(self) -> None:
+        async def run() -> tuple:
+            opened = await async_session(backend="cli", cli=CLI_COMMAND)
+            try:
+                return (
+                    await opened.describe("google_gbp_list_reviews"),
+                    await opened.describe("review-responder"),
+                )
+            finally:
+                await opened.aclose()
+
+        mcp_detail, agent_detail = asyncio.run(run())
+        self.assertEqual("mcp", mcp_detail.kind)
+        self.assertEqual(["location"], mcp_detail.input_schema["required"])
+        self.assertEqual("agent", agent_detail.kind)
+
 
 def write_cli_wrapper(directory: Path) -> str:
     """An executable that runs `fake_cli.py`, so `shutil.which`/`CORE_AI_CLI` can find it."""
