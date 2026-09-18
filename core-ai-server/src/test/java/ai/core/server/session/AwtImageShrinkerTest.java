@@ -24,8 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 class AwtImageShrinkerTest {
-    private static final Random RANDOM = new Random(42);
-
+    // one seeded source for every picture: the pixels only have to be noise, and a fixed seed keeps a failure reproducible
+    private static final Random NOISE = new Random(42);
     private final AwtImageShrinker shrinker = new AwtImageShrinker();
 
     @Test
@@ -93,7 +93,7 @@ class AwtImageShrinkerTest {
         var image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         for (var y = 0; y < height; y++) {
             for (var x = 0; x < width; x++) {
-                image.setRGB(x, y, RANDOM.nextInt(0xFFFFFF));
+                image.setRGB(x, y, NOISE.nextInt(0xFFFFFF));
             }
         }
         return image;

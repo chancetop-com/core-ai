@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 class SessionModuleTest {
-    private static final Random RANDOM = new Random(42);
+    // one seeded source for the synthetic picture: the pixels only have to be noise, and a fixed seed keeps a failure reproducible
+    private static final Random NOISE = new Random(42);
 
     @Test
     void bindsSessionRegistryBeforeRuntimeConsumers() {
@@ -82,7 +83,7 @@ class SessionModuleTest {
         var source = new BufferedImage(1600, 100, BufferedImage.TYPE_INT_RGB);
         for (var y = 0; y < 100; y++) {
             for (var x = 0; x < 1600; x++) {
-                source.setRGB(x, y, RANDOM.nextInt(0xFFFFFF));
+                source.setRGB(x, y, NOISE.nextInt(0xFFFFFF));
             }
         }
         var output = new ByteArrayOutputStream();
