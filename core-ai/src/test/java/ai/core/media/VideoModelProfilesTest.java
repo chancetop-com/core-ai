@@ -57,4 +57,15 @@ class VideoModelProfilesTest {
         assertFalse(omni.frameExclusive(), "other references may follow the frames");
         assertEquals(10, omni.durations().snap(12), "10s per turn");
     }
+
+    @Test
+    void onlyFamiliesThatCarryAnInClipCutAreMarkedAsSuch() {
+        assertTrue(VideoModelProfiles.lookup("bytedance/seedance-2-5").controlledMultiShot());
+        assertTrue(VideoModelProfiles.lookup("bytedance/seedance-1-5-pro").controlledMultiShot());
+        assertFalse(VideoModelProfiles.lookup("gemini-omni-1.1-flash").controlledMultiShot(),
+            "one continuous shot per turn: a card with an in-clip cut would come back uncut");
+        assertFalse(VideoModelProfiles.lookup("kling-3.0/std").controlledMultiShot());
+        assertFalse(VideoModelProfiles.lookup("some-unknown/model").controlledMultiShot(),
+            "an unknown family is assumed not to place a stated cut — the drama enqueue warns instead");
+    }
 }

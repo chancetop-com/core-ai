@@ -21,10 +21,12 @@ public final class VideoModelProfiles {
 
     // longest matching prefix wins
     private static final List<Profile> PROFILES = List.of(
-            new Profile("bytedance/seedance-2-5", DurationPolicy.range(4, 30), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null),
-            new Profile("bytedance/seedance-2", DurationPolicy.range(4, 15), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null),
+            // seedance families accept a controlled multi-shot sequence written into one prompt (a stated HARD CUT inside
+            // the clip) — sole reason the flag exists; the drama skill writes that card only for models that carry it
+            new Profile("bytedance/seedance-2-5", DurationPolicy.range(4, 30), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null, true),
+            new Profile("bytedance/seedance-2", DurationPolicy.range(4, 15), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null, true),
             // seedance 1.5 input_urls is positional (first, last) — the array itself is the frame slot
-            new Profile("bytedance/seedance-1", DurationPolicy.range(4, 12), new FrameParams(null, null, true), "generate_audio", null),
+            new Profile("bytedance/seedance-1", DurationPolicy.range(4, 12), new FrameParams(null, null, true), "generate_audio", null, true),
             new Profile("bytedance/v1-", DurationPolicy.fixed(5, 10), new FrameParams(null, null, true), null, null),
             new Profile("minimax-h3/reference-to-video", DurationPolicy.range(4, 15), null, null, null),
             new Profile("minimax-h3/image-to-video", DurationPolicy.range(4, 15), new FrameParams("first_frame_url", "last_frame_url", true), null, null),
@@ -67,8 +69,15 @@ public final class VideoModelProfiles {
      * @param frames            null when the family has no notion of a frame anchor (references only)
      * @param audioParam        name of the native-audio boolean input, null when the family has none / is always on
      * @param negativePromptParam name of the negative-prompt input, null when the family ignores negatives
+     * @param controlledMultiShot true when one generation can carry a stated HARD CUT (a multi-shot sequence in a
+     *                            single clip) — false means the prompt must stay one continuous shot
      */
-    public record Profile(String prefix, DurationPolicy durations, FrameParams frames, String audioParam, String negativePromptParam) {
+    public record Profile(String prefix, DurationPolicy durations, FrameParams frames, String audioParam, String negativePromptParam,
+                          boolean controlledMultiShot) {
+        public Profile(String prefix, DurationPolicy durations, FrameParams frames, String audioParam, String negativePromptParam) {
+            this(prefix, durations, frames, audioParam, negativePromptParam, false);
+        }
+
         /** True when a first/last frame must travel alone: the reference array would be rejected or would fill the frame slots. */
         public boolean frameExclusive() {
             return frames != null && frames.exclusive();
