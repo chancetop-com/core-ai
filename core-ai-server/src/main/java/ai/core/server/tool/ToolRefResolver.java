@@ -32,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ToolRefResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRefResolver.class);
     private static final String CONFIG_PREFIX = "config:";
+    private static final String BUILTIN_PREFIX = ToolRegistryService.BUILTIN_PREFIX;
     private static final String API_TOOL_ID = "builtin-service-api";
 
     static ToolSourceType requireCompatibleType(ToolRef toolRef, ToolSourceType authoritativeType) {
@@ -42,14 +43,30 @@ public class ToolRefResolver {
     }
 
     /**
+     * The tool list registered for a dynamically registered builtin group. Group ids are
+     * registered with the "builtin:" prefix, while refs may name the group either way
+     * ("builtin:self-harness" or "self-harness"), so both forms are accepted.
+     * Returns null when the id is not a dynamic builtin group.
+     */
+    static List<ToolCall> dynamicToolSet(String id, Map<String, List<ToolCall>> dynamicToolSets) {
+        if (id == null) return null;
+        var tools = dynamicToolSets.get(id);
+        if (tools != null) return tools;
+        return id.startsWith(BUILTIN_PREFIX) ? null : dynamicToolSets.get(BUILTIN_PREFIX + id);
+    }
+
+    /**
      * Resolves an individual tool inside a dynamically registered builtin group,
      * e.g. "builtin:self-harness:list_agents". Returns an empty list when the id
      * is not an individual group tool ref or when the group or tool is unknown.
      */
     static List<ToolCall> resolveDynamicGroupTool(String id, Map<String, List<ToolCall>> dynamicToolSets) {
-        var parsed = ToolRef.parseBuiltinGroupToolId(id);
+        if (id == null) return List.of();
+        var direct = ToolRef.parseBuiltinGroupToolId(id);
+        var parsed = direct != null ? direct
+                : id.startsWith(BUILTIN_PREFIX) ? null : ToolRef.parseBuiltinGroupToolId(BUILTIN_PREFIX + id);
         if (parsed == null) return List.of();
-        var groupTools = dynamicToolSets.get(parsed.groupId());
+        var groupTools = dynamicToolSet(parsed.groupId(), dynamicToolSets);
         if (groupTools == null) return List.of();
         return groupTools.stream().filter(tool -> parsed.toolName().equals(tool.getName())).toList();
     }
@@ -176,11 +193,11 @@ public class ToolRefResolver {
             if (setName != null) {
                 var provider = BuiltinToolProvider.refreshing(setName, mediaProvider, gitHubTokenProvider, videoService, this::enhanceBuiltinTools);
                 result.addAll(provider.provide().values());
+                return;
             }
-            return;
         }
-        // fallback for dynamically registered builtin tool sets
-        var dynamicTools = dynamicToolSets.get(toolRef.id);
+        // dynamically registered builtin groups carry no "set" config — the registered list is the group itself
+        var dynamicTools = dynamicToolSet(toolRef.id, dynamicToolSets);
         if (dynamicTools != null) {
             result.addAll(dynamicTools);
             return;

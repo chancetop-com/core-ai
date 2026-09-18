@@ -22,6 +22,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -117,6 +118,23 @@ class ToolRefResolutionServiceTest {
                 List.of(ToolRef.of("builtin:self-harness:list_agents", ToolSourceType.BUILTIN)), null);
 
         assertEquals(List.of("list_agents"), registry.getToolCalls().stream().map(ToolCall::getName).toList());
+    }
+
+    @Test
+    void registryResolutionResolvesWholeDynamicallyRegisteredBuiltinGroup() {
+        var group = new ToolRegistryEntry();
+        group.id = "builtin:short-drama";
+        group.type = ToolType.BUILTIN;
+        group.config = Map.of();
+        var service = service(mock(AgentDefinitionService.class), Map.of(group.id, group),
+                Map.of("builtin:short-drama", List.of(tool("drama_list_shots"), tool("drama_note"))));
+
+        var registry = service.resolveToToolRegistry(List.of(ToolRef.of("builtin:short-drama", ToolSourceType.BUILTIN)), null);
+
+        var provider = registry.getProvider("dynamic:builtin:short-drama");
+        assertNotNull(provider);
+        assertEquals(java.util.Set.of("drama_list_shots", "drama_note"),
+                provider.provide().values().stream().map(ToolCall::getName).collect(java.util.stream.Collectors.toSet()));
     }
 
     @Test

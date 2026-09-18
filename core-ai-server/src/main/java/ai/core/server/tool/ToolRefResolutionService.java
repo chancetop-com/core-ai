@@ -285,7 +285,7 @@ class ToolRefResolutionService {
                 return;
             }
         }
-        var dynamicTools = dynamicToolSets.get(ref.id);
+        var dynamicTools = ToolRefResolver.dynamicToolSet(ref.id, dynamicToolSets);
         if (dynamicTools != null) {
             registry.registerProvider(new ListToolProvider("dynamic:" + ref.id, dynamicTools));
             return;

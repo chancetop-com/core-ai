@@ -163,6 +163,44 @@ class ToolRefResolverTest {
         assertTrue(resolver.resolve(List.of(ToolRef.of("builtin:self-harness:missing", ToolSourceType.BUILTIN))).isEmpty());
     }
 
+    @Test
+    void resolvesWholeDynamicallyRegisteredBuiltinGroup() {
+        var group = new ToolRegistryEntry();
+        group.id = "builtin:short-drama";
+        group.type = ToolType.BUILTIN;
+        group.config = Map.of();
+        var resolver = new ToolRefResolver(Map.of(group.id, group), null,
+                Map.of("builtin:short-drama", List.of(tool("drama_list_shots"), tool("drama_note"))), null, null, null);
+
+        var resolved = resolver.resolve(List.of(ToolRef.of("builtin:short-drama", ToolSourceType.BUILTIN)));
+
+        assertEquals(List.of("drama_list_shots", "drama_note"), resolved.stream().map(ToolCall::getName).toList());
+    }
+
+    @Test
+    void resolvesDynamicBuiltinGroupNamedByItsShortId() {
+        var group = new ToolRegistryEntry();
+        group.id = "builtin:self-harness";
+        group.type = ToolType.BUILTIN;
+        group.config = Map.of();
+        var resolver = new ToolRefResolver(Map.of(group.id, group), null,
+                Map.of("builtin:self-harness", List.of(tool("list_agents"))), null, null, null);
+
+        var resolved = resolver.resolve(List.of(ToolRef.of("self-harness", ToolSourceType.BUILTIN)));
+
+        assertEquals(List.of("list_agents"), resolved.stream().map(ToolCall::getName).toList());
+    }
+
+    @Test
+    void resolvesIndividualToolInsideDynamicBuiltinGroupNamedByItsShortId() {
+        var resolver = new ToolRefResolver(Map.of(), null,
+                Map.of("builtin:self-harness", List.of(tool("get_trace"))), null, null, null);
+
+        var resolved = resolver.resolve(List.of(ToolRef.of("self-harness:get_trace", ToolSourceType.BUILTIN)));
+
+        assertEquals(List.of("get_trace"), resolved.stream().map(ToolCall::getName).toList());
+    }
+
     private ToolCall tool(String name) {
         var tool = new ToolCall() {
             @Override
