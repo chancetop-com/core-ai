@@ -1,0 +1,70 @@
+name: CodeQL
+
+# Dataflow analysis, which checkstyle/PMD/SpotBugs cannot do: user- or model-supplied input reaching an
+# outbound request, a file path, or generated HTML. Java, Kotlin, JavaScript, TypeScript and Python run in
+# build-mode none, where CodeQL queries Gradle or the source tree for dependencies but never compiles: this
+# build needs the custom buildSrc plugins, npm and GraalVM, so an autobuild would be slow and fragile. The
+# none mode also cannot process Kotlin, and the four Kotlin files in buildSrc are reported as unprocessed.
+# Go is compiled normally because the Go extractor works off the compiler.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    - cron: '30 1 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: java-kotlin
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+          - language: go
+            build-mode: autobuild
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: +security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
