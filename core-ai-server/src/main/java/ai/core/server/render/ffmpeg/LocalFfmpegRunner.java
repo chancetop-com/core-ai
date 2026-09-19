@@ -24,7 +24,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 /**
- * Runs an ffmpeg plan with the binary on the server host, in a temp directory per job. Local development
+ * Runs an ffmpeg plan with the binary on the server host, in a work directory per job under the drama workspace
+ * ({@code <root>/_work/<jobKey>}, deleted when the plan ends; the system temp dir when no root is supplied). Local development
  * only: ffmpeg is CPU-heavy and of unbounded duration, which is
  * exactly why the deployment path ({@link SandboxFfmpegRunner}) keeps it out of the API process. The
  * version pin still applies — products are filed under cache keys that name an ffmpeg major.
@@ -88,6 +89,7 @@ public class LocalFfmpegRunner implements FfmpegRunner {
     FileService fileService;
 
     private final java.util.function.Supplier<String> binary;
+    private final java.util.function.Supplier<Path> workRoot;
     private volatile String detectedFor;
     private final HttpClient httpClient = HttpClient.newBuilder()
         .followRedirects(HttpClient.Redirect.NORMAL)
@@ -96,12 +98,16 @@ public class LocalFfmpegRunner implements FfmpegRunner {
     private volatile Integer detectedMajor;
 
     public LocalFfmpegRunner(String ffmpegBinary) {
-        this(() -> ffmpegBinary);
+        this(() -> ffmpegBinary, null);
     }
 
-    /** The binary path may be a live setting; the version probe is redone whenever it changes. */
-    public LocalFfmpegRunner(java.util.function.Supplier<String> binary) {
+    /**
+     * @param binary   the binary path may be a live setting; the version probe is redone whenever it changes
+     * @param workRoot where per-job work dirs are created (null = the system temp dir)
+     */
+    public LocalFfmpegRunner(java.util.function.Supplier<String> binary, java.util.function.Supplier<Path> workRoot) {
         this.binary = binary;
+        this.workRoot = workRoot;
     }
 
     private String ffmpegBinary() {
@@ -112,12 +118,7 @@ public class LocalFfmpegRunner implements FfmpegRunner {
     @Override
     public Map<String, Product> run(Plan plan) {
         requireFfmpegMajor(plan.expectedFfmpegMajor());
-        Path workDir;
-        try {
-            workDir = Files.createTempDirectory("ffmpeg-plan-");
-        } catch (IOException e) {
-            throw new UncheckedIOException("cannot create ffmpeg work dir", e);
-        }
+        var workDir = workDir(plan.jobKey());
         try {
             for (var download : plan.downloads()) download(download, workDir, plan.stepTimeoutMs());
             for (var write : plan.writes()) writeFile(workDir, write);
@@ -135,6 +136,17 @@ public class LocalFfmpegRunner implements FfmpegRunner {
             return products;
         } finally {
             deleteRecursively(workDir);
+        }
+    }
+
+    private Path workDir(String jobKey) {
+        try {
+            var root = workRoot == null ? null : workRoot.get();
+            if (root == null) return Files.createTempDirectory("ffmpeg-plan-");
+            Files.createDirectories(root);
+            return Files.createTempDirectory(root, "ffmpeg-" + (jobKey == null ? "" : jobKey.replaceAll("[^A-Za-z0-9._-]", "_") + "-"));
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot create ffmpeg work dir", e);
         }
     }
 

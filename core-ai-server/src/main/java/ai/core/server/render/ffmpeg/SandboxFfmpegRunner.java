@@ -34,6 +34,8 @@ import java.util.Map;
  */
 public class SandboxFfmpegRunner implements FfmpegRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxFfmpegRunner.class);
+    /** The sandbox side of the drama workspace ({@code /tmp/drama}, the sandbox's writable volume): plans work under its _work/. */
+    static final String WORK_ROOT = "/tmp/drama/_work";
 
     private static String readText(java.nio.file.Path path) {
         try {
@@ -57,7 +59,7 @@ public class SandboxFfmpegRunner implements FfmpegRunner {
     @Override
     public Map<String, Product> run(Plan plan) {
         var sandboxKey = plan.jobKey();
-        var workDir = "/tmp/" + sandboxKey;
+        var workDir = WORK_ROOT + "/" + sandboxKey;
         try {
             var sandbox = acquire(plan, sandboxKey);
             requireFfmpegMajor(sandbox, plan.expectedFfmpegMajor());
