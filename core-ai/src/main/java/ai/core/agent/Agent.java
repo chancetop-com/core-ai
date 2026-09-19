@@ -18,7 +18,6 @@ import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.reflection.ReflectionListener;
 import ai.core.telemetry.AgentTracer;
-import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.ToolExecutor;
@@ -36,7 +35,6 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
@@ -77,30 +75,16 @@ public class Agent extends Node<Agent> {
     @Override
     String execute(String query, Map<String, Object> variables) {
         var activeTracer = (AgentTracer) getTracer();
-        if (activeTracer != null) {
-            var execContext = getExecutionContext();
-            var context = AgentTraceContext.builder()
-                    .name(getName())
-                    .id(getId())
-                    .input(query)
-                    .withTools(toolRegistry != null && !toolRegistry.getToolCalls().isEmpty())
-                    .withRag(ragConfig != null && ragConfig.useRag())
-                    .sessionId(execContext.getSessionId())
-                    .userId(execContext.getUserId())
-                    .build();
-
-            return activeTracer.traceAgentExecution(context, () -> {
-                var result = doExecute(query, variables, false);
-                context.setOutput(getOutput());
-                context.setStatus(getNodeStatus().name());
-                context.setMessageCount(getMessages().size());
-                var token = getExecutionContext().getCancellationToken();
-                context.setCancelReason(token != null && token.getReason() != null
-                        ? token.getReason().name().toLowerCase(Locale.ENGLISH) : null);
-                return result;
-            }, this::isCancelled);
+        if (activeTracer == null) {
+            return doExecute(query, variables, false);
         }
-        return doExecute(query, variables, false);
+        var context = AgentTurnTracing.start(this, query);
+
+        return activeTracer.traceAgentExecution(context, () -> {
+            var result = doExecute(query, variables, false);
+            AgentTurnTracing.complete(this, context);
+            return result;
+        }, this::isCancelled);
     }
 
     private void chatCommand(String query, Map<String, Object> variables) {
@@ -374,8 +358,32 @@ public class Agent extends Node<Agent> {
         addMessages(messages);
     }
 
+    /**
+     * Resumes the turn loop for a message injected by the runtime — an async task notification or a
+     * background completion — traced as a turn of its own: without the agent span the continuation's LLM
+     * and tool spans become orphan traces with no session, so the work after a task finishes disappears
+     * from the session's trace view.
+     */
     public String continueWithInjectedMessage() {
-        return runTurnsLoop((m, t) -> ModelGateway.handLLM(this, m, t));
+        var activeTracer = (AgentTracer) getTracer();
+        if (activeTracer == null) {
+            return runTurnsLoop((m, t) -> ModelGateway.handLLM(this, m, t));
+        }
+        var context = AgentTurnTracing.start(this, injectedMessageText());
+
+        return activeTracer.traceAgentExecution(context, () -> {
+            var result = runTurnsLoop((m, t) -> ModelGateway.handLLM(this, m, t));
+            AgentTurnTracing.complete(this, context);
+            return result;
+        }, this::isCancelled);
+    }
+
+    private String injectedMessageText() {
+        var messages = getMessages();
+        if (messages == null || messages.isEmpty()) return null;
+        var lastMessage = messages.getLast();
+        if (lastMessage == null || !RoleType.USER.equals(lastMessage.role)) return null;
+        return lastMessage.getTextContent();
     }
 
     public void cancel() {
