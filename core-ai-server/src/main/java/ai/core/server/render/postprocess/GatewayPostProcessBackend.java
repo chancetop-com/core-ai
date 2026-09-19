@@ -8,6 +8,7 @@ import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.web.exception.BadRequestException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,11 +35,29 @@ public class GatewayPostProcessBackend implements PostProcessBackend {
     }
 
     @Override
-    public String submitVideoOp(String model, String instruction, String inputVideoUrl, String providerExtra) {
-        var extra = providerExtra != null ? providerExtra
-            : JsonUtil.toJson(Map.of("input", Map.of("video_url", inputVideoUrl)));
-        var response = mediaProvider.generateVideo(new VideoGenerationRequest(model, instruction, null, null, null, extra));
+    public String submitVideoOp(String model, String instruction, String inputVideoUrl, String size, String providerExtra) {
+        var response = mediaProvider.generateVideo(new VideoGenerationRequest(model, instruction, null, size, null,
+            inputExtra(inputVideoUrl, providerExtra)));
         return response.id();
+    }
+
+    /**
+     * The source video travels in {@code input.video_url}; an operator row's params_json is merged over it, so an
+     * admin spells out whatever else the model takes ({@code input.*} lands in the model input, other keys at the
+     * request top level) without a code change.
+     */
+    private String inputExtra(String inputVideoUrl, String providerExtra) {
+        var input = new LinkedHashMap<String, Object>();
+        input.put("video_url", inputVideoUrl);
+        var extra = new LinkedHashMap<String, Object>();
+        if (providerExtra != null && !providerExtra.isBlank()) {
+            extra.putAll(JsonUtil.toMap(providerExtra));
+            if (extra.get("input") instanceof Map<?, ?> adminInput) {
+                for (var entry : adminInput.entrySet()) input.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        extra.put("input", input);
+        return JsonUtil.toJson(extra);
     }
 
     @Override
