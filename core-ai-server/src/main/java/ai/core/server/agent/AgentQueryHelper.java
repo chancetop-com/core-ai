@@ -16,6 +16,7 @@ import java.util.ArrayList;
 final class AgentQueryHelper {
     private static final String AIRAGENT_USER_ID_FIELD = "user_id";
     private static final String AIRAGENT_SYSTEM_DEFAULT_FIELD = "system_default";
+    private static final String FORKED_FROM_FIELD = "forked_from";
 
     static final Bson SUMMARY_PROJECTION = Projections.include("_id", "name");
 
@@ -36,17 +37,38 @@ final class AgentQueryHelper {
                     Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
                 );
             }
-            return Filters.or(
-                Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
-                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
-            );
+            return ownedAgentsFilter(userId);
         } else if (myAgents != null) {
-            return Filters.and(
-                Filters.ne(AIRAGENT_USER_ID_FIELD, userId),
-                Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
-            );
+            return sharedAgentsFilter(userId);
         }
-        return Filters.empty();
+        return Filters.or(ownedAgentsFilter(userId), sharedAgentsFilter(userId));
+    }
+
+    private static Bson ownedAgentsFilter(String userId) {
+        return Filters.or(
+            Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
+            Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE)
+        );
+    }
+
+    /**
+     * Other users' agents: a personal assistant fork is private to its owner, so somebody else's copy is never offered
+     * as a selectable agent - the shared template stays visible instead.
+     */
+    private static Bson sharedAgentsFilter(String userId) {
+        return Filters.and(
+            Filters.ne(AIRAGENT_USER_ID_FIELD, userId),
+            Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, Boolean.TRUE),
+            excludeOtherUsersForksFilter(userId)
+        );
+    }
+
+    /** The owner keeps seeing its own personal assistant, everybody else's is filtered out. */
+    static Bson excludeOtherUsersForksFilter(String userId) {
+        return Filters.or(
+            Filters.eq(FORKED_FROM_FIELD, null),
+            Filters.eq(AIRAGENT_USER_ID_FIELD, userId)
+        );
     }
 
     // the shared template is replaced by the caller's own copy, it must not show up as a selectable agent

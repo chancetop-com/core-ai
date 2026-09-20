@@ -159,7 +159,9 @@ final class AgentListHelper {
         var ordered = new ArrayList<AgentDefinition>();
         if (!favoriteIds.isEmpty()) {
             var byId = new HashMap<String, AgentDefinition>();
-            for (var agent : agentDefinitionCollection.find(Filters.in("_id", favoriteIds))) {
+            var lookupFilter = AgentQueryHelper.combineFilters(Filters.in("_id", favoriteIds),
+                AgentQueryHelper.excludeOtherUsersForksFilter(userId));
+            for (var agent : agentDefinitionCollection.find(lookupFilter)) {
                 byId.put(agent.id, agent);
             }
             for (int i = favoriteIds.size() - 1; i >= 0; i--) {

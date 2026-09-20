@@ -362,6 +362,25 @@ class AgentDefinitionServiceTest {
     }
 
     @Test
+    void favoritesLookupExcludesOtherUsersPersonalAssistantForks() {
+        var collection = agentCollection();
+        when(collection.find(any(Bson.class))).thenReturn(List.of());
+        var service = service(collection);
+        var user = new User();
+        user.id = "user-1";
+        user.favoriteAgentIds = List.of("assistant:user-1", "assistant:user-2");
+        when(service.userCollection.get("user-1")).thenReturn(Optional.of(user));
+
+        service.favorites("user-1");
+
+        var filters = ArgumentCaptor.forClass(Bson.class);
+        verify(collection).find(filters.capture());
+        var lookupFilter = filters.getValue().toBsonDocument().toJson();
+        assertTrue(lookupFilter.contains("\"forked_from\": null"), lookupFilter);
+        assertTrue(lookupFilter.contains("\"user_id\": \"user-1\""), lookupFilter);
+    }
+
+    @Test
     void favoritesReturnsEmptyWhenUserHasNone() {
         var service = service(agentCollection());
         var user = new User();

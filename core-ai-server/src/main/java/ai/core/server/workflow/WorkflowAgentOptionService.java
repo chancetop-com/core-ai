@@ -35,6 +35,7 @@ public class WorkflowAgentOptionService {
                 Filters.exists("published_config", true),
                 Filters.ne("published_config", null),
                 Filters.eq("type", type),
+                Filters.eq("forked_from", null),
                 Filters.or(Filters.eq("system_default", Boolean.TRUE), Filters.ne("user_id", userId)));
             default -> throw new BadRequestException("invalid scope: " + scope);
         };

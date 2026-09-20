@@ -63,6 +63,8 @@ class WorkflowAgentOptionServiceTest {
         assertTrue(accessAlternatives.stream().map(BsonValue::asDocument)
             .anyMatch(clause -> clause.containsKey("user_id")
                                 && USER_ID.equals(clause.getDocument("user_id").getString("$ne").getValue())));
+        assertTrue(field(filter, "forked_from").isNull("forked_from"),
+            "another user's personal assistant fork must stay out of the shared scope: " + json);
         assertFalse(json.contains("\"name_key\""));
     }
 
