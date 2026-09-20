@@ -31,24 +31,8 @@ public class GatewayProxyController {
         return gatewayProxyService.proxyImageEdits(body(request), currentUserId());
     }
 
-    public Response videoGenerations(Request request) {
-        return gatewayProxyService.proxyVideoGenerations(body(request), currentOwner());
-    }
-
-    public Response videoStatus(Request request) {
-        return gatewayProxyService.getVideoStatus(request.pathParam("id"), currentUserId());
-    }
-
-    public Response videoContent(Request request) {
-        return gatewayProxyService.downloadVideoContent(request.pathParam("id"), currentUserId());
-    }
-
     public Response models(Request request) {
         return gatewayProxyService.models();
-    }
-
-    private MediaJobOwner currentOwner() {
-        return new MediaJobOwner(currentUserId(), null, null);
     }
 
     private String currentUserId() {

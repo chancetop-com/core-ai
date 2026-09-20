@@ -129,7 +129,11 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
 
     @Override
     public VideoStatusResponse getVideoStatus(String videoId) {
-        var job = mediaJobService.get(GatewayVideoHandle.decode(videoId));
+        return getVideoStatus(videoId, MediaJobOwner.UNKNOWN);
+    }
+
+    VideoStatusResponse getVideoStatus(String videoId, MediaJobOwner owner) {
+        var job = videoJob(videoId, owner);
         // serve the persisted status within the TTL to avoid hammering upstream providers with rate limits (e.g. KIE)
         if (job.updatedAt != null && job.updatedAt.isAfter(ZonedDateTime.now().minus(VIDEO_STATUS_CACHE_TTL))) {
             var completedAt = job.completedAt == null ? null : job.completedAt.toInstant().toEpochMilli();
@@ -142,8 +146,19 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
 
     @Override
     public byte[] downloadVideo(String videoId) {
-        var job = mediaJobService.get(GatewayVideoHandle.decode(videoId));
+        return downloadVideo(videoId, MediaJobOwner.UNKNOWN);
+    }
+
+    byte[] downloadVideo(String videoId, MediaJobOwner owner) {
+        var job = videoJob(videoId, owner);
         return videoBytes(job);
+    }
+
+    private MediaJob videoJob(String videoId, MediaJobOwner owner) {
+        var jobId = GatewayVideoHandle.decode(videoId);
+        return owner != null && hasText(owner.userId())
+                ? mediaJobService.getOwned(jobId, owner.userId())
+                : mediaJobService.get(jobId);
     }
 
     private byte[] videoBytes(MediaJob job) {
