@@ -5,15 +5,15 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import type { PluggableList } from 'unified';
-import { AlertCircle, Bot, CheckCircle2, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, Sparkles, User } from 'lucide-react';
+import { AlertCircle, Bot, CheckCircle2, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, User } from 'lucide-react';
 import type { SessionArtifact } from '../../../api/session';
-import type { ChatMessage, MessageSegment, PlanTodo, SandboxSegment, SandboxTerminalSpec, TasksSegment, ToolsSegment } from '../types';
-import { compressionUsageText, formatMessageTime, formatMessageTimeFull, getMessageText } from '../utils';
-import type { CompressionUsage } from '../utils';
+import type { ChatMessage, CompressionSegment, MessageSegment, PlanTodo, SandboxSegment, SandboxTerminalSpec, TasksSegment, ToolsSegment } from '../types';
+import { formatMessageTime, formatMessageTimeFull, getMessageText } from '../utils';
 import { chatSanitizeSchema } from '../markdownSanitizeSchema';
 import type { ArtifactSpec } from './artifactTypes';
 import ArtifactCard from './ArtifactCard';
 import AuthedImage from './AuthedImage';
+import CompressionBlock from './CompressionBlock';
 import CopyButton from './CopyButton';
 import PlanUpdateBlock from './PlanUpdateBlock';
 import SandboxBlock from './SandboxBlock';
@@ -158,6 +158,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   onFeedbackClick,
 }: ChatMessageRowProps) {
   const sandboxSeg = msg.segments?.find(s => s.type === 'sandbox') as SandboxSegment | undefined;
+  const compressionSeg = msg.segments?.find(s => s.type === 'compression') as CompressionSegment | undefined;
   const tasksSeg = msg.segments?.find(s => s.type === 'tasks') as TasksSegment | undefined;
   const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
   const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
@@ -187,6 +188,11 @@ const ChatMessageRow = memo(function ChatMessageRow({
         {tasksSeg && tasksSeg.tasks.length > 0 && (
           <div className="mb-3">
             <BackgroundTasksBlock seg={tasksSeg} />
+          </div>
+        )}
+        {compressionSeg && (
+          <div className="mb-3">
+            <CompressionBlock seg={compressionSeg} />
           </div>
         )}
         {sandboxSeg && (
@@ -349,7 +355,6 @@ interface ChatMessagesPanelProps {
   status: ChatStatus;
   isThinking: boolean;
   planTodos: PlanTodo[] | null;
-  compressionInfo: CompressionUsage | null;
   sessionArtifacts: SessionArtifact[];
   selectedAgentName?: string;
   agentVariableEntries: [string, unknown][];
@@ -378,7 +383,6 @@ const ChatMessagesPanel = memo(function ChatMessagesPanel({
   status,
   isThinking,
   planTodos,
-  compressionInfo,
   sessionArtifacts,
   selectedAgentName,
   agentVariableEntries,
@@ -516,13 +520,6 @@ const ChatMessagesPanel = memo(function ChatMessagesPanel({
         </div>
       )}
       <div className="max-w-4xl mx-auto flex flex-col gap-4">
-        {compressionInfo && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs animate-pulse"
-            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
-            <Sparkles size={14} />
-            <span>Context compressed: {compressionInfo.before} -&gt; {compressionInfo.after} messages{compressionUsageText(compressionInfo)}</span>
-          </div>
-        )}
         {hiddenMessageCount > 0 && (
           <button
             type="button"

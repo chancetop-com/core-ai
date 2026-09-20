@@ -1,5 +1,6 @@
 package ai.core.server.session;
 
+import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
@@ -14,6 +15,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -102,6 +104,41 @@ class ChatMessageServiceTest {
         assertEquals("sandbox-host", sandbox.hostname);
         assertEquals("10.0.65.162", sandbox.ip);
         assertEquals("sandbox-runtime:latest", sandbox.image);
+    }
+
+    @Test
+    void finishedCompressionIsPersistedWithTheTurnItShortened() {
+        var service = service();
+        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        var listener = service.listener("s-1");
+
+        listener.onCompression(CompressionEvent.of("s-1", 16, 16, false));
+        listener.onCompression(CompressionEvent.of("s-1", 16, 14, true).withContext(6979, 8192, 0.8));
+        listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
+
+        var captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(service.chatMessageCollection).insert(captor.capture());
+        var compression = captor.getValue().compression;
+        assertNotNull(compression);
+        assertEquals(16, compression.beforeCount);
+        assertEquals(14, compression.afterCount);
+        assertEquals(6979, compression.contextTokens);
+        assertEquals(8192, compression.maxContextTokens);
+        assertEquals(0.8, compression.triggerThreshold);
+    }
+
+    @Test
+    void unfinishedCompressionIsNotPersisted() {
+        var service = service();
+        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        var listener = service.listener("s-1");
+
+        listener.onCompression(CompressionEvent.of("s-1", 16, 16, false));
+        listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
+
+        var captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(service.chatMessageCollection).insert(captor.capture());
+        assertNull(captor.getValue().compression);
     }
 
     @Test

@@ -37,6 +37,9 @@ public class ChatMessage {
     @Field(name = "sandbox")
     public SandboxRecord sandbox;
 
+    @Field(name = "compression")
+    public CompressionRecord compression;
+
     // optional pointer for debug jump, not indexed
     @Field(name = "trace_id")
     public String traceId;
@@ -82,5 +85,22 @@ public class ChatMessage {
 
         @Field(name = "image")
         public String image;
+    }
+
+    public static class CompressionRecord {
+        @Field(name = "before_count")
+        public Integer beforeCount;
+
+        @Field(name = "after_count")
+        public Integer afterCount;
+
+        @Field(name = "context_tokens")
+        public Integer contextTokens;
+
+        @Field(name = "max_context_tokens")
+        public Integer maxContextTokens;
+
+        @Field(name = "trigger_threshold")
+        public Double triggerThreshold;
     }
 }

@@ -16,8 +16,7 @@ import type { ChatComposerHandle, ComposerAttachment } from './components/ChatCo
 import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, TasksSegment, SandboxTerminalSpec } from './types';
-import { historyToChatMessages, restoreCachedChatMessages } from './utils';
-import type { CompressionUsage } from './utils';
+import { historyToChatMessages, restoreCachedChatMessages, compressionSegment } from './utils';
 import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn, trackStrandedTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 
@@ -119,7 +118,6 @@ export default function Chat() {
   const [isThinking, setIsThinking] = useState(false);
   const [awaitInfo, setAwaitInfo] = useState<AwaitInfo | null>(null);
   const [planTodos, setPlanTodos] = useState<PlanTodo[] | null>(null);
-  const [compressionInfo, setCompressionInfo] = useState<CompressionUsage | null>(null);
 
   // Agent selection
   const [myAgents, setMyAgents] = useState<AgentDefinition[]>([]);
@@ -439,7 +437,6 @@ export default function Chat() {
     setActiveSandboxTerminal(null);
     setAwaitInfo(null);
     setPlanTodos(null);
-    setCompressionInfo(null);
     setIsThinking(false);
     setStatus('idle');
     setVisibleMessageLimit(INITIAL_VISIBLE_MESSAGES);
@@ -1011,16 +1008,31 @@ export default function Chat() {
       }
       case 'COMPRESSION':
       case 'compression': {
+        // A finished compression is part of the turn's record, so it shows inline with the blocks of
+        // that turn (and survives a reload) instead of as a transient notice.
         const compressionEvent = event as SseCompressionEvent;
         if (compressionEvent.completed) {
-          setCompressionInfo({
+          const segment = compressionSegment({
             before: compressionEvent.before_count,
             after: compressionEvent.after_count,
             contextTokens: compressionEvent.context_tokens,
             maxContextTokens: compressionEvent.max_context_tokens,
             triggerThreshold: compressionEvent.trigger_threshold,
           });
-          setTimeout(() => setCompressionInfo(null), 5000);
+          setMessages(prev => {
+            const updated = [...prev];
+            let last = updated[updated.length - 1];
+            if (!last || last.role !== 'agent') {
+              last = { role: 'agent', segments: [], timestamp: new Date().toISOString() };
+              updated.push(last);
+            }
+            const segments = [...(last.segments || [])];
+            const existingIdx = segments.findIndex(s => s.type === 'compression');
+            if (existingIdx >= 0) segments[existingIdx] = segment;
+            else segments.push(segment);
+            updated[updated.length - 1] = { ...last, segments };
+            return updated;
+          });
         }
         break;
       }
@@ -1561,7 +1573,6 @@ export default function Chat() {
     setVisibleMessageLimit(INITIAL_VISIBLE_MESSAGES);
     setAwaitInfo(null);
     setPlanTodos(null);
-    setCompressionInfo(null);
     setLoadedToolIds(new Set());
     setLoadedSkillIds(new Set());
     setLoadedSubAgentIds(new Set());
@@ -1933,7 +1944,6 @@ export default function Chat() {
         status={status}
         isThinking={isThinking}
         planTodos={planTodos}
-        compressionInfo={compressionInfo}
         sessionArtifacts={sessionArtifacts}
         selectedAgentName={selectedAgent?.name}
         agentVariableEntries={agentVariableEntries}

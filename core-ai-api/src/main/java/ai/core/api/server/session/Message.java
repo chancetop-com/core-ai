@@ -25,6 +25,9 @@ public class Message {
     @Property(name = "sandbox")
     public SandboxRecord sandbox;
 
+    @Property(name = "compression")
+    public CompressionRecord compression;
+
     @Property(name = "seq")
     public Long seq;
 
@@ -75,5 +78,22 @@ public class Message {
 
         @Property(name = "image")
         public String image;
+    }
+
+    public static class CompressionRecord {
+        @Property(name = "before_count")
+        public Integer beforeCount;
+
+        @Property(name = "after_count")
+        public Integer afterCount;
+
+        @Property(name = "context_tokens")
+        public Integer contextTokens;
+
+        @Property(name = "max_context_tokens")
+        public Integer maxContextTokens;
+
+        @Property(name = "trigger_threshold")
+        public Double triggerThreshold;
     }
 }

@@ -150,6 +150,14 @@ export interface HistorySandbox {
   image?: string;
 }
 
+export interface HistoryCompression {
+  before_count?: number;
+  after_count?: number;
+  context_tokens?: number;
+  max_context_tokens?: number;
+  trigger_threshold?: number;
+}
+
 export interface ChatSessionSummary {
   id: string;
   user_id?: string;
@@ -178,6 +186,7 @@ export interface HistoryMessage {
   thinking?: string;
   tools?: HistoryToolCall[];
   sandbox?: HistorySandbox;
+  compression?: HistoryCompression;
   seq?: number;
   trace_id?: string;
   timestamp?: string;

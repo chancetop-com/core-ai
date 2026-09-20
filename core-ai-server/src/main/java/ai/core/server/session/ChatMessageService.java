@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.ToolResultEvent;
@@ -213,6 +214,7 @@ public class ChatMessageService {
             msg.thinking = buf != null ? buf.thinking : null;
             msg.tools = buf != null && !buf.tools.isEmpty() ? List.copyOf(buf.tools.values()) : null;
             msg.sandbox = buf != null ? buf.sandbox : null;
+            msg.compression = buf != null ? buf.compression : null;
             msg.traceId = ActionLogContext.id();
             msg.createdAt = ZonedDateTime.now();
             insertWithRetry(msg, sessionId);
@@ -264,6 +266,19 @@ public class ChatMessageService {
             buffer(sessionId).sandbox = sandbox;
         }
 
+        /** Only a finished compression belongs in the history — the started phase may still be skipped. */
+        @Override
+        public void onCompression(CompressionEvent event) {
+            if (!Boolean.TRUE.equals(event.completed)) return;
+            var compression = new ChatMessage.CompressionRecord();
+            compression.beforeCount = event.beforeCount;
+            compression.afterCount = event.afterCount;
+            compression.contextTokens = event.contextTokens;
+            compression.maxContextTokens = event.maxContextTokens;
+            compression.triggerThreshold = event.triggerThreshold;
+            buffer(sessionId).compression = compression;
+        }
+
         @Override
         public void onTurnComplete(TurnCompleteEvent event) {
             persistAgentMessage(sessionId, event.output, bufferBySession.remove(sessionId));
@@ -280,9 +295,10 @@ public class ChatMessageService {
         String thinking;
         final Map<String, ChatMessage.ToolCallRecord> tools = new LinkedHashMap<>();
         ChatMessage.SandboxRecord sandbox;
+        ChatMessage.CompressionRecord compression;
 
         boolean isEmpty() {
-            return thinking == null && sandbox == null && tools.isEmpty();
+            return thinking == null && sandbox == null && compression == null && tools.isEmpty();
         }
     }
 

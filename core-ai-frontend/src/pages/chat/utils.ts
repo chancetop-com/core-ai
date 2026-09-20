@@ -1,4 +1,4 @@
-import type { ChatMessage, MessageSegment, TextSegment } from './types';
+import type { ChatMessage, CompressionSegment, MessageSegment, TextSegment } from './types';
 import type { HistoryMessage } from '../../api/session';
 
 export function normalizeArgs(argsJson: string | undefined): Record<string, unknown> | null {
@@ -35,6 +35,15 @@ export function getArgsPreview(argsJson: string | undefined): string | null {
 
 function buildSegments(m: HistoryMessage): MessageSegment[] {
   const segments: MessageSegment[] = [];
+  if (m.compression) {
+    segments.push(compressionSegment({
+      before: m.compression.before_count ?? 0,
+      after: m.compression.after_count ?? 0,
+      contextTokens: m.compression.context_tokens,
+      maxContextTokens: m.compression.max_context_tokens,
+      triggerThreshold: m.compression.trigger_threshold,
+    }));
+  }
   if (m.sandbox) {
     segments.push({
       type: 'sandbox',
@@ -149,4 +158,16 @@ export function compressionUsageText(info: CompressionUsage): string {
   }
   if (info.triggerThreshold !== undefined) parts.push(`threshold ${Math.round(info.triggerThreshold * 100)}%`);
   return parts.length > 0 ? ` · ${parts.join(' · ')}` : '';
+}
+
+/** The same compression record reaches the UI live (SSE) and on reload (history), so both build the same segment. */
+export function compressionSegment(usage: CompressionUsage): CompressionSegment {
+  return {
+    type: 'compression',
+    before: usage.before,
+    after: usage.after,
+    contextTokens: usage.contextTokens,
+    maxContextTokens: usage.maxContextTokens,
+    triggerThreshold: usage.triggerThreshold,
+  };
 }

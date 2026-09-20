@@ -51,6 +51,19 @@ export interface SandboxSegment {
   durationMs?: number;
 }
 
+/**
+ * A context compression that happened at the start of this turn. Recorded with the message so the
+ * conversation still explains the shorter history after a reload, exactly like tool and sandbox blocks.
+ */
+export interface CompressionSegment {
+  type: 'compression';
+  before: number;
+  after: number;
+  contextTokens?: number;
+  maxContextTokens?: number;
+  triggerThreshold?: number;
+}
+
 export interface BackgroundTask {
   taskId: string;
   toolName?: string;
@@ -75,7 +88,7 @@ export interface SandboxTerminalSpec {
   image?: string;
 }
 
-export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment | TasksSegment;
+export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment | TasksSegment | CompressionSegment;
 
 export interface ChatAttachment {
   url: string;

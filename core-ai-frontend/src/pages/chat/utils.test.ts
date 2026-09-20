@@ -41,6 +41,32 @@ describe('historyToChatMessages', () => {
       { type: 'text', content: 'done' },
     ]);
   });
+
+  it('restores a persisted compression above the reply it shortened the context for', () => {
+    const message: HistoryMessage = {
+      role: 'agent',
+      content: 'done',
+      compression: {
+        before_count: 16,
+        after_count: 14,
+        context_tokens: 6979,
+        max_context_tokens: 8192,
+        trigger_threshold: 0.8,
+      },
+    };
+
+    expect(historyToChatMessages([message])[0].segments).toEqual([
+      {
+        type: 'compression',
+        before: 16,
+        after: 14,
+        contextTokens: 6979,
+        maxContextTokens: 8192,
+        triggerThreshold: 0.8,
+      },
+      { type: 'text', content: 'done' },
+    ]);
+  });
 });
 
 describe('restoreCachedChatMessages', () => {

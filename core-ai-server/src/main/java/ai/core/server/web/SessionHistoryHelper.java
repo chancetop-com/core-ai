@@ -40,6 +40,9 @@ final class SessionHistoryHelper {
             if (record.sandbox != null) {
                 msg.sandbox = toSandboxRecord(record.sandbox);
             }
+            if (record.compression != null) {
+                msg.compression = toCompressionRecord(record.compression);
+            }
             messages.add(msg);
         }
         var response = new SessionHistoryResponse();
@@ -70,6 +73,17 @@ final class SessionHistoryHelper {
         sandbox.ip = record.ip;
         sandbox.image = record.image;
         return sandbox;
+    }
+
+    private static Message.CompressionRecord toCompressionRecord(
+            ai.core.server.domain.ChatMessage.CompressionRecord record) {
+        var compression = new Message.CompressionRecord();
+        compression.beforeCount = record.beforeCount;
+        compression.afterCount = record.afterCount;
+        compression.contextTokens = record.contextTokens;
+        compression.maxContextTokens = record.maxContextTokens;
+        compression.triggerThreshold = record.triggerThreshold;
+        return compression;
     }
 
     private SessionHistoryHelper() {
