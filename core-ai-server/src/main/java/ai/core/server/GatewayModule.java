@@ -9,6 +9,7 @@ import ai.core.llm.LLMProviders;
 import ai.core.media.MediaProvider;
 import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
 import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
+import ai.core.server.gateway.GatewayImageController;
 import ai.core.server.gateway.GatewayLLMProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
 import ai.core.server.gateway.GatewayModalityRegistry;
@@ -116,12 +117,13 @@ public class GatewayModule extends Module {
 
     private void registerGatewayProxyRoutes() {
         var gatewayProxyController = bind(GatewayProxyController.class);
+        var gatewayImageController = bind(GatewayImageController.class);
         var gatewayVideoController = bind(GatewayVideoController.class);
         http().route(HTTPMethod.GET, "/api/gateway/v1/models", gatewayProxyController::models);
         http().route(HTTPMethod.POST, "/api/gateway/v1/chat/completions", gatewayProxyController::chatCompletions);
         http().route(HTTPMethod.POST, "/api/gateway/v1/responses", gatewayProxyController::responses);
-        http().route(HTTPMethod.POST, "/api/gateway/v1/images/generations", gatewayProxyController::imageGenerations);
-        http().route(HTTPMethod.POST, "/api/gateway/v1/images/edits", gatewayProxyController::imageEdits);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/images/generations", gatewayImageController::generate);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/images/edits", gatewayImageController::edit);
         http().route(HTTPMethod.POST, "/api/gateway/v1/videos", gatewayVideoController::generate);
         http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id", gatewayVideoController::status);
         http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id/content", gatewayVideoController::content);
