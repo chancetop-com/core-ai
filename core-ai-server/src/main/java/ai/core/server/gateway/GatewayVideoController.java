@@ -33,20 +33,20 @@ public class GatewayVideoController {
         return generate(body(request), currentOwner());
     }
 
-    public Response status(Request request) {
-        return status(request.pathParam("id"), currentOwner());
-    }
-
-    public Response content(Request request) {
-        return content(request.pathParam("id"), currentOwner());
-    }
-
     Response generate(byte[] body, MediaJobOwner owner) {
         return json(gatewayMediaProvider.generateVideo(videoRequest(body), owner));
     }
 
+    public Response status(Request request) {
+        return status(request.pathParam("id"), currentOwner());
+    }
+
     Response status(String videoId, MediaJobOwner owner) {
         return json(gatewayMediaProvider.getVideoStatus(videoId, owner));
+    }
+
+    public Response content(Request request) {
+        return content(request.pathParam("id"), currentOwner());
     }
 
     Response content(String videoId, MediaJobOwner owner) {
@@ -54,7 +54,7 @@ public class GatewayVideoController {
                 .contentType(ContentType.create("video/mp4", StandardCharsets.UTF_8));
     }
 
-    static VideoGenerationRequest videoRequest(byte[] body) {
+    VideoGenerationRequest videoRequest(byte[] body) {
         Map<String, Object> value;
         try {
             value = GatewayJson.MAPPER.readValue(body, GatewaySupport.MAP_TYPE);
@@ -72,7 +72,7 @@ public class GatewayVideoController {
                 string(value, "previous_video_id", "previousVideoId", "previous_interaction_id", "previousInteractionId"));
     }
 
-    private static List<MediaReference> references(Object value) {
+    private List<MediaReference> references(Object value) {
         if (value == null) return null;
         try {
             return MediaReferenceParser.parse(jsonString(value), "input_references");
@@ -81,21 +81,24 @@ public class GatewayVideoController {
         }
     }
 
-    private static Object first(Map<String, Object> value, String... names) {
-        for (var name : names) if (value.containsKey(name)) return value.get(name);
+    private Object first(Map<String, Object> value, String... names) {
+        for (var name : names) {
+            var result = value.get(name);
+            if (result != null) return result;
+        }
         return null;
     }
 
-    private static String string(Map<String, Object> value, String... names) {
+    private String string(Map<String, Object> value, String... names) {
         var result = first(value, names);
         return result instanceof String text ? text : null;
     }
 
-    private static Integer integer(Object value) {
+    private Integer integer(Object value) {
         return value instanceof Number number ? number.intValue() : null;
     }
 
-    private static String jsonString(Object value) {
+    private String jsonString(Object value) {
         if (value == null) return null;
         if (value instanceof String text) return text;
         try {
@@ -105,7 +108,7 @@ public class GatewayVideoController {
         }
     }
 
-    private static Response json(VideoGenerationResponse value) {
+    private Response json(VideoGenerationResponse value) {
         var body = new LinkedHashMap<String, Object>();
         body.put("id", value.id());
         body.put("status", value.status());
@@ -115,7 +118,7 @@ public class GatewayVideoController {
         return json(body);
     }
 
-    private static Response json(VideoStatusResponse value) {
+    private Response json(VideoStatusResponse value) {
         var body = new LinkedHashMap<String, Object>();
         body.put("id", value.id());
         body.put("status", value.status());
@@ -128,7 +131,15 @@ public class GatewayVideoController {
         return json(body);
     }
 
-    private static Map<String, Object> usage(Usage value) {
+    private Response json(Map<String, Object> value) {
+        try {
+            return Response.bytes(GatewayJson.MAPPER.writeValueAsBytes(value)).contentType(ContentType.APPLICATION_JSON);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("failed to serialize gateway video response", e);
+        }
+    }
+
+    private Map<String, Object> usage(Usage value) {
         if (value == null) return null;
         var body = new LinkedHashMap<String, Object>();
         body.put("total_tokens", value.totalTokens());
@@ -141,14 +152,6 @@ public class GatewayVideoController {
         body.put("upstream_cost_usd", value.upstreamCostUsd());
         body.put("output_video_tokens", value.outputVideoTokens());
         return body;
-    }
-
-    private static Response json(Map<String, Object> value) {
-        try {
-            return Response.bytes(GatewayJson.MAPPER.writeValueAsBytes(value)).contentType(ContentType.APPLICATION_JSON);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("failed to serialize gateway video response", e);
-        }
     }
 
     private MediaJobOwner currentOwner() {

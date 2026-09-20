@@ -16,7 +16,7 @@ import static org.mockito.Mockito.when;
 class GatewayVideoControllerTest {
     @Test
     void parsesOpenAiShapedVideoRequestIncludingReferencesAndProviderExtra() {
-        var request = GatewayVideoController.videoRequest("""
+        var request = new GatewayVideoController().videoRequest("""
                 {
                   "model": "seedance-2.5",
                   "prompt": "make the cat dance",
@@ -66,10 +66,11 @@ class GatewayVideoControllerTest {
 
     @Test
     void rejectsVideoRequestsWithoutModelOrPromptBeforeCallingAProvider() {
-        assertThatThrownBy(() -> GatewayVideoController.videoRequest("{}".getBytes(StandardCharsets.UTF_8)))
+        var controller = new GatewayVideoController();
+        assertThatThrownBy(() -> controller.videoRequest("{}".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(core.framework.web.exception.BadRequestException.class)
                 .hasMessageContaining("model");
-        assertThatThrownBy(() -> GatewayVideoController.videoRequest("{\"model\":\"seedance-2.5\"}".getBytes(StandardCharsets.UTF_8)))
+        assertThatThrownBy(() -> controller.videoRequest("{\"model\":\"seedance-2.5\"}".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(core.framework.web.exception.BadRequestException.class)
                 .hasMessageContaining("prompt");
     }
