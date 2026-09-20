@@ -1,7 +1,8 @@
 import { lazy, Suspense, useState } from 'react';
 import { Loader2, ChevronDown, ChevronRight, Wrench, Copy, Check } from 'lucide-react';
-import type { ToolEvent } from '../types';
+import type { CompressionSegment, ToolEvent } from '../types';
 import { normalizeArgs, getArgsPreview } from '../utils';
+import CompressionBlock from './CompressionBlock';
 
 const JsonTreeView = lazy(() => import('../../../components/JsonTreeView'));
 
@@ -65,7 +66,7 @@ function JsonResultView({ value }: { value: string }) {
   );
 }
 
-export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
+export default function ToolsBlock({ tools, compression }: { tools: ToolEvent[]; compression?: CompressionSegment }) {
   const [expanded, setExpanded] = useState(true);
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
   const [collapsedChildren, setCollapsedChildren] = useState<Set<string>>(new Set());
@@ -283,6 +284,16 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
     );
   };
 
+  if (tools.length === 0) {
+    if (!compression) return null;
+    return (
+      <div className="mb-2 rounded-xl border text-xs"
+        style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
+        <CompressionBlock seg={compression} />
+      </div>
+    );
+  }
+
   return (
     <div className="mb-2 rounded-xl border text-xs"
       style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
@@ -297,6 +308,7 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
       </button>
       {expanded && (
         <div className="border-t flex flex-col gap-0" style={{ borderColor: 'var(--color-border)' }}>
+          {compression && <CompressionBlock seg={compression} />}
           {tools.map((t, j) => renderToolRow(t, String(j), 0))}
         </div>
       )}

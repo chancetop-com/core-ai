@@ -13,7 +13,6 @@ import { chatSanitizeSchema } from '../markdownSanitizeSchema';
 import type { ArtifactSpec } from './artifactTypes';
 import ArtifactCard from './ArtifactCard';
 import AuthedImage from './AuthedImage';
-import CompressionBlock from './CompressionBlock';
 import CopyButton from './CopyButton';
 import PlanUpdateBlock from './PlanUpdateBlock';
 import SandboxBlock from './SandboxBlock';
@@ -190,11 +189,6 @@ const ChatMessageRow = memo(function ChatMessageRow({
             <BackgroundTasksBlock seg={tasksSeg} />
           </div>
         )}
-        {compressionSeg && (
-          <div className="mb-3">
-            <CompressionBlock seg={compressionSeg} />
-          </div>
-        )}
         {sandboxSeg && (
           <div className="mb-3">
             <SandboxBlock seg={sandboxSeg} terminalEnabled={terminalEnabled} onOpenTerminal={onOpenSandboxTerminal} />
@@ -205,9 +199,9 @@ const ChatMessageRow = memo(function ChatMessageRow({
             <ThinkingBlock thinking={thinkingSeg.content} isStreaming={isStreamingLast && isThinking} />
           </div>
         )}
-        {toolsSeg && toolsSeg.tools.length > 0 && (
+        {((toolsSeg && toolsSeg.tools.length > 0) || compressionSeg) && (
           <div className="mb-3">
-            <ToolsBlock tools={toolsSeg.tools} />
+            <ToolsBlock tools={toolsSeg?.tools ?? []} compression={compressionSeg} />
           </div>
         )}
         {(hasAttachments || hasRenderableText) && (
