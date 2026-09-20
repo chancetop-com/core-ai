@@ -66,14 +66,6 @@ public class GatewayProxyService {
         return proxy(body, GatewayEndpointType.RESPONSES, MediaJobOwner.UNKNOWN, userId, sessionId, agentName);
     }
 
-    public Response proxyImageGenerations(byte[] body, String userId) {
-        return proxy(body, GatewayEndpointType.IMAGE_GENERATION, MediaJobOwner.UNKNOWN, userId, null, null);
-    }
-
-    public Response proxyImageEdits(byte[] body, String userId) {
-        return proxy(body, GatewayEndpointType.IMAGE_EDIT, MediaJobOwner.UNKNOWN, userId, null, null);
-    }
-
     public Response proxyVideoGenerations(byte[] body, MediaJobOwner owner) {
         return proxy(body, GatewayEndpointType.VIDEO_GENERATION, owner, owner.userId(), null, null);
     }

@@ -23,14 +23,6 @@ public class GatewayProxyController {
         return gatewayProxyService.proxyResponses(body(request), currentUserId(), GatewaySupport.clientSessionId(request), GatewaySupport.agentName(request));
     }
 
-    public Response imageGenerations(Request request) {
-        return gatewayProxyService.proxyImageGenerations(body(request), currentUserId());
-    }
-
-    public Response imageEdits(Request request) {
-        return gatewayProxyService.proxyImageEdits(body(request), currentUserId());
-    }
-
     public Response models(Request request) {
         return gatewayProxyService.models();
     }
