@@ -142,6 +142,7 @@ public class Compression {
     }
     private List<Message> doCompress(List<Message> messages, boolean force) {
         lastFailure = null;
+        int contextTokens = MessageTokenCounterUtil.count(messages);
         var systemMsg = extractSystemMessage(messages);
         var conversationMsgs = extractConversationMessages(messages);
         if (conversationMsgs.size() <= 2) {
@@ -171,26 +172,26 @@ public class Compression {
         if (toCompress.size() <= overhead) {
             return skip(messages, "too few messages to summarize");
         }
-        return applySummary(messages, systemMsg, preservedUserMsg, toKeep, toCompress);
+        return applySummary(messages, systemMsg, preservedUserMsg, toKeep, toCompress, contextTokens);
     }
     private List<Message> applySummary(List<Message> messages, Message systemMsg, Message preservedUserMsg,
-                                       List<Message> toKeep, List<Message> toCompress) {
-        notifyStarted(messages.size(), toCompress.size());
+                                       List<Message> toKeep, List<Message> toCompress, int contextTokens) {
+        notifyListeners(report(CompressionReport.Phase.STARTED, messages.size(), toCompress.size(), contextTokens, null));
         var summary = summarize(toCompress);
         if (summary.isBlank()) {
             if (lastFailure == null) lastFailure = "summarization returned an empty result";
             LOGGER.warn("Summarization returned empty result, keeping original messages");
-            notifySkipped(messages.size(), lastFailure);
+            notifyListeners(report(CompressionReport.Phase.SKIPPED, messages.size(), messages.size(), contextTokens, lastFailure));
             return messages;
         }
         var result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
         if (result.size() >= messages.size()) {
             lastFailure = "compression would not shrink the conversation";
             LOGGER.debug("Compression did not reduce message count, keeping original");
-            notifySkipped(messages.size(), lastFailure);
+            notifyListeners(report(CompressionReport.Phase.SKIPPED, messages.size(), messages.size(), contextTokens, lastFailure));
             return messages;
         }
-        notifyCompleted(messages.size(), result.size());
+        notifyListeners(report(CompressionReport.Phase.COMPLETED, messages.size(), result.size(), contextTokens, null));
         LOGGER.debug("Compression complete: {} -> {} messages", messages.size(), result.size());
         return result;
     }
@@ -408,21 +409,14 @@ public class Compression {
     public int getMaxToolResultTokens() {
         return maxToolResultTokens;
     }
-    private void notifyStarted(int beforeCount, int compressingCount) {
-        for (CompressionListener l : listeners) {
-            l.onCompression(beforeCount, compressingCount, false);
-        }
+    private CompressionReport report(CompressionReport.Phase phase, int beforeCount, int afterCount,
+                                     int contextTokens, String reason) {
+        return new CompressionReport(phase, beforeCount, afterCount, contextTokens, maxContextTokens, triggerThreshold, reason);
     }
 
-    private void notifyCompleted(int beforeCount, int afterCount) {
+    private void notifyListeners(CompressionReport report) {
         for (CompressionListener l : listeners) {
-            l.onCompression(beforeCount, afterCount, true);
-        }
-    }
-
-    private void notifySkipped(int beforeCount, String reason) {
-        for (CompressionListener l : listeners) {
-            l.onCompressionSkipped(beforeCount, reason);
+            l.onCompression(report);
         }
     }
 }

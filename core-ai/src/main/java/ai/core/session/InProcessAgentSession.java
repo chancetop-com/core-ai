@@ -25,6 +25,7 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
+import ai.core.context.CompressionReport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -353,8 +354,20 @@ public class InProcessAgentSession implements AgentSession {
     private void setupCompressionListener() {
         var compression = agent.getCompression();
         if (compression == null) return;
-        compression.addListener((beforeCount, afterCount, completed) ->
-            dispatch(CompressionEvent.of(sessionId, beforeCount, afterCount, completed)));
+        compression.addListener(report -> {
+            var event = compressionEvent(report);
+            if (event != null) dispatch(event);
+        });
+    }
+
+    /**
+     * A compression that started and was then given up on leaves the conversation untouched, so there
+     * is nothing for a client to show.
+     */
+    private CompressionEvent compressionEvent(CompressionReport report) {
+        if (report.phase() == CompressionReport.Phase.SKIPPED) return null;
+        return CompressionEvent.of(sessionId, report.beforeCount(), report.afterCount(), report.completed())
+            .withContext(report.contextTokens(), report.maxContextTokens(), report.triggerThreshold());
     }
 
     /**

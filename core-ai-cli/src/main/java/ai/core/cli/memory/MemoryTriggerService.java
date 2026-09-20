@@ -2,6 +2,7 @@ package ai.core.cli.memory;
 
 import ai.core.agent.Agent;
 import ai.core.cli.utils.AgentFork;
+import ai.core.context.CompressionReport;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.tools.ShellCommandTool;
@@ -331,11 +332,11 @@ public final class MemoryTriggerService {
     private void attachCompressionListener() {
         var compression = mainAgent.getCompression();
         if (compression != null) {
-            compression.addListener((beforeCount, afterCount, completed) -> {
-                if (completed) {
+            compression.addListener(report -> {
+                if (report.completed()) {
                     // history is append-only — compression does not move the extraction cursor
                     MemorySectionManager.reloadAgentMemorySection(mainAgent, memoryProvider);
-                } else if (scheduler != null && !extractionInProgress.get()) {
+                } else if (scheduler != null && report.phase() == CompressionReport.Phase.STARTED && !extractionInProgress.get()) {
                     scheduler.execute(this::runIncrementalExtraction);
                 }
             });

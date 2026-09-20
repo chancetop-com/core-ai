@@ -131,3 +131,22 @@ export function formatMessageTimeFull(timestamp?: string): string {
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleString();
 }
+
+export interface CompressionUsage {
+  before: number;
+  after: number;
+  contextTokens?: number;
+  maxContextTokens?: number;
+  triggerThreshold?: number;
+}
+
+/** Context occupancy suffix of the compression notice, empty when the server sent no usage. */
+export function compressionUsageText(info: CompressionUsage): string {
+  const parts: string[] = [];
+  if (info.contextTokens !== undefined && info.maxContextTokens) {
+    const percent = Math.round((info.contextTokens / info.maxContextTokens) * 100);
+    parts.push(`${info.contextTokens.toLocaleString()} / ${info.maxContextTokens.toLocaleString()} tokens (${percent}%)`);
+  }
+  if (info.triggerThreshold !== undefined) parts.push(`threshold ${Math.round(info.triggerThreshold * 100)}%`);
+  return parts.length > 0 ? ` · ${parts.join(' · ')}` : '';
+}

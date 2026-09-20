@@ -4,12 +4,16 @@ import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.context.CompressionListener;
+import ai.core.context.CompressionReport;
+
+import java.util.Locale;
 
 /**
  * Renders compression progress in the CLI so a started compression is always resolved: either the
- * summarized message counts, or the reason the conversation was kept as it was.
+ * summarized message counts with the context usage that triggered it, or the reason the conversation
+ * was kept as it was.
  *
- * @author xander
+ * @author stephen
  */
 public class CompressionProgressListener implements CompressionListener {
     private final OutputPanel panel;
@@ -21,18 +25,21 @@ public class CompressionProgressListener implements CompressionListener {
     }
 
     @Override
-    public void onCompression(int beforeCount, int afterCount, boolean completed) {
-        if (completed) {
-            print("\n  " + AnsiTheme.SUCCESS + "\u2726" + AnsiTheme.RESET + AnsiTheme.MUTED
-                + " Compressed: " + beforeCount + " \u2192 " + afterCount + " messages" + AnsiTheme.RESET + "\n");
-        } else {
-            print("\n  " + AnsiTheme.MUTED + "\u2726 Compressing " + afterCount + " messages..." + AnsiTheme.RESET);
+    public void onCompression(CompressionReport report) {
+        switch (report.phase()) {
+            case STARTED -> print("\n  " + AnsiTheme.MUTED + "\u2726 Compressing " + report.afterCount() + " messages... "
+                + context(report) + AnsiTheme.RESET);
+            case COMPLETED -> print("\n  " + AnsiTheme.SUCCESS + "\u2726" + AnsiTheme.RESET + AnsiTheme.MUTED
+                + " Compressed: " + report.beforeCount() + " \u2192 " + report.afterCount() + " messages "
+                + context(report) + AnsiTheme.RESET + "\n");
+            case SKIPPED -> print("\n  " + AnsiTheme.MUTED + "\u2726 Compression skipped: " + report.reason() + AnsiTheme.RESET + "\n");
+            default -> throw new IllegalStateException("unknown compression phase: " + report.phase());
         }
     }
 
-    @Override
-    public void onCompressionSkipped(int beforeCount, String reason) {
-        print("\n  " + AnsiTheme.MUTED + "\u2726 Compression skipped: " + reason + AnsiTheme.RESET + "\n");
+    private String context(CompressionReport report) {
+        return String.format(Locale.ROOT, "(%,d / %,d tokens, %d%%, threshold %d%%)",
+            report.contextTokens(), report.maxContextTokens(), report.usedPercent(), report.thresholdPercent());
     }
 
     private void print(String message) {

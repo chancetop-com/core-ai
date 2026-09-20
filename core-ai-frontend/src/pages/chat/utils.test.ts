@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HistoryMessage } from '../../api/session';
-import { historyToChatMessages, restoreCachedChatMessages } from './utils';
+import { compressionUsageText, historyToChatMessages, restoreCachedChatMessages } from './utils';
 
 describe('historyToChatMessages', () => {
   it('restores a persisted sandbox segment when reopening a completed session', () => {
@@ -67,5 +67,18 @@ describe('restoreCachedChatMessages', () => {
   it('returns an empty list for invalid cached data', () => {
     expect(restoreCachedChatMessages('{')).toEqual([]);
     expect(restoreCachedChatMessages(null)).toEqual([]);
+  });
+});
+
+describe('compressionUsageText', () => {
+  it('reports the context occupancy and the trigger threshold', () => {
+    expect(compressionUsageText({ before: 66, after: 29, contextTokens: 39912, maxContextTokens: 128000, triggerThreshold: 0.8 }))
+      .toBe(' · 39,912 / 128,000 tokens (31%) · threshold 80%');
+  });
+
+  it('omits usage the server did not send', () => {
+    expect(compressionUsageText({ before: 66, after: 29 })).toBe('');
+    expect(compressionUsageText({ before: 66, after: 29, contextTokens: 39912 })).toBe('');
+    expect(compressionUsageText({ before: 66, after: 29, maxContextTokens: 128000 })).toBe('');
   });
 });

@@ -8,7 +8,8 @@ import type { PluggableList } from 'unified';
 import { AlertCircle, Bot, CheckCircle2, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, Sparkles, User } from 'lucide-react';
 import type { SessionArtifact } from '../../../api/session';
 import type { ChatMessage, MessageSegment, PlanTodo, SandboxSegment, SandboxTerminalSpec, TasksSegment, ToolsSegment } from '../types';
-import { formatMessageTime, formatMessageTimeFull, getMessageText } from '../utils';
+import { compressionUsageText, formatMessageTime, formatMessageTimeFull, getMessageText } from '../utils';
+import type { CompressionUsage } from '../utils';
 import { chatSanitizeSchema } from '../markdownSanitizeSchema';
 import type { ArtifactSpec } from './artifactTypes';
 import ArtifactCard from './ArtifactCard';
@@ -348,7 +349,7 @@ interface ChatMessagesPanelProps {
   status: ChatStatus;
   isThinking: boolean;
   planTodos: PlanTodo[] | null;
-  compressionInfo: { before: number; after: number } | null;
+  compressionInfo: CompressionUsage | null;
   sessionArtifacts: SessionArtifact[];
   selectedAgentName?: string;
   agentVariableEntries: [string, unknown][];
@@ -519,7 +520,7 @@ const ChatMessagesPanel = memo(function ChatMessagesPanel({
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs animate-pulse"
             style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
             <Sparkles size={14} />
-            <span>Context compressed: {compressionInfo.before} -&gt; {compressionInfo.after} messages</span>
+            <span>Context compressed: {compressionInfo.before} -&gt; {compressionInfo.after} messages{compressionUsageText(compressionInfo)}</span>
           </div>
         )}
         {hiddenMessageCount > 0 && (

@@ -18,4 +18,16 @@ public class SseCompressionEvent extends SseBaseEvent {
     @NotNull
     @Property(name = "completed")
     public Boolean completed;
+
+    @NotNull
+    @Property(name = "context_tokens")
+    public Integer contextTokens;
+
+    @NotNull
+    @Property(name = "max_context_tokens")
+    public Integer maxContextTokens;
+
+    @NotNull
+    @Property(name = "trigger_threshold")
+    public Double triggerThreshold;
 }

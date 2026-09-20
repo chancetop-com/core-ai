@@ -17,6 +17,7 @@ import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, TasksSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages, restoreCachedChatMessages } from './utils';
+import type { CompressionUsage } from './utils';
 import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn, trackStrandedTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 
@@ -118,7 +119,7 @@ export default function Chat() {
   const [isThinking, setIsThinking] = useState(false);
   const [awaitInfo, setAwaitInfo] = useState<AwaitInfo | null>(null);
   const [planTodos, setPlanTodos] = useState<PlanTodo[] | null>(null);
-  const [compressionInfo, setCompressionInfo] = useState<{ before: number; after: number } | null>(null);
+  const [compressionInfo, setCompressionInfo] = useState<CompressionUsage | null>(null);
 
   // Agent selection
   const [myAgents, setMyAgents] = useState<AgentDefinition[]>([]);
@@ -1012,7 +1013,13 @@ export default function Chat() {
       case 'compression': {
         const compressionEvent = event as SseCompressionEvent;
         if (compressionEvent.completed) {
-          setCompressionInfo({ before: compressionEvent.before_count, after: compressionEvent.after_count });
+          setCompressionInfo({
+            before: compressionEvent.before_count,
+            after: compressionEvent.after_count,
+            contextTokens: compressionEvent.context_tokens,
+            maxContextTokens: compressionEvent.max_context_tokens,
+            triggerThreshold: compressionEvent.trigger_threshold,
+          });
           setTimeout(() => setCompressionInfo(null), 5000);
         }
         break;

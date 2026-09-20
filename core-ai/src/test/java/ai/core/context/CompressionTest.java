@@ -19,6 +19,7 @@ import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.sandbox.Sandbox;
+import ai.core.utils.MessageTokenCounterUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -341,26 +342,42 @@ class CompressionTest {
     void testSkippedCompressionIsReportedAfterItStarts() {
         Compression target = new Compression(new MockLLMProvider(""), "test-model");
         var events = new ArrayList<String>();
-        target.addListener(new CompressionListener() {
-            @Override
-            public void onCompression(int beforeCount, int afterCount, boolean completed) {
-                events.add((completed ? "completed " : "started ") + beforeCount + ":" + afterCount);
-            }
-
-            @Override
-            public void onCompressionSkipped(int beforeCount, String reason) {
-                events.add("skipped " + beforeCount + ":" + reason);
-            }
-        });
+        target.addListener(report -> events.add(report.phase() + " " + report.beforeCount() + ":" + report.afterCount()
+            + ":" + report.reason()));
 
         var messages = createTestMessages(10);
         target.forceCompress(messages);
 
         assertEquals(2, events.size(), events.toString());
-        assertTrue(events.get(0).startsWith("started "), events.toString());
-        assertEquals("skipped " + messages.size() + ":summarization returned an empty result", events.get(1));
+        assertTrue(events.get(0).startsWith("STARTED "), events.toString());
+        assertEquals("SKIPPED " + messages.size() + ":" + messages.size() + ":summarization returned an empty result", events.get(1));
 
         LOGGER.info("Skipped compression reported test passed");
+    }
+
+    @Test
+    void testReportDescribesContextUsage() {
+        var provider = new MockLLMProvider("Compressed summary", new Usage(10, 20, 30));
+        Compression target = new Compression(new CompressionConfig(true, 0.5, 2, 10, 1000, null), provider, "test-model");
+        var reports = new ArrayList<CompressionReport>();
+        target.addListener(reports::add);
+
+        var messages = createTestMessages(10);
+        var result = target.forceCompress(messages);
+
+        assertEquals(2, reports.size(), reports.toString());
+        var started = reports.getFirst();
+        assertEquals(CompressionReport.Phase.STARTED, started.phase());
+        assertEquals(MessageTokenCounterUtil.count(messages), started.contextTokens());
+        assertEquals(1000, started.maxContextTokens());
+        assertEquals(50, started.thresholdPercent());
+        var completed = reports.getLast();
+        assertEquals(CompressionReport.Phase.COMPLETED, completed.phase());
+        assertTrue(completed.completed());
+        assertEquals(result.size(), completed.afterCount());
+        assertEquals(started.contextTokens(), completed.contextTokens());
+
+        LOGGER.info("Report describes context usage test passed");
     }
 
     @Test
