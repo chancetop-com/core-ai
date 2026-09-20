@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GatewayMediaProviderTest {
@@ -66,6 +67,27 @@ class GatewayMediaProviderTest {
                 List.of(new MediaReference(null, "data:image/png;base64,AAAA")), null, null));
 
         assertThat(upstream.videoRequest.inputReferences()).hasSize(1);
+    }
+
+    @Test
+    void publicVideoStatusChecksJobOwnership() {
+        var routingEngine = mock(GatewayRoutingEngine.class);
+        var mediaJobService = mock(MediaJobService.class);
+        var job = new MediaJob();
+        job.id = "job-1";
+        job.userId = "user-1";
+        job.state = "running";
+        job.progress = 25;
+        job.updatedAt = java.time.ZonedDateTime.now();
+        when(mediaJobService.getOwned("job-1", "user-1")).thenReturn(job);
+        var gatewayMediaProvider = new GatewayMediaProvider(routingEngine, mock(GatewaySecretProtector.class),
+                new StubAdapterFactory(new RecordingMediaProvider()), mediaJobService, mock(MediaCostSettler.class));
+
+        var status = gatewayMediaProvider.getVideoStatus(GatewayVideoHandle.encode("job-1"),
+                new MediaJobOwner("user-1", null, null));
+
+        assertThat(status.status()).isEqualTo("running");
+        verify(mediaJobService).getOwned("job-1", "user-1");
     }
 
     private void routeImageEdit(GatewayRoutingEngine routingEngine, String mediaProtocol) {

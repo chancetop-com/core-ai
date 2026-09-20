@@ -33,6 +33,7 @@ import ai.core.server.domain.GeminiFileService;
 import ai.core.server.domain.GeminiFilesClient;
 import ai.core.server.domain.GeminiVideoUnderstandingService;
 import ai.core.server.gateway.GatewaySecretProtector;
+import ai.core.server.gateway.GatewayVideoController;
 import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.telemetry.LLMTracer;
 import ai.core.tool.tools.UnderstandVideoTool;
@@ -73,6 +74,7 @@ public class GatewayModule extends Module {
         var costSettler = bind(MediaCostSettler.class);
         var mediaJobService = bind(MediaJobService.class);
         bind(GatewayProxyService.class);
+        bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector, mediaJobService, costSettler);
         registerGatewayProviderRoutes();
         registerGatewayModelRoutes();
         registerGatewayProxyRoutes();
@@ -93,7 +95,6 @@ public class GatewayModule extends Module {
         bind(gatewayLLMProvider);
         llmProviders.addProvider(LLMProviderType.GATEWAY, gatewayLLMProvider);
         llmProviders.setDefaultProvider(LLMProviderType.GATEWAY);
-        bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector, mediaJobService, costSettler);
         api().service(MediaJobWebService.class, bind(MediaJobWebServiceImpl.class));
         http().route(HTTPMethod.GET, "/api/media-jobs/:id/content", bind(MediaJobContentController.class)::content);
     }
@@ -101,6 +102,7 @@ public class GatewayModule extends Module {
     private void bindGatewayMediaProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector,
                                           MediaJobService mediaJobService, MediaCostSettler costSettler) {
         var mediaProvider = new GatewayMediaProvider(routingEngine, secretProtector, mediaJobService, costSettler);
+        bind(GatewayMediaProvider.class, mediaProvider);
         bind(MediaProvider.class, mediaProvider);
     }
 
@@ -114,14 +116,15 @@ public class GatewayModule extends Module {
 
     private void registerGatewayProxyRoutes() {
         var gatewayProxyController = bind(GatewayProxyController.class);
+        var gatewayVideoController = bind(GatewayVideoController.class);
         http().route(HTTPMethod.GET, "/api/gateway/v1/models", gatewayProxyController::models);
         http().route(HTTPMethod.POST, "/api/gateway/v1/chat/completions", gatewayProxyController::chatCompletions);
         http().route(HTTPMethod.POST, "/api/gateway/v1/responses", gatewayProxyController::responses);
         http().route(HTTPMethod.POST, "/api/gateway/v1/images/generations", gatewayProxyController::imageGenerations);
         http().route(HTTPMethod.POST, "/api/gateway/v1/images/edits", gatewayProxyController::imageEdits);
-        http().route(HTTPMethod.POST, "/api/gateway/v1/videos", gatewayProxyController::videoGenerations);
-        http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id", gatewayProxyController::videoStatus);
-        http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id/content", gatewayProxyController::videoContent);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/videos", gatewayVideoController::generate);
+        http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id", gatewayVideoController::status);
+        http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id/content", gatewayVideoController::content);
         var registry = bean(SseEndpointRegistry.class);
         registry.register(HTTPMethod.POST, "/api/gateway/v1/chat/completions", GatewayChatCompletionsSseEvent.class,
                 bind(GatewayChatCompletionsChannelListener.class), true);
