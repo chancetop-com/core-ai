@@ -23,10 +23,14 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<T>, Channel.Context {
     private static final Logger LOGGER = LoggerFactory.getLogger(PatchedChannelImpl.class);
+
+    // a writer stuck holding the lock must never stall app shutdown: k8s sigkills the pod once the grace period expires
+    static final long SHUTDOWN_LOCK_TIMEOUT_IN_MILLIS = 500;
 
     // extracted so the framing logic (id:/event:/data: line construction) is unit-testable
     // without standing up the Undertow exchange/sink this class otherwise requires
@@ -154,8 +158,13 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
     }
 
     public void shutdown() {
+        if (!tryLockForShutdown()) {
+            LOGGER.warn("failed to acquire sse channel lock to shutdown after {}ms, channel={}", SHUTDOWN_LOCK_TIMEOUT_IN_MILLIS, id);
+            forceEndExchange();
+            return;
+        }
+
         try {
-            lock.lock();
             if (exchange.isResponseComplete()) return;
 
             LOGGER.debug("shutdown sse connection, channel={}", id);
@@ -163,6 +172,23 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
             exchange.endExchange();
         } finally {
             lock.unlock();
+        }
+    }
+
+    private boolean tryLockForShutdown() {
+        try {
+            return lock.tryLock(SHUTDOWN_LOCK_TIMEOUT_IN_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private void forceEndExchange() {
+        try {
+            if (!exchange.isResponseComplete()) exchange.endExchange();
+        } catch (Throwable e) {
+            LOGGER.warn("failed to end sse exchange on shutdown, channel={}, error={}", id, e.getMessage(), e);
         }
     }
 
@@ -215,7 +241,7 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
         else context.put(key, value);
     }
 
-    private final class WriteListener implements ChannelListener<StreamSinkChannel> {
+    final class WriteListener implements ChannelListener<StreamSinkChannel> {
         @Nullable
         private ByteBuffer buffer;
 
@@ -236,10 +262,13 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
                 }
 
                 while (true) {
-                    channel.write(buffer);
+                    int written = channel.write(buffer);
                     boolean flushed = channel.flush();
 
-                    if (!flushed) {
+                    // write() returns 0 once the socket buffer is full, while xnio flush() reports true for a buffer
+                    // that was not drained: retrying here would pin this io thread at 100% cpu while holding the lock,
+                    // so hand the channel back to the io thread and wait for the writable event instead
+                    if (written == 0 || !flushed) {
                         channel.resumeWrites();
                         return;
                     }

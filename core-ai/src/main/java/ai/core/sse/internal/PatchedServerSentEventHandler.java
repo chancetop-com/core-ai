@@ -213,15 +213,18 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
         }
     }
 
-    private void sendErrorAndClose(PatchedChannelImpl<Object> channel, StreamSinkChannel sink, String message) {
+    void sendErrorAndClose(PatchedChannelImpl<Object> channel, StreamSinkChannel sink, String message) {
         // write the error synchronously before close: the async sendBytes path can race with
         // close() and drop the buffered message, leaving the client with a silent disconnect
         try {
             var buffer = ByteBuffer.wrap(Strings.bytes(message));
-            while (buffer.hasRemaining()) {
-                sink.write(buffer);
-            }
+            // sink.write() returns 0 once the socket buffer is full, retrying would spin this io thread forever
+            int written;
+            do {
+                written = sink.write(buffer);
+            } while (written > 0 && buffer.hasRemaining());
             sink.flush();
+            if (buffer.hasRemaining()) logger.warn("failed to send sse error event, remaining={}", buffer.remaining());
         } catch (Throwable writeError) {
             logger.warn("failed to send sse error event, error={}", writeError.getMessage(), writeError);
         }
