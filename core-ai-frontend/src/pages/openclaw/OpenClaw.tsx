@@ -48,17 +48,20 @@ export default function OpenClaw() {
   const [configs, setConfigs] = useState<OcgConfigView[]>([]);
   const [channels, setChannels] = useState<ChannelView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState>(emptyEditor());
   const [logs, setLogs] = useState<LogsState>({ open: false, config: null, type: 'gateway', content: '', command: '', running: false, loading: false });
 
   const load = () => {
     setLoading(true);
+    setLoadError('');
     Promise.all([api.ocg.list(), api.channels.list()])
       .then(([configRes, channelRes]) => {
         setConfigs(configRes.configs || []);
         setChannels(channelRes.channels || []);
       })
+      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   };
 
@@ -69,6 +72,10 @@ export default function OpenClaw() {
   for (const channel of channels) channelMap[channel.channelId] = channel;
 
   const openNew = () => {
+    if (loadError) {
+      alert(`Cannot create OpenClaw config: ${loadError}`);
+      return;
+    }
     if (openClawChannels.length === 0) {
       alert('Please create an OpenClaw channel first: go to Triggers > Channels, create a new channel, and select Channel Type = OpenClaw.');
       return;
@@ -236,7 +243,14 @@ export default function OpenClaw() {
         </button>
       </div>
 
-      {openClawChannels.length === 0 && !loading && (
+      {loadError && !loading && (
+        <div className="mb-4 rounded-lg border px-4 py-3 text-sm"
+          style={{ borderColor: '#fca5a5', background: '#fef2f2', color: '#b91c1c' }}>
+          Failed to load OpenClaw configs: {loadError}
+        </div>
+      )}
+
+      {!loadError && openClawChannels.length === 0 && !loading && (
         <div className="mb-4 rounded-lg border px-4 py-3 text-sm"
           style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}>
           Create a channel with type OpenClaw on the Channels page before adding an OCG config.

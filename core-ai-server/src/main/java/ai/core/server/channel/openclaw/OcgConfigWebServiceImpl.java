@@ -11,6 +11,8 @@ import ai.core.api.server.ocg.OcgLogsRequest;
 import ai.core.api.server.ocg.OcgLogsResponse;
 import ai.core.api.server.ocg.OcgStatusResponse;
 import ai.core.server.channel.ChannelConfigStore;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import core.framework.inject.Inject;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ConflictException;
@@ -32,6 +34,7 @@ public class OcgConfigWebServiceImpl implements OcgConfigWebService {
     OcgSandboxService ocgSandboxService;
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public ListOcgConfigsResponse list() {
         var response = new ListOcgConfigsResponse();
         response.configs = ocgConfigStore.all().values().stream().map(this::toView).toList();
@@ -39,6 +42,7 @@ public class OcgConfigWebServiceImpl implements OcgConfigWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public OcgConfigResponse create(OcgConfigRequest request) {
         var id = request.id;
         if (id == null || id.isBlank()) throw new BadRequestException("id is required");
@@ -52,11 +56,13 @@ public class OcgConfigWebServiceImpl implements OcgConfigWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public OcgConfigResponse get(String id) {
         return configResponse(load(id));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public OcgConfigResponse update(String id, OcgConfigRequest request) {
         var existing = load(id);
         var config = fromRequest(request, id, existing);
@@ -69,6 +75,7 @@ public class OcgConfigWebServiceImpl implements OcgConfigWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public void delete(String id) {
         var config = load(id);
         if (config.sandboxId != null && !config.sandboxId.isBlank()) {
@@ -78,24 +85,28 @@ public class OcgConfigWebServiceImpl implements OcgConfigWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public OcgConfigResponse start(String id) {
         ocgSandboxService.startSandbox(id);
         return configResponse(load(id));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public OcgConfigResponse stop(String id) {
         ocgSandboxService.stopSandbox(id);
         return configResponse(load(id));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public OcgConfigResponse restart(String id) {
         ocgSandboxService.restartGateway(id);
         return configResponse(load(id));
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_MANAGE)
     public OcgCommandResponse command(String id, OcgCommandRequest request) {
         ocgSandboxService.runTerminalCommand(id, request.command);
         var response = new OcgCommandResponse();
@@ -104,6 +115,7 @@ public class OcgConfigWebServiceImpl implements OcgConfigWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public OcgLogsResponse logs(String id, OcgLogsRequest request) {
         var config = load(id);
         var type = request.type != null ? request.type : "gateway";
@@ -114,6 +126,7 @@ public class OcgConfigWebServiceImpl implements OcgConfigWebService {
     }
 
     @Override
+    @PermissionsRequired(PermissionCodes.TRIGGER_VIEW)
     public OcgStatusResponse status(String id) {
         var config = load(id);
         var response = new OcgStatusResponse();
