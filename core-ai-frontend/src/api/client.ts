@@ -2887,7 +2887,7 @@ export interface ListCostAlertEventsResponse {
   events: CostAlertEventView[];
 }
 
-export type OcgSandboxStatus = 'stopped' | 'running' | 'error';
+export type OcgSandboxStatus = 'stopped' | 'starting' | 'running' | 'error';
 
 export interface OcgConfigView {
   id: string;

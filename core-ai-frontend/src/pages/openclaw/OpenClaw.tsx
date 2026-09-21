@@ -35,6 +35,7 @@ function emptyEditor(): EditorState {
 
 function statusColor(status: OcgSandboxStatus) {
   if (status === 'running') return { background: '#dcfce7', color: '#15803d' };
+  if (status === 'starting') return { background: '#fef2cd', color: '#946800' };
   if (status === 'error') return { background: '#fee2e2', color: '#b91c1c' };
   return { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' };
 }
@@ -296,6 +297,7 @@ export default function OpenClaw() {
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={statusColor(config.sandboxStatus)}>
                       {config.sandboxStatus === 'running' && <CheckCircle2 size={12} />}
+                      {config.sandboxStatus === 'starting' && <RotateCw size={12} className="animate-spin" />}
                       {config.sandboxStatus}
                     </span>
                   </td>
@@ -303,7 +305,7 @@ export default function OpenClaw() {
                     {formatDate(config.updatedAt)}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {config.sandboxStatus === 'running' ? (
+                    {(config.sandboxStatus === 'running' || config.sandboxStatus === 'starting') ? (
                       <button onClick={() => stop(config)} disabled={busyId === config.id}
                         className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1 disabled:opacity-40"
                         style={{ borderColor: 'var(--color-border)' }} title="Stop">

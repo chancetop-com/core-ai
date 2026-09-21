@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -35,6 +36,7 @@ public class OcgSandboxService {
     private static final int DEFAULT_CALLBACK_PORT = 3457;
     private static final int MILLIS_PER_SECOND = 1_000;
     private static final int GATEWAY_START_WAIT_SECONDS = 30;
+    private static final int STARTING_GRACE_SECONDS = 120;
     private static final Set<String> GATEWAY_CONFIG_KEYS = Set.of("agentUrl", "model", "apiKey", "verbose", "async", "callbackHost", "callbackPort", "callbackPublicHost", "callbackPublicPort", "callbackSecret", "callbackTokenTTL", "channels", "plugins");
 
     @Inject
@@ -98,7 +100,7 @@ public class OcgSandboxService {
     public String getStatus(String ocgConfigId) {
         var config = loadConfig(ocgConfigId);
         if (config.sandboxId == null || config.sandboxId.isBlank()) return "stopped";
-        var sandbox = sandboxService.getSandbox(sandboxSessionId(config.id));
+        var sandbox = resolveSandbox(config);
         if (sandbox == null) return "error";
         var status = sandbox.getStatus();
         if (status == SandboxStatus.TERMINATED || status == SandboxStatus.ERROR) return "error";
@@ -106,9 +108,36 @@ public class OcgSandboxService {
             runCommand(sandbox, ocgProcessCheckCommand(), 15);
             return "running";
         } catch (RuntimeException e) {
+            if (withinStartupGrace(config)) return "starting";
             LOGGER.warn("OCG status check failed, id={}, sandboxId={}: {}", config.id, config.sandboxId, e.getMessage());
             return "error";
         }
+    }
+
+    // A sandbox is tracked only by the replica that created or attached it: attach before reporting a
+    // state, and replace an entry left behind by an earlier sandbox of this config (different id).
+    private Sandbox resolveSandbox(OcgConfigView config) {
+        var sessionId = sandboxSessionId(config.id);
+        var local = sandboxService.getSandbox(sessionId);
+        if (local != null && config.sandboxId.equals(local.getId())
+                && local.getStatus() != SandboxStatus.TERMINATED && local.getStatus() != SandboxStatus.ERROR) {
+            return local;
+        }
+        try {
+            var attached = sandboxService.attachSandbox(config.sandboxId, buildSandboxConfig(), sessionId, "system", true);
+            if (attached != null) {
+                LOGGER.info("OCG sandbox attached on demand, id={}, sandboxId={}", config.id, config.sandboxId);
+                return attached;
+            }
+        } catch (RuntimeException e) {
+            LOGGER.warn("OCG sandbox attach failed, id={}, sandboxId={}: {}", config.id, config.sandboxId, e.getMessage());
+        }
+        return local;
+    }
+
+    private boolean withinStartupGrace(OcgConfigView config) {
+        var updatedAt = config.updatedAt;
+        return updatedAt != null && ChronoUnit.SECONDS.between(updatedAt, ZonedDateTime.now()) < STARTING_GRACE_SECONDS;
     }
 
     public void restartGateway(String ocgConfigId) {
@@ -187,20 +216,15 @@ public class OcgSandboxService {
     public void healthCheck() {
         RuntimeException failure = null;
         for (var config : ocgConfigStore.allWithSandbox()) {
-            var sessionId = sandboxSessionId(config.id);
-            var sandbox = sandboxService.getSandbox(sessionId);
+            var sandbox = resolveSandbox(config);
             if (sandbox == null) {
-                LOGGER.warn("OCG sandbox is not attached, attempting attach, id={}, sandboxId={}", config.id, config.sandboxId);
-                sandbox = sandboxService.attachSandbox(config.sandboxId, buildSandboxConfig(), sessionId, "system", true);
-                if (sandbox == null) {
-                    var error = new RuntimeException("OCG sandbox attach failed: id=" + config.id + ", sandboxId=" + config.sandboxId);
-                    LOGGER.warn("OCG sandbox attach failed, id={}, sandboxId={}", config.id, config.sandboxId);
-                    failure = error;
-                    continue;
-                }
+                var error = new RuntimeException("OCG sandbox attach failed: id=" + config.id + ", sandboxId=" + config.sandboxId);
+                LOGGER.warn("OCG sandbox attach failed, id={}, sandboxId={}", config.id, config.sandboxId);
+                failure = error;
+                continue;
             }
             try {
-                sandboxService.renewSandbox(sessionId);
+                sandboxService.renewSandbox(sandboxSessionId(config.id));
                 recoverGatewayProcess(config, sandbox);
             } catch (RuntimeException e) {
                 LOGGER.warn("OCG health check failed, id={}, sandboxId={}: {}", config.id, config.sandboxId, truncate(e.getMessage(), 1_000), e);
@@ -315,11 +339,6 @@ public class OcgSandboxService {
         var merged = new LinkedHashMap<>(existing);
         var existingChannels = existing.get("channels") instanceof Map<?, ?> value ? (Map<String, Object>) value : Map.<String, Object>of();
         var desiredChannels = desired.get("channels") instanceof Map<?, ?> value ? (Map<String, Object>) value : Map.<String, Object>of();
-        if (!existingChannels.isEmpty() || !desiredChannels.isEmpty()) {
-            var channels = new LinkedHashMap<>(existingChannels);
-            channels.putAll(desiredChannels);
-            merged.put("channels", channels);
-        }
         merged.putAll(desired);
         if (!existingChannels.isEmpty() || !desiredChannels.isEmpty()) {
             var channels = new LinkedHashMap<>(existingChannels);
@@ -388,7 +407,7 @@ public class OcgSandboxService {
     private Sandbox requireSandbox(String ocgConfigId) {
         var config = loadConfig(ocgConfigId);
         if (config.sandboxId == null || config.sandboxId.isBlank()) throw new BadRequestException("OCG sandbox is stopped: " + ocgConfigId);
-        var sandbox = sandboxService.getSandbox(sandboxSessionId(config.id));
+        var sandbox = resolveSandbox(config);
         if (sandbox == null) throw new BadRequestException("OCG sandbox is not attached: " + ocgConfigId);
         var status = sandbox.getStatus();
         if (status == SandboxStatus.TERMINATED || status == SandboxStatus.ERROR) throw new BadRequestException("OCG sandbox is not ready: " + status);
