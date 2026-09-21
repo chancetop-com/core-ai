@@ -13,8 +13,6 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,6 +21,18 @@ import java.util.UUID;
  */
 public class AgentSandboxProvider implements SandboxProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSandboxProvider.class);
+    private static final int DEFAULT_LIFETIME_SECONDS = 3600;
+
+    /**
+     * Lifetime written as the sandbox deadline (K8s {@code shutdownTime}) when the agent config does
+     * not set one. Acquire and renew have to agree on this value — a shorter renewal would retire a
+     * sandbox that is still in use.
+     */
+    static int lifetimeSeconds(SandboxConfig config) {
+        return config != null && config.timeoutSeconds != null && config.timeoutSeconds > 0
+                ? config.timeoutSeconds
+                : DEFAULT_LIFETIME_SECONDS;
+    }
 
     private final AgentSandboxClient client;
     private final AgentSandboxExtensionsClient extensionsClient;
@@ -44,10 +54,14 @@ public class AgentSandboxProvider implements SandboxProvider {
         this.cleanupService = new AgentSandboxCleanupService(client, extensionsClient, kubernetesClient);
     }
 
-    private boolean useWarmPool() {
+    private boolean warmPoolConfigured() {
         return extensionsClient != null && templateName != null && !templateName.isBlank();
     }
 
+    // A SandboxClaim only carries template + warm pool + lifecycle, so config that changes how the
+    // sandbox itself is built (image, env) has to be created directly. Resource sizing stays owned by
+    // the warm pool template — treating a configured limit as "custom" would route every session away
+    // from the pool.
     private boolean hasCustomConfig(SandboxConfig config) {
         if (config == null) return false;
         if (config.image != null && !SandboxConstants.DEFAULT_IMAGE.equals(config.image)) return true;
@@ -57,7 +71,7 @@ public class AgentSandboxProvider implements SandboxProvider {
 
     @Override
     public Sandbox acquire(SandboxConfig config, String sessionId, String userId) {
-        if (useWarmPool() && !hasCustomConfig(config)) {
+        if (warmPoolConfigured() && !hasCustomConfig(config)) {
             return acquireFromWarmPool(config, sessionId, userId);
         }
         return acquireDirect(config, sessionId, userId);
@@ -69,21 +83,19 @@ public class AgentSandboxProvider implements SandboxProvider {
     private Sandbox acquireFromWarmPool(SandboxConfig config, String sessionId, String userId) {
         var effectiveConfig = config != null ? config : defaultConfig;
         effectiveConfig.validate();
+        var lifetime = lifetimeSeconds(effectiveConfig);
 
         var claimName = "claim-" + UUID.randomUUID().toString().substring(0, 8);
         LOGGER.info("creating SandboxClaim from warm pool: name={}, template={}, pool={}, sessionId={}",
                 claimName, templateName, warmPoolName, sessionId);
 
-        var claimManifest = buildClaimManifest(claimName, effectiveConfig, sessionId, userId);
+        var claimManifest = new SandboxClaimSpecBuilder(claimName, templateName, warmPoolName,
+                new SandboxClaimSpecBuilder.Owner(sessionId, userId), lifetime).build();
         var claimJson = JSON.toJSON(claimManifest);
         extensionsClient.createClaim(claimJson);
 
         // Warm pool should assign a pre-warmed sandbox almost instantly
         var claim = extensionsClient.waitForReady(claimName, 60_000);
-
-        var timeoutSeconds = effectiveConfig.timeoutSeconds != null
-                ? effectiveConfig.timeoutSeconds
-                : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
 
         // Resolve connectivity from claim status
         String host;
@@ -100,15 +112,16 @@ public class AgentSandboxProvider implements SandboxProvider {
 
         // For local dev, create NodePort service
         if (useHostPort && kubernetesClient != null) {
-            return acquireClaimWithNodePort(claim, claimName, timeoutSeconds, effectiveConfig.image);
+            return acquireClaimWithNodePort(claim, claimName, lifetime, effectiveConfig.image);
         }
 
-        var sandbox = new AgentSandbox(new AgentSandbox.Config(claimName, null, host, port, timeoutSeconds, effectiveConfig.image, claim.status.sandbox.name));
+        var sandbox = new AgentSandbox(new AgentSandbox.Config(claimName, null, host, port, lifetime, effectiveConfig.image,
+                claim.status.sandbox.name, AgentSandboxKind.CLAIM));
         sandbox.waitForReady();
         return sandbox;
     }
 
-    private Sandbox acquireClaimWithNodePort(AgentSandboxExtensionsClient.SandboxClaim claim, String claimName, int timeoutSeconds, String image) {
+    private Sandbox acquireClaimWithNodePort(AgentSandboxExtensionsClient.SandboxClaim claim, String claimName, int lifetimeSeconds, String image) {
         var serviceName = "svc-" + claimName;
         try {
             // The assigned sandbox name can be used to find the pod
@@ -125,7 +138,8 @@ public class AgentSandboxProvider implements SandboxProvider {
             var serviceInfo = kubernetesClient.createNodePortServiceBySelector(serviceName, selector, SandboxConstants.RUNTIME_PORT);
             var nodePort = serviceInfo.spec.ports[0].nodePort;
             LOGGER.info("created NodePort service for sandbox claim: {} -> localhost:{}", serviceName, nodePort);
-            var sandbox = new AgentSandbox(new AgentSandbox.Config(claimName, serviceName, "localhost", nodePort, timeoutSeconds, image, sandboxName));
+            var sandbox = new AgentSandbox(new AgentSandbox.Config(claimName, serviceName, "localhost", nodePort, lifetimeSeconds, image,
+                    sandboxName, AgentSandboxKind.CLAIM));
             sandbox.waitForReady();
             return sandbox;
         } catch (Exception e) {
@@ -135,42 +149,14 @@ public class AgentSandboxProvider implements SandboxProvider {
         }
     }
 
-    private Map<String, Object> buildClaimManifest(String claimName, SandboxConfig config, String sessionId, String userId) {
-        var cr = new LinkedHashMap<String, Object>();
-        cr.put("apiVersion", "extensions.agents.x-k8s.io/v1alpha1");
-        cr.put("kind", "SandboxClaim");
-
-        var metadata = new LinkedHashMap<String, Object>();
-        metadata.put("name", claimName);
-        metadata.put("labels", Map.of(
-                "app.kubernetes.io/managed-by", "core-ai",
-                "core-ai/component", "sandbox",
-                "core-ai/session-id", sanitizeLabel(sessionId != null ? sessionId : "unknown"),
-                "core-ai/user-id", sanitizeLabel(userId != null ? userId : "unknown")
-        ));
-        cr.put("metadata", metadata);
-
-        var spec = new LinkedHashMap<String, Object>();
-        spec.put("sandboxTemplateRef", Map.of("name", templateName));
-        spec.put("warmpool", warmPoolName);
-
-        var timeout = config.timeoutSeconds != null ? config.timeoutSeconds : 3600;
-        var lifecycle = new LinkedHashMap<String, Object>();
-        lifecycle.put("shutdownPolicy", "Delete");
-        lifecycle.put("shutdownTime", Instant.now().plus(timeout, ChronoUnit.SECONDS).toString());
-        spec.put("lifecycle", lifecycle);
-
-        cr.put("spec", spec);
-        return cr;
-    }
-
     // --- Direct mode: create Sandbox CR ---
 
     private Sandbox acquireDirect(SandboxConfig config, String sessionId, String userId) {
         var effectiveConfig = config != null ? config : defaultConfig;
         effectiveConfig.validate();
+        var lifetime = lifetimeSeconds(effectiveConfig);
 
-        var specBuilder = new SandboxCRSpecBuilder(effectiveConfig, sessionId, userId);
+        var specBuilder = new SandboxCRSpecBuilder(effectiveConfig, sessionId, userId, lifetime);
         var crName = specBuilder.sandboxName();
 
         LOGGER.info("creating agent sandbox CR: name={}, sessionId={}", crName, sessionId);
@@ -182,12 +168,8 @@ public class AgentSandboxProvider implements SandboxProvider {
         var cr = client.waitForReady(crName, 120_000);
         waitForSandboxPodReady(cr);
 
-        var timeoutSeconds = effectiveConfig.timeoutSeconds != null
-                ? effectiveConfig.timeoutSeconds
-                : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
-
         if (useHostPort && kubernetesClient != null) {
-            return acquireWithNodePort(cr, crName, timeoutSeconds, effectiveConfig.image);
+            return acquireWithNodePort(cr, crName, lifetime, effectiveConfig.image);
         }
 
         String host;
@@ -202,7 +184,8 @@ public class AgentSandboxProvider implements SandboxProvider {
         }
 
         LOGGER.info("agent sandbox ready: name={}, host={}, port={}", crName, host, port);
-        var sandbox = new AgentSandbox(new AgentSandbox.Config(crName, null, host, port, timeoutSeconds, effectiveConfig.image, null));
+        var sandbox = new AgentSandbox(new AgentSandbox.Config(crName, null, host, port, lifetime, effectiveConfig.image, null,
+                AgentSandboxKind.DIRECT));
         sandbox.waitForReady();
         return sandbox;
     }
@@ -219,7 +202,7 @@ public class AgentSandboxProvider implements SandboxProvider {
         }
     }
 
-    private Sandbox acquireWithNodePort(AgentSandboxClient.SandboxCR cr, String crName, int timeoutSeconds, String image) {
+    private Sandbox acquireWithNodePort(AgentSandboxClient.SandboxCR cr, String crName, int lifetimeSeconds, String image) {
         var serviceName = "svc-" + crName;
         try {
             var selectorLabel = cr.status.selector;
@@ -229,7 +212,8 @@ public class AgentSandboxProvider implements SandboxProvider {
             var serviceInfo = kubernetesClient.createNodePortServiceBySelector(serviceName, selectorLabel, SandboxConstants.RUNTIME_PORT);
             var nodePort = serviceInfo.spec.ports[0].nodePort;
             LOGGER.info("created NodePort service for agent sandbox: {} -> localhost:{}", serviceName, nodePort);
-            var sandbox = new AgentSandbox(new AgentSandbox.Config(crName, serviceName, "localhost", nodePort, timeoutSeconds, image, null));
+            var sandbox = new AgentSandbox(new AgentSandbox.Config(crName, serviceName, "localhost", nodePort, lifetimeSeconds, image, null,
+                    AgentSandboxKind.DIRECT));
             sandbox.waitForReady();
             return sandbox;
         } catch (Exception e) {
@@ -244,14 +228,23 @@ public class AgentSandboxProvider implements SandboxProvider {
     @Override
     public Optional<Sandbox> attach(String sandboxId, SandboxConfig config, String sessionId, String userId) {
         var effectiveConfig = config != null ? config : defaultConfig;
-        var timeoutSeconds = effectiveConfig.timeoutSeconds != null
-                ? effectiveConfig.timeoutSeconds
-                : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
-        if (useWarmPool()) return attachClaim(sandboxId, timeoutSeconds, effectiveConfig.image);
-        return attachDirect(sandboxId, timeoutSeconds, effectiveConfig.image);
+        var lifetime = lifetimeSeconds(effectiveConfig);
+        var kind = AgentSandboxKind.fromId(sandboxId);
+        var attached = attach(kind, sandboxId, lifetime, effectiveConfig.image);
+        if (attached.isPresent()) return attached;
+        // A stored sandbox id outlives provider reconfiguration (e.g. the warm pool was switched off),
+        // so try the other provisioning mode before reporting the sandbox as gone.
+        return attach(kind.other(), sandboxId, lifetime, effectiveConfig.image);
     }
 
-    private Optional<Sandbox> attachClaim(String claimName, int timeoutSeconds, String image) {
+    private Optional<Sandbox> attach(AgentSandboxKind kind, String sandboxId, int lifetimeSeconds, String image) {
+        return kind == AgentSandboxKind.CLAIM
+                ? attachClaim(sandboxId, lifetimeSeconds, image)
+                : attachDirect(sandboxId, lifetimeSeconds, image);
+    }
+
+    private Optional<Sandbox> attachClaim(String claimName, int lifetimeSeconds, String image) {
+        if (extensionsClient == null) return Optional.empty();
         var claimOpt = extensionsClient.getClaim(claimName);
         if (claimOpt.isEmpty()) return Optional.empty();
         var claim = claimOpt.get();
@@ -271,11 +264,12 @@ public class AgentSandboxProvider implements SandboxProvider {
         } else {
             return Optional.empty();
         }
-        var sandbox = new AgentSandbox(new AgentSandbox.Config(claimName, serviceName, host, port, timeoutSeconds, image, sandboxName));
+        var sandbox = new AgentSandbox(new AgentSandbox.Config(claimName, serviceName, host, port, lifetimeSeconds, image, sandboxName,
+                AgentSandboxKind.CLAIM));
         return Optional.of(sandbox);
     }
 
-    private Optional<Sandbox> attachDirect(String crName, int timeoutSeconds, String image) {
+    private Optional<Sandbox> attachDirect(String crName, int lifetimeSeconds, String image) {
         var crOpt = client.getSandbox(crName);
         if (crOpt.isEmpty()) return Optional.empty();
         var cr = crOpt.get();
@@ -296,7 +290,8 @@ public class AgentSandboxProvider implements SandboxProvider {
         } else {
             return Optional.empty();
         }
-        var sandbox = new AgentSandbox(new AgentSandbox.Config(crName, serviceName, host, port, timeoutSeconds, image, null));
+        var sandbox = new AgentSandbox(new AgentSandbox.Config(crName, serviceName, host, port, lifetimeSeconds, image, null,
+                AgentSandboxKind.DIRECT));
         return Optional.of(sandbox);
     }
 
@@ -314,15 +309,22 @@ public class AgentSandboxProvider implements SandboxProvider {
     @Override
     public void release(Sandbox sandbox) {
         if (sandbox == null) return;
-        var agentSandbox = (AgentSandbox) sandbox;
+        if (!(sandbox instanceof AgentSandbox agentSandbox)) {
+            sandbox.close();
+            return;
+        }
         var id = sandbox.getId();
-        LOGGER.info("releasing agent sandbox: name={}", id);
+        LOGGER.info("releasing agent sandbox: kind={}, name={}", agentSandbox.kind(), id);
         try {
             if (kubernetesClient != null && agentSandbox.serviceName() != null) {
                 kubernetesClient.deleteService(agentSandbox.serviceName());
             }
-            if (useWarmPool()) {
-                extensionsClient.deleteClaim(id);
+            if (agentSandbox.kind() == AgentSandboxKind.CLAIM) {
+                if (extensionsClient != null) {
+                    extensionsClient.deleteClaim(id);
+                } else {
+                    LOGGER.warn("no extensions client configured, sandbox claim left to expire: name={}", id);
+                }
             } else {
                 client.deleteSandbox(id);
             }
@@ -334,12 +336,16 @@ public class AgentSandboxProvider implements SandboxProvider {
     }
 
     @Override
-    public void renew(Sandbox sandbox, int timeoutSeconds) {
-        if (sandbox == null) return;
+    public void renew(Sandbox sandbox, SandboxConfig config) {
+        if (!(sandbox instanceof AgentSandbox agentSandbox)) return;
         var id = sandbox.getId();
-        var shutdownTime = Instant.now().plus(timeoutSeconds, ChronoUnit.SECONDS).toString();
+        var shutdownTime = Instant.now().plus(lifetimeSeconds(config), ChronoUnit.SECONDS).toString();
         try {
-            if (useWarmPool()) {
+            if (agentSandbox.kind() == AgentSandboxKind.CLAIM) {
+                if (extensionsClient == null) {
+                    LOGGER.warn("no extensions client configured, cannot renew sandbox claim: name={}", id);
+                    return;
+                }
                 extensionsClient.patchShutdownTime(id, shutdownTime);
             } else {
                 client.patchShutdownTime(id, shutdownTime);
@@ -354,18 +360,21 @@ public class AgentSandboxProvider implements SandboxProvider {
     @Override
     public SandboxStatus getStatus(Sandbox sandbox) {
         if (sandbox == null) return SandboxStatus.TERMINATED;
+        if (!(sandbox instanceof AgentSandbox agentSandbox)) return sandbox.getStatus();
         try {
-            if (useWarmPool()) {
-                return getClaimStatus(sandbox);
-            }
-            return getDirectStatus(sandbox);
+            return agentSandbox.kind() == AgentSandboxKind.CLAIM ? getClaimStatus(agentSandbox) : getDirectStatus(agentSandbox);
         } catch (Exception e) {
             LOGGER.warn("failed to get agent sandbox status: name={}", sandbox.getId(), e);
             return sandbox.getStatus();
         }
     }
 
-    private SandboxStatus getClaimStatus(Sandbox sandbox) {
+    private SandboxStatus getClaimStatus(AgentSandbox sandbox) {
+        if (extensionsClient == null) {
+            // Cannot verify: reporting a terminal state here would destroy a sandbox that is still alive.
+            LOGGER.warn("no extensions client configured, keeping local sandbox status: name={}", sandbox.getId());
+            return sandbox.getStatus();
+        }
         var opt = extensionsClient.getClaim(sandbox.getId());
         if (opt.isEmpty()) return SandboxStatus.TERMINATED;
         var claim = opt.get();
@@ -386,7 +395,7 @@ public class AgentSandboxProvider implements SandboxProvider {
         return SandboxStatus.CREATING;
     }
 
-    private SandboxStatus getDirectStatus(Sandbox sandbox) {
+    private SandboxStatus getDirectStatus(AgentSandbox sandbox) {
         var opt = client.getSandbox(sandbox.getId());
         if (opt.isEmpty()) return SandboxStatus.TERMINATED;
         var cr = opt.get();
@@ -411,13 +420,5 @@ public class AgentSandboxProvider implements SandboxProvider {
 
     public void cleanupExpiredSandboxes(int maxLifetimeSeconds) {
         cleanupService.cleanupExpiredSandboxes(maxLifetimeSeconds);
-    }
-
-    private String sanitizeLabel(String value) {
-        var sanitized = value.replaceAll("[^A-Za-z0-9_.\\-]", "_");
-        if (sanitized.length() > 63) sanitized = sanitized.substring(0, 63);
-        sanitized = sanitized.replaceAll("^[^A-Za-z0-9]+", "");
-        sanitized = sanitized.replaceAll("[^A-Za-z0-9]+$", "");
-        return sanitized.isEmpty() ? "unknown" : sanitized;
     }
 }

@@ -193,10 +193,22 @@ server /api/sandbox-hub/*（仅此路径接受 cst_）
 
 **解决方案（按活动续期，已实现）**：
 
-- `SandboxProvider` 增加 `renew(sandbox, timeoutSeconds)` 默认空实现；`AgentSandboxProvider` 重写为 PATCH（JSON merge-patch）`SandboxClaim.spec.lifecycle.shutdownTime`（warm pool）或 `Sandbox.spec.shutdownTime`（direct）`= now + timeout`。
-- `SandboxManager.renew` 在更新内存 `createdAt` 的同时调用 `provider.renew`，让续期真正作用到 K8s。续期为 best-effort：失败仅告警，下条消息重试。
+- `SandboxProvider.renew(sandbox, config)` 默认空实现；`AgentSandboxProvider` 按**沙箱自身的 provisioning mode** PATCH（JSON merge-patch）`SandboxClaim.spec.lifecycle.shutdownTime`（claim）或 `Sandbox.spec.shutdownTime`（direct CR）`= now + lifetimeSeconds(config)`。寿命解析只有一处（`AgentSandboxProvider.lifetimeSeconds`，未配置时 3600s），获取与续期写同一个值 —— 续期永远不会写出比获取时更短的截止时间。
+- `SandboxManager.renew` 在更新内存 `createdAt` 的同时调用 `provider.renew`（传获取时的 config），让续期真正作用到 K8s。续期为 best-effort：失败仅告警，下条消息重试。
 - 机制 ③ 的清理判定从 `creationTimestamp + maxLifetime` 改为优先按 claim/CR 上的 `shutdownTime`（无则回退创建时间），与续期后的截止时间及 K8s 原生 lifecycle 对齐。
 - 效果：活跃会话沙箱不再被中途删除；只有真正空闲超时的沙箱才被回收。
+
+**⚠️ 2026-09-21 修正（UAT 沙箱暴涨根因，本次彻底修复）**：provisioning mode 是**每次 acquire** 决定的（claim 只能带 template/warm pool/lifecycle，所以配了自定义 image/env 的 agent 走 direct CR），但 `getStatus` / `release` / `renew` / `attach` 原先都按 **provider 级** `useWarmPool()` 分支，导致 direct CR 被当成 claim 操作：
+
+| 方法 | 旧行为（direct CR + 已配 template） | 后果 |
+|------|--------------------------------------|------|
+| `getStatus` | 查 `sandboxclaims/<CR名>` → 404 → `TERMINATED`（CR 实际 `Ready=True`） | 每次空闲 >30s 后的工具调用都判定要替换 → 新建 pod（UAT 实测 11 个 CR 与工具调用时间戳 1:1 对齐，单会话峰值 ≈6Gi/1.2vCPU） |
+| `release` | `deleteClaim(CR名)` → 404 被静默容忍 | 旧 CR 删不掉 → 孤儿存活到自身 1h TTL |
+| `renew` | PATCH 打到 claim 上 → 404 return | CR 寿命永不续期（长会话 1h 必失沙箱） |
+| `attach` | 先 `getClaim(id)` → 404 → empty | 重启/重建后 direct 沙箱挂不回来（终端地址解析同理失效） |
+
+修复：把 mode 放到**实例**上 —— 新增 `AgentSandboxKind`（`CLAIM`/`DIRECT`），`AgentSandbox.Config` 携带、由 acquire/attach 写入，所有 per-sandbox 操作按 `sandbox.kind()` 分派；`attach` 先按 id 形状（`claim-` 前缀）判定主模式，未命中再回退另一种模式（兼容 provider 配置变更后遗留的绑定）。配套：`SandboxService` 覆盖会话沙箱条目时释放旧实例（另一处孤儿来源）、claim 路径缺 extensions client 时不再谎报终态。
+
 - 注意：`renew` 由 `touchActivity` 在每条用户消息时同步触发一次 K8s PATCH，后续可考虑节流或异步化以降低消息处理延迟。
 
 ### 8.2 缺少失效感知（watch/reconcile）

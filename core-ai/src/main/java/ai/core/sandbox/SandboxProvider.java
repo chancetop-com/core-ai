@@ -15,7 +15,12 @@ public interface SandboxProvider {
 
     void release(Sandbox sandbox);
 
-    default void renew(Sandbox sandbox, int timeoutSeconds) {
+    /**
+     * Extends the provider-side lifetime of an acquired sandbox. The config is what the sandbox was
+     * acquired with, so the provider can resolve the same lifetime it wrote at acquisition — never a
+     * shorter one, which would retire a sandbox that is still in use.
+     */
+    default void renew(Sandbox sandbox, SandboxConfig config) {
     }
 
     SandboxStatus getStatus(Sandbox sandbox);

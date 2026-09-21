@@ -150,7 +150,7 @@ public class SandboxManager {
                 : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
         // Also extend the externally-tracked deadline (e.g. K8s shutdownTime), otherwise the in-memory
         // renewal is defeated by the provider/K8s deleting the sandbox at its original deadline.
-        provider.renew(entry.sandbox, timeout);
+        provider.renew(entry.sandbox, entry.config);
         LOGGER.debug("sandbox renewed: id={}, sessionId={}, timeout={}s", sandboxId, entry.sessionId, timeout);
     }
 
@@ -177,7 +177,7 @@ public class SandboxManager {
         }
 
         entry.lastProviderRenewAt = now;
-        provider.renew(entry.sandbox, timeout);
+        provider.renew(entry.sandbox, entry.config);
         LOGGER.debug("sandbox touched (provider): id={}, sessionId={}, timeout={}s", sandboxId, entry.sessionId, timeout);
     }
 

@@ -25,6 +25,7 @@ public class AgentSandbox implements Sandbox {
     private final String serviceName;
     private final String image;
     private final String podName;
+    private final AgentSandboxKind kind;
     private final SandboxClient runtimeClient;
     private volatile SandboxStatus status = SandboxStatus.READY;
     private final Instant createdAt;
@@ -34,6 +35,7 @@ public class AgentSandbox implements Sandbox {
         this.serviceName = config.serviceName;
         this.image = config.image;
         this.podName = config.podName;
+        this.kind = config.kind;
         // Use per-request timeout for HTTP calls, not the sandbox container TTL.
         // The container TTL (config.timeoutSeconds) controls K8s shutdownTime;
         // HTTP requests should not be bounded by the container lifetime.
@@ -43,6 +45,10 @@ public class AgentSandbox implements Sandbox {
 
     public String serviceName() {
         return serviceName;
+    }
+
+    public AgentSandboxKind kind() {
+        return kind;
     }
 
     public void waitForReady() {
@@ -166,5 +172,6 @@ public class AgentSandbox implements Sandbox {
         return false;
     }
 
-    public record Config(String crName, String serviceName, String host, int port, int timeoutSeconds, String image, String podName) { }
+    public record Config(String crName, String serviceName, String host, int port, int timeoutSeconds, String image, String podName,
+                         AgentSandboxKind kind) { }
 }

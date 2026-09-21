@@ -2,12 +2,10 @@ package ai.core.server.sandbox;
 
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConfig;
-import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxProvider;
 import org.junit.jupiter.api.Test;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
@@ -20,7 +18,7 @@ import static org.mockito.Mockito.when;
  */
 class SandboxManagerTest {
     @Test
-    void renewExtendsProviderLifetimeWithConfiguredTimeout() {
+    void renewPassesAcquisitionConfigToProvider() {
         var provider = mock(SandboxProvider.class);
         var sandbox = mock(Sandbox.class);
         when(sandbox.getId()).thenReturn("claim-1");
@@ -33,12 +31,14 @@ class SandboxManagerTest {
         manager.acquire(config, "s1", "u1");
         manager.renew("claim-1");
 
-        // renew must propagate to the provider so the externally-tracked deadline is extended
-        verify(provider).renew(same(sandbox), eq(1200));
+        // renew must propagate to the provider so the externally-tracked deadline is extended,
+        // with the config the sandbox was acquired with — the provider resolves the lifetime so
+        // a renewal can never write a deadline shorter than the one written at acquisition
+        verify(provider).renew(same(sandbox), same(config));
     }
 
     @Test
-    void renewFallsBackToDefaultTimeoutWhenUnset() {
+    void renewDelegatesEvenWhenConfiguredTimeoutIsUnset() {
         var provider = mock(SandboxProvider.class);
         var sandbox = mock(Sandbox.class);
         when(sandbox.getId()).thenReturn("claim-2");
@@ -51,7 +51,7 @@ class SandboxManagerTest {
         manager.acquire(config, "s2", "u2");
         manager.renew("claim-2");
 
-        verify(provider).renew(same(sandbox), eq(SandboxConstants.DEFAULT_TIMEOUT_SECONDS));
+        verify(provider).renew(same(sandbox), same(config));
     }
 
     @Test
@@ -61,6 +61,6 @@ class SandboxManagerTest {
 
         manager.renew("missing");
 
-        verify(provider, never()).renew(any(), anyInt());
+        verify(provider, never()).renew(any(), any());
     }
 }

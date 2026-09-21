@@ -19,6 +19,7 @@ import redis.clients.jedis.JedisPool;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
@@ -166,9 +167,33 @@ public class SandboxService {
         }
         var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, new LazySandbox.SessionIdentity(sessionId, userId),
                 outcome -> onSandboxReady(sessionId, userId, outcome), snapshot);
-        sessionSandboxes.put(sessionId, lazySandbox);
+        installSandbox(sessionId, lazySandbox);
         LOGGER.info("sandbox created for session: {}, config={}", sessionId, effectiveConfig);
         return lazySandbox;
+    }
+
+    // Registers the sandbox as the session's current one. Replacing a live sandbox (session rebuild,
+    // re-created ffmpeg lease) must release the previous instance instead of orphaning it.
+    private void installSandbox(String sessionId, Sandbox sandbox) {
+        var previous = sessionSandboxes.put(sessionId, sandbox);
+        if (previous == null || Objects.equals(previous.getId(), sandbox.getId())) return;
+        LOGGER.warn("replacing sandbox for session: {}, previous={}, replacement={}",
+                sessionId, previous.getId(), sandbox.getId());
+        sessionMcpProcesses.stopAll(sessionId, previous);
+        closeSandbox(previous);
+    }
+
+    /** Releases a sandbox instance regardless of whether it is still lazy (never acquired / tracked). */
+    private void closeSandbox(Sandbox sandbox) {
+        try {
+            if (sandbox instanceof LazySandbox) {
+                sandbox.close();
+            } else {
+                sandboxManager.release(sandbox);
+            }
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to release replaced sandbox: id={}", sandbox.getId(), e);
+        }
     }
 
     public void addStagedFile(String sessionId, StagedFile file) {
@@ -198,7 +223,7 @@ public class SandboxService {
         if (!enabled) return null;
         var attached = sandboxManager.attach(sandboxId, config, sessionId, userId);
         if (attached.isEmpty()) return null;
-        sessionSandboxes.put(sessionId, attached.get());
+        installSandbox(sessionId, attached.get());
         if (persistent) persistentSessionIds.add(sessionId);
         storeSandboxBinding(sessionId);
         return attached.get();
@@ -229,11 +254,7 @@ public class SandboxService {
         deleteSandboxBinding(sessionId);
         unbindSandboxHub(sessionId, sandbox);
         if (sandbox != null) {
-            if (sandbox instanceof LazySandbox) {
-                sandbox.close();
-            } else {
-                sandboxManager.release(sandbox);
-            }
+            closeSandbox(sandbox);
             LOGGER.info("sandbox released for session: {}", sessionId);
         }
     }
@@ -367,7 +388,7 @@ public class SandboxService {
         var lazy = new LazySandbox(sandbox, effectiveConfig, sandboxManager, new LazySandbox.SandboxContext(
                 eventDispatcher, new LazySandbox.SessionIdentity(sessionId, userId),
                 outcome -> onSandboxReady(sessionId, userId, outcome), snapshotService, snapshotEpoch));
-        sessionSandboxes.put(sessionId, lazy);
+        installSandbox(sessionId, lazy);
         storeSandboxBinding(sessionId);
         bindSandboxHub(sessionId, userId, lazy);
         LOGGER.info("reattached to existing sandbox, sessionId={}, sandboxId={}", sessionId, sandbox.getId());

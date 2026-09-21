@@ -25,7 +25,7 @@ class SandboxGitEnvTest {
 
     @Test
     void sandboxCrSpecIncludesFailFastGitEnv() {
-        var cr = new SandboxCRSpecBuilder(SandboxConfig.enabled(), "session-1", "user-1").build();
+        var cr = new SandboxCRSpecBuilder(SandboxConfig.enabled(), "session-1", "user-1", 3600).build();
 
         var spec = nested(cr, "spec");
         var podTemplate = nested(spec, "podTemplate");

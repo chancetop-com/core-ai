@@ -23,13 +23,15 @@ public class SandboxCRSpecBuilder {
     private final SandboxConfig config;
     private final String sessionId;
     private final String userId;
+    private final int lifetimeSeconds;
     private final String sandboxName;
 
     @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
-    public SandboxCRSpecBuilder(SandboxConfig config, String sessionId, String userId) {
+    public SandboxCRSpecBuilder(SandboxConfig config, String sessionId, String userId, int lifetimeSeconds) {
         this.config = config;
         this.sessionId = sessionId;
         this.userId = userId;
+        this.lifetimeSeconds = lifetimeSeconds;
         var suffix = UUID.randomUUID().toString().substring(0, 8);
         this.sandboxName = "core-ai-sandbox-" + suffix;
     }
@@ -67,8 +69,7 @@ public class SandboxCRSpecBuilder {
         var spec = new LinkedHashMap<String, Object>();
         spec.put("replicas", 1);
 
-        var timeout = config.timeoutSeconds != null ? config.timeoutSeconds : 3600;
-        spec.put("shutdownTime", Instant.now().plus(timeout, ChronoUnit.SECONDS).toString());
+        spec.put("shutdownTime", Instant.now().plus(lifetimeSeconds, ChronoUnit.SECONDS).toString());
 
         spec.put("podTemplate", buildPodTemplate());
         return spec;

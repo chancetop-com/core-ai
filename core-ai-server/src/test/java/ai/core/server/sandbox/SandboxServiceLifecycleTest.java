@@ -16,12 +16,14 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -128,6 +130,41 @@ class SandboxServiceLifecycleTest {
 
         assertEquals(0L, result.snapshotEpoch());
         assertFalse(result.snapshotCaptureEligible());
+    }
+
+    @Test
+    void recreatingASessionSandboxReleasesTheReplacedSandbox() {
+        var provider = mock(SandboxProvider.class);
+        var first = readySandbox("sandbox-1");
+        var second = readySandbox("sandbox-2");
+        when(provider.acquire(any(), eq("session-1"), eq("user-1"))).thenReturn(first, second);
+        var scheduler = mock(ScheduledExecutorService.class);
+        when(scheduler.scheduleAtFixedRate(any(), anyLong(), anyLong(), any())).thenReturn(null);
+        var service = new SandboxService(provider, enabledConfig(), null, nullDependencies(), scheduler);
+
+        var initial = (LazySandbox) service.createSessionSandbox(enabledConfig(), "session-1", "user-1", null);
+        initial.ensureReady();
+        var replacement = (LazySandbox) service.createSessionSandbox(enabledConfig(), "session-1", "user-1", null);
+
+        // dropping the previous entry without releasing it leaks the sandbox until its own TTL
+        verify(provider).release(same(first));
+        assertSame(replacement, service.getSandbox("session-1"));
+    }
+
+    @Test
+    void reattachingTheSameSandboxDoesNotReleaseIt() {
+        var provider = mock(SandboxProvider.class);
+        var attached = readySandbox("sandbox-1");
+        when(provider.attach(eq("sandbox-1"), any(), eq("session-1"), eq("user-1")))
+                .thenReturn(java.util.Optional.of(attached));
+        var scheduler = mock(ScheduledExecutorService.class);
+        when(scheduler.scheduleAtFixedRate(any(), anyLong(), anyLong(), any())).thenReturn(null);
+        var service = new SandboxService(provider, enabledConfig(), null, nullDependencies(), scheduler);
+
+        service.reattachOrCreateSandbox("sandbox-1", enabledConfig(), "session-1", "user-1", null);
+        service.reattachOrCreateSandbox("sandbox-1", enabledConfig(), "session-1", "user-1", null);
+
+        verify(provider, never()).release(any());
     }
 
     private Sandbox readySandbox(String id) {
