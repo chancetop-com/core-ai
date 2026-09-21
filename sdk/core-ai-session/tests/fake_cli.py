@@ -29,6 +29,17 @@ Environment knobs, all optional:
    shape of a live index that flaps: the source still advertises its tool count.
  * ``FAKE_CLI_TRIM="mcp:google-gbp"`` — the same sources lose one tool, and advertise the smaller
    count, the shape of one enumeration of a flapping index being smaller than the last.
+ * ``FAKE_CLI_DATASET_EMPTY_STATE=1`` — ``dataset state get`` answers that this session never wrote
+   a state, the shape a fresh session produces.
+ * ``FAKE_CLI_DATASET_WARNING=1`` — ``dataset records query`` answers with the truncation warning a
+   filtered scan past its window produces.
+ * ``FAKE_CLI_DATASET_NONE=1`` — the session mounts no datasets at all: ``dataset list`` is empty, the
+   shape an agent without a dataset configuration produces.
+
+The ``dataset`` leaves answer with the recorded payloads of ``dataset-payloads.json`` (the exact
+JSON text the builtin tools produce), and ``dataset list``/``show`` with the datasets of
+``catalog.json``: what the CLI prints for a dataset operation is the payload itself, never an
+envelope, which is what the SDK unwraps.
 """
 
 from __future__ import annotations
@@ -152,6 +163,52 @@ AGENTS = {
          "status": "published", "owner_is_me": True},
     ],
 }
+
+# `core-ai-cli dataset <family> <verb>` → the operation name the payload fixture is keyed by.
+DATASET_OPS = {
+    ("state", "get"): "state.get",
+    ("state", "set"): "state.set",
+    ("state", "patch"): "state.patch",
+    ("records", "query"): "records.query",
+    ("records", "insert"): "records.insert",
+    ("records", "update"): "records.update",
+    ("records", "delete"): "records.delete",
+}
+
+
+def dataset_bindings() -> list[dict]:
+    if os.environ.get("FAKE_CLI_DATASET_NONE"):
+        return []
+    return fixture("catalog.json")["datasets"]
+
+
+def dataset_show(ref: str) -> int:
+    """One binding, resolved the way the CLI resolves it: the id wins, a name only when unique."""
+    datasets = dataset_bindings()
+    for item in datasets:
+        if item["dataset_id"] == ref:
+            return emit(item, 0)
+    matches = [item for item in datasets if item.get("name") == ref]
+    if len(matches) == 1:
+        return emit(matches[0], 0)
+    if not matches:
+        return error(5, "not_found", f"dataset not found in this session: {ref}")
+    candidates = ", ".join(item["dataset_id"] for item in matches)
+    return error(2, "usage", f"dataset name is ambiguous, pass the dataset id: {ref} (candidates: {candidates})")
+
+
+def dataset_op(rest: list[str]) -> int:
+    """``dataset state get`` / ``dataset records insert``: the payload the tool would have answered."""
+    if len(rest) < 2:
+        return error(2, "usage", f"unknown dataset command: dataset {' '.join(rest)}")
+    name = DATASET_OPS.get((rest[0], rest[1]))
+    if name is None:
+        return error(2, "usage", f"unknown dataset command: dataset {' '.join(rest[:2])}")
+    if os.environ.get("FAKE_CLI_DATASET_EMPTY_STATE") and name == "state.get":
+        name = "state.get.empty"
+    if os.environ.get("FAKE_CLI_DATASET_WARNING") and name == "records.query":
+        name = "records.query.truncated"
+    return emit(fixture("dataset-payloads.json")["payloads"][name], 0)
 
 
 def call_failure() -> tuple[dict, int]:
@@ -335,6 +392,13 @@ def main() -> int:
         if task_id == fixture("task-completed.json")["task_id"]:
             return emit(run_result("completed"), 0)
         return emit(run_result("running", task_id=task_id, output=""), 6)
+
+    if leaf == "dataset/list":
+        return emit({"datasets": [] if empty else dataset_bindings()}, 0)
+    if leaf == "dataset/show":
+        return dataset_show(rest[0] if rest else "")
+    if leaf in ("dataset/state", "dataset/records"):
+        return dataset_op(positionals[1:])
 
     return error(2, "usage", f"unknown command: {' '.join(positionals)}")
 

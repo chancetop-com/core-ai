@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Union
 
+from .dataset_ops import DatasetOp, dataset_op
+from .datasets import DatasetNamespace
 from .errors import CoreAiSessionError
 from .models import Catalog, SessionInfo, Task, ToolDetail, ToolResult, ToolSummary
 from .tree import (
@@ -88,6 +90,21 @@ class _AsReturn:
         self.value = value
 
 
+def _as_payload(value: Any, op: DatasetOp) -> dict[str, Any]:
+    """A scripted answer is the payload the server would have produced: an object, or its JSON text."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError as error:
+            raise CoreAiSessionError(f"the scripted answer for dataset {op.name} is not JSON: {error}") from None
+    if not isinstance(value, dict):
+        raise CoreAiSessionError(
+            f"the scripted answer for dataset {op.name} must be the payload object itself, "
+            f"got {type(value).__name__}"
+        )
+    return value
+
+
 class FakeNode(Node):
     def returns(self, value: Any) -> "FakeNode":
         self._scripted().returns(value)
@@ -132,6 +149,43 @@ class FakeFilesNamespace(FilesNamespace):
         return self
 
 
+class FakeDatasetNamespace(DatasetNamespace):
+    """``s.dataset`` with scripted answers: one behaviour per operation, addressed by its name.
+
+        fake.dataset.returns({"state": {"menuPublished": True}}, op="state.get")
+        fake.dataset.raises(CoreAiSessionError("write access denied to dataset: menu-state"), op="state.patch")
+
+    The value scripted here is the *payload* the server would have returned, so the unwrapping
+    (``state()`` → the state, ``records()`` → the list) is exercised, not bypassed.
+    """
+
+    def returns(self, payload: Any, *, op: str = "state.get", times: int = 1) -> "FakeDatasetNamespace":
+        script = self._script(op)
+        for _ in range(max(1, times)):
+            script.returns(payload)
+        return self
+
+    def raises(self, error: Union[BaseException, type], *, op: str = "state.get") -> "FakeDatasetNamespace":
+        self._script(op).raises(error)
+        return self
+
+    def _script(self, op: str) -> _Scripted:
+        session = self._session
+        assert isinstance(session, FakeSession)
+        entry = dataset_op(op)
+        return session.dataset_script.setdefault(entry.tool, _Scripted())
+
+
+@dataclass
+class FakeDatasetCall:
+    """One dataset operation this fake carried out, as the transport would have sent it."""
+
+    op: str
+    tool: str
+    dataset_id: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
 class FakeSession(_SessionBase):
     """Records every call and answers from scripts, with no network access at all."""
 
@@ -140,12 +194,15 @@ class FakeSession(_SessionBase):
     _node_class = FakeNode
     _agent_node_class = FakeAgentNode
     _files_class = FakeFilesNamespace
+    _dataset_class = FakeDatasetNamespace
 
     def __init__(self, catalog: Optional[dict[str, Any]] = None,
                  details: Optional[list[dict[str, Any]]] = None) -> None:
         super().__init__()
         self.calls: list[FakeCall] = []
+        self.dataset_calls: list[FakeDatasetCall] = []
         self.script: dict[str, _Scripted] = {}
+        self.dataset_script: dict[str, _Scripted] = {}
         self.tasks: dict[str, dict[str, Any]] = {}
         self._fixture = catalog or {}
         self._detail_fixture = {item.get("name"): item for item in details or []}
@@ -227,6 +284,23 @@ class FakeSession(_SessionBase):
         else:
             text = json.dumps(value, ensure_ascii=False)
         return ToolResult(call_id="fake-call", text=text, duration_ms=1)
+
+    def _dataset_call(self, op: DatasetOp, dataset_id: str, args: dict[str, Any]) -> dict[str, Any]:
+        self.dataset_calls.append(
+            FakeDatasetCall(op=op.name, tool=op.tool, dataset_id=dataset_id, arguments=dict(args))
+        )
+        behaviour = self.dataset_script.get(op.tool, _Scripted()).next()
+        if behaviour is None:
+            raise CoreAiSessionError(
+                f"dataset {op.name} ({op.tool}) has no scripted answer; call "
+                f"`fake.dataset.returns(..., op={op.name!r})` first"
+            )
+        if isinstance(behaviour, _AsReturn):
+            return _as_payload(behaviour.value, op)
+        raise behaviour
+
+    def dataset_calls_of(self, op: str) -> list[FakeDatasetCall]:
+        return [call for call in self.dataset_calls if call.op == dataset_op(op).name]
 
     # ---------- helpers ----------
 

@@ -29,6 +29,7 @@ public class HubCallAuditService {
     public static final String KIND_API_TOOL = "api_tool";
     public static final String KIND_AGENT = "agent";   // reserved for later agent-run audit
     public static final String KIND_SANDBOX_TOOL = "sandbox_tool";   // calls a script inside a sandbox makes for its session
+    public static final String KIND_DATASET = "dataset";   // dataset ops a local script makes for its session
 
     private static final int PREVIEW_MAX_CHARS = 512;
 

@@ -41,6 +41,8 @@ Usage:
   core-ai-sandbox tools [query]            Search tools
   core-ai-sandbox describe <tool>          Show a tool's metadata and input_schema
   core-ai-sandbox call <tool> [options]    Call a tool
+  core-ai-sandbox dataset <subcommand>     Read and write the datasets bound to this session
+                                           (dataset --help lists the subcommands)
 
 Call arguments (merged, later sources win):
   --args JSON            Arguments as a JSON object
@@ -71,12 +73,19 @@ type cliOptions struct {
 	argsJSON   string
 	argsFile   string
 	argPairs   []string
+	flags      []flagAssignment
 	timeout    int
 	maxOutput  int
 	json       bool
 	raw        bool
 	quiet      bool
 	help       bool
+}
+
+// flagAssignment is one dataset option kept in the order it was written, so the last one still wins.
+type flagAssignment struct {
+	name  string
+	value string
 }
 
 // cliToolKinds mirrors the kinds the hub reports; the CLI rejects anything else so a typo cannot
@@ -213,6 +222,17 @@ func parseCliArgs(args []string) (cliOptions, *cliError) {
 		case "--help", "-h":
 			opts.help = true
 		default:
+			if slices.Contains(datasetFlagNames, name) {
+				if opts.command != "dataset" {
+					return opts, usageError("%s is only valid for the dataset command", name)
+				}
+				v, err := value()
+				if err != nil {
+					return opts, err
+				}
+				opts.flags = append(opts.flags, flagAssignment{name: name, value: v})
+				continue
+			}
 			if strings.HasPrefix(arg, "-") {
 				return opts, usageError("unknown option: %s", arg)
 			}
@@ -241,6 +261,9 @@ func isHelpFlag(arg string) bool {
 
 func (env *cliEnv) dispatch() *cliError {
 	if env.opts.help {
+		if env.opts.command == "dataset" {
+			return env.showDatasetUsage()
+		}
 		return env.showUsage()
 	}
 	switch env.opts.command {
@@ -254,6 +277,8 @@ func (env *cliEnv) dispatch() *cliError {
 		return env.describeTool()
 	case "call":
 		return env.callTool()
+	case "dataset":
+		return env.datasetCommand()
 	case "":
 		return usageError("missing command")
 	default:
@@ -311,6 +336,35 @@ func (env *cliEnv) metadata(format string, args ...any) {
 		return
 	}
 	fmt.Fprintf(env.stderr, format+"\n", args...)
+}
+
+// flag reads a dataset option; the parser keeps them in order, so the last one written wins like every other source.
+func (env *cliEnv) flag(name string) (string, bool) {
+	for index := len(env.opts.flags) - 1; index >= 0; index-- {
+		if env.opts.flags[index].name == name {
+			return env.opts.flags[index].value, true
+		}
+	}
+	return "", false
+}
+
+// checkFlags refuses dataset options that do not belong to the leaf being run, so a mistyped flag cannot be swallowed
+// as if it had been applied.
+func (env *cliEnv) checkFlags(allowed ...string) *cliError {
+	for _, assignment := range env.opts.flags {
+		if !slices.Contains(allowed, assignment.name) {
+			return usageError("%s is not valid for this command", assignment.name)
+		}
+	}
+	return nil
+}
+
+func (env *cliEnv) requiredFlag(name string) (string, *cliError) {
+	value, ok := env.flag(name)
+	if !ok || strings.TrimSpace(value) == "" {
+		return "", usageError("%s is required", name)
+	}
+	return strings.TrimSpace(value), nil
 }
 
 func (env *cliEnv) httpClient() *http.Client {
@@ -519,39 +573,49 @@ func (env *cliEnv) callTool() *cliError {
 	if err != nil {
 		return err
 	}
+	response, callErr := env.callToolWithArguments(name, arguments)
+	if callErr != nil {
+		return callErr
+	}
+	if response.IsError {
+		env.printCall(response)
+		return &cliError{code: exitToolError, message: firstNonBlank(response.ErrorMessage, "tool returned an error"), reported: true}
+	}
+	if response.Status == "pending" {
+		env.printCall(response)
+		return &cliError{code: exitTimeout, message: "still running; task_id=" + response.TaskID, reported: true}
+	}
+	if response.Status == "timeout" {
+		env.printCall(response)
+		return &cliError{code: exitTimeout, message: firstNonBlank(response.ErrorMessage, "tool call timed out"), reported: true}
+	}
+	env.printCall(response)
+	return nil
+}
+
+// callToolWithArguments posts one call and follows an async task to its terminal response. Reporting stays with the
+// caller, because a dataset operation prints its payload where a call prints the whole envelope.
+func (env *cliEnv) callToolWithArguments(name, arguments string) (*hubCallResponse, *cliError) {
 	env.metadata("calling %s ...", name)
 	body, _ := json.Marshal(map[string]any{"arguments": arguments, "timeout_seconds": env.opts.timeout})
 	deadline := time.Now().Add(time.Duration(env.opts.timeout) * time.Second)
 	payload, requestErr := env.request(http.MethodPost, env.toolPath(name)+"/call", body)
 	if requestErr != nil {
-		return requestErr
+		return nil, requestErr
 	}
-	var response hubCallResponse
-	if unmarshalErr := json.Unmarshal(payload, &response); unmarshalErr != nil {
-		return &cliError{code: exitToolError, message: "unexpected hub response: " + unmarshalErr.Error()}
+	response := &hubCallResponse{}
+	if unmarshalErr := json.Unmarshal(payload, response); unmarshalErr != nil {
+		return nil, &cliError{code: exitToolError, message: "unexpected hub response: " + unmarshalErr.Error()}
 	}
 	for response.Status == "pending" && response.TaskID != "" && time.Now().Before(deadline) {
 		time.Sleep(2 * time.Second)
 		var task hubCallResponse
 		if pollErr := env.getJSON("/tasks/"+url.PathEscape(response.TaskID), &task); pollErr != nil {
-			return pollErr
+			return nil, pollErr
 		}
-		response = task
+		response = &task
 	}
-	if response.IsError {
-		env.printCall(&response)
-		return &cliError{code: exitToolError, message: firstNonBlank(response.ErrorMessage, "tool returned an error"), reported: true}
-	}
-	if response.Status == "pending" {
-		env.printCall(&response)
-		return &cliError{code: exitTimeout, message: "still running; task_id=" + response.TaskID, reported: true}
-	}
-	if response.Status == "timeout" {
-		env.printCall(&response)
-		return &cliError{code: exitTimeout, message: firstNonBlank(response.ErrorMessage, "tool call timed out"), reported: true}
-	}
-	env.printCall(&response)
-	return nil
+	return response, nil
 }
 
 func (env *cliEnv) printCall(response *hubCallResponse) {

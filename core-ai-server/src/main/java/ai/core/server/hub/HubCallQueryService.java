@@ -30,7 +30,7 @@ import java.util.Set;
  */
 public class HubCallQueryService {
     public static final Set<String> KINDS = Set.of(HubCallAuditService.KIND_MCP_TOOL, HubCallAuditService.KIND_API_TOOL,
-            HubCallAuditService.KIND_AGENT, HubCallAuditService.KIND_SANDBOX_TOOL);
+            HubCallAuditService.KIND_AGENT, HubCallAuditService.KIND_SANDBOX_TOOL, HubCallAuditService.KIND_DATASET);
     private static final Set<String> STATES = Set.of("completed", "failed", "unknown");
 
     @Inject

@@ -28,11 +28,12 @@ import os
 import sys
 import time
 from importlib.metadata import PackageNotFoundError, version as package_version
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 from urllib.parse import quote
 
 import httpx
 
+from .datasets import AsyncDatasetNamespace
 from .errors import CoreAiSessionError, NotBoundError, ToolError, ToolNotFoundError
 from .models import Catalog, SessionInfo, Task, ToolDetail, ToolResult, ToolSummary
 from .tree import (
@@ -44,6 +45,9 @@ from .tree import (
     parse_detail,
     parse_session_info,
 )
+
+if TYPE_CHECKING:
+    from .dataset_ops import DatasetOp
 
 DEFAULT_HUB_URL = "http://127.0.0.1:8081/hub"
 NOT_BOUND_RETRIES = 3
@@ -136,13 +140,16 @@ class Session(_SessionBase):
 
     def __init__(self, hub_url: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT,
                  script: Optional[str] = None, wait_timeout: float = DEFAULT_WAIT_TIMEOUT,
-                 client: Optional[httpx.Client] = None) -> None:
+                 client: Optional[httpx.Client] = None, session_id: Optional[str] = None) -> None:
         super().__init__()
         self.hub_url = _resolve_hub_url(hub_url)
         self.timeout = max(1, min(int(timeout), MAX_TIMEOUT))
         self.wait_timeout = wait_timeout
         self._client = client or httpx.Client(timeout=httpx.Timeout(float(self.timeout) + 60.0))
         self._headers = _headers(script)
+        # The hub token names the session; declaring one is a self-check, not a choice (a sandbox
+        # script must not be able to point its writes at another session).
+        self._expected_session_id = (session_id or "").strip()
 
     # ---------- HTTP ----------
 
@@ -195,6 +202,7 @@ class Session(_SessionBase):
     def me(self) -> SessionInfo:
         payload = self._request("GET", "/me")
         info = parse_session_info(payload)
+        self._check_session_id(info.session_id)
         self.session_id = info.session_id
         self.agent_name = info.agent_name
         self._acknowledge_contract(info.contract_version)
@@ -210,9 +218,18 @@ class Session(_SessionBase):
 
     def _load(self, payload: dict[str, Any]) -> Catalog:
         catalog = self._load_catalog(payload)
+        self._check_session_id(catalog.session_id)
         self.session_id = catalog.session_id
         self.agent_name = catalog.agent_name
         return catalog
+
+    def _check_session_id(self, session_id: str) -> None:
+        """``session(session_id=...)`` inside a sandbox: insist the token agrees, never redirect."""
+        if self._expected_session_id and session_id and self._expected_session_id != session_id:
+            raise CoreAiSessionError(
+                f"this sandbox is bound to session {session_id}, not {self._expected_session_id}: inside a "
+                f"sandbox the session comes from the token, so session_id= can only confirm it"
+            )
 
     def tools(self, query: Optional[str] = None, kind: Optional[str] = None) -> list[ToolSummary]:
         params = []
@@ -266,6 +283,13 @@ class Session(_SessionBase):
     def _fetch_task(self, task_id: str) -> dict[str, Any]:
         return self._request("GET", f"/tasks/{quote(task_id, safe='')}")
 
+    def _dataset_call(self, op: DatasetOp, dataset_id: str, args: dict[str, Any]) -> dict[str, Any]:
+        """One dataset operation over the hub: the session's own tool, called with its own arguments."""
+        entry = self._dataset_entry(op)
+        arguments = op.arguments(dataset_id, args)
+        self._validate(entry, arguments)
+        return self._dataset_payload(self._invoke(entry, arguments), op)
+
     def _effective_timeout(self, timeout: Optional[int]) -> int:
         return max(1, min(int(timeout or self.timeout), MAX_TIMEOUT))
 
@@ -289,6 +313,8 @@ class AsyncSession(Session):
     The catalog is loaded by `async_session()`/`refresh()`, so namespace access stays synchronous
     (``s.mcp["x"]`` cannot await) while every call is awaited.
     """
+
+    _dataset_class = AsyncDatasetNamespace
 
     def __init__(self, **kwargs: Any) -> None:
         client = kwargs.pop("client", None)
@@ -316,6 +342,7 @@ class AsyncSession(Session):
     async def me(self) -> SessionInfo:  # type: ignore[override]
         payload = await self._arequest("GET", "/me")
         info = parse_session_info(payload)
+        self._check_session_id(info.session_id)
         self.session_id = info.session_id
         self.agent_name = info.agent_name
         self._acknowledge_contract(info.contract_version)
@@ -408,6 +435,12 @@ class AsyncSession(Session):
     async def _fetch_task(self, task_id: str) -> dict[str, Any]:  # type: ignore[override]
         return await self._arequest("GET", f"/tasks/{quote(task_id, safe='')}")
 
+    async def _dataset_call(self, op: DatasetOp, dataset_id: str, args: dict[str, Any]) -> dict[str, Any]:  # type: ignore[override]
+        entry = self._dataset_entry(op)
+        arguments = op.arguments(dataset_id, args)
+        self._validate(entry, arguments)
+        return self._dataset_payload(await self._ainvoke(entry, arguments), op)
+
     async def aclose(self) -> None:
         await self._client.aclose()
 
@@ -467,12 +500,16 @@ def _resolve_backend(backend: Optional[str]) -> str:
 
 def session(hub_url: Optional[str] = None, *, timeout: int = DEFAULT_TIMEOUT,
             script: Optional[str] = None, backend: Optional[str] = None,
-            cli: Optional[Any] = None) -> Session:
+            cli: Optional[Any] = None, session_id: Optional[str] = None) -> Session:
     """Open this session: the sandbox hub where there is one, else the local ``core-ai-cli``.
 
     The catalog is fetched on first use, so opening a session is cheap. Pass
     ``backend="cli"`` / ``backend="hub"`` (or ``hub_url="cli"``) to name the transport outright —
     useful in tests and CI, where "am I in a sandbox?" must not be guessed.
+
+    ``session_id`` is what ``s.dataset`` acts on locally (same as ``--session``, or the
+    ``CORE_AI_SESSION_ID`` environment variable). Inside a sandbox the token already names the
+    session, so passing one there only asserts that this script was meant for that session.
     """
     url = (hub_url or "").strip()
     if url.lower() == CLI_BACKEND:
@@ -487,13 +524,13 @@ def session(hub_url: Optional[str] = None, *, timeout: int = DEFAULT_TIMEOUT,
         if _resolve_backend(backend) == CLI_BACKEND:
             from .cli import CliSession
 
-            return CliSession(cli=cli, timeout=timeout, script=script)
-    return Session(hub_url=url or None, timeout=timeout, script=script)
+            return CliSession(cli=cli, timeout=timeout, script=script, session_id=session_id)
+    return Session(hub_url=url or None, timeout=timeout, script=script, session_id=session_id)
 
 
 async def async_session(hub_url: Optional[str] = None, *, timeout: int = DEFAULT_TIMEOUT,
                         script: Optional[str] = None, backend: Optional[str] = None,
-                        cli: Optional[Any] = None) -> AsyncSession:
+                        cli: Optional[Any] = None, session_id: Optional[str] = None) -> AsyncSession:
     """Open the session and load its catalog (required before namespace access)."""
     url = (hub_url or "").strip()
     if url.lower() == CLI_BACKEND:
@@ -507,8 +544,8 @@ async def async_session(hub_url: Optional[str] = None, *, timeout: int = DEFAULT
     if backend is not None and _resolve_backend(backend) == CLI_BACKEND:
         from .cli import AsyncCliSession
 
-        opened = AsyncCliSession(cli=cli, timeout=timeout, script=script)
+        opened = AsyncCliSession(cli=cli, timeout=timeout, script=script, session_id=session_id)
     else:
-        opened = AsyncSession(hub_url=url or None, timeout=timeout, script=script)
+        opened = AsyncSession(hub_url=url or None, timeout=timeout, script=script, session_id=session_id)
     await opened.refresh()
     return opened

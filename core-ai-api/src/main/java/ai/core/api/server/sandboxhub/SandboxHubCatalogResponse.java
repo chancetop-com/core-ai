@@ -36,4 +36,11 @@ public class SandboxHubCatalogResponse {
 
     @Property(name = "tools")
     public List<SandboxHubToolSummary> tools;
+
+    /**
+     * The datasets this session may reach, from the same registry the dataset tools are built from. Empty
+     * rather than null when the session has no bindings, so a client never has to test for absence.
+     */
+    @Property(name = "datasets")
+    public List<SandboxHubDatasetView> datasets;
 }

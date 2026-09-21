@@ -13,14 +13,17 @@ contract.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
 import tempfile
 import threading
 import unittest
+from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -56,6 +59,26 @@ LIST_REVIEWS_SCHEMA = {
     },
     "required": ["location"],
 }
+
+
+DATASET_SESSION = "b7f1c0e2-3a44-4f7b-9c1d-8e2a5d6b7c80"
+MENU_STATE = "d7a1f3c9-5b2e-4c81-9f60-1d4e8a2b6c33"
+REVIEW_LOG = "3f8c2b41-0d7a-4e59-8b16-92ac5ed7f204"
+SEO_HISTORY = "8b1e4d77-2c93-4a6f-b0d5-37e9c1fa5d60"
+RECORD_ID = "5c1d8a20-9f43-4b7e-8c16-2d3e4f5a6b70"
+
+
+def dataset_tools() -> dict[str, dict]:
+    """The dataset tool details by tool name — what ``GET /tools/<name>`` answers in a sandbox.
+
+    ``op`` is the fixture's own annotation (the server sends the rest): it names the operation whose
+    payload the tool produces, so the payload map below is derived rather than written twice.
+    """
+    return {tool["name"]: tool for tool in fixture("dataset-tools.json")["tools"]}
+
+
+def dataset_payload(op: str) -> dict:
+    return fixture("dataset-payloads.json")["payloads"][op]
 
 
 class FakeSessionTest(unittest.TestCase):
@@ -203,7 +226,12 @@ class FakeSessionTest(unittest.TestCase):
 
 
 class _HubHandler(BaseHTTPRequestHandler):
-    """Answers the SDK with the shared contract fixtures; records the last request."""
+    """Answers the SDK with the shared contract fixtures; records the last request.
+
+    Dataset calls are answered too, with the payload of the tool that was called: inside a sandbox
+    ``s.dataset`` reaches the very same tools an agent calls, so the hub is the backend that proves
+    the SDK asks for them the way the server expects (name, arguments, and the payload it unwraps).
+    """
 
     payloads = {
         "/catalog": ("catalog.json", 200),
@@ -211,7 +239,15 @@ class _HubHandler(BaseHTTPRequestHandler):
         "/tools/google_gbp_list_reviews": ("tool-detail.json", 200),
         "/tools": ("tools.json", 200),
     }
+    #: tool name → operation whose payload it answers; a test can swap one for another variant.
+    dataset_ops: dict[str, str] = {}
     calls: list[tuple[str, dict]] = []
+
+    @classmethod
+    def dataset_payload(cls, tool: str) -> dict | None:
+        ops = cls.dataset_ops or {name: detail["op"] for name, detail in dataset_tools().items()}
+        op = ops.get(tool)
+        return dataset_payload(op) if op else None
 
     def do_GET(self) -> None:  # noqa: N802 - http.server API
         path = self.path.split("?")[0]
@@ -219,16 +255,34 @@ class _HubHandler(BaseHTTPRequestHandler):
             name, status = self.payloads[path]
             self._respond(fixture(name), status)
             return
+        if path.startswith("/tools/"):
+            detail = dataset_tools().get(path.rsplit("/", 1)[-1])
+            if detail is not None:
+                self._respond(detail, 200)
+                return
         self._respond(fixture("not-bound.json"), 503)
 
     def do_POST(self) -> None:  # noqa: N802 - http.server API
         length = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(length) or b"{}")
         _HubHandler.calls.append((self.path, body))
+        payload = self.dataset_payload(self._tool_name())
+        if payload is not None:
+            result = dict(fixture("call-success.json"))
+            result["text"] = json.dumps(payload, ensure_ascii=False)
+            self._respond(result, 200)
+            return
         if "reply_review" in self.path:
             self._respond(fixture("call-error.json"), 200)
             return
         self._respond(fixture("call-success.json"), 200)
+
+    def _tool_name(self) -> str:
+        """The tool of a hub call: ``/tools/<name>`` for details, ``/tools/<name>/call`` for calls."""
+        segments = self.path.split("?")[0].strip("/").split("/")
+        if segments[-1] == "call" and len(segments) > 2:
+            return segments[-2]
+        return segments[-1]
 
     def _respond(self, payload: dict, status: int) -> None:
         encoded = json.dumps(payload).encode()
@@ -699,6 +753,449 @@ class CliSessionTest(unittest.TestCase):
         self.assertEqual("mcp", mcp_detail.kind)
         self.assertEqual(["location"], mcp_detail.input_schema["required"])
         self.assertEqual("agent", agent_detail.kind)
+
+
+class DatasetBackends:
+    """``s.dataset`` through every carrier: a skill must see one behaviour wherever it runs.
+
+    The surface has three carriers — the offline fake, the sandbox hub and ``core-ai-cli`` — and the
+    cases below run once per carrier, so a divergence in lookup, refusal or unwrapping fails on the
+    carrier that diverged rather than hiding behind the one that happened to be tested first.
+
+    What a carrier changes is only *how* an operation travels; that part is asserted per carrier
+    (``dataset-traffic`` tests), where the wire format actually differs.
+    """
+
+    def open(self) -> Any:
+        """A ready session of this carrier."""
+        raise NotImplementedError
+
+    def dataset_traffic(self, session: Any) -> list[Any]:
+        """What this carrier received for dataset *operations* — empty means the SDK refused locally."""
+        raise NotImplementedError
+
+    @contextlib.contextmanager
+    def opened(self) -> Iterator[Any]:
+        session = self.open()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    # ---------- lookup ----------
+
+    def test_a_binding_lists_its_type_permission_and_fields(self) -> None:
+        with self.opened() as opened:
+            listed = {info.name: info for info in opened.dataset.list()}
+        self.assertEqual({"menu-state", "review-log", "seo-history"}, set(listed))
+        self.assertEqual("SESSION", listed["menu-state"].type)
+        self.assertTrue(listed["menu-state"].writable, "FULL may write")
+        self.assertTrue(listed["menu-state"].deletable, "FULL may delete")
+        self.assertTrue(listed["review-log"].writable, "WRITE may write")
+        self.assertFalse(listed["review-log"].deletable, "WRITE may not delete")
+        self.assertFalse(listed["seo-history"].writable, "READ may not write")
+        self.assertEqual(["review_id", "replied_at"], listed["review-log"].field_names())
+
+    def test_a_binding_is_addressed_by_name_and_by_id(self) -> None:
+        with self.opened() as opened:
+            by_name = opened.dataset["menu-state"]
+            by_id = opened.dataset[MENU_STATE]
+        self.assertEqual(MENU_STATE, by_name.dataset_id)
+        self.assertEqual(by_name.dataset_id, by_id.dataset_id)
+        self.assertEqual(by_name.info, by_id.info)
+
+    def test_an_unknown_name_is_refused_with_what_is_bound(self) -> None:
+        with self.opened() as opened:
+            with self.assertRaises(ToolNotFoundError) as caught:
+                opened.dataset["review-logs"]
+            self.assertEqual([], self.dataset_traffic(opened))
+        self.assertIn("bound: menu-state, review-log, seo-history", str(caught.exception))
+
+    # ---------- reads ----------
+
+    def test_state_read_unwraps_to_the_state_document(self) -> None:
+        with self.opened() as opened:
+            state = opened.dataset["menu-state"].state()
+        self.assertEqual(dataset_payload("state.get")["state"], state)
+
+    def test_records_unwrap_to_the_list(self) -> None:
+        with self.opened() as opened:
+            records = opened.dataset["review-log"].records(
+                filter={"review_id": "r-1024"}, fields=["review_id"], limit=10, offset=0)
+        self.assertEqual(dataset_payload("records.query")["records"], records)
+
+    def test_the_envelope_is_reachable_when_the_page_matters(self) -> None:
+        with self.opened() as opened:
+            answer = opened.dataset["review-log"].op("records.query", filter='{"review_id": "r-1024"}', limit=1)
+        self.assertEqual(dataset_payload("records.query")["total"], answer["total"])
+        self.assertEqual(dataset_payload("records.query")["records"], answer["records"])
+
+    # ---------- writes ----------
+
+    def test_a_write_answers_with_the_servers_own_payload(self) -> None:
+        with self.opened() as opened:
+            menu = opened.dataset["menu-state"]
+            log = opened.dataset["review-log"]
+            saved = menu.set({"menuPublished": True})
+            patched = menu.patch({"menuPublished": False})
+            inserted = log.insert({"review_id": "r-1024"})
+            updated = log.update(RECORD_ID, {"replied_at": "2026-09-20T10:00:00Z"})
+        self.assertEqual(dataset_payload("state.set"), saved)
+        self.assertEqual(dataset_payload("state.patch"), patched)
+        self.assertEqual(dataset_payload("records.insert"), inserted)
+        self.assertEqual(dataset_payload("records.update"), updated)
+
+    # ---------- refusals: the server's sentences, before any round trip ----------
+
+    def test_a_read_only_binding_refuses_a_write(self) -> None:
+        with self.opened() as opened:
+            with self.assertRaises(CoreAiSessionError) as caught:
+                opened.dataset["seo-history"].insert({"query": "pizza"})
+            self.assertEqual([], self.dataset_traffic(opened))
+        self.assertEqual(f"write access denied to dataset: {SEO_HISTORY}", str(caught.exception))
+
+    def test_a_write_only_binding_refuses_a_delete(self) -> None:
+        with self.opened() as opened:
+            with self.assertRaises(CoreAiSessionError) as caught:
+                opened.dataset["review-log"].delete(RECORD_ID)
+            self.assertEqual([], self.dataset_traffic(opened))
+        self.assertEqual(f"delete access denied to dataset: {REVIEW_LOG}", str(caught.exception))
+
+    def test_a_session_dataset_refuses_record_operations(self) -> None:
+        with self.opened() as opened:
+            with self.assertRaises(CoreAiSessionError) as caught:
+                opened.dataset["menu-state"].records()
+            self.assertEqual([], self.dataset_traffic(opened))
+        self.assertEqual(
+            "session dataset is not accessible via dataset record tools, "
+            f"use get_session_state/set_session_state instead: {MENU_STATE}",
+            str(caught.exception),
+        )
+
+    def test_a_record_dataset_refuses_state_operations(self) -> None:
+        with self.opened() as opened:
+            with self.assertRaises(CoreAiSessionError) as caught:
+                opened.dataset["review-log"].state()
+            self.assertEqual([], self.dataset_traffic(opened))
+        self.assertEqual(f"not a session dataset, use dataset record tools instead: {REVIEW_LOG}",
+                         str(caught.exception))
+
+
+class DatasetFakeBackendTest(DatasetBackends, unittest.TestCase):
+    """The offline carrier: no hub and no CLI, so the carriers below are compared against this one."""
+
+    def setUp(self) -> None:
+        self.fake = FakeSession(catalog=fixture("catalog.json"))
+        for op in ("state.get", "state.set", "state.patch", "records.query", "records.insert", "records.update"):
+            self.fake.dataset.returns(dataset_payload(op), op=op, times=20)
+
+    def open(self) -> FakeSession:
+        return self.fake
+
+    def dataset_traffic(self, session: FakeSession) -> list[Any]:
+        return list(session.dataset_calls)
+
+    def only(self, op: str, payload: dict) -> FakeSession:
+        """A fake answering with this payload alone (the default script is queued ahead of later adds)."""
+        fake = FakeSession(catalog=fixture("catalog.json"))
+        fake.dataset.returns(payload, op=op)
+        return fake
+
+    def test_a_session_with_no_datasets_answers_with_none_bound(self) -> None:
+        catalog = fixture("catalog.json")
+        catalog["datasets"] = []
+        fake = FakeSession(catalog=catalog)
+        self.assertEqual([], fake.dataset.list())
+        with self.assertRaises(ToolNotFoundError) as caught:
+            fake.dataset["menu-state"]
+        self.assertIn("bound: none", str(caught.exception))
+
+    def test_a_never_written_state_is_none_not_an_error(self) -> None:
+        fake = self.only("state.get", dataset_payload("state.get.empty"))
+        self.assertIsNone(fake.dataset["menu-state"].state())
+
+    def test_the_tool_and_arguments_match_the_server_tool_contract(self) -> None:
+        with self.opened() as opened:
+            opened.dataset["menu-state"].state(fields=["menuPublished"])
+            opened.dataset["review-log"].records(filter={"review_id": "r-1024"}, from_="2026-09-01T00:00:00Z")
+            opened.dataset["menu-state"].set({"menuPublished": True})
+            opened.dataset["review-log"].update(RECORD_ID, {"replied_at": "2026-09-20T10:00:00Z"})
+        sent = [(call.tool, call.dataset_id, call.arguments) for call in self.fake.dataset_calls]
+        self.assertEqual(["get_session_state", "query_dataset_records", "set_session_state", "update_dataset_record"],
+                         [tool for tool, _, _ in sent])
+        self.assertEqual({"fields": "menuPublished"}, sent[0][2])
+        self.assertEqual({"filter": '{"review_id": "r-1024"}', "from": "2026-09-01T00:00:00Z"}, sent[1][2])
+        self.assertEqual({"data": {"menuPublished": True}}, sent[2][2])
+        self.assertEqual({"record_id": RECORD_ID, "data": {"replied_at": "2026-09-20T10:00:00Z"}}, sent[3][2])
+        self.assertEqual([MENU_STATE, REVIEW_LOG, MENU_STATE, REVIEW_LOG], [dataset_id for _, dataset_id, _ in sent])
+
+    def test_a_truncated_scan_is_logged_rather_than_silently_empty(self) -> None:
+        fake = self.only("records.query", dataset_payload("records.query.truncated"))
+        with self.assertLogs("core_ai_session", level="WARNING") as logged:
+            records = fake.dataset["review-log"].records(filter={"review_id": "r-1024"})
+        self.assertEqual([], records)
+        self.assertIn("most recent 10000 records", " ".join(logged.output))
+
+
+class DatasetHubBackendTest(DatasetBackends, unittest.TestCase):
+    """The sandbox carrier: ``POST /tools/<builtin tool>/call``, answered from the shared fixtures."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), _HubHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.hub_url = f"http://127.0.0.1:{cls.server.server_address[1]}"
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def setUp(self) -> None:
+        _HubHandler.calls = []
+
+    def open(self) -> Session:
+        return Session(self.hub_url)
+
+    def dataset_traffic(self, session: Session) -> list[Any]:
+        return list(_HubHandler.calls)
+
+    def test_the_call_names_the_builtin_tool_and_its_arguments(self) -> None:
+        with self.opened() as opened:
+            opened.dataset["menu-state"].state(fields=["menuPublished", "note"])
+            opened.dataset["review-log"].records(filter={"review_id": "r-1024"}, limit=5)
+        calls = [(path, body) for path, body in _HubHandler.calls]
+        self.assertEqual(["/tools/get_session_state/call", "/tools/query_dataset_records/call"],
+                         [path for path, _ in calls])
+        first = json.loads(calls[0][1]["arguments"])
+        self.assertEqual({"dataset_id": MENU_STATE, "fields": "menuPublished,note"}, first)
+        second = json.loads(calls[1][1]["arguments"])
+        self.assertEqual({"dataset_id": REVIEW_LOG, "filter": '{"review_id": "r-1024"}', "limit": 5}, second)
+
+    def test_a_sandbox_session_needs_no_session_id_of_its_own(self) -> None:
+        with self.opened() as opened:
+            self.assertIsNone(getattr(opened, "_local_anchor")())
+            self.assertEqual(MENU_STATE, opened.dataset["menu-state"].dataset_id)
+
+
+class DatasetCliBackendTest(DatasetBackends, unittest.TestCase):
+    """The local carrier: one ``core-ai-cli dataset …`` subprocess per operation, same payloads."""
+
+    def setUp(self) -> None:
+        self.record = Path(tempfile.mkdtemp()) / "calls.jsonl"
+        self.saved = {name: os.environ.get(name)
+                      for name in ("FAKE_CLI_RECORD", "CORE_AI_HUB", "CORE_AI_CLI", "CORE_AI_SESSION_ID")}
+        os.environ["FAKE_CLI_RECORD"] = str(self.record)
+        for name in ("CORE_AI_HUB", "CORE_AI_CLI", "CORE_AI_SESSION_ID"):
+            os.environ.pop(name, None)
+
+    def tearDown(self) -> None:
+        for name, value in self.saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    def calls(self) -> list[dict]:
+        directory = Path(f"{self.record}.d")
+        if not directory.exists():
+            return []
+        return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(directory.glob("*.json"))]
+
+    def open(self, **kwargs: object) -> CliSession:
+        return CliSession(cli=CLI_COMMAND, poll_interval=0.01, session_id=DATASET_SESSION, **kwargs)
+
+    def dataset_traffic(self, session: CliSession) -> list[dict]:
+        """The dataset *operations* of this session, without the catalogs that precede them."""
+        return [call for call in self.calls()
+                if call["argv"][:2] in (["dataset", "state"], ["dataset", "records"])]
+
+    def test_every_operation_is_one_dataset_subcommand(self) -> None:
+        with self.opened() as opened:
+            menu = opened.dataset["menu-state"]
+            log = opened.dataset["review-log"]
+            menu.state(fields=["menuPublished", "note"])
+            menu.set({"menuPublished": True})
+            menu.patch({"menuPublished": False})
+            log.records(filter={"review_id": "r-1024"}, from_="2026-09-01T00:00:00Z", limit=5, offset=10)
+            log.insert({"review_id": "r-1024"})
+            log.update(RECORD_ID, {"replied_at": "2026-09-20T10:00:00Z"})
+
+        def argv(*rest: str) -> list[str]:
+            return ["dataset", *rest, "--session", DATASET_SESSION,
+                    "--timeout", str(opened.timeout), "--json"]
+
+        self.assertEqual([
+            argv("state", "get", MENU_STATE, "--fields", "menuPublished,note"),
+            argv("state", "set", MENU_STATE, "--data", "-"),
+            argv("state", "patch", MENU_STATE, "--data", "-"),
+            argv("records", "query", REVIEW_LOG, "--filter", '{"review_id": "r-1024"}',
+                 "--from", "2026-09-01T00:00:00Z", "--limit", "5", "--offset", "10"),
+            argv("records", "insert", REVIEW_LOG, "--data", "-"),
+            argv("records", "update", REVIEW_LOG, "--record-id", RECORD_ID, "--data", "-"),
+        ], [call["argv"] for call in self.dataset_traffic(opened)])
+        self.assertEqual(
+            ['{"menuPublished": true}', '{"menuPublished": false}',
+             '{"review_id": "r-1024"}', '{"replied_at": "2026-09-20T10:00:00Z"}'],
+            [call["stdin"] for call in self.dataset_traffic(opened) if call["stdin"]],
+        )
+
+    def test_the_dataset_listing_also_names_the_session(self) -> None:
+        with self.opened() as opened:
+            opened.catalog()
+        listings = [call["argv"] for call in self.calls() if call["argv"][:2] == ["dataset", "list"]]
+        self.assertEqual([["dataset", "list", "--session", DATASET_SESSION, "--json"]], listings)
+
+    def test_a_local_session_must_be_told_which_session_it_acts_on(self) -> None:
+        opened = CliSession(cli=CLI_COMMAND, poll_interval=0.01)
+        with self.assertRaises(CoreAiSessionError) as caught:
+            opened.dataset.list()
+        self.assertIn("s.dataset needs a session id locally", str(caught.exception))
+        with self.assertRaises(CoreAiSessionError):
+            opened.dataset["menu-state"]
+        self.assertEqual([], [call for call in self.calls() if call["argv"][:1] == ["dataset"]])
+
+    def test_the_ambient_session_id_is_enough(self) -> None:
+        os.environ["CORE_AI_SESSION_ID"] = DATASET_SESSION
+        try:
+            opened = CliSession(cli=CLI_COMMAND, poll_interval=0.01)
+            self.assertEqual(MENU_STATE, opened.dataset["menu-state"].dataset_id)
+        finally:
+            os.environ.pop("CORE_AI_SESSION_ID", None)
+
+    def test_a_session_that_mounts_nothing_reports_none_bound(self) -> None:
+        os.environ["FAKE_CLI_DATASET_NONE"] = "1"
+        try:
+            opened = self.open()
+            self.assertEqual([], opened.dataset.list())
+            with self.assertRaises(ToolNotFoundError) as caught:
+                opened.dataset["menu-state"]
+        finally:
+            os.environ.pop("FAKE_CLI_DATASET_NONE", None)
+        self.assertIn("bound: none", str(caught.exception))
+
+    def test_a_truncated_scan_is_logged_rather_than_silently_empty(self) -> None:
+        os.environ["FAKE_CLI_DATASET_WARNING"] = "1"
+        try:
+            with self.assertLogs("core_ai_session", level="WARNING") as logged:
+                records = self.open().dataset["review-log"].records(filter={"review_id": "r-1024"})
+        finally:
+            os.environ.pop("FAKE_CLI_DATASET_WARNING", None)
+        self.assertEqual([], records)
+        self.assertIn("most recent 10000 records", " ".join(logged.output))
+
+    def test_a_never_written_state_is_none_not_an_error(self) -> None:
+        os.environ["FAKE_CLI_DATASET_EMPTY_STATE"] = "1"
+        try:
+            self.assertIsNone(self.open().dataset["menu-state"].state())
+        finally:
+            os.environ.pop("FAKE_CLI_DATASET_EMPTY_STATE", None)
+
+    def test_a_refused_operation_reads_as_the_exit_code_it_came_back_with(self) -> None:
+        os.environ["FAKE_CLI_FORBIDDEN"] = "1"
+        try:
+            with self.assertRaises(ToolError) as caught:
+                self.open().dataset["review-log"].insert({"review_id": "r-1024"})
+        finally:
+            os.environ.pop("FAKE_CLI_FORBIDDEN", None)
+        self.assertEqual(403, caught.exception.status_code)
+
+    def test_a_missing_login_is_a_not_bound_error(self) -> None:
+        os.environ["FAKE_CLI_OFFLINE"] = "1"
+        try:
+            with self.assertRaises(NotBoundError):
+                self.open().dataset["menu-state"].state()
+        finally:
+            os.environ.pop("FAKE_CLI_OFFLINE", None)
+
+
+class DatasetAsyncTest(unittest.TestCase):
+    """The awaited surface: the same lookups and operations, run off the event loop."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), _HubHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.hub_url = f"http://127.0.0.1:{cls.server.server_address[1]}"
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def setUp(self) -> None:
+        _HubHandler.calls = []
+        self.saved = {name: os.environ.get(name) for name in ("CORE_AI_HUB", "CORE_AI_CLI", "CORE_AI_SESSION_ID")}
+        for name in ("CORE_AI_HUB", "CORE_AI_CLI", "CORE_AI_SESSION_ID"):
+            os.environ.pop(name, None)
+
+    def tearDown(self) -> None:
+        for name, value in self.saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    def test_an_async_hub_session_reads_lists_and_writes(self) -> None:
+        async def run() -> tuple:
+            opened = await async_session(self.hub_url)
+            try:
+                return (
+                    await opened.dataset.list(),
+                    await opened.dataset["review-log"].records(filter={"review_id": "r-1024"}),
+                    await opened.dataset["menu-state"].state(),
+                    await opened.dataset["review-log"].insert({"review_id": "r-1024"}),
+                    await opened.dataset["review-log"].op("records.query", filter={"review_id": "r-1024"}),
+                )
+            finally:
+                await opened.aclose()
+
+        listed, records, state, inserted, envelope = asyncio.run(run())
+        self.assertEqual({"menu-state", "review-log", "seo-history"}, {info.name for info in listed})
+        self.assertEqual(dataset_payload("records.query")["records"], records)
+        self.assertEqual(dataset_payload("state.get")["state"], state)
+        self.assertEqual(dataset_payload("records.insert"), inserted)
+        self.assertEqual(dataset_payload("records.query")["total"], envelope["total"])
+        self.assertEqual(["/tools/query_dataset_records/call", "/tools/get_session_state/call",
+                          "/tools/insert_dataset_record/call", "/tools/query_dataset_records/call"],
+                         [path for path, _ in _HubHandler.calls if path.endswith("/call")])
+
+    def test_an_async_cli_session_reads_lists_and_writes(self) -> None:
+        async def run() -> tuple:
+            opened = AsyncCliSession(cli=CLI_COMMAND, poll_interval=0.01, session_id=DATASET_SESSION)
+            try:
+                await opened.refresh()
+                return (
+                    await opened.dataset.list(),
+                    await opened.dataset["review-log"].records(filter={"review_id": "r-1024"}),
+                    await opened.dataset["menu-state"].state(),
+                    await opened.dataset["review-log"].insert({"review_id": "r-1024"}),
+                    await opened.dataset["review-log"].op("records.query", filter={"review_id": "r-1024"}),
+                )
+            finally:
+                await opened.aclose()
+
+        listed, records, state, inserted, envelope = asyncio.run(run())
+        self.assertEqual({"menu-state", "review-log", "seo-history"}, {info.name for info in listed})
+        self.assertEqual(dataset_payload("records.query")["records"], records)
+        self.assertEqual(dataset_payload("state.get")["state"], state)
+        self.assertEqual(dataset_payload("records.insert"), inserted)
+        self.assertEqual(dataset_payload("records.query")["total"], envelope["total"])
+
+    def test_an_async_local_session_is_told_about_the_missing_id_too(self) -> None:
+        async def run() -> None:
+            opened = AsyncCliSession(cli=CLI_COMMAND, poll_interval=0.01)
+            try:
+                await opened.refresh()  # a local session opens without one; only the datasets need it
+                with self.assertRaises(CoreAiSessionError) as caught:
+                    await opened.dataset.list()
+                self.assertIn("s.dataset needs a session id locally", str(caught.exception))
+            finally:
+                await opened.aclose()
+
+        asyncio.run(run())
 
 
 def write_cli_wrapper(directory: Path) -> str:

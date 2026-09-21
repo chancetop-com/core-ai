@@ -1,17 +1,16 @@
 package ai.core.server.dataset.tool;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.server.dataset.DatasetOpPayloads;
 import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetRecordWriteRules;
 import ai.core.server.dataset.DatasetService;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import ai.core.utils.JsonUtil;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -70,12 +69,17 @@ public final class InsertDatasetRecordTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
-        var datasetId = getStringValue(args, "dataset_id");
-        if (datasetId == null || datasetId.isBlank()) {
+        var datasetRef = getStringValue(args, "dataset_id");
+        if (datasetRef == null || datasetRef.isBlank()) {
             return ToolCallResult.failed("dataset_id is required");
         }
-        if (!registry.isWritable(datasetId)) {
-            return ToolCallResult.failed("write access denied to dataset: " + datasetId);
+        var ambiguous = registry.ambiguousMessage(datasetRef);
+        if (ambiguous != null) {
+            return ToolCallResult.failed(ambiguous);
+        }
+        var datasetId = registry.resolveId(datasetRef);
+        if (!registry.isWritable(datasetRef)) {
+            return ToolCallResult.failed("write access denied to dataset: " + datasetRef);
         }
         var sessionError = QueryDatasetRecordsTool.sessionDatasetAccessError(datasetService, datasetId);
         if (sessionError != null) {
@@ -89,35 +93,16 @@ public final class InsertDatasetRecordTool extends ToolCall {
         }
 
         var dataset = datasetService.get(datasetId);
-        Map<String, Object> filtered = filterToSchema(data, dataset);
+        var filtered = DatasetRecordWriteRules.filterToSchema(dataset, data);
         if (filtered.isEmpty()) {
-            var schemaFieldNames = dataset != null && dataset.schema != null
-                ? dataset.schema.stream().map(f -> f.name).toList() : List.of();
-            return ToolCallResult.failed("none of the provided fields match the dataset schema: " + schemaFieldNames);
+            return ToolCallResult.failed("none of the provided fields match the dataset schema: "
+                    + DatasetRecordWriteRules.schemaFieldNames(dataset));
         }
 
         var effectiveRunId = runId != null ? runId : UUID.randomUUID().toString();
         var userId = context != null ? context.getUserId() : null;
         recordService.insert(new DatasetRecordService.InsertRequest(datasetId, agentId, effectiveRunId, ZonedDateTime.now(), filtered, userId, userId));
 
-        var response = new LinkedHashMap<String, Object>();
-        response.put("status", "created");
-        response.put("dataset_id", datasetId);
-        response.put("inserted_fields", new ArrayList<>(filtered.keySet()));
-        response.put("message", "record inserted successfully");
-        return ToolCallResult.completed(JsonUtil.toJson(response));
-    }
-
-    private Map<String, Object> filterToSchema(Map<String, Object> data, ai.core.server.domain.Dataset dataset) {
-        if (dataset == null || dataset.schema == null || dataset.schema.isEmpty()) return new LinkedHashMap<>(data);
-        var schemaFieldNames = dataset.schema.stream().map(f -> f.name).toList();
-        var result = new LinkedHashMap<String, Object>();
-        for (var fieldName : schemaFieldNames) {
-            var value = data.get(fieldName);
-            if (value != null) {
-                result.put(fieldName, value);
-            }
-        }
-        return result;
+        return ToolCallResult.completed(DatasetOpPayloads.recordInserted(datasetId, filtered.keySet()));
     }
 }

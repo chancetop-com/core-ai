@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Brain, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Copy, HelpCircle, Info, Network, RotateCw, Wrench, XCircle } from 'lucide-react';
+import { Brain, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Copy, Database, HelpCircle, Info, Network, RotateCw, Wrench, XCircle } from 'lucide-react';
 import { adminApi, api, type HubCall, type HubCallFilter, type UserStatus } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { formatDuration, formatRelativeTime, formatTokenPair } from '../traces/traceViewModel';
@@ -13,6 +13,7 @@ const KIND_TABS: { key: string; label: string }[] = [
   { key: 'mcp_tool', label: 'MCP Tool' },
   { key: 'api_tool', label: 'API Tool' },
   { key: 'agent', label: 'Agent' },
+  { key: 'dataset', label: 'Dataset' },
 ];
 
 const RANGE_OPTIONS: { key: string; label: string }[] = [
@@ -42,6 +43,7 @@ const KIND_ICONS: Record<string, { icon: ComponentType<{ size?: number }>; label
   mcp_tool: { icon: Network, label: 'MCP tool' },
   api_tool: { icon: Wrench, label: 'API tool' },
   agent: { icon: Brain, label: 'Agent' },
+  dataset: { icon: Database, label: 'Dataset' },
 };
 
 interface HubCallFilters extends HubCallFilter {
@@ -308,7 +310,8 @@ export default function HubCalls() {
         <div>
           These are executions made by remote clients against the hub endpoints directly, so they are not part of Traces.
           Arguments and results are never stored in full — only a sha256 hash and a 512-character preview — and records are
-          retained for 90 days. A call that started but never completed shows as <span className="font-medium">Incomplete</span>.
+          retained for 90 days. Dataset calls record field names and sizes only, never the values. A call that started but
+          never completed shows as <span className="font-medium">Incomplete</span>.
         </div>
       </div>
 

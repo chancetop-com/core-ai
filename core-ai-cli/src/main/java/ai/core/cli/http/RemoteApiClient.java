@@ -150,6 +150,15 @@ public class RemoteApiClient {
         return send(request);
     }
 
+    public String putRequired(String path, Object body) {
+        var json = body != null ? JsonUtil.toJson(body) : "{}";
+        var request = request(path)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+        return sendRequired(request);
+    }
+
     public String postEmpty(String path) {
         var request = request(path)
                 .header("Content-Type", "application/json")
@@ -163,6 +172,14 @@ public class RemoteApiClient {
                 .DELETE()
                 .build();
         send(request);
+    }
+
+    /** DELETE whose response body carries data (e.g. the payload text of a hub dataset operation). */
+    public String deleteRequired(String path) {
+        var request = request(path)
+                .DELETE()
+                .build();
+        return sendRequired(request);
     }
 
     public String postMultipart(String path, Map<String, Path> files) {

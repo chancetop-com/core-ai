@@ -1,5 +1,7 @@
 package ai.core.server.sandboxhub;
 
+import ai.core.api.server.dataset.SchemaFieldView;
+import ai.core.api.server.sandboxhub.SandboxHubDatasetView;
 import ai.core.api.server.sandboxhub.SandboxHubToolDetail;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.Test;
@@ -37,5 +39,38 @@ class SandboxHubCatalogSnapshotTest {
     @Test
     void detailsOrEmptyToleratesAnUnsetList() {
         assertEquals(List.of(), new SandboxHubCatalogSnapshot().detailsOrEmpty());
+    }
+
+    @Test
+    void datasetsSurviveTheJsonRoundTripToo() {
+        var view = new SandboxHubDatasetView();
+        view.datasetId = "ds1";
+        view.name = "menu-state";
+        view.type = "SESSION";
+        view.permission = "WRITE";
+        view.description = "menus";
+        var field = new SchemaFieldView();
+        field.name = "menuItems";
+        field.type = "STRING";
+        field.label = "菜单";
+        view.schema = List.of(field);
+
+        var restored = JsonUtil.fromJson(SandboxHubCatalogSnapshot.class,
+                JsonUtil.toJson(SandboxHubCatalogSnapshot.of("menu-agent", List.of(), List.of(view))));
+
+        assertNotNull(restored);
+        var dataset = restored.datasetsOrEmpty().getFirst();
+        assertEquals("ds1", dataset.datasetId);
+        assertEquals("menu-state", dataset.name);
+        assertEquals("SESSION", dataset.type);
+        assertEquals("WRITE", dataset.permission);
+        assertEquals("menus", dataset.description);
+        assertEquals("menuItems", dataset.schema.getFirst().name);
+        assertEquals("菜单", dataset.schema.getFirst().label);
+    }
+
+    @Test
+    void datasetsOrEmptyToleratesAnUnsetList() {
+        assertEquals(List.of(), new SandboxHubCatalogSnapshot().datasetsOrEmpty());
     }
 }

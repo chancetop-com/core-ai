@@ -1,5 +1,6 @@
 package ai.core.server.sandboxhub;
 
+import ai.core.api.server.sandboxhub.SandboxHubDatasetView;
 import ai.core.api.server.sandboxhub.SandboxHubToolDetail;
 import core.framework.api.json.Property;
 
@@ -19,9 +20,15 @@ import java.util.List;
  */
 public class SandboxHubCatalogSnapshot {
     public static SandboxHubCatalogSnapshot of(String agentName, List<SandboxHubToolDetail> details) {
+        return of(agentName, details, List.of());
+    }
+
+    public static SandboxHubCatalogSnapshot of(String agentName, List<SandboxHubToolDetail> details,
+                                               List<SandboxHubDatasetView> datasets) {
         var snapshot = new SandboxHubCatalogSnapshot();
         snapshot.agentName = agentName;
         snapshot.details = details == null ? new ArrayList<>() : new ArrayList<>(details);
+        snapshot.datasets = datasets == null ? new ArrayList<>() : new ArrayList<>(datasets);
         return snapshot;
     }
 
@@ -31,7 +38,14 @@ public class SandboxHubCatalogSnapshot {
     @Property(name = "details")
     public List<SandboxHubToolDetail> details;
 
+    @Property(name = "datasets")
+    public List<SandboxHubDatasetView> datasets;
+
     public List<SandboxHubToolDetail> detailsOrEmpty() {
         return details == null ? List.of() : details;
+    }
+
+    public List<SandboxHubDatasetView> datasetsOrEmpty() {
+        return datasets == null ? List.of() : datasets;
     }
 }

@@ -51,6 +51,7 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.HubCall;
 import ai.core.server.hub.HubCallModule;
+import ai.core.server.hub.HubDatasetModule;
 import ai.core.server.mcphub.McpHubModule;
 import ai.core.server.sandboxhub.SandboxHubModule;
 import ai.core.server.skillhub.SkillHubModule;
@@ -148,6 +149,9 @@ public class ServerApp extends App {
         // Sandbox Hub serves the owning session's tools and needs AgentSessionManager (SessionModule)
         // and HubCallAuditService (McpHubModule), so it follows both.
         load(new SandboxHubModule());
+        // Hub dataset access for local scripts needs SessionRegistry (SessionModule) and DatasetRecordService
+        // (DatasetModule), so it follows both.
+        load(new HubDatasetModule());
         load(new BuilderToolsModule());
         load(new OpenClawModule());
         load(new PlatformApiModule());

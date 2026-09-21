@@ -31,7 +31,7 @@ public abstract class HubCommandBase implements Callable<Integer> {
         } catch (HubCliError e) {
             return fail(e.exitCode, codeFor(e.exitCode), httpStatusFor(e.exitCode), e.getMessage());
         } catch (RemoteApiException e) {
-            return fail(HubExitCodes.forException(e), apiCodeFor(e.statusCode), e.statusCode, e.getMessage());
+            return fail(exitCodeFor(e), apiCodeFor(e.statusCode), e.statusCode, e.getMessage());
         } catch (IllegalStateException e) {
             var exitCode = HubExitCodes.forException(e);
             String message = e.getMessage() == null ? "request failed" : e.getMessage();
@@ -44,6 +44,11 @@ public abstract class HubCommandBase implements Callable<Integer> {
     }
 
     protected abstract Integer execute();
+
+    /** Exit code for a rejected request; a command group with its own table (see the docs) overrides it. */
+    protected int exitCodeFor(RemoteApiException error) {
+        return HubExitCodes.forException(error);
+    }
 
     protected HubClient client() {
         var credentials = credentials();
@@ -81,6 +86,14 @@ public abstract class HubCommandBase implements Callable<Integer> {
 
     protected boolean raw() {
         return options.raw;
+    }
+
+    protected boolean insecure() {
+        return options.insecure;
+    }
+
+    protected boolean quiet() {
+        return options.quiet;
     }
 
     protected HubCredentialResolver.HubCredentials credentials() {

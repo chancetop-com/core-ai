@@ -50,6 +50,29 @@ type hubCatalogResponse struct {
 	ExpiresAt    string            `json:"expires_at,omitempty"`
 	Groups       []hubCatalogGroup `json:"groups"`
 	Tools        []hubToolSummary  `json:"tools"`
+	// Datasets is nil on a server older than the datasets section; an empty list means the session has no bindings.
+	Datasets *[]hubCatalogDataset `json:"datasets,omitempty"`
+}
+
+type hubCatalogDataset struct {
+	DatasetID   string           `json:"dataset_id"`
+	Name        string           `json:"name"`
+	Type        string           `json:"type"`
+	Permission  string           `json:"permission"`
+	Description string           `json:"description,omitempty"`
+	Schema      []hubSchemaField `json:"schema,omitempty"`
+}
+
+type hubSchemaField struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Label string `json:"label,omitempty"`
+}
+
+// hubDatasetListResponse is what `dataset list --json` prints, identical to the local CLI's list payload.
+type hubDatasetListResponse struct {
+	SessionID string              `json:"session_id"`
+	Datasets  []hubCatalogDataset `json:"datasets"`
 }
 
 type hubCatalogGroup struct {
@@ -92,6 +115,22 @@ type hubLlmUsage struct {
 	InputTokens  int     `json:"input_tokens,omitempty"`
 	OutputTokens int     `json:"output_tokens,omitempty"`
 	Cost         float64 `json:"cost,omitempty"`
+}
+
+// datasetBindings returns the catalog's datasets section, nil while the server is older than the section itself.
+func (catalog *hubCatalogResponse) datasetBindings() []hubCatalogDataset {
+	if catalog.Datasets == nil {
+		return nil
+	}
+	return *catalog.Datasets
+}
+
+// nonNilDatasets keeps a printed array iterable without a null check, the way the hub reports its own section.
+func nonNilDatasets(datasets []hubCatalogDataset) []hubCatalogDataset {
+	if datasets == nil {
+		return []hubCatalogDataset{}
+	}
+	return datasets
 }
 
 // filterExposed drops hidden tools. The server already leaves them out of the catalog; this keeps
@@ -254,6 +293,11 @@ func parseJSONObject(raw string) (map[string]any, error) {
 }
 
 func readArgsFile(path string) (string, *cliError) {
+	return readOptionFile(path, "--args-file")
+}
+
+// readOptionFile reads a text option value from a file, where '-' means stdin so a long payload can be piped in.
+func readOptionFile(path, flag string) (string, *cliError) {
 	if path == "-" {
 		content, err := io.ReadAll(os.Stdin)
 		if err != nil {
@@ -263,7 +307,7 @@ func readArgsFile(path string) (string, *cliError) {
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return "", usageError("cannot read --args-file: %s", err)
+		return "", usageError("cannot read %s: %s", flag, err)
 	}
 	return string(content), nil
 }

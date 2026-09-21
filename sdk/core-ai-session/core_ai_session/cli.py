@@ -48,8 +48,10 @@ import shutil
 import subprocess
 import threading
 import time
-from typing import Any, Callable, Iterable, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional, Sequence, Union
 
+from .dataset_ops import SESSION_ID_ENV
+from .datasets import AsyncDatasetNamespace
 from .errors import CoreAiSessionError, NotBoundError, ToolError, ToolNotFoundError
 from .models import Catalog, SessionInfo, Task, ToolDetail, ToolResult, ToolSummary
 from .tree import (
@@ -59,6 +61,9 @@ from .tree import (
     parse_detail,
     parse_session_info,
 )
+
+if TYPE_CHECKING:
+    from .dataset_ops import DatasetOp
 
 LOGGER = logging.getLogger("core_ai_session")
 
@@ -290,8 +295,9 @@ class CliSession(_SessionBase):
     def __init__(self, cli: Optional[Union[str, Sequence[str]]] = None, *, server: Optional[str] = None,
                  api_key: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT,
                  script: Optional[str] = None, wait_timeout: float = DEFAULT_WAIT_TIMEOUT,
-                 poll_interval: Optional[float] = None, record: Optional[str] = None) -> None:
-        super().__init__()
+                 poll_interval: Optional[float] = None, record: Optional[str] = None,
+                 session_id: Optional[str] = None) -> None:
+        super().__init__(session_id=(session_id or "").strip())
         self._cli_argv = _resolve_cli(cli)
         self.cli = " ".join(self._cli_argv)
         self.timeout = max(1, min(int(timeout), CLI_MAX_TIMEOUT))
@@ -461,6 +467,34 @@ class CliSession(_SessionBase):
             self._raise_exit(code, payload, stderr, tool=entry.name, kind=entry.kind)
         return payload
 
+    # ---------- datasets ----------
+
+    def _local_anchor(self) -> str:
+        """The session this local run acts on: ``--session``/``session_id``, else ``CORE_AI_SESSION_ID``.
+
+        Every CLI dataset call has to name a session, so an empty answer is a usage error from
+        `s.dataset` — the CLI itself has no session of its own to fall back on.
+        """
+        return (self.session_id or os.environ.get(SESSION_ID_ENV, "")).strip()
+
+    def _dataset_call(self, op: DatasetOp, dataset_id: str, args: dict[str, Any]) -> dict[str, Any]:
+        """One dataset operation through ``core-ai-cli dataset`` — the same tool, locally.
+
+        The payload comes back verbatim (the CLI prints what the server answered), so `s.dataset`
+        unwraps the identical JSON a sandbox call would have produced. A non-zero exit is a failure
+        here, unlike a tool call: the CLI answers a failed dataset operation with an error object in
+        place of the payload, never with a payload that carries the failure.
+        """
+        anchor = self._dataset_anchor()
+        seconds = self._effective_timeout(None)
+        argv = op.cli_argv(dataset_id, args) + ["--session", anchor, "--timeout", str(seconds)]
+        code, payload, _stdout, stderr = self._run_raw(argv, op.stdin(args), kill_after=seconds + CLI_CALL_GRACE_SECONDS)
+        if code != 0:
+            self._raise_exit(code, payload, stderr)
+        if not isinstance(payload, dict) or not payload:
+            raise CoreAiSessionError(f"core-ai-cli dataset {op.name} printed no payload: {stderr.strip()[:200]}")
+        return payload
+
     # ---------- catalog ----------
 
     @property
@@ -589,14 +623,31 @@ class CliSession(_SessionBase):
                 "; ".join(self._unlistable),
             )
         return {
-            "session_id": "",
+            "session_id": self.session_id,
             "agent_name": "",
             "sandbox_id": "",
             "sandbox_state": "local",
             "contract_version": None,
             "groups": _groups(tools),
             "tools": tools,
+            "datasets": self._datasets(),
         }
+
+    def _datasets(self) -> list[dict[str, Any]]:
+        """The datasets the session named by ``--session``/``session_id`` mounts, if it named one.
+
+        Locally the datasets are a property of a *session* (its agent's ``AgentDatasetConfig``), so
+        without a session id there is nothing to list — that is an error from `s.dataset`, not from
+        opening a session, because everything else a script does works without one.
+        """
+        anchor = (self.session_id or os.environ.get(SESSION_ID_ENV, "")).strip()
+        if not anchor:
+            return []
+        response = self._list_source(["dataset", "list", "--session", anchor], "datasets")
+        if response is None:
+            return []
+        found = response.get("datasets") or []
+        return [item for item in found if isinstance(item, dict) and item.get("dataset_id")]
 
     def _load(self, payload: dict[str, Any]) -> Catalog:
         catalog = self._load_catalog(payload)
@@ -812,6 +863,8 @@ class AsyncCliSession(CliSession):
 
     backend = "cli"
 
+    _dataset_class = AsyncDatasetNamespace
+
     def is_async(self) -> bool:
         return True
 
@@ -825,6 +878,9 @@ class AsyncCliSession(CliSession):
 
     def _fetch_detail(self, entry: ToolSummary) -> Optional[ToolDetail]:
         return None  # a subprocess round trip cannot be awaited from a synchronous call path
+
+    async def _dataset_call(self, op: DatasetOp, dataset_id: str, args: dict[str, Any]) -> dict[str, Any]:  # type: ignore[override]
+        return await asyncio.to_thread(CliSession._dataset_call, self, op, dataset_id, args)
 
     async def me(self) -> SessionInfo:  # type: ignore[override]
         return await asyncio.to_thread(CliSession.me, self)

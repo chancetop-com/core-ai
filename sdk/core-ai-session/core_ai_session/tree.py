@@ -10,10 +10,26 @@ from __future__ import annotations
 import difflib
 import json
 import logging
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
-from .errors import ToolNotFoundError
-from .models import Catalog, CatalogGroup, LlmUsage, SessionInfo, ToolDetail, ToolResult, ToolSummary, content_parts
+from .dataset_ops import MISSING_SESSION_ID
+from .datasets import DatasetNamespace
+from .errors import CoreAiSessionError, ToolNotFoundError
+from .models import (
+    Catalog,
+    CatalogGroup,
+    DatasetInfo,
+    LlmUsage,
+    SessionInfo,
+    ToolDetail,
+    ToolResult,
+    ToolSummary,
+    content_parts,
+    datasets_from_payload,
+)
+
+if TYPE_CHECKING:
+    from .dataset_ops import DatasetOp
 
 LOGGER = logging.getLogger("core_ai_session")
 
@@ -154,6 +170,7 @@ class _SessionBase:
     _node_class: type = Node
     _agent_node_class: type = AgentNode
     _files_class: type = FilesNamespace
+    _dataset_class: type = DatasetNamespace
 
     def __init__(self, session_id: str = "", agent_name: str = "") -> None:
         self._catalog: Optional[Catalog] = None
@@ -192,6 +209,7 @@ class _SessionBase:
                 )
                 for item in payload.get("tools") or []
             ],
+            datasets=datasets_from_payload(payload.get("datasets")),
         )
         self._catalog = catalog
         self._details.clear()
@@ -254,6 +272,16 @@ class _SessionBase:
     def files(self) -> FilesNamespace:
         return self._files_class(self)
 
+    @property
+    def dataset(self) -> DatasetNamespace:
+        """The datasets this session's agent mounts: ``s.dataset["menu-state"].state()``.
+
+        Same surface inside a sandbox and locally — the sandbox reaches the dataset tools through
+        the session hub, a local process through ``core-ai-cli dataset``. See `datasets.py`.
+        """
+        self._require_catalog()
+        return self._dataset_class(self)
+
     def _root(self, kind: str) -> Node:
         self._require_catalog()
         root = self._tree.get(kind)
@@ -302,6 +330,52 @@ class _SessionBase:
         return ToolNotFoundError(
             f"'{name}' is not in this session's catalog; did you mean: {', '.join(close) or '(none)'}"
         )
+
+    # ---------- datasets ----------
+
+    def _dataset_entry(self, op: DatasetOp) -> ToolSummary:
+        """The builtin tool behind one dataset operation.
+
+        It is in the catalog whenever the dataset list is, so the session's own view of the tool
+        (schema, description) is what validates and describes the call. A catalog that omits it
+        still gets a correctly named call instead of an SDK-side error: the server is the authority
+        on what a session may reach.
+        """
+        return self.find_entry(op.tool) or ToolSummary(name=op.tool, kind="builtin", path=op.tool)
+
+    def _dataset_payload(self, result: Union[ToolResult, Task], op: DatasetOp) -> dict[str, Any]:
+        """The payload a dataset tool answered with, or an explanation of why there is none."""
+        if not isinstance(result, ToolResult):
+            raise CoreAiSessionError(
+                f"{op.tool} came back as a pending task (status {result.status!r}); dataset operations "
+                f"are synchronous, so this session cannot be asked for a dataset payload"
+            )
+        payload = result.data
+        if not isinstance(payload, dict):
+            raise CoreAiSessionError(f"{op.tool} answered without a dataset payload: {result.text[:200]!r}")
+        return payload
+
+    def _local_anchor(self) -> Optional[str]:
+        """Which session a *local* transport acts on: an id when it knows one, ``""`` when it does not.
+
+        ``None`` means the transport is not local — inside a sandbox the hub token already names the
+        session, so there is nothing to ask the caller for and nothing to guess.
+        """
+        return None
+
+    def _dataset_anchor(self) -> str:
+        """The session ``s.dataset`` acts on, for a local transport.
+
+        A missing id is an error rather than a fallback to "the latest session": which session a
+        write lands in is not something to guess.
+        """
+        anchor = (self._local_anchor() or "").strip()
+        if not anchor:
+            raise CoreAiSessionError(MISSING_SESSION_ID)
+        return anchor
+
+    def _dataset_call(self, op: DatasetOp, dataset_id: str, args: dict[str, Any]) -> Any:
+        raise NotImplementedError  # every transport implements its own (hub, CLI, fake)
 
     # ---------- invocation ----------
 

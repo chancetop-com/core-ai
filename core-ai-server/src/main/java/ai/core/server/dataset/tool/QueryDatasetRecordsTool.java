@@ -1,6 +1,7 @@
 package ai.core.server.dataset.tool;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.server.dataset.DatasetOpPayloads;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.DatasetType;
@@ -8,12 +9,10 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import ai.core.utils.JsonUtil;
 
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -67,8 +66,9 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         return sb.toString();
     }
 
-    // SESSION datasets hold per-session state and must only be accessed via get_session_state/set_session_state
-    static String sessionDatasetAccessError(DatasetService datasetService, String datasetId) {
+    /** SESSION datasets hold per-session state and must only be reached through the state tools; the hub shares this
+     * check so a script and the agent get the same dispatch error. */
+    public static String sessionDatasetAccessError(DatasetService datasetService, String datasetId) {
         var dataset = datasetService.get(datasetId);
         if (dataset != null && DatasetService.resolveType(dataset) == DatasetType.SESSION) {
             return "session dataset is not accessible via dataset record tools, use get_session_state/set_session_state instead: " + datasetId;
@@ -76,14 +76,9 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         return null;
     }
 
-    // visible for testing; JsonUtil.fromJson throws Error (not RuntimeException) for the literal "null", which LLMs do send
+    // visible for testing; the parse and its message live in DatasetRecordService so the hub replays them
     static Map<String, Object> parseFilter(String filterStr) {
-        if (filterStr == null || filterStr.isBlank() || "null".equals(filterStr.strip())) return null;
-        try {
-            return JsonUtil.toMap(filterStr);
-        } catch (RuntimeException | Error e) {
-            throw new IllegalArgumentException("invalid filter, must be a JSON object like {\"status\": \"done\"}: " + e.getMessage(), e);
-        }
+        return DatasetRecordService.parseFilter(filterStr);
     }
 
     private static List<ToolCallParameter> parameters() {
@@ -116,12 +111,17 @@ public final class QueryDatasetRecordsTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
-        var datasetId = getStringValue(args, "dataset_id");
-        if (datasetId == null || datasetId.isBlank()) {
+        var datasetRef = getStringValue(args, "dataset_id");
+        if (datasetRef == null || datasetRef.isBlank()) {
             return ToolCallResult.failed("dataset_id is required");
         }
-        if (registry.resolve(datasetId) == null) {
-            return ToolCallResult.failed("access denied to dataset: " + datasetId);
+        var ambiguous = registry.ambiguousMessage(datasetRef);
+        if (ambiguous != null) {
+            return ToolCallResult.failed(ambiguous);
+        }
+        var datasetId = registry.resolveId(datasetRef);
+        if (datasetId == null) {
+            return ToolCallResult.failed("access denied to dataset: " + datasetRef);
         }
         var sessionError = sessionDatasetAccessError(datasetService, datasetId);
         if (sessionError != null) {
@@ -150,29 +150,10 @@ public final class QueryDatasetRecordsTool extends ToolCall {
             return ToolCallResult.failed(e.getMessage());
         }
 
-        List<String> fields = fieldsStr != null ? List.of(fieldsStr.split(",")) : null;
+        // a blank value means "no projection", matching get_session_state and the hub service
+        List<String> fields = fieldsStr != null && !fieldsStr.isBlank() ? List.of(fieldsStr.split(",")) : null;
 
         var result = recordService.query(new DatasetRecordService.QueryRequest(datasetId, from, to, fields, limit, offset, null, filter));
-        return ToolCallResult.completed(buildResponse(datasetId, result));
-    }
-
-    private String buildResponse(String datasetId, DatasetRecordService.QueryResult result) {
-        var response = new LinkedHashMap<String, Object>();
-        response.put("records", result.records().stream().map(r -> {
-            var record = new LinkedHashMap<String, Object>();
-            record.put("id", r.id);
-            record.put("run_id", r.runId);
-            record.put("agent_id", r.agentId);
-            record.put("run_started_at", r.runStartedAt != null ? r.runStartedAt.format(DateTimeFormatter.ISO_DATE_TIME) : null);
-            record.put("data", r.data != null ? JsonUtil.toMap(r.data) : null);
-            return record;
-        }).toList());
-        response.put("total", result.total());
-        response.put("dataset_id", datasetId);
-        if (result.truncated()) {
-            response.put("warning", "filter only scanned the most recent " + DatasetRecordService.MAX_FILTER_SCAN_RECORDS
-                    + " records, results may be incomplete; narrow the search with from/to time range");
-        }
-        return JsonUtil.toJson(response);
+        return ToolCallResult.completed(DatasetOpPayloads.records(datasetId, result));
     }
 }

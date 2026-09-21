@@ -1,7 +1,7 @@
 set -e
-cd /src
+cd "$(dirname "$0")"
 mkdir -p /tmp/bins /tmp/chk
-for f in cli.go cli_render.go bind.go hubproxy.go hub_test.go main.go; do
+for f in cli.go cli_render.go cli_dataset.go cli_dataset_test.go bind.go hubproxy.go hub_test.go main.go; do
   tr -d '\r' < "$f" > "/tmp/chk/$f"
 done
 echo '--- gofmt (new/edited files, LF-normalized) ---'

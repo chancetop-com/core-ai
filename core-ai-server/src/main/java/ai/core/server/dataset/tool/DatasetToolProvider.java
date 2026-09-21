@@ -8,6 +8,7 @@ import ai.core.tool.registry.ToolProvider;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,10 +19,14 @@ import java.util.Map;
  * @author Lim Chen
  */
 public class DatasetToolProvider implements ToolProvider {
+    private final DatasetService datasetService;
+    private final DatasetAccessRegistry registry;
     private final Map<String, ToolCall> tools;
 
     public DatasetToolProvider(DatasetService datasetService, DatasetRecordService datasetRecordService,
                                 DatasetAccessRegistry registry, String agentId, String runId) {
+        this.datasetService = datasetService;
+        this.registry = registry;
         var hasGeneral = registry.allowedDatasets().keySet().stream()
                 .anyMatch(id -> DatasetService.resolveType(datasetService.get(id)) == DatasetType.GENERAL);
         var hasSession = registry.allowedDatasets().keySet().stream()
@@ -69,5 +74,13 @@ public class DatasetToolProvider implements ToolProvider {
     @Override
     public Map<String, ToolCall> provide() {
         return tools;
+    }
+
+    /**
+     * What the catalog may announce. Same registry the tools were built from, so the datasets a script can
+     * see and the datasets it can reach cannot drift apart.
+     */
+    public List<DatasetAccessRegistry.Binding> datasets() {
+        return registry.bindings(datasetService);
     }
 }

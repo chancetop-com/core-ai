@@ -1,0 +1,95 @@
+{
+  "tools": [
+    {
+      "name": "get_session_state",
+      "op": "state.get",
+      "kind": "builtin",
+      "group": null,
+      "path": "get_session_state",
+      "ref_id": "get_session_state",
+      "description": "Get the current session state stored in a session dataset.\nEach session has at most one state record per dataset. Call this at the beginning of every turn to restore session context. Pass fields to retrieve only the listed top-level fields (comma-separated) and avoid loading large state.",
+      "exposure": "direct",
+      "callable": true,
+      "timeout_seconds": 120,
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"dataset_id\":{\"type\":\"string\"},\"fields\":{\"type\":\"string\"}},\"required\":[\"dataset_id\"]}"
+    },
+    {
+      "name": "set_session_state",
+      "op": "state.set",
+      "kind": "builtin",
+      "group": null,
+      "path": "set_session_state",
+      "ref_id": "set_session_state",
+      "description": "Store the session state of a session dataset, replacing whatever was stored before.\nEach session has at most one state record per dataset. Pass the complete state: use update_session_state to merge fields instead.",
+      "exposure": "direct",
+      "callable": true,
+      "timeout_seconds": 120,
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"dataset_id\":{\"type\":\"string\"},\"data\":{\"type\":\"object\"}},\"required\":[\"dataset_id\",\"data\"]}"
+    },
+    {
+      "name": "update_session_state",
+      "op": "state.patch",
+      "kind": "builtin",
+      "group": null,
+      "path": "update_session_state",
+      "ref_id": "update_session_state",
+      "description": "Merge fields into the session state of a session dataset.\nOnly the passed top-level fields are written; the rest of the stored state is kept. Use it for incremental progress instead of rewriting the whole state.",
+      "exposure": "direct",
+      "callable": true,
+      "timeout_seconds": 120,
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"dataset_id\":{\"type\":\"string\"},\"data\":{\"type\":\"object\"}},\"required\":[\"dataset_id\",\"data\"]}"
+    },
+    {
+      "name": "query_dataset_records",
+      "op": "records.query",
+      "kind": "builtin",
+      "group": null,
+      "path": "query_dataset_records",
+      "ref_id": "query_dataset_records",
+      "description": "Query records stored in a dataset, newest first.\nRecords are returned with their metadata (id, run_id, agent_id, run_started_at) and the data itself. A filter is ANDed exact matches over schema fields and only scans the most recent records, so bound it with from/to for a long history.",
+      "exposure": "direct",
+      "callable": true,
+      "timeout_seconds": 120,
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"dataset_id\":{\"type\":\"string\"},\"filter\":{\"type\":\"string\"},\"fields\":{\"type\":\"string\"},\"from\":{\"type\":\"string\"},\"to\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"}},\"required\":[\"dataset_id\"]}"
+    },
+    {
+      "name": "insert_dataset_record",
+      "op": "records.insert",
+      "kind": "builtin",
+      "group": null,
+      "path": "insert_dataset_record",
+      "ref_id": "insert_dataset_record",
+      "description": "Insert one record into a dataset.\nThe record is stamped with the current run and session, so a record always says which run produced it. Fields not in the dataset schema are dropped.",
+      "exposure": "direct",
+      "callable": true,
+      "timeout_seconds": 120,
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"dataset_id\":{\"type\":\"string\"},\"data\":{\"type\":\"object\"}},\"required\":[\"dataset_id\",\"data\"]}"
+    },
+    {
+      "name": "update_dataset_record",
+      "op": "records.update",
+      "kind": "builtin",
+      "group": null,
+      "path": "update_dataset_record",
+      "ref_id": "update_dataset_record",
+      "description": "Update one record of a dataset by id.\nOnly the passed fields are merged into the stored record, so pass every field you mean to keep changed and leave the rest out.",
+      "exposure": "direct",
+      "callable": true,
+      "timeout_seconds": 120,
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"dataset_id\":{\"type\":\"string\"},\"record_id\":{\"type\":\"string\"},\"data\":{\"type\":\"object\"}},\"required\":[\"dataset_id\",\"record_id\",\"data\"]}"
+    },
+    {
+      "name": "delete_dataset_record",
+      "op": "records.delete",
+      "kind": "builtin",
+      "group": null,
+      "path": "delete_dataset_record",
+      "ref_id": "delete_dataset_record",
+      "description": "Delete one record of a dataset by id.\nDeleting needs full permission on the dataset; a write-only binding cannot delete.",
+      "exposure": "direct",
+      "callable": true,
+      "timeout_seconds": 120,
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"dataset_id\":{\"type\":\"string\"},\"record_id\":{\"type\":\"string\"}},\"required\":[\"dataset_id\",\"record_id\"]}"
+    }
+  ]
+}

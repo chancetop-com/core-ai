@@ -90,5 +90,40 @@
       "description": "Registry control tool, never callable from a script.",
       "exposure": "hidden"
     }
+  ],
+  "datasets": [
+    {
+      "dataset_id": "d7a1f3c9-5b2e-4c81-9f60-1d4e8a2b6c33",
+      "name": "menu-state",
+      "type": "SESSION",
+      "permission": "FULL",
+      "description": "The menu this session is building.",
+      "schema": [
+        { "name": "menuPublished", "type": "boolean", "label": "Published" },
+        { "name": "note", "type": "string" }
+      ]
+    },
+    {
+      "dataset_id": "3f8c2b41-0d7a-4e59-8b16-92ac5ed7f204",
+      "name": "review-log",
+      "type": "GENERAL",
+      "permission": "WRITE",
+      "description": "",
+      "schema": [
+        { "name": "review_id", "type": "string" },
+        { "name": "replied_at", "type": "datetime" }
+      ]
+    },
+    {
+      "dataset_id": "8b1e4d77-2c93-4a6f-b0d5-37e9c1fa5d60",
+      "name": "seo-history",
+      "type": "GENERAL",
+      "permission": "READ",
+      "description": "Ranking history exported by the SEO job.",
+      "schema": [
+        { "name": "query", "type": "string" },
+        { "name": "position", "type": "number" }
+      ]
+    }
   ]
 }

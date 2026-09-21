@@ -97,6 +97,21 @@ core-ai-sandbox describe google_gbp_get_reviews
 core-ai-sandbox call google_gbp_get_reviews --arg location=locations/123 --json
 ```
 
+The datasets the session's agent mounts are addressed the same way, through the mounted tools
+themselves — a sandbox holds no server credential of its own:
+
+```bash
+core-ai-sandbox dataset list
+core-ai-sandbox dataset show review-log                                   # type, permission, schema
+core-ai-sandbox dataset state get menu-state --fields menuPublished
+core-ai-sandbox dataset records query review-log --filter '{"review_id":"r-1"}' --limit 10
+core-ai-sandbox dataset records insert review-log --data-file -             # JSON on stdin
+```
+
+`<dataset>` is an id or a name unique inside this session; `--session` is refused unless it matches
+the sandbox's own session. What a call may do is exactly what the binding allows (READ/WRITE/FULL),
+so a refused write prints the server's sentence and exits `1`.
+
 Exit codes: `0` success, `1` tool error, `2` usage, `3` not bound/unauthenticated, `4` forbidden, `5` tool not found, `6` timeout (the task keeps running; the envelope carries `task_id`).
 
 ```python
@@ -105,6 +120,8 @@ from core_ai_session import session
 s = session()                                      # reads CORE_AI_HUB, injected by this runtime
 r = s.mcp["google-gbp"]["get_reviews"](location="locations/123")
 r.text, r.data, r.call_id
+
+s.dataset["menu-state"].patch({"menuPublished": True})     # the datasets this session mounts
 ```
 
 The Python package lives in `sdk/core-ai-session/` (its [README](../sdk/core-ai-session/README.md) covers install, layout and tests); `core-ai-sandbox` below is the runtime's CLI. The same script runs outside a sandbox unchanged: with `CORE_AI_HUB` unset the SDK drives `core-ai-cli` (your own identity) instead, and `FakeSession` covers offline unit tests. `CORE_AI_HUB` always wins — no silent fallback to the local identity.

@@ -10,6 +10,8 @@ call without hand-writing CLI syntax.
     python session_probe.py --describe kubernetes/pods_list
     python session_probe.py --call kubernetes/namespaces_list --args '{}'
     python session_probe.py --call some/tool --args -  # JSON on stdin
+    python session_probe.py --datasets                 # the datasets this session is bound to
+    python session_probe.py --dataset menu-state       # one binding, plus its state or newest records
     python session_probe.py --json                     # machine-readable form of any mode
 
 Exit codes: 0 ok, 1 the tool failed, 2 usage / unknown tool, 3 not bound / no credentials.
@@ -118,6 +120,33 @@ def _describe(opened: Any, name: str) -> dict[str, Any]:
     }
 
 
+def _binding(info: Any) -> dict[str, Any]:
+    return {
+        "dataset_id": info.dataset_id,
+        "name": info.name,
+        "type": info.type,
+        "permission": info.permission,
+        "description": info.description,
+        "fields": info.field_names(),
+    }
+
+
+def _datasets(opened: Any) -> dict[str, Any]:
+    bindings = [_binding(info) for info in opened.dataset.list()]
+    return {"count": len(bindings), "datasets": bindings}
+
+
+def _dataset(opened: Any, ref: str, limit: int) -> dict[str, Any]:
+    """One binding, and a read of it: the state for a SESSION dataset, the newest records for a GENERAL one."""
+    node = opened.dataset[ref]
+    payload = _binding(node.info)
+    if (node.type or "").upper() == "SESSION":
+        payload["state"] = node.state()
+    else:
+        payload["records"] = node.records(limit=limit)
+    return payload
+
+
 def _call(opened: Any, name: str, raw_args: str, timeout: Optional[int]) -> dict[str, Any]:
     arguments: dict[str, Any] = {}
     if raw_args.strip():
@@ -159,6 +188,9 @@ def _print_human(args: argparse.Namespace, payload: Any) -> None:
             payload["status"], payload["duration_ms"], payload["content_parts"]))
         print(_head(payload["text"] or "(no text)", MAX_TEXT))
         return
+    if args.datasets or args.dataset is not None:
+        _print_datasets(args, payload)
+        return
     print("transport: %s (backend=%s)" % (payload["transport"], payload["backend"]))
     identity = payload.get("identity") or {}
     if identity:
@@ -174,6 +206,38 @@ def _print_human(args: argparse.Namespace, payload: Any) -> None:
     print("catalog_gaps: %s" % ("; ".join(gaps) if gaps else "(none)"))
 
 
+def _print_datasets(args: argparse.Namespace, payload: Any) -> None:
+    if args.datasets:
+        for item in payload["datasets"][:MAX_LIST]:
+            print("%-26s %-8s %-6s %s" % (item["name"] or "(unnamed)", item["type"] or "?",
+                                          item["permission"] or "?", ", ".join(item["fields"])))
+            print("   id: %s%s" % (item["dataset_id"],
+                                   "  %s" % item["description"] if item["description"] else ""))
+        print("— %d dataset(s) bound" % payload["count"])
+        if payload["count"] > MAX_LIST:
+            print("… %d more not shown" % (payload["count"] - MAX_LIST))
+        return
+    print("%s (%s, %s) id=%s" % (payload["name"] or "(unnamed)", payload["type"] or "?",
+                                 payload["permission"] or "?", payload["dataset_id"]))
+    if payload["description"]:
+        print(payload["description"])
+    if payload["fields"]:
+        print("fields : %s" % ", ".join(payload["fields"]))
+    if "state" in payload:
+        state = payload["state"]
+        if state is None:
+            print("state  : (this session never wrote one)")
+        else:
+            print("state  :")
+            print(_head(json.dumps(state, ensure_ascii=False, indent=2), MAX_TEXT))
+        return
+    records = payload["records"]
+    print("records: %d (newest first)" % len(records))
+    for record in records:
+        print("  %s  run_started_at=%s" % (record.get("id"), record.get("run_started_at")))
+        print(_head(json.dumps(record.get("data"), ensure_ascii=False, indent=2), MAX_SCHEMA))
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="session_probe.py",
@@ -183,14 +247,21 @@ def main(argv: Optional[list[str]] = None) -> int:
     mode.add_argument("--search", metavar="WORDS", help="list catalog tools matching all words")
     mode.add_argument("--describe", metavar="SERVER/TOOL", help="show one tool's input_schema")
     mode.add_argument("--call", metavar="SERVER/TOOL", help="call one tool (describe it first)")
+    mode.add_argument("--datasets", action="store_true", help="list the datasets bound to this session")
+    mode.add_argument("--dataset", metavar="NAME|ID", help="one binding: type, permission, schema, and a read")
     parser.add_argument("--args", default="", help="JSON object for --call; '-' reads it from stdin")
     parser.add_argument("--timeout", type=int, default=None, help="max seconds the call may run")
+    parser.add_argument("--limit", type=int, default=3, help="records to read for --dataset on a GENERAL dataset")
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     args = parser.parse_args(argv)
 
     if (args.args or args.timeout) and args.call is None:
         print("--args/--timeout only make sense together with --call", file=sys.stderr)
         return EXIT_USAGE
+    if args.limit < 1 and args.dataset is not None:
+        print("--limit must be at least 1", file=sys.stderr)
+        return EXIT_USAGE
+    wanted = "dataset" if (args.datasets or args.dataset is not None) else "tool"
 
     try:
         opened = session()
@@ -201,13 +272,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         elif args.call is not None:
             raw = sys.stdin.read() if args.args == "-" else args.args
             payload = _call(opened, args.call, raw, args.timeout)
+        elif args.datasets:
+            payload = _datasets(opened)
+        elif args.dataset is not None:
+            payload = _dataset(opened, args.dataset, args.limit)
         else:
             payload = _overview(opened)
     except NotBoundError as error:
         print("not bound: %s" % error, file=sys.stderr)
         return EXIT_NOT_BOUND
     except ToolNotFoundError as error:
-        print("unknown tool: %s" % error, file=sys.stderr)
+        print("unknown %s: %s" % (wanted, error), file=sys.stderr)
         return EXIT_USAGE
     except (ToolError, CoreAiSessionError) as error:
         print("failed: %s" % error, file=sys.stderr)

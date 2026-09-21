@@ -1,0 +1,69 @@
+{
+  "payloads": {
+    "state.get": {
+      "state": {
+        "menuPublished": true,
+        "note": "published after the review round"
+      },
+      "dataset_id": "d7a1f3c9-5b2e-4c81-9f60-1d4e8a2b6c33",
+      "session_id": "b7f1c0e2-3a44-4f7b-9c1d-8e2a5d6b7c80"
+    },
+    "state.get.empty": {
+      "state": null,
+      "dataset_id": "d7a1f3c9-5b2e-4c81-9f60-1d4e8a2b6c33",
+      "session_id": "b7f1c0e2-3a44-4f7b-9c1d-8e2a5d6b7c80"
+    },
+    "state.set": {
+      "status": "saved",
+      "dataset_id": "d7a1f3c9-5b2e-4c81-9f60-1d4e8a2b6c33",
+      "session_id": "b7f1c0e2-3a44-4f7b-9c1d-8e2a5d6b7c80"
+    },
+    "state.patch": {
+      "status": "updated",
+      "dataset_id": "d7a1f3c9-5b2e-4c81-9f60-1d4e8a2b6c33",
+      "session_id": "b7f1c0e2-3a44-4f7b-9c1d-8e2a5d6b7c80",
+      "updated_fields": ["menuPublished"]
+    },
+    "records.query": {
+      "records": [
+        {
+          "id": "5c1d8a20-9f43-4b7e-8c16-2d3e4f5a6b70",
+          "run_id": "run-9f2c41",
+          "agent_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+          "run_started_at": "2026-09-19T08:12:44.512Z",
+          "data": {
+            "review_id": "r-1024",
+            "replied_at": "2026-09-19T08:13:02Z"
+          }
+        }
+      ],
+      "total": 1,
+      "dataset_id": "3f8c2b41-0d7a-4e59-8b16-92ac5ed7f204"
+    },
+    "records.query.truncated": {
+      "records": [],
+      "total": 0,
+      "dataset_id": "3f8c2b41-0d7a-4e59-8b16-92ac5ed7f204",
+      "warning": "filter only scanned the most recent 10000 records, results may be incomplete; narrow the search with from/to time range"
+    },
+    "records.insert": {
+      "status": "created",
+      "dataset_id": "3f8c2b41-0d7a-4e59-8b16-92ac5ed7f204",
+      "inserted_fields": ["review_id", "replied_at"],
+      "message": "record inserted successfully"
+    },
+    "records.update": {
+      "status": "updated",
+      "record_id": "5c1d8a20-9f43-4b7e-8c16-2d3e4f5a6b70",
+      "dataset_id": "3f8c2b41-0d7a-4e59-8b16-92ac5ed7f204",
+      "updated_fields": ["replied_at"],
+      "message": "record updated successfully"
+    },
+    "records.delete": {
+      "status": "deleted",
+      "record_id": "5c1d8a20-9f43-4b7e-8c16-2d3e4f5a6b70",
+      "dataset_id": "3f8c2b41-0d7a-4e59-8b16-92ac5ed7f204",
+      "message": "record deleted successfully"
+    }
+  }
+}

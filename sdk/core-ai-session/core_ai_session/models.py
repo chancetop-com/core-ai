@@ -84,6 +84,79 @@ class CatalogGroup:
     count: int = 0
 
 
+@dataclass(frozen=True)
+class SchemaField:
+    """One field of a dataset's schema: the shape record tools validate and describe to an LLM."""
+
+    name: str
+    type: str = ""
+    required: bool = False
+    description: str = ""
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "SchemaField":
+        return cls(
+            name=str(payload.get("name") or ""),
+            type=str(payload.get("type") or ""),
+            required=bool(payload.get("required")),
+            description=str(payload.get("description") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class DatasetInfo:
+    """One dataset mounted on this session: what it is, how far this session may go, what it holds.
+
+    ``permission`` is the session's own grant (``read``/``write``/``full``) — the same value the
+    server's registry uses, so it is the value that decides whether a write can succeed, not a hint.
+    """
+
+    dataset_id: str
+    name: str = ""
+    type: str = ""
+    permission: str = ""
+    description: str = ""
+    schema: list[SchemaField] = field(default_factory=list)
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "DatasetInfo":
+        return cls(
+            dataset_id=str(payload.get("dataset_id") or ""),
+            name=str(payload.get("name") or ""),
+            type=str(payload.get("type") or ""),
+            permission=str(payload.get("permission") or ""),
+            description=str(payload.get("description") or ""),
+            schema=[SchemaField.from_payload(item) for item in payload.get("schema") or []],
+        )
+
+    @property
+    def writable(self) -> bool:
+        """Writes need WRITE or FULL on the binding (delete is FULL only, which `deletable` reports)."""
+        return self.permission.lower() in ("write", "full")
+
+    @property
+    def deletable(self) -> bool:
+        return self.permission.lower() == "full"
+
+    def field_names(self) -> list[str]:
+        return [item.name for item in self.schema]
+
+
+def datasets_from_payload(payload: Any) -> list[DatasetInfo]:
+    """The catalog's ``datasets`` section (absent in older hubs: an empty list, not an error).
+
+    A dataset entry is addressable when it carries an id; an entry without one cannot be called, so
+    it is dropped rather than turned into a node that fails on every operation.
+    """
+    if not isinstance(payload, (list, tuple)):
+        return []
+    return [
+        DatasetInfo.from_payload(item)
+        for item in payload
+        if isinstance(item, dict) and item.get("dataset_id")
+    ]
+
+
 @dataclass
 class Catalog:
     session_id: str = ""
@@ -93,6 +166,7 @@ class Catalog:
     expires_at: Optional[str] = None
     groups: list[CatalogGroup] = field(default_factory=list)
     tools: list[ToolSummary] = field(default_factory=list)
+    datasets: list[DatasetInfo] = field(default_factory=list)
 
     def by_kind(self, kind: str) -> list[ToolSummary]:
         return [tool for tool in self.tools if tool.kind == kind]

@@ -4,6 +4,16 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.sandboxhub.SandboxHubGroup;
 import ai.core.api.server.sandboxhub.SandboxHubToolDetail;
 import ai.core.sandbox.SandboxConstants;
+import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetService;
+import ai.core.server.dataset.tool.DatasetAccessRegistry;
+import ai.core.server.dataset.tool.DatasetToolProvider;
+import ai.core.server.domain.AgentDatasetConfig;
+import ai.core.server.domain.Dataset;
+import ai.core.server.domain.DatasetPermission;
+import ai.core.server.domain.DatasetType;
+import ai.core.server.domain.SchemaField;
+import ai.core.server.domain.SchemaFieldType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ToolExposure;
@@ -21,6 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Catalog derivation is the contract a script sees: which of the session agent's tools are callable
@@ -30,6 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author xander
  */
 class SandboxHubCatalogTest {
+    private static final String DATASET_ID = "ds1";
+
     private static SandboxHubGroup group(List<SandboxHubGroup> groups, String kind, String name) {
         for (var group : groups) {
             if (group.kind.equals(kind) && Optional.ofNullable(name).equals(Optional.ofNullable(group.group))) return group;
@@ -115,6 +129,27 @@ class SandboxHubCatalogTest {
         tool.setParameters(new ArrayList<>());
         tool.setExposure(exposure);
         return tool;
+    }
+
+    private static DatasetToolProvider datasetProvider(DatasetService datasetService) {
+        var config = new AgentDatasetConfig();
+        config.datasetId = DATASET_ID;
+        config.permission = DatasetPermission.WRITE;
+        var registry = DatasetAccessRegistry.from(List.of(config), datasetService);
+        return new DatasetToolProvider(datasetService, mock(DatasetRecordService.class), registry, "agent1", "run1");
+    }
+
+    private static Dataset sessionDataset() {
+        var dataset = new Dataset();
+        dataset.id = DATASET_ID;
+        dataset.name = "menu-state";
+        dataset.type = DatasetType.SESSION;
+        dataset.description = "菜单发布状态";
+        var field = new SchemaField();
+        field.name = "menuItems";
+        field.type = SchemaFieldType.STRING;
+        dataset.schema = List.of(field);
+        return dataset;
     }
 
     @Test
@@ -242,5 +277,37 @@ class SandboxHubCatalogTest {
     @Test
     void contextWithoutRegistryYieldsEmptyCatalog() {
         assertEquals(0, SandboxHubCatalog.of(ExecutionContext.empty()).size());
+    }
+
+    @Test
+    void announcesTheDatasetsOfTheDatasetProvider() {
+        var datasetService = mock(DatasetService.class);
+        when(datasetService.get(DATASET_ID)).thenReturn(sessionDataset());
+
+        var datasets = catalog(datasetProvider(datasetService)).datasets();
+
+        assertEquals(1, datasets.size());
+        assertEquals(DATASET_ID, datasets.getFirst().datasetId);
+        assertEquals("menu-state", datasets.getFirst().name);
+        assertEquals("SESSION", datasets.getFirst().type);
+        assertEquals("WRITE", datasets.getFirst().permission);
+        assertEquals("菜单发布状态", datasets.getFirst().description);
+        assertEquals("menuItems", datasets.getFirst().schema.getFirst().name);
+        assertEquals("STRING", datasets.getFirst().schema.getFirst().type);
+    }
+
+    @Test
+    void announcesNoDatasetsWithoutADatasetProvider() {
+        assertEquals(List.of(), catalog(provider("mcp:menu-hub", tool("search"))).datasets());
+    }
+
+    @Test
+    void announcesNoDatasetsForASessionWithoutBindings() {
+        var datasetService = mock(DatasetService.class);
+
+        var datasets = catalog(new DatasetToolProvider(datasetService, mock(DatasetRecordService.class),
+                DatasetAccessRegistry.from(null, datasetService), "agent1", "run1")).datasets();
+
+        assertEquals(List.of(), datasets);
     }
 }

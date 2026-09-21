@@ -48,6 +48,7 @@ public final class SandboxHubViews {
         response.contractVersion = SandboxHubService.CONTRACT_VERSION;
         response.groups = groups(snapshot.detailsOrEmpty());
         response.tools = summaries(snapshot.detailsOrEmpty());
+        response.datasets = snapshot.datasetsOrEmpty();
         return response;
     }
 

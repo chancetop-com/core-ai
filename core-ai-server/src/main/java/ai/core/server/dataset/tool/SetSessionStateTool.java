@@ -1,6 +1,7 @@
 package ai.core.server.dataset.tool;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.server.dataset.DatasetOpPayloads;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.DatasetType;
@@ -11,7 +12,6 @@ import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -70,22 +70,27 @@ public final class SetSessionStateTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
-        var datasetId = getStringValue(args, "dataset_id");
-        if (datasetId == null || datasetId.isBlank()) {
+        var datasetRef = getStringValue(args, "dataset_id");
+        if (datasetRef == null || datasetRef.isBlank()) {
             return ToolCallResult.failed("dataset_id is required");
         }
         if (context == null || context.getSessionId() == null) {
             return ToolCallResult.failed("session context required");
         }
-        if (!registry.isWritable(datasetId)) {
-            return ToolCallResult.failed("write access denied to dataset: " + datasetId);
+        var ambiguous = registry.ambiguousMessage(datasetRef);
+        if (ambiguous != null) {
+            return ToolCallResult.failed(ambiguous);
+        }
+        var datasetId = registry.resolveId(datasetRef);
+        if (!registry.isWritable(datasetRef)) {
+            return ToolCallResult.failed("write access denied to dataset: " + datasetRef);
         }
         var dataset = datasetService.get(datasetId);
         if (dataset == null) {
-            return ToolCallResult.failed("dataset not found: " + datasetId);
+            return ToolCallResult.failed("dataset not found: " + datasetRef);
         }
         if (DatasetService.resolveType(dataset) != DatasetType.SESSION) {
-            return ToolCallResult.failed("not a session dataset, use dataset record tools instead: " + datasetId);
+            return ToolCallResult.failed("not a session dataset, use dataset record tools instead: " + datasetRef);
         }
 
         @SuppressWarnings("unchecked")
@@ -100,10 +105,6 @@ public final class SetSessionStateTool extends ToolCall {
 
         recordService.upsertBySession(datasetId, context.getSessionId(), dataJson, agentId, context.getUserId());
 
-        var response = new LinkedHashMap<String, Object>();
-        response.put("status", "saved");
-        response.put("dataset_id", datasetId);
-        response.put("session_id", context.getSessionId());
-        return ToolCallResult.completed(JsonUtil.toJson(response));
+        return ToolCallResult.completed(DatasetOpPayloads.stateSaved(datasetId, context.getSessionId()));
     }
 }

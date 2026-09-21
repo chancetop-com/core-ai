@@ -30,6 +30,45 @@ public class DatasetRecordService {
     public static final int MAX_PAGE_SIZE = 1000;
     public static final int MAX_FILTER_SCAN_RECORDS = 10_000;
 
+    /**
+     * Filter text (a JSON object) to conditions. Shared by the tools and the hub so both surfaces accept and
+     * reject the same input with the same message; null/blank/"null" means no filter.
+     */
+    public static Map<String, Object> parseFilter(String filterText) {
+        if (filterText == null || filterText.isBlank() || "null".equals(filterText.strip())) return null;
+        try {
+            return JsonUtil.toMap(filterText);
+        } catch (RuntimeException | Error e) {
+            throw new IllegalArgumentException("invalid filter, must be a JSON object like {\"status\": \"done\"}: " + e.getMessage(), e);
+        }
+    }
+
+    /** Record/state payload text (a JSON object) to a map, rejecting everything the tools would never send. */
+    public static Map<String, Object> parseData(String dataText) {
+        if (dataText == null || dataText.isBlank() || "null".equals(dataText.strip())) {
+            throw new IllegalArgumentException("data is required and must not be empty");
+        }
+        Map<String, Object> data;
+        try {
+            data = JsonUtil.toMap(dataText);
+        } catch (RuntimeException | Error e) {
+            throw new IllegalArgumentException("invalid data, must be a JSON object: " + e.getMessage(), e);
+        }
+        if (data.isEmpty()) throw new IllegalArgumentException("data is required and must not be empty");
+        return data;
+    }
+
+    // returns null when data is not a valid JSON object, so callers can skip the record instead of failing the whole query
+    private static Map<String, Object> parseData(DatasetRecord record) {
+        if (record.data == null || record.data.isBlank()) return Map.of();
+        try {
+            return JsonUtil.toMap(record.data);
+        } catch (RuntimeException | Error e) {
+            LOGGER.warn("invalid dataset record data, id={}", record.id, e);
+            return null;
+        }
+    }
+
     static Map<String, Object> merge(Map<String, Object> current, Map<String, Object> patch) {
         var result = new LinkedHashMap<>(current);
         for (var entry : patch.entrySet()) {
@@ -56,17 +95,6 @@ public class DatasetRecordService {
             if (!valueEquals(actual, entry.getValue())) return false;
         }
         return true;
-    }
-
-    // returns null when data is not a valid JSON object, so callers can skip the record instead of failing the whole query
-    private static Map<String, Object> parseData(DatasetRecord record) {
-        if (record.data == null || record.data.isBlank()) return Map.of();
-        try {
-            return JsonUtil.toMap(record.data);
-        } catch (RuntimeException | Error e) {
-            LOGGER.warn("invalid dataset record data, id={}", record.id, e);
-            return null;
-        }
     }
 
     private static Object resolvePath(Map<String, Object> data, String path) {
@@ -171,8 +199,8 @@ public class DatasetRecordService {
         return new QueryResult(trimFields(records, request.fields), total, false);
     }
 
-    public boolean update(String id, Map<String, Object> data, String updatedBy) {
-        var record = datasetRecordCollection.get(id).orElse(null);
+    public boolean update(String datasetId, String id, Map<String, Object> data, String updatedBy) {
+        var record = findRecord(datasetId, id);
         if (record == null) return false;
         Map<String, Object> merged;
         if (record.data != null && !record.data.isBlank()) {
@@ -188,12 +216,21 @@ public class DatasetRecordService {
         return true;
     }
 
-    public boolean delete(String id) {
-        var record = datasetRecordCollection.get(id).orElse(null);
+    public boolean delete(String datasetId, String id) {
+        var record = findRecord(datasetId, id);
         if (record == null) return false;
         datasetRecordCollection.delete(id);
         LOGGER.info("dataset record deleted, id={}", id);
         return true;
+    }
+
+    /**
+     * A record is addressed by its own id *and* the dataset it belongs to: an id alone would let a caller
+     * update or delete a record of a dataset it has no access to (ids are opaque and get copied around).
+     */
+    private DatasetRecord findRecord(String datasetId, String id) {
+        return datasetRecordCollection.findOne(Filters.and(Filters.eq("_id", id), Filters.eq("dataset_id", datasetId)))
+                .orElse(null);
     }
 
     public Optional<DatasetRecord> queryBySession(String datasetId, String sessionId) {

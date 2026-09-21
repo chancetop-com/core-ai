@@ -1,6 +1,7 @@
 package ai.core.server.dataset.tool;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.server.dataset.DatasetOpPayloads;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.DatasetType;
@@ -10,7 +11,6 @@ import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,7 +21,6 @@ import java.util.Map;
  */
 public final class GetSessionStateTool extends ToolCall {
     public static final String TOOL_NAME = "get_session_state";
-    private static final Object MISSING_FIELD = new Object();
 
     public static GetSessionStateTool create(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
         var tool = new GetSessionStateTool(datasetService, recordService, registry);
@@ -49,17 +48,6 @@ public final class GetSessionStateTool extends ToolCall {
         );
     }
 
-    private static Map<String, Object> selectFields(Map<String, Object> state, String fields) {
-        var selected = new LinkedHashMap<String, Object>();
-        for (var field : fields.split(",")) {
-            var name = field.trim();
-            if (name.isEmpty()) continue;
-            var value = state.getOrDefault(name, MISSING_FIELD);
-            if (value != MISSING_FIELD) selected.put(name, value);
-        }
-        return selected;
-    }
-
     private final DatasetService datasetService;
     private final DatasetRecordService recordService;
     private final DatasetAccessRegistry registry;
@@ -78,39 +66,36 @@ public final class GetSessionStateTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
-        var datasetId = getStringValue(args, "dataset_id");
-        if (datasetId == null || datasetId.isBlank()) {
+        var datasetRef = getStringValue(args, "dataset_id");
+        if (datasetRef == null || datasetRef.isBlank()) {
             return ToolCallResult.failed("dataset_id is required");
         }
         if (context == null || context.getSessionId() == null) {
             return ToolCallResult.failed("session context required");
         }
-        if (registry.resolve(datasetId) == null) {
-            return ToolCallResult.failed("access denied to dataset: " + datasetId);
+        var ambiguous = registry.ambiguousMessage(datasetRef);
+        if (ambiguous != null) {
+            return ToolCallResult.failed(ambiguous);
+        }
+        var datasetId = registry.resolveId(datasetRef);
+        if (datasetId == null) {
+            return ToolCallResult.failed("access denied to dataset: " + datasetRef);
         }
         var dataset = datasetService.get(datasetId);
         if (dataset == null) {
-            return ToolCallResult.failed("dataset not found: " + datasetId);
+            return ToolCallResult.failed("dataset not found: " + datasetRef);
         }
         if (DatasetService.resolveType(dataset) != DatasetType.SESSION) {
-            return ToolCallResult.failed("not a session dataset, use dataset record tools instead: " + datasetId);
+            return ToolCallResult.failed("not a session dataset, use dataset record tools instead: " + datasetRef);
         }
 
         var record = recordService.queryBySession(datasetId, context.getSessionId()).orElse(null);
-        var response = new LinkedHashMap<String, Object>();
+        Map<String, Object> state = null;
         if (record != null) {
-            var state = JsonUtil.toMap(record.data);
+            state = JsonUtil.toMap(record.data);
             var fieldsStr = getStringValue(args, "fields");
-            if (fieldsStr != null && !fieldsStr.isBlank()) {
-                response.put("state", selectFields(state, fieldsStr));
-            } else {
-                response.put("state", state);
-            }
-        } else {
-            response.put("state", null);
+            if (fieldsStr != null && !fieldsStr.isBlank()) state = DatasetOpPayloads.selectStateFields(state, fieldsStr);
         }
-        response.put("dataset_id", datasetId);
-        response.put("session_id", context.getSessionId());
-        return ToolCallResult.completed(JsonUtil.toJson(response));
+        return ToolCallResult.completed(DatasetOpPayloads.stateRead(state, datasetId, context.getSessionId()));
     }
 }

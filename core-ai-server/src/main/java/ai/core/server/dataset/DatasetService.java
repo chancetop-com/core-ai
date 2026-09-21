@@ -1,5 +1,6 @@
 package ai.core.server.dataset;
 
+import ai.core.api.server.dataset.SchemaFieldView;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.DatasetType;
@@ -22,6 +23,17 @@ import java.util.regex.Pattern;
 public class DatasetService {
     public static DatasetType resolveType(Dataset dataset) {
         return dataset != null && dataset.type != null ? dataset.type : DatasetType.GENERAL;
+    }
+
+    public static List<SchemaFieldView> schemaViews(List<ai.core.server.domain.SchemaField> fields) {
+        if (fields == null) return List.of();
+        return fields.stream().map(field -> {
+            var view = new SchemaFieldView();
+            view.name = field.name;
+            view.type = field.type != null ? field.type.name() : null;
+            view.label = field.label;
+            return view;
+        }).toList();
     }
 
     @Inject

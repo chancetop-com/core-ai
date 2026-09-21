@@ -7,10 +7,22 @@ transport, `FakeSession` the offline one for unit tests.
 
 from . import testing  # noqa: F401  (importable as `from core_ai_session import testing`)
 from .cli import AsyncCliSession, CliSession
+from .datasets import AsyncDatasetNamespace, AsyncDatasetNode, DatasetNamespace, DatasetNode
 from .errors import CoreAiSessionError, NotBoundError, ToolError, ToolNotFoundError
-from .models import Catalog, CatalogGroup, ContentPart, LlmUsage, SessionInfo, Task, ToolDetail, ToolResult, ToolSummary
+from .models import (
+    Catalog,
+    CatalogGroup,
+    ContentPart,
+    DatasetInfo,
+    LlmUsage,
+    SessionInfo,
+    Task,
+    ToolDetail,
+    ToolResult,
+    ToolSummary,
+)
 from .session import AsyncSession, Session, async_session, sdk_version, session
-from .testing import FakeSession
+from .testing import FakeDatasetCall, FakeDatasetNamespace, FakeSession
 
 __all__ = [
     "session",
@@ -20,10 +32,17 @@ __all__ = [
     "CliSession",
     "AsyncCliSession",
     "FakeSession",
+    "FakeDatasetCall",
+    "FakeDatasetNamespace",
     "sdk_version",
     "Catalog",
     "CatalogGroup",
     "ContentPart",
+    "DatasetInfo",
+    "DatasetNamespace",
+    "DatasetNode",
+    "AsyncDatasetNamespace",
+    "AsyncDatasetNode",
     "LlmUsage",
     "SessionInfo",
     "Task",

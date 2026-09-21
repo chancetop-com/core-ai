@@ -1,13 +1,17 @@
 package ai.core.server.sandboxhub;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.api.server.sandboxhub.SandboxHubDatasetView;
 import ai.core.api.server.sandboxhub.SandboxHubGroup;
 import ai.core.api.server.sandboxhub.SandboxHubToolDetail;
 import ai.core.api.server.sandboxhub.SandboxHubToolSummary;
 import ai.core.sandbox.SandboxConstants;
+import ai.core.server.dataset.DatasetService;
+import ai.core.server.dataset.tool.DatasetToolProvider;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolExposure;
 import ai.core.tool.registry.ToolProvider;
+import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.ToolActivationTool;
 import ai.core.utils.JsonUtil;
 
@@ -59,7 +63,7 @@ public final class SandboxHubCatalog {
      */
     public static SandboxHubCatalog of(ExecutionContext context) {
         var registry = context.getToolRegistry();
-        if (registry == null) return new SandboxHubCatalog(List.of());
+        if (registry == null) return new SandboxHubCatalog(List.of(), null);
         var materialization = registry.materialize(context);
         var providerIndex = materialization.getToolProviderIndex();
         var entries = new ArrayList<Entry>();
@@ -68,7 +72,12 @@ public final class SandboxHubCatalog {
             entries.add(entry(tool, providerIndex.get(tool.getName())));
         }
         entries.sort(Comparator.comparing(Entry::kind).thenComparing(Entry::path));
-        return new SandboxHubCatalog(entries);
+        return new SandboxHubCatalog(entries, datasetProvider(registry));
+    }
+
+    private static DatasetToolProvider datasetProvider(ToolRegistry registry) {
+        var provider = registry.getProvider(ToolProvider.DATASET);
+        return provider instanceof DatasetToolProvider datasetProvider ? datasetProvider : null;
     }
 
     /** Runtime-owned tools: the script already runs inside the sandbox and calls them through the runtime. */
@@ -198,9 +207,11 @@ public final class SandboxHubCatalog {
 
     private final List<Entry> entries;
     private final Map<String, Entry> byName;
+    private final DatasetToolProvider datasetProvider;
 
-    private SandboxHubCatalog(List<Entry> entries) {
+    private SandboxHubCatalog(List<Entry> entries, DatasetToolProvider datasetProvider) {
         this.entries = List.copyOf(entries);
+        this.datasetProvider = datasetProvider;
         var index = new LinkedHashMap<String, Entry>();
         for (var entry : entries) {
             index.putIfAbsent(entry.name(), entry);
@@ -247,6 +258,27 @@ public final class SandboxHubCatalog {
             group.count = group.count + 1;
         }
         return List.copyOf(counts.values());
+    }
+
+    /**
+     * The datasets the session may reach, read from the provider that mounted the dataset tools: a session
+     * without bindings (or without the provider at all) announces none, and the section is never callable —
+     * writes still only exist as the tools it lists.
+     */
+    public List<SandboxHubDatasetView> datasets() {
+        if (datasetProvider == null) return List.of();
+        var views = new ArrayList<SandboxHubDatasetView>();
+        for (var binding : datasetProvider.datasets()) {
+            var view = new SandboxHubDatasetView();
+            view.datasetId = binding.datasetId();
+            view.name = binding.name();
+            view.type = binding.type() == null ? null : binding.type().name();
+            view.permission = binding.permission() == null ? null : binding.permission().name();
+            view.description = binding.description();
+            view.schema = DatasetService.schemaViews(binding.schema());
+            views.add(view);
+        }
+        return views;
     }
 
     /** One callable capability, carrying the tool instance so callers can invoke it without a second lookup. */

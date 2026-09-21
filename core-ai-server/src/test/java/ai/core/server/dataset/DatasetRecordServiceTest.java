@@ -284,9 +284,9 @@ class DatasetRecordServiceTest {
         existing.id = "r1";
         existing.datasetId = "ds1";
         existing.data = "{\"name\":\"卢锦锦\",\"status\":\"已评估\",\"evaluation_result\":\"推荐面试\"}";
-        when(collection.get("r1")).thenReturn(Optional.of(existing));
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.of(existing));
 
-        var updated = service.update("r1", Map.of("status", "已面试"), "u1");
+        var updated = service.update("ds1", "r1", Map.of("status", "已面试"), "u1");
 
         assertTrue(updated);
         var merged = JsonUtil.toMap(existing.data);
@@ -303,9 +303,9 @@ class DatasetRecordServiceTest {
         existing.id = "r1";
         existing.datasetId = "ds1";
         existing.data = "{\"name\":\"old\",\"status\":\"已评估\"}";
-        when(collection.get("r1")).thenReturn(Optional.of(existing));
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.of(existing));
 
-        var updated = service.update("r1", Map.of("name", "new"), "u1");
+        var updated = service.update("ds1", "r1", Map.of("name", "new"), "u1");
 
         assertTrue(updated);
         var merged = JsonUtil.toMap(existing.data);
@@ -315,12 +315,31 @@ class DatasetRecordServiceTest {
 
     @Test
     void updateReturnsFalseWhenRecordAbsent() {
-        when(collection.get("missing")).thenReturn(Optional.empty());
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
 
-        var updated = service.update("missing", Map.of("status", "x"), "u1");
+        var updated = service.update("ds1", "missing", Map.of("status", "x"), "u1");
 
         assertFalse(updated);
         verify(collection, never()).replace(any());
+    }
+
+    @Test
+    void updateAndDeleteOnlyTouchRecordsOfTheGivenDataset() {
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
+
+        assertFalse(service.update("ds-other", "r1", Map.of("status", "x"), "u1"));
+        assertFalse(service.delete("ds-other", "r1"));
+
+        var captor = ArgumentCaptor.forClass(Bson.class);
+        verify(collection, times(2)).findOne(captor.capture());
+        for (var filter : captor.getAllValues()) {
+            var filters = filter.toBsonDocument(BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry())
+                    .getArray("$and");
+            assertTrue(filters.stream().anyMatch(value -> value.asDocument().containsKey("_id")));
+            assertTrue(filters.stream().anyMatch(value -> value.asDocument().containsKey("dataset_id")));
+        }
+        verify(collection, never()).replace(any());
+        verify(collection, never()).delete(any(String.class));
     }
 
     @Test
@@ -329,11 +348,11 @@ class DatasetRecordServiceTest {
         existing.id = "r1";
         existing.datasetId = "ds1";
         existing.data = "{\"name\":\"卢锦锦\",\"status\":\"已评估\"}";
-        when(collection.get("r1")).thenReturn(Optional.of(existing));
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.of(existing));
         var patch = new java.util.HashMap<String, Object>();
         patch.put("status", null);
 
-        var updated = service.update("r1", patch, "u1");
+        var updated = service.update("ds1", "r1", patch, "u1");
 
         assertTrue(updated);
         var merged = JsonUtil.toMap(existing.data);
