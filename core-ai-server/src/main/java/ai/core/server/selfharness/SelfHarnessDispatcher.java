@@ -19,6 +19,7 @@ import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
+import ai.core.server.domain.SkillDefinition;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.SkillFilter;
 import ai.core.server.skill.SkillService;
@@ -44,6 +45,22 @@ import java.util.Map;
  */
 public class SelfHarnessDispatcher {
     private static final String INTERNAL_USER = "internal";
+
+    // the result only needs enough to pick a skill and pass its id on: serializing the full entity
+    // (content + resources) turned a whole-catalog listing into ~90MB of tool output
+    private static Map<String, Object> skillRow(SkillDefinition skill) {
+        var row = new LinkedHashMap<String, Object>();
+        row.put("id", skill.id);
+        row.put("namespace", skill.namespace);
+        row.put("name", skill.name);
+        row.put("qualified_name", skill.qualifiedName);
+        row.put("description", skill.description);
+        row.put("source_type", skill.sourceType != null ? skill.sourceType.name() : null);
+        row.put("version", skill.version);
+        row.put("user_id", skill.userId);
+        row.put("updated_at", skill.updatedAt != null ? skill.updatedAt.toString() : null);
+        return row;
+    }
 
     @Inject
     AgentDefinitionService agentService;
@@ -89,11 +106,11 @@ public class SelfHarnessDispatcher {
     private Object dispatchAgent(String name, String args, String userId) {
         return switch (name) {
             case "list_agents" -> {
-                var req = JSON.fromJSON(ListAgentsRequest.class, args);
+                var req = SelfHarnessRequestBinder.bind(ListAgentsRequest.class, args);
                 yield agentService.list(userId, req);
             }
             case "create_agent" -> {
-                var req = JSON.fromJSON(CreateAgentRequest.class, args);
+                var req = SelfHarnessRequestBinder.bind(CreateAgentRequest.class, args);
                 yield agentService.create(req, userId);
             }
             case "get_agent" -> {
@@ -102,9 +119,7 @@ public class SelfHarnessDispatcher {
             }
             case "update_agent" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                var id = (String) params.remove("id");
-                var req = JSON.fromJSON(UpdateAgentRequest.class, JSON.toJSON(params));
-                yield agentService.update(id, req, userId);
+                yield agentService.update((String) params.get("id"), SelfHarnessRequestBinder.bind(UpdateAgentRequest.class, args), userId);
             }
             case "publish_agent" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
@@ -118,8 +133,11 @@ public class SelfHarnessDispatcher {
     private Object dispatchSkill(String name, String args, String userId) {
         return switch (name) {
             case "list_skills" -> {
-                var req = JSON.fromJSON(ListSkillsRequest.class, args);
-                yield skillService.list(new SkillFilter(req.namespace, req.sourceType), null, req.query, req.searchIn, req.offset, req.limit);
+                var req = SelfHarnessRequestBinder.bind(ListSkillsRequest.class, args);
+                var filter = new SkillFilter(req.namespace, req.sourceType);
+                var skills = skillService.list(filter, req.userId, req.query, req.searchIn, req.offset, req.limit);
+                var total = skillService.count(filter, req.userId, req.query, req.searchIn);
+                yield Map.of("skills", skills.stream().map(SelfHarnessDispatcher::skillRow).toList(), "total", total);
             }
             case "get_skill" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
@@ -135,9 +153,8 @@ public class SelfHarnessDispatcher {
             }
             case "update_skill" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                var id = (String) params.remove("id");
-                var req = JSON.fromJSON(UpdateSkillRequest.class, JSON.toJSON(params));
-                yield skillService.update(id, req.description, req.content, req.allowedTools, null);
+                var req = SelfHarnessRequestBinder.bind(UpdateSkillRequest.class, args);
+                yield skillService.update((String) params.get("id"), req.description, req.content, req.allowedTools, null);
             }
             case "delete_skill" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
@@ -156,13 +173,13 @@ public class SelfHarnessDispatcher {
     private Object dispatchDataset(String name, String args, String userId) {
         return switch (name) {
             case "list_datasets" -> {
-                var req = JSON.fromJSON(ListDatasetsRequest.class, args);
+                var req = SelfHarnessRequestBinder.bind(ListDatasetsRequest.class, args);
                 var list = datasetService.list(req.query, req.offset, req.limit);
                 var total = datasetService.count(req.query);
                 yield Map.of("datasets", list, "total", total);
             }
             case "create_dataset" -> {
-                var req = JSON.fromJSON(CreateDatasetRequest.class, args);
+                var req = SelfHarnessRequestBinder.bind(CreateDatasetRequest.class, args);
                 yield datasetService.create(req.name, req.description, userId, toSchemaFields(req.schema), resolveDatasetType(req.type));
             }
             case "get_dataset" -> {
@@ -229,7 +246,7 @@ public class SelfHarnessDispatcher {
     }
 
     private Object dispatchTool(String args) {
-        var req = JSON.fromJSON(ListToolsRequest.class, args);
+        var req = SelfHarnessRequestBinder.bind(ListToolsRequest.class, args);
         return toolRegistryService.listTools(req.category);
     }
 
