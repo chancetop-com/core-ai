@@ -33,6 +33,7 @@ public class OcgSandboxService {
     private static final String OPENCLAW_STATE_DIR = "/root/.openclaw";
     private static final String OPENCLAW_CHANNEL_TYPE = "openclaw";
     private static final int DEFAULT_CALLBACK_PORT = 3457;
+    private static final int MILLIS_PER_SECOND = 1_000;
     private static final int GATEWAY_START_WAIT_SECONDS = 30;
     private static final Set<String> GATEWAY_CONFIG_KEYS = Set.of("agentUrl", "model", "apiKey", "verbose", "async", "callbackHost", "callbackPort", "callbackPublicHost", "callbackPublicPort", "callbackSecret", "callbackTokenTTL", "channels", "plugins");
 
@@ -358,7 +359,7 @@ public class OcgSandboxService {
     private String runCommand(Sandbox sandbox, String command, int timeoutSeconds, boolean runInBackground) {
         var result = sandbox.execute(ShellCommandTool.TOOL_NAME, JsonUtil.toJson(Map.of(
                 "command", command,
-                "timeout", timeoutSeconds,
+                "timeout", timeoutSeconds * MILLIS_PER_SECOND,
                 "run_in_background", runInBackground)), null);
         if (!result.isCompleted()) {
             throw new RuntimeException(result.getResult());
