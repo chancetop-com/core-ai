@@ -48,7 +48,7 @@ class McpServerOperationServiceTest {
     void importsCommandServerAsSandboxHostedWithoutChangingNestedValues() {
         var created = service.importMcpServers("""
             {"mcpServers":{"local-tools":{"command":"npx","args":["-y","@scope/server"],"env":{"API_TOKEN":"secret"}}}}
-            """, "development", Boolean.FALSE);
+            """, null, "development", Boolean.FALSE);
 
         assertEquals(1, created.size());
         var config = created.getFirst().config;
@@ -62,7 +62,7 @@ class McpServerOperationServiceTest {
     void importsRemoteHttpServerAndPreservesHeadersAndEndpoint() {
         var created = service.importMcpServers("""
             {"mcpServers":{"meta-ads":{"url":"https://mcp.facebook.com","endpoint":"/ads","headers":{"Authorization":"Bearer secret"}}}}
-            """, null, Boolean.FALSE);
+            """, null, null, Boolean.FALSE);
 
         assertEquals(1, created.size());
         var config = created.getFirst().config;
@@ -73,9 +73,67 @@ class McpServerOperationServiceTest {
     }
 
     @Test
+    void importsSingleServerConfigNamedByTheRequest() {
+        var created = service.importMcpServers("""
+            {"command":"uvx","args":["mcp-atlassian"],"env":{"JIRA_API_TOKEN":"secret"}}
+            """, "mcp-atlassian", "development", Boolean.FALSE);
+
+        assertEquals(1, created.size());
+        var entity = created.getFirst();
+        assertEquals("mcp-atlassian", entity.name);
+        assertEquals("sandbox_hosted", entity.config.get("transport"));
+        assertEquals("uvx", entity.config.get("command"));
+        assertEquals("[\"mcp-atlassian\"]", entity.config.get("args"));
+        assertTrue(entity.rawConfig.contains("\"command\":\"uvx\""));
+    }
+
+    @Test
+    void importsSingleServerConfigUsingDeclaredNameAndDropsItFromConfig() {
+        var created = service.importMcpServers("""
+            {"name":"mcp-atlassian","command":"uvx","args":["mcp-atlassian"]}
+            """, null, null, Boolean.FALSE);
+
+        assertEquals(1, created.size());
+        var entity = created.getFirst();
+        assertEquals("mcp-atlassian", entity.name);
+        assertFalse(entity.config.containsKey("name"));
+    }
+
+    @Test
+    void prefersRequestNameOverDeclaredNameForSingleServerConfig() {
+        var created = service.importMcpServers("""
+            {"name":"declared","url":"https://example.com/mcp"}
+            """, "requested", null, Boolean.FALSE);
+
+        assertEquals(1, created.size());
+        assertEquals("requested", created.getFirst().name);
+    }
+
+    @Test
+    void renamesSingleServerImportedFromWrapperWhenRequestNameGiven() {
+        var created = service.importMcpServers("""
+            {"mcpServers":{"old-name":{"command":"uvx","args":["mcp-atlassian"]}}}
+            """, "new-name", null, Boolean.FALSE);
+
+        assertEquals(1, created.size());
+        assertEquals("new-name", created.getFirst().name);
+    }
+
+    @Test
+    void keepsDeclaredNamesWhenImportingSeveralServers() {
+        var created = service.importMcpServers("""
+            {"mcpServers":{"first":{"command":"npx"},"second":{"url":"https://example.com/mcp"}}}
+            """, "requested", null, Boolean.FALSE);
+
+        assertEquals(2, created.size());
+        assertTrue(created.stream().anyMatch(entity -> "first".equals(entity.name)));
+        assertTrue(created.stream().anyMatch(entity -> "second".equals(entity.name)));
+    }
+
+    @Test
     void rejectsMalformedJsonAsBadRequestWithoutWriting() {
         var error = assertThrows(BadRequestException.class,
-            () -> service.importMcpServers("{not-json", null, Boolean.FALSE));
+            () -> service.importMcpServers("{not-json", null, null, Boolean.FALSE));
 
         assertTrue(error.getMessage().contains("valid JSON"));
         verify(collection, never()).insert(any());
@@ -84,7 +142,7 @@ class McpServerOperationServiceTest {
     @Test
     void rejectsJsonNullAsBadRequestWithoutWriting() {
         assertThrows(BadRequestException.class,
-            () -> service.importMcpServers("null", null, Boolean.FALSE));
+            () -> service.importMcpServers("null", null, null, Boolean.FALSE));
 
         verify(collection, never()).insert(any());
     }
@@ -93,7 +151,7 @@ class McpServerOperationServiceTest {
     void validatesEveryServerBeforeWritingAnyRecord() {
         var error = assertThrows(BadRequestException.class, () -> service.importMcpServers("""
             {"mcpServers":{"valid":{"command":"npx"},"invalid":{"headers":{"Authorization":"Bearer secret"}}}}
-            """, null, Boolean.FALSE));
+            """, null, null, Boolean.FALSE));
 
         assertTrue(error.getMessage().contains("invalid"));
         assertFalse(error.getMessage().contains("secret"));
@@ -104,8 +162,27 @@ class McpServerOperationServiceTest {
     void rejectsBlankServerName() {
         assertThrows(BadRequestException.class, () -> service.importMcpServers("""
             {"mcpServers":{" ":{"url":"https://example.com/mcp"}}}
-            """, null, Boolean.FALSE));
+            """, null, null, Boolean.FALSE));
 
+        verify(collection, never()).insert(any());
+    }
+
+    @Test
+    void rejectsSingleServerConfigWithoutAnyName() {
+        var error = assertThrows(BadRequestException.class, () -> service.importMcpServers("""
+            {"command":"uvx","args":["mcp-atlassian"]}
+            """, null, null, Boolean.FALSE));
+
+        assertTrue(error.getMessage().contains("name"));
+        verify(collection, never()).insert(any());
+    }
+
+    @Test
+    void rejectsConfigWithNeitherServersNorTransport() {
+        var error = assertThrows(BadRequestException.class,
+            () -> service.importMcpServers("{}", null, null, Boolean.FALSE));
+
+        assertTrue(error.getMessage().contains("mcpServers"));
         verify(collection, never()).insert(any());
     }
 
@@ -113,7 +190,7 @@ class McpServerOperationServiceTest {
     void rejectsSandboxTransportOnUrlServer() {
         var error = assertThrows(BadRequestException.class, () -> service.importMcpServers("""
             {"mcpServers":{"remote":{"url":"https://example.com/mcp","transport":"sandbox_hosted"}}}
-            """, null, Boolean.FALSE));
+            """, null, null, Boolean.FALSE));
 
         assertTrue(error.getMessage().contains("sandbox_hosted"));
         verify(collection, never()).insert(any());
@@ -123,7 +200,7 @@ class McpServerOperationServiceTest {
     void storesNormalizedEntityInCollection() {
         service.importMcpServers("""
             {"mcpServers":{"remote":{"url":"https://example.com/mcp"}}}
-            """, "ops", Boolean.FALSE);
+            """, null, "ops", Boolean.FALSE);
 
         var inserted = ArgumentCaptor.forClass(ToolRegistryEntry.class);
         verify(collection).insert(inserted.capture());

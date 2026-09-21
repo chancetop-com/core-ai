@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Server, Power, PowerOff, Trash2, Edit2, X, Save, ChevronLeft, ChevronRight, ChevronRight as ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ToolRegistryView, McpConnectionState } from '../../api/client';
 import { ConnectionStateBadge, EnabledBadge } from './badges';
-import { containsSensitiveConfigJson, isSensitiveConfigKey, validateMcpImportJson } from './mcpConfig';
+import { containsSensitiveConfigJson, isSensitiveConfigKey, mcpImportNaming, planMcpImport } from './mcpConfig';
 
 export default function Mcp() {
   const navigate = useNavigate();
@@ -348,9 +348,15 @@ function McpServerModal({
   const [configValue, setConfigValue] = useState('');
   const [mode, setMode] = useState<'manual' | 'import'>('manual');
   const [importJson, setImportJson] = useState('');
+  const [importName, setImportName] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [revealedConfigKeys, setRevealedConfigKeys] = useState<Set<string>>(() => new Set());
+
+  const importPlan = useMemo(() => planMcpImport(importJson), [importJson]);
+  const importNaming = mcpImportNaming(importPlan);
+  const importNameRequired = importNaming?.mode === 'single';
+  const singleServerName = importName ?? (importNameRequired && importNaming ? importNaming.suggestedName : '');
 
   // Dynamic MCP editing state
   const isDynamicEdit = !creating && server.config?.transport === 'sandbox_hosted' && !!server.raw_config;
@@ -376,18 +382,29 @@ function McpServerModal({
   };
 
   const handleImport = async () => {
-    const validationError = validateMcpImportJson(importJson);
-    if (validationError) {
-      setImportError(validationError);
+    if (importPlan.kind === 'invalid') {
+      setImportError(importPlan.error);
+      return;
+    }
+    if (importNameRequired && !singleServerName.trim()) {
+      setImportError('Server name is required.');
       return;
     }
     setImportError(null);
     setImporting(true);
     try {
-      const result = await api.tools.importMcpServers({ config: importJson, category: server.category || undefined, enabled: server.enabled });
+      const result = await api.tools.importMcpServers({
+        config: importJson,
+        name: importNameRequired ? singleServerName.trim() : undefined,
+        category: server.category || undefined,
+        enabled: server.enabled,
+      });
       setImportJson('');
+      setImportName(null);
       onImported();
-      alert('Imported ' + result.total + ' MCP server' + (result.total !== 1 ? 's' : '') + ' successfully.');
+      alert(result.total === 0
+        ? 'No MCP server was imported: every name already exists.'
+        : 'Imported ' + result.total + ' MCP server' + (result.total !== 1 ? 's' : '') + ' successfully.');
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Import failed');
     } finally {
@@ -427,6 +444,13 @@ function McpServerModal({
 
   const showImport = creating && mode === 'import';
 
+  const detectedCount = importPlan.kind === 'multi' ? Object.keys(importPlan.servers).length : 0;
+  const importHint = importPlan.kind === 'multi'
+    ? `${detectedCount} server${detectedCount === 1 ? '' : 's'} detected. Existing server names are skipped.`
+    : importPlan.kind === 'single'
+      ? 'Single server config detected. Existing server names are skipped.'
+      : "Accepts an mcpServers object or a single server config, such as the JSON shown on an MCP server's detail page.";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.5)' }}
@@ -462,15 +486,28 @@ function McpServerModal({
 
         {showImport ? (
           <div className="space-y-4">
+            {importNaming && (
+              <div>
+                <label htmlFor="mcp-import-name" className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Name{importNameRequired ? ' *' : ''}
+                </label>
+                <input id="mcp-import-name" type="text" value={singleServerName} disabled={!importNameRequired}
+                  onChange={e => { setImportName(e.target.value); setImportError(null); }}
+                  placeholder={importNameRequired ? 'Server name' : 'Names come from the mcpServers keys'}
+                  className="w-full px-3 py-2 rounded-lg border text-sm disabled:opacity-60"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              </div>
+            )}
             <div>
-              <label htmlFor="mcp-import-json" className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>mcpServers JSON</label>
-              <textarea id="mcp-import-json" value={importJson} onChange={e => { setImportJson(e.target.value); setImportError(null); }}
-                placeholder={`{"mcpServers":{"MyServer":{"command":"npx","args":["-y","@scope/server"],"env":{"KEY":"value"}}}}`}
+              <label htmlFor="mcp-import-json" className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>MCP configuration JSON</label>
+              <textarea id="mcp-import-json" value={importJson}
+                onChange={e => { setImportJson(e.target.value); setImportName(null); setImportError(null); }}
+                placeholder={`{"command":"uvx","args":["mcp-atlassian"],"env":{"JIRA_API_TOKEN":"value"}}`}
                 spellCheck={false}
                 className="w-full font-mono text-xs px-3 py-3 rounded-lg border resize-y"
                 style={{ minHeight: 200, borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
               <p className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-                Supports local command servers and remote URL servers. Existing server names are skipped.
+                {importHint}
               </p>
               {importError && (
                 <div role="alert" className="text-xs rounded p-2 mt-2" style={{ background: '#7f1d1d', color: '#fff' }}>{importError}</div>
@@ -649,7 +686,7 @@ function McpServerModal({
             Cancel
           </button>
           {showImport ? (
-            <button onClick={handleImport} disabled={saving || importing || !importJson.trim()}
+            <button onClick={handleImport} disabled={saving || importing || !importJson.trim() || (importNameRequired && !singleServerName.trim())}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
               style={{ background: 'var(--color-primary)' }}>
               <Save size={14} /> {importing ? 'Importing...' : 'Import'}

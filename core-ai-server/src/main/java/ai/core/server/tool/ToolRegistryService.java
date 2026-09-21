@@ -366,8 +366,8 @@ public class ToolRegistryService {
         return mcpOperationService.createMcpServer(name, description, category, config, enabled);
     }
 
-    public List<ToolRegistryEntry> importMcpServers(String rawJson, String category, Boolean enabled) {
-        return mcpOperationService.importMcpServers(rawJson, category, enabled);
+    public List<ToolRegistryEntry> importMcpServers(String rawJson, String name, String category, Boolean enabled) {
+        return mcpOperationService.importMcpServers(rawJson, name, category, enabled);
     }
 
     public ToolRegistryEntry updateMcpServer(String id, UpdateMcpServerRequest request) {

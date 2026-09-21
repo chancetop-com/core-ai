@@ -107,7 +107,7 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     @Override
     @PermissionsRequired(PermissionCodes.MCP_MANAGE)
     public ImportMcpServersResponse importMcpServers(ImportMcpServersRequest request) {
-        var created = toolRegistryService.importMcpServers(request.config, request.category, request.enabled);
+        var created = toolRegistryService.importMcpServers(request.config, request.name, request.category, request.enabled);
         var response = new ImportMcpServersResponse();
         response.servers = created.stream().map(entity -> toView(entity, AuthContext.userId(webContext))).toList();
         response.total = response.servers.size();

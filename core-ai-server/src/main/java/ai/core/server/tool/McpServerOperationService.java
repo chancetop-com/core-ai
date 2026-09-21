@@ -115,20 +115,21 @@ class McpServerOperationService {
     }
 
     /**
-     * Import MCP servers from a standard mcpServers JSON (Claude Desktop format).
+     * Import MCP servers from a standard mcpServers JSON (Claude Desktop format) or from a single
+     * server config. The name of an import that holds exactly one server comes from the request,
+     * falling back to the name declared inside the config.
      */
-    List<ToolRegistryEntry> importMcpServers(String rawJson, String category, Boolean enabled) {
-        var candidates = McpServerImportParser.parse(rawJson);
+    List<ToolRegistryEntry> importMcpServers(String rawJson, String name, String category, Boolean enabled) {
+        var candidates = McpServerImportParser.parse(rawJson, name);
         var results = new ArrayList<ToolRegistryEntry>();
         for (var candidate : candidates) {
             if (findMcpServerByName(candidate.name()).isPresent()) {
                 LOGGER.warn("skipping duplicate mcp server, name={}", candidate.name());
                 continue;
             }
-            var name = candidate.name();
             var config = candidate.config();
             var rawConfig = candidate.rawConfig();
-            var entity = createMcpServerInternal(name, null, category, config, enabled, rawConfig);
+            var entity = createMcpServerInternal(candidate.name(), null, category, config, enabled, rawConfig);
             results.add(entity);
         }
         LOGGER.info("imported {} mcp servers, category={}, enabled={}", results.size(), category, enabled);

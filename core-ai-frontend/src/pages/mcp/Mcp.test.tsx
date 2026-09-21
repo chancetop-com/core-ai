@@ -48,11 +48,91 @@ describe('MCP server modal', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'New MCP Server' }));
     const dialog = screen.getByRole('dialog', { name: 'New MCP Server' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Import JSON' }));
-    fireEvent.change(within(dialog).getByLabelText('mcpServers JSON'), { target: { value: '{"mcpServers":{}}' } });
+    fireEvent.change(within(dialog).getByLabelText('MCP configuration JSON'), { target: { value: '{"mcpServers":{}}' } });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
 
     expect(await within(dialog).findByText("MCP configuration must contain a non-empty 'mcpServers' object.")).toBeTruthy();
     expect(importRequest).not.toHaveBeenCalled();
+  });
+
+  it('imports a single server config copied from an existing server', async () => {
+    vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const importRequest = vi.spyOn(api.tools, 'importMcpServers').mockResolvedValue({ servers: [], total: 1 });
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'New MCP Server' }));
+    const dialog = screen.getByRole('dialog', { name: 'New MCP Server' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Import JSON' }));
+    fireEvent.change(within(dialog).getByLabelText('MCP configuration JSON'), {
+      target: { value: '{"command":"uvx","args":["mcp-atlassian"],"env":{"JIRA_API_TOKEN":"secret"}}' },
+    });
+
+    const nameInput = await within(dialog).findByLabelText('Name *') as HTMLInputElement;
+    expect(nameInput.value).toBe('mcp-atlassian');
+
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, 'jira-atlassian');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
+
+    expect(importRequest).toHaveBeenCalledTimes(1);
+    expect(importRequest.mock.calls[0][0]).toMatchObject({
+      name: 'jira-atlassian',
+      config: '{"command":"uvx","args":["mcp-atlassian"],"env":{"JIRA_API_TOKEN":"secret"}}',
+    });
+  });
+
+  it('requires a name when the payload holds a single wrapped server', async () => {
+    const importRequest = vi.spyOn(api.tools, 'importMcpServers');
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'New MCP Server' }));
+    const dialog = screen.getByRole('dialog', { name: 'New MCP Server' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Import JSON' }));
+    fireEvent.change(within(dialog).getByLabelText('MCP configuration JSON'), {
+      target: { value: '{"mcpServers":{"meta-ads":{"url":"https://mcp.facebook.com"}}}' },
+    });
+
+    const nameInput = await within(dialog).findByLabelText('Name *') as HTMLInputElement;
+    expect(nameInput.value).toBe('meta-ads');
+
+    await userEvent.clear(nameInput);
+    const importButton = within(dialog).getByRole('button', { name: 'Import' }) as HTMLButtonElement;
+    expect(importButton.disabled).toBe(true);
+
+    await userEvent.click(importButton);
+    expect(importRequest).not.toHaveBeenCalled();
+  });
+
+  it('leaves names to the JSON keys when importing several servers', async () => {
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'New MCP Server' }));
+    const dialog = screen.getByRole('dialog', { name: 'New MCP Server' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Import JSON' }));
+    fireEvent.change(within(dialog).getByLabelText('MCP configuration JSON'), {
+      target: { value: '{"mcpServers":{"a":{"command":"npx"},"b":{"command":"npx"}}}' },
+    });
+
+    const nameInput = await within(dialog).findByLabelText('Name') as HTMLInputElement;
+    expect(nameInput.disabled).toBe(true);
+    expect(nameInput.placeholder).toBe('Names come from the mcpServers keys');
+    expect(within(dialog).getByText("2 servers detected. Existing server names are skipped.")).toBeTruthy();
+  });
+
+  it('reports an import that was skipped because the name already exists', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    vi.spyOn(api.tools, 'importMcpServers').mockResolvedValue({ servers: [], total: 0 });
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'New MCP Server' }));
+    const dialog = screen.getByRole('dialog', { name: 'New MCP Server' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Import JSON' }));
+    fireEvent.change(within(dialog).getByLabelText('MCP configuration JSON'), {
+      target: { value: '{"mcpServers":{"meta-ads":{"url":"https://mcp.facebook.com"}}}' },
+    });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
+
+    expect(alertSpy).toHaveBeenCalledWith('No MCP server was imported: every name already exists.');
   });
 
   it('hides sensitive raw JSON for dynamic MCP servers', async () => {

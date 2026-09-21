@@ -11,6 +11,9 @@ public class ImportMcpServersRequest {
     @Property(name = "config")
     public String config;
 
+    @Property(name = "name")
+    public String name;
+
     @Property(name = "category")
     public String category;
 
