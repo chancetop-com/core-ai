@@ -23,6 +23,7 @@ import ai.core.server.gateway.GatewayProxyService;
 import ai.core.server.gateway.GatewayResponsesChannelListener;
 import ai.core.server.gateway.GatewayResponsesSseEvent;
 import ai.core.server.gateway.GatewayRoutingEngine;
+import ai.core.server.gateway.ImageModelCompareService;
 import ai.core.server.gateway.MediaCostSettler;
 import ai.core.server.gateway.MediaJobContentController;
 import ai.core.server.gateway.MediaJobService;
@@ -96,6 +97,7 @@ public class GatewayModule extends Module {
         bind(gatewayLLMProvider);
         llmProviders.addProvider(LLMProviderType.GATEWAY, gatewayLLMProvider);
         llmProviders.setDefaultProvider(LLMProviderType.GATEWAY);
+        bind(ImageModelCompareService.class);
         api().service(MediaJobWebService.class, bind(MediaJobWebServiceImpl.class));
         http().route(HTTPMethod.GET, "/api/media-jobs/:id/content", bind(MediaJobContentController.class)::content);
     }

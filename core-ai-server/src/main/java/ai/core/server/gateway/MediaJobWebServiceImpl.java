@@ -1,5 +1,8 @@
 package ai.core.server.gateway;
 
+import ai.core.api.server.media.ImageCompareRunRequest;
+import ai.core.api.server.media.ImageCompareRunResponse;
+import ai.core.api.server.media.ListImageCompareModelsResponse;
 import ai.core.api.server.media.ListMediaJobsRequest;
 import ai.core.api.server.media.ListMediaJobsResponse;
 import ai.core.api.server.media.MediaJobView;
@@ -8,9 +11,12 @@ import ai.core.server.domain.MediaJob;
 import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
+import ai.core.server.web.auth.AuthContext;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
+import core.framework.log.ActionLogContext;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.WebContext;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -53,7 +59,11 @@ public class MediaJobWebServiceImpl implements MediaJobWebService {
     @Inject
     MediaJobService mediaJobService;
     @Inject
+    ImageModelCompareService imageModelCompareService;
+    @Inject
     MongoCollection<User> userCollection;
+    @Inject
+    WebContext webContext;
 
     @Override
     public ListMediaJobsResponse list(ListMediaJobsRequest request) {
@@ -65,6 +75,21 @@ public class MediaJobWebServiceImpl implements MediaJobWebService {
         response.total = result.total();
         response.jobs = result.jobs().stream().map(job -> toView(job, userNames)).toList();
         return response;
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.MEDIA_COMPARE)
+    public ListImageCompareModelsResponse compareModels() {
+        return imageModelCompareService.models();
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.MEDIA_COMPARE)
+    public ImageCompareRunResponse compare(ImageCompareRunRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("image_compare_model", request.model);
+        return imageModelCompareService.run(request, userId);
     }
 
     // batch resolve owner display names so the list can show who generated what without an N+1 query

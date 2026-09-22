@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, DollarSign, Film, Image as ImageIcon, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, DollarSign, Film, FlaskConical, Image as ImageIcon, Play } from 'lucide-react';
 import { api } from '../../api/client';
 import type { MediaJob } from '../../api/client';
+import { usePermission } from '../../api/permissions';
 import { formatCostUsd } from '../traces/traceViewModel';
+import ModelCompareModal from './ModelCompareModal';
 
 const SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
   gateway_model: { bg: '#ede9fe', text: '#7c3aed' },
@@ -51,6 +53,8 @@ export default function Generations() {
   const [mediaType, setMediaType] = useState('');
   const [costSource, setCostSource] = useState('');
   const [preview, setPreview] = useState<MediaJob | null>(null);
+  const [compareJob, setCompareJob] = useState<MediaJob | null>(null);
+  const canCompare = usePermission('media.compare');
   const limit = 20;
 
   useEffect(() => {
@@ -259,9 +263,22 @@ export default function Generations() {
                   ? `/api/files/${preview.fileId}/content` : `/api/media-jobs/${preview.id}/content`}
                 target="_blank" rel="noreferrer" className="ml-3 underline">Open in new tab</a>
             </div>
+            {preview.mediaType === 'image' && preview.prompt && (
+              <button onClick={e => { e.stopPropagation(); setCompareJob(preview); }}
+                disabled={!canCompare}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'var(--color-primary)', color: 'white' }}
+                title={canCompare
+                  ? 'Re-run this prompt on other image models and compare side by side'
+                  : 'Missing media.compare permission'}>
+                <FlaskConical size={14} /> Compare models
+              </button>
+            )}
           </div>
         </div>
       )}
+
+      {compareJob && <ModelCompareModal job={compareJob} onClose={() => setCompareJob(null)} />}
     </div>
   );
 }

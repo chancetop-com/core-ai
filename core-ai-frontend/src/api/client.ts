@@ -318,6 +318,28 @@ export interface MediaJob {
   completedAt?: string;
 }
 
+export interface ImageCompareModel {
+  modelId: string;
+  upstreamModel?: string;
+  providerName?: string;
+  imagePricePerImage?: number;
+  hint?: string;
+}
+
+export interface ImageCompareRun {
+  jobId: string;
+  fileId?: string;
+  fileName?: string;
+  contentType?: string;
+  model?: string;
+  resolvedModel?: string;
+  costUsd?: number;
+  costSource?: string;
+  mediaUnits?: number;
+  mediaUnitType?: string;
+  durationMs?: number;
+}
+
 export interface TraceFilter {
   q?: string;           // smart search: IDs, user account, trace name, or agent name
   name?: string;        // advanced raw regex on name
@@ -1830,6 +1852,12 @@ export const api = {
       }
       return request<{ total: number; jobs: MediaJob[] }>(`/api/media-jobs?${params}`);
     },
+    // Model-comparison runs: one call = one model = one image, so the caller fans out and
+    // renders each result as it lands (no server-side orchestration, no persisted experiment).
+    compareModels: async () =>
+      (await request<{ models: ImageCompareModel[] }>('/api/media-jobs/compare-models')).models,
+    compare: (data: { prompt: string; model: string; size?: string; quality?: string }) =>
+      request<ImageCompareRun>('/api/media-jobs/compare', { method: 'POST', body: JSON.stringify(data) }),
   },
   hubCalls: {
     list: (offset = 0, limit = 20, filters?: HubCallFilter) => {

@@ -46,6 +46,9 @@ public final class PermissionCodes {
     public static final String PROJECT_MANAGE = "project.manage";
     public static final String EXPERIMENT_VIEW = "experiment.view";
     public static final String EXPERIMENT_REPLAY = "experiment.replay";
+    // Media model comparison on the Generations page: each run is a real, billed image generation,
+    // so it is not implied by trace.view (which every default `user` already holds).
+    public static final String MEDIA_COMPARE = "media.compare";
     public static final String NOTIFICATION_VIEW = "notification.view";
 
     public static final String GATEWAY_MANAGE = "gateway.manage";
@@ -68,7 +71,7 @@ public final class PermissionCodes {
             SKILL_VIEW, SKILL_MANAGE,
             DATASET_VIEW, DATASET_MANAGE,
             PROJECT_VIEW, PROJECT_MANAGE,
-            EXPERIMENT_VIEW, EXPERIMENT_REPLAY, NOTIFICATION_VIEW,
+            EXPERIMENT_VIEW, EXPERIMENT_REPLAY, MEDIA_COMPARE, NOTIFICATION_VIEW,
             GATEWAY_MANAGE, SYSTEM_MANAGE, COSTALERT_MANAGE,
             USER_MANAGE, ANALYTICS_VIEW, RBAC_MANAGE);
 
