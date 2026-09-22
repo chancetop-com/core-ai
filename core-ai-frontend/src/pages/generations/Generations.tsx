@@ -59,10 +59,11 @@ export default function Generations() {
 
   useEffect(() => {
     if (!preview) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreview(null); };
+    // the compare modal is stacked on top of the preview; Escape closes one layer at a time
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !compareJob) setPreview(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [preview]);
+  }, [preview, compareJob]);
   const requestKey = JSON.stringify({ offset, mediaType, costSource });
   const loading = result.requestKey !== requestKey;
 
