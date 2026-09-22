@@ -41,9 +41,12 @@ public abstract class LLMProvider {
     private static final Pattern IMAGE_REJECTION_PATTERN = Pattern.compile(
             "unknown variant .{0,2}image_url|image[ _a-z]{0,24}not supported|does not support image", Pattern.CASE_INSENSITIVE);
     // an oversized body is rejected by the upstream edge (openresty/nginx) before the model endpoint
-    // runs, so the failure carries a status code and an html body instead of a json error
+    // runs, so the failure carries a status code and an html body instead of a json error.
+    // the CLI proxy of core-ai-server rejects a body over its own 10MB limit the same way, but with no
+    // content-type and an empty body, which is how a long session with an oversized inline image dies
     private static final Pattern REQUEST_TOO_LARGE_PATTERN = Pattern.compile(
-            "statusCode=413|request entity too large|request body too large|payload too large|content too large", Pattern.CASE_INSENSITIVE);
+            "statusCode=413|request entity too large|request body too large|payload too large|content too large"
+                    + "|statusCode=400, content-type=null", Pattern.CASE_INSENSITIVE);
     private static final Set<String> UNKNOWN_MODALITY_WARNED = ConcurrentHashMap.newKeySet();
 
     private static boolean isRequestTooLarge(RuntimeException e) {

@@ -11,6 +11,7 @@ import ai.core.context.CompressionConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.providers.LiteLLMMediaProvider;
+import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.media.GoogleAccessTokenProvider;
 import ai.core.media.MediaProvider;
 import ai.core.media.VertexGeminiOmniMediaProvider;
@@ -31,6 +32,8 @@ import ai.core.tool.tools.WebFetchTool;
 import ai.core.tool.tools.WebSearchTool;
 import ai.core.tool.tools.WriteTodoTaskTool;
 import ai.core.tool.tools.WriteTodosTool;
+import ai.core.utils.FfmpegImageShrinker;
+import ai.core.utils.ImageDownscaler;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +59,19 @@ public class CliAppHelper {
     private static final Logger LOGGER = LoggerFactory.getLogger(CliAppHelper.class);
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter SESSION_ID_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+    /** the CLI proxy rejects a request body over 10MB and the whole history is resent on every turn */
+    private static final long CLI_MAX_INLINE_IMAGE_BYTES = 4L * 1024 * 1024;
+
+    /**
+     * The native CLI has no AWT, so inline images are shrunk by the vendored ffmpeg, and the inline image
+     * budget is tightened to fit the CLI proxy's request body limit.
+     */
+    public static void configureInlineImages(LiteLLMProvider provider) {
+        ImageDownscaler.register(new FfmpegImageShrinker());
+        if (provider != null) {
+            provider.config.setMaxInlineImageBytes(CLI_MAX_INLINE_IMAGE_BYTES);
+        }
+    }
 
     public static CompressionConfig compressionConfig(PropertiesFileSource props) {
         return new CompressionConfig(

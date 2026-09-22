@@ -146,6 +146,21 @@ class LLMProviderModalityTest {
     }
 
     @Test
+    void requestRejectedByCliProxyBodyLimitRetriesWithoutInlineImages() {
+        provider.setModalityRegistry(ALL_UNKNOWN);
+        provider.failuresRemaining = 1;
+        // what core-ai-server answers when the CLI proxy body exceeds its 10MB limit: bare 400, no content-type
+        provider.failureMessage = "invalid sse response, statusCode=400, content-type=null, body=";
+
+        var response = provider.completion(inlineImageRequest("mystery-model", 1));
+
+        assertEquals("ok", response.choices.getFirst().message.content);
+        assertEquals(2, provider.seenMessages.size());
+        assertTrue(hasImagePart(provider.seenMessages.get(0)));
+        assertTrue(hasNoImagePart(provider.seenMessages.get(1)));
+    }
+
+    @Test
     void providerBudgetPrunesOlderInlineImages() {
         provider.setModalityRegistry(ALL_UNKNOWN);
         provider.config.setMaxInlineImages(1);

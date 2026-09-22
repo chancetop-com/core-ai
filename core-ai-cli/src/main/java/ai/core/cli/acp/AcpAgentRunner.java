@@ -130,6 +130,7 @@ public class AcpAgentRunner {
         LOGGER.info("ACP agent bootstrap initialized");
 
         registerAuthListener(result);
+        CliAppHelper.configureInlineImages(result.liteLLMProvider);
 
         var ctx = new AgentContext(result,
                 props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(Boolean.TRUE),
