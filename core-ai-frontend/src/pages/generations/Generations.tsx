@@ -155,7 +155,7 @@ export default function Generations() {
                     {isImage && job.fileId
                       ? <img src={`/api/files/${job.fileId}/content`} alt={job.fileName ?? 'generated'}
                           onClick={() => setPreview(job)} title="Click to view"
-                          className="h-16 w-12 rounded border object-cover cursor-pointer" style={{ borderColor: 'var(--color-border)' }} />
+                          className="h-16 w-12 rounded border object-contain cursor-pointer" style={{ borderColor: 'var(--color-border)' }} />
                       : isImage
                         ? <div className="h-16 w-12 rounded border flex items-center justify-center" style={{ borderColor: 'var(--color-border)' }}>
                             <ImageIcon size={14} style={{ color: 'var(--color-text-secondary)' }} />
@@ -172,7 +172,8 @@ export default function Generations() {
                   </td>
                   <td className="px-4 py-3">
                     {job.prompt
-                      ? <div className="truncate" title={job.prompt} style={{ maxWidth: '260px' }}>{job.prompt}</div>
+                      ? <div className="truncate cursor-pointer hover:underline" title={job.prompt}
+                          onClick={() => setPreview(job)} style={{ maxWidth: '260px' }}>{job.prompt}</div>
                       : <span style={{ color: 'var(--color-text-secondary)' }}>-</span>}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(job.createdAt)}</td>
@@ -240,22 +241,24 @@ export default function Generations() {
       </div>
 
       {preview && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-8"
+        <div className="fixed inset-0 z-50 overflow-y-auto"
           style={{ background: 'rgba(0, 0, 0, 0.85)' }} onClick={() => setPreview(null)}>
-          {preview.mediaType === 'image' && preview.fileId
-            ? <img src={`/api/files/${preview.fileId}/content`} alt={preview.fileName ?? 'generated'}
-                className="max-h-[85vh] max-w-[90vw] rounded object-contain" onClick={e => e.stopPropagation()} />
-            : <video src={`/api/media-jobs/${preview.id}/content`} controls autoPlay
-                className="max-h-[85vh] max-w-[90vw] rounded" onClick={e => e.stopPropagation()} />}
-          {preview.prompt && (
-            <div className="mt-3 max-w-[80vw] text-center text-sm whitespace-pre-wrap" style={{ color: '#e2e8f0' }}
-              onClick={e => e.stopPropagation()}>{preview.prompt}</div>
-          )}
-          <div className="mt-3 text-sm" style={{ color: '#cbd5e1' }} onClick={e => e.stopPropagation()}>
-            {preview.requestedModel} · {formatTime(preview.createdAt)}
-            <a href={preview.mediaType === 'image' && preview.fileId
-                ? `/api/files/${preview.fileId}/content` : `/api/media-jobs/${preview.id}/content`}
-              target="_blank" rel="noreferrer" className="ml-3 underline">Open in new tab</a>
+          <div className="min-h-full flex flex-col items-center justify-center gap-3 p-6">
+            {preview.mediaType === 'image' && preview.fileId
+              ? <img src={`/api/files/${preview.fileId}/content`} alt={preview.fileName ?? 'generated'}
+                  className="max-h-[80vh] max-w-[90vw] rounded object-contain" onClick={e => e.stopPropagation()} />
+              : <video src={`/api/media-jobs/${preview.id}/content`} controls autoPlay
+                  className="max-h-[80vh] max-w-[90vw] rounded" onClick={e => e.stopPropagation()} />}
+            {preview.prompt && (
+              <div className="max-w-[80vw] text-center text-sm whitespace-pre-wrap" style={{ color: '#e2e8f0' }}
+                onClick={e => e.stopPropagation()}>{preview.prompt}</div>
+            )}
+            <div className="text-sm" style={{ color: '#cbd5e1' }} onClick={e => e.stopPropagation()}>
+              {preview.requestedModel} · {formatTime(preview.createdAt)}
+              <a href={preview.mediaType === 'image' && preview.fileId
+                  ? `/api/files/${preview.fileId}/content` : `/api/media-jobs/${preview.id}/content`}
+                target="_blank" rel="noreferrer" className="ml-3 underline">Open in new tab</a>
+            </div>
           </div>
         </div>
       )}
