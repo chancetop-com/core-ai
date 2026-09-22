@@ -217,7 +217,9 @@ func main() {
 
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/bind", handleBind)
-	http.HandleFunc("/ocg/callback/", handleOcgCallbackProxy)
+	http.HandleFunc(ocgCallbackPathPrefix, handleOcgProxy)
+	// Proactive send: the host reaches the gateway's POST /ocg/send through the runtime.
+	http.HandleFunc(ocgSendPath, handleOcgProxy)
 	http.HandleFunc("/execute", handleExecute)
 	http.HandleFunc("/tasks/", handleTaskPoll)
 	http.HandleFunc("/files/content", handleFileContent)
@@ -320,33 +322,46 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-func handleOcgCallbackProxy(w http.ResponseWriter, r *http.Request) {
+// OCG (openclaw-channel-gateway) proxy routes. The gateway listens on loopback
+// inside the sandbox; the runtime exposes exactly these two paths to the host:
+// inbound replies (/ocg/callback/{token}) and proactive sends (/ocg/send).
+const (
+	ocgCallbackPathPrefix = "/ocg/callback/"
+	ocgSendPath           = "/ocg/send"
+	ocgLoopbackBaseURL    = "http://127.0.0.1:3457"
+)
+
+func isOcgProxyPath(path string) bool {
+	return strings.HasPrefix(path, ocgCallbackPathPrefix) || path == ocgSendPath
+}
+
+func handleOcgProxy(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !strings.HasPrefix(r.URL.Path, "/ocg/callback/") {
+	if !isOcgProxyPath(r.URL.Path) {
 		http.NotFound(w, r)
 		return
 	}
 
-	targetURL := "http://127.0.0.1:3457" + r.URL.RequestURI()
+	targetURL := ocgLoopbackBaseURL + r.URL.RequestURI()
 	body, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
 	if err != nil {
-		http.Error(w, "failed to read callback body: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "failed to read OCG request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
-		http.Error(w, "failed to create callback request: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "failed to create OCG request: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	copyHeader(req.Header, r.Header)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		http.Error(w, "failed to proxy OCG callback: "+err.Error(), http.StatusBadGateway)
+		http.Error(w, "failed to proxy OCG request: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()

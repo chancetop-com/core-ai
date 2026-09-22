@@ -8,6 +8,7 @@ import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.channel.ChannelSyncController;
 import ai.core.server.channel.ChannelWebServiceImpl;
 import ai.core.server.channel.openclaw.OcgConfigWebServiceImpl;
+import ai.core.server.channel.openclaw.OpenClawOutboundAdapter;
 import ai.core.server.channel.slack.SlackInboundAdapter;
 import ai.core.server.channel.slack.SlackOutboundAdapter;
 import ai.core.server.channel.telegram.TelegramInboundAdapter;
@@ -45,6 +46,10 @@ public class ChannelModule extends Module {
         var weclawInbound = new WeClawInboundAdapter();
         var weclawOutbound = new WeClawOutboundAdapter();
         registry.register(weclawInbound, weclawOutbound);
+
+        // OpenClaw has no webhook inbound adapter (messages arrive on the OpenAI-compatible
+        // sync endpoint), but proactive sends go through its per-channel sandbox.
+        registry.registerOutbound(bind(OpenClawOutboundAdapter.class));
     }
 
     private void bindChannels() {

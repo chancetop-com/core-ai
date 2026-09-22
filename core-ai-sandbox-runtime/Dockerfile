@@ -19,8 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium xvfb xauth libnss3 libxss1 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2 && \
     rm -rf /var/lib/apt/lists/*
 
-# Layer 2: Node.js 22 (mongodb-mcp-server requires Node >= 22.13; openclaw requires >= 22.22.3)
-RUN curl -fsSL https://nodejs.org/dist/v22.23.2/node-v22.23.2-linux-x64.tar.gz -o /tmp/node.tar.gz && \
+# Layer 2: Node.js 24 (mongodb-mcp-server requires >= 22.13; openclaw 2026.9.x requires
+# >= 24.16 for its newest releases — on Node 22 npm silently resolves an older openclaw,
+# which is why this layer is the gate for picking up new channel/plugin SDK features)
+RUN curl -fsSL https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.gz -o /tmp/node.tar.gz && \
     tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 --no-same-owner && \
     rm /tmp/node.tar.gz
 
@@ -47,7 +49,11 @@ RUN npm install -g node-gyp && \
     ln -s /usr/local/lib/node_modules/node-gyp /usr/share/nodejs/node-gyp
 
 # Layer 4: OpenClaw Channel Gateway CLI
-ARG OCG_VERSION=1.1.8
+# Keep in sync with the OCG release the server side targets: proactive send
+# (POST /ocg/send) needs OCG >= 1.2.0, and the sandbox only exposes that path
+# through the runtime proxy, so the pin, the Go proxy and the server adapter
+# ship together. Run `ocg upgrade` inside a running sandbox only as a stopgap.
+ARG OCG_VERSION=1.2.1
 ARG OCG_CACHE_BUST=0
 RUN echo "Installing openclaw-channel-gateway@${OCG_VERSION} cache-bust=${OCG_CACHE_BUST}" && \
     npm install -g openclaw-channel-gateway@${OCG_VERSION} && \

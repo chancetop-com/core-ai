@@ -372,7 +372,7 @@ public class AgentRunner {
         try {
             var outbound = channelRegistry.outbound(channelConfig.channelType);
             var message = ChannelMessage.text(runEntity.output);
-            outbound.sendMessage(message, channelRecipientId, channelRecipientId, null, channelConfig.config);
+            outbound.sendMessage(message, channelId, channelRecipientId, channelRecipientId, null, channelConfig.config);
         } catch (Exception e) {
             LOGGER.debug("channel delivery failed for run {}, ignored", runEntity.id, e);
         }

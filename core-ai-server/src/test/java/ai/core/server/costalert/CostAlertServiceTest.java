@@ -2,6 +2,7 @@ package ai.core.server.costalert;
 
 import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.channel.ChannelConfigView;
+import ai.core.server.channel.ChannelMessage;
 import ai.core.server.channel.ChannelOutboundAdapter;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.domain.NotificationCategory;
@@ -180,7 +181,7 @@ class CostAlertServiceTest {
 
         service.check(LocalDate.of(2026, 8, 12));
 
-        verify(outboundAdapter, times(2)).sendText(isNull(), eq("C123"), contains("Cost Alert"), isNull(), eq(channel.config));
+        verify(outboundAdapter, times(2)).sendMessage(any(ChannelMessage.class), eq("c1"), eq("C123"), eq("C123"), isNull(), eq(channel.config));
     }
 
     @Test
@@ -199,7 +200,7 @@ class CostAlertServiceTest {
 
         service.check(LocalDate.of(2026, 8, 12));
 
-        verify(outboundAdapter, never()).sendText(any(), any(), any(), any(), any());
+        verify(outboundAdapter, never()).sendMessage(any(), any(), any(), any(), any(), any());
     }
 
     @Test

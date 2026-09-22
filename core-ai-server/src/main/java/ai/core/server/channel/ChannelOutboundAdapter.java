@@ -45,6 +45,25 @@ public interface ChannelOutboundAdapter {
     }
 
     /**
+     * Channel-aware variant of {@link #sendMessage}: also receives the core-ai channel id.
+     *
+     * Gateway-backed channels (e.g. {@code openclaw}) route through a per-channel sandbox and
+     * therefore cannot resolve their delivery endpoint from the recipient alone — the channel
+     * id is what maps to the gateway config. Simple channels ignore this and keep using the
+     * 5-argument overload (the default implementation delegates to it).
+     *
+     * @param channelId        core-ai channel id ({@code channels} collection key)
+     * @param channelUserId    platform-specific user id
+     * @param conversationId   platform-specific conversation/channel id
+     * @param threadId         parent thread id (null if no thread context)
+     * @param config           channel runtime config (tokens, secrets)
+     */
+    default void sendMessage(ChannelMessage message, String channelId, String channelUserId,
+                              String conversationId, String threadId, Map<String, String> config) {
+        sendMessage(message, channelUserId, conversationId, threadId, config);
+    }
+
+    /**
      * Send a raw payload to the channel — escape hatch for channel-specific operations
      * that don't fit the standard message model. The payload shape is defined by the
      * channel adapter implementation and is NOT standardized across channels.

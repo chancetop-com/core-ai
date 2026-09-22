@@ -35,6 +35,20 @@ public class ChannelRegistry {
         LOGGER.info("registered channel adapter: type={}", type);
     }
 
+    /**
+     * Register an outbound-only channel adapter.
+     * <p>
+     * Some channels have no webhook inbound adapter — gateway-backed channels
+     * ({@code openclaw}) receive messages on their own OpenAI-compatible endpoint
+     * but still need outbound delivery for proactive sends. {@link #inbound(String)}
+     * stays unregistered for them.
+     */
+    public void registerOutbound(ChannelOutboundAdapter outbound) {
+        var type = outbound.type();
+        outboundAdapters.put(type, outbound);
+        LOGGER.info("registered outbound-only channel adapter: type={}", type);
+    }
+
     /** Resolve the inbound adapter for a channel type. */
     public ChannelInboundAdapter inbound(String type) {
         var adapter = inboundAdapters.get(type);

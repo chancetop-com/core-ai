@@ -2,6 +2,7 @@ package ai.core.server.costalert;
 
 import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.channel.ChannelConfigView;
+import ai.core.server.channel.ChannelMessage;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.domain.NotificationCategory;
 import ai.core.server.domain.NotificationType;
@@ -195,7 +196,7 @@ public class CostAlertService {
             return;
         }
         var outbound = channelRegistry.outbound(channel.channelType);
-        outbound.sendText(null, recipient, message, null, channel.config);
+        outbound.sendMessage(ChannelMessage.text(message), channelId, recipient, recipient, null, channel.config);
     }
 
     private String buildMessage(CostAlertRule rule, LocalDate date, double actual, UsageAgg usage) {
