@@ -10,12 +10,17 @@ import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.RecordingSpanProcessor;
+import ai.core.tool.tools.ReadFileTool;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -24,6 +29,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -81,9 +87,32 @@ class ToolExecutorSandboxBoundsTest {
         assertTrue(result.getResult().contains("cancelled"), result.getResult());
     }
 
+    @Test
+    void sandboxedReadFileOnAnImagePathCarriesTheImage(@TempDir Path tempDir) throws IOException {
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        var downloaded = Files.createFile(tempDir.resolve("frame.png"));
+        Files.write(downloaded, png);
+        var sandbox = new BlockingSandbox(null, ToolCallResult.completed("raw bytes as text"))
+            .withFile(new SandboxFile(downloaded, "frame.png", "image/png", png.length));
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var context = ExecutionContext.builder().sandbox(sandbox).build();
+        var call = FunctionCall.of("call_1", "function", ReadFileTool.TOOL_NAME, "{\"file_path\":\"/tmp/frame.png\"}");
+
+        var result = executor.execute(new StubTool(ReadFileTool.TOOL_NAME), call, context);
+
+        assertTrue(result.hasImage(), result.getResult());
+        assertEquals("image/png", result.getImageFormat());
+        assertEquals("sandbox", result.getStats().get("executionMode"));
+        assertFalse(Files.exists(downloaded), "the downloaded file must not outlive the call");
+    }
+
     private static final class StubTool extends ToolCall {
         StubTool() {
-            setName("run_bash_command");
+            this("run_bash_command");
+        }
+
+        StubTool(String name) {
+            setName(name);
             setDescription("test tool");
             setParameters(List.of());
         }
@@ -97,10 +126,16 @@ class ToolExecutorSandboxBoundsTest {
     private static final class BlockingSandbox implements Sandbox {
         private final CountDownLatch release;
         private final ToolCallResult result;
+        private SandboxFile file;
 
         BlockingSandbox(CountDownLatch release, ToolCallResult result) {
             this.release = release;
             this.result = result;
+        }
+
+        BlockingSandbox withFile(SandboxFile file) {
+            this.file = file;
+            return this;
         }
 
         @Override
@@ -141,7 +176,7 @@ class ToolExecutorSandboxBoundsTest {
 
         @Override
         public SandboxFile downloadFile(String path) {
-            return null;
+            return file;
         }
 
         @Override

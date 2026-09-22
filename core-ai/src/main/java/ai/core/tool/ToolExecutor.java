@@ -5,6 +5,7 @@ import ai.core.agent.NodeStatus;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Usage;
+import ai.core.sandbox.SandboxImageReader;
 import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.tools.AsyncTaskOutputTool;
@@ -165,7 +166,7 @@ public class ToolExecutor {
             LOGGER.debug("sandbox intercepting tool: {}", tool.getName());
             // a sandbox that cannot be acquired (docker daemon unreachable, pool exhausted) is a failed tool call the
             // agent can report and route around — not a dead turn with nothing shown to the user
-            result = traceToolSpan(functionCall, tool.isSubAgent(), () -> executeInSandbox(tool, functionCall, context, sandbox));
+            result = traceToolSpan(functionCall, tool.isSubAgent(), () -> executeInSandbox(tool, functionCall, args, context, sandbox));
             result.withStats("executionMode", "sandbox");
             result.withStats("sandboxId", sandbox.getId());
         } else {
@@ -260,15 +261,15 @@ public class ToolExecutor {
     // cancelled or timed out must not stay parked on it: the wait is bound to the cancellation token and returns
     // as soon as the token fires, while the abandoned call finishes on its own thread and is discarded.
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
-    private ToolCallResult executeInSandbox(ToolCall tool, FunctionCall functionCall, ExecutionContext context, ai.core.sandbox.Sandbox sandbox) {
+    private ToolCallResult executeInSandbox(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context, ai.core.sandbox.Sandbox sandbox) {
         var token = context.getCancellationToken();
         if (token == null) {
-            return callSandbox(tool, functionCall, context, sandbox);
+            return callSandbox(tool, functionCall, args, context, sandbox);
         }
         var otelContext = Context.current();
         var future = CompletableFuture.supplyAsync(() -> {
             try (var scope = otelContext.makeCurrent()) {
-                return callSandbox(tool, functionCall, context, sandbox);
+                return callSandbox(tool, functionCall, args, context, sandbox);
             }
         }, AsyncToolTaskExecutor.getInstance().getExecutor());
         var unbind = token.onCancel(() -> future.cancel(true));
@@ -289,8 +290,10 @@ public class ToolExecutor {
         }
     }
 
-    private ToolCallResult callSandbox(ToolCall tool, FunctionCall functionCall, ExecutionContext context, ai.core.sandbox.Sandbox sandbox) {
+    private ToolCallResult callSandbox(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context, ai.core.sandbox.Sandbox sandbox) {
         try {
+            var imageResult = SandboxImageReader.tryRead(tool.getName(), args, sandbox);
+            if (imageResult != null) return imageResult;
             return sandbox.execute(tool.getName(), functionCall.function.arguments, context);
         } catch (RuntimeException e) {
             LOGGER.warn("sandbox execution failed, tool={}", tool.getName(), e);
