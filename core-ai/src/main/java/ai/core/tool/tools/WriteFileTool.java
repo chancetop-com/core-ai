@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * @author stephen
@@ -20,6 +22,8 @@ import java.nio.file.Path;
 public class WriteFileTool extends ToolCall {
     public static final String TOOL_NAME = "write_file";
     private static final Logger LOGGER = LoggerFactory.getLogger(WriteFileTool.class);
+    private static final char BOM = '\uFEFF';
+    private static final Set<String> BOM_SCRIPT_EXTENSIONS = Set.of(".ps1", ".psm1", ".psd1");
 
     private static final String TOOL_DESC = """
             Writes a file to the local filesystem.
@@ -47,7 +51,24 @@ public class WriteFileTool extends ToolCall {
             initial section, etc. Then use edit_file to append one/multi chapter or logical section at a time.
             Keeping each tool-call payload avoids malformed JSON from long, heavily escaped content.
             Do not retry a failed large write with the same full content; split it into multi sections.
+            
+            - Files are written as UTF-8. A PowerShell script (.ps1/.psm1/.psd1) additionally gets a UTF-8 BOM,
+            because Windows PowerShell 5.1 reads a BOM-less script as the system ANSI code page and turns Chinese
+            text (paths, names) into mojibake.
             """;
+
+    /**
+     * A PowerShell script has to carry a UTF-8 BOM: Windows PowerShell 5.1 decodes a BOM-less script as the system
+     * ANSI code page, so a Chinese path or name inside it arrives as mojibake (a directory meant to be
+     * {@code D:\dramas\星语-…} is created as {@code D:\dramas\鏄熻�-…}) while PowerShell 7 reads the same script as
+     * UTF-8. Everything else stays BOM-less, because a BOM would become content for the tools that read those files.
+     */
+    private static String bomMarked(String filePath, String content) {
+        var name = filePath.toLowerCase(Locale.ROOT);
+        var script = BOM_SCRIPT_EXTENSIONS.stream().anyMatch(name::endsWith);
+        if (!script || content.startsWith(String.valueOf(BOM))) return content;
+        return BOM + content;
+    }
 
     public static Builder builder() {
         return new Builder();
@@ -101,7 +122,7 @@ public class WriteFileTool extends ToolCall {
         }
 
         try (BufferedWriter writer = Files.newBufferedWriter(Path.of(filePath), StandardCharsets.UTF_8)) {
-            writer.write(content);
+            writer.write(bomMarked(filePath, content));
             writer.flush();
 
             String successMsg = fileExists

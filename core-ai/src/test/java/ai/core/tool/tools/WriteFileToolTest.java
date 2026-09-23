@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -264,5 +265,59 @@ class WriteFileToolTest {
         logger.info("Character count result: {}", result);
         assertNotNull(result, "Result should not be null");
         assertTrue(result.contains("5 characters"), "Result should report correct character count");
+    }
+
+    /**
+     * Windows PowerShell 5.1 reads a BOM-less script as the system ANSI code page, so a Chinese path inside a written
+     * script used to arrive as mojibake (a directory meant to be 星语-x was created as 鏄熻�-x).
+     */
+    @Test
+    void testPowerShellScriptCarriesUtf8Bom() throws IOException {
+        Path script = tempDir.resolve("stage_refs.ps1");
+        String content = "New-Item -ItemType Directory -Force -Path 'D:\\dramas\\星语-c983a088\\refs' | Out-Null";
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("file_path", script.toString());
+        args.put("content", content);
+        writeFileTool.execute(JSON.toJSON(args)).getResult();
+
+        byte[] bytes = Files.readAllBytes(script);
+        assertEquals((byte) 0xEF, bytes[0], "a .ps1 starts with the UTF-8 BOM");
+        assertEquals((byte) 0xBB, bytes[1]);
+        assertEquals((byte) 0xBF, bytes[2]);
+        assertEquals(content, new String(bytes, 3, bytes.length - 3, StandardCharsets.UTF_8),
+            "the script text follows the BOM byte for byte");
+    }
+
+    @Test
+    void testNonScriptFileCarriesNoBom() throws IOException {
+        Path testFile = tempDir.resolve("notes.txt");
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("file_path", testFile.toString());
+        args.put("content", "星语 notes");
+        writeFileTool.execute(JSON.toJSON(args)).getResult();
+
+        byte[] bytes = Files.readAllBytes(testFile);
+        assertEquals((byte) 0xE6, bytes[0], "everything else stays BOM-less, or the BOM would be content");
+        assertEquals((byte) 0x98, bytes[1], "the text starts where the file starts: 星 in UTF-8 is E6 98 9F");
+        assertEquals((byte) 0x9F, bytes[2]);
+        assertEquals("星语 notes", Files.readString(testFile));
+    }
+
+    @Test
+    void testScriptThatAlreadyCarriesABomKeepsExactlyOne() throws IOException {
+        Path script = tempDir.resolve("already.psm1");
+        String content = "\uFEFF$path = 'D:\\dramas\\星语-x'";
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("file_path", script.toString());
+        args.put("content", content);
+        writeFileTool.execute(JSON.toJSON(args)).getResult();
+
+        byte[] bytes = Files.readAllBytes(script);
+        assertEquals(content, new String(bytes, StandardCharsets.UTF_8), "the script keeps the single BOM it came with");
+        assertEquals(0xEF, bytes[0] & 0xFF);
+        assertEquals((byte) '$', bytes[3], "no second BOM is written");
     }
 }

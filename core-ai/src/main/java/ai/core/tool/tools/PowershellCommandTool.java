@@ -149,6 +149,7 @@ public class PowershellCommandTool extends ShellCommandTool {
              - Pipeline chain operators `&&` and `||` ARE available and work like bash. Prefer `cmd1 && cmd2` over `cmd1; cmd2` when cmd2 should only run if cmd1 succeeded.
              - Ternary (`$cond ? $a : $b`), null-coalescing (`??`), and null-conditional (`?.`) operators are available.
              - Default file encoding is UTF-8 without BOM, and `-Encoding utf8` also writes no BOM. Use `-Encoding utf8BOM` only when a consumer specifically needs the BOM.
+             - A `.ps1` script that contains non-ASCII text (a Chinese path or name) needs that BOM: this edition reads a BOM-less script as UTF-8, but Windows PowerShell 5.1 reads it as the system ANSI code page and the text arrives as mojibake (a directory meant to be `星语-x` is created as `鏄熻�-x`). Write such scripts with the write-file tool (it emits the BOM) or with `-Encoding utf8BOM`.
              - `ConvertFrom-Json` returns a `PSCustomObject`; pass `-AsHashtable` when you want a hashtable instead.
              - stderr from native executables is already captured for you, so `2>&1` is redundant — don't add it.
             """.stripTrailing();
@@ -159,6 +160,7 @@ public class PowershellCommandTool extends ShellCommandTool {
              - Pipeline chain operators `&&` and `||` are NOT available. To run B only if A succeeds: `A; if ($?) { B }`. To chain unconditionally: `A; B`.
              - Ternary (`?:`), null-coalescing (`??`), and null-conditional (`?.`) operators are NOT available. Use `if`/`else` and explicit `$null -eq` checks instead.
              - Default encoding for `Out-File` and `>` is UTF-16 LE with BOM. When writing files other tools will read, pass `-Encoding UTF8` — but note that on this edition `-Encoding UTF8` still emits a BOM.
+             - A `.ps1` script that contains non-ASCII text (a Chinese path or name) must carry a UTF-8 BOM: this edition reads a BOM-less script as the system ANSI code page, so the text arrives as mojibake (a directory meant to be `星语-x` is created as `鏄熻�-x`). Write such scripts with the write-file tool (it emits the BOM), or with `-Encoding UTF8` when you create them from a command.
              - `ConvertFrom-Json` returns a `PSCustomObject`, not a hashtable. `-AsHashtable` is not available.
              - Avoid `2>&1` on native executables. On this edition, redirecting a native command's stderr wraps each line in an ErrorRecord (NativeCommandError) and sets `$?` to `$false` even when the exe returned exit code 0. stderr is already captured for you — don't redirect it.
             """.stripTrailing();
