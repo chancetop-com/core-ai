@@ -292,6 +292,71 @@ class OTLPIngestServiceTest {
             .anyMatch(update -> update.contains("/api/media-jobs/job-1/content")));
     }
 
+    @Test
+    void agentRootSpanReplacesProvisionalTraceInput() {
+        var service = service();
+        // the trace doc was created by the first LLM call, so its input holds that full request payload
+        var provisional = new Trace();
+        provisional.traceId = "0".repeat(32);
+        provisional.input = "{\"messages\":[{\"role\":\"user\",\"content\":\"full request payload\"}]}";
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(provisional));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        service.ingest(request(span("agent.turn",
+            attr("langfuse.observation.type", "agent"),
+            attr("gen_ai.agent.name", "Melody's-Assistant"),
+            attr("gen_ai.prompt", "remove the black frame from image 1"),
+            attr("session.id", "session-1"))));
+
+        var updates = ArgumentCaptor.forClass(Bson.class);
+        verify(service.traceCollection, atLeastOnce()).update(any(Bson.class), updates.capture());
+        assertTrue(updates.getAllValues().stream()
+            .map(Object::toString)
+            .anyMatch(update -> update.contains("remove the black frame from image 1")));
+    }
+
+    @Test
+    void gatewayRootSpanDoesNotReplaceExistingTraceInput() {
+        var service = service();
+        // a merged gateway session trace keeps the first request payload as its input
+        var trace = new Trace();
+        trace.traceId = "0".repeat(32);
+        trace.input = "first request body";
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(trace));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        service.ingest(request(span("gateway.chat.completions",
+            attr("client.type", "gateway"),
+            attr("session.id", "session-1"),
+            attr("user.id", "user-1"),
+            attr("langfuse.observation.input", "second request body"))));
+
+        var updates = ArgumentCaptor.forClass(Bson.class);
+        verify(service.traceCollection, atLeastOnce()).update(any(Bson.class), updates.capture());
+        assertTrue(updates.getAllValues().stream()
+            .map(Object::toString)
+            .noneMatch(update -> update.contains("second request body")));
+    }
+
+    @Test
+    void rootSpanWithoutAgentContextStillFillsEmptyTraceInput() {
+        var service = service();
+        var trace = new Trace();
+        trace.traceId = "0".repeat(32);
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(trace));
+        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        service.ingest(request(span("agent.turn",
+            attr("session.id", "session-1"),
+            attr("langfuse.observation.input", "{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"))));
+
+        var updates = ArgumentCaptor.forClass(Bson.class);
+        verify(service.traceCollection, atLeastOnce()).update(any(Bson.class), updates.capture());
+        assertTrue(updates.getAllValues().stream()
+            .map(Object::toString)
+            .anyMatch(update -> update.contains("hello")));
+    }
+
     private OTLPIngestService service() {
         var service = new OTLPIngestService();
         service.traceCollection = traceCollection();

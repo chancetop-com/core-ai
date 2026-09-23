@@ -259,9 +259,13 @@ public class OTLPIngestService {
         var source = resolveSource(attrs, attrs.get("session.id"));
         updates.add(Updates.set("source", source));
         updates.add(Updates.set("type", resolveType(source, attrs, Map.of())));
-        if (trace.input == null || trace.input.isEmpty()) {
-            var input = OTLPParseHelper.resolveInput(attrs);
-            if (input != null) updates.add(Updates.set("input", input));
+        // The trace doc is created by whichever span arrives first — usually the first LLM call, whose payload
+        // is the full request (messages + tools). The run/turn root span carries the real input (the user
+        // message), so it replaces that provisional payload instead of only filling an empty field.
+        var input = OTLPParseHelper.resolveInput(attrs);
+        var agentRootInput = attrs.get("gen_ai.agent.name") != null;
+        if (input != null && (agentRootInput || trace.input == null || trace.input.isEmpty())) {
+            updates.add(Updates.set("input", input));
         }
     }
 
