@@ -13,6 +13,7 @@ import core.framework.module.Module;
 public class SandboxHubModule extends Module {
     @Override
     protected void initialize() {
+        bind(RunAgentRegistry.class);
         bind(SandboxHubService.class);
         api().service(SandboxHubWebService.class, bind(SandboxHubWebServiceImpl.class));
     }

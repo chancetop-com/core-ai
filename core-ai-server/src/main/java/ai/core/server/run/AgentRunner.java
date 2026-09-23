@@ -15,8 +15,10 @@ import ai.core.server.domain.ChannelTarget;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
+import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.StagedFile;
+import ai.core.server.sandboxhub.RunAgentRegistry;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
 import com.mongodb.client.model.Filters;
@@ -53,6 +55,8 @@ public class AgentRunner {
     private static final int SANDBOX_RELEASE_DELAY_SECONDS = 60;
     private static final int WORKFLOW_SANDBOX_RELEASE_DELAY_SECONDS = 10;
     private static final int STALE_RUN_THRESHOLD_SECONDS = 1800;
+    // ownership leases last a minute; a run outlives that, so it renews at half the lease
+    private static final int OWNERSHIP_RENEW_SECONDS = 30;
 
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_CONCURRENT_RUNS);
     private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1);
@@ -82,6 +86,10 @@ public class AgentRunner {
     AgentRunTracer tracer;
     @Inject
     AgentRunBuilder builder;
+    @Inject
+    RunAgentRegistry runAgents;
+    @Inject
+    SessionOwnershipRegistry ownershipRegistry;
 
     void requireTrustedDefinitionSkills(AgentDefinition definition) {
         if (definition == null) return;
@@ -202,8 +210,10 @@ public class AgentRunner {
                               WorkflowTraceContext traceContext, List<LLMCallRequest.Attachment> attachments) {
         var completed = new AtomicBoolean(false);
         Agent agent = null;
+        ScheduledFuture<?> ownershipLease = null;
         try {
             agent = builder.buildAgent(runEntity, definition, sandbox, variables, attachments);
+            ownershipLease = publishRunAgent(runEntity.id, agent, sandbox);
             var config = definition.publishedConfig;
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                     : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
@@ -220,7 +230,31 @@ public class AgentRunner {
                 LOGGER.error("agent run failed, runId={}", runEntity.id, e);
                 builder.updateRunStatus(runEntity, RunStatus.FAILED, null, errorMessage(e), stackTrace(e), agent);
             }
+        } finally {
+            if (ownershipLease != null) ownershipLease.cancel(false);
+            if (agent != null) {
+                runAgents.unregister(runEntity.id);
+                if (ownershipRegistry != null) ownershipRegistry.release(runEntity.id);
+            }
         }
+    }
+
+    /**
+     * Makes the run's sandbox serve the hub like a session's does: the agent is published under the run id for
+     * the duration of the run, and the replica claims (and keeps renewing) ownership of that id so every hub
+     * call, wherever it arrives, is routed here.
+     */
+    private ScheduledFuture<?> publishRunAgent(String runId, Agent agent, Sandbox sandbox) {
+        if (sandbox == null) return null;
+        runAgents.register(runId, agent);
+        if (ownershipRegistry == null) return null;
+        if (!ownershipRegistry.claimOrRenew(runId)) {
+            LOGGER.warn("failed to claim run ownership, sandbox hub calls for it may fail, runId={}", runId);
+            return null;
+        }
+        // the ownership lease is shorter than a run, so the run keeps it fresh while it works
+        return timeoutScheduler.scheduleAtFixedRate(() -> ownershipRegistry.renew(runId),
+            OWNERSHIP_RENEW_SECONDS, OWNERSHIP_RENEW_SECONDS, TimeUnit.SECONDS);
     }
 
     private void runWithTimeout(AgentRun runEntity, Agent agent, ScheduledFuture<?> timeout, AtomicBoolean completed,

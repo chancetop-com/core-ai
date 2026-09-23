@@ -30,6 +30,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -64,6 +65,7 @@ class SandboxHubServiceTest {
     private SandboxHubService service;
     private AgentSessionManager sessionManager;
     private HubCallAuditService auditService;
+    private RunAgentRegistry runAgents;
     private Agent agent;
 
     @BeforeEach
@@ -71,9 +73,11 @@ class SandboxHubServiceTest {
         service = new SandboxHubService();
         sessionManager = mock(AgentSessionManager.class);
         auditService = mock(HubCallAuditService.class);
+        runAgents = new RunAgentRegistry();
         agent = mock(Agent.class);
         service.sessionManager = sessionManager;
         service.auditService = auditService;
+        service.runAgents = runAgents;
         when(auditService.begin(any())).thenReturn(AUDIT_ID);
     }
 
@@ -171,6 +175,30 @@ class SandboxHubServiceTest {
     }
 
     @Test
+    void runAgentIsServedWithoutASession() {
+        bindRunAgent(hubTool("search"));
+        when(agent.executeToolOutsideTurn(any(), any(), any())).thenReturn(ToolCallResult.completed("menu found"));
+        when(agent.getName()).thenReturn("gbp-content-agent");
+
+        var snapshot = service.snapshot(session());
+
+        assertEquals("gbp-content-agent", snapshot.agentName);
+        assertEquals("completed", service.call(session(), "menu_hub_search", request("{}")).status);
+        verifyNoInteractions(sessionManager);
+    }
+
+    @Test
+    void sessionServesTheHubWhenNoRunAgentIsRegistered() {
+        bindSession(hubTool("search"));
+        when(agent.executeToolOutsideTurn(any(), any(), any())).thenReturn(ToolCallResult.completed("from session"));
+
+        var response = service.call(session(), "menu_hub_search", request("{}"));
+
+        assertEquals("from session", response.text);
+        verify(sessionManager).getSession(SESSION_ID);
+    }
+
+    @Test
     void snapshotCarriesAgentNameAndToolDetails() {
         bindSession(hubTool("search"));
         when(agent.getName()).thenReturn("menu-agent");
@@ -242,5 +270,11 @@ class SandboxHubServiceTest {
         var agentSession = mock(InProcessAgentSession.class);
         when(agentSession.agent()).thenReturn(agent);
         when(sessionManager.getSession(SESSION_ID)).thenReturn(agentSession);
+    }
+
+    /** A run has no session: the runner publishes its agent under the run id instead. */
+    private void bindRunAgent(ToolCall... tools) {
+        bindSession(tools);
+        runAgents.register(SESSION_ID, agent);
     }
 }

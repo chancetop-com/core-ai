@@ -11,7 +11,6 @@ import ai.core.llm.domain.Usage;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.session.AgentSessionManager;
-import ai.core.session.InProcessAgentSession;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import core.framework.inject.Inject;
@@ -101,8 +100,8 @@ public class SandboxHubService {
         return value instanceof Number number ? number.longValue() : null;
     }
 
-    private static SandboxHubCatalog catalogOf(InProcessAgentSession agentSession) {
-        return SandboxHubCatalog.of(agentSession.agent().getExecutionContext());
+    private static SandboxHubCatalog catalogOf(Agent agent) {
+        return SandboxHubCatalog.of(agent.getExecutionContext());
     }
 
     private static SandboxHubCatalog.Entry find(SandboxHubCatalog catalog, String name) {
@@ -128,6 +127,8 @@ public class SandboxHubService {
     @Inject
     AgentSessionManager sessionManager;
     @Inject
+    RunAgentRegistry runAgents;
+    @Inject
     HubCallAuditService auditService;
 
     private final Map<String, InFlight> tasks = new ConcurrentHashMap<>();
@@ -137,14 +138,13 @@ public class SandboxHubService {
      * answered from this, which is why they work from any pod: the owner builds it, the caller renders it.
      */
     public SandboxHubCatalogSnapshot snapshot(SandboxHubSession session) {
-        var agentSession = agentSession(session);
-        var catalog = catalogOf(agentSession);
-        return SandboxHubCatalogSnapshot.of(agentSession.agent().getName(), catalog.details(), catalog.datasets());
+        var agent = agentFor(session);
+        var catalog = catalogOf(agent);
+        return SandboxHubCatalogSnapshot.of(agent.getName(), catalog.details(), catalog.datasets());
     }
 
     public SandboxHubCallResponse call(SandboxHubSession session, String name, HubCallRequest request) {
-        var agentSession = agentSession(session);
-        var agent = agentSession.agent();
+        var agent = agentFor(session);
         var context = agent.getExecutionContext();
         var entry = find(SandboxHubCatalog.of(context), name);
         var arguments = request != null && hasText(request.arguments) ? request.arguments : EMPTY_ARGUMENTS;
@@ -182,11 +182,11 @@ public class SandboxHubService {
             if (!inFlight.future().isDone()) return pending(taskId);
             return resultOf(inFlight.future());
         }
-        return pollToolTask(agentSession(session), taskId);
+        return pollToolTask(agentFor(session), taskId);
     }
 
-    private SandboxHubCallResponse pollToolTask(InProcessAgentSession agentSession, String taskId) {
-        var context = agentSession.agent().getExecutionContext();
+    private SandboxHubCallResponse pollToolTask(Agent agent, String taskId) {
+        var context = agent.getExecutionContext();
         var manager = context.getAsyncTaskManager();
         var task = manager == null ? null : manager.loadTask(taskId).orElse(null);
         if (task == null) throw new NotFoundException("unknown task: " + taskId);
@@ -272,12 +272,17 @@ public class SandboxHubService {
         auditService.attachRun(callId, null, null, usage.inputTokens, usage.outputTokens);
     }
 
-    private InProcessAgentSession agentSession(SandboxHubSession session) {
+    // An in-flight AgentRunner run has no session object: its runner publishes the agent under the run id
+    // and ownership routing makes this replica the one that serves the run's sandbox, so a run and a session
+    // are indistinguishable from inside the sandbox.
+    private Agent agentFor(SandboxHubSession session) {
+        var runAgent = runAgents.agent(session.sessionId());
+        if (runAgent != null) return runAgent;
         var agentSession = sessionManager.getSession(session.sessionId());
         if (agentSession == null) {
             throw new NotFoundException("session is not available on this server: " + session.sessionId());
         }
-        return agentSession;
+        return agentSession.agent();
     }
 
     private int timeoutSeconds(SandboxHubCatalog.Entry entry, HubCallRequest request) {
