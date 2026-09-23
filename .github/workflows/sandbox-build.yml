@@ -95,3 +95,6 @@ jobs:
           files: dist/*.whl
           generate_release_notes: true
           fail_on_unmatched_files: true
+          # the repo's "latest" release slot belongs to the CLI: core-ai-cli update checks and
+          # the install URLs in README/docs resolve through it, so a runtime release must not claim it
+          make_latest: 'false'
