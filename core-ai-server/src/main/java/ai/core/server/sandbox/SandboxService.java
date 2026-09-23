@@ -48,7 +48,6 @@ public class SandboxService {
     private final String serverUrlFromSandbox;
     private final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
     private final Set<String> persistentSessionIds = ConcurrentHashMap.newKeySet();
-    private final Map<String, String> sessionAgentNames = new ConcurrentHashMap<>();
     @SuppressWarnings("this-escape")
     private final SandboxFileService sandboxFileService = new SandboxFileService(this);
     private final SessionMcpProcesses sessionMcpProcesses = new SessionMcpProcesses();
@@ -141,6 +140,7 @@ public class SandboxService {
         }
         return sessionSandboxes.computeIfAbsent(sessionId, sid -> {
             LOGGER.info("sandbox created (shared) for session: {}, config={}", sid, effectiveConfig);
+            rememberUser(sid, userId);
             return new LazySandbox(effectiveConfig, sandboxManager, null, new LazySandbox.SessionIdentity(sid, userId),
                     () -> onSandboxReady(sid, userId, new SandboxSnapshotService.RestoreResult(
                             SandboxSnapshotService.RestoreOutcome.NONE, null)));
@@ -154,7 +154,7 @@ public class SandboxService {
     /** {@code agentName} is informational only — it reaches scripts as {@code CORE_AI_AGENT_NAME}. */
     public Sandbox createSessionSandbox(SandboxConfig config, String sessionId, String userId, String agentName,
                                         Consumer<SandboxEvent> eventDispatcher) {
-        rememberAgentName(sessionId, agentName);
+        rememberAgent(sessionId, agentName);
         return create(config, sessionId, userId, eventDispatcher, snapshotService);
     }
 
@@ -165,6 +165,7 @@ public class SandboxService {
             LOGGER.debug("sandbox disabled for session: {}", sessionId);
             return null;
         }
+        rememberUser(sessionId, userId);
         var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, new LazySandbox.SessionIdentity(sessionId, userId),
                 outcome -> onSandboxReady(sessionId, userId, outcome), snapshot);
         installSandbox(sessionId, lazySandbox);
@@ -224,8 +225,12 @@ public class SandboxService {
         var attached = sandboxManager.attach(sandboxId, config, sessionId, userId);
         if (attached.isEmpty()) return null;
         installSandbox(sessionId, attached.get());
+        rememberUser(sessionId, userId);
         if (persistent) persistentSessionIds.add(sessionId);
         storeSandboxBinding(sessionId);
+        // a reattached sandbox is a fresh runtime as far as the hub is concerned: the pod that bound it
+        // may be gone, and the binding only ever lives in the runtime's memory
+        if (hubBinding != null) hubBinding.bind(attached.get(), sessionId, userId);
         return attached.get();
     }
 
@@ -241,18 +246,21 @@ public class SandboxService {
         var id = sandbox.getId();
         if ("pending".equals(id)) return; // not yet acquired, nothing to renew
         sandboxManager.renew(id);
-        rebindSandboxHub(sessionId, sandbox);
+        if (hubBinding != null) {
+            hubBinding.rebindIfNeeded(sandbox, sessionId);
+            hubBinding.heal(sandbox, sessionId);
+        }
     }
 
     public void releaseSandbox(String sessionId) {
         if (!enabled) return;
         var sandbox = sessionSandboxes.remove(sessionId);
         persistentSessionIds.remove(sessionId);
-        sessionAgentNames.remove(sessionId);
+        if (hubBinding != null) hubBinding.forget(sessionId);
         sandboxFileService.clear(sessionId);
         sessionMcpProcesses.stopAll(sessionId, sandbox);
         deleteSandboxBinding(sessionId);
-        unbindSandboxHub(sessionId, sandbox);
+        if (hubBinding != null) hubBinding.unbind(sandbox, sessionId);
         if (sandbox != null) {
             closeSandbox(sandbox);
             LOGGER.info("sandbox released for session: {}", sessionId);
@@ -276,7 +284,7 @@ public class SandboxService {
         sandboxFileService.restoreAttachments(sessionId, userId, restoreResult.snapshotCreatedAt());
         sandboxFileService.ensurePendingFilesUploaded(sessionId);
         storeSandboxBinding(sessionId);
-        bindSandboxHub(sessionId, userId, sessionSandboxes.get(sessionId));
+        if (hubBinding != null) hubBinding.bind(sessionSandboxes.get(sessionId), sessionId, userId);
     }
 
     // ---- Sandbox hub binding (session identity for the sandbox runtime's loopback hub proxy) ----
@@ -284,7 +292,7 @@ public class SandboxService {
     /** Wires the session tokens minted for the sandbox hub; without it scripts cannot reach the hub. */
     public void sessionTokens(SessionTokenService sessionTokenService) {
         hubBinding = new SandboxHubBinding(sessionTokenService, serverUrlFromSandbox,
-                () -> SandboxHubBinding.ttlSeconds(defaultConfig), sessionAgentNames::get);
+                () -> SandboxHubBinding.ttlSeconds(defaultConfig));
     }
 
     /** True while (session, sandbox) still matches the identity held by the sandbox runtime. */
@@ -297,22 +305,12 @@ public class SandboxService {
         return hubBinding.isBound(redisStore != null ? redisStore.getBinding(sessionId) : null, sandboxId);
     }
 
-    private void bindSandboxHub(String sessionId, String userId, Sandbox sandbox) {
-        if (hubBinding != null) hubBinding.bind(sandbox, sessionId, userId);
+    private void rememberAgent(String sessionId, String agentName) {
+        if (hubBinding != null) hubBinding.rememberAgent(sessionId, agentName);
     }
 
-    private void rebindSandboxHub(String sessionId, Sandbox sandbox) {
-        if (hubBinding != null) hubBinding.rebindIfNeeded(sandbox, sessionId);
-    }
-
-    private void unbindSandboxHub(String sessionId, Sandbox sandbox) {
-        if (hubBinding != null) hubBinding.unbind(sandbox, sessionId);
-    }
-
-    private void rememberAgentName(String sessionId, String agentName) {
-        if (sessionId != null && agentName != null && !agentName.isBlank()) {
-            sessionAgentNames.put(sessionId, agentName);
-        }
+    private void rememberUser(String sessionId, String userId) {
+        if (hubBinding != null) hubBinding.rememberUser(sessionId, userId);
     }
 
     // ---- Discovery sandbox (global, long-running) ----
@@ -374,7 +372,8 @@ public class SandboxService {
             LOGGER.info("sandbox no longer available for reattach, sessionId={}, sandboxId={}", sessionId, sandboxId);
             return null;
         }
-        rememberAgentName(sessionId, agentName);
+        rememberAgent(sessionId, agentName);
+        rememberUser(sessionId, userId);
         var sandbox = attached.get();
         long snapshotEpoch = 0;
         if (snapshotService != null) {
@@ -390,7 +389,7 @@ public class SandboxService {
                 outcome -> onSandboxReady(sessionId, userId, outcome), snapshotService, snapshotEpoch));
         installSandbox(sessionId, lazy);
         storeSandboxBinding(sessionId);
-        bindSandboxHub(sessionId, userId, lazy);
+        if (hubBinding != null) hubBinding.bind(lazy, sessionId, userId);
         LOGGER.info("reattached to existing sandbox, sessionId={}, sandboxId={}", sessionId, sandbox.getId());
         return lazy;
     }

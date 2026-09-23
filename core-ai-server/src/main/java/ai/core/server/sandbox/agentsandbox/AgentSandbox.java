@@ -150,6 +150,11 @@ public class AgentSandbox implements Sandbox {
     }
 
     @Override
+    public Boolean hubBound() {
+        return runtimeClient.hubBound();
+    }
+
+    @Override
     public void close() {
         status = SandboxStatus.TERMINATED;
         runtimeClient.close();

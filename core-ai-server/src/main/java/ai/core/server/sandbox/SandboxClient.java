@@ -36,6 +36,7 @@ public class SandboxClient {
     private final String ip;
     private final int port;
     private final HTTPClient httpClient;
+    private final HTTPClient probeClient;
 
     public SandboxClient(String ip, int port, int timeoutSeconds) {
         this.ip = ip;
@@ -45,6 +46,11 @@ public class SandboxClient {
         this.httpClient = HTTPClient.builder()
                 .connectTimeout(Duration.ofSeconds(3))
                 .timeout(Duration.ofMillis(timeoutMs))
+                .build();
+        // the tool timeout above is minutes long; a probe that gates the message path must not inherit it
+        this.probeClient = HTTPClient.builder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .timeout(Duration.ofSeconds(3))
                 .build();
     }
 
@@ -236,6 +242,9 @@ public class SandboxClient {
         if (httpClient instanceof CustomHTTPClientImpl) {
             ((CustomHTTPClientImpl) httpClient).close();
         }
+        if (probeClient instanceof CustomHTTPClientImpl) {
+            ((CustomHTTPClientImpl) probeClient).close();
+        }
     }
 
     // ---- MCP server management ----
@@ -285,6 +294,24 @@ public class SandboxClient {
     }
 
     // ---- sandbox hub binding ----
+
+    /**
+     * @return true/false as reported by the runtime, or null when the probe could not answer — an
+     * unreachable runtime, a non-200 response, or a runtime old enough to predate the flag.
+     */
+    public Boolean hubBound() {
+        try {
+            var response = probeClient.execute(new HTTPRequest(HTTPMethod.GET, baseUrl + "/health"));
+            if (response.statusCode != 200) {
+                LOGGER.warn("sandbox health probe failed: url={}, status={}", baseUrl, response.statusCode);
+                return null;
+            }
+            return JSON.fromJSON(HealthResponse.class, response.text()).bound;
+        } catch (Exception e) {
+            LOGGER.warn("sandbox health probe failed: url={}, error={}", baseUrl, e.getMessage());
+            return null;
+        }
+    }
 
     /**
      * Hands the session identity to the runtime, which keeps it in memory and uses it as the
@@ -338,6 +365,13 @@ public class SandboxClient {
         public String tool;
         @Property(name = "arguments")
         public String arguments;
+    }
+
+    public static class HealthResponse {
+        @Property(name = "status")
+        public String status;
+        @Property(name = "bound")
+        public Boolean bound;
     }
 
     public static class ExecuteResponse {

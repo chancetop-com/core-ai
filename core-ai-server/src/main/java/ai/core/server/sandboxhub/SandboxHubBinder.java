@@ -25,6 +25,7 @@ public class SandboxHubBinder {
 
     private final SessionTokenService sessionTokenService;
     private volatile boolean unsupportedRuntimeLogged;
+    private volatile boolean unsupportedRuntime;
 
     public SandboxHubBinder(SessionTokenService sessionTokenService) {
         this.sessionTokenService = sessionTokenService;
@@ -36,7 +37,7 @@ public class SandboxHubBinder {
 
     /** Mints a fresh token for the sandbox and binds it into the runtime; never throws. */
     public void bind(Sandbox sandbox, String serverUrl, String sessionId, String userId, String agentName, int ttlSeconds) {
-        if (sandbox == null || serverUrl == null || !enabled() || serverUrl.isBlank()) {
+        if (sandbox == null || serverUrl == null || !enabled() || serverUrl.isBlank() || unsupportedRuntime) {
             return;
         }
         try {
@@ -51,11 +52,32 @@ public class SandboxHubBinder {
     }
 
     /**
+     * Re-binds only when the runtime reports it lost the identity it was handed — a runtime that
+     * restarted keeps its sandbox alive but comes back unbound, and every script call through it would
+     * answer 503 until the session renews its token. A silent runtime is left alone: an unreachable
+     * sandbox is not one a bind could fix.
+     */
+    public void rebindIfRuntimeLost(Sandbox sandbox, String serverUrl, String sessionId, String userId, String agentName, int ttlSeconds) {
+        if (sandbox == null || serverUrl == null || !enabled() || serverUrl.isBlank() || unsupportedRuntime) {
+            return;
+        }
+        try {
+            if (!Boolean.FALSE.equals(sandbox.hubBound())) {
+                return;
+            }
+            LOGGER.info("sandbox runtime lost its hub binding, rebinding: sessionId={}, sandboxId={}", sessionId, sandbox.getId());
+            bind(sandbox, serverUrl, sessionId, userId, agentName, ttlSeconds);
+        } catch (Exception e) {
+            LOGGER.warn("failed to probe sandbox hub binding: sessionId={}, sandboxId={}", sessionId, sandbox.getId(), e);
+        }
+    }
+
+    /**
      * Re-binds only once the bound token has burned half of its lifetime, or when the sandbox was
      * replaced under the session (self-heal); never throws.
      */
     public void rebindIfNeeded(Sandbox sandbox, String serverUrl, String sessionId, String agentName, int ttlSeconds) {
-        if (sandbox == null || serverUrl == null || !enabled() || serverUrl.isBlank()) {
+        if (sandbox == null || serverUrl == null || !enabled() || serverUrl.isBlank() || unsupportedRuntime) {
             return;
         }
         try {
@@ -88,6 +110,7 @@ public class SandboxHubBinder {
     }
 
     private void logUnsupportedRuntime() {
+        unsupportedRuntime = true;
         if (!unsupportedRuntimeLogged) {
             unsupportedRuntimeLogged = true;
             LOGGER.warn("sandbox runtime does not support hub binding (/bind); scripts cannot use the session capabilities on this runtime");

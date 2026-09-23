@@ -63,6 +63,16 @@ public interface Sandbox extends AutoCloseable {
     /** Clears a previous {@link #bind}; called when the session lets go of the sandbox. */
     void unbind();
 
+    /**
+     * Whether the runtime still holds the identity handed to it by {@link #bind}, or null when it cannot
+     * answer: a runtime predating the endpoint, or a sandbox that is not materialized yet. The binding
+     * lives in the runtime's process memory only, so a restarted runtime comes back unbound while the
+     * server still holds a perfectly valid token — this is the only way to notice.
+     */
+    default Boolean hubBound() {
+        return null;
+    }
+
     @Override
     void close();
 }

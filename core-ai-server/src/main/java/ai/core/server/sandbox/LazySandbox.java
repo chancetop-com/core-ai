@@ -152,6 +152,12 @@ public class LazySandbox implements Sandbox {
     }
 
     @Override
+    public Boolean hubBound() {
+        var current = delegate;
+        return current != null ? current.hubBound() : null;
+    }
+
+    @Override
     public SandboxStatus getStatus() {
         var current = delegate;
         if (current == null) {
