@@ -1,6 +1,7 @@
 package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillRepoConfig;
 import ai.core.server.domain.SkillSourceType;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -16,14 +17,22 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SkillServiceTest {
+    private static final String REPO_URL = "https://github.com/wuyoscar/GPT-Image2-Skill";
+
     @Test
     void repoRegistrationUsesInjectedSkillCollection() {
         var service = new SkillService();
@@ -184,9 +193,91 @@ class SkillServiceTest {
         assertEquals("skill is unavailable", error.getMessage());
     }
 
+    @Test
+    void scheduledSyncSkipsTheCloneWhenTheRemoteCommitIsUnchanged() throws Exception {
+        var collection = skillCollection();
+        var entity = repoSkill("abc123");
+        when(collection.get("repo-1")).thenReturn(Optional.of(entity));
+        var manager = spy(new SkillRepoManager(collection));
+        doReturn("abc123").when(manager).remoteHead(REPO_URL, "main");
+        var service = service(manager, collection);
+
+        var result = service.syncFromRepoIfChanged("repo-1");
+
+        assertSame(entity, result);
+        verify(manager, never()).cloneRepo(anyString(), anyString(), any());
+        verify(collection, never()).replace(any());
+    }
+
+    @Test
+    void scheduledSyncClonesWhenTheRemoteCommitMoved() throws Exception {
+        var collection = skillCollection();
+        var entity = repoSkill("abc123");
+        when(collection.get("repo-1")).thenReturn(Optional.of(entity));
+        var manager = spy(new SkillRepoManager(collection));
+        doReturn("def456").when(manager).remoteHead(REPO_URL, "main");
+        doNothing().when(manager).cloneRepo(anyString(), anyString(), any());
+        var service = service(manager, collection);
+
+        var error = assertThrows(RuntimeException.class, () -> service.syncFromRepoIfChanged("repo-1"));
+
+        assertEquals("skill not found in repo after sync, name=gpt-image", error.getMessage());
+        verify(manager).cloneRepo(eq(REPO_URL), eq("main"), any());
+    }
+
+    @Test
+    void manualSyncClonesWithoutAskingTheRemote() throws Exception {
+        var collection = skillCollection();
+        var entity = repoSkill("abc123");
+        when(collection.get("repo-1")).thenReturn(Optional.of(entity));
+        var manager = spy(new SkillRepoManager(collection));
+        doReturn("abc123").when(manager).remoteHead(anyString(), anyString());
+        doNothing().when(manager).cloneRepo(anyString(), anyString(), any());
+        var service = service(manager, collection);
+
+        assertThrows(RuntimeException.class, () -> service.syncFromRepo("repo-1"));
+
+        verify(manager).cloneRepo(eq(REPO_URL), eq("main"), any());
+        verify(manager, never()).remoteHead(anyString(), anyString());
+    }
+
+    @Test
+    void syncRejectsSkillsThatDoNotComeFromARepo() {
+        var collection = skillCollection();
+        var uploaded = skill("upload-1", "Admin", "seo-audit", null);
+        when(collection.get("upload-1")).thenReturn(Optional.of(uploaded));
+
+        var service = service(new SkillRepoManager(collection), collection);
+
+        assertThrows(RuntimeException.class, () -> service.syncFromRepoIfChanged("upload-1"));
+    }
+
     @SuppressWarnings("unchecked")
     private MongoCollection<SkillDefinition> skillCollection() {
         return (MongoCollection<SkillDefinition>) mock(MongoCollection.class);
+    }
+
+    private SkillService service(SkillRepoManager manager, MongoCollection<SkillDefinition> collection) {
+        var service = new SkillService() {
+            @Override
+            SkillRepoManager repoManager() {
+                return manager;
+            }
+        };
+        service.skillCollection = collection;
+        return service;
+    }
+
+    private SkillDefinition repoSkill(String lastCommitHash) {
+        var skill = skill("repo-1", "wuyoscar", "gpt-image", "Generate images");
+        skill.sourceType = SkillSourceType.REPO;
+        var config = new SkillRepoConfig();
+        config.repoUrl = REPO_URL;
+        config.branch = "main";
+        config.skillPath = "skills/gpt-image";
+        config.lastCommitHash = lastCommitHash;
+        skill.repoConfig = config;
+        return skill;
     }
 
     private SkillDefinition skill(String id, String namespace, String name, String description) {

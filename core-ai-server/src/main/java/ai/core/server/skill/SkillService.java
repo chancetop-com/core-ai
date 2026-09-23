@@ -104,8 +104,9 @@ public class SkillService {
 
         Path tempDir = null;
         try {
-            tempDir = Files.createTempDirectory("skill-repo-");
+            tempDir = Files.createTempDirectory(SkillRepoManager.TEMP_DIR_PREFIX);
             repoManager().cloneRepo(repoUrl, branch, tempDir);
+            String commitHash = repoManager().headCommit(tempDir);
 
             String effectiveSkillPath = skillPath;
             if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
@@ -133,8 +134,9 @@ public class SkillService {
             }
 
             var results = new ArrayList<SkillDefinition>();
+            var source = new SkillRepoSource(repoUrl, branch, effectiveSkillPath, commitHash);
             for (var skill : skills) {
-                var entity = repoManager().registerOrUpdate(userId, namespace, skill, repoUrl, branch, effectiveSkillPath);
+                var entity = repoManager().registerOrUpdate(userId, namespace, skill, source);
                 results.add(entity);
             }
             LOGGER.info("registered {} skills from repo {}", results.size(), repoUrl);
@@ -204,16 +206,30 @@ public class SkillService {
         return entity;
     }
 
+    long sweepStaleRepoTempDirs() {
+        return repoManager().sweepStaleTempDirs();
+    }
+
     public SkillDefinition syncFromRepo(String id) {
+        return syncFromRepo(id, true);
+    }
+
+    private SkillDefinition syncFromRepo(String id, boolean force) {
         var entity = get(id);
         if (entity.sourceType != SkillSourceType.REPO || entity.repoConfig == null) {
             throw new RuntimeException("skill is not from a repo, id=" + id);
         }
         var config = entity.repoConfig;
+        String remoteHead = force ? null : repoManager().remoteHead(config.repoUrl, config.branch);
+        if (remoteHead != null && remoteHead.equals(config.lastCommitHash)) {
+            LOGGER.info("skill repo unchanged, sync skipped, id={}, qualifiedName={}, commit={}", entity.id, entity.qualifiedName, remoteHead);
+            return entity;
+        }
         Path tempDir = null;
         try {
-            tempDir = Files.createTempDirectory("skill-repo-sync-");
+            tempDir = Files.createTempDirectory(SkillRepoManager.SYNC_TEMP_DIR_PREFIX);
             repoManager().cloneRepo(config.repoUrl, config.branch, tempDir);
+            String commitHash = remoteHead != null ? remoteHead : repoManager().headCommit(tempDir);
 
             String effectiveSkillPath = config.skillPath;
             if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
@@ -238,8 +254,8 @@ public class SkillService {
 
             for (var skill : skills) {
                 if (skill.getName().equals(entity.name)) {
-                    syncMatchedSkill(entity, skill);
-                    LOGGER.info("synced skill from repo, id={}, qualifiedName={}", entity.id, entity.qualifiedName);
+                    syncMatchedSkill(entity, skill, commitHash);
+                    LOGGER.info("synced skill from repo, id={}, qualifiedName={}, commit={}", entity.id, entity.qualifiedName, commitHash);
                     return entity;
                 }
             }
@@ -251,7 +267,11 @@ public class SkillService {
         }
     }
 
-    private void syncMatchedSkill(SkillDefinition entity, SkillMetadata skill) {
+    SkillDefinition syncFromRepoIfChanged(String id) {
+        return syncFromRepo(id, false);
+    }
+
+    private void syncMatchedSkill(SkillDefinition entity, SkillMetadata skill, String commitHash) {
         var skillDir = skill.getSkillDir() != null
             ? Path.of(skill.getSkillDir())
             : Path.of(skill.getPath()).getParent();
@@ -264,6 +284,7 @@ public class SkillService {
         entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
         entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
         entity.digest = SkillDigest.of(entity.content, entity.resources);
+        if (commitHash != null) entity.repoConfig.lastCommitHash = commitHash;
         entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
         entity.updatedAt = ZonedDateTime.now();
         skillCollection.replace(entity);
@@ -274,7 +295,7 @@ public class SkillService {
         return get(id);
     }
 
-    private SkillRepoManager repoManager() {
+    SkillRepoManager repoManager() {
         return new SkillRepoManager(skillCollection);
     }
 
