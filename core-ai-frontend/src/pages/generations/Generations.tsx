@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, DollarSign, Film, FlaskConical, Image as ImageIcon, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, DollarSign, Film, FlaskConical, Image as ImageIcon, Link2, Play } from 'lucide-react';
 import { api } from '../../api/client';
-import type { MediaJob } from '../../api/client';
+import type { MediaJob, MediaJobInput } from '../../api/client';
 import { usePermission } from '../../api/permissions';
 import { formatCostUsd } from '../traces/traceViewModel';
 import ModelCompareModal from './ModelCompareModal';
@@ -38,6 +38,58 @@ function unitsLabel(job: MediaJob) {
   if (type === 'image') return `${job.mediaUnits} images`;
   if (type === 'token') return `${job.mediaUnits} tokens`;
   return String(job.mediaUnits);
+}
+
+// the generation parameters, so a result can be judged against the recipe that produced it
+function recipeLabel(job: MediaJob) {
+  const parts: string[] = [];
+  if (job.requestedSize) parts.push(job.requestedSize);
+  if (job.requestedQuality) parts.push(job.requestedQuality);
+  if (job.requestedCount != null && job.requestedCount > 1) parts.push(`${job.requestedCount} images`);
+  if (job.requestedSeconds != null) parts.push(`${job.requestedSeconds}s`);
+  if (job.outputFormat) parts.push(job.outputCompression != null ? `${job.outputFormat} q${job.outputCompression}` : job.outputFormat);
+  if (job.background) parts.push(`${job.background} background`);
+  return parts.join(' · ');
+}
+
+function inputContentUrl(input: MediaJobInput) {
+  if (input.fileId) return `/api/files/${input.fileId}/content`;
+  if (input.jobId) return `/api/media-jobs/${input.jobId}/content`;
+  return input.url ?? '';
+}
+
+// a video input has no thumbnail record; the tile is a card, the content is the video itself
+function inputThumbnailUrl(input: MediaJobInput) {
+  return input.fileId && input.modality !== 'video' ? `/api/files/${input.fileId}/thumbnail` : null;
+}
+
+function inputLabel(input: MediaJobInput) {
+  if (input.name) return `@${input.name}`;
+  if (input.role) return input.role.replace(/_/g, ' ');
+  return input.modality === 'video' ? 'video' : 'reference';
+}
+
+function inputDetail(input: MediaJobInput) {
+  if (input.role) return input.role.replace(/_/g, ' ');
+  return input.modality ?? input.kind ?? 'reference';
+}
+
+function InputThumb({ input }: { input: MediaJobInput }) {
+  const thumbnail = inputThumbnailUrl(input);
+  if (thumbnail) {
+    return <img src={thumbnail} alt={inputLabel(input)} loading="lazy"
+      className="h-10 w-10 rounded border object-cover" style={{ borderColor: 'var(--color-border)' }} />;
+  }
+  return (
+    <div className="h-10 w-10 rounded border flex items-center justify-center"
+      style={{ borderColor: 'var(--color-border)', background: input.modality === 'video' ? '#0f172a' : undefined }}>
+      {input.modality === 'video'
+        ? <Play size={12} color="#f8fafc" fill="#f8fafc" />
+        : input.kind === 'url'
+          ? <Link2 size={12} style={{ color: 'var(--color-text-secondary)' }} />
+          : <ImageIcon size={12} style={{ color: 'var(--color-text-secondary)' }} />}
+    </div>
+  );
 }
 
 interface MediaJobResult {
@@ -130,6 +182,7 @@ export default function Generations() {
           <thead>
             <tr style={{ background: 'var(--color-bg-tertiary)' }}>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Output</th>
+              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Inputs</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Prompt</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Time</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>User</th>
@@ -146,9 +199,9 @@ export default function Generations() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
+              <tr><td colSpan={11} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
             ) : jobs.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>No media generations found</td></tr>
+              <tr><td colSpan={11} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>No media generations found</td></tr>
             ) : jobs.map(job => {
               const sourceColor = SOURCE_COLORS[job.costSource ?? ''] ?? SOURCE_COLORS.unavailable;
               const stateColor = STATE_COLORS[job.state ?? ''] ?? STATE_COLORS.submitted;
@@ -174,6 +227,17 @@ export default function Generations() {
                           : <div className="h-16 w-28 rounded border flex items-center justify-center" style={{ borderColor: 'var(--color-border)' }}>
                               <Film size={14} style={{ color: 'var(--color-text-secondary)' }} />
                             </div>}
+                  </td>
+                  <td className="px-4 py-2">
+                    {job.inputs && job.inputs.length > 0
+                      ? <div className="flex items-center gap-1 cursor-pointer" onClick={() => setPreview(job)}
+                          title={job.inputs.map(input => `${inputLabel(input)} · ${inputDetail(input)}`).join('\n')}>
+                          {job.inputs.slice(0, 3).map((input, index) => <InputThumb key={index} input={input} />)}
+                          {job.inputs.length > 3 && (
+                            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>+{job.inputs.length - 3}</span>
+                          )}
+                        </div>
+                      : <span style={{ color: 'var(--color-text-secondary)' }}>-</span>}
                   </td>
                   <td className="px-4 py-3">
                     {job.prompt
@@ -249,6 +313,27 @@ export default function Generations() {
         <div className="fixed inset-0 z-50 overflow-y-auto"
           style={{ background: 'rgba(0, 0, 0, 0.85)' }} onClick={() => setPreview(null)}>
           <div className="min-h-full flex flex-col items-center justify-center gap-3 p-6">
+            {preview.inputs && preview.inputs.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-3 max-w-[90vw]" onClick={e => e.stopPropagation()}>
+                {preview.inputs.map((input, index) => (
+                  <a key={index} href={inputContentUrl(input)} target="_blank" rel="noreferrer"
+                    className="block rounded-lg border overflow-hidden" style={{ borderColor: '#334155', background: '#0f172a' }}
+                    title={`${inputLabel(input)} — ${inputDetail(input)}`}>
+                    {input.modality === 'video'
+                      ? <video src={inputContentUrl(input)} muted preload="metadata" className="h-28 w-28 object-cover" />
+                      : inputThumbnailUrl(input)
+                        ? <img src={inputThumbnailUrl(input) ?? ''} alt={inputLabel(input)} className="h-28 w-28 object-cover" />
+                        : <div className="h-28 w-28 flex items-center justify-center">
+                            <Link2 size={18} color="#94a3b8" />
+                          </div>}
+                    <div className="px-2 py-1 w-28 text-center text-xs">
+                      <div className="truncate" style={{ color: '#e2e8f0' }}>{inputLabel(input)}</div>
+                      <div className="truncate" style={{ color: '#94a3b8' }}>{inputDetail(input)}</div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
             {preview.mediaType === 'image' && preview.fileId
               ? <img src={`/api/files/${preview.fileId}/content`} alt={preview.fileName ?? 'generated'}
                   className="max-h-[80vh] max-w-[90vw] rounded object-contain" onClick={e => e.stopPropagation()} />
@@ -264,6 +349,11 @@ export default function Generations() {
                   ? `/api/files/${preview.fileId}/content` : `/api/media-jobs/${preview.id}/content`}
                 target="_blank" rel="noreferrer" className="ml-3 underline">Open in new tab</a>
             </div>
+            {recipeLabel(preview) && (
+              <div className="text-xs" style={{ color: '#94a3b8' }} onClick={e => e.stopPropagation()}>
+                {recipeLabel(preview)}
+              </div>
+            )}
             {preview.mediaType === 'image' && preview.prompt && (
               <button onClick={e => { e.stopPropagation(); setCompareJob(preview); }}
                 disabled={!canCompare}

@@ -292,6 +292,19 @@ export interface Span {
   completedAt: string;
 }
 
+// One input asset a generation ran with: a reference image/video, the inpaint mask, or the video an edit
+// continued from. `kind` says how it is reached — media (an earlier generation here), url, or inline.
+export interface MediaJobInput {
+  kind?: string;
+  name?: string;
+  role?: string;
+  modality?: string;
+  jobId?: string;
+  fileId?: string;
+  contentType?: string;
+  url?: string;
+}
+
 export interface MediaJob {
   id: string;
   userId?: string;
@@ -300,6 +313,13 @@ export interface MediaJob {
   requestedModel?: string;
   resolvedModel?: string;
   prompt?: string;
+  inputs?: MediaJobInput[];
+  requestedSize?: string;
+  requestedQuality?: string;
+  requestedCount?: number;
+  outputFormat?: string;
+  outputCompression?: number;
+  background?: string;
   mediaType?: string;
   state?: string;
   requestedSeconds?: number;

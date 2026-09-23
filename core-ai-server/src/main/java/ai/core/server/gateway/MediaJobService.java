@@ -1,6 +1,7 @@
 package ai.core.server.gateway;
 
 import ai.core.media.domain.ImageData;
+import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
 import ai.core.media.reference.HttpRemoteMediaLoader;
@@ -8,6 +9,7 @@ import ai.core.media.reference.MediaModality;
 import ai.core.media.reference.RemoteMediaLoader;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.MediaJob;
+import ai.core.server.domain.MediaJobInput;
 import ai.core.server.file.FileService;
 import ai.core.server.trace.service.MediaPricingService;
 import ai.core.telemetry.TelemetryConfig;
@@ -72,6 +74,8 @@ public class MediaJobService {
         job.requestedModel = requestedModel;
         job.resolvedModel = route.upstreamModel();
         job.prompt = submission.prompt();
+        job.inputs = inputs(submission.inputs());
+        job.requestedSize = submission.requestedSize();
         job.state = "submitted";
         job.mediaType = "video";
         job.requestedSeconds = submission.requestedSeconds();
@@ -81,8 +85,8 @@ public class MediaJobService {
         return job;
     }
 
-    public MediaJob createImageJob(MediaJobOwner owner, GatewayRoute route, String requestedModel,
-                                   MediaPricingService.MediaPrice price, ImageGenerationResponse response, String prompt) {
+    public MediaJob createImageJob(MediaJobOwner owner, GatewayRoute route, ImageJobSubmission submission) {
+        var request = submission.request();
         var jobOwner = owner == null ? MediaJobOwner.UNKNOWN : owner;
         var now = ZonedDateTime.now();
         var job = new MediaJob();
@@ -91,19 +95,28 @@ public class MediaJobService {
         job.sessionId = jobOwner.sessionId();
         job.agentRunId = jobOwner.agentRunId();
         job.providerId = route.provider().id;
-        job.requestedModel = requestedModel;
+        job.requestedModel = request.model();
         job.resolvedModel = route.upstreamModel();
-        job.prompt = prompt;
+        job.prompt = request.prompt();
+        job.inputs = inputs(submission.inputs());
+        job.requestedSize = request.size();
+        job.requestedQuality = request.quality();
+        job.requestedCount = request.n();
+        job.outputFormat = request.outputFormat();
+        job.outputCompression = request.outputCompression();
+        job.background = request.background();
         job.state = "completed";
         job.mediaType = "image";
         job.createdAt = now;
         job.updatedAt = now;
         job.completedAt = now;
+        var price = submission.price();
         job.mediaUnits = price.units();
         job.mediaUnitType = price.unitType();
         job.costUsd = price.costUsd();
         job.costSource = price.source();
         job.pricingModelId = price.pricingModelId();
+        var response = submission.response();
         if (response != null) {
             job.upstreamInteractionId = response.interactionId();
             var image = response.data() == null || response.data().isEmpty() ? null : response.data().getFirst();
@@ -113,6 +126,10 @@ public class MediaJobService {
         mediaJobCollection.insert(job);
         MediaGenerationTrace.record(telemetryConfig, job);
         return job;
+    }
+
+    private List<MediaJobInput> inputs(List<MediaJobInput> inputs) {
+        return inputs == null || inputs.isEmpty() ? null : List.copyOf(inputs);
     }
 
     /**
@@ -384,6 +401,15 @@ public class MediaJobService {
      * Upstream identity of a submitted video generation: the upstream video the job settles against, its parent
      * job when the request edits an existing video, and the parameters that drive its pricing and trace payload.
      */
-    public record VideoJobSubmission(String upstreamVideoId, String parentJobId, Integer requestedSeconds, String prompt) {
+    public record VideoJobSubmission(String upstreamVideoId, String parentJobId, Integer requestedSeconds, String prompt,
+                                     String requestedSize, List<MediaJobInput> inputs) {
+    }
+
+    /**
+     * Everything one image generation is recorded with: the request that carries the parameters, the settled
+     * price, the upstream response holding the artifact, and the input assets that were sent with it.
+     */
+    public record ImageJobSubmission(ImageGenerationRequest request, MediaPricingService.MediaPrice price,
+                                     ImageGenerationResponse response, List<MediaJobInput> inputs) {
     }
 }

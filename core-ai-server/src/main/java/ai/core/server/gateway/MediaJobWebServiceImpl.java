@@ -5,9 +5,11 @@ import ai.core.api.server.media.ImageCompareRunResponse;
 import ai.core.api.server.media.ListImageCompareModelsResponse;
 import ai.core.api.server.media.ListMediaJobsRequest;
 import ai.core.api.server.media.ListMediaJobsResponse;
+import ai.core.api.server.media.MediaJobInputView;
 import ai.core.api.server.media.MediaJobView;
 import ai.core.api.server.media.MediaJobWebService;
 import ai.core.server.domain.MediaJob;
+import ai.core.server.domain.MediaJobInput;
 import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
@@ -37,6 +39,13 @@ public class MediaJobWebServiceImpl implements MediaJobWebService {
         view.requestedModel = job.requestedModel;
         view.resolvedModel = job.resolvedModel;
         view.prompt = job.prompt;
+        view.inputs = toInputViews(job.inputs);
+        view.requestedSize = job.requestedSize;
+        view.requestedQuality = job.requestedQuality;
+        view.requestedCount = job.requestedCount;
+        view.outputFormat = job.outputFormat;
+        view.outputCompression = job.outputCompression;
+        view.background = job.background;
         view.mediaType = job.mediaType == null ? "video" : job.mediaType;
         view.state = job.state;
         view.requestedSeconds = job.requestedSeconds;
@@ -54,6 +63,22 @@ public class MediaJobWebServiceImpl implements MediaJobWebService {
         view.createdAt = job.createdAt;
         view.completedAt = job.completedAt;
         return view;
+    }
+
+    private static List<MediaJobInputView> toInputViews(List<MediaJobInput> inputs) {
+        if (inputs == null) return List.of();
+        return inputs.stream().map(input -> {
+            var view = new MediaJobInputView();
+            view.kind = input.kind;
+            view.name = input.name;
+            view.role = input.role;
+            view.modality = input.modality;
+            view.jobId = input.jobId;
+            view.fileId = input.fileId;
+            view.contentType = input.contentType;
+            view.url = input.url;
+            return view;
+        }).toList();
     }
 
     @Inject

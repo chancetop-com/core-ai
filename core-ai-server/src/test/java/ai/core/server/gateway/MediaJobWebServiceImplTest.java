@@ -2,6 +2,7 @@ package ai.core.server.gateway;
 
 import ai.core.api.server.media.ListMediaJobsRequest;
 import ai.core.server.domain.MediaJob;
+import ai.core.server.domain.MediaJobInput;
 import ai.core.server.domain.User;
 import core.framework.mongo.MongoCollection;
 import org.bson.conversions.Bson;
@@ -61,6 +62,55 @@ class MediaJobWebServiceImplTest {
 
         assertNull(response.jobs.getFirst().userName);
         verify(userCollection, never()).find(any(Bson.class));
+    }
+
+    @Test
+    void listExposesTheGenerationRecipe() {
+        var job = job("job-1", "user-1");
+        job.prompt = "make it snow";
+        job.requestedSize = "1024x1024";
+        job.requestedQuality = "high";
+        job.requestedCount = 2;
+        job.outputFormat = "jpeg";
+        job.outputCompression = 80;
+        job.background = "transparent";
+        job.inputs = List.of(input());
+        when(mediaJobService.list(anyInt(), anyInt(), any(), any(), any()))
+            .thenReturn(new MediaJobService.MediaJobList(1, List.of(job)));
+
+        var view = service.list(new ListMediaJobsRequest()).jobs.getFirst();
+
+        assertEquals("1024x1024", view.requestedSize);
+        assertEquals("high", view.requestedQuality);
+        assertEquals(2, view.requestedCount);
+        assertEquals("jpeg", view.outputFormat);
+        assertEquals(80, view.outputCompression);
+        assertEquals("transparent", view.background);
+        var input = view.inputs.getFirst();
+        assertEquals("subject", input.role);
+        assertEquals("char_lin", input.name);
+        assertEquals("job-0", input.jobId);
+        assertEquals("file-0", input.fileId);
+    }
+
+    @Test
+    void listReturnsEmptyInputsWhenTheJobHasNone() {
+        when(mediaJobService.list(anyInt(), anyInt(), any(), any(), any()))
+            .thenReturn(new MediaJobService.MediaJobList(1, List.of(job("job-1", "user-1"))));
+
+        assertEquals(List.of(), service.list(new ListMediaJobsRequest()).jobs.getFirst().inputs);
+    }
+
+    private MediaJobInput input() {
+        var input = new MediaJobInput();
+        input.kind = MediaJobInput.KIND_MEDIA;
+        input.name = "char_lin";
+        input.role = "subject";
+        input.modality = "image";
+        input.jobId = "job-0";
+        input.fileId = "file-0";
+        input.contentType = "image/png";
+        return input;
     }
 
     private MediaJob job(String id, String userId) {

@@ -5,6 +5,7 @@ import core.framework.mongo.Field;
 import core.framework.mongo.Id;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 /**
  * @author Stephen
@@ -53,6 +54,28 @@ public class MediaJob {
     // generation prompt; carried into the media trace as its input payload
     @Field(name = "prompt")
     public String prompt;
+
+    // the input side of the generation, so the row explains itself: reference assets, mask, edited-from video
+    @Field(name = "inputs")
+    public List<MediaJobInput> inputs;
+
+    @Field(name = "requested_size")
+    public String requestedSize;
+
+    @Field(name = "requested_quality")
+    public String requestedQuality;
+
+    @Field(name = "requested_count")
+    public Integer requestedCount;
+
+    @Field(name = "output_format")
+    public String outputFormat;
+
+    @Field(name = "output_compression")
+    public Integer outputCompression;
+
+    @Field(name = "background")
+    public String background;
 
     @Field(name = "state")
     public String state;

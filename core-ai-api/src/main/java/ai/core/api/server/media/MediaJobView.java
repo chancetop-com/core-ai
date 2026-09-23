@@ -3,6 +3,7 @@ package ai.core.api.server.media;
 import core.framework.api.json.Property;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 /**
  * @author stephen
@@ -28,6 +29,28 @@ public class MediaJobView {
 
     @Property(name = "prompt")
     public String prompt;
+
+    /** The references, mask and edited-from video this generation ran with; empty for text-to-image runs. */
+    @Property(name = "inputs")
+    public List<MediaJobInputView> inputs;
+
+    @Property(name = "requestedSize")
+    public String requestedSize;
+
+    @Property(name = "requestedQuality")
+    public String requestedQuality;
+
+    @Property(name = "requestedCount")
+    public Integer requestedCount;
+
+    @Property(name = "outputFormat")
+    public String outputFormat;
+
+    @Property(name = "outputCompression")
+    public Integer outputCompression;
+
+    @Property(name = "background")
+    public String background;
 
     @Property(name = "mediaType")
     public String mediaType;

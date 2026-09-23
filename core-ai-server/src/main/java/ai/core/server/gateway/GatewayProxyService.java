@@ -345,7 +345,8 @@ public class GatewayProxyService {
         var upstreamVideoId = string(body.get("id"));
         if (!hasText(upstreamVideoId)) throw new BadRequestException("upstream video response is missing id");
         var route = new GatewayRoute(call.provider(), call.upstreamModel());
-        var submission = new MediaJobService.VideoJobSubmission(upstreamVideoId, null, seconds, prompt);
+        // raw passthrough: the body is forwarded verbatim, so the gateway never learns the references it carries
+        var submission = new MediaJobService.VideoJobSubmission(upstreamVideoId, null, seconds, prompt, null, null);
         var job = mediaJobService.createVideoJob(owner, route, call.requestedModel(), submission);
         body.put("id", GatewayVideoHandle.encode(job.id));
         var response = Response.bytes(writeJson(body));

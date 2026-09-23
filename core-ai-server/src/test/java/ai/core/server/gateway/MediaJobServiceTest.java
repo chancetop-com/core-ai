@@ -1,11 +1,13 @@
 package ai.core.server.gateway;
 
 import ai.core.media.domain.ImageData;
+import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.MediaJob;
+import ai.core.server.domain.MediaJobInput;
 import ai.core.server.file.FileService;
 import ai.core.server.trace.service.MediaPricingService;
 import com.mongodb.MongoClientSettings;
@@ -60,13 +62,25 @@ class MediaJobServiceTest {
         return new GatewayRoute(provider, "upstream-model");
     }
 
+    private ImageGenerationRequest imageRequest(String model, String prompt) {
+        return new ImageGenerationRequest(model, prompt, null, null, null, null, null, null, null, null, null, null);
+    }
+
+    private MediaJobInput input(String fileId) {
+        var input = new MediaJobInput();
+        input.kind = MediaJobInput.KIND_MEDIA;
+        input.fileId = fileId;
+        return input;
+    }
+
     @Test
     void createVideoJobRecordsTypeAndRequestedSeconds() {
-        var submission = new MediaJobService.VideoJobSubmission("upstream-id", null, 8, "a cat surfing");
+        var submission = new MediaJobService.VideoJobSubmission("upstream-id", null, 8, "a cat surfing", "1280x720", null);
         var job = service.createVideoJob(new MediaJobOwner("user-1", "session-1", null), route(), "requested-model", submission);
 
         assertEquals("video", job.mediaType);
         assertEquals(8, job.requestedSeconds);
+        assertEquals("1280x720", job.requestedSize);
         assertEquals("submitted", job.state);
         assertEquals("user-1", job.userId);
         assertEquals("session-1", job.sessionId);
@@ -77,8 +91,11 @@ class MediaJobServiceTest {
     @Test
     void createImageJobRecordsCompletedImageJobWithCostFields() {
         var price = new MediaPricingService.MediaPrice(0.042, "model_catalog", "gpt-image-2", 200.0, "token");
+        var request = new ImageGenerationRequest("gpt-image-2", "a red fox", 2, "1024x1024", "high", "jpeg", 80, "transparent",
+                null, null, null, null);
 
-        var job = service.createImageJob(new MediaJobOwner("user-1", "session-1", null), route(), "gpt-image-2", price, null, "a red fox");
+        var job = service.createImageJob(new MediaJobOwner("user-1", "session-1", null), route(),
+                new MediaJobService.ImageJobSubmission(request, price, null, List.of(input("file-1"))));
 
         assertEquals("image", job.mediaType);
         assertEquals("completed", job.state);
@@ -88,9 +105,30 @@ class MediaJobServiceTest {
         assertEquals(200.0, job.mediaUnits);
         assertEquals("token", job.mediaUnitType);
         assertEquals("a red fox", job.prompt);
+        assertEquals("gpt-image-2", job.requestedModel);
+        assertEquals("1024x1024", job.requestedSize);
+        assertEquals("high", job.requestedQuality);
+        assertEquals(2, job.requestedCount);
+        assertEquals("jpeg", job.outputFormat);
+        assertEquals(80, job.outputCompression);
+        assertEquals("transparent", job.background);
+        assertEquals(List.of("file-1"), job.inputs.stream().map(value -> value.fileId).toList());
         assertNotNull(job.completedAt);
         assertNull(job.fileId);
         verify(collection).insert(job);
+    }
+
+    @Test
+    void createImageJobKeepsInputsEmptyWhenNothingWasReferenced() {
+        var price = new MediaPricingService.MediaPrice(0.042, "model_catalog", "gpt-image-2", 200.0, "token");
+        var request = new ImageGenerationRequest("gpt-image-2", "a red fox", null, null, null, null, null, null,
+                null, null, null, null);
+
+        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(),
+                new MediaJobService.ImageJobSubmission(request, price, null, List.of()));
+
+        assertNull(job.inputs, "a text-to-image run carries no input list rather than an empty one");
+        assertNull(job.requestedSize);
     }
 
     @Test
@@ -104,7 +142,8 @@ class MediaJobServiceTest {
         var image = new ImageData(Base64.getEncoder().encodeToString("png-bytes".getBytes(StandardCharsets.UTF_8)), null, null);
         var response = new ImageGenerationResponse(List.of(image), null);
 
-        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(), "gpt-image-2", price, response, "a red fox");
+        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(),
+                new MediaJobService.ImageJobSubmission(imageRequest("gpt-image-2", "a red fox"), price, response, null));
 
         assertEquals("file-1", job.fileId);
         assertEquals("generated-image.png", job.fileName);
@@ -115,7 +154,9 @@ class MediaJobServiceTest {
     void createImageJobSkipsArtifactWhenImageMissing() {
         var price = new MediaPricingService.MediaPrice(0.042, "model_catalog", "gpt-image-2", 200.0, "token");
 
-        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(), "gpt-image-2", price, new ImageGenerationResponse(List.of(), null), "a red fox");
+        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(),
+                new MediaJobService.ImageJobSubmission(imageRequest("gpt-image-2", "a red fox"), price,
+                        new ImageGenerationResponse(List.of(), null), null));
 
         assertNull(job.fileId);
         verify(service.fileService, never()).uploadIfAbsent(any(), any(), any(), any());

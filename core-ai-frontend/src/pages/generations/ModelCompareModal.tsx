@@ -34,8 +34,9 @@ export default function ModelCompareModal({ job, onClose }: { job: MediaJob; onC
   const [models, setModels] = useState<ImageCompareModel[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(job.prompt ?? '');
-  const [size, setSize] = useState('');
-  const [quality, setQuality] = useState('');
+  // the recipe the original ran with is the baseline a comparison has to hold constant, so it is prefilled
+  const [size, setSize] = useState(job.requestedSize ?? '');
+  const [quality, setQuality] = useState(job.requestedQuality ?? '');
   const [samples, setSamples] = useState(1);
   const [runSamples, setRunSamples] = useState(1);
   const [tiles, setTiles] = useState<CompareTile[]>([]);

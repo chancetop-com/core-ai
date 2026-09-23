@@ -37,6 +37,7 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
     private final MediaJobService mediaJobService;
     private final MediaCostSettler costSettler;
     private final MediaReferenceResolver referenceResolver;
+    private final MediaJobInputRecorder inputRecorder;
     private final GatewayReferenceCompiler referenceCompiler = new GatewayReferenceCompiler();
     private final ConcurrentMap<String, MediaProvider> upstreamProviders = new ConcurrentHashMap<>();
 
@@ -53,6 +54,7 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
         this.mediaJobService = mediaJobService;
         this.costSettler = costSettler;
         this.referenceResolver = new MediaReferenceResolver(mediaJobService);
+        this.inputRecorder = new MediaJobInputRecorder(mediaJobService);
     }
 
     @Override
@@ -94,7 +96,9 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
         try {
             var price = costSettler.settleImage(request.model(), resolved.upstreamModel(), response.usage(),
                     response.data() == null ? 0 : response.data().size());
-            return mediaJobService.createImageJob(owner, resolved, request.model(), price, response, request.prompt());
+            // the caller's own references, not the resolver's output: what was asked for is what explains the result
+            var inputs = inputRecorder.capture(owner, request.inputImages(), request.mask(), null);
+            return mediaJobService.createImageJob(owner, resolved, new MediaJobService.ImageJobSubmission(request, price, response, inputs));
         } catch (RuntimeException e) {
             LOGGER.warn("image cost recording failed, model={}", request.model(), e);
             return null;
@@ -121,7 +125,8 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
         var response = upstream.generateVideo(rewrite(request, resolved.upstreamModel(), compiled, previousInteractionId));
         if (response == null || !hasText(response.id())) throw new IllegalStateException("upstream video response is missing id");
         var submission = new MediaJobService.VideoJobSubmission(response.id(), parentJob == null ? null : parentJob.id,
-                request.seconds(), request.prompt());
+                request.seconds(), request.prompt(), request.size(),
+                inputRecorder.capture(owner, request.inputReferences(), null, parentJob));
         var job = mediaJobService.createVideoJob(owner, resolved, request.model(), submission);
         var videoId = GatewayMediaHandle.encodeVideo(job.id);
         return new VideoGenerationResponse(videoId, response.status(), response.createdAt(), response.usage(), compiled.notes());
