@@ -6,6 +6,7 @@ import ai.core.llm.domain.RoleType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 class InlineImagePrunerTest {
+    private static final AtomicInteger IMAGE_SEQUENCE = new AtomicInteger();
     @Test
     void keepsNewestImagesWithinCountBudget() {
         var messages = List.of(
@@ -174,12 +176,52 @@ class InlineImagePrunerTest {
         assertEquals(0, InlineImagePruner.prune(List.of()).prunedCount());
     }
 
+    @Test
+    void anImageHandedOverTwiceIsResentOnce() {
+        var messages = List.of(
+                userMessage("first", imagePart("A", 4000)),
+                userMessage("second", imagePart("B", 4000)),
+                userMessage("re-read", imagePart("A", 4000)));
+
+        var result = InlineImagePruner.prune(messages, -1, -1);
+
+        assertEquals(1, result.prunedCount());
+        assertFalse(hasImagePart(result.messages().getFirst()));
+        assertTrue(hasImagePart(result.messages().get(1)));
+        assertTrue(hasImagePart(result.messages().getLast()));
+    }
+
+    @Test
+    void reReadImagesDoNotEvictUnrelatedOnes() {
+        var messages = List.of(
+                userMessage("first", imagePart("A", 4000)),
+                userMessage("second", imagePart("B", 4000)),
+                userMessage("re-read", imagePart("A", 4000)));
+
+        // two distinct images fit a two-image budget even though the newest is a re-read of the first
+        var result = InlineImagePruner.prune(messages, 2, Long.MAX_VALUE);
+
+        assertEquals(1, result.prunedCount());
+        assertTrue(hasImagePart(result.messages().get(1)));
+        assertTrue(hasImagePart(result.messages().getLast()));
+    }
+
+    @Test
+    void defaultCountBudgetCoversMoreThanOneTurnsReads() {
+        assertEquals(16, InlineImagePruner.DEFAULT_MAX_IMAGES);
+    }
+
     private Message userMessage(String text, Content image) {
         return Message.of(new Message.MessageRecord(RoleType.USER, List.of(Content.of(text), image), null, null, null, null));
     }
 
+    /** Distinct payloads per call: two images that share their bytes are the re-read case, not the default. */
     private Content imagePart(int base64Chars) {
-        return Content.of(Content.ImageUrl.of("data:image/png;base64," + "A".repeat(base64Chars), "image/png"));
+        return imagePart(Character.toString('A' + IMAGE_SEQUENCE.getAndIncrement() % 26), base64Chars);
+    }
+
+    private Content imagePart(String filler, int base64Chars) {
+        return Content.of(Content.ImageUrl.of("data:image/png;base64," + filler.repeat(base64Chars), "image/png"));
     }
 
     private boolean hasImagePart(Message message) {

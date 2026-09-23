@@ -6,6 +6,7 @@ import core.framework.util.Strings;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -16,12 +17,17 @@ import java.util.List;
  * budgets hold; whatever does not fit becomes a text placeholder the agent can restore by re-reading
  * or re-attaching the source. Placeholder text is derived from the message only, never from a
  * counter, so the prompt cache prefix stays valid across turns.
+ * Every eviction rewrites one message in the middle of the history, which invalidates the provider's
+ * prompt cache from that position to the end of the request — on a long agent session one evicted
+ * keyframe costs far more than the bytes it saves. The count budget is therefore generous and the
+ * byte budget is what actually bounds the request; an image handed to the model twice (a file the
+ * agent read again) counts once, so a re-read never evicts an unrelated image.
  * Inline files (base64 PDFs) are out of scope, they are only ever attached by the user.
  *
  * @author stephen
  */
 public final class InlineImagePruner {
-    public static final int DEFAULT_MAX_IMAGES = 8;
+    public static final int DEFAULT_MAX_IMAGES = 16;
     public static final long DEFAULT_MAX_BYTES = 12L * 1024 * 1024;
 
     public static PruneResult prune(List<Message> messages) {
@@ -52,7 +58,7 @@ public final class InlineImagePruner {
             for (var partIndex = 0; partIndex < content.size(); partIndex++) {
                 var part = content.get(partIndex);
                 if (!isInlineImage(part)) continue;
-                slots.add(new ImageSlot(messageIndex, partIndex, decodedBytes(part.imageUrl.url)));
+                slots.add(new ImageSlot(messageIndex, partIndex, part.imageUrl.url));
             }
         }
         return slots;
@@ -60,6 +66,7 @@ public final class InlineImagePruner {
 
     private static boolean[] selectKept(List<ImageSlot> slots, int maxImages, long maxBytes) {
         var kept = new boolean[slots.size()];
+        var keptPayloads = new HashSet<String>();
         var maxCount = maxImages < 0 ? Integer.MAX_VALUE : maxImages;
         long bytes = 0;
         var count = 0;
@@ -71,6 +78,7 @@ public final class InlineImagePruner {
             // the newest, which is exactly what that retry asks for
             var newest = maxImages != 0 && i == slots.size() - 1;
             if (!newest && (count >= maxCount || maxBytes > 0 && bytes + slot.bytes() > maxBytes)) continue;
+            if (!keptPayloads.add(slot.payload())) continue; // an older copy of an image that is still present
             kept[i] = true;
             count++;
             bytes += slot.bytes();
@@ -140,7 +148,10 @@ public final class InlineImagePruner {
     private InlineImagePruner() {
     }
 
-    private record ImageSlot(int messageIndex, int partIndex, long bytes) {
+    private record ImageSlot(int messageIndex, int partIndex, String payload) {
+        long bytes() {
+            return decodedBytes(payload);
+        }
     }
 
     public record PruneResult(List<Message> messages, int prunedCount, long prunedBytes) {
