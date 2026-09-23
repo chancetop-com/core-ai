@@ -82,7 +82,7 @@ public class OTLPIngestService {
         var attrs = OTLPParseHelper.extractAttributes(protoSpan.getAttributesList());
         var traceId = OTLPParseHelper.resolveTraceId(protoSpan, attrs);
         linkAgentRun(traceId, attrs);
-        ensureTraceExists(traceId, protoSpan, attrs, resourceAttrs);
+        ensureTraceExists(traceId, protoSpan.getName(), TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano()), attrs, resourceAttrs);
         saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs);
         if (parentSpanId == null) {
             upsertTrace(protoSpan, traceId, attrs, resourceAttrs);
@@ -101,16 +101,26 @@ public class OTLPIngestService {
         );
     }
 
-    private void ensureTraceExists(String traceId, io.opentelemetry.proto.trace.v1.Span protoSpan,
+    /**
+     * Creates a trace doc the moment its root span starts. The identity a trace is attributed by
+     * (user/agent/session/source/type) is carried by the root span only — child spans reach the store as
+     * soon as they end, so without this the doc is created by the first LLM call, which has no identity,
+     * and the trace stays ownerless and mislabeled until the root span lands at the very end.
+     */
+    public void traceStarted(String traceId, String spanName, long startEpochMs, Map<String, String> attrs,
+                             Map<String, String> resourceAttrs) {
+        ensureTraceExists(OTLPParseHelper.resolveTraceId(traceId, attrs), spanName, startEpochMs, attrs, resourceAttrs);
+    }
+
+    private void ensureTraceExists(String traceId, String spanName, long startMs,
                                    Map<String, String> attrs, Map<String, String> resourceAttrs) {
         var existing = traceCollection.find(Filters.eq("trace_id", traceId));
         if (!existing.isEmpty()) return;
 
-        long startMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
         trace.traceId = traceId;
-        trace.name = IngestService.friendlyTraceName(protoSpan.getName(), attrs.get("gen_ai.agent.name"));
+        trace.name = IngestService.friendlyTraceName(spanName, attrs.get("gen_ai.agent.name"));
         trace.sessionId = attrs.get("session.id");
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");

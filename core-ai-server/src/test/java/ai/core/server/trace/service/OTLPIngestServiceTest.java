@@ -6,6 +6,7 @@ import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.domain.TraceStatus;
 import com.google.protobuf.ByteString;
 import core.framework.mongo.MongoCollection;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
@@ -19,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -27,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -355,6 +358,45 @@ class OTLPIngestServiceTest {
         assertTrue(updates.getAllValues().stream()
             .map(Object::toString)
             .anyMatch(update -> update.contains("hello")));
+    }
+
+    @Test
+    void startedRootSpanCreatesAttributedTrace() {
+        var service = service();
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of());
+
+        service.traceStarted("0".repeat(32), "agent.run", 1_000L,
+            Map.of("session.id", "run:2de32893", "user.id", "api:c1791592", "client.type", "api",
+                "gen_ai.agent.name", "SEO - GBP Content Agent", "gen_ai.agent.id", "a-1"),
+            Map.of("service.name", "core-ai-server", "deployment.environment", "uat"));
+
+        var inserted = ArgumentCaptor.forClass(Trace.class);
+        verify(service.traceCollection).insert(inserted.capture());
+        var trace = inserted.getValue();
+        assertEquals("0".repeat(32), trace.traceId);
+        assertEquals("SEO - GBP Content Agent", trace.name);
+        assertEquals("SEO - GBP Content Agent", trace.agentName);
+        assertEquals("a-1", trace.agentId);
+        assertEquals("run:2de32893", trace.sessionId);
+        assertEquals("api:c1791592", trace.userId);
+        assertEquals("api", trace.source);
+        assertEquals("agent", trace.type);
+        assertEquals(TraceStatus.RUNNING, trace.status);
+        assertEquals(0L, trace.durationMs);
+        assertNull(trace.completedAt);
+        assertEquals("core-ai-server", trace.metadata.get("service"));
+    }
+
+    @Test
+    void startedSpanLeavesExistingTraceAlone() {
+        var service = service();
+        var existing = new Trace();
+        existing.traceId = "0".repeat(32);
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(existing));
+
+        service.traceStarted("0".repeat(32), "agent.run", 1_000L, Map.of("user.id", "u-1"), Map.of());
+
+        verify(service.traceCollection, never()).insert(any(Trace.class));
     }
 
     private OTLPIngestService service() {

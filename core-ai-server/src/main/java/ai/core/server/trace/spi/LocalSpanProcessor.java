@@ -1,5 +1,7 @@
 package ai.core.server.trace.spi;
 
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.common.v1.AnyValue;
@@ -19,10 +21,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -35,6 +41,25 @@ public class LocalSpanProcessor implements SpanProcessor {
         t.setDaemon(true);
         return t;
     });
+    private static final Set<String> IDENTITY_ATTRIBUTES = Set.of(
+        "user.id", "session.id", "gen_ai.agent.id", "gen_ai.agent.name");
+
+    private static boolean hasIdentity(Attributes attributes) {
+        for (var key : IDENTITY_ATTRIBUTES) {
+            if (attributes.get(AttributeKey.stringKey(key)) != null) return true;
+        }
+        return false;
+    }
+
+    private static Map<String, String> toAttributeMap(Attributes attributes) {
+        var result = new HashMap<String, String>();
+        attributes.forEach((key, value) -> result.put(key.getKey(), value != null ? value.toString() : null));
+        return result;
+    }
+
+    private static boolean isRoot(Context parentContext) {
+        return !io.opentelemetry.api.trace.Span.fromContext(parentContext).getSpanContext().isValid();
+    }
 
     private final String serviceName;
     private final String serviceVersion;
@@ -49,9 +74,30 @@ public class LocalSpanProcessor implements SpanProcessor {
                 serviceName, serviceVersion, environment);
     }
 
+    // A trace is created the moment its root span starts, because the identity it is attributed by
+    // (user, session, agent) only ever exists on that span: child spans carry none and reach the store as
+    // soon as they end, which used to leave a running turn or run unattributed until its very last span.
     @Override
     public void onStart(Context parentContext, ReadWriteSpan span) {
-        // No-op: span just started, we only need to process onEnd
+        if (isShutdown.get() || !isRoot(parentContext)) return;
+        var attributes = span.getAttributes();
+        if (!hasIdentity(attributes)) return;
+
+        var ingestService = LocalSpanProcessorRegistry.getIngestService();
+        if (ingestService == null) return;
+
+        var traceId = span.getSpanContext().getTraceId();
+        var spanName = span.getName();
+        var startEpochMs = TimeUnit.NANOSECONDS.toMillis(span.toSpanData().getStartEpochNanos());
+        var attrs = toAttributeMap(attributes);
+        var resourceAttrs = resourceAttributes();
+        CompletableFuture.runAsync(() -> {
+            try {
+                ingestService.traceStarted(traceId, spanName, startEpochMs, attrs, resourceAttrs);
+            } catch (Exception e) {
+                LOGGER.warn("Failed to create trace for started span: {}", spanName, e);
+            }
+        }, EXECUTOR);
     }
 
     @Override
@@ -80,7 +126,7 @@ public class LocalSpanProcessor implements SpanProcessor {
 
     @Override
     public boolean isStartRequired() {
-        return false;
+        return true;
     }
 
     @Override
@@ -97,6 +143,13 @@ public class LocalSpanProcessor implements SpanProcessor {
     public CompletableResultCode forceFlush(long timeoutNanos) {
         // No-op: we write immediately onEnd
         return CompletableResultCode.ofSuccess();
+    }
+
+    private Map<String, String> resourceAttributes() {
+        return Map.of(
+            "service.name", serviceName,
+            "service.version", serviceVersion,
+            "deployment.environment", environment);
     }
 
     private ExportTraceServiceRequest convertToExportRequest(ReadableSpan span) {

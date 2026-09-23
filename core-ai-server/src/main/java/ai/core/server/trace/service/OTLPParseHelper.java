@@ -92,11 +92,14 @@ class OTLPParseHelper {
         return sb.toString();
     }
 
+    static String resolveTraceId(io.opentelemetry.proto.trace.v1.Span protoSpan, Map<String, String> attrs) {
+        return resolveTraceId(bytesToHex(protoSpan.getTraceId().toByteArray()), attrs);
+    }
+
     // Gateway requests carrying a client session id (whatever a terminal or a proxy in front of it sends)
     // share one derived trace id, so one client conversation merges into a single trace instead of one
     // trace per request.
-    static String resolveTraceId(io.opentelemetry.proto.trace.v1.Span protoSpan, Map<String, String> attrs) {
-        var protoTraceId = bytesToHex(protoSpan.getTraceId().toByteArray());
+    static String resolveTraceId(String protoTraceId, Map<String, String> attrs) {
         if (!"gateway".equals(attrs.get("client.type"))) return protoTraceId;
         var sessionId = attrs.get("session.id");
         if (sessionId == null || sessionId.isBlank()) return protoTraceId;

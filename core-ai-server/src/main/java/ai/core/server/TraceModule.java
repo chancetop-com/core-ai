@@ -10,6 +10,8 @@ import ai.core.server.trace.maintenance.TraceArchivingTask;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceJob;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceService;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceTask;
+import ai.core.server.trace.maintenance.StaleRunCleanupJob;
+import ai.core.server.trace.maintenance.StaleRunCleanupService;
 import ai.core.server.trace.service.IngestService;
 import ai.core.server.trace.service.ModelPricingService;
 import ai.core.server.trace.service.OTLPIngestService;
@@ -50,6 +52,8 @@ public class TraceModule extends Module {
         var traceArchivingTask = bind(TraceArchivingTask.class);
         onStartup(() -> taskRunner.register(traceArchivingTask));
         schedule().fixedRate("trace-archive", bind(TraceArchivingJob.class), Duration.ofHours(1));
+        bind(StaleRunCleanupService.class);
+        schedule().fixedRate("stale-run-cleanup", bind(StaleRunCleanupJob.class), Duration.ofMinutes(10));
         registerTrace();
     }
 
