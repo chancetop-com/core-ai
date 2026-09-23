@@ -158,8 +158,8 @@ export default function Generations() {
                   style={{ borderColor: 'var(--color-border)' }}>
                   <td className="px-4 py-2">
                     {isImage && job.fileId
-                      ? <img src={`/api/files/${job.fileId}/content`} alt={job.fileName ?? 'generated'}
-                          onClick={() => setPreview(job)} title="Click to view"
+                      ? <img src={`/api/files/${job.fileId}/thumbnail`} alt={job.fileName ?? 'generated'}
+                          onClick={() => setPreview(job)} title="Click to view" loading="lazy"
                           className="h-16 w-12 rounded border object-contain cursor-pointer" style={{ borderColor: 'var(--color-border)' }} />
                       : isImage
                         ? <div className="h-16 w-12 rounded border flex items-center justify-center" style={{ borderColor: 'var(--color-border)' }}>

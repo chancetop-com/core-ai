@@ -24,4 +24,34 @@ class FileResponseSupportTest {
         assertEquals("no-store", response.header(HTTPHeaders.CACHE_CONTROL).orElseThrow());
         assertTrue(response.header("ETag").isEmpty());
     }
+
+    @Test
+    void servesThumbnailWithLongCache() {
+        var record = new FileRecord();
+        record.id = "file-1";
+        record.size = 128L;
+        var fileService = mock(FileService.class);
+        when(fileService.thumbnail(record)).thenReturn(new byte[]{1, 2, 3});
+
+        var response = FileResponseSupport.thumbnail(record, fileService);
+
+        assertEquals(HTTPStatus.OK, response.status());
+        assertEquals("image/jpeg", response.contentType().orElseThrow().mediaType);
+        assertEquals("public, max-age=604800", response.header(HTTPHeaders.CACHE_CONTROL).orElseThrow());
+        assertEquals("\"file-1-thumb\"", response.header("ETag").orElseThrow());
+    }
+
+    @Test
+    void fallsBackToOriginalWhenNoThumbnail() {
+        var record = new FileRecord();
+        record.size = 128L;
+        var fileService = mock(FileService.class);
+        when(fileService.thumbnail(record)).thenReturn(null);
+        when(fileService.downloadUrl(record)).thenReturn("https://blob.example.com/artifacts/file-1.png?sig=x");
+
+        var response = FileResponseSupport.thumbnail(record, fileService);
+
+        assertEquals(HTTPStatus.TEMPORARY_REDIRECT, response.status());
+        assertEquals("no-store", response.header(HTTPHeaders.CACHE_CONTROL).orElseThrow());
+    }
 }

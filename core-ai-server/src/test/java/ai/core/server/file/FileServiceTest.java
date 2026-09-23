@@ -13,6 +13,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -23,6 +26,7 @@ import java.time.ZonedDateTime;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,6 +43,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class FileServiceTest {
+    private static final Random NOISE = new Random(42);
     private FileService service;
     private ObjectStorageService storage;
     private ObjectStorageServiceResolver resolver;
@@ -147,6 +152,17 @@ class FileServiceTest {
     }
 
     @Test
+    void uploadStoresThumbnailForImage() throws IOException {
+        when(resolver.artifactContainer()).thenReturn("artifacts");
+        var tempFile = tempFile(png(1000, 600));
+
+        var record = service.upload("user-1", "generated.png", "image/png", tempFile);
+
+        assertEquals("artifacts/artifacts/" + record.id + ".thumb.jpg", record.thumbStoragePath);
+        verify(storage).uploadObject(eq("artifacts"), eq("artifacts/" + record.id + ".thumb.jpg"), any(Path.class), eq("image/jpeg"));
+    }
+
+    @Test
     void getBytesReadsFromObjectStorageWhenMigrated() {
         var record = file("file-1");
         record.storagePath = "uploads/artifacts/file-1.pdf";
@@ -203,14 +219,72 @@ class FileServiceTest {
     }
 
     @Test
+    void thumbnailReturnsStoredObject() {
+        var record = file("file-1");
+        record.thumbStoragePath = "artifacts/artifacts/file-1.thumb.jpg";
+        when(storage.downloadObject("artifacts", "artifacts/file-1.thumb.jpg")).thenReturn(new byte[]{1, 2, 3});
+
+        assertArrayEquals(new byte[]{1, 2, 3}, service.thumbnail(record));
+    }
+
+    @Test
+    void thumbnailGeneratesAndPersistsForLegacyImage() throws IOException {
+        var record = file("file-1");
+        record.contentType = "image/png";
+        record.storagePath = "artifacts/artifacts/file-1.png";
+        record.size = 1024L;
+        when(storage.downloadObject("artifacts", "artifacts/file-1.png")).thenReturn(png(1000, 600));
+        when(resolver.artifactContainer()).thenReturn("artifacts");
+
+        var thumbnail = service.thumbnail(record);
+
+        assertNotNull(thumbnail);
+        assertEquals("artifacts/artifacts/file-1.thumb.jpg", record.thumbStoragePath);
+        verify(storage).uploadObject(eq("artifacts"), eq("artifacts/file-1.thumb.jpg"), any(Path.class), eq("image/jpeg"));
+        verify(service.fileRecordCollection).update(any(Bson.class), any(Bson.class));
+    }
+
+    @Test
+    void thumbnailSkipsUnsupportedContentType() {
+        var record = file("file-1");
+        record.contentType = "video/mp4";
+
+        assertNull(service.thumbnail(record));
+        verify(storage, never()).downloadObject(any(), any());
+    }
+
+    @Test
+    void thumbnailSkipsWhenObjectStorageNotConfigured() {
+        when(resolver.resolve()).thenReturn(null);
+        var record = file("file-1");
+        record.contentType = "image/png";
+
+        assertNull(service.thumbnail(record));
+    }
+
+    @Test
+    void thumbnailKeepsOriginalWhenSourceIsUndecodable() {
+        var record = file("file-1");
+        record.contentType = "image/png";
+        record.storagePath = "artifacts/artifacts/file-1.png";
+        record.size = 1024L;
+        when(storage.downloadObject("artifacts", "artifacts/file-1.png")).thenReturn(new byte[200 * 1024]);
+
+        assertNull(service.thumbnail(record));
+        verify(service.fileRecordCollection, never()).update(any(Bson.class), any(Bson.class));
+    }
+
+    @Test
     void deleteRemovesObjectWhenMigrated() {
         var record = file("file-1");
         record.storagePath = "uploads/artifacts/file-1.zip";
+        record.thumbStoragePath = "uploads/artifacts/file-1.thumb.jpg";
         when(service.fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
 
         service.delete("file-1");
 
         verify(storage).deleteObject("uploads", "artifacts/file-1.zip");
+        verify(storage).deleteObject("uploads", "artifacts/file-1.thumb.jpg");
         verify(service.fileRecordCollection).delete("file-1");
     }
 
@@ -273,6 +347,18 @@ class FileServiceTest {
         var path = Files.createTempFile("file-service-test", ".tmp");
         Files.write(path, content);
         return path;
+    }
+
+    private byte[] png(int width, int height) throws IOException {
+        var image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        for (var y = 0; y < height; y++) {
+            for (var x = 0; x < width; x++) {
+                image.setRGB(x, y, NOISE.nextInt(0xFFFFFF));
+            }
+        }
+        var output = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", output);
+        return output.toByteArray();
     }
 
     private String md5(byte[] payload) throws NoSuchAlgorithmException {

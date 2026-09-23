@@ -7,6 +7,7 @@ import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileStorageMigrationJob;
+import ai.core.server.file.FileThumbnailController;
 import ai.core.server.file.FileUploadController;
 import ai.core.server.file.SharedFileDownloadController;
 import ai.core.server.web.FileWebServiceImpl;
@@ -64,6 +65,7 @@ public class ObjectStorageModule extends Module {
         api().service(FileWebService.class, bind(FileWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
         http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));
+        http().route(HTTPMethod.GET, "/api/files/:id/thumbnail", bind(FileThumbnailController.class));
         http().route(HTTPMethod.GET, "/api/public/artifacts/:token/content", bind(SharedFileDownloadController.class));
         schedule().fixedRate("file-storage-migration", bind(FileStorageMigrationJob.class), Duration.ofMinutes(5));
     }

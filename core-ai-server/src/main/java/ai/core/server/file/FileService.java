@@ -1,5 +1,6 @@
 package ai.core.server.file;
 
+import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageService.DownloadCredential;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.FileRecord;
@@ -29,6 +30,8 @@ import java.util.Base64;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author stephen
@@ -37,7 +40,12 @@ public class FileService {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileService.class);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final String ARTIFACT_PREFIX = "artifacts/";
+    private static final String THUMBNAIL_SUFFIX = ".thumb.jpg";
+    private static final String THUMBNAIL_CONTENT_TYPE = "image/jpeg";
     private static final int MAX_FILE_NAME_LENGTH = 255;
+    // legacy images are thumbnailed on first view; the slots keep a gallery load from decoding many images at once
+    private static final int THUMBNAIL_CONCURRENCY = 2;
+    private static final int THUMBNAIL_WAIT_SECONDS = 5;
 
     @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
     public static String extension(String contentType) {
@@ -71,6 +79,8 @@ public class FileService {
     @Inject
     ai.core.server.project.ProjectAttributionStore attributionStore;
 
+    private final Semaphore thumbnailSlots = new Semaphore(THUMBNAIL_CONCURRENCY);
+
     public FileRecord upload(String userId, String fileName, String contentType, Path tempFile) {
         return upload(userId, fileName, contentType, tempFile, computeContentHash(tempFile));
     }
@@ -91,6 +101,7 @@ public class FileService {
             var blobName = ARTIFACT_PREFIX + id + extension(contentType);
             storage.uploadObject(container, blobName, tempFile, contentType);
             record.storagePath = container + "/" + blobName;
+            record.thumbStoragePath = storeThumbnail(storage, container, id, contentType, tempFile);
             record.size = tempFile.toFile().length();
         } else {
             var raw = readAllBytes(tempFile);
@@ -171,6 +182,79 @@ public class FileService {
         } catch (IOException e) {
             LOGGER.warn("failed to delete temp file, path={}", tempFile, e);
         }
+    }
+
+    /**
+     * Small jpeg tile for list surfaces, generated on first request for records that predate
+     * write-time thumbnails. Null means no thumbnail is available and the caller must serve the
+     * original instead.
+     */
+    public byte[] thumbnail(FileRecord record) {
+        var storage = storageResolver.resolve();
+        if (storage == null) return null;
+        if (record.thumbStoragePath != null) {
+            try {
+                return storage.downloadObject(containerOf(record.thumbStoragePath), blobOf(record.thumbStoragePath));
+            } catch (RuntimeException e) {
+                LOGGER.warn("thumbnail download failed, id={}", record.id, e);
+                return null;
+            }
+        }
+        if (!ImageThumbnailer.supports(record.contentType)) return null;
+        if (record.size != null && record.size > ImageThumbnailer.MAX_SOURCE_BYTES) return null;
+        if (!acquireThumbnailSlot()) return null;
+        try {
+            return generateThumbnail(storage, record);
+        } finally {
+            thumbnailSlots.release();
+        }
+    }
+
+    private boolean acquireThumbnailSlot() {
+        try {
+            return thumbnailSlots.tryAcquire(THUMBNAIL_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private byte[] generateThumbnail(ObjectStorageService storage, FileRecord record) {
+        try {
+            var thumbnail = ImageThumbnailer.thumbnail(getBytes(record), record.contentType);
+            if (thumbnail == null) return null;
+            var path = uploadThumbnail(storage, storageResolver.artifactContainer(), record.id, thumbnail);
+            fileRecordCollection.update(Filters.eq("_id", record.id), Updates.set("thumb_storage_path", path));
+            record.thumbStoragePath = path;
+            return thumbnail;
+        } catch (IOException | RuntimeException e) {
+            LOGGER.warn("thumbnail generation failed, id={}", record.id, e);
+            return null;
+        }
+    }
+
+    private String storeThumbnail(ObjectStorageService storage, String container, String id, String contentType, Path sourceFile) {
+        if (!ImageThumbnailer.supports(contentType)) return null;
+        try {
+            if (Files.size(sourceFile) > ImageThumbnailer.MAX_SOURCE_BYTES) return null;
+            var thumbnail = ImageThumbnailer.thumbnail(Files.readAllBytes(sourceFile), contentType);
+            return thumbnail == null ? null : uploadThumbnail(storage, container, id, thumbnail);
+        } catch (IOException | RuntimeException e) {
+            LOGGER.warn("thumbnail generation failed, id={}", id, e);
+            return null;
+        }
+    }
+
+    private String uploadThumbnail(ObjectStorageService storage, String container, String id, byte[] thumbnail) throws IOException {
+        var blobName = ARTIFACT_PREFIX + id + THUMBNAIL_SUFFIX;
+        var tempFile = Files.createTempFile("thumbnail-", ".jpg");
+        try {
+            Files.write(tempFile, thumbnail);
+            storage.uploadObject(container, blobName, tempFile, THUMBNAIL_CONTENT_TYPE);
+        } finally {
+            deleteTempFile(tempFile);
+        }
+        return container + "/" + blobName;
     }
 
     public FileRecord get(String id) {
@@ -291,19 +375,25 @@ public class FileService {
 
     public void delete(String id) {
         var record = fileRecordCollection.get(id).orElse(null);
-        if (record != null && record.storagePath != null) {
+        if (record != null) {
             var storage = storageResolver.resolve();
             if (storage != null) {
-                try {
-                    storage.deleteObject(containerOf(record.storagePath), blobOf(record.storagePath));
-                } catch (RuntimeException e) {
-                    LOGGER.warn("failed to delete object, id={}, storagePath={}", id, record.storagePath, e);
-                }
+                deleteObjectQuietly(storage, record.storagePath, id);
+                deleteObjectQuietly(storage, record.thumbStoragePath, id);
             }
         }
         fileRecordCollection.delete(id);
         // a report that no longer exists must leave the project directories too, or its rows inflate counts/offsets
         if (attributionStore != null) attributionStore.removeFile(id);
+    }
+
+    private void deleteObjectQuietly(ObjectStorageService storage, String storagePath, String id) {
+        if (storagePath == null) return;
+        try {
+            storage.deleteObject(containerOf(storagePath), blobOf(storagePath));
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to delete object, id={}, storagePath={}", id, storagePath, e);
+        }
     }
 
     private String containerOf(String storagePath) {

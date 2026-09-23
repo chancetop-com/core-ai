@@ -33,6 +33,22 @@ final class FileResponseSupport {
                 .header(ETAG, etag(record));
     }
 
+    /**
+     * Thumbnails are small enough to go through the instance and are cached for a week, so a list is
+     * paid for once per browser instead of once per view. Records without one fall back to the original.
+     */
+    static Response thumbnail(FileRecord record, FileService fileService) {
+        var thumbnail = fileService.thumbnail(record);
+        if (thumbnail == null) return content(record, fileService);
+        return Response.bytes(thumbnail).contentType(ContentType.parse("image/jpeg"))
+                .header(HTTPHeaders.CACHE_CONTROL, CACHE_CONTROL)
+                .header(ETAG, thumbnailEtag(record));
+    }
+
+    private static String thumbnailEtag(FileRecord record) {
+        return "\"" + record.id + "-thumb\"";
+    }
+
     private static String etag(FileRecord record) {
         return "\"" + record.id + "-" + record.size + "\"";
     }

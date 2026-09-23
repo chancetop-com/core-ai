@@ -39,6 +39,9 @@ public class FileRecord {
     @Field(name = "storage_path")
     public String storagePath;
 
+    @Field(name = "thumb_storage_path")
+    public String thumbStoragePath;
+
     @Field(name = "share_token")
     public String shareToken;
 
