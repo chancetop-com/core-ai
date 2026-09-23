@@ -85,5 +85,15 @@ public class RenderCapsResolver {
         public boolean frameExclusive() {
             return profile != null && profile.frameExclusive();
         }
+
+        /**
+         * This frame-exclusive family can still take references: its docs' multimodal-reference scene lets a reference image be
+         * named in the prompt as the opening frame, so the frame is sent as reference #1 instead of into the frame slot. The
+         * pin on frame 0 is weaker — the caller chooses this when identity matters more than the pin (clips whose cast is not
+         * in the opening picture).
+         */
+        public boolean frameViaReference() {
+            return profile != null && profile.frameViaReference();
+        }
     }
 }

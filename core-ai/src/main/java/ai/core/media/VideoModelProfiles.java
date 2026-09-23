@@ -22,9 +22,13 @@ public final class VideoModelProfiles {
     // longest matching prefix wins
     private static final List<Profile> PROFILES = List.of(
             // seedance families accept a controlled multi-shot sequence written into one prompt (a stated HARD CUT inside
-            // the clip) — sole reason the flag exists; the drama skill writes that card only for models that carry it
-            new Profile("bytedance/seedance-2-5", DurationPolicy.range(4, 30), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null, true),
-            new Profile("bytedance/seedance-2", DurationPolicy.range(4, 15), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null, true),
+            // the clip) — sole reason the flag exists; the drama skill writes that card only for models that carry it.
+            // They are ALSO frame-exclusive (docs.kie.ai: 图生视频-首帧 / 首尾帧 / 多模态参考 are 3 mutually exclusive
+            // 场景) — but their docs give a way out: in the multimodal-reference scene a reference image may be named in
+            // the prompt as the opening frame, so a request that needs identity references routes its frame into
+            // reference_image_urls[0] instead of first_frame_url (frameViaReference), trading slot pinning for identity.
+            new Profile("bytedance/seedance-2-5", DurationPolicy.range(4, 30), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null, true, true),
+            new Profile("bytedance/seedance-2", DurationPolicy.range(4, 15), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null, true, true),
             // seedance 1.5 input_urls is positional (first, last) — the array itself is the frame slot
             new Profile("bytedance/seedance-1", DurationPolicy.range(4, 12), new FrameParams(null, null, true), "generate_audio", null, true),
             new Profile("bytedance/v1-", DurationPolicy.fixed(5, 10), new FrameParams(null, null, true), null, null),
@@ -71,11 +75,20 @@ public final class VideoModelProfiles {
      * @param negativePromptParam name of the negative-prompt input, null when the family ignores negatives
      * @param controlledMultiShot true when one generation can carry a stated HARD CUT (a multi-shot sequence in a
      *                            single clip) — false means the prompt must stay one continuous shot
+     * @param frameViaReference true when this frame-exclusive family can still take references by sending the frame as a
+     *                          reference image the prompt names as the opening (docs.kie.ai's multimodal-reference scene:
+     *                          "可通过提示词指定参考图片作为首帧/尾帧"): the frame slot is given up to keep identity
+     *                          references — a weaker pin on frame 0, chosen when identity matters more than the pin
      */
     public record Profile(String prefix, DurationPolicy durations, FrameParams frames, String audioParam, String negativePromptParam,
-                          boolean controlledMultiShot) {
+                          boolean controlledMultiShot, boolean frameViaReference) {
+        public Profile(String prefix, DurationPolicy durations, FrameParams frames, String audioParam, String negativePromptParam,
+                       boolean controlledMultiShot) {
+            this(prefix, durations, frames, audioParam, negativePromptParam, controlledMultiShot, false);
+        }
+
         public Profile(String prefix, DurationPolicy durations, FrameParams frames, String audioParam, String negativePromptParam) {
-            this(prefix, durations, frames, audioParam, negativePromptParam, false);
+            this(prefix, durations, frames, audioParam, negativePromptParam, false, false);
         }
 
         /** True when a first/last frame must travel alone: the reference array would be rejected or would fill the frame slots. */

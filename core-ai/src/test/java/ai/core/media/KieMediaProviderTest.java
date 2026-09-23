@@ -296,10 +296,27 @@ class KieMediaProviderTest {
         var first = new MediaReference("https://example.com/kf.png", null, null, "first_frame", MediaReferenceRole.FIRST_FRAME, MediaModality.IMAGE);
         var sheet = new MediaReference("https://example.com/sheet.png", null, null, "char_1", MediaReferenceRole.SUBJECT, MediaModality.IMAGE);
 
+        // minimax image-to-video has named frame slots and no documented way to keep references next to them
         var error = assertThrows(IllegalArgumentException.class,
-                () -> provider.generateVideo(videoRequest("bytedance/seedance-2-5", "animate", 6, null, List.of(sheet, first))));
+                () -> provider.generateVideo(videoRequest("minimax-h3/image-to-video", "animate", 6, null, List.of(sheet, first))));
 
         assertTrue(error.getMessage().contains("not both"), error.getMessage());
+    }
+
+    @Test
+    void seedanceKeepsIdentityReferencesBySendingTheFrameAsReferenceOne() {
+        // docs.kie.ai's seedance page: the frame slot and the reference array are mutually exclusive, but the
+        // multimodal-reference scene lets the prompt name the opening picture — so the frame rides as reference #1 and the
+        // identity sheet comes along (the alternative was a clip whose cast the model invented)
+        var first = new MediaReference("https://example.com/kf.png", null, null, "first_frame", MediaReferenceRole.FIRST_FRAME, MediaModality.IMAGE);
+        var sheet = new MediaReference("https://example.com/sheet.png", null, null, "char_1", MediaReferenceRole.SUBJECT, MediaModality.IMAGE);
+
+        provider.generateVideo(videoRequest("bytedance/seedance-2-5", "animate", 6, null, List.of(sheet, first)));
+
+        var input = createTaskInput();
+        assertEquals(List.of("https://example.com/kf.png", "https://example.com/sheet.png"), input.get("reference_image_urls"),
+                "the opening picture leads the array the prompt names it from");
+        assertNull(input.get("first_frame_url"), "the slot would exclude the identity reference");
     }
 
     @Test

@@ -43,10 +43,16 @@ final class KieVideoReferenceRouter {
         var last = images.stream().filter(reference -> reference.role() == MediaReferenceRole.LAST_FRAME).findFirst().orElse(null);
         var others = images.stream().filter(reference -> reference.role() == null || !reference.role().isFrame()).toList();
         var frames = profile.frames();
-        if (frames != null && !frames.positional() && (first != null || last != null)) {
-            if (frames.exclusive() && !others.isEmpty())
-                throw new IllegalArgumentException(model + " takes either first/last frame images or reference images, not both: "
-                        + "drop the " + others.size() + " reference image(s) or the frame");
+        // a frame-exclusive family with NAMED frame slots refuses frames and references in one request — except the families
+        // whose docs give the multimodal-reference way out, where the frame rides as a reference the prompt names as the
+        // opening (weaker pin on frame 0, kept identity). Those fall through to the array path with the frame at its head.
+        // Positional families keep their own documented shape (their image array IS the frame slots).
+        var namedSlots = frames != null && !frames.positional() && (first != null || last != null);
+        var framesWithReferences = namedSlots && Boolean.TRUE.equals(frames.exclusive()) && !others.isEmpty();
+        if (framesWithReferences && !profile.frameViaReference())
+            throw new IllegalArgumentException(model + " takes either frame images or reference images, not both: drop the "
+                + others.size() + " reference image(s) or the frame");
+        if (namedSlots && !framesWithReferences) {
             if (first != null) input.put(frames.firstField(), urls.apply(List.of(first)).getFirst());
             if (last != null && frames.lastField() != null) input.put(frames.lastField(), urls.apply(List.of(last)).getFirst());
             if (!others.isEmpty()) applyImageArray(input, model, mode, referenceField, urls.apply(others));

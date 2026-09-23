@@ -34,11 +34,13 @@ class VideoModelProfilesTest {
         var seedance = VideoModelProfiles.lookup("bytedance/seedance-2-5");
         assertEquals("first_frame_url", seedance.frames().firstField());
         assertTrue(seedance.frameExclusive(), "frame mode and reference mode are mutually exclusive on seedance 2");
+        assertTrue(seedance.frameViaReference(), "its docs' multimodal-reference scene lets the prompt name the opening frame");
         assertEquals("generate_audio", seedance.audioParam());
 
         var kling3 = VideoModelProfiles.lookup("kling-3.0/std");
         assertTrue(kling3.frames().positional(), "image_urls[0] is the first frame");
         assertTrue(kling3.frameExclusive(), "two slots: a character sheet would become the opening frame");
+        assertFalse(kling3.frameViaReference(), "no documented way to keep references next to a frame on kling");
         assertEquals("sound", kling3.audioParam());
         assertNull(kling3.negativePromptParam());
 
