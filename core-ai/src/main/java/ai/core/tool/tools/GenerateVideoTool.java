@@ -80,7 +80,7 @@ public final class GenerateVideoTool extends ToolCall {
                       earlier generate_image / generate_video call produced. PREFERRED: never copy a URL out of an earlier
                       tool result, and never embed a base64 blob; ["last"] is the most recent image of this session.
                     - [{"sandbox_path": "/workspace/attachments/a.jpg", "name": "dish"}] — one attachment of this message
-                      (its staged path, listed in the message) or a file you made locally, e.g. a frame cut from a video.
+                      (its staged path, listed in the message) or a file you made locally, e.g. a frame cut from a video; no sandbox: pass its own path.
                     - [{"url": "https://..."}] / [{"b64Json": "data:image/jpeg;base64,..."}] — external content only; b64Json needs the "data:<mime>;base64," prefix.
                   role is one of first_frame, last_frame, subject, scene, camera, style, prop, audio and decides which
                   references survive when the model accepts fewer than you passed. first_frame / last_frame are frame

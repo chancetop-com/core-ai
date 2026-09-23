@@ -90,7 +90,7 @@ public final class GenerateImageTool extends ToolCall {
                   most recent image of this conversation.
                 - [{"sandbox_path": "/workspace/attachments/a.jpg", "name": "dish"}] — one attachment of this
                   message (its staged path, listed in the message) or a file you made locally (a converted
-                  camera photo, a crop, a mask): how you reference a SINGLE picture of several.
+                  camera photo, a crop, a mask) — without a sandbox, its own path on this machine.
                 - [{"url": "https://..."}] / [{"b64Json": "data:image/png;base64,..."}] — external content only.
               Square brackets are required even for a single item; [] = no reference at all.
               role is one of first_frame, last_frame, subject, scene, camera, style, prop, audio and decides which references
@@ -183,8 +183,7 @@ public final class GenerateImageTool extends ToolCall {
         if (message == null || !message.contains("Invalid image file or mode")) return "";
         return "\n\nReference image " + referencedImageNumber(message)
                 + " is not a standard PNG/JPEG/WEBP file (camera formats such as MPO or HEIC are refused as-is)."
-                + " Convert it in the sandbox first — e.g. `ffmpeg -i /tmp/original.jpg -frames:v 1 /tmp/fixed.jpg`"
-                + " for a camera JPEG, or `python3 -c \"from PIL import Image; Image.open('/tmp/original.jpg').convert('RGB').save('/tmp/fixed.jpg', quality=95)\"` —"
+                + " Convert it first — in the sandbox, e.g. `ffmpeg -i /tmp/original.jpg -frames:v 1 /tmp/fixed.jpg` for a camera JPEG, or `python3 -c \"from PIL import Image; Image.open('/tmp/original.jpg').convert('RGB').save('/tmp/fixed.jpg', quality=95)\"`, or on this machine without one —"
                 + " then pass the converted file back as {\"sandbox_path\": \"/tmp/fixed.jpg\"}.";
     }
 

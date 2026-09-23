@@ -11,8 +11,11 @@ import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
 import core.framework.json.JSON;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -204,8 +207,8 @@ class GenerateImageToolTest {
     @Test
     void readsSandboxPathReferencesAndKeepsTheirName() throws Exception {
         var provider = new TestMediaProvider();
-        var temp = java.nio.file.Files.createTempFile("sandbox-ref-", ".jpg");
-        java.nio.file.Files.write(temp, "hello".getBytes(StandardCharsets.UTF_8));
+        var temp = Files.createTempFile("sandbox-ref-", ".jpg");
+        Files.write(temp, "hello".getBytes(StandardCharsets.UTF_8));
         var sandbox = mock(ai.core.sandbox.Sandbox.class);
         when(sandbox.downloadFile("/tmp/fixed.jpg"))
                 .thenReturn(new ai.core.sandbox.SandboxFile(temp, "fixed.jpg", "image/jpeg", 5));
@@ -224,7 +227,26 @@ class GenerateImageToolTest {
     }
 
     @Test
-    void rejectsSandboxPathReferencesWithoutASandbox() {
+    void readsLocalFileReferencesWithoutASandbox(@TempDir Path dir) throws Exception {
+        var provider = new TestMediaProvider();
+        var context = context(provider);
+        var tool = GenerateImageTool.builder().build();
+        var file = dir.resolve("plate.png");
+        Files.write(file, new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A});
+        // a path a model writes into JSON escapes nothing when it uses the forward slashes the OS accepts
+        var path = file.toString().replace('\\', '/');
+
+        tool.execute(JSON.toJSON(Map.of(
+                "prompt", "use the fixed plate",
+                "input_images", "[{\"sandbox_path\":\"" + path + "\",\"name\":\"plate\"}]")), context);
+
+        var reference = provider.request.inputImages().getFirst();
+        assertTrue(reference.b64Json().startsWith("data:image/png;base64,"), reference.b64Json());
+        assertEquals("plate", reference.name());
+    }
+
+    @Test
+    void rejectsSandboxPathReferencesThatAreNotReadableLocally() {
         var provider = new TestMediaProvider();
         var context = context(provider);
         var tool = GenerateImageTool.builder().build();
