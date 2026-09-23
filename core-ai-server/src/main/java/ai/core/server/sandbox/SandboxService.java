@@ -210,8 +210,8 @@ public class SandboxService {
     }
 
     /** Stages a message's attachments into the session's sandbox; see {@link SandboxFileService}. */
-    public List<String> stageAttachments(String sessionId, String userId, List<PendingFile> files) {
-        if (!enabled) return List.of();
+    public Map<String, String> stageAttachments(String sessionId, String userId, List<PendingFile> files) {
+        if (!enabled) return Map.of();
         return sandboxFileService.stageAttachments(sessionId, userId, files);
     }
 

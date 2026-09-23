@@ -62,7 +62,8 @@ class ChatMessageAttachments {
      * convert a container a model refuses, crop, extract a frame, read a PDF — and hand the result back to a
      * media tool. Best effort: the attachment always also arrives as a URL.
      *
-     * @return the sandbox paths staged, for {@link #appendSandboxPaths}
+     * @return one "label -> sandbox path" line per staged attachment, labelled the way the message labels it
+     *         (Image 1, Image 2, …) so a request about one picture can name it instead of sending all of them
      */
     List<String> stageInto(String sessionId, String userId, Map<String, Object> payload) {
         if (sandboxService == null) return List.of();
@@ -77,20 +78,46 @@ class ChatMessageAttachments {
                     (String) attachment.get("contentType")));
         }
         if (files.isEmpty()) return List.of();
+        Map<String, String> staged;
         try {
-            return sandboxService.stageAttachments(sessionId, userId, files);
+            staged = sandboxService.stageAttachments(sessionId, userId, files);
         } catch (RuntimeException e) {
             LOGGER.warn("failed to stage attachments into the sandbox: sessionId={}", sessionId, e);
             return List.of();
         }
+        return staged.isEmpty() ? List.of() : labelled(attachments, staged);
     }
 
-    /** Tells the agent the staged copy exists and how to hand a locally fixed file back to a media tool. */
+    private List<String> labelled(List<Map<String, Object>> attachments, Map<String, String> staged) {
+        var hints = new ArrayList<String>();
+        var imageOrdinal = 0;
+        for (var attachment : attachments) {
+            var type = (String) attachment.get("type");
+            String label;
+            if (type == null || "IMAGE".equals(type)) {
+                imageOrdinal++;
+                label = "Image " + imageOrdinal;
+            } else if ("VIDEO".equals(type)) {
+                label = "Video";
+            } else {
+                label = "File";
+            }
+            var path = staged.get(attachment.get("blobName"));
+            if (path != null) hints.add(label + " -> " + path);
+        }
+        return hints;
+    }
+
+    /**
+     * Tells the agent the staged copy exists, which picture each path is, and how to hand a locally fixed file
+     * back to a media tool.
+     */
     String appendSandboxPaths(String message, List<String> stagedPaths) {
         if (stagedPaths == null || stagedPaths.isEmpty()) return message;
         var hint = SANDBOX_HINT + String.join(", ", stagedPaths)
-                + " — process them there (ffmpeg, python, …) when a model cannot take the uploaded file as-is,"
-                + " and pass the result back with {\"sandbox_path\": \"<path>\"}]";
+                + " — use a path to work on that file locally (a container a model refuses, a crop, a mask) and pass the"
+                + " result back with {\"sandbox_path\": \"<path>\"}. Reference only the attachments this request is about:"
+                + " an extra reference changes the result and prompt wording does not cancel it]";
         return message == null || message.isBlank() ? hint.strip() : message + hint;
     }
 

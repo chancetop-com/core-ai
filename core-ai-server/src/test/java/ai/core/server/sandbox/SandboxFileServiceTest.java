@@ -16,6 +16,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.time.ZonedDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -169,7 +170,7 @@ class SandboxFileServiceTest {
         var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
                 "IMG_0001.JPG", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
 
-        assertEquals(List.of("/workspace/attachments/IMG_0001.JPG"), staged);
+        assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/IMG_0001.JPG"), staged);
         verify(fixture.sandbox).uploadFile("/workspace/attachments/IMG_0001.JPG", bytes);
         var captor = ArgumentCaptor.forClass(SessionAttachmentRef.class);
         verify(fixture.repository).insert(captor.capture());
@@ -192,7 +193,7 @@ class SandboxFileServiceTest {
         var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
                 "photo.jpg", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
 
-        assertEquals(List.of("/workspace/attachments/photo.jpg"), staged);
+        assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/photo.jpg"), staged);
         verify(fixture.provider, never()).acquire(any(), any(), any());
         verify(fixture.sandbox, never()).uploadFile(any(), any());
         var captor = ArgumentCaptor.forClass(SessionAttachmentRef.class);
@@ -213,7 +214,7 @@ class SandboxFileServiceTest {
         var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
                 "photo.jpg", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
 
-        assertEquals(List.of("/tmp/attachments/photo.jpg"), staged);
+        assertEquals(Map.of("ai/uploads/photo.jpg", "/tmp/attachments/photo.jpg"), staged);
         verify(fixture.sandbox).uploadFile("/tmp/attachments/photo.jpg", bytes);
     }
 
@@ -228,7 +229,7 @@ class SandboxFileServiceTest {
         var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
                 "huge.mp4", "uploads", "ai/uploads/huge.mp4", "video/mp4")));
 
-        assertEquals(List.of(), staged);
+        assertEquals(Map.of(), staged);
         verify(fixture.storage, never()).downloadObject(any(), any());
         verify(fixture.repository, never()).insert(any());
     }
@@ -243,7 +244,7 @@ class SandboxFileServiceTest {
         var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
                 "photo.jpg", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
 
-        assertEquals(List.of("/workspace/attachments/photo.jpg"), staged);
+        assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/photo.jpg"), staged);
         verify(fixture.storage, never()).headObject(any(), any());
         verify(fixture.repository, never()).insert(any());
     }
@@ -255,7 +256,7 @@ class SandboxFileServiceTest {
         var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
                 "photo.jpg", "artifacts", "ai/uploads/photo.jpg", "image/jpeg")));
 
-        assertEquals(List.of(), staged);
+        assertEquals(Map.of(), staged);
         verify(fixture.storage, never()).headObject(any(), any());
         verify(fixture.repository, never()).insert(any());
         verify(fixture.sandbox, never()).uploadFile(any(), any());

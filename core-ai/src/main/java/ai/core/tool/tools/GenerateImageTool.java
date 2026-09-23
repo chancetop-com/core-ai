@@ -43,16 +43,21 @@ public final class GenerateImageTool extends ToolCall {
 
             IMAGE-TO-IMAGE — when the user is talking about an image that already exists (one they
             attached, or one an earlier generate_image call produced) and wants it changed, extended,
-            restyled, or reused as a character/scene reference, you MUST edit that image instead of
-            generating a new one from scratch:
-              1. pass input_images — see below. To reuse an image THIS tool produced, pass its
-                 media_id (or the shorthand "last"). Never copy the image URL out of an earlier
-                 tool result: a media_id is shorter, is checked against the caller, and lets the
-                 server hand each provider a form of the image it can actually read.
+            restyled, or reused as a character/scene reference, edit that image instead of generating a
+            new one from scratch: regenerating from the prompt alone loses the subject, style and
+            composition the user asked you to keep.
+              1. pass input_images — see below. To reuse an image THIS tool produced, pass its media_id
+                 (or "last"). Never copy an image URL out of an earlier tool result: a media_id is
+                 shorter, is checked against the caller, and lets the server hand each provider a form
+                 of the image it can actually read.
               2. pass a model marked [image-to-image] in the list below. Models marked only
                  [text-to-image] reject reference images and the call fails.
-            Regenerating from the prompt alone loses the subject, style and composition the user
-            asked you to keep, so prefer editing whenever a referenced image is available.
+              3. SEND EXACTLY THE REFERENCES THAT MUST BE COPIED, NOTHING ELSE. "attached" means EVERY image
+                 of this message; when only some are involved, reference those one by one (their staged
+                 sandbox path or media_id). A reference you do not want copied must not be sent: prompt
+                 wording such as "ignore @image1" does not cancel it, an extra reference changes the result.
+              4. To generate with no reference at all — a new picture, or a polish that must not touch
+                 the photographed subject — omit input_images or pass [].
 
             NAMING REFERENCES — when you pass more than one reference, give each a "name" and say in
             the prompt what that reference contributes, e.g. name "char_lin" with a prompt containing
@@ -78,17 +83,16 @@ public final class GenerateImageTool extends ToolCall {
             - output_compression: Optional JPEG compression level 0–100; only valid together with output_format "jpeg"
             - background: Set to "transparent" to generate PNGs with transparent backgrounds (requires output_format "png")
             - input_images: Input images for image-to-image editing (not all models support this).
-              Either the bare string "attached" to edit this conversation's attached images, or a JSON
-              ARRAY written out in full — square brackets required, a single reference is still an array:
-                - [{"media_id": "gateway-media-v1.img....", "name": "char_lin", "role": "subject"}] —
-                  an image an earlier generate_image call returned. PREFERRED; ["last"] is the shorthand
-                  for the most recent image of this conversation.
-                - [{"sandbox_path": "/tmp/fixed.jpg", "name": "scene"}] — a file in this session's
-                  sandbox (/tmp or /workspace): use it for an image you produced or fixed locally — a
-                  converted camera photo, a crop, a mask. This is the way back for a file a model
-                  refused to read as-is.
-                - [{"url": "https://..."}] / [{"b64Json": "data:image/png;base64,..."}] — external
-                  content only, for images that did not come from this tool.
+              Either the bare string "attached" — EVERY image attached to this message, use it only when all
+              of them are the subject — or a JSON ARRAY written out in full, whose items are:
+                - [{"media_id": "gateway-media-v1.img....", "name": "char_lin", "role": "subject"}] — an image
+                  an earlier generate_image call returned. PREFERRED; ["last"] is the shorthand for the
+                  most recent image of this conversation.
+                - [{"sandbox_path": "/workspace/attachments/a.jpg", "name": "dish"}] — one attachment of this
+                  message (its staged path, listed in the message) or a file you made locally (a converted
+                  camera photo, a crop, a mask): how you reference a SINGLE picture of several.
+                - [{"url": "https://..."}] / [{"b64Json": "data:image/png;base64,..."}] — external content only.
+              Square brackets are required even for a single item; [] = no reference at all.
               role is one of first_frame, last_frame, subject, scene, camera, style, prop, audio and decides which references
               are kept first if the model accepts fewer than you passed.
               Omit input_images entirely for plain text-to-image — several models reject references.
@@ -433,7 +437,7 @@ public final class GenerateImageTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "output_format", "Image format — png or jpeg"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "output_compression", "Optional JPEG compression level 0-100; only valid with output_format jpeg"),
                     ToolCallParameters.ParamSpec.of(String.class, "background", "Set to 'transparent' for transparent PNG backgrounds (requires output_format png)"),
-                    ToolCallParameters.ParamSpec.of(String.class, "input_images", "Input images for image-to-image editing. Either the bare string \"attached\" for this conversation's attached images, or a JSON ARRAY literal — square brackets required, even for one image, e.g. [{\"media_id\":\"gateway-media-v1.img.abc\"}], [\"last\"], [{\"sandbox_path\":\"/tmp/fixed.jpg\"}] (a file in this session's sandbox) or [{\"url\":\"https://...\"}] / [{\"b64Json\":\"data:image/png;base64,...\"}] (external content only); omit for text-to-image"),
+                    ToolCallParameters.ParamSpec.of(String.class, "input_images", "Input images for image-to-image editing. Either the bare string \"attached\" — EVERY image attached to this message, use only when all of them are the subject — or a JSON ARRAY literal (square brackets required, e.g. [{\"media_id\":\"gateway-media-v1.img.abc\"}], [\"last\"], [{\"sandbox_path\":\"/workspace/attachments/a.jpg\"}] to name ONE attachment or a file you fixed locally, [{\"url\":\"https://...\"}] / [{\"b64Json\":\"data:...\"}] for external content); [] = no reference at all, omit for text-to-image. Send only the references that must be copied: an extra one changes the result and prompt wording cannot cancel it"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_interaction_id", "Gemini Interactions API ID to continue a multi-turn image edit"),
                     ToolCallParameters.ParamSpec.of(String.class, "mask", "Mask image for inpainting: a single reference object (NOT an array), same item shape as input_images, e.g. {\"sandbox_path\":\"/tmp/mask.png\"} or \"data:image/png;base64,...\""),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")

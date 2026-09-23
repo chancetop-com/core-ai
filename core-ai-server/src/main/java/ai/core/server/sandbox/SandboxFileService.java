@@ -10,6 +10,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -96,29 +97,30 @@ class SandboxFileService {
      * result back to a media tool. Best effort by design: a session without a sandbox, an oversized file or a
      * storage hiccup must not fail the message, because the attachment still arrives as a URL.
      *
-     * @return the sandbox paths actually staged, for the hint the agent receives
+     * @return the sandbox path staged for each attachment, keyed by blob name, so the message hint can name
+     *         the file a request is about instead of letting the model guess
      */
-    List<String> stageAttachments(String sessionId, String userId, List<PendingFile> files) {
-        if (files == null || files.isEmpty()) return List.of();
-        if (userId == null || userId.isBlank()) return List.of();
-        if (sandboxService.sessionSandbox(sessionId) == null) return List.of();   // no sandbox in this session at all
+    Map<String, String> stageAttachments(String sessionId, String userId, List<PendingFile> files) {
+        if (files == null || files.isEmpty()) return Map.of();
+        if (userId == null || userId.isBlank()) return Map.of();
+        if (sandboxService.sessionSandbox(sessionId) == null) return Map.of();   // no sandbox in this session at all
         var repository = sandboxService.attachmentRepository;
-        if (repository == null) return List.of();
+        if (repository == null) return Map.of();
         var storage = sandboxService.storageResolver == null ? null : sandboxService.storageResolver.resolve();
-        if (storage == null) return List.of();
+        if (storage == null) return Map.of();
 
         List<SessionAttachmentRef> references;
         try {
             references = repository.findSandboxAttachments(sessionId, userId);
         } catch (RuntimeException e) {
             LOGGER.warn("failed to read staged attachments, staging is skipped: session={}", sessionId, e);
-            return List.of();
+            return Map.of();
         }
         var staging = new AttachmentStaging(sandboxService, sessionId, userId, storage, references);
-        var staged = new ArrayList<String>();
+        var staged = new LinkedHashMap<String, String>();
         for (var file : files) {
             var targetPath = staging.stage(file);
-            if (targetPath != null) staged.add(targetPath);
+            if (targetPath != null && file.blobName() != null) staged.put(file.blobName(), targetPath);
         }
         return staged;
     }

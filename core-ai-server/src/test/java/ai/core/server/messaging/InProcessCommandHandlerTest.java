@@ -93,7 +93,7 @@ class InProcessCommandHandlerTest {
         when(storageResolver.resolve()).thenReturn(storage);
         when(storageResolver.multimodalContainer()).thenReturn("uploads");
         when(sandboxService.stageAttachments(eq("s-1"), eq("u-1"), any()))
-                .thenReturn(List.of("/workspace/attachments/image.jpg"));
+                .thenReturn(Map.of("ai/image.jpg", "/workspace/attachments/image.jpg"));
         var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService, ownershipRegistry,
                 sandboxService, null, storageResolver, null, null);
         var handler = new InProcessCommandHandler(sessionDependencies,
@@ -106,7 +106,7 @@ class InProcessCommandHandlerTest {
 
         handler.handle(SessionCommand.sendMessage("s-1", "u-1", "animate this", null, null, images));
 
-        verify(session).sendMessage(argThat(message -> message.contains("/workspace/attachments/image.jpg")),
+        verify(session).sendMessage(argThat(message -> message.contains("Image 1 -> /workspace/attachments/image.jpg")),
                 eq(null), any());
     }
 

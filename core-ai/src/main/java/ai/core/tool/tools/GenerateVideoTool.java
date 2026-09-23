@@ -74,23 +74,23 @@ public final class GenerateVideoTool extends ToolCall {
                   values are clamped to 10.
                 - size: Optional, e.g. "1280x720" or "720x1280". The provider renders video at
                   most 720p; aspect ratio is derived from the width/height.
-                - input_references: Optional. A JSON ARRAY written out in full — square brackets required,
-                  a single reference is still an array — of reference assets:
+                - input_references: Optional. A JSON ARRAY written out in full — square brackets required, a single
+                  reference is still an array. Omitting it attaches the images of the current message; [] attaches none:
                     - [{"media_id": "gateway-media-v1.img....", "name": "char_lin", "role": "subject"}] — media an
                       earlier generate_image / generate_video call produced. PREFERRED: never copy a URL out of an earlier
                       tool result, and never embed a base64 blob; ["last"] is the most recent image of this session.
-                    - [{"sandbox_path": "/tmp/frame.jpg", "name": "scene"}] — a file in this session's sandbox (/tmp or /workspace),
-                      e.g. a frame extracted from a video or a converted photo; the server reads and sends it.
+                    - [{"sandbox_path": "/workspace/attachments/a.jpg", "name": "dish"}] — one attachment of this message
+                      (its staged path, listed in the message) or a file you made locally, e.g. a frame cut from a video.
                     - [{"url": "https://..."}] / [{"b64Json": "data:image/jpeg;base64,..."}] — external content only; b64Json needs the "data:<mime>;base64," prefix.
                   role is one of first_frame, last_frame, subject, scene, camera, style, prop, audio and decides which
-                  references survive when the model accepts fewer than you passed. first_frame / last_frame
-                  are frame anchors: the video starts (ends) on that picture; families with a dedicated frame parameter
-                  receive it there, and on Seedance a frame excludes other image references. If omitted entirely,
-                  the images attached to the current chat message are used automatically.
+                  references survive when the model accepts fewer than you passed. first_frame / last_frame are frame
+                  anchors: the video starts (ends) on that picture; families with a dedicated frame parameter receive it
+                  there, and on Seedance a frame excludes other image references.
+                  Send only the references that must be copied — an extra reference changes the result, and prompt
+                  wording ("ignore image1") does not cancel it.
                   With more than one reference, name each one and say in the prompt what it contributes, e.g.
                   "@char_lin defines the woman's face only. @scene_cafe defines the counter and window light only."
-                  The server rewrites @char_lin into whatever token the target model actually understands.
-                  Multi-reference models do not infer what each asset is for — an unexplained reference is applied wrongly, with no error.
+                  The server rewrites @char_lin into the token the model understands; multi-reference models do not infer what each asset is for — an unexplained reference is applied wrongly, with no error.
                 - previous_video_id: A video_id from this gateway to edit conversationally. Supported by Gemini Omni.
                 - provider_extra: JSON string with model-specific input parameters, merged into the
                   upstream request. Format: {"input": {...}} puts the keys into the model input, any
@@ -432,7 +432,7 @@ public final class GenerateVideoTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "model_scope", "once (default) or session; session sets the model as the conversation default for subsequent calls, empty model clears it"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; the per-model range is in the model list above — e.g. seedance 2.5 takes 4-30s and rejects 3s, gemini-omni does 10s per turn)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720; both the aspect ratio and the resolution tier are derived from it"),
-                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON ARRAY literal of references — square brackets required, even for one item, e.g. [{\"media_id\":\"gateway-media-v1.img.abc\",\"role\":\"subject\"}], [\"last\"] (media this gateway produced), [{\"sandbox_path\":\"/tmp/frame.jpg\"}] (a file in this session's sandbox) or [{\"url\":\"https://...\"}] / [{\"b64Json\":\"data:image/jpeg;base64,...\"}] (external content only); omit to use attached images"),
+                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON ARRAY literal of references — square brackets required, even for one item, e.g. [{\"media_id\":\"gateway-media-v1.img.abc\",\"role\":\"subject\"}], [\"last\"] (media this gateway produced), [{\"sandbox_path\":\"/workspace/attachments/a.jpg\"}] to name ONE attachment of this message or a file you made locally, or [{\"url\":\"https://...\"}] / [{\"b64Json\":\"data:image/jpeg;base64,...\"}] (external content only). Omitting it attaches the images of this message; [] attaches none. Send only the references that must be copied: an extra one changes the result and prompt wording cannot cancel it"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_video_id", "A gateway video ID to edit conversationally with a supported provider"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));
