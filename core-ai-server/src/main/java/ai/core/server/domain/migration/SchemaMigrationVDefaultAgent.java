@@ -1,5 +1,6 @@
 package ai.core.server.domain.migration;
 
+import ai.core.prompt.Prompts;
 import core.framework.mongo.Mongo;
 import org.bson.Document;
 
@@ -136,6 +137,9 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             - If the user mentions needing sub-agents, MCP tools, service APIs, or custom tool sets, tell them: "These advanced features are available in the agent configuration page. You can configure sub-agents, MCP servers, service APIs, and more there. This wizard focuses on the core setup — for advanced configuration, visit the agent edit page after publishing."
             """;
 
+    private static final String DEFAULT_ASSISTANT_SYSTEM_PROMPT = "You are a helpful AI assistant.\n\n"
+        + Prompts.ASSISTANT_PERSONALITY_PROMPT;
+
     @Override
     public String version() {
         // 20260611001 is recorded on deployed envs by SchemaMigrationVAgentRunTraceIndex (version collision);
@@ -146,6 +150,8 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         // (e.g. a talent pool) and attach them to agents via dataset_config
         // 20260824002: add create_skill self-harness tool so the builder can create catalog skills
         // from SKILL.md content and attach them to agents via skill_ids
+        // the seeded default prompt only reaches fresh environments ($setOnInsert); already deployed
+        // environments get the personality through SchemaMigrationVDefaultAssistantPersonality instead
         return "20260824002";
     }
 
@@ -164,7 +170,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
 
     private void createDefaultAssistant(Mongo mongo, Date now) {
         var publishedConfig = new Document()
-            .append("system_prompt", "You are a helpful AI assistant.")
+            .append("system_prompt", DEFAULT_ASSISTANT_SYSTEM_PROMPT)
             .append("tools", List.of(new Document("id", "builtin-all").append("type", "BUILTIN")))
             .append("max_turns", 200)
             .append("timeout_seconds", 600);
@@ -174,7 +180,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             .append("user_id", "system")
             .append("name", "Assistant")
             .append("description", "Default assistant with all builtin tools")
-            .append("system_prompt", "You are a helpful AI assistant.")
+            .append("system_prompt", DEFAULT_ASSISTANT_SYSTEM_PROMPT)
             .append("tools", List.of(new Document("id", "builtin-all").append("type", "BUILTIN")))
             .append("max_turns", 200)
             .append("timeout_seconds", 600)

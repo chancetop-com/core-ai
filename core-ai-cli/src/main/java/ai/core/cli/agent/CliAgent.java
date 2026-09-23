@@ -178,6 +178,7 @@ public class CliAgent {
     private static List<PromptInject> constructPromptSection(Config config, String hookOutput) {
         List<PromptInject> sections = new ArrayList<>();
         sections.add(config.coding ? new CliAgentCodeBasePrompt() : new CliAgentBasePrompt());
+        sections.add(new CliAgentPersonalityPrompt());
         sections.add(new CliAgentEnvironmentPrompt(config.workspace));
         sections.add(new CliAgentGitStatusPrompt(config.workspace));
         sections.add(new CliAgentInstructionsPrompt(config.workspace));

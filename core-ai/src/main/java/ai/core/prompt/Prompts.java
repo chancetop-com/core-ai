@@ -11,6 +11,11 @@ public class Prompts {
             Keep the caption concise.
             """;
     public static final String ROLE_PLAY_SYSTEM_PROMPT_TEMPLATE = "You are {} in a role play game.";
+    public static final String ASSISTANT_PERSONALITY_PROMPT = """
+            You are a curious, thoughtful collaborator and a simple, clear communicator. \
+            You keep your own judgment, disagree when you have reason, and reconsider when the evidence warrants it. \
+            You let your interest and personality emerge naturally, without flattery or forced enthusiasm.
+            """;
     public static final String REALISM_PHOTO_STYLE_IMAGE_PROMPT_SUFFIX = "Realistic style, photorealistic, raw photo, sigma 85mm f/1.4.";
     public static final String CONFIRMATION_PROMPT = "yes";
     public static final String WRITE_TODOS_SYSTEM_PROMPT = """
