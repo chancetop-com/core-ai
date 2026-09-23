@@ -53,10 +53,15 @@ public final class SandboxMediaReferences {
     }
 
     private static String expandOne(String value, String argumentName, ExecutionContext context) {
+        var trimmed = value.trim();
+        if (!trimmed.startsWith("{")) {
+            // a bare sandbox path: the model left the item unwrapped, which is unambiguous
+            return JsonUtil.toJson(Map.of("b64Json", read(trimmed, argumentName, context)));
+        }
         Map<String, Object> item;
         try {
             item = JsonUtil.fromJson(new TypeReference<>() {
-            }, value);
+            }, trimmed);
         } catch (Exception e) {
             throw new IllegalArgumentException(argumentName + " must be a JSON object or a path", e);
         }
@@ -65,7 +70,8 @@ public final class SandboxMediaReferences {
 
     private static boolean mentionsSandboxPath(String value) {
         return value.contains(SANDBOX_PATH) || value.contains("sandboxPath")
-                || value.contains("\"/tmp/") || value.contains("\"/workspace/");
+                || value.contains("\"/tmp/") || value.contains("\"/workspace/")
+                || value.startsWith("/tmp/") || value.startsWith("/workspace/");
     }
 
     private static Object expandItem(Object item, String argumentName, ExecutionContext context) {

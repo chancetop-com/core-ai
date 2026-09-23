@@ -53,6 +53,26 @@ class MediaReferenceParserTest {
     }
 
     @Test
+    void acceptsASingleReferenceWithoutTheBrackets() {
+        var fromObject = MediaReferenceParser.parse(
+                "{\"media_id\":\"gateway-media-v1.img.abc\",\"name\":\"char_lin\"}", "input_images");
+        assertEquals(1, fromObject.size());
+        assertEquals("gateway-media-v1.img.abc", fromObject.getFirst().mediaId());
+
+        var fromString = MediaReferenceParser.parse("last", "input_images");
+        assertEquals(1, fromString.size());
+        assertEquals(MediaReference.LAST, fromString.getFirst().mediaId());
+    }
+
+    @Test
+    void arrayHelpNamesTheShapeThatWasMissing() {
+        var failure = assertThrows(IllegalArgumentException.class, () -> MediaReferenceParser.parse("[{", "input_images"));
+
+        assertTrue(failure.getMessage().contains("square brackets"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("[\"last\"]"), failure.getMessage());
+    }
+
+    @Test
     void rejectsEmptyItemAndUnaddressableName() {
         assertThrows(IllegalArgumentException.class, () -> MediaReferenceParser.parse("[{}]", "input_images"));
         assertThrows(IllegalArgumentException.class,

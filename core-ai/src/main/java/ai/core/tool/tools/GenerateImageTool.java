@@ -78,17 +78,16 @@ public final class GenerateImageTool extends ToolCall {
             - output_compression: Optional JPEG compression level 0–100; only valid together with output_format "jpeg"
             - background: Set to "transparent" to generate PNGs with transparent backgrounds (requires output_format "png")
             - input_images: Input images for image-to-image editing (not all models support this).
-              Either the literal string "attached" to edit the images attached to this conversation,
-              or a JSON array whose items are:
-                - {"media_id": "gateway-media-v1.img....", "name": "char_lin", "role": "subject"} —
-                  an image an earlier generate_image call returned. PREFERRED.
-                - "last" — shorthand for the most recent image generated in this conversation.
-                - {"sandbox_path": "/tmp/fixed.jpg", "name": "scene"} — any file in this session's
-                  sandbox (under /tmp or /workspace). Use it for an image you produced or fixed
-                  locally — a converted camera photo, a crop, a mask. The server reads the file and
-                  sends it like any other reference: this is the way back for a file a model
+              Either the bare string "attached" to edit this conversation's attached images, or a JSON
+              ARRAY written out in full — square brackets required, a single reference is still an array:
+                - [{"media_id": "gateway-media-v1.img....", "name": "char_lin", "role": "subject"}] —
+                  an image an earlier generate_image call returned. PREFERRED; ["last"] is the shorthand
+                  for the most recent image of this conversation.
+                - [{"sandbox_path": "/tmp/fixed.jpg", "name": "scene"}] — a file in this session's
+                  sandbox (/tmp or /workspace): use it for an image you produced or fixed locally — a
+                  converted camera photo, a crop, a mask. This is the way back for a file a model
                   refused to read as-is.
-                - {"url": "https://..."} / {"b64Json": "data:image/png;base64,..."} — external
+                - [{"url": "https://..."}] / [{"b64Json": "data:image/png;base64,..."}] — external
                   content only, for images that did not come from this tool.
               role is one of first_frame, last_frame, subject, scene, camera, style, prop, audio and decides which references
               are kept first if the model accepts fewer than you passed.
@@ -434,9 +433,9 @@ public final class GenerateImageTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "output_format", "Image format — png or jpeg"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "output_compression", "Optional JPEG compression level 0-100; only valid with output_format jpeg"),
                     ToolCallParameters.ParamSpec.of(String.class, "background", "Set to 'transparent' for transparent PNG backgrounds (requires output_format png)"),
-                    ToolCallParameters.ParamSpec.of(String.class, "input_images", "Input images for image-to-image editing: \"attached\" for this conversation's attached images, or a JSON array of {\"media_id\":\"gateway-media-v1...\",\"name\":\"char_lin\",\"role\":\"subject\"} / \"last\" (preferred, for images this tool produced) or {\"sandbox_path\":\"/tmp/x.jpg\",\"name\":\"scene\"} (a file in this session's sandbox — how a converted/fixed image gets back in) or {\"url\":\"https://...\"} / {\"b64Json\":\"data:...\"} (external content only); omit for text-to-image"),
+                    ToolCallParameters.ParamSpec.of(String.class, "input_images", "Input images for image-to-image editing. Either the bare string \"attached\" for this conversation's attached images, or a JSON ARRAY literal — square brackets required, even for one image, e.g. [{\"media_id\":\"gateway-media-v1.img.abc\"}], [\"last\"], [{\"sandbox_path\":\"/tmp/fixed.jpg\"}] (a file in this session's sandbox) or [{\"url\":\"https://...\"}] / [{\"b64Json\":\"data:image/png;base64,...\"}] (external content only); omit for text-to-image"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_interaction_id", "Gemini Interactions API ID to continue a multi-turn image edit"),
-                    ToolCallParameters.ParamSpec.of(String.class, "mask", "Mask image for inpainting, same format as one input_images item (including sandbox_path)"),
+                    ToolCallParameters.ParamSpec.of(String.class, "mask", "Mask image for inpainting: a single reference object (NOT an array), same item shape as input_images, e.g. {\"sandbox_path\":\"/tmp/mask.png\"} or \"data:image/png;base64,...\""),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));
             var tool = new GenerateImageTool(referenceImageLoader);

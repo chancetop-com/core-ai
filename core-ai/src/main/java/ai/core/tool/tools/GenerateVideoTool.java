@@ -74,14 +74,14 @@ public final class GenerateVideoTool extends ToolCall {
                   values are clamped to 10.
                 - size: Optional, e.g. "1280x720" or "720x1280". The provider renders video at
                   most 720p; aspect ratio is derived from the width/height.
-                - input_references: Optional JSON array of reference assets. Each item is an object:
-                    - {"media_id": "gateway-media-v1.img....", "name": "char_lin", "role": "subject"}
-                      — media an earlier generate_image / generate_video call produced. PREFERRED:
-                      never copy a URL out of an earlier tool result, and never embed a base64 blob.
-                      "last" (a bare string) means the most recent image generated in this session.
-                    - {"url": "https://..."} / {"b64Json": "data:image/jpeg;base64,..."} — external content only; b64Json needs the "data:<mime>;base64," prefix.
-                    - {"sandbox_path": "/tmp/frame.jpg", "name": "scene"} — a file in this session's sandbox (under /tmp or /workspace),
+                - input_references: Optional. A JSON ARRAY written out in full — square brackets required,
+                  a single reference is still an array — of reference assets:
+                    - [{"media_id": "gateway-media-v1.img....", "name": "char_lin", "role": "subject"}] — media an
+                      earlier generate_image / generate_video call produced. PREFERRED: never copy a URL out of an earlier
+                      tool result, and never embed a base64 blob; ["last"] is the most recent image of this session.
+                    - [{"sandbox_path": "/tmp/frame.jpg", "name": "scene"}] — a file in this session's sandbox (/tmp or /workspace),
                       e.g. a frame extracted from a video or a converted photo; the server reads and sends it.
+                    - [{"url": "https://..."}] / [{"b64Json": "data:image/jpeg;base64,..."}] — external content only; b64Json needs the "data:<mime>;base64," prefix.
                   role is one of first_frame, last_frame, subject, scene, camera, style, prop, audio and decides which
                   references survive when the model accepts fewer than you passed. first_frame / last_frame
                   are frame anchors: the video starts (ends) on that picture; families with a dedicated frame parameter
@@ -432,7 +432,7 @@ public final class GenerateVideoTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "model_scope", "once (default) or session; session sets the model as the conversation default for subsequent calls, empty model clears it"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "seconds", "Video duration in seconds (optional; the per-model range is in the model list above — e.g. seedance 2.5 takes 4-30s and rejects 3s, gemini-omni does 10s per turn)"),
                     ToolCallParameters.ParamSpec.of(String.class, "size", "Video dimensions, e.g. 1280x720; both the aspect ratio and the resolution tier are derived from it"),
-                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON array of references; each item is {\"media_id\":\"gateway-media-v1...\",\"name\":\"char_lin\",\"role\":\"subject\"} or \"last\" (preferred, for media this gateway produced) or {\"sandbox_path\":\"/tmp/frame.jpg\"} (a file in this session's sandbox) or {\"url\":\"https://...\"} / {\"b64Json\":\"data:image/jpeg;base64,...\"} (external content only); omit to use attached images"),
+                    ToolCallParameters.ParamSpec.of(String.class, "input_references", "JSON ARRAY literal of references — square brackets required, even for one item, e.g. [{\"media_id\":\"gateway-media-v1.img.abc\",\"role\":\"subject\"}], [\"last\"] (media this gateway produced), [{\"sandbox_path\":\"/tmp/frame.jpg\"}] (a file in this session's sandbox) or [{\"url\":\"https://...\"}] / [{\"b64Json\":\"data:image/jpeg;base64,...\"}] (external content only); omit to use attached images"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_video_id", "A gateway video ID to edit conversationally with a supported provider"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));

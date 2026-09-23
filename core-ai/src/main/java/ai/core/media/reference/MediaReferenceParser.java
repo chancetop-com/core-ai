@@ -19,15 +19,53 @@ public final class MediaReferenceParser {
     public static final String ATTACHED = "attached";
 
     public static List<MediaReference> parse(String value, String argumentName) {
-        List<Object> items;
-        try {
-            items = JsonUtil.fromJson(new TypeReference<>() { }, value);
-        } catch (Exception e) {
-            throw new IllegalArgumentException(argumentName + " must be a JSON array of references: "
-                    + "{\"media_id\":\"gateway-media-v1...\"} or \"last\" for an earlier generation, "
-                    + "{\"url\":\"https://...\"} / {\"b64Json\":\"data:image/png;base64,...\"} for external content", e);
+        return items(value, argumentName).stream().map(item -> parseItem(item, argumentName)).toList();
+    }
+
+    /**
+     * The contract asks for a JSON array; a single reference the model left unwrapped is accepted anyway,
+     * because a missing pair of brackets is unambiguous — there is exactly one item — and failing the whole
+     * call over it teaches the model nothing it can act on.
+     */
+    private static List<Object> items(String value, String argumentName) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(arrayHelp(argumentName));
+        var trimmed = value.trim();
+        if (trimmed.startsWith("[")) {
+            try {
+                return JsonUtil.fromJson(new TypeReference<>() {
+                }, trimmed);
+            } catch (Exception e) {
+                throw new IllegalArgumentException(arrayHelp(argumentName), e);
+            }
         }
-        return items.stream().map(item -> parseItem(item, argumentName)).toList();
+        if (trimmed.startsWith("{")) {
+            try {
+                Map<String, Object> item = JsonUtil.fromJson(new TypeReference<>() {
+                }, trimmed);
+                return List.of(item);
+            } catch (Exception e) {
+                throw new IllegalArgumentException(arrayHelp(argumentName), e);
+            }
+        }
+        // a bare item only when it is recognisably a reference: anything else is a broken argument, not a URL
+        if (looksLikeReference(trimmed)) return List.of(trimmed);
+        throw new IllegalArgumentException(arrayHelp(argumentName));
+    }
+
+    private static boolean looksLikeReference(String value) {
+        return MediaReference.LAST.equalsIgnoreCase(value)
+                || value.startsWith("data:")
+                || value.startsWith("http://")
+                || value.startsWith("https://")
+                || value.startsWith("gateway-media-v1.")
+                || value.startsWith("gateway-video-v1.")
+                || value.startsWith("/");
+    }
+
+    private static String arrayHelp(String argumentName) {
+        return argumentName + " must be a JSON array — square brackets are required even for a single reference, e.g. "
+                + "[{\"media_id\":\"gateway-media-v1.img.abc\"}] or [\"last\"] or [{\"sandbox_path\":\"/tmp/fixed.jpg\"}] "
+                + "or [{\"url\":\"https://...\"}] / [{\"b64Json\":\"data:image/png;base64,...\"}]";
     }
 
     public static MediaReference parseItem(Object item, String argumentName) {

@@ -176,6 +176,20 @@ class GenerateImageToolTest {
     }
 
     @Test
+    void acceptsASingleReferenceObjectWithoutTheBrackets() {
+        var provider = new TestMediaProvider();
+        var context = context(provider);
+        var tool = GenerateImageTool.builder().build();
+
+        tool.execute(JSON.toJSON(Map.of(
+                "prompt", "make it glass",
+                "input_images", "{\"b64Json\":\"data:image/png;base64,aGVsbG8=\"}")), context);
+
+        assertNotNull(provider.request.inputImages(), "a missing pair of brackets must not fail the call");
+        assertEquals("data:image/png;base64,aGVsbG8=", provider.request.inputImages().getFirst().b64Json());
+    }
+
+    @Test
     void rejectsMalformedInputImages() {
         var provider = new TestMediaProvider();
         var context = context(provider);
