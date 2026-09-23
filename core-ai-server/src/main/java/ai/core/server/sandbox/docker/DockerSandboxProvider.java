@@ -162,6 +162,12 @@ public class DockerSandboxProvider implements SandboxProvider {
         }
     }
 
+    // buildHostConfig binds the host workspace directory as /workspace:ro, so nothing can be staged there
+    @Override
+    public boolean workspaceWritable() {
+        return false;
+    }
+
     private Map<String, Object> buildContainerRequest(SandboxConfig config, String containerName, String sessionId, String userId) {
         var request = new HashMap<String, Object>();
 

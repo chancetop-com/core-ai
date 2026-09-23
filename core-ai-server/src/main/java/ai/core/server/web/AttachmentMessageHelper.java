@@ -78,7 +78,9 @@ public class AttachmentMessageHelper {
         var result = new ArrayList<Map<String, String>>();
         for (var att : request.attachments) {
             if (!"multimodal".equals(att.category) || att.container == null || att.blobName == null) continue;
-            if (!"IMAGE".equals(att.type) && !"VIDEO".equals(att.type)) continue;
+            // PDFs are not inlined into the model context (they reach it as a URL), but they ride along so the
+            // session can stage them into the sandbox like images and videos
+            if (!"IMAGE".equals(att.type) && !"VIDEO".equals(att.type) && !"PDF".equals(att.type)) continue;
             var contentType = att.contentType;
             if ((contentType == null || contentType.isBlank()) && "VIDEO".equals(att.type)) {
                 contentType = "video/mp4"; // front-end may omit content type; the processing pod re-verifies via headObject

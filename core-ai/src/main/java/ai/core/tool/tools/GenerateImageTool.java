@@ -9,6 +9,7 @@ import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
 import ai.core.media.reference.ManagedReferenceProvider;
 import ai.core.media.reference.MediaReferenceParser;
+import ai.core.media.reference.SandboxMediaReferences;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -82,6 +83,11 @@ public final class GenerateImageTool extends ToolCall {
                 - {"media_id": "gateway-media-v1.img....", "name": "char_lin", "role": "subject"} —
                   an image an earlier generate_image call returned. PREFERRED.
                 - "last" — shorthand for the most recent image generated in this conversation.
+                - {"sandbox_path": "/tmp/fixed.jpg", "name": "scene"} — any file in this session's
+                  sandbox (under /tmp or /workspace). Use it for an image you produced or fixed
+                  locally — a converted camera photo, a crop, a mask. The server reads the file and
+                  sends it like any other reference: this is the way back for a file a model
+                  refused to read as-is.
                 - {"url": "https://..."} / {"b64Json": "data:image/png;base64,..."} — external
                   content only, for images that did not come from this tool.
               role is one of first_frame, last_frame, subject, scene, camera, style, prop, audio and decides which references
@@ -165,6 +171,25 @@ public final class GenerateImageTool extends ToolCall {
         for (var note : notes) result.append("\n- ").append(note);
     }
 
+    /**
+     * Upstream refuses a reference image it cannot decode (a camera's multi-picture JPEG, HEIC, CMYK …) with a
+     * message that names no cause and no fix, which sends the agent into blind retries. The hint points at the
+     * sandbox copy of the attachment and at the reference form that takes a locally fixed file back in.
+     */
+    private static String unreadableImageHint(String message) {
+        if (message == null || !message.contains("Invalid image file or mode")) return "";
+        return "\n\nReference image " + referencedImageNumber(message)
+                + " is not a standard PNG/JPEG/WEBP file (camera formats such as MPO or HEIC are refused as-is)."
+                + " Convert it in the sandbox first — e.g. `ffmpeg -i /tmp/original.jpg -frames:v 1 /tmp/fixed.jpg`"
+                + " for a camera JPEG, or `python3 -c \"from PIL import Image; Image.open('/tmp/original.jpg').convert('RGB').save('/tmp/fixed.jpg', quality=95)\"` —"
+                + " then pass the converted file back as {\"sandbox_path\": \"/tmp/fixed.jpg\"}.";
+    }
+
+    private static String referencedImageNumber(String message) {
+        var matcher = java.util.regex.Pattern.compile("Invalid image file or mode for image (\\d+)").matcher(message);
+        return matcher.find() ? matcher.group(1) : "(the one the model rejected)";
+    }
+
     private final GenerateVideoTool.ReferenceImageLoader referenceImageLoader;
 
     private GenerateImageTool(GenerateVideoTool.ReferenceImageLoader referenceImageLoader) {
@@ -196,7 +221,7 @@ public final class GenerateImageTool extends ToolCall {
                     parseInteger(args, "output_compression"),
                     getStringValue(args, "background"),
                     inputImages(args, context, provider),
-                    mask(args, provider),
+                    mask(args, provider, context),
                     getStringValue(args, "provider_extra"),
                     getStringValue(args, "previous_interaction_id"));
 
@@ -223,7 +248,7 @@ public final class GenerateImageTool extends ToolCall {
             appendNotes(sb, response.notes());
             return ToolCallResult.completed(sb.toString()).withDuration(System.currentTimeMillis() - startTime);
         } catch (Exception e) {
-            return ToolCallResult.failed("Image generation failed: " + e.getMessage(), e)
+            return ToolCallResult.failed("Image generation failed: " + e.getMessage() + unreadableImageHint(e.getMessage()), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
@@ -265,7 +290,7 @@ public final class GenerateImageTool extends ToolCall {
     }
 
     private List<MediaReference> inputImages(Map<String, Object> args, ExecutionContext context, MediaProvider provider) {
-        var value = getStringValue(args, "input_images");
+        var value = SandboxMediaReferences.expand(getStringValue(args, "input_images"), "input_images", context);
         if (Strings.isBlank(value)) return null;
         if (ATTACHED_IMAGES.equalsIgnoreCase(value.trim())) return attachedImages(context);
         return MediaReferenceParser.parse(value, "input_images").stream()
@@ -309,8 +334,8 @@ public final class GenerateImageTool extends ToolCall {
         return new MediaReference(null, "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(loaded.data()));
     }
 
-    private MediaReference mask(Map<String, Object> args, MediaProvider provider) {
-        var value = getStringValue(args, "mask");
+    private MediaReference mask(Map<String, Object> args, MediaProvider provider, ExecutionContext context) {
+        var value = SandboxMediaReferences.expand(getStringValue(args, "mask"), "mask", context);
         return Strings.isBlank(value) ? null : resolve(MediaReferenceParser.parseItem(value, "mask"), provider);
     }
 
@@ -409,9 +434,9 @@ public final class GenerateImageTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "output_format", "Image format — png or jpeg"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "output_compression", "Optional JPEG compression level 0-100; only valid with output_format jpeg"),
                     ToolCallParameters.ParamSpec.of(String.class, "background", "Set to 'transparent' for transparent PNG backgrounds (requires output_format png)"),
-                    ToolCallParameters.ParamSpec.of(String.class, "input_images", "Input images for image-to-image editing: \"attached\" for this conversation's attached images, or a JSON array of {\"media_id\":\"gateway-media-v1...\",\"name\":\"char_lin\",\"role\":\"subject\"} / \"last\" (preferred, for images this tool produced) or {\"url\":\"https://...\"} / {\"b64Json\":\"data:...\"} (external content only); omit for text-to-image"),
+                    ToolCallParameters.ParamSpec.of(String.class, "input_images", "Input images for image-to-image editing: \"attached\" for this conversation's attached images, or a JSON array of {\"media_id\":\"gateway-media-v1...\",\"name\":\"char_lin\",\"role\":\"subject\"} / \"last\" (preferred, for images this tool produced) or {\"sandbox_path\":\"/tmp/x.jpg\",\"name\":\"scene\"} (a file in this session's sandbox — how a converted/fixed image gets back in) or {\"url\":\"https://...\"} / {\"b64Json\":\"data:...\"} (external content only); omit for text-to-image"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_interaction_id", "Gemini Interactions API ID to continue a multi-turn image edit"),
-                    ToolCallParameters.ParamSpec.of(String.class, "mask", "Mask image for inpainting, same format as one input_images item"),
+                    ToolCallParameters.ParamSpec.of(String.class, "mask", "Mask image for inpainting, same format as one input_images item (including sandbox_path)"),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));
             var tool = new GenerateImageTool(referenceImageLoader);

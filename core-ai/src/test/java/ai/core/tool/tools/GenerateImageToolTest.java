@@ -21,6 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * @author stephen
@@ -185,6 +187,62 @@ class GenerateImageToolTest {
         assertTrue(result.getResult().contains("input_images"));
     }
 
+    @Test
+    void readsSandboxPathReferencesAndKeepsTheirName() throws Exception {
+        var provider = new TestMediaProvider();
+        var temp = java.nio.file.Files.createTempFile("sandbox-ref-", ".jpg");
+        java.nio.file.Files.write(temp, "hello".getBytes(StandardCharsets.UTF_8));
+        var sandbox = mock(ai.core.sandbox.Sandbox.class);
+        when(sandbox.downloadFile("/tmp/fixed.jpg"))
+                .thenReturn(new ai.core.sandbox.SandboxFile(temp, "fixed.jpg", "image/jpeg", 5));
+        var context = ExecutionContext.builder().sandbox(sandbox).build();
+        context.setImageMediaProvider(provider);
+        var tool = GenerateImageTool.builder().build();
+
+        tool.execute(JSON.toJSON(Map.of(
+                "prompt", "use the fixed plate",
+                "input_images", "[{\"sandbox_path\":\"/tmp/fixed.jpg\",\"name\":\"plate\",\"role\":\"subject\"}]")), context);
+
+        var reference = provider.request.inputImages().getFirst();
+        assertEquals("data:image/jpeg;base64," + Base64.getEncoder().encodeToString("hello".getBytes(StandardCharsets.UTF_8)),
+                reference.b64Json());
+        assertEquals("plate", reference.name());
+    }
+
+    @Test
+    void rejectsSandboxPathReferencesWithoutASandbox() {
+        var provider = new TestMediaProvider();
+        var context = context(provider);
+        var tool = GenerateImageTool.builder().build();
+
+        var result = tool.execute(JSON.toJSON(Map.of(
+                "prompt", "use the fixed plate",
+                "input_images", "[{\"sandbox_path\":\"/tmp/fixed.jpg\"}]")), context);
+
+        assertTrue(result.isFailed());
+        assertTrue(result.getResult().contains("no sandbox"), result.getResult());
+    }
+
+    @Test
+    void explainsHowToRecoverWhenTheModelRejectsAReferenceImage() {
+        var provider = new TestMediaProvider();
+        provider.failure = new RuntimeException("OpenAI image request failed: HTTP 400: {\"error\": {\"message\": "
+                + "\"Invalid image file or mode for image 2, please check your image file. If you believe this is an error,"
+                + " contact us at Azure support ticket and include the request ID abc.\"}}");
+        var context = context(provider);
+        var tool = GenerateImageTool.builder().build();
+
+        var result = tool.execute(JSON.toJSON(Map.of(
+                "prompt", "replace the food",
+                "input_images", "[{\"b64Json\":\"data:image/jpeg;base64,aGVsbG8=\"},"
+                        + "{\"b64Json\":\"data:image/jpeg;base64,aGVsbG8=\"}]")), context);
+
+        assertTrue(result.isFailed());
+        assertTrue(result.getResult().contains("image 2"), result.getResult());
+        assertTrue(result.getResult().contains("not a standard PNG/JPEG/WEBP"), result.getResult());
+        assertTrue(result.getResult().contains("sandbox_path"), "the way back must be spelled out");
+    }
+
     private ExecutionContext context(MediaProvider provider) {
         var context = ExecutionContext.builder().build();
         context.setImageMediaProvider(provider);
@@ -193,10 +251,12 @@ class GenerateImageToolTest {
 
     private static final class TestMediaProvider implements MediaProvider {
         private ImageGenerationRequest request;
+        private RuntimeException failure;
 
         @Override
         public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
             this.request = request;
+            if (failure != null) throw failure;
             return new ImageGenerationResponse(List.of(new ImageData(null, "https://cdn.example.com/out.png", null)), null);
         }
 

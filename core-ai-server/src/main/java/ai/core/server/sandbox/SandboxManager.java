@@ -33,6 +33,11 @@ public class SandboxManager {
         this.provider = provider;
     }
 
+    /** See {@link SandboxProvider#workspaceWritable()}. */
+    public boolean workspaceWritable() {
+        return provider == null || provider.workspaceWritable();
+    }
+
     public Sandbox acquire(SandboxConfig config, String sessionId, String userId) {
         var sandbox = provider.acquire(config, sessionId, userId);
         var entry = new SandboxEntry(sandbox, sessionId, userId, config, Instant.now());

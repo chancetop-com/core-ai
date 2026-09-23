@@ -1,16 +1,18 @@
 package ai.core.server.sandbox;
 
 import ai.core.sandbox.Sandbox;
+import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.domain.SessionAttachmentRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.HashSet;
-import java.time.ZonedDateTime;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -21,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 class SandboxFileService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxFileService.class);
+    private static final String SANDBOX_BLOB_PREFIX = "uploads/";
 
     private final Map<String, List<PendingFile>> pendingFiles = new ConcurrentHashMap<>();
     private final SandboxService sandboxService;
@@ -86,6 +89,40 @@ class SandboxFileService {
         }
     }
 
+    /**
+     * Stages this message's attachments (images, PDFs, videos) into the session's sandbox and records a
+     * reference for each, so the agent can process the uploaded bytes locally with whatever the case needs —
+     * converting a container a model refuses, cropping, extracting a frame, reading a PDF — and hand the
+     * result back to a media tool. Best effort by design: a session without a sandbox, an oversized file or a
+     * storage hiccup must not fail the message, because the attachment still arrives as a URL.
+     *
+     * @return the sandbox paths actually staged, for the hint the agent receives
+     */
+    List<String> stageAttachments(String sessionId, String userId, List<PendingFile> files) {
+        if (files == null || files.isEmpty()) return List.of();
+        if (userId == null || userId.isBlank()) return List.of();
+        if (sandboxService.sessionSandbox(sessionId) == null) return List.of();   // no sandbox in this session at all
+        var repository = sandboxService.attachmentRepository;
+        if (repository == null) return List.of();
+        var storage = sandboxService.storageResolver == null ? null : sandboxService.storageResolver.resolve();
+        if (storage == null) return List.of();
+
+        List<SessionAttachmentRef> references;
+        try {
+            references = repository.findSandboxAttachments(sessionId, userId);
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to read staged attachments, staging is skipped: session={}", sessionId, e);
+            return List.of();
+        }
+        var staging = new AttachmentStaging(sandboxService, sessionId, userId, storage, references);
+        var staged = new ArrayList<String>();
+        for (var file : files) {
+            var targetPath = staging.stage(file);
+            if (targetPath != null) staged.add(targetPath);
+        }
+        return staged;
+    }
+
     private void uploadAndPersistBlobFile(Sandbox sandbox, String sessionId, String userId, PendingFile file) {
         var resolver = sandboxService.storageResolver;
         var repository = sandboxService.attachmentRepository;
@@ -95,7 +132,7 @@ class SandboxFileService {
         validateBlobSource(resolver.sandboxContainer(), file);
         var storageService = resolver.resolve();
         if (storageService == null) throw new IllegalStateException("object storage is not configured");
-        var targetPath = SandboxAttachmentPath.targetPath(file.fileName());
+        var targetPath = SandboxAttachmentPath.targetPath(SandboxAttachmentPath.CHAT_FILE_ROOT, file.fileName());
         try {
             var metadata = storageService.headObject(file.container(), file.blobName());
             var data = storageService.downloadObject(file.container(), file.blobName());
@@ -111,7 +148,7 @@ class SandboxFileService {
             reference.blobName = file.blobName();
             reference.sourceETag = metadata.etag();
             reference.sourceSizeBytes = metadata.sizeBytes() != null ? metadata.sizeBytes() : (long) data.length;
-            reference.contentType = effectiveContentType(metadata.contentType(), file.contentType());
+            reference.contentType = AttachmentStaging.effectiveContentType(metadata.contentType(), file.contentType());
             reference.fileName = file.fileName();
             reference.targetPath = targetPath;
             reference.createdAt = ZonedDateTime.now();
@@ -129,16 +166,10 @@ class SandboxFileService {
         if (file.container() == null || !file.container().equals(expectedContainer)) {
             throw new IllegalArgumentException("invalid sandbox attachment container");
         }
-        if (file.blobName() == null || !file.blobName().startsWith("uploads/")) {
+        if (file.blobName() == null || !file.blobName().startsWith(SANDBOX_BLOB_PREFIX)) {
             throw new IllegalArgumentException("invalid sandbox attachment blob name");
         }
-        SandboxAttachmentPath.targetPath(file.fileName());
-    }
-
-    private String effectiveContentType(String storageContentType, String requestContentType) {
-        if (storageContentType != null && !storageContentType.isBlank()) return storageContentType;
-        if (requestContentType != null && !requestContentType.isBlank()) return requestContentType;
-        return "application/octet-stream";
+        SandboxAttachmentPath.targetPath(SandboxAttachmentPath.CHAT_FILE_ROOT, file.fileName());
     }
 
     void restoreAttachments(String sessionId, String userId, ZonedDateTime snapshotCreatedAt) {
@@ -161,45 +192,49 @@ class SandboxFileService {
         var skipped = 0;
         var failed = 0;
         for (var reference : references) {
-            if (reference.targetPath == null || !seenTargets.add(reference.targetPath)) {
+            if (!restorable(sessionId, reference, seenTargets, snapshotCreatedAt)) {
                 skipped++;
                 continue;
             }
-            if (snapshotCreatedAt != null
-                    && (reference.createdAt == null || !reference.createdAt.isAfter(snapshotCreatedAt))) {
-                skipped++;
-                continue;
-            }
-            if (!validRestoreReference(resolver.sandboxContainer(), reference)) {
-                skipped++;
-                LOGGER.warn("invalid sandbox attachment reference skipped: session={}, reference={}, target={}",
-                        sessionId, reference.id, reference.targetPath);
-                continue;
-            }
-            try {
-                var metadata = storage.headObject(reference.container, reference.blobName);
-                verifySourceVersion(reference, metadata.etag(), metadata.sizeBytes());
-                var data = storage.downloadObject(reference.container, reference.blobName);
-                verifyDownloadedSize(reference.sourceSizeBytes, data.length);
-                sandbox.uploadFile(reference.targetPath, data);
+            if (restore(sandbox, storage, sessionId, reference)) {
                 restored++;
-            } catch (Exception e) {
+            } else {
                 failed++;
-                LOGGER.warn("failed to restore sandbox attachment: session={}, reference={}, target={}",
-                        sessionId, reference.id, reference.targetPath, e);
             }
         }
         LOGGER.info("sandbox attachment restore complete: session={}, restoredCount={}, skippedCount={}, failedCount={}",
                 sessionId, restored, skipped, failed);
     }
 
-    private boolean validRestoreReference(String expectedContainer, SessionAttachmentRef reference) {
-        return expectedContainer != null
-                && reference.blobName != null
-                && SessionAttachmentRef.KIND_SANDBOX.equals(reference.kind)
-                && expectedContainer.equals(reference.container)
-                && reference.blobName.startsWith("uploads/")
-                && SandboxAttachmentPath.isSafeTarget(reference.fileName, reference.targetPath);
+    private boolean restorable(String sessionId, SessionAttachmentRef reference, Set<String> seenTargets,
+                               ZonedDateTime snapshotCreatedAt) {
+        if (reference.targetPath == null || !seenTargets.add(reference.targetPath)) return false;
+        if (snapshotCreatedAt != null
+                && (reference.createdAt == null || !reference.createdAt.isAfter(snapshotCreatedAt))) return false;
+        if (!SessionAttachmentRef.KIND_SANDBOX.equals(reference.kind)
+                || !AttachmentStaging.validSource(sandboxService, reference.container, reference.blobName)
+                || !SandboxAttachmentPath.isSafeTarget(reference.fileName, reference.targetPath)) {
+            LOGGER.warn("invalid sandbox attachment reference skipped: session={}, reference={}, target={}",
+                    sessionId, reference.id, reference.targetPath);
+            return false;
+        }
+        return reference.sourceSizeBytes == null || reference.sourceSizeBytes <= sandboxService.attachmentMaxBytes;
+    }
+
+    private boolean restore(Sandbox sandbox, ObjectStorageService storage, String sessionId,
+                            SessionAttachmentRef reference) {
+        try {
+            var metadata = storage.headObject(reference.container, reference.blobName);
+            verifySourceVersion(reference, metadata.etag(), metadata.sizeBytes());
+            var data = storage.downloadObject(reference.container, reference.blobName);
+            verifyDownloadedSize(reference.sourceSizeBytes, data.length);
+            sandbox.uploadFile(reference.targetPath, data);
+            return true;
+        } catch (Exception e) {
+            LOGGER.warn("failed to restore sandbox attachment: session={}, reference={}, target={}",
+                    sessionId, reference.id, reference.targetPath, e);
+            return false;
+        }
     }
 
     private void verifySourceVersion(SessionAttachmentRef reference, String currentETag, Long currentSize) {

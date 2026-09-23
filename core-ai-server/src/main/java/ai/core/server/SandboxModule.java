@@ -45,6 +45,7 @@ class SandboxModule extends Module {
         property("sys.sandbox.docker.socket");
         property("sys.sandbox.docker.workspace.base");
         property("sys.sandbox.server.url");
+        property("sys.sandbox.attachments.maxBytes");
         if (providerName == null || providerName.isBlank()) {
             sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
@@ -81,6 +82,7 @@ class SandboxModule extends Module {
                 new SandboxServiceDependencies(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                         bean(ObjectStorageServiceResolver.class), bean(FileService.class),
                         bean(SessionAttachmentRefRepository.class)));
+        sandboxService.attachmentMaxBytes = attachmentMaxBytes();
         bind(sandboxService);
         sandboxService.sessionTokens(sessionTokenService);
 
@@ -109,6 +111,15 @@ class SandboxModule extends Module {
                 .filter(v -> !v.isEmpty())
                 .ifPresent(v -> config.timeoutSeconds = Integer.valueOf(v));
         return config;
+    }
+
+    // Cap for copying chat attachments into a sandbox, overridable via SYS_SANDBOX_ATTACHMENTS_MAXBYTES.
+    private long attachmentMaxBytes() {
+        return property("sys.sandbox.attachments.maxBytes")
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .map(Long::valueOf)
+                .orElse(32L * 1024 * 1024);
     }
 
     private String resolveNamespace() {

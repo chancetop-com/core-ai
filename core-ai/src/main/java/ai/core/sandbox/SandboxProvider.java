@@ -24,4 +24,13 @@ public interface SandboxProvider {
     }
 
     SandboxStatus getStatus(Sandbox sandbox);
+
+    /**
+     * Whether {@code /workspace} accepts writes inside a sandbox this provider creates. False where the
+     * provider mounts it read-only: anything the platform stages into a session's working directory then has
+     * to land under {@code /tmp} instead.
+     */
+    default boolean workspaceWritable() {
+        return true;
+    }
 }

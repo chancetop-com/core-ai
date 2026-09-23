@@ -81,6 +81,15 @@ public final class SandboxLifecycle extends AbstractLifecycle {
             This reference covers the whole hub surface: use it instead of reading the installed SDK source,
             keep endpoints and credentials out of scripts, and prefer one script that prints a compact result
             over many one-off calls.
+
+            # Files the user uploads
+
+            Every file the user attaches to a message is copied into this sandbox before your first turn —
+            `/workspace/attachments/<original name>`, or `/tmp/attachments/<original name>` when the sandbox
+            mounts `/workspace` read-only. The message also carries the path. Work on the uploaded bytes here
+            (ffmpeg, python, …) whenever a model cannot take the file as it arrived — a camera's multi-picture
+            JPEG, a HEIC photo, a frame to pull out of a video, a crop — and hand the result back to a media
+            tool with `{"sandbox_path": "/workspace/attachments/fixed.jpg"}` instead of minting a URL.
             """;
 
     public static String appendHubInstructions(String systemPrompt) {

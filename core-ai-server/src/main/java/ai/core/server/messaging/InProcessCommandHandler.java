@@ -6,8 +6,6 @@ import ai.core.api.server.session.IdName;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
-import ai.core.agent.AttachedContent;
-import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
@@ -25,7 +23,6 @@ import org.slf4j.LoggerFactory;
 import redis.clients.jedis.JedisPool;
 
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -46,8 +43,7 @@ public class InProcessCommandHandler {
     private final SandboxService sandboxService;
     private final EventPublisher eventPublisher;
     private final ToolRegistryService toolRegistryService;
-    private final ObjectStorageServiceResolver objectStorageResolver;
-    private final ai.core.server.domain.SessionAttachmentRefRepository attachmentRepository;
+    private final ChatMessageAttachments attachments;
     private final ai.core.server.asynctask.AsyncToolTaskService asyncToolTaskService;
     private final SandboxHubCommands sandboxHubCommands;
 
@@ -61,8 +57,8 @@ public class InProcessCommandHandler {
         this.jedisPool = rpcDependencies.jedisPool();
         this.sandboxService = sessionDependencies.sandboxService();
         this.eventPublisher = sessionDependencies.eventPublisher();
-        this.objectStorageResolver = sessionDependencies.objectStorageResolver();
-        this.attachmentRepository = sessionDependencies.attachmentRepository();
+        this.attachments = new ChatMessageAttachments(sessionDependencies.sandboxService(),
+                sessionDependencies.objectStorageResolver(), sessionDependencies.attachmentRepository());
         this.toolRegistryService = rpcDependencies.toolRegistryService();
         this.asyncToolTaskService = sessionDependencies.asyncToolTaskService();
         this.sandboxHubCommands = new SandboxHubCommands(rpcDependencies.sandboxHubService());
@@ -140,100 +136,16 @@ public class InProcessCommandHandler {
             sandboxService.uploadFiles(command.sessionId(), command.userId(), pendingFiles);
         }
 
-        var attachedContents = multimodalAttachments(payload, command.sessionId(), command.userId());
-        chatMessageService.writeUserMessage(command.sessionId(), appendVideoHints(message, attachedContents));
+        var attachedContents = attachments.contents(payload, command.sessionId(), command.userId());
+        var stagedPaths = attachments.stageInto(command.sessionId(), command.userId(), payload);
+        var agentMessage = attachments.appendSandboxPaths(message, stagedPaths);
+        chatMessageService.writeUserMessage(command.sessionId(), attachments.appendVideoHints(agentMessage, attachedContents));
         LOGGER.info("handleSendMessage: sending message to agent");
-        session.sendMessage(message, variables, attachedContents);
+        session.sendMessage(agentMessage, variables, attachedContents);
         LOGGER.info("handleSendMessage: message sent to agent");
 
         // Renew session ownership after a successful command (session is active)
         ownershipRegistry.renew(command.sessionId());
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<AttachedContent> multimodalAttachments(Map<String, Object> payload, String sessionId, String userId) {
-        var attachments = (List<Map<String, Object>>) payload.get("multimodalAttachments");
-        if (attachments == null || attachments.isEmpty()) {
-            attachments = (List<Map<String, Object>>) payload.get("imageAttachments");
-        }
-        if (attachments == null || attachments.isEmpty()) return null;
-        var storageService = objectStorageResolver.resolve();
-        if (storageService == null) throw new IllegalStateException("object storage is not configured");
-        var contents = new ArrayList<AttachedContent>(attachments.size());
-        for (var attachment : attachments) {
-            var type = (String) attachment.get("type");
-            var container = (String) attachment.get("container");
-            var blobName = (String) attachment.get("blobName");
-            var contentType = (String) attachment.get("contentType");
-            if ("VIDEO".equals(type)) {
-                if (!validVideoAttachment(container, blobName)) {
-                    throw new IllegalArgumentException("invalid video attachment");
-                }
-                var reference = new ai.core.server.domain.SessionAttachmentRef();
-                reference.id = "video_" + java.util.UUID.randomUUID();
-                reference.sessionId = sessionId;
-                reference.userId = userId;
-                reference.container = container;
-                reference.blobName = blobName;
-                var metadata = storageService.headObject(container, blobName);
-                reference.sourceETag = metadata.etag();
-                reference.sourceSizeBytes = metadata.sizeBytes();
-                reference.contentType = resolveVideoContentType(metadata.contentType(), contentType);
-                reference.fileName = (String) attachment.get("fileName");
-                reference.kind = ai.core.server.domain.SessionAttachmentRef.KIND_VIDEO;
-                reference.createdAt = java.time.ZonedDateTime.now();
-                attachmentRepository.insert(reference);
-                contents.add(AttachedContent.ofReference(
-                        reference.id, reference.contentType, reference.fileName));
-            } else {
-                if (!validImageAttachment(container, blobName, contentType)) {
-                    throw new IllegalArgumentException("invalid image attachment");
-                }
-                var bytes = storageService.downloadObject(container, blobName);
-                var content = AttachedContent.ofBase64(
-                        Base64.getEncoder().encodeToString(bytes), contentType,
-                        AttachedContent.AttachedContentType.IMAGE,
-                        (String) attachment.get("fileName"));
-                content.url = (String) attachment.get("url");
-                contents.add(content);
-            }
-        }
-        return contents;
-    }
-
-    private String appendVideoHints(String message, List<AttachedContent> attachedContents) {
-        if (attachedContents == null || attachedContents.isEmpty()) return message;
-        var hints = new ArrayList<String>();
-        for (var content : attachedContents) {
-            if (content.type != AttachedContent.AttachedContentType.VIDEO) continue;
-            var name = content.filename != null ? content.filename : "video";
-            hints.add("[Video attachment: " + name + "]\nreference: " + content.url);
-        }
-        if (hints.isEmpty()) return message;
-        var text = String.join("\n", hints);
-        return message == null || message.isBlank() ? text : message + "\n\n" + text;
-    }
-
-    private String resolveVideoContentType(String storageContentType, String clientContentType) {
-        if (storageContentType != null && storageContentType.startsWith("video/")) return storageContentType;
-        if (clientContentType != null && clientContentType.startsWith("video/")) return clientContentType;
-        return "video/mp4";
-    }
-
-    private boolean validImageAttachment(String container, String blobName, String contentType) {
-        return validObjectAttachment(container, blobName, contentType) && contentType.startsWith("image/");
-    }
-
-    private boolean validVideoAttachment(String container, String blobName) {
-        return container != null && blobName != null
-                && container.equals(objectStorageResolver.multimodalContainer())
-                && blobName.startsWith("ai/");
-    }
-
-    private boolean validObjectAttachment(String container, String blobName, String contentType) {
-        return container != null && blobName != null && contentType != null
-                && container.equals(objectStorageResolver.multimodalContainer())
-                && blobName.startsWith("ai/");
     }
 
     /**

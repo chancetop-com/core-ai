@@ -57,6 +57,7 @@ public class SandboxService {
     ObjectStorageServiceResolver storageResolver;
     final FileService fileService;
     final SessionAttachmentRefRepository attachmentRepository;
+    public volatile long attachmentMaxBytes = 32L * 1024 * 1024;   // attachments over this stay URL-only
     private final SandboxSnapshotService snapshotService;
     private SandboxRedisStore redisStore;
     private volatile SandboxHubBinding hubBinding;
@@ -203,8 +204,20 @@ public class SandboxService {
     public void ensurePendingFilesUploaded(String sessionId) {
         sandboxFileService.ensurePendingFilesUploaded(sessionId);
     }
+
     public void uploadFiles(String sessionId, String userId, List<PendingFile> files) {
         sandboxFileService.uploadFiles(sessionId, userId, files);
+    }
+
+    /** Stages a message's attachments into the session's sandbox; see {@link SandboxFileService}. */
+    public List<String> stageAttachments(String sessionId, String userId, List<PendingFile> files) {
+        if (!enabled) return List.of();
+        return sandboxFileService.stageAttachments(sessionId, userId, files);
+    }
+
+    /** Whether a sandbox of this deployment accepts writes under {@code /workspace}. */
+    public boolean workspaceWritable() {
+        return sandboxManager == null || sandboxManager.workspaceWritable();
     }
 
     public Sandbox getSandbox(String sessionId) {
@@ -403,17 +416,6 @@ public class SandboxService {
 
     public SandboxConfig getDefaultConfig() {
         return defaultConfig;
-    }
-
-    public Map<String, Object> getStats() {
-        if (!enabled) return Map.of("enabled", Boolean.FALSE);
-        var stats = sandboxManager.getStats();
-        return Map.of(
-                "activeSandboxes", stats.get("activeCount"),
-                "totalAcquired", stats.get("totalAcquired"),
-                "totalReleased", stats.get("totalReleased"),
-                "sessionsWithSandbox", sessionSandboxes.size()
-        );
     }
 
     public void shutdown() {

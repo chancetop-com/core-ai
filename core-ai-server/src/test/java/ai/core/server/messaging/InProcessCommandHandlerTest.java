@@ -80,6 +80,37 @@ class InProcessCommandHandlerTest {
     }
 
     @Test
+    void stagesMultimodalAttachmentsIntoTheSandboxAndTellsTheAgentThePaths() {
+        var sessionManager = mock(AgentSessionManager.class);
+        var chatMessageService = mock(ChatMessageService.class);
+        var ownershipRegistry = mock(SessionOwnershipRegistry.class);
+        var sandboxService = mock(SandboxService.class);
+        var session = mock(InProcessAgentSession.class);
+        when(sessionManager.getSession("s-1", null, "u-1")).thenReturn(session);
+        var storageResolver = mock(ObjectStorageServiceResolver.class);
+        var storage = mock(ObjectStorageService.class);
+        when(storage.downloadObject("uploads", "ai/image.jpg")).thenReturn("image".getBytes(StandardCharsets.UTF_8));
+        when(storageResolver.resolve()).thenReturn(storage);
+        when(storageResolver.multimodalContainer()).thenReturn("uploads");
+        when(sandboxService.stageAttachments(eq("s-1"), eq("u-1"), any()))
+                .thenReturn(List.of("/workspace/attachments/image.jpg"));
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService, ownershipRegistry,
+                sandboxService, null, storageResolver, null, null);
+        var handler = new InProcessCommandHandler(sessionDependencies,
+                new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null));
+        var images = List.of(Map.of(
+                "container", "uploads",
+                "blobName", "ai/image.jpg",
+                "contentType", "image/jpeg",
+                "fileName", "image.jpg"));
+
+        handler.handle(SessionCommand.sendMessage("s-1", "u-1", "animate this", null, null, images));
+
+        verify(session).sendMessage(argThat(message -> message.contains("/workspace/attachments/image.jpg")),
+                eq(null), any());
+    }
+
+    @Test
     void passesCallerIdentityWhenUploadingSandboxAttachments() {
         var sessionManager = mock(AgentSessionManager.class);
         var chatMessageService = mock(ChatMessageService.class);

@@ -157,6 +157,126 @@ class SandboxFileServiceTest {
         verify(fixture.sandbox, never()).uploadFile(eq("/tmp/report.xlsx"), any());
     }
 
+    @Test
+    void stagesAttachmentIntoTheWorkspaceAndRecordsItsReference() {
+        var fixture = fixture();
+        service.ensureSandboxReady("session-1");
+        var bytes = "photo".getBytes(StandardCharsets.UTF_8);
+        when(fixture.storage.headObject("uploads", "ai/uploads/photo.jpg"))
+                .thenReturn(new ObjectStorageService.ObjectMetadata(5L, "etag-photo", "image/jpeg", "now"));
+        when(fixture.storage.downloadObject("uploads", "ai/uploads/photo.jpg")).thenReturn(bytes);
+
+        var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
+                "IMG_0001.JPG", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
+
+        assertEquals(List.of("/workspace/attachments/IMG_0001.JPG"), staged);
+        verify(fixture.sandbox).uploadFile("/workspace/attachments/IMG_0001.JPG", bytes);
+        var captor = ArgumentCaptor.forClass(SessionAttachmentRef.class);
+        verify(fixture.repository).insert(captor.capture());
+        var reference = captor.getValue();
+        assertEquals("session-1", reference.sessionId);
+        assertEquals(SessionAttachmentRef.KIND_SANDBOX, reference.kind);
+        assertEquals("/workspace/attachments/IMG_0001.JPG", reference.targetPath);
+        assertEquals("IMG_0001.JPG", reference.fileName);
+        assertEquals("uploads", reference.container);
+        assertEquals("ai/uploads/photo.jpg", reference.blobName);
+        assertEquals("image/jpeg", reference.contentType);
+    }
+
+    @Test
+    void recordsAttachmentWithoutMaterializingTheSandbox() {
+        var fixture = fixture();
+        when(fixture.storage.headObject("uploads", "ai/uploads/photo.jpg"))
+                .thenReturn(new ObjectStorageService.ObjectMetadata(5L, "etag-photo", "image/jpeg", "now"));
+
+        var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
+                "photo.jpg", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
+
+        assertEquals(List.of("/workspace/attachments/photo.jpg"), staged);
+        verify(fixture.provider, never()).acquire(any(), any(), any());
+        verify(fixture.sandbox, never()).uploadFile(any(), any());
+        var captor = ArgumentCaptor.forClass(SessionAttachmentRef.class);
+        verify(fixture.repository).insert(captor.capture());
+        assertEquals("/workspace/attachments/photo.jpg", captor.getValue().targetPath);
+    }
+
+    @Test
+    void readOnlyWorkspaceFallsBackToTheTmpAttachmentsDirectory() {
+        var fixture = fixture();
+        when(fixture.provider.workspaceWritable()).thenReturn(Boolean.FALSE);
+        service.ensureSandboxReady("session-1");
+        var bytes = "photo".getBytes(StandardCharsets.UTF_8);
+        when(fixture.storage.headObject("uploads", "ai/uploads/photo.jpg"))
+                .thenReturn(new ObjectStorageService.ObjectMetadata(5L, "etag-photo", "image/jpeg", "now"));
+        when(fixture.storage.downloadObject("uploads", "ai/uploads/photo.jpg")).thenReturn(bytes);
+
+        var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
+                "photo.jpg", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
+
+        assertEquals(List.of("/tmp/attachments/photo.jpg"), staged);
+        verify(fixture.sandbox).uploadFile("/tmp/attachments/photo.jpg", bytes);
+    }
+
+    @Test
+    void skipsAttachmentOverTheSizeLimit() {
+        var fixture = fixture();
+        service.ensureSandboxReady("session-1");
+        service.attachmentMaxBytes = 1024L;
+        when(fixture.storage.headObject("uploads", "ai/uploads/huge.mp4"))
+                .thenReturn(new ObjectStorageService.ObjectMetadata(4096L, "etag-huge", "video/mp4", "now"));
+
+        var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
+                "huge.mp4", "uploads", "ai/uploads/huge.mp4", "video/mp4")));
+
+        assertEquals(List.of(), staged);
+        verify(fixture.storage, never()).downloadObject(any(), any());
+        verify(fixture.repository, never()).insert(any());
+    }
+
+    @Test
+    void stagesEachBlobOnlyOnce() {
+        var fixture = fixture();
+        var existing = reference("staged", "photo.jpg", "/workspace/attachments/photo.jpg", "ai/uploads/photo.jpg", 1);
+        existing.container = "uploads";
+        when(fixture.repository.findSandboxAttachments("session-1", "user-1")).thenReturn(List.of(existing));
+
+        var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
+                "photo.jpg", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
+
+        assertEquals(List.of("/workspace/attachments/photo.jpg"), staged);
+        verify(fixture.storage, never()).headObject(any(), any());
+        verify(fixture.repository, never()).insert(any());
+    }
+
+    @Test
+    void skipsSourcesOutsideThePlatformStorage() {
+        var fixture = fixture();
+
+        var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
+                "photo.jpg", "artifacts", "ai/uploads/photo.jpg", "image/jpeg")));
+
+        assertEquals(List.of(), staged);
+        verify(fixture.storage, never()).headObject(any(), any());
+        verify(fixture.repository, never()).insert(any());
+        verify(fixture.sandbox, never()).uploadFile(any(), any());
+    }
+
+    @Test
+    void restoresStagedAttachmentFromItsRecordedPath() {
+        var fixture = fixture();
+        var reference = reference("staged", "photo.jpg", "/workspace/attachments/photo.jpg", "ai/uploads/photo.jpg", 1);
+        reference.container = "uploads";
+        when(fixture.repository.findSandboxAttachments("session-1", "user-1")).thenReturn(List.of(reference));
+        var bytes = "img".getBytes(StandardCharsets.UTF_8);
+        when(fixture.storage.headObject("uploads", "ai/uploads/photo.jpg"))
+                .thenReturn(new ObjectStorageService.ObjectMetadata((long) bytes.length, "etag-staged", "image/jpeg", "now"));
+        when(fixture.storage.downloadObject("uploads", "ai/uploads/photo.jpg")).thenReturn(bytes);
+
+        service.ensureSandboxReady("session-1");
+
+        verify(fixture.sandbox).uploadFile("/workspace/attachments/photo.jpg", bytes);
+    }
+
     private Fixture fixture() {
         return fixture(null);
     }
@@ -166,11 +286,13 @@ class SandboxFileServiceTest {
         var sandbox = mock(Sandbox.class);
         when(sandbox.getId()).thenReturn("sandbox-1");
         when(sandbox.getStatus()).thenReturn(SandboxStatus.READY);
+        when(provider.workspaceWritable()).thenReturn(Boolean.TRUE);
         when(provider.acquire(any(), eq("session-1"), eq("user-1"))).thenReturn(sandbox);
         var storage = mock(ObjectStorageService.class);
         var resolver = mock(ObjectStorageServiceResolver.class);
         when(resolver.resolve()).thenReturn(storage);
         when(resolver.sandboxContainer()).thenReturn("sandbox");
+        when(resolver.multimodalContainer()).thenReturn("uploads");
         var repository = mock(SessionAttachmentRefRepository.class);
         when(repository.findSandboxAttachments("session-1", "user-1")).thenReturn(List.of());
         var config = new SandboxConfig();
