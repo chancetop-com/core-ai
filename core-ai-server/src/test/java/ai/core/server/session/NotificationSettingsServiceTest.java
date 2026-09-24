@@ -6,6 +6,7 @@ import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.channel.ChannelConfigView;
 import ai.core.server.channel.ChannelOutboundAdapter;
 import ai.core.server.channel.ChannelRegistry;
+import ai.core.server.channel.UserChannelTargetStore;
 import ai.core.server.domain.User;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
@@ -48,6 +49,25 @@ class NotificationSettingsServiceTest {
         assertEquals(1, view.channels.size());
         assertEquals("qq", view.channels.getFirst().channelId);
         assertEquals("openclaw", view.channels.getFirst().channelType);
+    }
+
+    @Test
+    void getOffersTheAddressTheUserWasLastSeenWritingFrom() {
+        var harness = harness();
+        harness.channels.put("qq", channel("qq", "openclaw", Boolean.TRUE, USER_ID));
+        when(harness.registry.outbound("openclaw")).thenReturn(mock(ChannelOutboundAdapter.class));
+        var target = new ai.core.server.domain.UserChannelTarget();
+        target.userId = USER_ID;
+        target.channelId = "qq";
+        target.recipient = "qqbot:c2c:OPENID";
+        when(harness.targetStore.load(USER_ID, "qq")).thenReturn(target);
+
+        NotificationSettingsView view = harness.service.get(USER_ID);
+
+        assertEquals(1, view.targets.size());
+        assertEquals("qq", view.targets.getFirst().channelId);
+        assertEquals("openclaw", view.targets.getFirst().channelType);
+        assertEquals("qqbot:c2c:OPENID", view.targets.getFirst().recipient);
     }
 
     @Test
@@ -133,6 +153,7 @@ class NotificationSettingsServiceTest {
         var users = (MongoCollection<User>) mock(MongoCollection.class);
         var store = mock(ChannelConfigStore.class);
         var registry = mock(ChannelRegistry.class);
+        var targets = mock(UserChannelTargetStore.class);
         var user = new User();
         user.id = USER_ID;
         Map<String, ChannelConfigView> channels = new LinkedHashMap<>();
@@ -143,10 +164,12 @@ class NotificationSettingsServiceTest {
         service.userCollection = users;
         service.channelConfigStore = store;
         service.channelRegistry = registry;
-        return new Harness(service, users, user, channels, registry);
+        service.userChannelTargetStore = targets;
+        return new Harness(service, users, targets, user, channels, registry);
     }
 
-    private record Harness(NotificationSettingsService service, MongoCollection<User> users, User user,
+    private record Harness(NotificationSettingsService service, MongoCollection<User> users,
+                           UserChannelTargetStore targetStore, User user,
                            Map<String, ChannelConfigView> channels, ChannelRegistry registry) {
     }
 }

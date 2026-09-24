@@ -136,11 +136,19 @@ export interface NotificationChannel {
   channel_type: string;
 }
 
+export interface NotificationTarget {
+  channel_id: string;
+  channel_type: string;
+  recipient: string;
+}
+
 export interface NotificationSettings {
   channel_id?: string;
   recipient?: string;
   min_minutes?: number;
   channels: NotificationChannel[];
+  // addresses the platform has seen this user write from (picking one beats typing an openid)
+  targets?: NotificationTarget[];
 }
 
 export interface GenerateApiKeyForUserResponse {

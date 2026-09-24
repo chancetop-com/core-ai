@@ -40,6 +40,9 @@ public class ChannelDispatcher {
     @Inject
     ChannelRegistry channelRegistry;
 
+    @Inject
+    UserChannelTargetStore channelTargetStore;
+
     /**
      * Dispatch an inbound event to its Agent session.
      */
@@ -52,6 +55,10 @@ public class ChannelDispatcher {
         }
 
         var userId = resolveUserId(channel, event);
+        // remember the address this user writes from: a notification needs a target, and only an
+        // inbound message ever reveals it
+        channelTargetStore.record(userId, channel.channelId,
+                event.conversationId != null && !event.conversationId.isBlank() ? event.conversationId : event.channelUserId);
 
         if (isToolDecision(event)) {
             var decision = parseDecision(event);

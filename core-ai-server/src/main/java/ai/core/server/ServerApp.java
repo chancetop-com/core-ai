@@ -26,6 +26,7 @@ import ai.core.server.memory.experiment.AgentMemoryExperimentRun;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.SessionFeedback;
+import ai.core.server.domain.UserChannelTarget;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.FileRecord;
@@ -201,6 +202,7 @@ public class ServerApp extends App {
         mongo.collection(ChatSession.class);
         mongo.view(ToolRef.class);
         mongo.collection(SessionFeedback.class);
+        mongo.collection(UserChannelTarget.class);
 
         mongo.collection(Trace.class);
         mongo.collection(Span.class);

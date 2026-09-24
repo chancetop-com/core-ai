@@ -2,9 +2,12 @@ package ai.core.server.session;
 
 import ai.core.api.server.user.NotificationChannelView;
 import ai.core.api.server.user.NotificationSettingsView;
+import ai.core.api.server.user.NotificationTargetView;
 import ai.core.api.server.user.UpdateNotificationSettingsRequest;
 import ai.core.server.channel.ChannelConfigStore;
+import ai.core.server.channel.ChannelConfigView;
 import ai.core.server.channel.ChannelRegistry;
+import ai.core.server.channel.UserChannelTargetStore;
 import ai.core.server.domain.User;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -12,13 +15,15 @@ import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
  * The user-owned half of session-completion notifications: where to deliver and after how long.
- * A user configures it themselves, so it never requires the user-management permission, and only
- * channels that could actually deliver are offered — enabled, with an outbound adapter, and either
- * platform-wide or personal to this user.
+ * A user configures it themselves, so it never requires the user-management permission. Only
+ * channels that could actually deliver are offered, and each one carries the address the user was
+ * last seen writing from — a QQ openid is only knowable from an inbound message, so typing it
+ * cannot be the expected path.
  *
  * @author stephen
  */
@@ -29,6 +34,8 @@ public class NotificationSettingsService {
     ChannelConfigStore channelConfigStore;
     @Inject
     ChannelRegistry channelRegistry;
+    @Inject
+    UserChannelTargetStore userChannelTargetStore;
 
     public NotificationSettingsView get(String userId) {
         var user = requireUser(userId);
@@ -36,7 +43,23 @@ public class NotificationSettingsService {
         view.channelId = user.notifyChannelId;
         view.recipient = user.notifyRecipient;
         view.minMinutes = user.notifyMinMinutes;
-        view.channels = deliveryChannels(userId);
+        var deliverable = deliverableChannels(userId);
+        view.channels = new ArrayList<>(deliverable.size());
+        view.targets = new ArrayList<>(deliverable.size());
+        for (var channel : deliverable) {
+            var channelView = new NotificationChannelView();
+            channelView.channelId = channel.channelId;
+            channelView.channelType = channel.channelType;
+            view.channels.add(channelView);
+
+            var target = userChannelTargetStore.load(userId, channel.channelId);
+            if (target == null) continue;
+            var targetView = new NotificationTargetView();
+            targetView.channelId = channel.channelId;
+            targetView.channelType = channel.channelType;
+            targetView.recipient = target.recipient;
+            view.targets.add(targetView);
+        }
         return view;
     }
 
@@ -57,18 +80,16 @@ public class NotificationSettingsService {
         userCollection.replace(user);
     }
 
-    private List<NotificationChannelView> deliveryChannels(String userId) {
-        var views = new ArrayList<NotificationChannelView>();
+    private List<ChannelConfigView> deliverableChannels(String userId) {
+        var channels = new ArrayList<ChannelConfigView>();
         for (var channel : channelConfigStore.all().values()) {
             if (!Boolean.TRUE.equals(channel.enabled)) continue;
             if (!personalTo(channel.userId, userId)) continue;
             if (!hasOutboundAdapter(channel.channelType)) continue;
-            var view = new NotificationChannelView();
-            view.channelId = channel.channelId;
-            view.channelType = channel.channelType;
-            views.add(view);
+            channels.add(channel);
         }
-        return views;
+        channels.sort(Comparator.comparing(channel -> channel.channelId));
+        return channels;
     }
 
     private void requireDeliverable(String userId, String channelId) {

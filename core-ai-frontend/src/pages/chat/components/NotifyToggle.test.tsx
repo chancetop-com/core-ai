@@ -9,6 +9,7 @@ const configured: NotificationSettings = {
   recipient: 'qqbot:c2c:OPENID',
   min_minutes: 5,
   channels: [{ channel_id: 'stephen-qq-wechat', channel_type: 'openclaw' }],
+  targets: [{ channel_id: 'stephen-qq-wechat', channel_type: 'openclaw', recipient: 'qqbot:c2c:OPENID' }],
 };
 
 const noChannels: NotificationSettings = { channels: [] };
@@ -68,6 +69,27 @@ describe('NotifyToggle', () => {
 
     const recipient = screen.getByPlaceholderText('e.g. qqbot:c2c:<openid>');
     await userEvent.type(recipient, 'qqbot:c2c:OPENID');
+    await userEvent.click(screen.getByText('Save'));
+
+    expect(props.onSave).toHaveBeenCalledWith({
+      channelId: 'stephen-qq-wechat',
+      recipient: 'qqbot:c2c:OPENID',
+      minMinutes: 5,
+    });
+  });
+
+  it('offers a known address as a pick instead of asking for an openid', async () => {
+    const withKnownTarget: NotificationSettings = {
+      channels: [{ channel_id: 'stephen-qq-wechat', channel_type: 'openclaw' }],
+      targets: [{ channel_id: 'stephen-qq-wechat', channel_type: 'openclaw', recipient: 'qqbot:c2c:OPENID' }],
+    };
+    const props = renderToggle({ settings: withKnownTarget, onLoad: vi.fn(async () => withKnownTarget) });
+
+    await userEvent.click(bell());
+
+    expect(screen.getByText('QQ/WeChat — stephen-qq-wechat')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('e.g. qqbot:c2c:<openid>')).toBeNull();
+
     await userEvent.click(screen.getByText('Save'));
 
     expect(props.onSave).toHaveBeenCalledWith({

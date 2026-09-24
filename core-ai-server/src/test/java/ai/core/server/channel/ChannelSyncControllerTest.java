@@ -36,6 +36,7 @@ class ChannelSyncControllerTest {
         controller.ocgCallbackPool = mock(OcgCallbackPool.class);
         controller.ocgConfigStore = mock(OcgConfigStore.class);
         controller.personalAssistantService = PersonalAssistantStubs.passThrough();
+        controller.userChannelTargetStore = mock(UserChannelTargetStore.class);
 
         var channelA = channel("channel-a", "agent-a", "owner-a");
         var channelB = channel("channel-b", "agent-b", "owner-b");
@@ -74,6 +75,7 @@ class ChannelSyncControllerTest {
         controller.ocgCallbackPool = mock(OcgCallbackPool.class);
         controller.ocgConfigStore = mock(OcgConfigStore.class);
         controller.personalAssistantService = PersonalAssistantStubs.passThrough();
+        controller.userChannelTargetStore = mock(UserChannelTargetStore.class);
         var channel = channel("channel-a", "agent-a", null);
         var agent = agent("agent-a");
         when(controller.channelConfigStore.load("channel-a")).thenReturn(channel);

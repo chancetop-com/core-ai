@@ -23,4 +23,8 @@ public class NotificationSettingsView {
     /** Channels this user may deliver to; empty when none is configured. */
     @Property(name = "channels")
     public List<NotificationChannelView> channels;
+
+    /** Addresses this user has been seen writing from; picking one beats typing an openid. */
+    @Property(name = "targets")
+    public List<NotificationTargetView> targets;
 }
