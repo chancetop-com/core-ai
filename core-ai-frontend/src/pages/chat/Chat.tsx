@@ -238,6 +238,11 @@ export default function Chat() {
     }
   }, []);
 
+  // load once on mount too: the bell's tooltip names the platform (QQ/WeChat) before it is clicked
+  useEffect(() => {
+    void loadNotifySettings();
+  }, [loadNotifySettings]);
+
   const applyNotifyOnSession = useCallback(async (next: boolean) => {
     if (!sessionId) {
       // no session yet: keep the intent locally, ensureSession applies it once this chat exists
