@@ -2948,7 +2948,6 @@ export interface OcgConfigView {
   channelId: string;
   channelName?: string;
   configJson: string;
-  callbackSecret?: string;
   enabled?: boolean;
   sandboxId?: string;
   sandboxIp?: string;
