@@ -310,9 +310,6 @@ public class AuthService {
             view.quotaConsumedInputTokens = user.quotaConsumedInputTokens;
             view.quotaConsumedOutputTokens = user.quotaConsumedOutputTokens;
             view.outboundCallerHeaders = toCallerHeaderViews(user.outboundCallerHeaders);
-            view.notifyChannelId = user.notifyChannelId;
-            view.notifyRecipient = user.notifyRecipient;
-            view.notifyMinMinutes = user.notifyMinMinutes;
             response.users.add(view);
         }
         return response;

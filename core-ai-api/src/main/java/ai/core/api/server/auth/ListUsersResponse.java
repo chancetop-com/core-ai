@@ -74,14 +74,5 @@ public class ListUsersResponse {
 
         @Property(name = "outbound_caller_headers")
         public List<OutboundCallerHeaderView> outboundCallerHeaders;
-
-        @Property(name = "notify_channel_id")
-        public String notifyChannelId;
-
-        @Property(name = "notify_recipient")
-        public String notifyRecipient;
-
-        @Property(name = "notify_min_minutes")
-        public Integer notifyMinMinutes;
     }
 }

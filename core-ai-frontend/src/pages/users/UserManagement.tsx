@@ -3,7 +3,7 @@ import {
   Users, CheckCircle, XCircle, RefreshCw, Trash2, Key, KeyRound, X, ArrowLeft,
   Plus, Copy, Pause, Play, Search,
 } from 'lucide-react';
-import { api, adminApi, apiUsersAdminApi, rbacApi, type ChannelView, type CreateApiUserResponse } from '../../api/client';
+import { api, adminApi, apiUsersAdminApi, rbacApi, type CreateApiUserResponse } from '../../api/client';
 import RolesTab from './RolesTab';
 
 interface ManagedUser {
@@ -28,9 +28,6 @@ interface ManagedUser {
   quota_consumed_input_tokens?: number;
   quota_consumed_output_tokens?: number;
   outbound_caller_headers?: { header_name: string; value_source: string }[];
-  notify_channel_id?: string;
-  notify_recipient?: string;
-  notify_min_minutes?: number;
 }
 
 export default function UserManagement() {
@@ -60,19 +57,11 @@ export default function UserManagement() {
   const [callerHeadersDraft, setCallerHeadersDraft] = useState<CallerHeaderDraft[]>([]);
   const [callerHeadersSaving, setCallerHeadersSaving] = useState(false);
   const [callerHeadersSaved, setCallerHeadersSaved] = useState(false);
-  const [channels, setChannels] = useState<ChannelView[]>([]);
-  const [notifyDraft, setNotifyDraft] = useState<NotifyDraft>({ channelId: '', recipient: '', minMinutes: '' });
-  const [notifySaving, setNotifySaving] = useState(false);
-  const [notifySaved, setNotifySaved] = useState(false);
   const [tab, setTab] = useState<'users' | 'roles'>('users');
   const [roleOptions, setRoleOptions] = useState<string[]>(['user', 'admin']);
 
   useEffect(() => {
     api.agents.list(undefined, undefined, 1000).then(res => setAgents(res.agents)).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    api.channels.list().then(res => setChannels(res.channels || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -104,12 +93,6 @@ export default function UserManagement() {
         };
       }));
       setCallerHeadersSaved(false);
-      setNotifyDraft({
-        channelId: selectedUser.notify_channel_id || '',
-        recipient: selectedUser.notify_recipient || '',
-        minMinutes: selectedUser.notify_min_minutes != null ? String(selectedUser.notify_min_minutes) : '',
-      });
-      setNotifySaved(false);
     }
   }, [selectedUser]);
 
@@ -146,9 +129,6 @@ export default function UserManagement() {
         quota_consumed_input_tokens: u.quota_consumed_input_tokens,
         quota_consumed_output_tokens: u.quota_consumed_output_tokens,
         outbound_caller_headers: u.outbound_caller_headers,
-        notify_channel_id: u.notify_channel_id,
-        notify_recipient: u.notify_recipient,
-        notify_min_minutes: u.notify_min_minutes,
       } as ManagedUser;
     });
   }, []);
@@ -385,30 +365,6 @@ export default function UserManagement() {
       setError(err instanceof Error ? err.message : 'Failed to save caller headers');
     } finally {
       setCallerHeadersSaving(false);
-    }
-  };
-
-  const handleSaveNotify = async () => {
-    if (!selectedUser?.user_id) return;
-    const minMinutes = notifyDraft.minMinutes.trim();
-    if (minMinutes && (!/^\d+$/.test(minMinutes) || Number(minMinutes) < 1)) {
-      setError('Minimum duration must be a whole number of minutes, at least 1');
-      return;
-    }
-    setNotifySaving(true);
-    setError('');
-    try {
-      await adminApi.updateUserConfig(selectedUser.user_id, {
-        notify_channel_id: notifyDraft.channelId.trim(),
-        notify_recipient: notifyDraft.recipient.trim(),
-        notify_min_minutes: minMinutes ? Number(minMinutes) : 5,
-      });
-      setNotifySaved(true);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save notification settings');
-    } finally {
-      setNotifySaving(false);
     }
   };
 
@@ -868,15 +824,6 @@ export default function UserManagement() {
                   />
                 )}
 
-                <SessionNotifySection
-                  draft={notifyDraft}
-                  channels={channels}
-                  saved={notifySaved}
-                  saving={notifySaving}
-                  onChange={setNotifyDraft}
-                  onSave={handleSaveNotify}
-                />
-
                 <section>
                   <h3 className="text-xs font-medium uppercase tracking-wider mb-3"
                     style={{ color: 'var(--color-text-secondary)' }}>Actions</h3>
@@ -998,12 +945,6 @@ interface CallerHeaderDraft {
   metadataKey: string;
 }
 
-interface NotifyDraft {
-  channelId: string;
-  recipient: string;
-  minMinutes: string;  // blank = default (5)
-}
-
 const toM = (tokens?: number) => tokens != null ? String(Math.round((tokens / 1_000_000) * 1_000_000) / 1_000_000) : '';
 
 const toTokens = (m: string) => {
@@ -1085,69 +1026,6 @@ function CallerHeadersSection({
         className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors disabled:opacity-50"
         style={{ background: saved ? '#22c55e' : 'var(--color-primary)' }}>
         {saved ? 'Saved' : saving ? 'Saving...' : 'Save Caller Headers'}
-      </button>
-    </section>
-  );
-}
-
-function SessionNotifySection({
-  draft, channels, saved, saving, onChange, onSave,
-}: {
-  draft: NotifyDraft;
-  channels: ChannelView[];
-  saved: boolean;
-  saving: boolean;
-  onChange: (draft: NotifyDraft) => void;
-  onSave: () => void;
-}) {
-  const knownChannel = channels.some(c => c.channelId === draft.channelId);
-  return (
-    <section>
-      <h3 className="text-xs font-medium uppercase tracking-wider mb-3"
-        style={{ color: 'var(--color-text-secondary)' }}>Session Notifications</h3>
-      <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-        Where this user is told that a chat session finished, when the chat has its completion
-        switch on and a turn ran longer than the minimum. Channel empty = disabled. Recipient is
-        the platform-side target (e.g. qqbot:c2c:&lt;openid&gt; for QQ). Users can also set this
-        themselves from the chat bell — this panel is for configuring them on their behalf.
-      </p>
-      <div className="space-y-2">
-        <select
-          value={draft.channelId}
-          onChange={(e) => onChange({ ...draft, channelId: e.target.value })}
-          className="w-full px-3 py-2 rounded-lg text-sm border-0 outline-none cursor-pointer"
-          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
-          <option value="">(no channel — disabled)</option>
-          {channels.map(c => (
-            <option key={c.channelId} value={c.channelId}>{c.channelId} ({c.channelType})</option>
-          ))}
-          {draft.channelId && !knownChannel && (
-            <option value={draft.channelId}>{draft.channelId} (removed)</option>
-          )}
-        </select>
-        <input
-          value={draft.recipient}
-          onChange={(e) => onChange({ ...draft, recipient: e.target.value })}
-          placeholder="recipient (e.g. qqbot:c2c:<openid>)"
-          className="w-full px-3 py-2 rounded-lg text-sm border-0 outline-none"
-          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
-        />
-        <input
-          type="number"
-          min="1"
-          value={draft.minMinutes}
-          onChange={(e) => onChange({ ...draft, minMinutes: e.target.value })}
-          placeholder="minimum minutes (default 5)"
-          className="w-full px-3 py-2 rounded-lg text-sm border-0 outline-none"
-          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
-        />
-      </div>
-      <button
-        onClick={onSave}
-        disabled={saving}
-        className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors disabled:opacity-50"
-        style={{ background: saved ? '#22c55e' : 'var(--color-primary)' }}>
-        {saved ? 'Saved' : saving ? 'Saving...' : 'Save Notifications'}
       </button>
     </section>
   );
