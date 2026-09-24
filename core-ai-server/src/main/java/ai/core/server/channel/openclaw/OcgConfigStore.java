@@ -6,6 +6,8 @@ import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.security.SecureRandom;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +17,8 @@ import java.util.Map;
  */
 public class OcgConfigStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(OcgConfigStore.class);
+    private static final int SECRET_BYTES = 32;
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     @Inject
     MongoCollection<OcgConfigView> collection;
@@ -76,5 +80,24 @@ public class OcgConfigStore {
         } catch (Exception e) {
             LOGGER.warn("failed to delete OCG config from db, id={}", id, e);
         }
+    }
+
+    /**
+     * The callback/send secret is server-owned: it is minted here and never supplied by a client, so the value
+     * injected into the gateway config and the one signing requests can never drift apart.
+     */
+    String newSecret() {
+        var bytes = new byte[SECRET_BYTES];
+        RANDOM.nextBytes(bytes);
+        return HexFormat.of().formatHex(bytes);
+    }
+
+    /** Configs created before the secret became server-owned have none yet: mint one and keep it. */
+    public String ensureCallbackSecret(OcgConfigView config) {
+        if (config.callbackSecret == null || config.callbackSecret.isBlank()) {
+            config.callbackSecret = newSecret();
+            store(config);
+        }
+        return config.callbackSecret;
     }
 }

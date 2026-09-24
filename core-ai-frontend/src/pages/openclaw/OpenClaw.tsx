@@ -8,7 +8,6 @@ interface EditorState {
   editing: OcgConfigView | null;
   id: string;
   channelId: string;
-  callbackSecret: string;
   configJson: string;
 }
 
@@ -28,7 +27,6 @@ function emptyEditor(): EditorState {
     editing: null,
     id: '',
     channelId: '',
-    callbackSecret: '',
     configJson: '{\n  \n}',
   };
 }
@@ -90,7 +88,6 @@ export default function OpenClaw() {
       editing: config,
       id: config.id,
       channelId: config.channelId,
-      callbackSecret: config.callbackSecret || '',
       configJson: config.configJson || '{\n  \n}',
     });
   };
@@ -116,7 +113,6 @@ export default function OpenClaw() {
       id: editor.id.trim(),
       channelId: editor.channelId,
       configJson: editor.configJson.trim(),
-      callbackSecret: editor.callbackSecret.trim() || undefined,
     };
 
     try {
@@ -458,12 +454,9 @@ export default function OpenClaw() {
 
               <div>
                 <label className="block text-sm font-medium mb-1">Callback Secret</label>
-                <input value={editor.callbackSecret} type="password"
-                  onChange={e => setEditor(prev => ({ ...prev, callbackSecret: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg border text-sm"
-                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
-                <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  Stored at the top level and injected into the runtime config only when starting the sandbox.
+                <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  Generated and stored by the platform, then injected into the gateway when the sandbox starts.
+                  It signs callback replies and authenticates system sends, so there is nothing to fill in here.
                 </p>
               </div>
 

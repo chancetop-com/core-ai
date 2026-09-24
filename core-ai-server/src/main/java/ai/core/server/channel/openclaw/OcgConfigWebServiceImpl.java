@@ -146,8 +146,10 @@ public class OcgConfigWebServiceImpl implements OcgConfigWebService {
         config.id = id;
         config.channelId = channelId;
         config.configJson = configJson;
-        config.callbackSecret = request.callbackSecret;
         config.enabled = request.enabled != null ? request.enabled : existing == null || !Boolean.FALSE.equals(existing.enabled);
+        config.callbackSecret = existing != null && existing.callbackSecret != null && !existing.callbackSecret.isBlank()
+                ? existing.callbackSecret
+                : ocgConfigStore.newSecret();
         return config;
     }
 
@@ -174,7 +176,6 @@ public class OcgConfigWebServiceImpl implements OcgConfigWebService {
         view.id = config.id;
         view.channelId = config.channelId;
         view.configJson = config.configJson;
-        view.callbackSecret = config.callbackSecret;
         view.enabled = config.enabled;
         view.sandboxId = config.sandboxId;
         view.sandboxIp = config.sandboxIp;

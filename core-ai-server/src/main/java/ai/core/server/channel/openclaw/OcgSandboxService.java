@@ -51,6 +51,7 @@ public class OcgSandboxService {
     public void startSandbox(String ocgConfigId) {
         synchronized (this) {
             var config = loadConfig(ocgConfigId);
+            ocgConfigStore.ensureCallbackSecret(config);
             if (config.sandboxId != null && !config.sandboxId.isBlank()) {
                 throw new BadRequestException("OCG sandbox already started: " + ocgConfigId);
             }
@@ -143,6 +144,7 @@ public class OcgSandboxService {
     public void restartGateway(String ocgConfigId) {
         synchronized (this) {
             var config = loadConfig(ocgConfigId);
+            ocgConfigStore.ensureCallbackSecret(config);
             var sandbox = requireSandbox(ocgConfigId);
             var sandboxIp = sandbox.ip();
             if (sandboxIp == null || sandboxIp.isBlank()) throw new BadRequestException("sandbox ip is unavailable");

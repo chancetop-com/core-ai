@@ -15,9 +15,6 @@ public class OcgConfigRequest {
     @Property(name = "configJson")
     public String configJson;
 
-    @Property(name = "callbackSecret")
-    public String callbackSecret;
-
     @Property(name = "enabled")
     public Boolean enabled;
 }

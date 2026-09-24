@@ -17,9 +17,6 @@ public class OcgConfigView {
     @Property(name = "configJson")
     public String configJson;
 
-    @Property(name = "callbackSecret")
-    public String callbackSecret;
-
     @Property(name = "enabled")
     public Boolean enabled;
 
