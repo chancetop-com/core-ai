@@ -1108,7 +1108,8 @@ function SessionNotifySection({
       <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
         Where this user is told that a chat session finished, when the chat has its completion
         switch on and a turn ran longer than the minimum. Channel empty = disabled. Recipient is
-        the platform-side target (e.g. qqbot:c2c:&lt;openid&gt; for QQ).
+        the platform-side target (e.g. qqbot:c2c:&lt;openid&gt; for QQ). Users can also set this
+        themselves from the chat bell — this panel is for configuring them on their behalf.
       </p>
       <div className="space-y-2">
         <select

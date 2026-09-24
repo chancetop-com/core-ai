@@ -4,7 +4,7 @@ import { sessionApi } from '../../api/session';
 import { useCapabilities } from '../../api/capabilities';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, SseTaskStatusEvent, ChatSessionSummary, SessionArtifact, SessionFeedback } from '../../api/session';
 import { api } from '../../api/client';
-import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
+import type { AgentDefinition, NotificationSettings, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import type { IdName } from '../../api/session';
 import ResourcePicker from './ResourcePicker';
 import ChatConfigModal, { type DatasetConfigDraft } from './ChatConfigModal';
@@ -153,6 +153,10 @@ export default function Chat() {
   const [toast, setToast] = useState<string | null>(null);
   // per-chat switch: ping the owner on their channel when a long turn of this session ends
   const [notifyOnComplete, setNotifyOnComplete] = useState(false);
+  // the owner's own delivery target (self-service); the switch is meaningless without it
+  const [notifySettings, setNotifySettings] = useState<NotificationSettings | null>(null);
+  // set when the target is configured before any session exists, so the switch can still follow
+  const notifyEnablePendingRef = useRef(false);
   const [showVoiceSidebar, setShowVoiceSidebar] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
@@ -222,25 +226,54 @@ export default function Chat() {
     setTimeout(() => setToast(null), 2500);
   }, []);
 
-  // The switch belongs to a session, so it can only be flipped once one exists — but it is allowed
-  // mid-turn, which is exactly when someone decides they are tired of watching it.
-  const handleToggleNotify = useCallback(async () => {
+  // the popover behind the bell: it explains the switch, sets the target up on first use, and is
+  // where the target is changed later — the same handlers serve all three
+  const loadNotifySettings = useCallback(async () => {
+    try {
+      const settings = await api.user.notificationSettings();
+      setNotifySettings(settings);
+      return settings;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const applyNotifyOnSession = useCallback(async (next: boolean) => {
     if (!sessionId) {
-      showToast('Send a message first — completion notifications belong to a session');
+      // no session yet: keep the intent locally, ensureSession applies it once this chat exists
+      notifyEnablePendingRef.current = next;
+      setNotifyOnComplete(next);
       return;
     }
-    const next = !notifyOnComplete;
     setNotifyOnComplete(next);
     try {
-      const res = await sessionApi.updateSessionNotify(sessionId, next);
-      if (next && res.notify_target_configured === false) {
-        showToast('No notification target on your account — set one in Users → your account → Session Notifications');
-      }
+      await sessionApi.updateSessionNotify(sessionId, next);
     } catch (err) {
       setNotifyOnComplete(!next);
       showToast(err instanceof Error ? err.message : 'Failed to update the notification switch');
     }
-  }, [notifyOnComplete, sessionId, showToast]);
+  }, [sessionId, showToast]);
+
+  const saveNotifySettings = useCallback(async (data: { channelId: string; recipient: string; minMinutes: number }) => {
+    try {
+      await api.user.updateNotificationSettings({
+        channel_id: data.channelId,
+        recipient: data.recipient,
+        min_minutes: data.minMinutes,
+      });
+      setNotifySettings(await api.user.notificationSettings());
+      if (!sessionId) {
+        // configured before the first message: remember the intent and apply it when the
+        // session exists (the switch lives on the session, not on the user)
+        notifyEnablePendingRef.current = true;
+      } else if (!notifyOnComplete) {
+        await applyNotifyOnSession(true);
+      }
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Failed to save the notification target';
+    }
+  }, [applyNotifyOnSession, notifyOnComplete, sessionId]);
 
   const abortSSE = useCallback(() => {
     sseConnectionSeqRef.current += 1;
@@ -1466,6 +1499,11 @@ export default function Chat() {
     setSessionId(id);
     promoteOptimisticSession(id, firstMessage);
     cancelledSessionIdsRef.current.delete(id);
+    if (notifyEnablePendingRef.current) {
+      // the switch was set before this session existed — it belongs to the session, so apply it now
+      setNotifyOnComplete(true);
+      void sessionApi.updateSessionNotify(id, true).catch(() => setNotifyOnComplete(false));
+    }
 
     // Update loaded state from server response
     const loadedTools = res.loaded_tools;
@@ -2012,8 +2050,13 @@ export default function Chat() {
         getAgentChipName={getAgentChipName}
         onOpenConfig={openConfigModal}
         onToggleVoiceSidebar={handleToggleVoiceSidebar}
-        notifyOnComplete={notifyOnComplete}
-        onToggleNotify={handleToggleNotify}
+        notify={{
+          enabled: notifyOnComplete,
+          settings: notifySettings,
+          onLoad: loadNotifySettings,
+          onToggle: next => void applyNotifyOnSession(next),
+          onSave: saveNotifySettings,
+        }}
         onSend={handleSend}
         onCancel={handleCancel}
         onToast={showToast}

@@ -134,6 +134,18 @@ export interface ListUsersResponse {
   users: UserStatus[];
 }
 
+export interface NotificationChannel {
+  channel_id: string;
+  channel_type: string;
+}
+
+export interface NotificationSettings {
+  channel_id?: string;
+  recipient?: string;
+  min_minutes?: number;
+  channels: NotificationChannel[];
+}
+
 export interface GenerateApiKeyForUserResponse {
   api_key: string;
 }
@@ -1850,6 +1862,13 @@ function buildAnalyticsParams(params: AnalyticsParams): string {
 }
 
 export const api = {
+  user: {
+    // self-service session-completion notification target (no admin permission involved)
+    notificationSettings: () =>
+      request<NotificationSettings>('/api/user/notification-settings'),
+    updateNotificationSettings: (data: { channel_id: string; recipient: string; min_minutes?: number }) =>
+      request<void>('/api/user/notification-settings', { method: 'PUT', body: JSON.stringify(data) }),
+  },
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
       const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });

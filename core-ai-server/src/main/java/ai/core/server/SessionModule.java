@@ -3,6 +3,7 @@ package ai.core.server;
 import ai.core.api.server.sandbox.SandboxTerminalWebService;
 import ai.core.api.server.session.ChatSessionWebService;
 import ai.core.api.server.session.sse.SseBaseEvent;
+import ai.core.api.server.user.UserNotificationWebService;
 import ai.core.server.agent.SubAgentAssembler;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.SandboxTerminalRuntimeResolver;
@@ -13,6 +14,7 @@ import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.AwtImageShrinker;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.session.NotificationSettingsService;
 import ai.core.server.session.SessionActivityRegistry;
 import ai.core.server.session.SessionAgentHelper;
 import ai.core.server.session.SessionCompletionNotifier;
@@ -20,6 +22,7 @@ import ai.core.server.session.SessionRegistry;
 import ai.core.server.session.SessionSearchService;
 import ai.core.server.web.ChatSessionWebServiceImpl;
 import ai.core.server.web.SessionCreateHelper;
+import ai.core.server.web.UserNotificationWebServiceImpl;
 import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.web.sse.AgentSessionChannelListener;
 import ai.core.server.web.sse.CliProxyChannelListener;
@@ -60,6 +63,8 @@ public class SessionModule extends Module {
         registerSseEndpoints();
         schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
         api().service(ChatSessionWebService.class, bind(ChatSessionWebServiceImpl.class));
+        // self-service notification target: any signed-in user configures their own channel
+        api().service(UserNotificationWebService.class, bind(UserNotificationWebServiceImpl.class));
     }
 
     private void bindSessionRuntime() {
@@ -73,6 +78,7 @@ public class SessionModule extends Module {
         bind(SessionSearchService.class);
         activityRegistry = bind(new SessionActivityRegistry(bean(JedisPool.class)));
         bind(SessionCompletionNotifier.class);
+        bind(NotificationSettingsService.class);
         agentSessionManager = bind(AgentSessionManager.class);
         // finished async tool calls are delivered over the command bus; MessagingRuntimeModule wires
         // the dispatcher once CommandPublisher exists (it loads after this module)
