@@ -31,7 +31,7 @@ function renderToggle(overrides: Partial<NotifyToggleProps> = {}) {
 }
 
 function bell(): HTMLButtonElement {
-  return screen.getByTitle(/click to/) as HTMLButtonElement;
+  return screen.getByTitle(/^Get a /) as HTMLButtonElement;
 }
 
 describe('NotifyToggle', () => {
@@ -40,7 +40,7 @@ describe('NotifyToggle', () => {
 
     const button = bell();
     expect(button.title).toContain('QQ/WeChat');
-    expect(button.title).toContain('click to turn on');
+    expect(button.title).toContain('currently off for this chat');
 
     await userEvent.click(button);
 

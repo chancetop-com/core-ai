@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, BellRing, Loader2 } from 'lucide-react';
+import { Bell, BellRing, Loader2, X } from 'lucide-react';
 import type { NotificationSettings } from '../../../api/client';
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -25,12 +25,15 @@ export interface NotifyToggleProps {
 }
 
 /**
- * Per-chat completion-notification switch plus the user's own delivery target. The switch means
- * nothing without somewhere to deliver, so the same control explains itself, sets the target up on
- * first use, and lets it be changed later — a plain toggle left people guessing what it did.
+ * Per-chat completion-notification control: the switch plus the user's own delivery target, in one
+ * dialog. The switch means nothing without somewhere to deliver, so the same surface explains
+ * itself, sets the target up on first use and lets it be changed later — a bare toggle left people
+ * guessing what it did. Centered overlay rather than a popover: the bell sits at the left edge of
+ * the composer, where an anchored panel runs off the viewport.
  */
 export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSave }: NotifyToggleProps) {
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [channelId, setChannelId] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -51,10 +54,13 @@ export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSa
 
   useEffect(() => {
     if (!open) return;
-    onLoad().then(next => {
-      applySettings(next);
-      setEditing(!(next?.channel_id && next?.recipient));
-    });
+    setLoading(true);
+    onLoad()
+      .then(next => {
+        applySettings(next);
+        setEditing(!(next?.channel_id && next?.recipient));
+      })
+      .finally(() => setLoading(false));
   }, [open, onLoad]);
 
   const close = () => {
@@ -85,16 +91,14 @@ export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSa
     setEditing(false);
   };
 
-  const title = !configured
-    ? `Get a ${label} message when a long turn of this chat finishes — click to set it up`
-    : enabled
-      ? `${label} notification is on for this chat — click to change or turn off`
-      : `Get a ${label} message when a long turn of this chat finishes — click to turn on`;
+  const title = configured
+    ? `Get a ${label} message when a long turn of this chat finishes — currently ${enabled ? 'on' : 'off'} for this chat`
+    : `Get a ${label} message when a long turn of this chat finishes — click to set it up`;
 
   return (
-    <div className="relative shrink-0">
+    <>
       <button
-        onClick={() => (open ? close() : setOpen(true))}
+        onClick={() => setOpen(true)}
         className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
         style={{
           background: enabled ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
@@ -106,100 +110,120 @@ export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSa
       </button>
 
       {open && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={close} />
-          <div className="absolute bottom-full mb-2 right-0 z-30 w-80 rounded-xl border p-4 text-left shadow-xl"
-            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-            <div className="text-sm font-medium mb-1">Session notifications</div>
-            <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-              Get a {label} message when a long turn of this chat finishes, so you can walk away from
-              a slow session. Short turns stay quiet.
-            </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={close}>
+          <div className="rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            style={{ width: 'min(460px, 92vw)', maxHeight: '85vh', background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b"
+              style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="text-base font-semibold">Session notifications</h2>
+              <button onClick={close} className="p-1 rounded cursor-pointer hover:opacity-70"
+                style={{ color: 'var(--color-text-secondary)' }} title="Close">
+                <X size={18} />
+              </button>
+            </div>
 
-            <button
-              onClick={() => {
-                if (!configured) {
-                  setEditing(true);
-                  return;
-                }
-                onToggle(!enabled);
-              }}
-              className="flex items-center gap-2 w-full cursor-pointer mb-3">
-              <span className="w-9 h-5 rounded-full relative shrink-0 transition-colors"
-                style={{ background: enabled ? 'var(--color-primary)' : 'var(--color-border)' }}>
-                <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
-                  style={{ left: enabled ? '18px' : '2px' }} />
-              </span>
-              <span className="text-sm">{enabled ? 'On for this chat' : 'Off for this chat'}</span>
-            </button>
+            <div className="px-5 py-4 overflow-y-auto">
+              <p className="text-xs mb-4 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                Get a {label} message when a long turn of this chat finishes, so you can walk away from
+                a slow session. Short turns stay quiet.
+              </p>
 
-            {configured && !editing ? (
-              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                <div className="truncate">Send to: {settings?.channel_id} · {settings?.recipient}</div>
-                <div className="mt-0.5">Notify after {settings?.min_minutes ?? 5} min</div>
-                <button onClick={() => { applySettings(settings); setEditing(true); }}
-                  className="mt-2 underline cursor-pointer"
-                  style={{ color: 'var(--color-primary)' }}>
-                  Change target
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {settings?.channels?.length ? (
-                  <label className="block">
-                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Channel</span>
-                    <select value={channelId} onChange={e => setChannelId(e.target.value)}
-                      className="w-full mt-1 px-2 py-1.5 rounded text-sm border-0 outline-none cursor-pointer"
-                      style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
-                      {settings.channels.map(c => (
-                        <option key={c.channel_id} value={c.channel_id}>
-                          {c.channel_id} ({channelLabel(c.channel_type)})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                    No channel is available for notifications yet — ask an admin to add one
-                    (Triggers → Channels).
-                  </div>
-                )}
-                <label className="block">
-                  <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                    Recipient on {channelLabel(selectedType)}
-                  </span>
-                  <input value={recipient} onChange={e => setRecipient(e.target.value)}
-                    placeholder="e.g. qqbot:c2c:<openid>"
-                    className="w-full mt-1 px-2 py-1.5 rounded text-sm border-0 outline-none"
-                    style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }} />
-                </label>
-                <label className="block">
-                  <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Notify after (minutes)</span>
-                  <input type="number" min="1" value={minMinutes} onChange={e => setMinMinutes(e.target.value)}
-                    className="w-full mt-1 px-2 py-1.5 rounded text-sm border-0 outline-none"
-                    style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }} />
-                </label>
-                {error && <div className="text-xs" style={{ color: 'var(--color-error)' }}>{error}</div>}
-                <div className="flex items-center gap-2 pt-1">
-                  <button onClick={() => void save()} disabled={saving || !settings?.channels?.length}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-50"
-                    style={{ background: 'var(--color-primary)' }}>
-                    {saving && <Loader2 size={12} className="animate-spin" />}
-                    Save
-                  </button>
-                  {configured && (
-                    <button onClick={() => { setEditing(false); setError(''); }}
-                      className="px-3 py-1.5 rounded-lg text-xs cursor-pointer"
-                      style={{ color: 'var(--color-text-secondary)' }}>
-                      Cancel
-                    </button>
-                  )}
+              {loading ? (
+                <div className="flex items-center gap-2 text-xs mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                  <Loader2 size={14} className="animate-spin" /> Loading…
                 </div>
-              </div>
-            )}
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      if (!configured) {
+                        setEditing(true);
+                        return;
+                      }
+                      onToggle(!enabled);
+                    }}
+                    className="flex items-center gap-2 w-full cursor-pointer mb-4">
+                    <span className="w-9 h-5 rounded-full relative shrink-0 transition-colors"
+                      style={{ background: enabled ? 'var(--color-primary)' : 'var(--color-border)' }}>
+                      <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                        style={{ left: enabled ? '18px' : '2px' }} />
+                    </span>
+                    <span className="text-sm">{enabled ? 'On for this chat' : 'Off for this chat'}</span>
+                  </button>
+
+                  {configured && !editing ? (
+                    <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                      <div className="truncate">Send to: {settings?.channel_id} · {settings?.recipient}</div>
+                      <div className="mt-0.5">Notify after {settings?.min_minutes ?? 5} min</div>
+                      <button onClick={() => { applySettings(settings); setEditing(true); }}
+                        className="mt-2 underline cursor-pointer"
+                        style={{ color: 'var(--color-primary)' }}>
+                        Change target
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {settings?.channels?.length ? (
+                        <label className="block">
+                          <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Channel</span>
+                          <select value={channelId} onChange={e => setChannelId(e.target.value)}
+                            className="w-full mt-1 px-3 py-2 rounded-lg text-sm border-0 outline-none cursor-pointer"
+                            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                            {settings.channels.map(c => (
+                              <option key={c.channel_id} value={c.channel_id}>
+                                {c.channel_id} ({channelLabel(c.channel_type)})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                          No channel is available for notifications yet — ask an admin to add one
+                          (Triggers → Channels).
+                        </div>
+                      )}
+                      <label className="block">
+                        <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                          Recipient on {channelLabel(selectedType)}
+                        </span>
+                        <input value={recipient} onChange={e => setRecipient(e.target.value)}
+                          placeholder="e.g. qqbot:c2c:<openid>"
+                          className="w-full mt-1 px-3 py-2 rounded-lg text-sm border-0 outline-none"
+                          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }} />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Notify after (minutes)</span>
+                        <input type="number" min="1" value={minMinutes} onChange={e => setMinMinutes(e.target.value)}
+                          className="w-full mt-1 px-3 py-2 rounded-lg text-sm border-0 outline-none"
+                          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }} />
+                      </label>
+                      {error && <div className="text-xs" style={{ color: 'var(--color-error)' }}>{error}</div>}
+                      <div className="flex items-center gap-2 pt-1">
+                        <button onClick={() => void save()} disabled={saving || !settings?.channels?.length}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+                          style={{ background: 'var(--color-primary)' }}>
+                          {saving && <Loader2 size={12} className="animate-spin" />}
+                          Save
+                        </button>
+                        {configured && (
+                          <button onClick={() => { setEditing(false); setError(''); }}
+                            className="px-3 py-1.5 rounded-lg text-xs cursor-pointer"
+                            style={{ color: 'var(--color-text-secondary)' }}>
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </>
   );
 }

@@ -263,9 +263,10 @@ export default function Chat() {
       });
       setNotifySettings(await api.user.notificationSettings());
       if (!sessionId) {
-        // configured before the first message: remember the intent and apply it when the
-        // session exists (the switch lives on the session, not on the user)
+        // configured before the first message: remember the intent and show it as on — the
+        // session does not exist yet to carry the switch
         notifyEnablePendingRef.current = true;
+        setNotifyOnComplete(true);
       } else if (!notifyOnComplete) {
         await applyNotifyOnSession(true);
       }
