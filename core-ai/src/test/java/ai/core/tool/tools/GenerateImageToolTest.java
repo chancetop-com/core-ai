@@ -36,6 +36,10 @@ class GenerateImageToolTest {
         var description = GenerateImageTool.buildDescription(
                 List.of(new MediaModelHint("seedream-5-pro", "seedream/5-pro-text-to-image", "KIE")));
 
+        assertTrue(description.startsWith("Generate one or more images from a text prompt"),
+                "the text block must render without the incidental indentation of its class");
+        assertTrue(description.contains("guesses wrong silently.\n\nFor gpt-image-2"),
+                "the guidance and the parameter docs must stay separated by a blank line");
         assertTrue(description.contains("prompt (required)"), "parameter documentation must be kept");
         assertTrue(description.contains("Configured image models"));
         assertTrue(description.contains("seedream-5-pro (KIE)"));
@@ -55,6 +59,19 @@ class GenerateImageToolTest {
                 "image.edits models must be listed so the agent can name one");
         assertTrue(description.contains("gpt-image-2 (OpenAI) [text-to-image, image-to-image]"));
         assertTrue(description.contains("IMAGE-TO-IMAGE"), "the editing rule must be in the description");
+    }
+
+    @Test
+    void buildDescriptionKeepsImageEditsInTheToolInsteadOfHandWrittenCode() {
+        var description = GenerateImageTool.buildDescription(
+                List.of(new MediaModelHint("gpt-image-2.5", "gpt-image-2.5", "Azure")));
+
+        assertTrue(description.contains("what it returns is the deliverable"),
+                "the edit must be made by the tool, whose result is used as is");
+        assertTrue(description.contains("Do NOT make it with image-processing code"),
+                "hand-written pixel pipelines must be ruled out");
+        assertTrue(description.contains("is a mask, not a code composite"),
+                "a region-only edit must point at the mask parameter");
     }
 
     @Test
