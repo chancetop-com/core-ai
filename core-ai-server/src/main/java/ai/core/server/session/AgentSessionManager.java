@@ -93,16 +93,11 @@ public class AgentSessionManager {
     @Inject
     SandboxSnapshotService sandboxSnapshotService;
 
-    @Inject
-    EventPublisher eventPublisher;
-    @Inject
-    SessionOwnershipRegistry ownershipRegistry;
-    @Inject
-    TurnStateRegistry turnStateRegistry;
-    @Inject
-    ChannelRegistry channelRegistry;
-    @Inject
-    SubAgentAssembler subAgentAssembler;
+    @Inject EventPublisher eventPublisher;
+    @Inject SessionOwnershipRegistry ownershipRegistry;
+    @Inject TurnStateRegistry turnStateRegistry;
+    @Inject ChannelRegistry channelRegistry;
+    @Inject SubAgentAssembler subAgentAssembler;
     @Inject
     AgentMemoryExperimentService memoryExperimentService;
     @Inject
@@ -116,10 +111,9 @@ public class AgentSessionManager {
     @Inject
     ai.core.server.asynctask.AsyncToolTaskService asyncToolTaskService;
     @Inject SessionActivityRegistry sessionActivityRegistry;
-    @Inject
-    AgentMemoryService agentMemoryService;
-    @Inject
-    SessionSearchService sessionSearchService;
+    @Inject AgentMemoryService agentMemoryService;
+    @Inject SessionSearchService sessionSearchService;
+    @Inject SessionCompletionNotifier sessionCompletionNotifier;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -138,7 +132,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userCollection, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager()));
+                    ownershipRegistry, systemSettingsService, userCollection, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier));
         }
         return rebuildManager;
     }
@@ -158,6 +152,10 @@ public class AgentSessionManager {
             session.onEvent(turnStateRegistry.listener(sessionId, session::isTurnRunning));
         }
         session.onEvent(chatMessageService.listener(sessionId));
+        // Long-running turns may be walked away from: notify the owner on their own channel when one ends.
+        if (sessionCompletionNotifier != null) {
+            session.onEvent(sessionCompletionNotifier.listener(sessionId));
+        }
         session.onEvent(new SseEventBridge(sessionId, eventPublisher));
     }
     public void touchActivity(String sessionId) {

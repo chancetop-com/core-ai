@@ -169,6 +169,7 @@ export interface ChatSessionSummary {
   message_count?: number;
   created_at?: string;
   last_message_at?: string;
+  notify_on_complete?: boolean;   // per-chat switch: notify on the owner's channel when a long turn ends
 }
 
 export interface SessionArtifact {
@@ -395,6 +396,12 @@ export const sessionApi = {
     request<{ updated: boolean }>(`/api/chat/sessions/${sessionId}`, {
       method: 'PUT',
       body: JSON.stringify({ title }),
+    }),
+
+  updateSessionNotify: (sessionId: string, enabled: boolean) =>
+    request<{ updated: boolean; notify_target_configured?: boolean }>(`/api/chat/sessions/${sessionId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ notify_on_complete: enabled }),
     }),
 
   submitFeedback: (sessionId: string, feedback: SessionFeedback) =>

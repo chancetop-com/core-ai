@@ -151,6 +151,8 @@ export default function Chat() {
   const [draftDatasetConfigs, setDraftDatasetConfigs] = useState<DatasetConfigDraft[]>([]);
   const [datasets, setDatasets] = useState<{ id: string; name: string }[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  // per-chat switch: ping the owner on their channel when a long turn of this session ends
+  const [notifyOnComplete, setNotifyOnComplete] = useState(false);
   const [showVoiceSidebar, setShowVoiceSidebar] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
@@ -219,6 +221,26 @@ export default function Chat() {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
   }, []);
+
+  // The switch belongs to a session, so it can only be flipped once one exists — but it is allowed
+  // mid-turn, which is exactly when someone decides they are tired of watching it.
+  const handleToggleNotify = useCallback(async () => {
+    if (!sessionId) {
+      showToast('Send a message first — completion notifications belong to a session');
+      return;
+    }
+    const next = !notifyOnComplete;
+    setNotifyOnComplete(next);
+    try {
+      const res = await sessionApi.updateSessionNotify(sessionId, next);
+      if (next && res.notify_target_configured === false) {
+        showToast('No notification target on your account — set one in Users → your account → Session Notifications');
+      }
+    } catch (err) {
+      setNotifyOnComplete(!next);
+      showToast(err instanceof Error ? err.message : 'Failed to update the notification switch');
+    }
+  }, [notifyOnComplete, sessionId, showToast]);
 
   const abortSSE = useCallback(() => {
     sseConnectionSeqRef.current += 1;
@@ -451,6 +473,7 @@ export default function Chat() {
     setSelectedAgentIds(new Set());
     setLoadedNames(new Map());
     setDraftDatasetConfigs([]);
+    setNotifyOnComplete(Boolean(session.notify_on_complete));
     setShowConfigModal(false);
     setShowSkillPicker(false);
     setShowAgentPicker(false);
@@ -1584,6 +1607,7 @@ export default function Chat() {
     setSelectedAgentIds(new Set());
     setLoadedNames(new Map());
     setDraftDatasetConfigs([]);
+    setNotifyOnComplete(false);
     setShowConfigModal(false);
     setShowSkillPicker(false);
     setShowAgentPicker(false);
@@ -1988,6 +2012,8 @@ export default function Chat() {
         getAgentChipName={getAgentChipName}
         onOpenConfig={openConfigModal}
         onToggleVoiceSidebar={handleToggleVoiceSidebar}
+        notifyOnComplete={notifyOnComplete}
+        onToggleNotify={handleToggleNotify}
         onSend={handleSend}
         onCancel={handleCancel}
         onToast={showToast}

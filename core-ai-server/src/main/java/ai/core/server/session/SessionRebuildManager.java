@@ -80,6 +80,7 @@ public class SessionRebuildManager {
     private final SessionRestoreHelper restoreHelper;
     private final SessionContextBuilder contextBuilder;
     private final TurnStateRegistry turnStateRegistry;
+    private final SessionCompletionNotifier sessionCompletionNotifier;
     private SessionDatasetHelper datasetHelper;
 
     public SessionRebuildManager(Deps deps) {
@@ -103,6 +104,7 @@ public class SessionRebuildManager {
         this.agentMemoryService = deps.agentMemoryService;
         this.sessionSearchService = deps.sessionSearchService;
         this.turnStateRegistry = deps.turnStateRegistry;
+        this.sessionCompletionNotifier = deps.sessionCompletionNotifier;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
                 systemSettingsService, deps.mediaProvider, deps.quotaService).withAsyncTaskManager(deps.asyncTaskManager);
         this.restoreHelper = new SessionRestoreHelper(chatMessageService, toolRegistryService, skillManager,
@@ -322,6 +324,9 @@ public class SessionRebuildManager {
             session.onEvent(turnStateRegistry.listener(params.sessionId, session::isTurnRunning));
         }
         session.onEvent(chatMessageService.listener(params.sessionId));
+        if (sessionCompletionNotifier != null) {
+            session.onEvent(sessionCompletionNotifier.listener(params.sessionId));
+        }
         if (eventPublisher != null) {
             session.onEvent(new SseEventBridge(params.sessionId, eventPublisher));
         }
@@ -392,6 +397,7 @@ public class SessionRebuildManager {
                         MediaProvider mediaProvider,
                         ApiUserQuotaService quotaService,
                         TurnStateRegistry turnStateRegistry,
-                        ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager) {
+                        ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager,
+                        SessionCompletionNotifier sessionCompletionNotifier) {
     }
 }

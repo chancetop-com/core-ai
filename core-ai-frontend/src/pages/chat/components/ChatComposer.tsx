@@ -1,6 +1,8 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent, RefObject } from 'react';
 import {
+  Bell,
+  BellRing,
   ChevronDown,
   ChevronRight,
   Database,
@@ -67,6 +69,9 @@ interface ChatComposerProps {
   getAgentChipName: (id: string) => string;
   onOpenConfig: () => void;
   onToggleVoiceSidebar: () => void;
+  // per-chat switch: notify the owner on their channel when a long turn of this session ends
+  notifyOnComplete: boolean;
+  onToggleNotify: () => void;
   onSend: (text: string, attachments: ComposerAttachment[]) => void | Promise<void>;
   onCancel: () => void;
   onToast: (message: string) => void;
@@ -342,6 +347,8 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
   getAgentChipName,
   onOpenConfig,
   onToggleVoiceSidebar,
+  notifyOnComplete,
+  onToggleNotify,
   onSend,
   onCancel,
   onToast,
@@ -654,6 +661,21 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
                 {totalChips}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={onToggleNotify}
+            disabled={!selectedAgentId}
+            className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
+            style={{
+              background: notifyOnComplete ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
+              border: '1px solid var(--color-border)',
+              color: notifyOnComplete ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            }}
+            title={notifyOnComplete
+              ? 'Completion notification is on for this chat — click to turn it off'
+              : 'Notify me on my channel when a long turn of this chat finishes'}>
+            {notifyOnComplete ? <BellRing size={18} /> : <Bell size={18} />}
           </button>
 
           <button

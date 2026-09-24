@@ -9,15 +9,17 @@ import ai.core.api.server.session.ListChatSessionsRequest;
 import ai.core.api.server.session.ListChatSessionsResponse;
 import ai.core.api.server.session.SubmitSessionFeedbackRequest;
 import ai.core.api.server.session.SubmitSessionFeedbackResponse;
-import ai.core.api.server.session.UpdateChatSessionTitleRequest;
-import ai.core.api.server.session.UpdateChatSessionTitleResponse;
+import ai.core.api.server.session.UpdateChatSessionRequest;
+import ai.core.api.server.session.UpdateChatSessionResponse;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.SessionFeedback;
+import ai.core.server.domain.User;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.session.SessionCompletionNotifier;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -46,6 +48,8 @@ public class ChatSessionWebServiceImpl implements ChatSessionWebService {
     MongoCollection<SessionFeedback> sessionFeedbackCollection;
     @Inject
     AgentMemoryExperimentService memoryExperimentService;
+    @Inject
+    MongoCollection<User> userCollection;
 
     @Override
     public ListChatSessionsResponse list(ListChatSessionsRequest request) {
@@ -104,12 +108,26 @@ public class ChatSessionWebServiceImpl implements ChatSessionWebService {
     }
 
     @Override
-    public UpdateChatSessionTitleResponse update(String sessionId, UpdateChatSessionTitleRequest request) {
+    public UpdateChatSessionResponse update(String sessionId, UpdateChatSessionRequest request) {
         var userId = userId();
-        if (request.title == null || request.title.isBlank()) throw new BadRequestException("title required");
-        var ok = chatMessageService.updateSessionTitle(userId, sessionId, request.title);
-        if (!ok) throw new NotFoundException("session not found");
-        var response = new UpdateChatSessionTitleResponse();
+        if (request.title == null && request.notifyOnComplete == null) {
+            throw new BadRequestException("nothing to update");
+        }
+        if (request.title != null && request.title.isBlank()) throw new BadRequestException("title required");
+        if (request.title != null && !chatMessageService.updateSessionTitle(userId, sessionId, request.title)) {
+            throw new NotFoundException("session not found");
+        }
+        var response = new UpdateChatSessionResponse();
+        if (request.notifyOnComplete != null) {
+            var session = chatMessageService.getSessionMeta(sessionId);
+            if (session == null || session.deletedAt != null) throw new NotFoundException("session not found");
+            if (session.userId != null && !userId.equals(session.userId)) throw new ForbiddenException("forbidden");
+            if (!chatMessageService.updateSessionNotify(userId, sessionId, request.notifyOnComplete)) {
+                throw new NotFoundException("session not found");
+            }
+            var owner = session.userId != null ? userCollection.get(session.userId).orElse(null) : null;
+            response.notifyTargetConfigured = SessionCompletionNotifier.hasTarget(owner);
+        }
         response.updated = Boolean.TRUE;
         return response;
     }
@@ -184,6 +202,7 @@ public class ChatSessionWebServiceImpl implements ChatSessionWebService {
         view.messageCount = s.messageCount;
         view.createdAt = s.createdAt != null ? s.createdAt.toInstant().toString() : null;
         view.lastMessageAt = s.lastMessageAt != null ? s.lastMessageAt.toInstant().toString() : null;
+        view.notifyOnComplete = Boolean.TRUE.equals(s.notifyOnComplete);
         return view;
     }
 

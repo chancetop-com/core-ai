@@ -57,6 +57,17 @@ public class User {
     @Field(name = "outbound_caller_headers")
     public List<OutboundCallerHeaderConfig> outboundCallerHeaders;
 
+    // Session completion notifications: where this user wants to be told that a chat session
+    // finished, and how long a turn must run before it is worth a message. All null = disabled.
+    @Field(name = "notify_channel_id")
+    public String notifyChannelId;
+
+    @Field(name = "notify_recipient")
+    public String notifyRecipient;
+
+    @Field(name = "notify_min_minutes")
+    public Integer notifyMinMinutes;
+
     @Field(name = "favorite_agent_ids")
     public List<String> favoriteAgentIds;
 

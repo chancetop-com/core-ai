@@ -15,6 +15,7 @@ import ai.core.server.session.AwtImageShrinker;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionActivityRegistry;
 import ai.core.server.session.SessionAgentHelper;
+import ai.core.server.session.SessionCompletionNotifier;
 import ai.core.server.session.SessionRegistry;
 import ai.core.server.session.SessionSearchService;
 import ai.core.server.web.ChatSessionWebServiceImpl;
@@ -71,6 +72,7 @@ public class SessionModule extends Module {
         bind(ChatMessageService.class);
         bind(SessionSearchService.class);
         activityRegistry = bind(new SessionActivityRegistry(bean(JedisPool.class)));
+        bind(SessionCompletionNotifier.class);
         agentSessionManager = bind(AgentSessionManager.class);
         // finished async tool calls are delivered over the command bus; MessagingRuntimeModule wires
         // the dispatcher once CommandPublisher exists (it loads after this module)

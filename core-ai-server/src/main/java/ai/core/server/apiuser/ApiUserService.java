@@ -118,7 +118,8 @@ public class ApiUserService {
         var isManager = "api".equals(user.userType) && user.ownerId == null;
         if (isManager) {
             if (request.permissions != null || request.inputTokenQuota != null || request.outputTokenQuota != null
-                    || request.metadata != null) {
+                    || request.metadata != null || request.notifyChannelId != null
+                    || request.notifyRecipient != null || request.notifyMinMinutes != null) {
                 throw new BadRequestException("manager users only support outbound_caller_headers config");
             }
             user.outboundCallerHeaders = toHeaderEntities(request.outboundCallerHeaders);
@@ -153,6 +154,21 @@ public class ApiUserService {
         if (request.metadata != null) {
             user.metadata = normalizeMetadata(request.metadata);
         }
+        if (request.notifyChannelId != null) {
+            user.notifyChannelId = blankToNull(request.notifyChannelId);
+        }
+        if (request.notifyRecipient != null) {
+            user.notifyRecipient = blankToNull(request.notifyRecipient);
+        }
+        if (request.notifyMinMinutes != null) {
+            if (request.notifyMinMinutes < 1) throw new BadRequestException("notify_min_minutes must be >= 1");
+            user.notifyMinMinutes = request.notifyMinMinutes;
+        }
+    }
+
+    private String blankToNull(String value) {
+        var trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private Map<String, String> normalizeMetadata(Map<String, String> metadata) {

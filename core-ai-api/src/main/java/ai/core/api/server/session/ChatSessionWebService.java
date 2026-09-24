@@ -29,7 +29,7 @@ public interface ChatSessionWebService {
 
     @PUT
     @Path("/api/chat/sessions/:sessionId")
-    UpdateChatSessionTitleResponse update(@PathParam("sessionId") String sessionId, UpdateChatSessionTitleRequest request);
+    UpdateChatSessionResponse update(@PathParam("sessionId") String sessionId, UpdateChatSessionRequest request);
 
     @PUT
     @Path("/api/chat/sessions/:sessionId/feedback")

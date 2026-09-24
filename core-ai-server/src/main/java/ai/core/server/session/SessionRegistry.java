@@ -160,6 +160,15 @@ public class SessionRegistry {
                 Updates.set("title", cleaned)) > 0;
     }
 
+    public boolean updateNotifyOnComplete(String userId, String sessionId, boolean enabled) {
+        var session = chatSessionCollection.get(sessionId).orElse(null);
+        if (session == null || session.deletedAt != null) return false;
+        if (userId != null && !userId.equals(session.userId)) return false;
+        return chatSessionCollection.update(
+                Filters.eq("_id", sessionId),
+                Updates.set("notify_on_complete", enabled)) > 0;
+    }
+
     public List<String> batchSoftDelete(String userId, List<String> sessionIds) {
         var deletedAt = ZonedDateTime.now();
         var deletedIds = new ArrayList<String>();

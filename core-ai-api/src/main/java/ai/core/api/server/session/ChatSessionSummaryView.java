@@ -35,4 +35,7 @@ public class ChatSessionSummaryView {
 
     @Property(name = "last_message_at")
     public String lastMessageAt;
+
+    @Property(name = "notify_on_complete")
+    public Boolean notifyOnComplete;
 }

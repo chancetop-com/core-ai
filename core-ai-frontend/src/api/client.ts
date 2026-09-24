@@ -117,6 +117,9 @@ export interface UserStatus {
   quota_consumed_input_tokens?: number;
   quota_consumed_output_tokens?: number;
   outbound_caller_headers?: { header_name: string; value_source: string }[];
+  notify_channel_id?: string;
+  notify_recipient?: string;
+  notify_min_minutes?: number;
 }
 
 export interface TraceAccount {
@@ -172,6 +175,9 @@ export const adminApi = {
     output_token_quota?: number;
     metadata?: Record<string, string>;
     outbound_caller_headers?: { header_name: string; value_source: string }[];
+    notify_channel_id?: string;
+    notify_recipient?: string;
+    notify_min_minutes?: number;
   }) =>
     requestWithAuth<void>(`/api/auth/users/${encodeURIComponent(userId)}/config`,
       { method: 'PUT', body: JSON.stringify(config) }),

@@ -63,6 +63,11 @@ public class ChatSession {
     @Field(name = "dataset_config")
     public List<AgentDatasetConfig> datasetConfig;
 
+    // opt-in per session (chat header switch): notify the owner on their channel when a turn
+    // of this session takes longer than their configured threshold
+    @Field(name = "notify_on_complete")
+    public Boolean notifyOnComplete;
+
     @Field(name = "deleted_at")
     public ZonedDateTime deletedAt;
 }

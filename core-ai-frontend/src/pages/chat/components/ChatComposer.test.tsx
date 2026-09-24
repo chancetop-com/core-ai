@@ -25,6 +25,8 @@ function renderComposer(onSend = vi.fn()) {
     getAgentChipName={id => id}
     onOpenConfig={vi.fn()}
     onToggleVoiceSidebar={vi.fn()}
+    notifyOnComplete={false}
+    onToggleNotify={vi.fn()}
     onSend={onSend}
     onCancel={vi.fn()}
     onToast={vi.fn()}
