@@ -15,6 +15,8 @@ import java.util.Objects;
  * @author stephen
  */
 public class ObjectStorageServiceResolver {
+    public static final String DEFAULT_PUBLIC_ARTIFACT_CONTAINER = "public-artifacts";
+
     @Inject
     SystemSettingsService settings;
 
@@ -25,6 +27,7 @@ public class ObjectStorageServiceResolver {
     public String minioRegion = "us-east-1";
     public String minioMultimodalBucket = "uploads";
     public String minioSandboxBucket = "sandbox-uploads";
+    public String minioPublicArtifactBucket;
     public String minioPublicBaseUrl;
 
     private volatile String cachedFingerprint;
@@ -88,6 +91,21 @@ public class ObjectStorageServiceResolver {
             if (container != null && !container.isBlank()) return container;
         }
         return "artifacts";
+    }
+
+    /**
+     * Public-read container artifacts are published to when the agent asks for external access.
+     * Falls back to the default container name, so the destination stays stable until an admin
+     * moves it; uploads that land here are served straight from object storage, no share link.
+     */
+    public String publicArtifactContainer() {
+        var activeProvider = effectiveProvider();
+        if (activeProvider.isEmpty() || "azure".equals(activeProvider)) {
+            var container = settings.azureBlobPublicArtifactContainer();
+            return container == null || container.isBlank() ? DEFAULT_PUBLIC_ARTIFACT_CONTAINER : container;
+        }
+        return minioPublicArtifactBucket == null || minioPublicArtifactBucket.isBlank()
+                ? DEFAULT_PUBLIC_ARTIFACT_CONTAINER : minioPublicArtifactBucket;
     }
 
     /** Public base URL for frontend assets; null when not configured keeps serving from the local image. */

@@ -44,6 +44,9 @@ public class SystemSettings {
     @Field(name = "azure_blob_artifact_container")
     public String azureBlobArtifactContainer;
 
+    @Field(name = "azure_blob_public_artifact_container")
+    public String azureBlobPublicArtifactContainer;
+
     @Field(name = "azure_blob_account_name")
     public String azureBlobAccountName;
 

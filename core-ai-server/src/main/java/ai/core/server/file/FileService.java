@@ -82,10 +82,18 @@ public class FileService {
     private final Semaphore thumbnailSlots = new Semaphore(THUMBNAIL_CONCURRENCY);
 
     public FileRecord upload(String userId, String fileName, String contentType, Path tempFile) {
-        return upload(userId, fileName, contentType, tempFile, computeContentHash(tempFile));
+        return upload(userId, fileName, contentType, tempFile, false);
     }
 
-    private FileRecord upload(String userId, String fileName, String contentType, Path tempFile, String contentHash) {
+    /**
+     * Uploads into the public artifact container when {@code publicAccess} is set, so the file is served
+     * straight from object storage; a public upload that fails falls back to the private container.
+     */
+    public FileRecord upload(String userId, String fileName, String contentType, Path tempFile, boolean publicAccess) {
+        return upload(userId, fileName, contentType, tempFile, computeContentHash(tempFile), publicAccess);
+    }
+
+    private FileRecord upload(String userId, String fileName, String contentType, Path tempFile, String contentHash, boolean publicAccess) {
         var id = UUID.randomUUID().toString();
         var record = new FileRecord();
         record.id = id;
@@ -97,12 +105,7 @@ public class FileService {
 
         var storage = storageResolver.resolve();
         if (storage != null) {
-            var container = storageResolver.artifactContainer();
-            var blobName = ARTIFACT_PREFIX + id + extension(contentType);
-            storage.uploadObject(container, blobName, tempFile, contentType);
-            record.storagePath = container + "/" + blobName;
-            record.thumbStoragePath = storeThumbnail(storage, container, id, contentType, tempFile);
-            record.size = tempFile.toFile().length();
+            storeBlob(storage, record, tempFile, publicAccess);
         } else {
             var raw = readAllBytes(tempFile);
             record.data = Base64.getEncoder().encodeToString(raw);
@@ -115,20 +118,39 @@ public class FileService {
         return record;
     }
 
+    private void storeBlob(ObjectStorageService storage, FileRecord record, Path tempFile, boolean publicAccess) {
+        PublicArtifactStorage.write(storageResolver, publicAccess, container -> {
+            var blobName = ARTIFACT_PREFIX + record.id + extension(record.contentType);
+            storage.uploadObject(container, blobName, tempFile, record.contentType);
+            record.storagePath = container + "/" + blobName;
+            record.thumbStoragePath = storeThumbnail(storage, container, record.id, record.contentType, tempFile);
+            record.size = tempFile.toFile().length();
+        });
+    }
+
     /**
      * Uploads the file unless the user already has a record with identical content, in which case the existing
      * record is reused. Prevents duplicate artifacts when the same generated media is saved twice
      * (e.g. get_video_status auto-save followed by submit_artifacts with the downloaded copy).
      */
     public FileRecord uploadIfAbsent(String userId, String fileName, String contentType, Path tempFile) {
+        return uploadIfAbsent(userId, fileName, contentType, tempFile, false);
+    }
+
+    /**
+     * Same as {@link #uploadIfAbsent(String, String, String, Path)}, except that a public request only adopts
+     * a record that already lives in the public container - reusing a private one would hand the caller a
+     * download URL that is not public.
+     */
+    public FileRecord uploadIfAbsent(String userId, String fileName, String contentType, Path tempFile, boolean publicAccess) {
         var contentHash = computeContentHash(tempFile);
         var existing = findByContentHash(userId, contentHash).orElse(null);
-        if (existing != null) {
+        if (existing != null && (!publicAccess || PublicArtifactStorage.isPubliclyStored(storageResolver, existing))) {
             deleteTempFile(tempFile);
             LOGGER.info("file upload deduplicated, id={}, contentHash={}", existing.id, contentHash);
             return existing;
         }
-        return upload(userId, fileName, contentType, tempFile, contentHash);
+        return upload(userId, fileName, contentType, tempFile, contentHash, publicAccess);
     }
 
     public Optional<FileRecord> findByContentHash(String userId, String contentHash) {
@@ -349,6 +371,15 @@ public class FileService {
     public String downloadUrl(FileRecord record) {
         var credential = downloadCredential(record);
         return credential == null ? null : credential.downloadUrl();
+    }
+
+    /**
+     * Direct URL of a record stored in the public artifact container, for callers that must hand out a link
+     * an external system can fetch without the platform in between; null for private records, and null as well
+     * when the deployment has no public base URL configured.
+     */
+    public String publicUrl(FileRecord record) {
+        return PublicArtifactStorage.publicUrl(storageResolver, record);
     }
 
     /**

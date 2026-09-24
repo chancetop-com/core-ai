@@ -66,6 +66,12 @@ public class MinioObjectStorageService implements ObjectStorageService {
     }
 
     @Override
+    public String publicUrl(String container, String blobName) {
+        if (publicBaseUrl == null || publicBaseUrl.isBlank()) return null;
+        return publicBaseUrl + "/" + container + "/" + blobName;
+    }
+
+    @Override
     public byte[] downloadObject(String container, String blobName) {
         var result = presigner.presignedGetUrl(container, blobName, 300); // 5 min
         try {

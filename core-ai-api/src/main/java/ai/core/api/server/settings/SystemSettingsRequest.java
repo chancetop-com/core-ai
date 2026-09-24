@@ -36,6 +36,9 @@ public class SystemSettingsRequest {
     @Property(name = "azure_blob_artifact_container")
     public String azureBlobArtifactContainer;
 
+    @Property(name = "azure_blob_public_artifact_container")
+    public String azureBlobPublicArtifactContainer;
+
     @Property(name = "azure_blob_account_name")
     public String azureBlobAccountName;
 

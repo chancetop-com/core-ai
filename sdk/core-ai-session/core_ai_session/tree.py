@@ -123,7 +123,11 @@ class AgentNode(Node):
 
 
 class FilesNamespace:
-    """Publish sandbox files as session artifacts, for tools that need a URL."""
+    """Publish sandbox files as session artifacts, for tools that need a URL.
+
+    ``public=True`` stores the file in public object storage and hands back a permanent URL any external
+    system can fetch; without it the artifact keeps the platform share link.
+    """
 
     PUBLISH_TOOL = "submit_artifacts"
 
@@ -131,7 +135,8 @@ class FilesNamespace:
         self._session = session
 
     def publish(self, path: str, *, title: Optional[str] = None, name: Optional[str] = None,
-                content_type: Optional[str] = None, description: Optional[str] = None) -> str:
+                content_type: Optional[str] = None, description: Optional[str] = None,
+                public: bool = False) -> str:
         entry = self._session.find_entry(self.PUBLISH_TOOL)
         if entry is None:
             raise ToolNotFoundError(
@@ -146,6 +151,8 @@ class FilesNamespace:
             artifact["content_type"] = content_type
         if description:
             artifact["description"] = description
+        if public:
+            artifact["public"] = True
         result = self._session.call(entry.name, {"artifacts": [artifact]})
         payload = result.data if isinstance(result.data, dict) else {}
         submitted = payload.get("submitted") or []

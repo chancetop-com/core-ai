@@ -191,6 +191,13 @@ class FakeSessionTest(unittest.TestCase):
         published = self.fake.calls_of("submit_artifacts")[0]
         self.assertEqual([{"path": "/tmp/report.html", "title": "weekly report"}], published.arguments["artifacts"])
 
+    def test_files_publish_public_flag_reaches_the_tool(self) -> None:
+        self.fake.files.returns("https://blob.example/public-artifacts/artifacts/report.html")
+        url = self.fake.files.publish("/tmp/report.html", public=True)
+        self.assertEqual("https://blob.example/public-artifacts/artifacts/report.html", url)
+        published = self.fake.calls_of("submit_artifacts")[0]
+        self.assertEqual([{"path": "/tmp/report.html", "public": True}], published.arguments["artifacts"])
+
     def test_pending_call_returns_task_and_polls(self) -> None:
         self.fake.agent["review-responder"].returns(
             ToolResult(call_id="c9", status="pending", task_id="task-1")

@@ -17,6 +17,15 @@ public interface ObjectStorageService {
     /** Pre-signed read URL for direct browser downloads; the storage backend handles Range/ETag natively. */
     DownloadCredential generateDownloadCredential(String container, String blobName);
 
+    /**
+     * Direct URL for an object in a public-read container, carrying no signature and never expiring.
+     * Null when the deployment has no public base URL configured; such objects stay reachable through
+     * {@link #generateDownloadCredential}.
+     */
+    default String publicUrl(String container, String blobName) {
+        return null;
+    }
+
     byte[] downloadObject(String container, String blobName);
 
     /** Server-side streaming upload from a local file (snapshot capture path). */

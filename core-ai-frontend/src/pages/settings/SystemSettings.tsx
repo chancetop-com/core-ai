@@ -14,6 +14,7 @@ export default function SystemSettings() {
   const [videoUnderstandingModel, setVideoUnderstandingModel] = useState('');
   const [storageProvider, setStorageProvider] = useState('');
   const [azureBlobArtifactContainer, setAzureBlobArtifactContainer] = useState('');
+  const [azureBlobPublicArtifactContainer, setAzureBlobPublicArtifactContainer] = useState('');
   const [azureBlobAccountName, setAzureBlobAccountName] = useState('');
   const [azureBlobAccountKey, setAzureBlobAccountKey] = useState('');
   const [azureBlobMultimodalContainer, setAzureBlobMultimodalContainer] = useState('');
@@ -85,6 +86,7 @@ export default function SystemSettings() {
       setVideoUnderstandingModel(settingsResponse.video_understanding_model || '');
       setStorageProvider(settingsResponse.storage_provider || '');
       setAzureBlobArtifactContainer(settingsResponse.azure_blob_artifact_container || '');
+      setAzureBlobPublicArtifactContainer(settingsResponse.azure_blob_public_artifact_container || '');
       setAzureBlobAccountName(settingsResponse.azure_blob_account_name || '');
       setAzureBlobAccountKey('');
       setAzureBlobMultimodalContainer(settingsResponse.azure_blob_multimodal_container || '');
@@ -123,6 +125,7 @@ export default function SystemSettings() {
         video_understanding_model: videoUnderstandingModel.trim() || null,
         storage_provider: storageProvider.trim() || null,
         azure_blob_artifact_container: azureBlobArtifactContainer.trim() || null,
+        azure_blob_public_artifact_container: azureBlobPublicArtifactContainer.trim() || null,
         azure_blob_account_name: azureBlobAccountName.trim() || null,
         azure_blob_account_key: azureBlobAccountKey.trim() || null,
         azure_blob_multimodal_container: azureBlobMultimodalContainer.trim() || null,
@@ -146,6 +149,7 @@ export default function SystemSettings() {
       setVideoUnderstandingModel(response.video_understanding_model || '');
       setStorageProvider(response.storage_provider || '');
       setAzureBlobArtifactContainer(response.azure_blob_artifact_container || '');
+      setAzureBlobPublicArtifactContainer(response.azure_blob_public_artifact_container || '');
       setAzureBlobAccountName(response.azure_blob_account_name || '');
       setAzureBlobAccountKey('');
       setAzureBlobMultimodalContainer(response.azure_blob_multimodal_container || '');
@@ -392,6 +396,22 @@ export default function SystemSettings() {
               className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
               style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
             />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-2">Public artifact container</span>
+            <input
+              type="text"
+              value={azureBlobPublicArtifactContainer}
+              onChange={e => setAzureBlobPublicArtifactContainer(e.target.value)}
+              placeholder="public-artifacts"
+              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
+            <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+              Artifacts the agent marks public are stored here and served straight from object storage, so the
+              container must allow anonymous read. Leave blank for the default name; failed uploads fall back
+              to the private container.
+            </span>
           </label>
           <label className="block">
             <span className="block text-sm font-medium mb-2">Public base URL</span>

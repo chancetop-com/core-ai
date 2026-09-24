@@ -104,6 +104,7 @@ public class SystemSettingsService {
         }
         entity.storageProvider = normalizeModel(request.storageProvider);
         entity.azureBlobArtifactContainer = normalizeModel(request.azureBlobArtifactContainer);
+        entity.azureBlobPublicArtifactContainer = normalizeModel(request.azureBlobPublicArtifactContainer);
         entity.azureBlobAccountName = normalizeModel(request.azureBlobAccountName);
         if (request.azureBlobAccountKey != null && !request.azureBlobAccountKey.isBlank()) {
             entity.azureBlobAccountKey = secretProtector.protect(request.azureBlobAccountKey.trim());
@@ -231,6 +232,12 @@ public class SystemSettingsService {
         return entity == null ? null : normalizeModel(entity.azureBlobArtifactContainer);
     }
 
+    /** Container for artifacts the agent explicitly publishes for external access; null disables public artifacts. */
+    public String azureBlobPublicArtifactContainer() {
+        var entity = entity();
+        return entity == null ? null : normalizeModel(entity.azureBlobPublicArtifactContainer);
+    }
+
     public String azureBlobAccountName() {
         var entity = entity();
         return entity == null ? null : normalizeModel(entity.azureBlobAccountName);
@@ -356,6 +363,7 @@ public class SystemSettingsService {
         view.sandboxSnapshotEnabled = entity != null && Boolean.TRUE.equals(entity.sandboxSnapshotEnabled);
         view.storageProvider = entity == null ? null : normalizeModel(entity.storageProvider);
         view.azureBlobArtifactContainer = entity == null ? null : normalizeModel(entity.azureBlobArtifactContainer);
+        view.azureBlobPublicArtifactContainer = entity == null ? null : normalizeModel(entity.azureBlobPublicArtifactContainer);
         view.azureBlobAccountName = entity == null ? null : normalizeModel(entity.azureBlobAccountName);
         view.hasAzureBlobAccountKey = entity != null && entity.azureBlobAccountKey != null;
         view.azureBlobMultimodalContainer = entity == null ? null : normalizeModel(entity.azureBlobMultimodalContainer);

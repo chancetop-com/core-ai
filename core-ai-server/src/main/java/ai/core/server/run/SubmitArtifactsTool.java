@@ -42,6 +42,12 @@ public final class SubmitArtifactsTool extends ToolCall {
         Correct:   `![chart](<download_url from tool result>)`
         Incorrect: `![chart](chart.png)` or `![chart](/workspace/chart.png)`
 
+        Set `"public": true` on an artifact only when something outside this platform must fetch it: a URL you
+        hand to a third-party API, a file embedded in a page served elsewhere, or a link shared beyond the
+        conversation. The artifact is then stored in public object storage, and its `download_url` is a plain
+        permanent URL that anyone holding it can open — so never mark confidential or user-private files public.
+        Artifacts without the flag stay private and are delivered through the platform's share link.
+
         This is a platform delivery requirement. It does not change the user's requested final response format:
         after submitting artifacts, still answer exactly as the task instructions require.
         """;
@@ -53,6 +59,11 @@ public final class SubmitArtifactsTool extends ToolCall {
             charts, PDFs, CSVs, images, spreadsheets, or archives. The files must already exist inside the
             sandbox, usually under /tmp or /workspace. Do not include file contents in this tool call; provide
             only the sandbox path and optional metadata.
+
+            Each artifact also accepts `public: true` for files that must be reachable from outside the platform,
+            such as a URL handed to a third-party API or embedded in a page served elsewhere. Those are stored in
+            public object storage and their download_url is permanent and open to anyone who has it, so leave the
+            flag off for anything confidential or meant only for this conversation's user.
             """;
 
     public static String appendInstructions(String systemPrompt) {
@@ -77,7 +88,9 @@ public final class SubmitArtifactsTool extends ToolCall {
         return ToolCallParameters.of(
             ToolCallParameters.ParamSpec.of(List.class, "artifacts", """
                 Array of artifact objects. Each item MUST be a JSON object (not a bare string) with a required
-                `path` field — the sandbox file path to submit. Optional object fields: name, title, description, content_type.
+                `path` field — the sandbox file path to submit. Optional object fields: name, title, description,
+                content_type, public (set true only when an external system must fetch the file; it is then served
+                from public object storage and the returned download_url is open to anyone who has it).
                 Correct example: [{"path":"/tmp/report.pdf","name":"report.pdf","title":"Analysis","content_type":"application/pdf"}]
                 Do NOT pass an array of strings like ["/tmp/report.pdf"].
                 """).required()
@@ -176,7 +189,8 @@ public final class SubmitArtifactsTool extends ToolCall {
             var contentType = !Strings.isBlank(item.contentType) ? item.contentType : sandboxFile.contentType();
             // Reuse an existing record when the user already has a file with identical content,
             // so platform-saved media (e.g. get_video_status auto-save) is not duplicated as artifacts.
-            var record = fileService.uploadIfAbsent(userId, fileName, contentType, sandboxFile.path());
+            var record = fileService.uploadIfAbsent(userId, fileName, contentType, sandboxFile.path(),
+                Boolean.TRUE.equals(item.publicAccess));
 
             var artifact = new AgentRunArtifact();
             artifact.fileId = record.id;
@@ -190,11 +204,12 @@ public final class SubmitArtifactsTool extends ToolCall {
             sink.append(artifact);
 
             var shared = fileService.share(record.id, userId);
+            var publicUrl = fileService.publicUrl(record);
             submitted.add(Map.of(
                 "path", item.path,
                 "file_id", record.id,
                 "file_name", record.fileName,
-                "download_url", publicUrlConfiguration.sharedArtifactDownloadUrl(shared.shareToken)
+                "download_url", publicUrl != null ? publicUrl : publicUrlConfiguration.sharedArtifactDownloadUrl(shared.shareToken)
             ));
         } catch (Exception e) {
             failed.add(Map.of("path", item.path, "error", errorMessage(e)));
@@ -216,5 +231,7 @@ public final class SubmitArtifactsTool extends ToolCall {
         public String description;
         @Property(name = "content_type")
         public String contentType;
+        @Property(name = "public")
+        public Boolean publicAccess;
     }
 }

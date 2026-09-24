@@ -1770,6 +1770,7 @@ export interface SystemSettings {
   default_video_understanding_model?: string;
   storage_provider?: string | null;
   azure_blob_artifact_container?: string | null;
+  azure_blob_public_artifact_container?: string | null;
   azure_blob_account_name?: string | null;
   has_azure_blob_account_key?: boolean;
   azure_blob_multimodal_container?: string | null;
@@ -1801,6 +1802,7 @@ export interface SystemSettingsRequest {
   video_understanding_model?: string | null;
   storage_provider?: string | null;
   azure_blob_artifact_container?: string | null;
+  azure_blob_public_artifact_container?: string | null;
   azure_blob_account_name?: string | null;
   azure_blob_account_key?: string | null;
   azure_blob_multimodal_container?: string | null;

@@ -32,11 +32,14 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -160,6 +163,83 @@ class FileServiceTest {
 
         assertEquals("artifacts/artifacts/" + record.id + ".thumb.jpg", record.thumbStoragePath);
         verify(storage).uploadObject(eq("artifacts"), eq("artifacts/" + record.id + ".thumb.jpg"), any(Path.class), eq("image/jpeg"));
+    }
+
+    @Test
+    void uploadPublicArtifactLandsInThePublicContainer() throws IOException {
+        when(resolver.artifactContainer()).thenReturn("artifacts");
+        when(resolver.publicArtifactContainer()).thenReturn("public-artifacts");
+        var tempFile = tempFile("<h1>page</h1>".getBytes(StandardCharsets.UTF_8));
+
+        var record = service.upload("user-1", "page.html", "text/html", tempFile, true);
+
+        assertEquals("public-artifacts/artifacts/" + record.id + ".html", record.storagePath);
+        verify(storage).uploadObject(eq("public-artifacts"), eq("artifacts/" + record.id + ".html"), any(Path.class), eq("text/html"));
+    }
+
+    @Test
+    void uploadPublicArtifactFallsBackToThePrivateContainerWhenThePublicUploadFails() throws IOException {
+        when(resolver.artifactContainer()).thenReturn("artifacts");
+        when(resolver.publicArtifactContainer()).thenReturn("public-artifacts");
+        doThrow(new IllegalStateException("container not found")).when(storage)
+                .uploadObject(eq("public-artifacts"), any(), any(Path.class), any());
+        var tempFile = tempFile("<h1>page</h1>".getBytes(StandardCharsets.UTF_8));
+
+        var record = service.upload("user-1", "page.html", "text/html", tempFile, true);
+
+        assertEquals("artifacts/artifacts/" + record.id + ".html", record.storagePath);
+        verify(storage).uploadObject(eq("artifacts"), eq("artifacts/" + record.id + ".html"), any(Path.class), eq("text/html"));
+    }
+
+    @Test
+    void publicUrlReturnsDirectObjectStorageUrlForPublicArtifact() {
+        when(resolver.publicArtifactContainer()).thenReturn("public-artifacts");
+        var record = file("file-1");
+        record.storagePath = "public-artifacts/artifacts/file-1.html";
+        when(storage.publicUrl("public-artifacts", "artifacts/file-1.html"))
+                .thenReturn("https://blob.example.com/public-artifacts/artifacts/file-1.html");
+
+        assertEquals("https://blob.example.com/public-artifacts/artifacts/file-1.html", service.publicUrl(record));
+    }
+
+    @Test
+    void publicUrlIsNullForPrivateArtifact() {
+        when(resolver.publicArtifactContainer()).thenReturn("public-artifacts");
+        var record = file("file-1");
+        record.storagePath = "artifacts/artifacts/file-1.html";
+
+        assertNull(service.publicUrl(record));
+        verify(storage, never()).publicUrl(any(), any());
+    }
+
+    @Test
+    void uploadIfAbsentPublicDoesNotReusePrivateRecord() throws IOException {
+        when(resolver.artifactContainer()).thenReturn("artifacts");
+        when(resolver.publicArtifactContainer()).thenReturn("public-artifacts");
+        var existing = file("file-1");
+        existing.storagePath = "artifacts/artifacts/file-1.html";
+        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
+        var tempFile = tempFile("same content".getBytes(StandardCharsets.UTF_8));
+
+        var record = service.uploadIfAbsent("user-1", "page.html", "text/html", tempFile, true);
+
+        assertNotSame(existing, record);
+        assertTrue(record.storagePath.startsWith("public-artifacts/"));
+        verify(service.fileRecordCollection).insert(record);
+    }
+
+    @Test
+    void uploadIfAbsentPublicReusesRecordAlreadyInThePublicContainer() throws IOException {
+        when(resolver.publicArtifactContainer()).thenReturn("public-artifacts");
+        var existing = file("file-1");
+        existing.storagePath = "public-artifacts/artifacts/file-1.html";
+        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
+        var tempFile = tempFile("same content".getBytes(StandardCharsets.UTF_8));
+
+        var record = service.uploadIfAbsent("user-1", "page.html", "text/html", tempFile, true);
+
+        assertSame(existing, record);
+        verify(service.fileRecordCollection, never()).insert(any(FileRecord.class));
     }
 
     @Test

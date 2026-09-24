@@ -27,6 +27,7 @@ public class ObjectStorageModule extends Module {
     private String minioRegion;
     private String minioMultimodalBucket;
     private String minioSandboxBucket;
+    private String minioPublicArtifactBucket;
     private String minioPublicBaseUrl;
 
     @Override
@@ -46,6 +47,7 @@ public class ObjectStorageModule extends Module {
         resolver.minioRegion = minioRegion;
         resolver.minioMultimodalBucket = minioMultimodalBucket;
         resolver.minioSandboxBucket = minioSandboxBucket;
+        resolver.minioPublicArtifactBucket = minioPublicArtifactBucket;
         resolver.minioPublicBaseUrl = minioPublicBaseUrl;
     }
 
@@ -57,6 +59,8 @@ public class ObjectStorageModule extends Module {
         minioRegion = property("storage.minio.region").orElse("us-east-1");
         minioMultimodalBucket = property("storage.minio.multimodal.bucket").orElse("uploads");
         minioSandboxBucket = property("storage.minio.sandbox.bucket").orElse("sandbox-uploads");
+        minioPublicArtifactBucket = property("storage.minio.public-artifact.bucket")
+                .orElse(ObjectStorageServiceResolver.DEFAULT_PUBLIC_ARTIFACT_CONTAINER);
         minioPublicBaseUrl = property("storage.minio.public.base.url").orElse(null);
     }
 
