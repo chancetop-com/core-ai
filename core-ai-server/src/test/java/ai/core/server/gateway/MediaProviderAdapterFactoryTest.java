@@ -1,6 +1,7 @@
 package ai.core.server.gateway;
 
 import ai.core.llm.providers.LiteLLMMediaProvider;
+import ai.core.media.ArkMediaProvider;
 import ai.core.media.GeminiImageMediaProvider;
 import ai.core.media.KieMediaProvider;
 import ai.core.media.OpenAIImageMediaProvider;
@@ -61,6 +62,14 @@ class MediaProviderAdapterFactoryTest {
         provider.baseUrl = "https://api.kie.ai";
 
         assertInstanceOf(KieMediaProvider.class, factory.create(provider, "key"));
+    }
+
+    @Test
+    void createsVolcanoArkAdapterWhenProtocolIsConfigured() {
+        var provider = provider("openai-compatible", "VOLCENGINE_ARK");
+        provider.baseUrl = "https://ark.cn-beijing.volces.com/api/v3";
+
+        assertInstanceOf(ArkMediaProvider.class, factory.create(provider, "key"));
     }
 
     private GatewayProviderConfig provider(String type, String mediaProtocol) {

@@ -24,6 +24,12 @@ public final class MediaCapabilityRegistry {
             // per-file ones (video 2-30s each and <=30s total, audio 2-30s each) which live upstream.
             new Entry("bytedance/seedance-2-5", new MediaModelCapabilities("bytedance/seedance-2-5", 30, 10, 10, null, AT_TOKEN, true)),
             new Entry("bytedance/seedance-2", new MediaModelCapabilities("bytedance/seedance-2", 4, 2, 1, 4, AT_TOKEN, true)),
+            // Doubao Seedance called straight from Volcano Ark (doubao-seedance-2-5-260628): the same 50-asset
+            // reference package as the KIE variant, addressed as @Image1 / @Video1 / @Audio1. 2.0 is the smaller
+            // package (9 images + 3 videos + 3 audio, 15 in total). Ark's 1.x reference scene addresses images as
+            // [图1] instead, which the compiler's bracket syntax does not emit — no entry, so nothing is rewritten.
+            new Entry("doubao-seedance-2-5", new MediaModelCapabilities("doubao-seedance-2-5", 30, 10, 10, null, AT_TOKEN, true)),
+            new Entry("doubao-seedance-2", new MediaModelCapabilities("doubao-seedance-2", 9, 3, 3, 15, AT_TOKEN, true)),
             new Entry("bytedance/seedance-1", new MediaModelCapabilities("bytedance/seedance-1", 2, 0, 0, 2, NONE, false)),
             // MiniMax H3 reference-to-video addresses as <Picture 1> / <Video 1>
             new Entry("minimax-h3/reference-to-video", new MediaModelCapabilities("minimax-h3/reference-to-video", 4, 2, 1, 4, ANGLE_SUBJECT, true)),

@@ -34,8 +34,10 @@ public record MediaProviderCapabilities(boolean acceptsRemoteUrl, boolean accept
             // <account>.blob.core.windows.net/..."), and the task dies minutes later with nothing
             // rendered; its own upload API does work, so references are inlined and uploaded there
             case "KIE" -> new MediaProviderCapabilities(true, true, false, true);
-            // reference arrays are URLs; base64 is accepted but costs an extra upload round trip
-            case "OPENAI_COMPATIBLE" -> new MediaProviderCapabilities(true, true, false, false);
+            // reference arrays are URLs; base64 is accepted but costs an extra upload round trip. Ark takes
+            // the same shape — it fetches reference URLs itself and also inlines data URLs, and a data URL
+            // costs request body space (64 MB per request), so a stored reference travels as a pre-signed link
+            case "OPENAI_COMPATIBLE", "VOLCENGINE_ARK" -> new MediaProviderCapabilities(true, true, false, false);
             // OPENAI_IMAGES uploads multipart files, the Gemini generateContent protocols take
             // inlineData parts: neither can fetch a URL, so an unknown protocol assumes the same
             default -> new MediaProviderCapabilities(false, true, false, false);

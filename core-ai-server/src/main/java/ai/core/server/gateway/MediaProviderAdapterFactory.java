@@ -1,6 +1,7 @@
 package ai.core.server.gateway;
 
 import ai.core.llm.providers.LiteLLMMediaProvider;
+import ai.core.media.ArkMediaProvider;
 import ai.core.media.GeminiImageMediaProvider;
 import ai.core.media.GoogleAccessTokenProvider;
 import ai.core.media.KieMediaProvider;
@@ -37,6 +38,7 @@ public class MediaProviderAdapterFactory {
             case "VERTEX_GEMINI_GENERATE_CONTENT" -> vertexImageProvider(provider, googleCredentialsJson);
             case "VERTEX_GEMINI_INTERACTIONS" -> vertexOmniProvider(provider, googleCredentialsJson);
             case "KIE" -> new KieMediaProvider(provider.baseUrl, apiKey, provider.requestExtraBody);
+            case "VOLCENGINE_ARK" -> new ArkMediaProvider(provider.baseUrl, apiKey, provider.requestExtraBody);
             default -> throw new BadRequestException("unsupported media protocol: " + protocol);
         };
     }

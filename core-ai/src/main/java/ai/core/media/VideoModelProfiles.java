@@ -29,6 +29,14 @@ public final class VideoModelProfiles {
             // reference_image_urls[0] instead of first_frame_url (frameViaReference), trading slot pinning for identity.
             new Profile("bytedance/seedance-2-5", DurationPolicy.range(4, 30), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null, true, true),
             new Profile("bytedance/seedance-2", DurationPolicy.range(4, 15), new FrameParams("first_frame_url", "last_frame_url", true), "generate_audio", null, true, true),
+            // Doubao Seedance served straight from Volcano Ark: the same family facts as the bytedance/ names,
+            // but a frame travels as a role-tagged content item (first_frame / last_frame), so the route names
+            // are Ark's roles rather than the KIE market's input fields
+            new Profile("doubao-seedance-2-5", DurationPolicy.range(4, 30), new FrameParams("first_frame", "last_frame", true), "generate_audio", null, true, true),
+            new Profile("doubao-seedance-2", DurationPolicy.range(4, 15), new FrameParams("first_frame", "last_frame", true), "generate_audio", null, true, true),
+            // 1.x: frames or reference images, never both, and their docs give no multimodal-reference way out
+            new Profile("doubao-seedance-1-5", DurationPolicy.range(4, 12), new FrameParams("first_frame", "last_frame", true), "generate_audio", null),
+            new Profile("doubao-seedance-1", DurationPolicy.range(2, 12), new FrameParams("first_frame", "last_frame", true), null, null),
             // seedance 1.5 input_urls is positional (first, last) — the array itself is the frame slot
             new Profile("bytedance/seedance-1", DurationPolicy.range(4, 12), new FrameParams(null, null, true), "generate_audio", null, true),
             new Profile("bytedance/v1-", DurationPolicy.fixed(5, 10), new FrameParams(null, null, true), null, null),

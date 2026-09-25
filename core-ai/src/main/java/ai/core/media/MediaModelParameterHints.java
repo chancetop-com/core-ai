@@ -99,8 +99,32 @@ public final class MediaModelParameterHints {
     private static final String BYTEDANCE_V1_HINT = "image_url (single image); "
             + "duration \"5\"/\"10\"; aspect_ratio 16:9/9:16/1:1/4:3/3:4";
 
+    // Volcano Ark hosts the same Seedance family behind its own request shape: one role-tagged content array
+    // instead of a flat input object, so the reference parameters are item roles here, not fields
+    private static final String ARK_SEEDANCE_2_5_HINT = "Volcano Ark content shape (role-tagged items, not fields): "
+            + "image_url with role reference_image/first_frame/last_frame, video_url with role reference_video, "
+            + "audio_url with role reference_audio; the prompt addresses them as @Image1 / @Video1 / @Audio1; "
+            + "IMPORTANT: frame mode (first_frame/last_frame) and the multimodal-reference route are MUTUALLY EXCLUSIVE — "
+            + "when identity references ride along, send the opening frame as the FIRST reference image and name it "
+            + "as the first frame inside the prompt, and never pass size in frame mode (ratio becomes adaptive); "
+            + "duration 4-30s (integer, -1 lets the model choose, default 5) — a 3s clip is rejected; "
+            + "resolution 480p/720p/1080p derived from size; ratio 21:9/16:9/4:3/1:1/3:4/9:16/adaptive derived from size; "
+            + "generate_audio (bool, default true), watermark (bool), return_last_frame (bool), seed, "
+            + "omni_reference_task_type (reference/edit/extend)";
+
+    private static final String ARK_SEEDANCE_2_HINT = "Volcano Ark content shape (role-tagged items, not fields): "
+            + "image_url with role reference_image/first_frame/last_frame, video_url with role reference_video, "
+            + "audio_url with role reference_audio; the prompt addresses them as @Image1 / @Video1 / @Audio1; "
+            + "IMPORTANT: frame mode and the multimodal-reference route are MUTUALLY EXCLUSIVE, and frame mode "
+            + "requires adaptive ratio (do not pass size); references cap at 9 images + 3 videos + 3 audios; "
+            + "duration 4-15s (integer, -1 for auto); resolution 480p/720p/1080p (2.0 fast/mini: 480p/720p); "
+            + "ratio 21:9/16:9/4:3/1:1/3:4/9:16/adaptive derived from size; generate_audio (bool, default true), "
+            + "watermark (bool), return_last_frame (bool), seed";
+
     public static String videoHint(String upstreamModel) {
         if (upstreamModel == null) return null;
+        if (upstreamModel.startsWith("doubao-seedance-2-5")) return ARK_SEEDANCE_2_5_HINT;
+        if (upstreamModel.startsWith("doubao-seedance-2")) return ARK_SEEDANCE_2_HINT;
         if (upstreamModel.startsWith("bytedance/seedance-2")) return SEEDANCE_2_HINT;
         if (upstreamModel.startsWith("bytedance/seedance-1")) return SEEDANCE_1_5_HINT;
         if (upstreamModel.startsWith("minimax-h3/text-to-video")) return MINIMAX_H3_TEXT_TO_VIDEO_HINT;

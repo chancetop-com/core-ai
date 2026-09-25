@@ -312,11 +312,11 @@ public class KieMediaProvider implements MediaProvider {
             framesSent = KieVideoReferenceRouter.apply(input, new KieVideoReferenceRouter.Target(request.model(), family.referenceMode(), family.referenceField(), profile),
                     request.inputReferences(), this::referenceUrls);
         }
-        var aspectRatio = KieOutputSize.aspectRatio(request.size());
+        var aspectRatio = MediaOutputSize.aspectRatio(request.size());
         // seedance frame mode derives the aspect ratio from the frame image and rejects an explicit one
         if (framesSent && profile.frameExclusive() && !profile.frames().positional()) aspectRatio = "adaptive";
         if (aspectRatio != null) input.put("aspect_ratio", aspectRatio);
-        var resolution = KieOutputSize.resolution(request.size(), family.resolutions());
+        var resolution = MediaOutputSize.resolution(request.size(), family.resolutions());
         if (resolution != null) input.put("resolution", resolution);
         if (request.seconds() != null) input.put("duration", duration(request, family, profile));
         // native audio is the reason to pick these families for dialogue; kling defaults it OFF
