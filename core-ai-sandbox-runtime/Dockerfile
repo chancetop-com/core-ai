@@ -53,7 +53,7 @@ RUN npm install -g node-gyp && \
 # (POST /ocg/send) needs OCG >= 1.2.0, and the sandbox only exposes that path
 # through the runtime proxy, so the pin, the Go proxy and the server adapter
 # ship together. Run `ocg upgrade` inside a running sandbox only as a stopgap.
-ARG OCG_VERSION=1.2.1
+ARG OCG_VERSION=1.2.2
 ARG OCG_CACHE_BUST=0
 RUN echo "Installing openclaw-channel-gateway@${OCG_VERSION} cache-bust=${OCG_CACHE_BUST}" && \
     npm install -g openclaw-channel-gateway@${OCG_VERSION} && \
