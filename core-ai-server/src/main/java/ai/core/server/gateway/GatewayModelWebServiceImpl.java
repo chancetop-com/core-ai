@@ -36,7 +36,7 @@ public class GatewayModelWebServiceImpl implements GatewayModelWebService {
     }
 
     @Override
-    @PermissionsRequired(PermissionCodes.GATEWAY_MANAGE)
+    @PermissionsRequired(PermissionCodes.GATEWAY_VIEW)
     public ListGatewayAvailableModelsResponse listAvailable() {
         return gatewayModelService.listAvailable();
     }

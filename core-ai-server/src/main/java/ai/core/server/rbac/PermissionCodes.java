@@ -51,6 +51,9 @@ public final class PermissionCodes {
     public static final String MEDIA_COMPARE = "media.compare";
     public static final String NOTIFICATION_VIEW = "notification.view";
 
+    // gateway.view = read-only gateway model catalog (no keys), for model pickers such as the
+    // agent editor; gateway.manage = provider/model configuration including secrets.
+    public static final String GATEWAY_VIEW = "gateway.view";
     public static final String GATEWAY_MANAGE = "gateway.manage";
     public static final String SYSTEM_MANAGE = "system.manage";
     public static final String COSTALERT_MANAGE = "costalert.manage";
@@ -72,7 +75,7 @@ public final class PermissionCodes {
             DATASET_VIEW, DATASET_MANAGE,
             PROJECT_VIEW, PROJECT_MANAGE,
             EXPERIMENT_VIEW, EXPERIMENT_REPLAY, MEDIA_COMPARE, NOTIFICATION_VIEW,
-            GATEWAY_MANAGE, SYSTEM_MANAGE, COSTALERT_MANAGE,
+            GATEWAY_VIEW, GATEWAY_MANAGE, SYSTEM_MANAGE, COSTALERT_MANAGE,
             USER_MANAGE, ANALYTICS_VIEW, RBAC_MANAGE);
 
     private PermissionCodes() {

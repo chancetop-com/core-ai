@@ -50,7 +50,9 @@ public class RoleRegistry {
                     PermissionCodes.DATASET_VIEW, PermissionCodes.DATASET_MANAGE,
                     // projects are shared business containers: regular members can view and drive them
                     PermissionCodes.PROJECT_VIEW, PermissionCodes.PROJECT_MANAGE,
-                    PermissionCodes.EXPERIMENT_VIEW, PermissionCodes.EXPERIMENT_REPLAY, PermissionCodes.NOTIFICATION_VIEW),
+                    PermissionCodes.EXPERIMENT_VIEW, PermissionCodes.EXPERIMENT_REPLAY, PermissionCodes.NOTIFICATION_VIEW,
+                    // read-only model catalog (no keys): agent authors need it to pick a model
+                    PermissionCodes.GATEWAY_VIEW),
             ROLE_MEMBER, List.of(
                     PermissionCodes.DASHBOARD_VIEW, PermissionCodes.CHAT_USE, PermissionCodes.NOTIFICATION_VIEW));
 
