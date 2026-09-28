@@ -46,10 +46,12 @@ public class ProjectAttributionJob implements Job {
         ActionLogContext.maxProcessTime(Duration.ofMinutes(5));
         var cutoff = ZonedDateTime.now().minus(ATTRIBUTION_INTERVAL);
         var query = new Query();
+        // the eq-null branch is required: core-ng writes the cursor as an explicit null, so an
+        // exists:false-only check would never match a project that has not been analyzed yet
         query.filter = Filters.and(
             Filters.eq("status", ProjectService.STATUS_ACTIVE),
             Filters.ne("analysis_status", ProjectService.ANALYSIS_RUNNING),
-            Filters.or(Filters.exists("last_analyzed_at", false), Filters.lt("last_analyzed_at", cutoff)));
+            Filters.or(Filters.exists("last_analyzed_at", false), Filters.eq("last_analyzed_at", null), Filters.lt("last_analyzed_at", cutoff)));
         query.limit = MAX_PROJECTS_PER_TICK;
         for (var project : projectCollection.find(query)) {
             // a started subject is the classic driver; with auto-discovery on an empty project must

@@ -46,10 +46,12 @@ public class ProjectAnalysisJob implements Job {
         ActionLogContext.maxProcessTime(Duration.ofMinutes(5));
         var cutoff = ZonedDateTime.now().minus(ANALYSIS_INTERVAL);
         var query = new Query();
+        // the eq-null branch is required: core-ng writes the cursor as an explicit null, so an
+        // exists:false-only check would never match a project that has not been analyzed yet
         query.filter = Filters.and(
             Filters.eq("status", ProjectService.STATUS_ACTIVE),
             Filters.ne("analysis_status", ProjectService.ANALYSIS_RUNNING),
-            Filters.or(Filters.exists("last_analysis_at", false), Filters.lt("last_analysis_at", cutoff)));
+            Filters.or(Filters.exists("last_analysis_at", false), Filters.eq("last_analysis_at", null), Filters.lt("last_analysis_at", cutoff)));
         query.limit = MAX_PROJECTS_PER_TICK;
         for (var project : projectCollection.find(query)) {
             if (!hasUnanalyzedStartedSubject(project.id)) continue;
