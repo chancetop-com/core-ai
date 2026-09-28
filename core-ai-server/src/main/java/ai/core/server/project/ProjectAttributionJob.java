@@ -17,10 +17,12 @@ import java.time.Duration;
 import java.time.ZonedDateTime;
 
 /**
- * High-frequency attribution driver: for every active project with at least one started subject,
- * collects the members' new unattributed execution records since the attribution cursor and runs
- * the attribution writer (single-flight claim; the cursor advances only on success). Runs more
- * often than the subject-analysis job because attribution is cheap and just tags material.
+ * High-frequency attribution driver: for every active project with at least one started subject —
+ * or with subject auto-discovery enabled, because a project tracking nothing yet still needs the
+ * attribution pass, which is what proposes its first subjects — collects the members' new
+ * unattributed execution records since the attribution cursor and runs the attribution writer
+ * (single-flight claim; the cursor advances only on success). Runs more often than the
+ * subject-analysis job because attribution is cheap and just tags material.
  *
  * @author stephen
  */
@@ -50,7 +52,9 @@ public class ProjectAttributionJob implements Job {
             Filters.or(Filters.exists("last_analyzed_at", false), Filters.lt("last_analyzed_at", cutoff)));
         query.limit = MAX_PROJECTS_PER_TICK;
         for (var project : projectCollection.find(query)) {
-            if (!hasStartedSubject(project.id)) continue;
+            // a started subject is the classic driver; with auto-discovery on an empty project must
+            // still run, otherwise it can never receive its first attribution (and its first proposals)
+            if (ProjectService.AUTO_SUBJECTS_OFF.equals(ProjectService.autoSubjectMode(project)) && !hasStartedSubject(project.id)) continue;
             if (!analysisService.claimAnalysis(project.id)) continue;
             LOGGER.info("project attribution triggered, projectId={}", project.id);
             analysisService.runAttribution(project.id);
