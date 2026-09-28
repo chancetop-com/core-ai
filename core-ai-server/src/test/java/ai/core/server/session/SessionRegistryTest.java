@@ -45,6 +45,22 @@ import static org.mockito.Mockito.when;
 
 class SessionRegistryTest {
     @Test
+    void flippingTheCompletionSwitchToItsCurrentValueIsNotAnError() {
+        var registry = registry();
+        var session = new ChatSession();
+        session.id = "s-1";
+        session.userId = "user-1";
+        session.notifyOnComplete = Boolean.TRUE;
+        when(registry.chatSessionCollection.get("s-1")).thenReturn(Optional.of(session));
+        // core-ng's update reports the MODIFIED count, so writing the value a row already holds is 0
+        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
+
+        registry.updateNotifyOnComplete("user-1", "s-1", true);
+
+        verify(registry.chatSessionCollection).update(any(Bson.class), any(Bson.class));
+    }
+
+    @Test
     void createPersistsCompleteSessionIdentityBeforeReturning() {
         var registry = registry();
         var datasetConfig = new AgentDatasetConfig();

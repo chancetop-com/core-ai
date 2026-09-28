@@ -122,9 +122,7 @@ public class ChatSessionWebServiceImpl implements ChatSessionWebService {
             var session = chatMessageService.getSessionMeta(sessionId);
             if (session == null || session.deletedAt != null) throw new NotFoundException("session not found");
             if (session.userId != null && !userId.equals(session.userId)) throw new ForbiddenException("forbidden");
-            if (!chatMessageService.updateSessionNotify(userId, sessionId, request.notifyOnComplete)) {
-                throw new NotFoundException("session not found");
-            }
+            chatMessageService.updateSessionNotify(userId, sessionId, request.notifyOnComplete);
             var owner = session.userId != null ? userCollection.get(session.userId).orElse(null) : null;
             response.notifyTargetConfigured = SessionCompletionNotifier.hasTarget(owner);
         }

@@ -160,13 +160,18 @@ public class SessionRegistry {
                 Updates.set("title", cleaned)) > 0;
     }
 
-    public boolean updateNotifyOnComplete(String userId, String sessionId, boolean enabled) {
+    /**
+     * Flips the per-chat completion switch. Deliberately void: core-ng's update returns the
+     * <em>modified</em> count, so a write that changes nothing (the switch was already there) is
+     * indistinguishable from a missing row — the caller has already validated existence and ownership.
+     */
+    public void updateNotifyOnComplete(String userId, String sessionId, boolean enabled) {
         var session = chatSessionCollection.get(sessionId).orElse(null);
-        if (session == null || session.deletedAt != null) return false;
-        if (userId != null && !userId.equals(session.userId)) return false;
-        return chatSessionCollection.update(
+        if (session == null || session.deletedAt != null) return;
+        if (userId != null && !userId.equals(session.userId)) return;
+        chatSessionCollection.update(
                 Filters.eq("_id", sessionId),
-                Updates.set("notify_on_complete", enabled)) > 0;
+                Updates.set("notify_on_complete", enabled));
     }
 
     public List<String> batchSoftDelete(String userId, List<String> sessionIds) {

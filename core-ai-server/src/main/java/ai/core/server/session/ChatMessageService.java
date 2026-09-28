@@ -132,8 +132,8 @@ public class ChatMessageService {
     }
 
     // per-chat switch for the session-completion notification
-    public boolean updateSessionNotify(String userId, String sessionId, boolean enabled) {
-        return sessionRegistry.updateNotifyOnComplete(userId, sessionId, enabled);
+    public void updateSessionNotify(String userId, String sessionId, boolean enabled) {
+        sessionRegistry.updateNotifyOnComplete(userId, sessionId, enabled);
     }
 
     public AgentEventListener listener(String sessionId) {
