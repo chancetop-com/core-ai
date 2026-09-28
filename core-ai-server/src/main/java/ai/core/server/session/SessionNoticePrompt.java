@@ -125,10 +125,12 @@ public class SessionNoticePrompt {
     SessionNoticeStore sessionNoticeStore;
 
     public void answeredAndRefresh(InProcessAgentSession session, String userId, String channelId, String recipient) {
+        // render before marking: this message is very likely the answer to what is pending, and the model
+        // must still see it. Marking only keeps those notices out of the *next* message's prompt.
+        var notices = sessionNoticeStore.unanswered(userId, channelId, recipient);
         sessionNoticeStore.markAnswered(userId, channelId, recipient);
         var agent = session != null ? session.agent() : null;
         if (agent == null) return;
-        var notices = sessionNoticeStore.unanswered(userId, channelId, recipient);
         if (applyBlock(agent, renderBlock(notices, ZonedDateTime.now()))) {
             LOGGER.info("notice block refreshed, sessionId={}, channelId={}, notices={}", session.id(), channelId, notices.size());
         }

@@ -2,7 +2,9 @@ package ai.core.server.session;
 
 import ai.core.agent.Agent;
 import ai.core.server.domain.SessionNotice;
+import ai.core.session.InProcessAgentSession;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -12,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -84,6 +87,29 @@ class SessionNoticePromptTest {
 
         assertTrue(SessionNoticePrompt.applyBlock(agent, "<!-- notices:start -->\n## x\n<!-- notices:end -->"));
         verify(agent).setSystemPrompt(anyString());
+    }
+
+    @Test
+    void theAnsweringMessageStillSeesTheNoticeItAnswers() {
+        var store = mock(SessionNoticeStore.class);
+        when(store.unanswered("u-1", "chan-1", "qqbot:c2c:OPENID")).thenReturn(List.of(notice(NOW.minusMinutes(12), "Nightly report")));
+        var prompt = new SessionNoticePrompt();
+        prompt.sessionNoticeStore = store;
+        var session = mock(InProcessAgentSession.class);
+        var agent = mock(Agent.class);
+        when(session.agent()).thenReturn(agent);
+        when(agent.getSystemPrompt()).thenReturn("base prompt");
+        when(agent.getMessages()).thenReturn(List.of());
+
+        prompt.answeredAndRefresh(session, "u-1", "chan-1", "qqbot:c2c:OPENID");
+
+        var promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(agent).setSystemPrompt(promptCaptor.capture());
+        assertTrue(promptCaptor.getValue().contains("notices:start"), promptCaptor.getValue());
+        // and the answer is remembered, so the next message sees nothing
+        var order = inOrder(store);
+        order.verify(store).unanswered("u-1", "chan-1", "qqbot:c2c:OPENID");
+        order.verify(store).markAnswered("u-1", "chan-1", "qqbot:c2c:OPENID");
     }
 
     private SessionNotice notice(ZonedDateTime createdAt, String title) {
