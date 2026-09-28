@@ -46,6 +46,7 @@ public class InProcessCommandHandler {
     private final ChatMessageAttachments attachments;
     private final ai.core.server.asynctask.AsyncToolTaskService asyncToolTaskService;
     private final SandboxHubCommands sandboxHubCommands;
+    private final ai.core.server.session.SessionNoticePrompt sessionNoticePrompt;
 
     public InProcessCommandHandler(SessionCommandDependencies sessionDependencies, CommandRpcDependencies rpcDependencies) {
         this.sessionManager = sessionDependencies.sessionManager();
@@ -57,6 +58,7 @@ public class InProcessCommandHandler {
         this.jedisPool = rpcDependencies.jedisPool();
         this.sandboxService = sessionDependencies.sandboxService();
         this.eventPublisher = sessionDependencies.eventPublisher();
+        this.sessionNoticePrompt = sessionDependencies.sessionNoticePrompt();
         this.attachments = new ChatMessageAttachments(sessionDependencies.sandboxService(),
                 sessionDependencies.objectStorageResolver(), sessionDependencies.attachmentRepository());
         this.toolRegistryService = rpcDependencies.toolRegistryService();
@@ -140,6 +142,12 @@ public class InProcessCommandHandler {
         var stagedPaths = attachments.stageInto(command.sessionId(), command.userId(), payload);
         var agentMessage = attachments.appendSandboxPaths(message, stagedPaths);
         chatMessageService.writeUserMessage(command.sessionId(), attachments.appendVideoHints(agentMessage, attachedContents));
+        var channelId = (String) payload.get("channelId");
+        var noticeRecipient = (String) payload.get("noticeRecipient");
+        if (channelId != null && noticeRecipient != null) {
+            // this message answers whatever was pending on that channel, and the model gets what is left
+            sessionNoticePrompt.answeredAndRefresh(session, command.userId(), channelId, noticeRecipient);
+        }
         LOGGER.info("handleSendMessage: sending message to agent");
         session.sendMessage(agentMessage, variables, attachedContents);
         LOGGER.info("handleSendMessage: message sent to agent");

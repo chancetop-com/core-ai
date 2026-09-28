@@ -7,10 +7,12 @@ import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.channel.ChannelConfigStore;
+import ai.core.server.channel.ChannelConfigView;
 import ai.core.server.channel.ChannelOutboundAdapter;
 import ai.core.server.channel.ChannelMessage;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.SessionNotice;
 import ai.core.server.domain.User;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -18,7 +20,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.UUID;
 import java.util.function.LongSupplier;
 
 /**
@@ -71,6 +75,8 @@ public class SessionCompletionNotifier {
     ChannelRegistry channelRegistry;
     @Inject
     PublicUrlConfiguration publicUrlConfiguration;
+    @Inject
+    SessionNoticeStore sessionNoticeStore;
 
     LongSupplier clock = System::currentTimeMillis;
 
@@ -115,12 +121,34 @@ public class SessionCompletionNotifier {
         try {
             outbound.sendMessage(ChannelMessage.text(text), channel.channelId,
                     user.notifyRecipient, user.notifyRecipient, null, channel.config);
+            // only a delivery that happened leaves something to answer: the row is what lets a reply on
+            // this channel find the conversation again
+            recordNotice(session, user, channel, report);
             LOGGER.info("session completion notification sent, sessionId={}, channelId={}, durationMs={}",
                     session.id, channel.channelId, report.durationMs());
         } catch (RuntimeException e) {
             LOGGER.warn("session completion notification failed, sessionId={}, channelId={}",
                     session.id, channel.channelId, e);
         }
+    }
+
+    private void recordNotice(ChatSession session, User user, ChannelConfigView channel, TurnReport report) {
+        var notice = new SessionNotice();
+        notice.id = UUID.randomUUID().toString();
+        notice.userId = session.userId;
+        notice.channelId = channel.channelId;
+        notice.recipient = user.notifyRecipient;
+        notice.kind = SessionNotice.KIND_SESSION_COMPLETION;
+        notice.sessionId = session.id;
+        notice.agentId = session.agentId;
+        notice.title = displayTitle(session);
+        notice.summary = summaryText(report);
+        notice.createdAt = ZonedDateTime.now();
+        sessionNoticeStore.record(notice);
+    }
+
+    String summaryText(TurnReport report) {
+        return (report.failed() ? "session failed after " : "session finished after ") + formatDuration(report.durationMs());
     }
 
     String buildText(ChatSession session, TurnReport report) {

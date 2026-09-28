@@ -12,6 +12,7 @@ import ai.core.server.channel.ChannelMessage;
 import ai.core.server.channel.ChannelOutboundAdapter;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.SessionNotice;
 import ai.core.server.domain.User;
 import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -134,6 +136,37 @@ class SessionCompletionNotifierTest {
     }
 
     @Test
+    void whatWasSentIsRememberedSoAReplyCanFindIt() {
+        var harness = harness();
+        harness.now.set(START + 6 * 60_000L);
+
+        harness.listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
+
+        var captor = ArgumentCaptor.forClass(SessionNotice.class);
+        verify(harness.noticeStore).record(captor.capture());
+        var notice = captor.getValue();
+        assertEquals("u-1", notice.userId);
+        assertEquals("chan-1", notice.channelId);
+        assertEquals("qqbot:c2c:OPENID", notice.recipient);
+        assertEquals(SessionNotice.KIND_SESSION_COMPLETION, notice.kind);
+        assertEquals("s-1", notice.sessionId);
+        assertEquals("Nightly report", notice.title);
+        assertEquals(Boolean.FALSE, notice.answered);
+        assertTrue(notice.summary.contains("6m 00s"), notice.summary);
+    }
+
+    @Test
+    void nothingIsRememberedWhenNothingWasSent() {
+        var harness = harness();
+        harness.now.set(START + 30 * 60_000L);
+        var listenerWithoutRunning = harness.notifier.listener("s-1");
+
+        listenerWithoutRunning.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
+
+        verify(harness.noticeStore, never()).record(any());
+    }
+
+    @Test
     void aTurnThatNeverReportedRunningIsSkipped() {
         var harness = harness();
         harness.now.set(START + 30 * 60_000L);
@@ -153,6 +186,7 @@ class SessionCompletionNotifierTest {
         var channelConfigStore = mock(ChannelConfigStore.class);
         var channelRegistry = mock(ChannelRegistry.class);
         var adapter = mock(ChannelOutboundAdapter.class);
+        var noticeStore = mock(SessionNoticeStore.class);
 
         var session = new ChatSession();
         session.id = "s-1";
@@ -183,14 +217,16 @@ class SessionCompletionNotifierTest {
         notifier.channelConfigStore = channelConfigStore;
         notifier.channelRegistry = channelRegistry;
         notifier.publicUrlConfiguration = new PublicUrlConfiguration("https://core.example");
+        notifier.sessionNoticeStore = noticeStore;
         notifier.clock = now::get;
 
         var listener = notifier.listener("s-1");
         listener.onStatusChange(StatusChangeEvent.of("s-1", SessionStatus.RUNNING));
-        return new Harness(notifier, registry, session, user, adapter, now, listener);
+        return new Harness(notifier, registry, session, user, adapter, now, listener, noticeStore);
     }
 
     private record Harness(SessionCompletionNotifier notifier, SessionRegistry registry, ChatSession session, User user,
-                           ChannelOutboundAdapter adapter, AtomicLong now, AgentEventListener listener) {
+                           ChannelOutboundAdapter adapter, AtomicLong now, AgentEventListener listener,
+                           SessionNoticeStore noticeStore) {
     }
 }

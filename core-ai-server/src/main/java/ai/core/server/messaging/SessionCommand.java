@@ -55,6 +55,20 @@ public record SessionCommand(CommandType type, String sessionId, String userId, 
     }
 
     /**
+     * An inbound channel message. The channel and the platform-side address ride along so the replica that
+     * owns the session can refresh its notice block before the turn starts — the live agent whose prompt
+     * that block lives in exists only there.
+     */
+    public static SessionCommand channelSendMessage(String sessionId, String userId, String message, String channelId, String noticeRecipient) {
+        var payloadMap = new HashMap<String, Object>();
+        payloadMap.put("message", message);
+        payloadMap.put("variables", Map.of());
+        if (channelId != null && !channelId.isBlank()) payloadMap.put("channelId", channelId);
+        if (noticeRecipient != null && !noticeRecipient.isBlank()) payloadMap.put("noticeRecipient", noticeRecipient);
+        return new SessionCommand(CommandType.SEND_MESSAGE, sessionId, userId, JsonUtil.toJson(payloadMap), null);
+    }
+
+    /**
      * A finished long-running tool call, addressed to the session that issued it. Travels the same road
      * as a user message so it reaches the owning replica and rebuilds a session that is no longer live.
      */

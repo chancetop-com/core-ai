@@ -61,7 +61,7 @@ class MessagingRuntimeModule extends Module {
         var asyncToolTaskService = bean(AsyncToolTaskService.class);
         var sessionDependencies = new SessionCommandDependencies(bean(AgentSessionManager.class), bean(ChatMessageService.class),
                 ownershipRegistry, sandboxService, bean(EventPublisher.class), bean(ObjectStorageServiceResolver.class),
-                bean(SessionAttachmentRefRepository.class), asyncToolTaskService);
+                bean(SessionAttachmentRefRepository.class), asyncToolTaskService, bean(ai.core.server.session.SessionNoticePrompt.class));
         var rpcDependencies = new CommandRpcDependencies(bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class),
                 bean(ServerA2AService.class), jedisPool, bean(ToolRegistryService.class), bean(SandboxHubService.class));
         var commandHandler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);

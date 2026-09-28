@@ -58,8 +58,9 @@ public class ChannelDispatcher {
         // remember the address this user writes from: a notification needs a target, and only an
         // inbound message ever reveals it. A group/guild target is not a personal address — a
         // completion notice sent there would be shown to everyone.
-        channelTargetStore.record(userId, channel.channelId, ChannelTargets.directTarget(
-                event.conversationId != null && !event.conversationId.isBlank() ? event.conversationId : event.channelUserId));
+        var target = ChannelTargets.directTarget(
+                event.conversationId != null && !event.conversationId.isBlank() ? event.conversationId : event.channelUserId);
+        channelTargetStore.record(userId, channel.channelId, target);
 
         if (isToolDecision(event)) {
             var decision = parseDecision(event);
@@ -74,7 +75,7 @@ public class ChannelDispatcher {
 
         LOGGER.info("dispatching channel message, channelId={}, type={}, sessionId={}",
                 channel.channelId, channel.channelType, sessionId);
-        var command = SessionCommand.sendMessage(sessionId, userId, event.messageText, null);
+        var command = SessionCommand.channelSendMessage(sessionId, userId, event.messageText, channel.channelId, target);
         commandPublisher.publish(command);
 
         attachChannelBridgeIfNeeded(sessionId, channel, event);

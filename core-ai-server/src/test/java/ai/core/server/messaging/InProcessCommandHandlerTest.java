@@ -12,6 +12,7 @@ import ai.core.server.sandbox.PendingFile;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.session.SessionNoticePrompt;
 import ai.core.session.InProcessAgentSession;
 import ai.core.utils.JsonUtil;
 import redis.clients.jedis.JedisPool;
@@ -38,7 +39,7 @@ class InProcessCommandHandlerTest {
         var eventPublisher = mock(EventPublisher.class);
         doThrow(new RuntimeException("session missing"))
                 .when(sessionManager).getSession("s-1", null, "u-1");
-        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, eventPublisher, null, null, null);
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, eventPublisher, null, null, null, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
 
@@ -48,6 +49,41 @@ class InProcessCommandHandlerTest {
                 argThat(event -> event instanceof SseErrorEvent error && "session missing".equals(error.message)));
         verify(eventPublisher).publish(eq("s-1"),
                 argThat(event -> event instanceof SseStatusChangeEvent status && status.status == SessionStatus.ERROR));
+    }
+
+    @Test
+    void channelMessageRefreshesTheNoticeBlockOnTheOwningReplica() {
+        var sessionManager = mock(AgentSessionManager.class);
+        var chatMessageService = mock(ChatMessageService.class);
+        var session = mock(InProcessAgentSession.class);
+        when(sessionManager.getSession("s-1", null, "u-1")).thenReturn(session);
+        var noticePrompt = mock(SessionNoticePrompt.class);
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService,
+                mock(SessionOwnershipRegistry.class), null, null, null, null, null, noticePrompt);
+        var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null);
+        var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
+
+        handler.handle(SessionCommand.channelSendMessage("s-1", "u-1", "publish it", "chan-1", "qqbot:c2c:OPENID"));
+
+        verify(noticePrompt).answeredAndRefresh(session, "u-1", "chan-1", "qqbot:c2c:OPENID");
+        verify(session).sendMessage("publish it", null, null);
+    }
+
+    @Test
+    void aNonChannelMessageLeavesTheNoticeBlockAlone() {
+        var sessionManager = mock(AgentSessionManager.class);
+        var chatMessageService = mock(ChatMessageService.class);
+        var session = mock(InProcessAgentSession.class);
+        when(sessionManager.getSession("s-1", null, "u-1")).thenReturn(session);
+        var noticePrompt = mock(SessionNoticePrompt.class);
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService,
+                mock(SessionOwnershipRegistry.class), null, null, null, null, null, noticePrompt);
+        var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null);
+        var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
+
+        handler.handle(SessionCommand.sendMessage("s-1", "u-1", "hello", null));
+
+        verify(noticePrompt, never()).answeredAndRefresh(any(), any(), any(), any());
     }
 
     @Test
@@ -63,7 +99,7 @@ class InProcessCommandHandlerTest {
         when(storageResolver.resolve()).thenReturn(storageService);
         when(storageResolver.multimodalContainer()).thenReturn("uploads");
         var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService, ownershipRegistry,
-                null, null, storageResolver, null, null);
+                null, null, storageResolver, null, null, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
         var images = List.of(Map.of(
@@ -95,7 +131,7 @@ class InProcessCommandHandlerTest {
         when(sandboxService.stageAttachments(eq("s-1"), eq("u-1"), any()))
                 .thenReturn(Map.of("ai/image.jpg", "/workspace/attachments/image.jpg"));
         var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService, ownershipRegistry,
-                sandboxService, null, storageResolver, null, null);
+                sandboxService, null, storageResolver, null, null, null);
         var handler = new InProcessCommandHandler(sessionDependencies,
                 new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null));
         var images = List.of(Map.of(
@@ -119,7 +155,7 @@ class InProcessCommandHandlerTest {
         var session = mock(InProcessAgentSession.class);
         when(sessionManager.getSession("s-1", null, "u-1")).thenReturn(session);
         var sessionDependencies = new SessionCommandDependencies(sessionManager, chatMessageService, ownershipRegistry,
-                sandboxService, null, null, null, null);
+                sandboxService, null, null, null, null, null);
         var handler = new InProcessCommandHandler(sessionDependencies,
                 new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null));
         var files = List.of(Map.of(
@@ -146,7 +182,7 @@ class InProcessCommandHandlerTest {
         doThrow(new SecurityException("session does not belong to caller"))
                 .when(sessionManager).getSession("victim-session", null, "attacker-user");
         var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry,
-                sandboxService, eventPublisher, null, null, null);
+                sandboxService, eventPublisher, null, null, null, null);
         var handler = new InProcessCommandHandler(sessionDependencies,
                 new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null));
         var files = List.of(Map.of(
@@ -173,7 +209,7 @@ class InProcessCommandHandlerTest {
         when(sessionManager.getSession("s-1", null, "u-1")).thenReturn(session);
         when(asyncToolTaskService.claimNotificationDelivery("task-1")).thenReturn(Boolean.TRUE);
         var handler = new InProcessCommandHandler(
-                new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, null, null, null, asyncToolTaskService),
+                new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, null, null, null, asyncToolTaskService, null),
                 new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null));
 
         handler.handle(SessionCommand.taskNotification("s-1", "u-1", "task-1", "generate_video", "completed", "<task-notification/>"));
@@ -187,7 +223,7 @@ class InProcessCommandHandlerTest {
         var asyncToolTaskService = mock(AsyncToolTaskService.class);
         when(asyncToolTaskService.claimNotificationDelivery("task-1")).thenReturn(Boolean.FALSE);
         var handler = new InProcessCommandHandler(
-                new SessionCommandDependencies(sessionManager, null, mock(SessionOwnershipRegistry.class), null, null, null, null, asyncToolTaskService),
+                new SessionCommandDependencies(sessionManager, null, mock(SessionOwnershipRegistry.class), null, null, null, null, asyncToolTaskService, null),
                 new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null));
 
         handler.handle(SessionCommand.taskNotification("s-1", "u-1", "task-1", "generate_video", "completed", "<task-notification/>"));
@@ -203,7 +239,7 @@ class InProcessCommandHandlerTest {
         when(asyncToolTaskService.claimNotificationDelivery("task-1")).thenReturn(Boolean.TRUE);
         doThrow(new RuntimeException("rebuild failed")).when(sessionManager).getSession("s-1", null, "u-1");
         var handler = new InProcessCommandHandler(
-                new SessionCommandDependencies(sessionManager, null, mock(SessionOwnershipRegistry.class), null, eventPublisher, null, null, asyncToolTaskService),
+                new SessionCommandDependencies(sessionManager, null, mock(SessionOwnershipRegistry.class), null, eventPublisher, null, null, asyncToolTaskService, null),
                 new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null));
 
         handler.handle(SessionCommand.taskNotification("s-1", "u-1", "task-1", "generate_video", "completed", "<task-notification/>"));
@@ -220,7 +256,7 @@ class InProcessCommandHandlerTest {
         var eventPublisher = mock(EventPublisher.class);
         var session = mock(InProcessAgentSession.class);
         when(sessionManager.getSession("s-1")).thenReturn(session);
-        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, eventPublisher, null, null, null);
+        var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry, null, eventPublisher, null, null, null, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
 
@@ -237,7 +273,7 @@ class InProcessCommandHandlerTest {
         var ownershipRegistry = mock(SessionOwnershipRegistry.class);
         var a2aService = mock(ServerA2AService.class);
         var sessionDependencies = new SessionCommandDependencies(sessionManager, null, ownershipRegistry,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, a2aService, mock(JedisPool.class), null, null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
         when(a2aService.resumeTaskOnOwner(any(Message.class), eq("caller-1")))
@@ -260,7 +296,7 @@ class InProcessCommandHandlerTest {
         when(sessionManager.unloadSkills("session-1", List.of("skill-1"), "caller-1"))
                 .thenReturn(List.of());
         var sessionDependencies = new SessionCommandDependencies(sessionManager, null,
-                mock(SessionOwnershipRegistry.class), null, null, null, null, null);
+                mock(SessionOwnershipRegistry.class), null, null, null, null, null, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
         var payload = JsonUtil.toJson(Map.of("skillIds", List.of("skill-1")));
@@ -276,7 +312,7 @@ class InProcessCommandHandlerTest {
     void emptyDynamicSkillLoadRpcStillPreservesCallerForSessionAuthorization() {
         var sessionManager = mock(AgentSessionManager.class);
         var sessionDependencies = new SessionCommandDependencies(sessionManager, null,
-                mock(SessionOwnershipRegistry.class), null, null, null, null, null);
+                mock(SessionOwnershipRegistry.class), null, null, null, null, null, null);
         var rpcDependencies = new CommandRpcDependencies(null, null, null, mock(JedisPool.class), null, null);
         var handler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
         var payload = JsonUtil.toJson(Map.of("skillIds", List.of()));

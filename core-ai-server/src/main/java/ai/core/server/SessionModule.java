@@ -18,6 +18,8 @@ import ai.core.server.session.NotificationSettingsService;
 import ai.core.server.session.SessionActivityRegistry;
 import ai.core.server.session.SessionAgentHelper;
 import ai.core.server.session.SessionCompletionNotifier;
+import ai.core.server.session.SessionNoticePrompt;
+import ai.core.server.session.SessionReadService;
 import ai.core.server.session.SessionRegistry;
 import ai.core.server.session.SessionSearchService;
 import ai.core.server.web.ChatSessionWebServiceImpl;
@@ -76,7 +78,10 @@ public class SessionModule extends Module {
         sessionRegistry = bind(SessionRegistry.class);
         bind(ChatMessageService.class);
         bind(SessionSearchService.class);
+        bind(SessionReadService.class);
         activityRegistry = bind(new SessionActivityRegistry(bean(JedisPool.class)));
+        // the notice log is bound in ChannelInfrastructureModule; the block it feeds belongs to this runtime
+        bind(SessionNoticePrompt.class);
         bind(SessionCompletionNotifier.class);
         bind(NotificationSettingsService.class);
         agentSessionManager = bind(AgentSessionManager.class);

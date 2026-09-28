@@ -5,6 +5,7 @@ import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.session.SessionNoticePrompt;
 import ai.core.server.domain.SessionAttachmentRefRepository;
 
 /**
@@ -14,5 +15,5 @@ public record SessionCommandDependencies(AgentSessionManager sessionManager, Cha
                                            SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService,
                                            EventPublisher eventPublisher, ObjectStorageServiceResolver objectStorageResolver,
                                            SessionAttachmentRefRepository attachmentRepository,
-                                           AsyncToolTaskService asyncToolTaskService) {
+                                           AsyncToolTaskService asyncToolTaskService, SessionNoticePrompt sessionNoticePrompt) {
 }

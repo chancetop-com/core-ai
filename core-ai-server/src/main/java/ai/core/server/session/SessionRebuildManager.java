@@ -77,6 +77,7 @@ public class SessionRebuildManager {
     private final AgentMemoryExperimentService memoryExperimentService;
     private final AgentMemoryService agentMemoryService;
     private final SessionSearchService sessionSearchService;
+    private final SessionReadService sessionReadService;
     private final SessionRestoreHelper restoreHelper;
     private final SessionContextBuilder contextBuilder;
     private final TurnStateRegistry turnStateRegistry;
@@ -103,6 +104,7 @@ public class SessionRebuildManager {
         this.memoryExperimentService = deps.memoryExperimentService;
         this.agentMemoryService = deps.agentMemoryService;
         this.sessionSearchService = deps.sessionSearchService;
+        this.sessionReadService = deps.sessionReadService;
         this.turnStateRegistry = deps.turnStateRegistry;
         this.sessionCompletionNotifier = deps.sessionCompletionNotifier;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
@@ -233,7 +235,7 @@ public class SessionRebuildManager {
     private PromptInject attachMemory(ToolRegistry toolRegistry, ExecutionContext context, String agentId) {
         if (!hasText(agentId)) return null;
         if (context != null) {
-            MemoryCapability.attach(toolRegistry, context, agentDefinitionCollection.get(agentId).orElse(null), agentMemoryService, sessionSearchService);
+            MemoryCapability.attach(toolRegistry, context, agentDefinitionCollection.get(agentId).orElse(null), agentMemoryService, sessionSearchService, sessionReadService);
         }
         var injectionResult = memoryExperimentService.prepareInjection(agentId);
         return injectionResult.injected ? injectionResult.promptInject : null;
@@ -393,11 +395,12 @@ public class SessionRebuildManager {
                         MongoCollection<User> userCollection,
                         AgentMemoryExperimentService memoryExperimentService,
                         AgentMemoryService agentMemoryService,
-                        SessionSearchService sessionSearchService,
+                                  SessionSearchService sessionSearchService,
                         MediaProvider mediaProvider,
                         ApiUserQuotaService quotaService,
                         TurnStateRegistry turnStateRegistry,
                         ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager,
-                        SessionCompletionNotifier sessionCompletionNotifier) {
+                        SessionCompletionNotifier sessionCompletionNotifier,
+                                  SessionReadService sessionReadService) {
     }
 }

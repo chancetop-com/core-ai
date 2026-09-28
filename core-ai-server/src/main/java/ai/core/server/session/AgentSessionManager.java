@@ -113,6 +113,7 @@ public class AgentSessionManager {
     @Inject SessionActivityRegistry sessionActivityRegistry;
     @Inject AgentMemoryService agentMemoryService;
     @Inject SessionSearchService sessionSearchService;
+    @Inject SessionReadService sessionReadService;
     @Inject SessionCompletionNotifier sessionCompletionNotifier;
 
     private SessionSkillManager skillManager;
@@ -132,7 +133,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userCollection, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier));
+                    ownershipRegistry, systemSettingsService, userCollection, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier, sessionReadService));
         }
         return rebuildManager;
     }
@@ -248,7 +249,7 @@ public class AgentSessionManager {
         var caller = CallerContexts.attach(context, userCollection, userId);
         if (sandbox2 != null) context.sandbox(sandbox2);
         UserIdentityPrompt.attach(context, definition, caller);
-        MemoryCapability.attach(toolRegistry, context, definition, agentMemoryService, sessionSearchService);
+        MemoryCapability.attach(toolRegistry, context, definition, agentMemoryService, sessionSearchService, sessionReadService);
 
         var memoryInject = memoryExperimentService.prepareAndRecord(definition.id, sessionId, "session:" + sessionId);
 

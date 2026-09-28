@@ -46,6 +46,7 @@ import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.MediaJob;
 import ai.core.server.domain.SessionAttachmentRef;
 import ai.core.server.domain.SessionSchedule;
+import ai.core.server.domain.SessionNotice;
 import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.ToolRef;
@@ -203,6 +204,7 @@ public class ServerApp extends App {
         mongo.view(ToolRef.class);
         mongo.collection(SessionFeedback.class);
         mongo.collection(UserChannelTarget.class);
+        mongo.collection(SessionNotice.class);
 
         mongo.collection(Trace.class);
         mongo.collection(Span.class);

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -101,7 +102,7 @@ public class SchemaMigrationManager {
     }
 
     private List<SchemaMigration> operationalMigrations() {
-        return List.of(
+        var migrations = new ArrayList<SchemaMigration>(List.of(
             new SchemaMigrationVMemoryLayerIndex(), new SchemaMigrationVSandboxSnapshotIndexes(), new SchemaMigrationVTraceMemoryConsolidationIndexes(),
             new SchemaMigrationVBackgroundTasks(), new SchemaMigrationVTraceDailyStats(), new SchemaMigrationVTraceDailyStatsAgent(),
             new SchemaMigrationVSessionFeedbackIndexes(), new SchemaMigrationVMemoryExperimentIndexes(), new SchemaMigrationVTraceDailyStatsDateIndex(),
@@ -136,7 +137,14 @@ public class SchemaMigrationManager {
             new SchemaMigrationVSystemPromptNameIndex(),
             new SchemaMigrationVHubCalls(),
             new SchemaMigrationVSkillDigestBackfill(),
-            new SchemaMigrationVFileRecordsDropTTL(),
+            new SchemaMigrationVFileRecordsDropTTL()
+        ));
+        migrations.addAll(projectAndAgentMigrations());
+        return migrations;
+    }
+
+    private List<SchemaMigration> projectAndAgentMigrations() {
+        return List.of(
             new SchemaMigrationVProjectAttributionScope(),
             new SchemaMigrationVProjectSubjectState(),
             new SchemaMigrationVProjectAttributionFileTime(),
@@ -147,7 +155,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVHubCallKindIndex(),
             new SchemaMigrationVSystemAgentMemoryOff(),
             new SchemaMigrationVDefaultAssistantPersonality(),
-            new SchemaMigrationVOcgConfigChannelIdIndex()
+            new SchemaMigrationVOcgConfigChannelIdIndex(),
+            new SchemaMigrationVSessionNoticeIndex()
         );
     }
 }

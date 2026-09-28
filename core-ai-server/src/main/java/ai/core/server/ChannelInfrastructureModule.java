@@ -4,6 +4,7 @@ import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.channel.UserChannelTargetStore;
 import ai.core.server.channel.openclaw.OcgConfigStore;
+import ai.core.server.session.SessionNoticeStore;
 import core.framework.module.Module;
 
 /**
@@ -18,5 +19,7 @@ public class ChannelInfrastructureModule extends Module {
         // bound here, not in ChannelModule: the notification settings service (SessionModule, which
         // loads in between) reads the addresses this store remembers
         bind(UserChannelTargetStore.class);
+        // same reason: the completion notifier (SessionModule) writes what this one keeps
+        bind(SessionNoticeStore.class);
     }
 }

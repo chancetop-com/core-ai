@@ -38,7 +38,8 @@ public class SessionSubAgentManager {
     /** Channel sessions tell the agent which channel it is answering, both at creation and after a rebuild. */
     public static PromptInject channelInject(SessionConfig config) {
         if (config == null || config.channelType == null || config.channelType.isBlank()) return null;
-        return () -> "You are communicating with the user through the " + config.channelType + " channel.";
+        return () -> "You are communicating with the user through the " + config.channelType + " channel."
+                + SessionNoticePrompt.CHANNEL_RULES;
     }
 
     private final ChatMessageService chatMessageService;

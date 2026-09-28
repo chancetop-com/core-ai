@@ -43,6 +43,7 @@ import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.CallerContexts;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.session.SessionDatasetHelper;
+import ai.core.server.session.SessionReadService;
 import ai.core.server.session.SessionSearchService;
 import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolRegistry;
@@ -103,6 +104,8 @@ public class AgentRunBuilder {
     @Inject
     SessionSearchService sessionSearchService;
     @Inject
+    SessionReadService sessionReadService;
+    @Inject
     AgentMemoryExperimentService memoryExperimentService;
     @Inject
     FileService fileService;
@@ -158,7 +161,7 @@ public class AgentRunBuilder {
         var thinkingEffort = resolveThinkingEffort(config, definition);
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
         attachSkillsAndSubAgents(config, definition, registry, runEntity);
-        MemoryCapability.attach(registry, context, definition, agentMemoryService, sessionSearchService);
+        MemoryCapability.attach(registry, context, definition, agentMemoryService, sessionSearchService, sessionReadService);
         var builder = createBaseBuilder(definition, registry, context);
         if (systemPrompt != null) builder.systemPrompt(systemPrompt);
         if (model != null) builder.model(model);

@@ -103,7 +103,7 @@ public class ChannelSyncController implements Controller {
 
         var sessionId = resolveSession(cacheKey, userField, isNewConversation, userId, channel, agent);
         chatMessageService.writeUserMessage(sessionId, userText);
-        var command = SessionCommand.sendMessage(sessionId, userId, userText, null);
+        var command = SessionCommand.channelSendMessage(sessionId, userId, userText, channel.channelId, peerTarget);
         commandPublisher.publish(command);
 
         if (asyncOcg) {
