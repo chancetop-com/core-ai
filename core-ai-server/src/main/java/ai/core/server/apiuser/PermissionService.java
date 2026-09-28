@@ -61,7 +61,7 @@ public class PermissionService {
         if (permissions.contains(RoleRegistry.ALL_PERMISSIONS)) return true;
         if (permissions.contains(permission)) return true;
         if (permission.endsWith(".view")) {
-            return permissions.contains(permission.substring(0, permission.length() - ".view".length()) + "manage");
+            return permissions.contains(permission.substring(0, permission.length() - ".view".length()) + ".manage");
         }
         if (permission.endsWith(".call")) {
             return permissions.contains(permission.substring(0, permission.length() - ".call".length()) + ".manage");

@@ -87,7 +87,7 @@ public class SessionIdentity {
         if (permissions == null) return false;
         if (permissions.contains("*") || permissions.contains(permission)) return true;
         if (permission.endsWith(".view")) {
-            return permissions.contains(permission.substring(0, permission.length() - ".view".length()) + "manage");
+            return permissions.contains(permission.substring(0, permission.length() - ".view".length()) + ".manage");
         }
         return false;
     }
