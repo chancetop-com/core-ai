@@ -97,13 +97,48 @@ class ChannelSyncControllerTest {
         verify(controller.chatMessageService).writeUserMessage("session-a", "second");
     }
 
+    @Test
+    void remembersThePeerTargetFromTheHeaderAndIgnoresTheSessionKey() {
+        var controller = new ChannelSyncController();
+        controller.channelConfigStore = mock(ChannelConfigStore.class);
+        controller.agentDefinitionService = mock(AgentDefinitionService.class);
+        controller.sessionManager = mock(AgentSessionManager.class);
+        controller.chatMessageService = mock(ChatMessageService.class);
+        controller.commandPublisher = mock(CommandPublisher.class);
+        controller.ocgCallbackPool = mock(OcgCallbackPool.class);
+        controller.ocgConfigStore = mock(OcgConfigStore.class);
+        controller.personalAssistantService = PersonalAssistantStubs.passThrough();
+        controller.userChannelTargetStore = mock(UserChannelTargetStore.class);
+        var channel = channel("channel-a", "agent-a", "owner-a");
+        var agent = agent("agent-a");
+        when(controller.channelConfigStore.load("channel-a")).thenReturn(channel);
+        when(controller.agentDefinitionService.getEntity("agent-a")).thenReturn(agent);
+        when(controller.ocgConfigStore.loadByChannelId(any())).thenReturn(enabledOcg());
+        when(controller.sessionManager.createSessionFromAgent(eq(agent), any(), eq("owner-a"), eq("channel")))
+                .thenReturn(new AgentSessionManager.SessionCreationResult("session-a", List.of(), List.of(), agent));
+        when(controller.chatMessageService.history(any())).thenReturn(List.of());
+
+        controller.execute(request("channel-a", "with target", "qqbot:c2c:OPENID"));
+        // an older gateway sends no target: nothing addressable is remembered at all, rather than
+        // remembering the session key the body carries
+        controller.execute(request("channel-a", "without target"));
+
+        verify(controller.userChannelTargetStore).record("owner-a", "channel-a", "qqbot:c2c:OPENID");
+        verify(controller.userChannelTargetStore, times(1)).record(any(), any(), any());
+    }
+
     private Request request(String channelId, String message) {
+        return request(channelId, message, null);
+    }
+
+    private Request request(String channelId, String message, String peerTarget) {
         var request = mock(Request.class);
         var body = "{\"user\":\"shared-conversation\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}]}"
-            .formatted(message);
+                .formatted(message);
         when(request.body()).thenReturn(Optional.of(body.getBytes(StandardCharsets.UTF_8)));
         when(request.pathParam("channelId")).thenReturn(channelId);
         when(request.header("X-OCG-Callback")).thenReturn(Optional.of("https://callback.example/reply"));
+        when(request.header("X-OCG-Target")).thenReturn(Optional.ofNullable(peerTarget));
         return request;
     }
 

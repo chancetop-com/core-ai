@@ -84,9 +84,13 @@ public class ChannelSyncController implements Controller {
 
         var userField = (String) payload.get("user");
         var userId = resolveUserId(channel, channelId, userField);
-        // remember the address this user writes from, so notifications can be sent back without
-        // asking them to know their own platform id
-        userChannelTargetStore.record(userId, channel.channelId, userField);
+        // Remember the address this user writes from, so notifications can be sent back without
+        // asking anyone to know their own platform id. It comes from X-OCG-Target: `user` carries
+        // the session key (qqbot:agent:main:main), which no proactive send can address.
+        var peerTarget = request.header("X-OCG-Target").orElse(null);
+        if (peerTarget != null && !peerTarget.isBlank()) {
+            userChannelTargetStore.record(userId, channel.channelId, peerTarget);
+        }
         var agentId = personalAssistantService.resolve(channel.agentId, userId);
         var agent = agentDefinitionService.getEntity(agentId);
         if (agent == null) throw new NotFoundException("agent not found: " + agentId);

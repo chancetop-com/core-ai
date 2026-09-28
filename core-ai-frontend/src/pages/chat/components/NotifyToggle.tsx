@@ -156,7 +156,9 @@ export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSa
                   <button
                     onClick={() => {
                       if (!configured) {
-                        setEditing(true);
+                        // nothing saved yet: persist the address the platform already knows and let
+                        // the caller turn the chat on, rather than looking like a dead switch
+                        void save();
                         return;
                       }
                       onToggle(!enabled);

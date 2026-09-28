@@ -99,6 +99,23 @@ describe('NotifyToggle', () => {
     });
   });
 
+  it('saves and turns on when the switch is clicked with nothing saved yet', async () => {
+    const withKnownTarget: NotificationSettings = {
+      channels: [{ channel_id: 'stephen-qq-wechat', channel_type: 'openclaw' }],
+      targets: [{ channel_id: 'stephen-qq-wechat', channel_type: 'openclaw', recipient: 'qqbot:c2c:OPENID' }],
+    };
+    const props = renderToggle({ settings: withKnownTarget, onLoad: vi.fn(async () => withKnownTarget) });
+
+    await userEvent.click(bell());
+    await userEvent.click(screen.getByText('Off for this chat'));
+
+    expect(props.onSave).toHaveBeenCalledWith({
+      channelId: 'stephen-qq-wechat',
+      recipient: 'qqbot:c2c:OPENID',
+      minMinutes: 5,
+    });
+  });
+
   it('says so when the platform has no channel to offer', async () => {
     renderToggle({ settings: noChannels });
 
