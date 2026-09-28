@@ -56,9 +56,10 @@ public class ChannelDispatcher {
 
         var userId = resolveUserId(channel, event);
         // remember the address this user writes from: a notification needs a target, and only an
-        // inbound message ever reveals it
-        channelTargetStore.record(userId, channel.channelId,
-                event.conversationId != null && !event.conversationId.isBlank() ? event.conversationId : event.channelUserId);
+        // inbound message ever reveals it. A group/guild target is not a personal address — a
+        // completion notice sent there would be shown to everyone.
+        channelTargetStore.record(userId, channel.channelId, ChannelTargets.directTarget(
+                event.conversationId != null && !event.conversationId.isBlank() ? event.conversationId : event.channelUserId));
 
         if (isToolDecision(event)) {
             var decision = parseDecision(event);

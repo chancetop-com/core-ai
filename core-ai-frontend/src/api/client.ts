@@ -134,12 +134,14 @@ export interface ListUsersResponse {
 export interface NotificationChannel {
   channel_id: string;
   channel_type: string;
+  shared?: boolean;
 }
 
 export interface NotificationTarget {
   channel_id: string;
   channel_type: string;
   recipient: string;
+  shared?: boolean;
 }
 
 export interface NotificationSettings {

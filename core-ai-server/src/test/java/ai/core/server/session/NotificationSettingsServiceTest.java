@@ -49,6 +49,19 @@ class NotificationSettingsServiceTest {
         assertEquals(1, view.channels.size());
         assertEquals("qq", view.channels.getFirst().channelId);
         assertEquals("openclaw", view.channels.getFirst().channelType);
+        assertEquals(Boolean.FALSE, view.channels.getFirst().shared);
+    }
+
+    @Test
+    void getMarksAChannelWithoutAnOwnerAsShared() {
+        var harness = harness();
+        harness.channels.put("team", channel("team", "slack", Boolean.TRUE, null));
+        when(harness.registry.outbound("slack")).thenReturn(mock(ChannelOutboundAdapter.class));
+
+        NotificationSettingsView view = harness.service.get(USER_ID);
+
+        assertEquals(1, view.channels.size());
+        assertEquals(Boolean.TRUE, view.channels.getFirst().shared);
     }
 
     @Test

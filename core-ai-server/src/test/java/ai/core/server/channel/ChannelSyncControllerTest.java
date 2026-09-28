@@ -119,6 +119,8 @@ class ChannelSyncControllerTest {
         when(controller.chatMessageService.history(any())).thenReturn(List.of());
 
         controller.execute(request("channel-a", "with target", "qqbot:c2c:OPENID"));
+        // a group target is not a personal address: nothing is remembered for it
+        controller.execute(request("channel-a", "from a group", "qqbot:group:123456"));
         // an older gateway sends no target: nothing addressable is remembered at all, rather than
         // remembering the session key the body carries
         controller.execute(request("channel-a", "without target"));

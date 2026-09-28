@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bell, BellRing, Loader2, X } from 'lucide-react';
-import type { NotificationSettings } from '../../../api/client';
+import type { NotificationSettings, NotificationTarget } from '../../../api/client';
 
 const CHANNEL_LABELS: Record<string, string> = {
   openclaw: 'QQ/WeChat',
@@ -14,10 +14,12 @@ function channelLabel(channelType?: string): string {
   return CHANNEL_LABELS[channelType] ?? channelType;
 }
 
-const MANUAL_TARGET = '__manual__';
+function targetKey(target: NotificationTarget): string {
+  return `${target.channel_id}|${target.recipient}`;
+}
 
-function targetKey(channelId?: string, recipient?: string): string {
-  return `${channelId}|${recipient}`;
+function targetLabel(target: NotificationTarget): string {
+  return `${channelLabel(target.channel_type)} — ${target.channel_id}${target.shared ? ' (shared)' : ''}`;
 }
 
 export interface NotifyToggleProps {
@@ -32,39 +34,31 @@ export interface NotifyToggleProps {
 
 /**
  * Per-chat completion-notification control: the switch plus the user's own delivery target, in one
- * dialog. The switch means nothing without somewhere to deliver, so the same surface explains
- * itself, sets the target up on first use and lets it be changed later — a bare toggle left people
- * guessing what it did. Centered overlay rather than a popover: the bell sits at the left edge of
- * the composer, where an anchored panel runs off the viewport.
+ * dialog. The target is always an address the platform has seen this user write from — others'
+ * addresses are neither listed nor typeable, and a shared channel is labelled as such because a
+ * notice sent there is visible to more than the user.
  */
 export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSave }: NotifyToggleProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [channelId, setChannelId] = useState('');
-  const [recipient, setRecipient] = useState('');
+  const [selected, setSelected] = useState('');
   const [minMinutes, setMinMinutes] = useState('5');
-  // which known address is selected; typing one by hand is the fallback, never the expected path
-  const [selectedTarget, setSelectedTarget] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const targets = settings?.targets ?? [];
-  const typingAddress = targets.length === 0 || selectedTarget === MANUAL_TARGET;
-
   const configured = Boolean(settings?.channel_id && settings?.recipient);
-  const configuredChannel = settings?.channels?.find(c => c.channel_id === settings.channel_id);
-  const label = configured ? channelLabel(configuredChannel?.channel_type) : channelLabel(settings?.channels?.[0]?.channel_type);
+  const savedTarget = targets.find(t => t.channel_id === settings?.channel_id && t.recipient === settings?.recipient);
+  const selectedTarget = targets.find(t => targetKey(t) === selected);
+  const label = channelLabel((savedTarget ?? targets[0])?.channel_type);
 
   const applySettings = (next: NotificationSettings | null) => {
     if (!next) return;
     const known = next.targets ?? [];
     const saved = known.find(t => t.channel_id === next.channel_id && t.recipient === next.recipient);
     // default to the address the platform already knows: the user only has to confirm it
-    setSelectedTarget(saved ? targetKey(saved.channel_id, saved.recipient)
-      : known.length > 0 ? targetKey(known[0].channel_id, known[0].recipient) : MANUAL_TARGET);
-    setChannelId(next.channel_id || known[0]?.channel_id || next.channels[0]?.channel_id || '');
-    setRecipient(next.recipient || known[0]?.recipient || '');
+    setSelected(targetKey(saved ?? known[0] ?? { channel_id: '', recipient: '' }));
     setMinMinutes(next.min_minutes != null ? String(next.min_minutes) : '5');
   };
 
@@ -85,12 +79,8 @@ export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSa
     setError('');
   };
 
-  const selectedType = settings?.channels?.find(c => c.channel_id === channelId)?.channel_type;
   const save = async () => {
-    if (!channelId || !recipient.trim()) {
-      setError('Pick a channel and enter the recipient id.');
-      return;
-    }
+    if (!selectedTarget) return;
     const minutes = Number(minMinutes);
     if (!Number.isInteger(minutes) || minutes < 1) {
       setError('Notify after must be a whole number of minutes, at least 1.');
@@ -98,7 +88,11 @@ export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSa
     }
     setSaving(true);
     setError('');
-    const failure = await onSave({ channelId, recipient: recipient.trim(), minMinutes: minutes });
+    const failure = await onSave({
+      channelId: selectedTarget.channel_id,
+      recipient: selectedTarget.recipient,
+      minMinutes: minutes,
+    });
     setSaving(false);
     if (failure) {
       setError(failure);
@@ -174,7 +168,9 @@ export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSa
 
                   {configured && !editing ? (
                     <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                      <div className="truncate">Send to: {settings?.channel_id} · {settings?.recipient}</div>
+                      <div className="truncate">
+                        Send to: {settings?.channel_id}{savedTarget?.shared ? ' (shared)' : ''} · {settings?.recipient}
+                      </div>
                       <div className="mt-0.5">Notify after {settings?.min_minutes ?? 5} min</div>
                       <button onClick={() => { applySettings(settings); setEditing(true); }}
                         className="mt-2 underline cursor-pointer"
@@ -182,70 +178,30 @@ export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSa
                         Change target
                       </button>
                     </div>
+                  ) : !targets.length ? (
+                    <div className="text-xs leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                      {settings?.channels?.length
+                        ? `No address to pick yet: send the bot a message on ${channelLabel(settings.channels[0].channel_type)} once — after that it shows up here as a choice.`
+                        : 'No channel is available for notifications yet — ask an admin to add one (Triggers → Channels).'}
+                    </div>
                   ) : (
                     <div className="space-y-3">
-                      {settings?.targets?.length ? (
-                        <label className="block">
-                          <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Send to</span>
-                          <select value={selectedTarget}
-                            onChange={e => {
-                              const value = e.target.value;
-                              setSelectedTarget(value);
-                              const picked = settings.targets?.find(t => targetKey(t.channel_id, t.recipient) === value);
-                              if (picked) {
-                                setChannelId(picked.channel_id);
-                                setRecipient(picked.recipient);
-                              }
-                            }}
-                            className="w-full mt-1 px-3 py-2 rounded-lg text-sm border-0 outline-none cursor-pointer"
-                            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
-                            {settings.targets.map(t => (
-                              <option key={targetKey(t.channel_id, t.recipient)} value={targetKey(t.channel_id, t.recipient)}>
-                                {channelLabel(t.channel_type)} — {t.channel_id}
-                              </option>
-                            ))}
-                            <option value={MANUAL_TARGET}>Other address…</option>
-                          </select>
-                          {!typingAddress && (
-                            <div className="text-xs mt-1 break-all" style={{ color: 'var(--color-text-secondary)' }}>{recipient}</div>
-                          )}
-                        </label>
-                      ) : settings?.channels?.length ? (
-                        <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                          No address to pick yet: send the bot a message on {channelLabel(settings.channels[0].channel_type)}
-                          {' '}once — after that it shows up here as a choice.
-                        </div>
-                      ) : (
-                        <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                          No channel is available for notifications yet — ask an admin to add one
-                          (Triggers → Channels).
-                        </div>
-                      )}
-                      {typingAddress && settings?.channels?.length ? (
-                        <>
-                          <label className="block">
-                            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Channel</span>
-                            <select value={channelId} onChange={e => setChannelId(e.target.value)}
-                              className="w-full mt-1 px-3 py-2 rounded-lg text-sm border-0 outline-none cursor-pointer"
-                              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
-                              {settings.channels.map(c => (
-                                <option key={c.channel_id} value={c.channel_id}>
-                                  {c.channel_id} ({channelLabel(c.channel_type)})
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="block">
-                            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                              Address on {channelLabel(selectedType)}
-                            </span>
-                            <input value={recipient} onChange={e => setRecipient(e.target.value)}
-                              placeholder="e.g. qqbot:c2c:<openid>"
-                              className="w-full mt-1 px-3 py-2 rounded-lg text-sm border-0 outline-none"
-                              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }} />
-                          </label>
-                        </>
-                      ) : null}
+                      <label className="block">
+                        <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Send to</span>
+                        <select value={selected} onChange={e => setSelected(e.target.value)}
+                          className="w-full mt-1 px-3 py-2 rounded-lg text-sm border-0 outline-none cursor-pointer"
+                          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                          {targets.map(t => (
+                            <option key={targetKey(t)} value={targetKey(t)}>{targetLabel(t)}</option>
+                          ))}
+                        </select>
+                        {selectedTarget && (
+                          <div className="text-xs mt-1 break-all" style={{ color: 'var(--color-text-secondary)' }}>
+                            {selectedTarget.recipient}
+                            {selectedTarget.shared && ' · this channel is shared — the message is visible to others there'}
+                          </div>
+                        )}
+                      </label>
                       <label className="block">
                         <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Notify after (minutes)</span>
                         <input type="number" min="1" value={minMinutes} onChange={e => setMinMinutes(e.target.value)}
@@ -254,7 +210,7 @@ export default function NotifyToggle({ enabled, settings, onLoad, onToggle, onSa
                       </label>
                       {error && <div className="text-xs" style={{ color: 'var(--color-error)' }}>{error}</div>}
                       <div className="flex items-center gap-2 pt-1">
-                        <button onClick={() => void save()} disabled={saving || !settings?.channels?.length}
+                        <button onClick={() => void save()} disabled={saving || !selectedTarget}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-50"
                           style={{ background: 'var(--color-primary)' }}>
                           {saving && <Loader2 size={12} className="animate-spin" />}

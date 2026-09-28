@@ -47,9 +47,11 @@ public class NotificationSettingsService {
         view.channels = new ArrayList<>(deliverable.size());
         view.targets = new ArrayList<>(deliverable.size());
         for (var channel : deliverable) {
+            var shared = isShared(channel);
             var channelView = new NotificationChannelView();
             channelView.channelId = channel.channelId;
             channelView.channelType = channel.channelType;
+            channelView.shared = shared;
             view.channels.add(channelView);
 
             var target = userChannelTargetStore.load(userId, channel.channelId);
@@ -58,6 +60,7 @@ public class NotificationSettingsService {
             targetView.channelId = channel.channelId;
             targetView.channelType = channel.channelType;
             targetView.recipient = target.recipient;
+            targetView.shared = shared;
             view.targets.add(targetView);
         }
         return view;
@@ -107,6 +110,11 @@ public class NotificationSettingsService {
 
     private boolean personalTo(String channelUserId, String userId) {
         return channelUserId == null || channelUserId.isBlank() || channelUserId.equals(userId);
+    }
+
+    /** A channel with no owning user serves everyone: a notice sent there is visible to others. */
+    private boolean isShared(ChannelConfigView channel) {
+        return channel.userId == null || channel.userId.isBlank();
     }
 
     private boolean hasOutboundAdapter(String channelType) {

@@ -86,9 +86,10 @@ public class ChannelSyncController implements Controller {
         var userId = resolveUserId(channel, channelId, userField);
         // Remember the address this user writes from, so notifications can be sent back without
         // asking anyone to know their own platform id. It comes from X-OCG-Target: `user` carries
-        // the session key (qqbot:agent:main:main), which no proactive send can address.
-        var peerTarget = request.header("X-OCG-Target").orElse(null);
-        if (peerTarget != null && !peerTarget.isBlank()) {
+        // the session key (qqbot:agent:main:main), which no proactive send can address. Only a
+        // direct address is kept — a notice is personal, a group target would show it to everyone.
+        var peerTarget = ChannelTargets.directTarget(request.header("X-OCG-Target").orElse(null));
+        if (peerTarget != null) {
             userChannelTargetStore.record(userId, channel.channelId, peerTarget);
         }
         var agentId = personalAssistantService.resolve(channel.agentId, userId);
