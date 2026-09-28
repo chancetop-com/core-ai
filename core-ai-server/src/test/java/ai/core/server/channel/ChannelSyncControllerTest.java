@@ -59,8 +59,9 @@ class ChannelSyncControllerTest {
 
         verify(controller.sessionManager).createSessionFromAgent(eq(agentA), any(), eq("owner-a"), eq("channel"));
         verify(controller.sessionManager).createSessionFromAgent(eq(agentB), any(), eq("owner-b"), eq("channel"));
-        verify(controller.chatMessageService).writeUserMessage("session-a", "first");
-        verify(controller.chatMessageService).writeUserMessage("session-b", "second");
+        // the message is carried by the command and written once, by the replica that runs the turn
+        verify(controller.chatMessageService, never()).writeUserMessage(any(), any());
+        verify(controller.commandPublisher, times(2)).publish(any());
         verify(controller.sessionManager, never()).getSession("session-a");
     }
 
@@ -93,8 +94,8 @@ class ChannelSyncControllerTest {
         verify(controller.sessionManager, times(1)).createSessionFromAgent(eq(agent), any(),
                 eq("channel:channel-a:shared-conversation"), eq("channel"));
         verify(controller.sessionManager).getSession("session-a");
-        verify(controller.chatMessageService).writeUserMessage("session-a", "first");
-        verify(controller.chatMessageService).writeUserMessage("session-a", "second");
+        verify(controller.chatMessageService, never()).writeUserMessage(any(), any());
+        verify(controller.commandPublisher, times(2)).publish(any());
     }
 
     @Test

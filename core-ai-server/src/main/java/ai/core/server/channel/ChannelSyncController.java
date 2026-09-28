@@ -102,7 +102,8 @@ public class ChannelSyncController implements Controller {
                 && (cacheKey == null || !sessionCache.containsKey(cacheKey));
 
         var sessionId = resolveSession(cacheKey, userField, isNewConversation, userId, channel, agent);
-        chatMessageService.writeUserMessage(sessionId, userText);
+        // the owning replica writes the user message when it consumes this command — the one writer every
+        // send path shares. Writing it here as well is what put a second, identical row in the transcript.
         var command = SessionCommand.channelSendMessage(sessionId, userId, userText, channel.channelId, peerTarget);
         commandPublisher.publish(command);
 

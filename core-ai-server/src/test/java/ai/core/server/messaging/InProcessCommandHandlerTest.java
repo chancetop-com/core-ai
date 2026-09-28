@@ -66,6 +66,8 @@ class InProcessCommandHandlerTest {
         handler.handle(SessionCommand.channelSendMessage("s-1", "u-1", "publish it", "chan-1", "qqbot:c2c:OPENID"));
 
         verify(noticePrompt).answeredAndRefresh(session, "u-1", "chan-1", "qqbot:c2c:OPENID");
+        // the one writer of the user message, whatever entry point the command came from
+        verify(chatMessageService).writeUserMessage("s-1", "publish it");
         verify(session).sendMessage("publish it", null, null);
     }
 
