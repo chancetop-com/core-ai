@@ -1,30 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Loader2, X as CloseIcon } from 'lucide-react';
+import { Lasso, Loader2, X as CloseIcon } from 'lucide-react';
+import { fetchBlob, fileIdOf, needsAuthFetch } from '../../../api/authedBlob';
+import ImageCanvasEditor from '../../../components/ImageCanvasEditor';
 
 interface Props {
   src?: string;
   alt?: string;
 }
 
-function needsAuthFetch(url: string): boolean {
-  // Anything pointing at /api/files/{id}/content on this backend needs the bearer token
-  // — absolute (https://host/api/...) or relative (/api/...) both match.
-  return /\/api\/files\/[^/?#]+\/content/.test(url);
-}
-
-async function fetchBlob(url: string): Promise<Blob> {
-  const apiKey = localStorage.getItem('apiKey');
-  const headers: Record<string, string> = {};
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.blob();
-}
-
 export default function AuthedImage({ src, alt }: Props) {
   const [resolved, setResolved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const fileId = src ? fileIdOf(src) : null;
+  // only platform files can be edited: external images have no fileId to send to the server
+  const editTarget = fileId && src ? { fileId, src } : null;
 
   useEffect(() => {
     if (!src) {
@@ -87,12 +78,32 @@ export default function AuthedImage({ src, alt }: Props) {
   }
   return (
     <>
-      <img
-        src={resolved}
-        alt={alt}
-        className="max-w-full rounded my-2 cursor-zoom-in"
-        onClick={() => setLightboxOpen(true)}
-      />
+      <span className="relative inline-block group my-2">
+        <img
+          src={resolved}
+          alt={alt}
+          className="block max-w-full rounded cursor-zoom-in"
+          onClick={() => setLightboxOpen(true)}
+        />
+        {editTarget && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setEditorOpen(true); }}
+            className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+            style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}
+            title="圈选编辑">
+            <Lasso size={12} /> 圈选编辑
+          </button>
+        )}
+      </span>
+      {editorOpen && editTarget && (
+        <ImageCanvasEditor
+          fileId={editTarget.fileId}
+          src={editTarget.src}
+          blobUrl={resolved}
+          onClose={() => setEditorOpen(false)}
+        />
+      )}
       {lightboxOpen && (
         <div
           role="dialog"

@@ -284,6 +284,12 @@ public class FileService {
             .orElseThrow(() -> new NotFoundException("file not found, id=" + id));
     }
 
+    public FileRecord getOwned(String id, String userId) {
+        var record = get(id);
+        ensureOwner(record, userId);
+        return record;
+    }
+
     public FileRecord share(String id, String userId) {
         var record = get(id);
         ensureOwner(record, userId);

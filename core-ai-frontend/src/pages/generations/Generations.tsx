@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, DollarSign, Film, FlaskConical, Image as ImageIcon, Link2, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, DollarSign, Film, FlaskConical, Image as ImageIcon, Lasso, Link2, Play } from 'lucide-react';
 import { api } from '../../api/client';
 import type { MediaJob, MediaJobInput } from '../../api/client';
 import { usePermission } from '../../api/permissions';
 import { formatCostUsd } from '../traces/traceViewModel';
+import ImageCanvasEditor from '../../components/ImageCanvasEditor';
 import ModelCompareModal from './ModelCompareModal';
 
 const SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -106,16 +107,19 @@ export default function Generations() {
   const [costSource, setCostSource] = useState('');
   const [preview, setPreview] = useState<MediaJob | null>(null);
   const [compareJob, setCompareJob] = useState<MediaJob | null>(null);
+  // the canvas editor re-fetches the image itself: the preview <img> is 307'd to a cross-origin
+  // signed URL and must never be drawn into a canvas
+  const [editFileId, setEditFileId] = useState<string | null>(null);
   const canCompare = usePermission('media.compare');
   const limit = 20;
 
   useEffect(() => {
     if (!preview) return;
     // the compare modal is stacked on top of the preview; Escape closes one layer at a time
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !compareJob) setPreview(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !compareJob && !editFileId) setPreview(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [preview, compareJob]);
+  }, [preview, compareJob, editFileId]);
   const requestKey = JSON.stringify({ offset, mediaType, costSource });
   const loading = result.requestKey !== requestKey;
 
@@ -354,6 +358,14 @@ export default function Generations() {
                 {recipeLabel(preview)}
               </div>
             )}
+            {preview.mediaType === 'image' && preview.fileId && (
+              <button onClick={e => { e.stopPropagation(); setEditFileId(preview.fileId ?? null); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm cursor-pointer"
+                style={{ borderColor: '#334155', background: 'rgba(255,255,255,0.08)', color: '#e2e8f0' }}
+                title="圈选这张图的某个区域并让模型只重绘该区域">
+                <Lasso size={14} /> 圈选编辑
+              </button>
+            )}
             {preview.mediaType === 'image' && preview.prompt && (
               <button onClick={e => { e.stopPropagation(); setCompareJob(preview); }}
                 disabled={!canCompare}
@@ -370,6 +382,14 @@ export default function Generations() {
       )}
 
       {compareJob && <ModelCompareModal job={compareJob} onClose={() => setCompareJob(null)} />}
+
+      {editFileId && (
+        <ImageCanvasEditor
+          fileId={editFileId}
+          src={`/api/files/${editFileId}/content`}
+          onClose={() => setEditFileId(null)}
+        />
+      )}
     </div>
   );
 }

@@ -15,10 +15,15 @@ import ai.core.server.domain.GatewayProviderConfig;
  *                              them: a pre-signed URL of ours is handed out only when this is false, so
  *                              the reference travels as inline data and the adapter uploads it to the
  *                              provider's own file host instead
+ * @param supportsMask the provider carries a region mask as its own request field, so "paint a region,
+ *                     repaint only that region" has a contract rather than a prompt. Only the OpenAI
+ *                     images protocol qualifies today; a second protocol must be appended here (never
+ *                     replace an existing component) and its adapter owns the polarity of its own mask
+ *                     convention - the platform mask is always "transparent = repaint"
  * @author Stephen
  */
 public record MediaProviderCapabilities(boolean acceptsRemoteUrl, boolean acceptsInlineData, boolean supportsInteractionChaining,
-                                        boolean remoteFetchUnreliable) {
+                                        boolean remoteFetchUnreliable, boolean supportsMask) {
 
     public static MediaProviderCapabilities of(GatewayProviderConfig provider) {
         return forProtocol(MediaProviderAdapterFactory.protocol(provider));
@@ -28,19 +33,21 @@ public record MediaProviderCapabilities(boolean acceptsRemoteUrl, boolean accept
         return switch (protocol) {
             // the interactions API rejects http(s) reference URIs ("Only GCS URIs are supported"),
             // so references must be inlined; it does keep its own interaction state
-            case "VERTEX_GEMINI_INTERACTIONS" -> new MediaProviderCapabilities(false, true, true, false);
+            case "VERTEX_GEMINI_INTERACTIONS" -> new MediaProviderCapabilities(false, true, true, false, false);
             // KIE's fetcher times out downloading our pre-signed object storage URLs ("The parameter
             // `image` specified in the request are not valid: Timeout while downloading url=https://
             // <account>.blob.core.windows.net/..."), and the task dies minutes later with nothing
             // rendered; its own upload API does work, so references are inlined and uploaded there
-            case "KIE" -> new MediaProviderCapabilities(true, true, false, true);
+            case "KIE" -> new MediaProviderCapabilities(true, true, false, true, false);
             // reference arrays are URLs; base64 is accepted but costs an extra upload round trip. Ark takes
             // the same shape — it fetches reference URLs itself and also inlines data URLs, and a data URL
             // costs request body space (64 MB per request), so a stored reference travels as a pre-signed link
-            case "OPENAI_COMPATIBLE", "VOLCENGINE_ARK" -> new MediaProviderCapabilities(true, true, false, false);
+            case "OPENAI_COMPATIBLE", "VOLCENGINE_ARK" -> new MediaProviderCapabilities(true, true, false, false, false);
+            // /images/edits carries the mask as its own multipart part
+            case "OPENAI_IMAGES" -> new MediaProviderCapabilities(false, true, false, false, true);
             // OPENAI_IMAGES uploads multipart files, the Gemini generateContent protocols take
             // inlineData parts: neither can fetch a URL, so an unknown protocol assumes the same
-            default -> new MediaProviderCapabilities(false, true, false, false);
+            default -> new MediaProviderCapabilities(false, true, false, false, false);
         };
     }
 }

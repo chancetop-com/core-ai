@@ -123,6 +123,9 @@ public class ServerApp extends App {
         load(new SandboxModule());
         // after SandboxModule: SandboxFfmpegRunner injects SandboxService and bind() resolves eagerly
         load(new RenderModule());
+        // after GatewayModule (MediaProvider/MediaJobService/GatewayRoutingEngine), ObjectStorageModule
+        // (FileService) and SettingsModule (SystemSettingsService)
+        load(new ImageEditModule());
         load(new AuthModule());
         load(new UserModule());
         load(new ArtifactModule());

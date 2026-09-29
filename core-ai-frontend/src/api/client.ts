@@ -382,6 +382,42 @@ export interface ImageCompareRun {
   durationMs?: number;
 }
 
+export interface ImageEditModel {
+  modelId: string;
+  displayName?: string;
+  providerName?: string;
+  maskSupported: boolean;
+  maskFallback?: string | null;
+}
+
+export interface ImageEditModelListResponse {
+  defaultModelId?: string | null;
+  models: ImageEditModel[];
+}
+
+export interface ImageEditRequest {
+  sourceFileId: string;
+  prompt: string;
+  mask: string;
+  model?: string;
+  size?: string;
+  sessionId?: string;
+  maskFallback?: string;
+}
+
+export interface ImageEditResponse {
+  mediaJobId?: string;
+  fileId?: string;
+  url?: string;
+  mediaId?: string;
+  model?: string;
+  maskMode?: string;
+  notes?: string[];
+  costUsd?: number | null;
+  costSource?: string | null;
+  elapsedMs?: number;
+}
+
 export interface TraceFilter {
   q?: string;           // smart search: IDs, user account, trace name, or agent name
   name?: string;        // advanced raw regex on name
@@ -1909,6 +1945,12 @@ export const api = {
       (await request<{ models: ImageCompareModel[] }>('/api/media-jobs/compare-models')).models,
     compare: (data: { prompt: string; model: string; size?: string; quality?: string }) =>
       request<ImageCompareRun>('/api/media-jobs/compare', { method: 'POST', body: JSON.stringify(data) }),
+  },
+  media: {
+    imageEditModels: () =>
+      request<ImageEditModelListResponse>('/api/media/image-edit-models'),
+    imageEdit: (data: ImageEditRequest) =>
+      request<ImageEditResponse>('/api/media/image-edits', { method: 'POST', body: JSON.stringify(data) }),
   },
   hubCalls: {
     list: (offset = 0, limit = 20, filters?: HubCallFilter) => {
