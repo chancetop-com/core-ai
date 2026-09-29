@@ -302,9 +302,6 @@ class ImageEditServiceTest {
         assertEquals(0.04, response.costUsd);
         assertEquals("gateway_model", response.costSource);
         assertNotNull(response.elapsedMs);
-        // the caller stages the result as an attachment, which needs the storage location of the file
-        assertEquals("artifacts", response.container);
-        assertEquals("file-9.png", response.blobName);
         assertEquals("generated-image.png", response.fileName);
     }
 

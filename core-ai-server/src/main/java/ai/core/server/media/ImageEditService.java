@@ -289,15 +289,7 @@ public class ImageEditService {
             view.costUsd = job.costUsd;
             view.costSource = job.costSource;
             if (hasText(job.resolvedModel)) view.model = job.resolvedModel;
-            mediaJobService.fileRecord(job).ifPresent(record -> {
-                view.fileName = record.fileName;
-                var storagePath = record.storagePath;
-                var slash = storagePath == null ? -1 : storagePath.indexOf('/');
-                if (slash > 0) {
-                    view.container = storagePath.substring(0, slash);
-                    view.blobName = storagePath.substring(slash + 1);
-                }
-            });
+            mediaJobService.fileRecord(job).ifPresent(record -> view.fileName = record.fileName);
         }
         return view;
     }

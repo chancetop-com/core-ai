@@ -27,13 +27,7 @@ public class ImageEditResponse {
     @Property(name = "maskMode")
     public String maskMode;
 
-    /** Where the result is stored, so a caller can hand it back as an attachment (object storage blob). */
-    @Property(name = "container")
-    public String container;
-
-    @Property(name = "blobName")
-    public String blobName;
-
+    /** File name of the result, so a caller can stage it elsewhere under the same name. */
     @Property(name = "fileName")
     public String fileName;
 

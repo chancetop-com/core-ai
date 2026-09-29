@@ -26,7 +26,7 @@ interface Props {
   blobUrl?: string | null;
   sessionId?: string;
   /** When given, the result can be handed back to the caller (the chat composer stages it as an attachment). */
-  onUseResult?: (result: { fileId: string; container?: string | null; blobName?: string | null; fileName?: string | null }) => void;
+  onUseResult?: (result: { fileId: string; fileName?: string | null }) => void;
   onClose: () => void;
 }
 
@@ -512,7 +512,7 @@ export default function ImageCanvasEditor({ fileId, shareToken, sourceUrl, src, 
               {onUseResult && result.fileId && (
                 <button type="button"
                   onClick={() => {
-                    onUseResult({ fileId: result.fileId as string, container: result.container, blobName: result.blobName, fileName: result.fileName });
+                    onUseResult({ fileId: result.fileId as string, fileName: result.fileName });
                     onClose();
                   }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm cursor-pointer"

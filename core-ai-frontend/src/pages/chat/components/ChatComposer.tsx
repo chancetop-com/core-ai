@@ -511,20 +511,22 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     setPendingAttachments(prev => prev.filter(attachment => attachment.id !== id));
   }, []);
 
-  // the canvas result becomes a normal staged attachment: same shape the uploader produces, so the
-  // model inlines it and the message carries it like any other image
-  const stageCanvasResult = useCallback((result: { fileId: string; container?: string | null; blobName?: string | null; fileName?: string | null }) => {
-    setPendingAttachments(prev => [...prev, {
-      id: `canvas-${result.fileId}-${prev.length}`,
-      name: result.fileName ?? `canvas-${result.fileId}.png`,
-      url: `/api/files/${result.fileId}/content`,
-      contentType: 'image/png',
-      category: 'multimodal',
-      container: result.container ?? undefined,
-      blobName: result.blobName ?? undefined,
-      uploading: false,
-    }]);
-  }, []);
+  // the canvas result becomes a normal staged attachment: its bytes are re-uploaded through the same
+  // path an ordinary upload takes, because the platform only accepts an image attachment that lives in
+  // the multimodal container under ai/ (the canvas result sits in the private artifact container)
+  const stageCanvasResult = useCallback(async (result: { fileId: string; fileName?: string | null }) => {
+    try {
+      const response = await fetch(`/api/files/${result.fileId}/content`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('apiKey')}` },
+      });
+      if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+      const blob = await response.blob();
+      const fileName = result.fileName ?? `canvas-${result.fileId}.png`;
+      await uploadFile(new File([blob], fileName, { type: blob.type || 'image/png' }));
+    } catch (error) {
+      onToast(`Could not attach the edited image: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [onToast, uploadFile]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
