@@ -21,6 +21,7 @@ const ANNOTATION_CONFIRM = '该模型不支持精确圈选，将用图上标注�
 interface Props {
   fileId?: string;
   shareToken?: string;
+  sourceUrl?: string;
   src: string;
   blobUrl?: string | null;
   sessionId?: string;
@@ -43,6 +44,7 @@ interface Stroke {
 interface SourceImage {
   fileId: string | null;
   shareToken: string | null;
+  sourceUrl: string | null;
   src: string;
   blobUrl: string | null;
 }
@@ -77,13 +79,23 @@ function strokePath(ctx: CanvasRenderingContext2D, stroke: Stroke, width: number
   ctx.stroke();
 }
 
+function sourceOf(fileId?: string, shareToken?: string, sourceUrl?: string, src?: string, blobUrl?: string | null): SourceImage {
+  return {
+    fileId: fileId ?? null,
+    shareToken: shareToken ?? null,
+    sourceUrl: sourceUrl ?? null,
+    src: src ?? '',
+    blobUrl: blobUrl ?? null,
+  };
+}
+
 /**
  * Region edit canvas: draw a mask over a platform image and send it to POST /api/media/image-edits.
  * The image is always drawn from a same-origin blob URL — an /api/files/... <img> would 307 to a
  * cross-origin signed URL and taint the canvas, making toBlob() fail.
  */
-export default function ImageCanvasEditor({ fileId, shareToken, src, blobUrl, sessionId, onClose }: Props) {
-  const [source, setSource] = useState<SourceImage>(() => ({ fileId: fileId ?? null, shareToken: shareToken ?? null, src, blobUrl: blobUrl ?? null }));
+export default function ImageCanvasEditor({ fileId, shareToken, sourceUrl, src, blobUrl, sessionId, onClose }: Props) {
+  const [source, setSource] = useState<SourceImage>(() => sourceOf(fileId, shareToken, sourceUrl, src, blobUrl));
   const [models, setModels] = useState<ImageEditModel[] | null>(null);
   const [modelsError, setModelsError] = useState('');
   const [modelId, setModelId] = useState('');
@@ -105,8 +117,8 @@ export default function ImageCanvasEditor({ fileId, shareToken, src, blobUrl, se
   const annotationAgreedRef = useRef(false);
 
   useEffect(() => {
-    setSource({ fileId: fileId ?? null, shareToken: shareToken ?? null, src, blobUrl: blobUrl ?? null });
-  }, [fileId, shareToken, src, blobUrl]);
+    setSource(sourceOf(fileId, shareToken, sourceUrl, src, blobUrl));
+  }, [fileId, shareToken, sourceUrl, src, blobUrl]);
 
   useEffect(() => {
     setStrokes([]);
@@ -151,7 +163,9 @@ export default function ImageCanvasEditor({ fileId, shareToken, src, blobUrl, se
         created = url;
         setImgUrl(url);
       })
-      .catch(err => { if (!cancelled) setImgError(err instanceof Error ? err.message : String(err)); });
+      // a blob URL only saves a second download; when it cannot be fetched (an upload served by the
+      // CDN has no CORS headers) the image still displays and the exported mask never touches it
+      .catch(() => { if (!cancelled) setImgUrl(source.src); });
     return () => {
       cancelled = true;
       if (created) URL.revokeObjectURL(created);
@@ -289,7 +303,8 @@ export default function ImageCanvasEditor({ fileId, shareToken, src, blobUrl, se
 
   const selectedModel = models?.find(model => model.modelId === modelId) ?? null;
   const annotationMode = isAnnotationFallback(selectedModel);
-  const canSubmit = !running && !!(source.fileId || source.shareToken) && !!selectedModel && canUseForRegion(selectedModel)
+  const hasSource = !!(source.fileId || source.shareToken || source.sourceUrl);
+  const canSubmit = !running && hasSource && !!selectedModel && canUseForRegion(selectedModel)
     && strokes.length > 0 && !!prompt.trim();
 
   const submit = useCallback(async () => {
@@ -306,6 +321,7 @@ export default function ImageCanvasEditor({ fileId, shareToken, src, blobUrl, se
       const request: ImageEditRequest = {
         sourceFileId: source.fileId ?? undefined,
         sourceShareToken: source.shareToken ?? undefined,
+        sourceUrl: source.sourceUrl ?? undefined,
         prompt: prompt.trim(),
         mask,
         model: selectedModel.modelId,
@@ -319,14 +335,14 @@ export default function ImageCanvasEditor({ fileId, shareToken, src, blobUrl, se
     } finally {
       setRunning(false);
     }
-  }, [annotationMode, buildMask, canSubmit, prompt, selectedModel, sessionId, source.fileId, source.shareToken]);
+  }, [annotationMode, buildMask, canSubmit, prompt, selectedModel, sessionId, source.fileId, source.shareToken, source.sourceUrl]);
 
   const undo = () => setStrokes(prev => prev.slice(0, -1));
   const clear = () => setStrokes([]);
 
   const continueEditing = () => {
     if (!result?.fileId) return;
-    setSource({ fileId: result.fileId, shareToken: null, src: `/api/files/${result.fileId}/content`, blobUrl: null });
+    setSource({ fileId: result.fileId, shareToken: null, sourceUrl: null, src: `/api/files/${result.fileId}/content`, blobUrl: null });
     setStrokes([]);
     setPrompt('');
     setResult(null);

@@ -211,13 +211,10 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                 {attachments.map((att, idx) => (
                   att.type === 'IMAGE' ? (
-                    <a key={idx} href={att.url} target="_blank" rel="noopener noreferrer"
-                      className="block rounded-lg overflow-hidden border"
+                    <div key={idx} className="block rounded-lg overflow-hidden border"
                       style={{ borderColor: 'var(--color-border)', maxWidth: '160px' }}>
-                      <img src={att.url} alt={`attachment-${idx}`}
-                        className="w-full h-24 object-cover"
-                        loading="lazy" />
-                    </a>
+                      <AuthedImage src={att.url} alt={`attachment-${idx}`} className="w-full h-24 object-cover cursor-zoom-in" />
+                    </div>
                   ) : (
                     <a key={idx} href={att.url} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"

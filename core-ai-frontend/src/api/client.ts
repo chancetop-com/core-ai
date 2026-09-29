@@ -398,6 +398,7 @@ export interface ImageEditModelListResponse {
 export interface ImageEditRequest {
   sourceFileId?: string;
   sourceShareToken?: string;
+  sourceUrl?: string;
   prompt: string;
   mask: string;
   model?: string;

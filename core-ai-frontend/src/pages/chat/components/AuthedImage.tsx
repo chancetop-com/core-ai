@@ -7,14 +7,17 @@ import ImageCanvasEditor from '../../../components/ImageCanvasEditor';
 interface Props {
   src?: string;
   alt?: string;
+  /** Image class; defaults to the inline message image. Callers that show a thumbnail pass their own. */
+  className?: string;
 }
 
 interface EditTarget {
   fileId: string | null;
   shareToken: string | null;
+  sourceUrl: string | null;
 }
 
-export default function AuthedImage({ src, alt }: Props) {
+export default function AuthedImage({ src, alt, className }: Props) {
   const [resolved, setResolved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -86,7 +89,7 @@ export default function AuthedImage({ src, alt }: Props) {
         <img
           src={resolved}
           alt={alt}
-          className="block max-w-full rounded cursor-zoom-in"
+          className={className ?? 'block max-w-full rounded cursor-zoom-in'}
           onClick={() => setLightboxOpen(true)}
         />
         {editTarget && (
@@ -104,6 +107,7 @@ export default function AuthedImage({ src, alt }: Props) {
         <ImageCanvasEditor
           fileId={editTarget.fileId ?? undefined}
           shareToken={editTarget.shareToken ?? undefined}
+          sourceUrl={editTarget.sourceUrl ?? undefined}
           src={src ?? ''}
           blobUrl={resolved}
           onClose={() => setEditorOpen(false)}
@@ -151,8 +155,11 @@ export default function AuthedImage({ src, alt }: Props) {
 function editTargetOf(src?: string): EditTarget | null {
   if (!src) return null;
   const fileId = fileIdOf(src);
-  if (fileId) return { fileId, shareToken: null };
+  if (fileId) return { fileId, shareToken: null, sourceUrl: null };
   const shareToken = shareTokenOf(src);
-  if (shareToken) return { fileId: null, shareToken };
+  if (shareToken) return { fileId: null, shareToken, sourceUrl: null };
+  // an uploaded attachment lives only in object storage; the server reads it from there and refuses
+  // anything that is not platform storage, so the button may appear before that check
+  if (/^https?:\/\//i.test(src)) return { fileId: null, shareToken: null, sourceUrl: src };
   return null;
 }

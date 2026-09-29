@@ -7,13 +7,17 @@ import core.framework.api.validate.NotNull;
  * @author stephen
  */
 public class ImageEditRequest {
-    /** Exactly one of sourceFileId / sourceShareToken names the image to edit. */
+    /** Exactly one of sourceFileId / sourceShareToken / sourceUrl names the image to edit. */
     @Property(name = "sourceFileId")
     public String sourceFileId;
 
     /** A chat image is handed out as /api/public/artifacts/{token}/content, so the token is a source too. */
     @Property(name = "sourceShareToken")
     public String sourceShareToken;
+
+    /** An uploaded attachment lives only in object storage; the platform reads it straight from there. */
+    @Property(name = "sourceUrl")
+    public String sourceUrl;
 
     @NotNull
     @Property(name = "prompt")

@@ -10,7 +10,7 @@ import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
 import ai.core.media.reference.MediaModality;
 import ai.core.media.reference.MediaReferenceRole;
-import ai.core.server.domain.FileRecord;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.gateway.ContextualMediaProvider;
 import ai.core.server.gateway.GatewayEndpointType;
@@ -59,6 +59,12 @@ public class ImageEditService {
         return value != null && !value.isBlank();
     }
 
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        var trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private static boolean acceptsReferences(MediaProviderCapabilities capabilities) {
         return capabilities.acceptsInlineData() || capabilities.acceptsRemoteUrl();
     }
@@ -87,6 +93,8 @@ public class ImageEditService {
     @Inject
     FileService fileService;
     @Inject
+    ObjectStorageServiceResolver storageResolver;
+    @Inject
     MediaProvider mediaProvider;
     @Inject
     MediaJobService mediaJobService;
@@ -110,10 +118,9 @@ public class ImageEditService {
 
     public ImageEditResponse edit(String userId, ImageEditRequest request) {
         var prompt = prompt(request.prompt);
-        var source = sourceFile(userId, request);
-        var sourceBytes = fileService.getBytes(source);
+        var sourceBytes = sourceBytes(userId, request);
         var dimensions = ImageJpegCodec.dimensions(sourceBytes);
-        if (dimensions == null) throw new BadRequestException("image is not a readable image: " + source.id);
+        if (dimensions == null) throw new BadRequestException("image is not a readable image");
         var edit = resolveEdit(request);
         var sourceImage = SourceImage.read(sourceBytes, dimensions[0], dimensions[1]);
         var mask = MaskImage.decode(request.mask, dimensions[0], dimensions[1]);
@@ -124,18 +131,31 @@ public class ImageEditService {
     }
 
     /**
-     * The image to edit, by id or by share token — the web chat hands generated images out as
-     * /api/public/artifacts/{token}/content, so the token is the only handle a chat image has.
-     * Ownership is enforced the same way for both.
+     * The image to edit, by file id, by share token, or by a URL of our own object storage: the web chat
+     * hands generated images out as /api/public/artifacts/{token}/content, while an uploaded attachment
+     * exists only as an object storage blob. Ownership is enforced for the two handle forms.
      */
-    private FileRecord sourceFile(String userId, ImageEditRequest request) {
-        var fileId = hasText(request.sourceFileId) ? request.sourceFileId.trim() : null;
-        var shareToken = hasText(request.sourceShareToken) ? request.sourceShareToken.trim() : null;
-        if (fileId == null && shareToken == null) throw new BadRequestException("sourceFileId or sourceShareToken is required");
-        if (fileId != null && shareToken != null) throw new BadRequestException("provide either sourceFileId or sourceShareToken, not both");
-        if (fileId != null) return fileService.getOwned(fileId, userId);
-        var record = fileService.getShared(shareToken);
-        return fileService.getOwned(record.id, userId);
+    private byte[] sourceBytes(String userId, ImageEditRequest request) {
+        var fileId = trimToNull(request.sourceFileId);
+        var shareToken = trimToNull(request.sourceShareToken);
+        var url = trimToNull(request.sourceUrl);
+        var provided = (fileId == null ? 0 : 1) + (shareToken == null ? 0 : 1) + (url == null ? 0 : 1);
+        if (provided == 0) throw new BadRequestException("sourceFileId, sourceShareToken or sourceUrl is required");
+        if (provided > 1) throw new BadRequestException("provide only one of sourceFileId, sourceShareToken, sourceUrl");
+        if (fileId != null) return fileService.getBytes(fileService.getOwned(fileId, userId));
+        if (shareToken != null) return fileService.getBytes(fileService.getOwned(fileService.getShared(shareToken).id, userId));
+        return storedBytes(url);
+    }
+
+    private byte[] storedBytes(String url) {
+        var location = storageResolver.locate(url);
+        var storage = storageResolver.resolve();
+        if (location == null || storage == null) throw new BadRequestException("only images hosted by this platform can be edited here");
+        try {
+            return storage.downloadObject(location.container(), location.blobName());
+        } catch (RuntimeException e) {
+            throw new BadRequestException("the image could not be read from storage", "IMAGE_EDIT_SOURCE_UNAVAILABLE", e);
+        }
     }
 
     private ImageEditModelView modelView(String modelId, String providerName, GatewayRoute route) {

@@ -129,6 +129,31 @@ public class ObjectStorageServiceResolver {
         return webAssetsPublicBaseUrl() + "/" + multimodalContainer() + "/web-assets";
     }
 
+    /**
+     * Where a URL of ours lives in object storage, or null when it is not our storage at all.
+     * A browser upload (chat attachment) is handed out either as a container-scoped CDN/Front Door
+     * URL (the path is the blob name inside the multimodal container) or as a plain blob-domain URL
+     * ({@code https://{account}.blob.core.windows.net/{container}/{blob}}).
+     */
+    public BlobLocation locate(String url) {
+        if (url == null || url.isBlank()) return null;
+        var normalized = stripTrailingSlash(url.trim());
+        var cdnBase = settings.azureBlobCdnBaseUrl();
+        if (cdnBase != null && !cdnBase.isBlank()) {
+            var base = stripTrailingSlash(ensureHttps(cdnBase));
+            if (normalized.startsWith(base + "/")) {
+                return new BlobLocation(multimodalContainer(), normalized.substring(base.length() + 1));
+            }
+        }
+        var marker = "blob.core.windows.net/";
+        var index = normalized.indexOf(marker);
+        if (index < 0) return null;
+        var path = normalized.substring(index + marker.length());
+        var slash = path.indexOf('/');
+        if (slash <= 0 || slash == path.length() - 1) return null;
+        return new BlobLocation(path.substring(0, slash), path.substring(slash + 1));
+    }
+
     private String ensureHttps(String value) {
         if (value == null || value.isBlank()) return value;
         if (value.startsWith("http://") || value.startsWith("https://")) return value;
@@ -139,5 +164,8 @@ public class ObjectStorageServiceResolver {
         var result = value;
         while (result.endsWith("/")) result = result.substring(0, result.length() - 1);
         return result;
+    }
+
+    public record BlobLocation(String container, String blobName) {
     }
 }

@@ -5,6 +5,8 @@ import ai.core.media.MediaProvider;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
+import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
@@ -89,6 +91,8 @@ class ImageEditServiceTest {
 
     private ImageEditService service;
     private FileService fileService;
+    private ObjectStorageServiceResolver storageResolver;
+    private ObjectStorageService storageService;
     private MediaProvider mediaProvider;
     private MediaJobService mediaJobService;
     private GatewayRoutingEngine routingEngine;
@@ -98,11 +102,14 @@ class ImageEditServiceTest {
     void setUp() {
         service = new ImageEditService();
         fileService = mock(FileService.class);
+        storageResolver = mock(ObjectStorageServiceResolver.class);
+        storageService = mock(ObjectStorageService.class);
         mediaProvider = mock(MediaProvider.class);
         mediaJobService = mock(MediaJobService.class);
         routingEngine = mock(GatewayRoutingEngine.class);
         systemSettingsService = mock(SystemSettingsService.class);
         service.fileService = fileService;
+        service.storageResolver = storageResolver;
         service.mediaProvider = mediaProvider;
         service.mediaJobService = mediaJobService;
         service.routingEngine = routingEngine;
@@ -232,6 +239,35 @@ class ImageEditServiceTest {
     }
 
     @Test
+    void editReadsAnUploadedAttachmentStraightFromObjectStorage() {
+        when(storageResolver.locate("https://cdn.example.net/ai/uploads/a.png"))
+            .thenReturn(new ObjectStorageServiceResolver.BlobLocation("static", "ai/uploads/a.png"));
+        when(storageResolver.resolve()).thenReturn(storageService);
+        when(storageService.downloadObject("static", "ai/uploads/a.png")).thenReturn(png(white(200, 200)));
+        when(mediaProvider.generateImage(any())).thenReturn(new ImageGenerationResponse(List.of(), null));
+        var request = request("gpt-image-2", null);
+        request.sourceFileId = null;
+        request.sourceUrl = "https://cdn.example.net/ai/uploads/a.png";
+
+        var response = service.edit("user-1", request);
+
+        assertEquals("mask", response.maskMode);
+        assertEquals(1, captured().inputImages().size());
+    }
+
+    @Test
+    void editRefusesAUrlThatIsNotPlatformStorage() {
+        when(storageResolver.locate("https://example.com/cat.png")).thenReturn(null);
+        var request = request("gpt-image-2", null);
+        request.sourceFileId = null;
+        request.sourceUrl = "https://example.com/cat.png";
+
+        var error = assertThrows(BadRequestException.class, () -> service.edit("user-1", request));
+
+        assertTrue(error.getMessage().contains("only images hosted by this platform"));
+    }
+
+    @Test
     void editRequiresExactlyOneSource() {
         ownsSource(200, 200);
         var neither = request("gpt-image-2", null);
@@ -241,7 +277,7 @@ class ImageEditServiceTest {
         var both = request("gpt-image-2", null);
         both.sourceShareToken = "share-1";
         var error = assertThrows(BadRequestException.class, () -> service.edit("user-1", both));
-        assertTrue(error.getMessage().contains("either sourceFileId or sourceShareToken"));
+        assertTrue(error.getMessage().contains("provide only one of"));
     }
 
     @Test
