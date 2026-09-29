@@ -8,6 +8,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509ExtendedTrustManager;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.URI;
@@ -22,14 +23,17 @@ import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.zip.GZIPInputStream;
 
 /**
  * @author stephen
  */
 public class RemoteApiClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(RemoteApiClient.class);
+    private static final String GZIP = "gzip";
 
     private static SSLContext trustAllContext() {
         try {
@@ -84,14 +88,14 @@ public class RemoteApiClient {
     }
 
     public String get(String path) {
-        var request = request(path)
+        var request = textRequest(path)
                 .GET()
                 .build();
         return send(request);
     }
 
     public String getRequired(String path) {
-        var request = request(path)
+        var request = textRequest(path)
                 .GET()
                 .build();
         return sendRequired(request);
@@ -125,7 +129,7 @@ public class RemoteApiClient {
 
     public String post(String path, Object body) {
         var json = body != null ? JsonUtil.toJson(body) : "{}";
-        var request = request(path)
+        var request = textRequest(path)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
@@ -134,7 +138,7 @@ public class RemoteApiClient {
 
     public String postRequired(String path, Object body) {
         var json = body != null ? JsonUtil.toJson(body) : "{}";
-        var request = request(path)
+        var request = textRequest(path)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
@@ -143,7 +147,7 @@ public class RemoteApiClient {
 
     public String put(String path, Object body) {
         var json = body != null ? JsonUtil.toJson(body) : "{}";
-        var request = request(path)
+        var request = textRequest(path)
                 .header("Content-Type", "application/json")
                 .PUT(HttpRequest.BodyPublishers.ofString(json))
                 .build();
@@ -152,7 +156,7 @@ public class RemoteApiClient {
 
     public String putRequired(String path, Object body) {
         var json = body != null ? JsonUtil.toJson(body) : "{}";
-        var request = request(path)
+        var request = textRequest(path)
                 .header("Content-Type", "application/json")
                 .PUT(HttpRequest.BodyPublishers.ofString(json))
                 .build();
@@ -160,7 +164,7 @@ public class RemoteApiClient {
     }
 
     public String postEmpty(String path) {
-        var request = request(path)
+        var request = textRequest(path)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
@@ -168,7 +172,7 @@ public class RemoteApiClient {
     }
 
     public void delete(String path) {
-        var request = request(path)
+        var request = textRequest(path)
                 .DELETE()
                 .build();
         send(request);
@@ -176,7 +180,7 @@ public class RemoteApiClient {
 
     /** DELETE whose response body carries data (e.g. the payload text of a hub dataset operation). */
     public String deleteRequired(String path) {
-        var request = request(path)
+        var request = textRequest(path)
                 .DELETE()
                 .build();
         return sendRequired(request);
@@ -209,7 +213,7 @@ public class RemoteApiClient {
                 offset += part.length;
             }
 
-            var request = request(path)
+            var request = textRequest(path)
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();
@@ -245,15 +249,24 @@ public class RemoteApiClient {
         return builder;
     }
 
+    /**
+     * A request whose body is text (JSON): it asks the server to compress it, which the JDK client
+     * does not do on its own. Binary downloads and the streaming builder stay on {@link #request},
+     * where a compression layer would only get in the way.
+     */
+    private HttpRequest.Builder textRequest(String path) {
+        return request(path).header("Accept-Encoding", GZIP);
+    }
+
     private String send(HttpRequest request) {
         try {
-            var response = apiClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = apiClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            var body = bodyText(response);
             if (response.statusCode() >= 400) {
-                LOGGER.warn("API error: {} {}", response.statusCode(), response.body());
-                var message = parseErrorMessage(response.statusCode(), response.body());
-                throw new RemoteApiException(response.statusCode(), message);
+                LOGGER.warn("API error: {} {}", response.statusCode(), body);
+                throw new RemoteApiException(response.statusCode(), parseErrorMessage(response.statusCode(), body));
             }
-            return response.body();
+            return body;
         } catch (RemoteApiException e) {
             throw e;
         } catch (Exception e) {
@@ -264,18 +277,28 @@ public class RemoteApiClient {
 
     private String sendRequired(HttpRequest request) {
         try {
-            var response = apiClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = apiClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            var body = bodyText(response);
             if (response.statusCode() >= 400) {
-                LOGGER.warn("API error: {} {}", response.statusCode(), response.body());
-                var message = parseErrorMessage(response.statusCode(), response.body());
-                throw new RemoteApiException(response.statusCode(), message);
+                LOGGER.warn("API error: {} {}", response.statusCode(), body);
+                throw new RemoteApiException(response.statusCode(), parseErrorMessage(response.statusCode(), body));
             }
-            return response.body();
+            return body;
         } catch (RemoteApiException e) {
             throw e;
         } catch (Exception e) {
             LOGGER.warn("API request failed: {}", e.getMessage());
             throw new IllegalStateException("API request failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** The response as text, inflated when the server compressed it (error bodies are compressed too). */
+    private String bodyText(HttpResponse<byte[]> response) throws IOException {
+        var body = response.body() == null ? new byte[0] : response.body();
+        var encoding = response.headers().firstValue("Content-Encoding").orElse("");
+        if (!encoding.toLowerCase(Locale.ROOT).contains(GZIP)) return new String(body, StandardCharsets.UTF_8);
+        try (var input = new GZIPInputStream(new ByteArrayInputStream(body))) {
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 

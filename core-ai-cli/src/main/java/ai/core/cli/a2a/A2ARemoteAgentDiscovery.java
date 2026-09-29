@@ -44,7 +44,7 @@ public class A2ARemoteAgentDiscovery {
         if (cached != null && now - cached.createdAtNanos < CACHE_TTL_NANOS) return copyConfigs(cached.configs);
 
         var json = fetchAgentsJson(server, apiKey);
-        if (json == null || json.isBlank()) {
+        if (json.isBlank()) {
             throw new IllegalStateException("empty A2A agent discovery response, server=" + server.id);
         }
         var configs = fromJson(server, json);
@@ -82,7 +82,7 @@ public class A2ARemoteAgentDiscovery {
         var path = "/api/agents?query=" + URLEncoder.encode(query, StandardCharsets.UTF_8)
                 + "&limit=" + limit;
         var json = new RemoteApiClient(server.url, apiKey, DISCOVERY_TIMEOUT).getRequired(path);
-        if (json == null || json.isBlank()) return List.of();
+        if (json.isBlank()) return List.of();
         return fromJson(server, json);
     }
 
