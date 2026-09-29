@@ -18,7 +18,8 @@ const BRUSH_WIDTH_BASE = 1000;
 const ANNOTATION_CONFIRM = '该模型不支持精确圈选，将用图上标注近似，未标注区域仍可能变化。继续?';
 
 interface Props {
-  fileId: string;
+  fileId?: string;
+  shareToken?: string;
   src: string;
   blobUrl?: string | null;
   sessionId?: string;
@@ -39,7 +40,8 @@ interface Stroke {
 }
 
 interface SourceImage {
-  fileId: string;
+  fileId: string | null;
+  shareToken: string | null;
   src: string;
   blobUrl: string | null;
 }
@@ -79,8 +81,8 @@ function strokePath(ctx: CanvasRenderingContext2D, stroke: Stroke, width: number
  * The image is always drawn from a same-origin blob URL — an /api/files/... <img> would 307 to a
  * cross-origin signed URL and taint the canvas, making toBlob() fail.
  */
-export default function ImageCanvasEditor({ fileId, src, blobUrl, sessionId, onClose }: Props) {
-  const [source, setSource] = useState<SourceImage>(() => ({ fileId, src, blobUrl: blobUrl ?? null }));
+export default function ImageCanvasEditor({ fileId, shareToken, src, blobUrl, sessionId, onClose }: Props) {
+  const [source, setSource] = useState<SourceImage>(() => ({ fileId: fileId ?? null, shareToken: shareToken ?? null, src, blobUrl: blobUrl ?? null }));
   const [models, setModels] = useState<ImageEditModel[] | null>(null);
   const [modelsError, setModelsError] = useState('');
   const [modelId, setModelId] = useState('');
@@ -102,8 +104,8 @@ export default function ImageCanvasEditor({ fileId, src, blobUrl, sessionId, onC
   const annotationAgreedRef = useRef(false);
 
   useEffect(() => {
-    setSource({ fileId, src, blobUrl: blobUrl ?? null });
-  }, [fileId, src, blobUrl]);
+    setSource({ fileId: fileId ?? null, shareToken: shareToken ?? null, src, blobUrl: blobUrl ?? null });
+  }, [fileId, shareToken, src, blobUrl]);
 
   useEffect(() => {
     setStrokes([]);
@@ -286,7 +288,7 @@ export default function ImageCanvasEditor({ fileId, src, blobUrl, sessionId, onC
 
   const selectedModel = models?.find(model => model.modelId === modelId) ?? null;
   const annotationMode = isAnnotationFallback(selectedModel);
-  const canSubmit = !running && !!source.fileId && !!selectedModel && canUseForRegion(selectedModel)
+  const canSubmit = !running && !!(source.fileId || source.shareToken) && !!selectedModel && canUseForRegion(selectedModel)
     && strokes.length > 0 && !!prompt.trim();
 
   const submit = useCallback(async () => {
@@ -301,7 +303,8 @@ export default function ImageCanvasEditor({ fileId, src, blobUrl, sessionId, onC
     try {
       const mask = await buildMask();
       const request: ImageEditRequest = {
-        sourceFileId: source.fileId,
+        sourceFileId: source.fileId ?? undefined,
+        sourceShareToken: source.shareToken ?? undefined,
         prompt: prompt.trim(),
         mask,
         model: selectedModel.modelId,
@@ -315,14 +318,14 @@ export default function ImageCanvasEditor({ fileId, src, blobUrl, sessionId, onC
     } finally {
       setRunning(false);
     }
-  }, [annotationMode, buildMask, canSubmit, prompt, selectedModel, sessionId, source.fileId]);
+  }, [annotationMode, buildMask, canSubmit, prompt, selectedModel, sessionId, source.fileId, source.shareToken]);
 
   const undo = () => setStrokes(prev => prev.slice(0, -1));
   const clear = () => setStrokes([]);
 
   const continueEditing = () => {
     if (!result?.fileId) return;
-    setSource({ fileId: result.fileId, src: `/api/files/${result.fileId}/content`, blobUrl: null });
+    setSource({ fileId: result.fileId, shareToken: null, src: `/api/files/${result.fileId}/content`, blobUrl: null });
     setStrokes([]);
     setPrompt('');
     setResult(null);

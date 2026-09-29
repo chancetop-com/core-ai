@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Lasso, Loader2, X as CloseIcon } from 'lucide-react';
-import { fetchBlob, fileIdOf, needsAuthFetch } from '../../../api/authedBlob';
+import { fetchBlob, fileIdOf, needsAuthFetch, shareTokenOf } from '../../../api/authedBlob';
 import ImageCanvasEditor from '../../../components/ImageCanvasEditor';
 
 interface Props {
@@ -8,14 +8,17 @@ interface Props {
   alt?: string;
 }
 
+interface EditTarget {
+  fileId: string | null;
+  shareToken: string | null;
+}
+
 export default function AuthedImage({ src, alt }: Props) {
   const [resolved, setResolved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
-  const fileId = src ? fileIdOf(src) : null;
-  // only platform files can be edited: external images have no fileId to send to the server
-  const editTarget = fileId && src ? { fileId, src } : null;
+  const editTarget = editTargetOf(src);
 
   useEffect(() => {
     if (!src) {
@@ -98,8 +101,9 @@ export default function AuthedImage({ src, alt }: Props) {
       </span>
       {editorOpen && editTarget && (
         <ImageCanvasEditor
-          fileId={editTarget.fileId}
-          src={editTarget.src}
+          fileId={editTarget.fileId ?? undefined}
+          shareToken={editTarget.shareToken ?? undefined}
+          src={src ?? ''}
           blobUrl={resolved}
           onClose={() => setEditorOpen(false)}
         />
@@ -127,8 +131,26 @@ export default function AuthedImage({ src, alt }: Props) {
             className="max-w-[95vw] max-h-[95vh] object-contain cursor-default"
             onClick={(e) => e.stopPropagation()}
           />
+          {editTarget && (
+            <button
+              type="button"
+              className="absolute bottom-6 inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-sm cursor-pointer"
+              style={{ background: 'rgba(255,255,255,0.14)', color: 'white' }}
+              onClick={(e) => { e.stopPropagation(); setLightboxOpen(false); setEditorOpen(true); }}>
+              <Lasso size={14} /> 圈选编辑
+            </button>
+          )}
         </div>
       )}
     </>
   );
+}
+
+function editTargetOf(src?: string): EditTarget | null {
+  if (!src) return null;
+  const fileId = fileIdOf(src);
+  if (fileId) return { fileId, shareToken: null };
+  const shareToken = shareTokenOf(src);
+  if (shareToken) return { fileId: null, shareToken };
+  return null;
 }

@@ -10,6 +10,7 @@ import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
 import ai.core.media.reference.MediaModality;
 import ai.core.media.reference.MediaReferenceRole;
+import ai.core.server.domain.FileRecord;
 import ai.core.server.file.FileService;
 import ai.core.server.gateway.ContextualMediaProvider;
 import ai.core.server.gateway.GatewayEndpointType;
@@ -109,10 +110,10 @@ public class ImageEditService {
 
     public ImageEditResponse edit(String userId, ImageEditRequest request) {
         var prompt = prompt(request.prompt);
-        var source = fileService.getOwned(request.sourceFileId, userId);
+        var source = sourceFile(userId, request);
         var sourceBytes = fileService.getBytes(source);
         var dimensions = ImageJpegCodec.dimensions(sourceBytes);
-        if (dimensions == null) throw new BadRequestException("image is not a readable image: " + request.sourceFileId);
+        if (dimensions == null) throw new BadRequestException("image is not a readable image: " + source.id);
         var edit = resolveEdit(request);
         var sourceImage = SourceImage.read(sourceBytes, dimensions[0], dimensions[1]);
         var mask = MaskImage.decode(request.mask, dimensions[0], dimensions[1]);
@@ -120,6 +121,21 @@ public class ImageEditService {
         var started = System.currentTimeMillis();
         var generation = generate(userId, request.sessionId, generationRequest);
         return response(generation, edit, System.currentTimeMillis() - started);
+    }
+
+    /**
+     * The image to edit, by id or by share token — the web chat hands generated images out as
+     * /api/public/artifacts/{token}/content, so the token is the only handle a chat image has.
+     * Ownership is enforced the same way for both.
+     */
+    private FileRecord sourceFile(String userId, ImageEditRequest request) {
+        var fileId = hasText(request.sourceFileId) ? request.sourceFileId.trim() : null;
+        var shareToken = hasText(request.sourceShareToken) ? request.sourceShareToken.trim() : null;
+        if (fileId == null && shareToken == null) throw new BadRequestException("sourceFileId or sourceShareToken is required");
+        if (fileId != null && shareToken != null) throw new BadRequestException("provide either sourceFileId or sourceShareToken, not both");
+        if (fileId != null) return fileService.getOwned(fileId, userId);
+        var record = fileService.getShared(shareToken);
+        return fileService.getOwned(record.id, userId);
     }
 
     private ImageEditModelView modelView(String modelId, String providerName, GatewayRoute route) {

@@ -30,3 +30,14 @@ export function fileIdOf(url?: string): string | null {
     return match[1];
   }
 }
+
+// A chat image is handed out as a share link, not a file link: the token is the only handle it has.
+export function shareTokenOf(url?: string): string | null {
+  const match = url ? /\/api\/public\/artifacts\/([^/?#]+)\/content/.exec(url) : null;
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}

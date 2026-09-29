@@ -213,6 +213,38 @@ class ImageEditServiceTest {
     }
 
     @Test
+    void editResolvesAChatImageByItsShareToken() {
+        ownsSource(200, 200);
+        var record = new FileRecord();
+        record.id = "file-1";
+        record.userId = "user-1";
+        record.contentType = "image/png";
+        when(fileService.getShared("share-1")).thenReturn(record);
+        when(mediaProvider.generateImage(any())).thenReturn(new ImageGenerationResponse(List.of(), null));
+        var request = request("gpt-image-2", null);
+        request.sourceFileId = null;
+        request.sourceShareToken = "share-1";
+
+        var response = service.edit("user-1", request);
+
+        verify(fileService).getOwned("file-1", "user-1");
+        assertEquals("mask", response.maskMode);
+    }
+
+    @Test
+    void editRequiresExactlyOneSource() {
+        ownsSource(200, 200);
+        var neither = request("gpt-image-2", null);
+        neither.sourceFileId = null;
+        assertThrows(BadRequestException.class, () -> service.edit("user-1", neither));
+
+        var both = request("gpt-image-2", null);
+        both.sourceShareToken = "share-1";
+        var error = assertThrows(BadRequestException.class, () -> service.edit("user-1", both));
+        assertTrue(error.getMessage().contains("either sourceFileId or sourceShareToken"));
+    }
+
+    @Test
     void editReturnsTheRecordedJobOfTheResult() {
         ownsSource(200, 200);
         when(mediaProvider.generateImage(any()))
