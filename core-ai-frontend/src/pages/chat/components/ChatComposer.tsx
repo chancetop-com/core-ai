@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import AttachmentMentionMenu from './AttachmentMentionMenu';
 import NotifyToggle from './NotifyToggle';
+import ImageCanvasEditor from '../../../components/ImageCanvasEditor';
 import type { NotifyToggleProps } from './NotifyToggle';
 import { applyMention, attachmentBadgeLabel, findMentionTrigger, imageOrdinals, mentionCandidates, pastedImageFileName } from './attachmentMentions';
 import type { MentionableAttachment, MentionTrigger } from './attachmentMentions';
@@ -355,6 +356,8 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const [needsExpand, setNeedsExpand] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  // an image is editable before it is ever sent: the canvas opens straight from the staged attachment
+  const [canvasTarget, setCanvasTarget] = useState<PendingAttachment | null>(null);
   const [mention, setMention] = useState<{ trigger: MentionTrigger; activeIndex: number } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -508,6 +511,21 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     setPendingAttachments(prev => prev.filter(attachment => attachment.id !== id));
   }, []);
 
+  // the canvas result becomes a normal staged attachment: same shape the uploader produces, so the
+  // model inlines it and the message carries it like any other image
+  const stageCanvasResult = useCallback((result: { fileId: string; container?: string | null; blobName?: string | null; fileName?: string | null }) => {
+    setPendingAttachments(prev => [...prev, {
+      id: `canvas-${result.fileId}-${prev.length}`,
+      name: result.fileName ?? `canvas-${result.fileId}.png`,
+      url: `/api/files/${result.fileId}/content`,
+      contentType: 'image/png',
+      category: 'multimodal',
+      container: result.container ?? undefined,
+      blobName: result.blobName ?? undefined,
+      uploading: false,
+    }]);
+  }, []);
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
     const readyAttachments = pendingAttachments.filter(attachment => !attachment.uploading);
@@ -614,9 +632,13 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
 
         {pendingAttachments.length > 0 && (
           <div className="flex gap-2 flex-wrap mb-2">
-            {pendingAttachments.map(attachment => (
+            {pendingAttachments.map(attachment => {
+              const editableImage = !attachment.uploading && attachment.contentType.startsWith('image/');
+              return (
               <span key={attachment.id}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+                onClick={editableImage ? () => setCanvasTarget(attachment) : undefined}
+                title={editableImage ? '点击圈选编辑' : undefined}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium${editableImage ? ' cursor-pointer' : ''}`}
                 style={{
                   background: attachment.uploading ? 'var(--color-bg-tertiary)' : 'var(--color-primary)' + '12',
                   border: attachment.uploading ? '1px dashed var(--color-border)' : '1px solid var(--color-primary)' + '20',
@@ -624,20 +646,23 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
                 }}>
                 {attachment.uploading ? (
                   <Loader2 size={12} className="animate-spin" />
+                ) : editableImage ? (
+                  <img src={attachment.url} alt="" className="h-5 w-5 rounded object-cover" />
                 ) : (
                   <Paperclip size={12} />
                 )}
                 <span className="max-w-[160px] truncate">{attachmentBadgeLabel(attachment, ordinals)}</span>
                 {!attachment.uploading && (
                   <button
-                    onClick={() => removeAttachment(attachment.id)}
+                    onClick={(event) => { event.stopPropagation(); removeAttachment(attachment.id); }}
                     className="ml-0.5 hover:opacity-70"
                     style={{ color: 'var(--color-text-muted)' }}>
                     <X size={12} />
                   </button>
                 )}
               </span>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -762,6 +787,15 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
         onChange={handleFileChange}
         className="hidden"
       />
+
+      {canvasTarget && (
+        <ImageCanvasEditor
+          sourceUrl={canvasTarget.url}
+          src={canvasTarget.url}
+          onUseResult={stageCanvasResult}
+          onClose={() => setCanvasTarget(null)}
+        />
+      )}
     </div>
   );
 }));

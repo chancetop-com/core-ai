@@ -414,6 +414,9 @@ export interface ImageEditResponse {
   mediaId?: string;
   model?: string;
   maskMode?: string;
+  container?: string | null;
+  blobName?: string | null;
+  fileName?: string | null;
   notes?: string[];
   costUsd?: number | null;
   costSource?: string | null;

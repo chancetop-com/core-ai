@@ -34,6 +34,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -286,6 +287,11 @@ class ImageEditServiceTest {
         when(mediaProvider.generateImage(any()))
             .thenReturn(new ImageGenerationResponse(List.of(), null).with(GatewayMediaHandle.encodeImage("job-1"), List.of()));
         when(mediaJobService.get("job-1")).thenReturn(job());
+        var record = new FileRecord();
+        record.id = "file-9";
+        record.fileName = "generated-image.png";
+        record.storagePath = "artifacts/file-9.png";
+        when(mediaJobService.fileRecord(any())).thenReturn(Optional.of(record));
 
         var response = service.edit("user-1", request("gpt-image-2", null));
 
@@ -296,6 +302,10 @@ class ImageEditServiceTest {
         assertEquals(0.04, response.costUsd);
         assertEquals("gateway_model", response.costSource);
         assertNotNull(response.elapsedMs);
+        // the caller stages the result as an attachment, which needs the storage location of the file
+        assertEquals("artifacts", response.container);
+        assertEquals("file-9.png", response.blobName);
+        assertEquals("generated-image.png", response.fileName);
     }
 
     private void ownsSource(int width, int height) {

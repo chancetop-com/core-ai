@@ -25,6 +25,8 @@ interface Props {
   src: string;
   blobUrl?: string | null;
   sessionId?: string;
+  /** When given, the result can be handed back to the caller (the chat composer stages it as an attachment). */
+  onUseResult?: (result: { fileId: string; container?: string | null; blobName?: string | null; fileName?: string | null }) => void;
   onClose: () => void;
 }
 
@@ -94,7 +96,7 @@ function sourceOf(fileId?: string, shareToken?: string, sourceUrl?: string, src?
  * The image is always drawn from a same-origin blob URL — an /api/files/... <img> would 307 to a
  * cross-origin signed URL and taint the canvas, making toBlob() fail.
  */
-export default function ImageCanvasEditor({ fileId, shareToken, sourceUrl, src, blobUrl, sessionId, onClose }: Props) {
+export default function ImageCanvasEditor({ fileId, shareToken, sourceUrl, src, blobUrl, sessionId, onUseResult, onClose }: Props) {
   const [source, setSource] = useState<SourceImage>(() => sourceOf(fileId, shareToken, sourceUrl, src, blobUrl));
   const [models, setModels] = useState<ImageEditModel[] | null>(null);
   const [modelsError, setModelsError] = useState('');
@@ -507,6 +509,17 @@ export default function ImageCanvasEditor({ fileId, shareToken, sourceUrl, src, 
                 style={{ background: 'var(--color-primary)', color: 'white' }}>
                 继续编辑
               </button>
+              {onUseResult && result.fileId && (
+                <button type="button"
+                  onClick={() => {
+                    onUseResult({ fileId: result.fileId as string, container: result.container, blobName: result.blobName, fileName: result.fileName });
+                    onClose();
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm cursor-pointer"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
+                  用作附件
+                </button>
+              )}
               {result.fileId && (
                 <a href={`/api/files/${result.fileId}/content`} download target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm cursor-pointer"
