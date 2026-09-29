@@ -60,6 +60,11 @@ public abstract class HubCommandBase implements Callable<Integer> {
         return new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
     }
 
+    protected ai.core.cli.hub.catalog.CatalogHubClient catalogClient() {
+        var credentials = credentials();
+        return new ai.core.cli.hub.catalog.CatalogHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
+    }
+
     protected ApiToolHubClient apiToolClient() {
         var credentials = credentials();
         return new ApiToolHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);

@@ -4,6 +4,7 @@ import ai.core.McpServerModule;
 import ai.core.MultiAgentModule;
 import ai.core.server.asynctask.AsyncToolTaskRecord;
 import ai.core.server.agenthub.AgentHubModule;
+import ai.core.server.cataloghub.HubCatalogModule;
 import ai.core.server.apimcp.mcp.McpModule;
 import ai.core.server.apimcp.serviceapi.ServiceApiModule;
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
@@ -169,6 +170,8 @@ public class ServerApp extends App {
         // Agent Hub needs ServerA2AService (A2AModule) and AgentRunService (AgentRunnerModule): core-ng
         // resolves @Inject while binding, so it must load after both.
         load(new AgentHubModule());
+        // Hub Catalog composes the MCP, API-tool and agent catalogs, so it follows all three modules.
+        load(new HubCatalogModule());
         load(new TriggerModule());
         load(new MessagingRuntimeModule());
         load(new SessionSchedulerModule());

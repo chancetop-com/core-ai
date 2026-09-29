@@ -90,15 +90,25 @@ public class McpToolCatalogService {
         return new SearchOutcome(servers, diversify(ordered, effectiveLimit, cap));
     }
 
-    private SearchOutcome listAll(String serverFilter, int limit) {
-        var tools = new ArrayList<ScoredTool>();
+    /**
+     * Every enumerable tool of every enabled server, sorted by qualified name. No page limit and no
+     * per-server cap: this is the catalog surface a client builds its tool list from, not a search.
+     */
+    public List<CatalogTool> allTools() {
+        var tools = new ArrayList<CatalogTool>();
         for (var entry : enabledMcpEntries()) {
-            if (serverFilter != null && !serverFilter.isBlank() && !serverFilter.equals(entry.name)) continue;
-            var snapshot = ensureLoaded(entry);
-            for (var tool : staleMarkedTools(snapshot)) tools.add(new ScoredTool(tool, 0));
+            tools.addAll(staleMarkedTools(ensureLoaded(entry)));
         }
-        tools.sort(Comparator.comparing(scored -> scored.tool().qualifiedName()));
-        return new SearchOutcome(List.of(), tools.size() > limit ? List.copyOf(tools.subList(0, limit)) : tools);
+        tools.sort(Comparator.comparing(CatalogTool::qualifiedName));
+        return tools;
+    }
+
+    private SearchOutcome listAll(String serverFilter, int limit) {
+        var tools = allTools().stream()
+                .filter(tool -> serverFilter == null || serverFilter.isBlank() || serverFilter.equals(tool.serverName()))
+                .map(tool -> new ScoredTool(tool, 0))
+                .toList();
+        return new SearchOutcome(List.of(), tools.size() > limit ? tools.subList(0, limit) : tools);
     }
 
     private List<ServerMatches> matchServers(String serverFilter, List<String> tokens, String query) {

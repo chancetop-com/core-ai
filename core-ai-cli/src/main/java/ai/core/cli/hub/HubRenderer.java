@@ -5,6 +5,9 @@ import ai.core.api.server.apitoolhub.ApiToolHubAppView;
 import ai.core.api.server.apitoolhub.ApiToolHubOperationDetail;
 import ai.core.api.server.apitoolhub.ApiToolHubOperationSummary;
 import ai.core.api.server.apitoolhub.ApiToolHubSearchResponse;
+import ai.core.api.server.hubcatalog.HubCatalogResponse;
+import ai.core.api.server.hubcatalog.HubCatalogSource;
+import ai.core.api.server.hubcatalog.HubCatalogTool;
 import ai.core.api.server.mcphub.HubCallResponse;
 import ai.core.api.server.mcphub.HubServerMatch;
 import ai.core.api.server.mcphub.HubServerView;
@@ -20,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -85,6 +89,35 @@ public class HubRenderer {
             String state = server.state == null ? "" : server.state;
             sb.append("  ").append(pad(server.name, nameWidth)).append(pad(state, 14))
                     .append(toolCountText(server.toolCount)).append(stale).append(description).append('\n');
+        }
+        return sb.toString();
+    }
+
+    /**
+     * One-shot catalog: what it holds per kind, then the sources behind the tools. The tool rows
+     * themselves are the {@code --json} contract — a catalog is what a client enumerates, not what
+     * a person reads.
+     */
+    public String catalogText(HubCatalogResponse catalog) {
+        var tools = catalog.tools == null ? List.<HubCatalogTool>of() : catalog.tools;
+        var sources = catalog.sources == null ? List.<HubCatalogSource>of() : catalog.sources;
+        var counts = new LinkedHashMap<String, Integer>();
+        for (var tool : tools) {
+            counts.merge(nz(tool.kind), 1, Integer::sum);
+        }
+        var sb = new StringBuilder(512);
+        sb.append("  ").append(tools.size()).append(" tool(s)");
+        for (var entry : counts.entrySet()) {
+            sb.append(" - ").append(entry.getKey()).append(' ').append(entry.getValue());
+        }
+        sb.append('\n');
+        if (sources.isEmpty()) return sb.append("  (no sources visible)\n").toString();
+        int nameWidth = Math.min(sources.stream().mapToInt(source -> nz(source.name).length()).max().orElse(1) + 2, 40);
+        for (var source : sources) {
+            String stale = Boolean.TRUE.equals(source.stale) ? " (stale)" : "";
+            String state = source.kind != null && "api".equals(source.kind) ? "" : nz(source.state);
+            sb.append("  ").append(pad(nz(source.kind), 5)).append(pad(nz(source.name), nameWidth))
+                    .append(pad(state, 14)).append(source.count == null ? "" : source.count).append(stale).append('\n');
         }
         return sb.toString();
     }

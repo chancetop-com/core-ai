@@ -49,7 +49,7 @@ If you are an agent operating on a machine without the CLI and cannot install so
 | Use | Entry point | Needs |
 |-----|-------------|-------|
 | Run the local agent | `core-ai-cli` (REPL), `core-ai-cli --prompt "…"` (headless), `core-ai-cli --acp-agent` (editor) | An LLM provider: either `agent.properties` or a login to core-ai-server (server acts as LLM proxy) |
-| Reach server-side resources from any agent or script | `core-ai-cli mcp` / `skill` / `api-tool` / `agent` — all four hubs shipped (CLI ≥ 2.0.10) | Login (`core-ai-cli --login`) or `CORE_AI_SERVER` + `CORE_AI_API_KEY`. No LLM, no agent session |
+| Reach server-side resources from any agent or script | `core-ai-cli mcp` / `skill` / `api-tool` / `agent`, or `catalog` for all of them in one request (CLI ≥ 2.0.19) | Login (`core-ai-cli --login`) or `CORE_AI_SERVER` + `CORE_AI_API_KEY`. No LLM, no agent session |
 | Write one skill script for both places | `from core_ai_session import session` — the Python SDK picks the transport (session hub in a sandbox, this CLI on your machine) | In a sandbox it is preinstalled; locally: `core-ai-cli` ≥ 2.0.10 + a login (or `FakeSession` for offline tests) |
 
 Hub subcommands are what other agents (Claude Code, Codex, CI) call. The three-step rule: **search → describe/show → call/run**, always with `--json`, never guessing names. Details: [references/hub.md](references/hub.md) — including the sandbox hub, the Python SDK (`core_ai_session`), the local-vs-sandbox differences and the skill migration checklist ("Inside a core-ai sandbox" onward).

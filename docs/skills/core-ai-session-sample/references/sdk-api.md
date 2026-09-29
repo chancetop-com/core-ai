@@ -224,6 +224,13 @@ task-over-the-wire behaviour drives a real `Session`/`AsyncSession` over `httpx.
   names the installed version when a command predates a hub.
 * One subprocess per call: fine for scripts and CI, not for tight loops. Long arguments travel on
   stdin (`--args-file -`, `--task-file -`) — nothing long ever goes into argv.
+* The catalog is one call when the CLI has `catalog` (≥ 2.0.19): the server answers everything the
+  user can reach in a single request, the same shape a sandbox script gets from the session hub — no
+  per-server fan-out. An older CLI cannot answer it, and the SDK rebuilds the catalog one listing per
+  MCP server and per API app (correct, just a process start per source); the attempt is remembered,
+  so a session never pays for it twice.
+* Sources the server could not refresh appear in `catalog_gaps` as stale snapshots, and a kind these
+  credentials cannot read is reported there too — the one-shot answer says which kinds it covers.
 * `server=` / `api_key=` override the login for one session (equivalent to `--server` / `--api-key`).
 * `record=DIR` (or `CORE_AI_CLI_RECORD`) captures every exchange as `NNNN-<leaf>.json` for fixtures
   and bug reports; it is off by default because a response may contain business data.

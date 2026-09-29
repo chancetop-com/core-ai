@@ -22,6 +22,9 @@ Environment knobs, all optional:
 * ``FAKE_CLI_OFFLINE=1`` — pretend the CLI has no credentials (exit 3).
 * ``FAKE_CLI_FORBIDDEN=1`` — pretend the server refused the call (exit 4).
  * ``FAKE_CLI_EMPTY=1`` — pretend nothing is published/visible (empty catalogs).
+ * ``FAKE_CLI_CATALOG=1`` — support ``catalog`` (the one-shot ``GET /api/hub/catalog``) instead of
+   answering the usage error an older CLI gives; ``FAKE_CLI_CATALOG_SECTIONS="mcp,api"`` limits the
+   kinds it claims to cover, the way a missing permission would.
  * ``FAKE_CLI_FLAKY="mcp:google-places"`` — make those sources fail to list. Add
    ``FAKE_CLI_FLAKY_TIMES=n`` (default 1) and ``FAKE_CLI_FLAKY_FILE=<path>`` (a counter file, so the
    failure survives across the CLI's one process per call) to make the first *n* attempts fail.
@@ -182,6 +185,47 @@ def dataset_bindings() -> list[dict]:
     return fixture("catalog.json")["datasets"]
 
 
+def catalog_payload(empty: bool) -> dict:
+    """What ``core-ai-cli catalog`` answers: every source and tool the per-source commands list.
+
+    Opt-in (``FAKE_CLI_CATALOG=1``) so the fallback build — the enumeration a CLI without this
+    subcommand needs — stays the default path the rest of the suite covers. A source named in
+    ``FAKE_CLI_FLAKY`` is reported as a stale snapshot, the way the server flags one it could not
+    refresh; ``FAKE_CLI_CATALOG_SECTIONS`` limits the kinds the catalog claims to cover.
+    """
+    if not os.environ.get("FAKE_CLI_CATALOG"):
+        return {"error": {"code": "bad_request", "message": "Unmatched argument: catalog", "status": 2}}, 2
+    sections = [name.strip() for name in os.environ.get("FAKE_CLI_CATALOG_SECTIONS", "mcp,api,agent,llm_call").split(",") if name.strip()]
+    if empty:
+        return {"generated_at": "2026-01-01T00:00:00Z", "sections": sections, "sources": [], "tools": []}, 0
+
+    sources: list[dict] = []
+    tools: list[dict] = []
+    if "mcp" in sections:
+        for server in SERVERS["servers"]:
+            stale = flaky(f"mcp:{server['name']}")
+            sources.append({"kind": "mcp", "name": server["name"], "state": server["state"],
+                            "count": server["tool_count"], "stale": stale})
+            for tool in TOOLS.get(server["name"], []):
+                tools.append({"kind": "mcp", "name": tool["name"], "path": tool["qualified_name"],
+                              "group": server["name"], "ref_id": tool["ref_id"],
+                              "description": tool["description"], "stale": stale})
+    if "api" in sections:
+        for app in APPS["apps"]:
+            sources.append({"kind": "api", "name": app["name"], "count": app["operation_count"]})
+        for operation in OPERATIONS["operations"]:
+            tools.append({"kind": "api", "name": operation["name"], "path": operation["qualified_name"],
+                          "group": operation["app"], "ref_id": operation["ref_id"],
+                          "description": operation["description"]})
+    for kind in ("agent", "llm_call"):
+        if kind not in sections:
+            continue
+        for agent in AGENTS.get(kind, []):
+            tools.append({"kind": kind, "name": agent["name"], "path": agent["name"],
+                          "ref_id": agent["id"], "description": agent["description"]})
+    return {"generated_at": "2026-01-01T00:00:00Z", "sections": sections, "sources": sources, "tools": tools}, 0
+
+
 def dataset_show(ref: str) -> int:
     """One binding, resolved the way the CLI resolves it: the id wins, a name only when unique."""
     datasets = dataset_bindings()
@@ -333,6 +377,8 @@ def main() -> int:
     leaf = "/".join(positionals[:2])
     rest = positionals[2:]
 
+    if leaf == "catalog":
+        return emit(*catalog_payload(empty))
     if leaf == "mcp/servers":
         if empty:
             return emit({"servers": []}, 0)

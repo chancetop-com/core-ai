@@ -165,7 +165,12 @@ The script API is unified; the identity and the reach are not — and they say s
 | `server` / `api_key` | n/a | a direct `CliSession(server=…, api_key=…)` / `AsyncCliSession(…)` for one session, or `CORE_AI_SERVER` / `CORE_AI_API_KEY`, which the CLI resolves itself |
 
 The local backend needs `core-ai-cli` ≥ 2.0.10 and one `core-ai-cli --login`; point the SDK at
-another binary with `CORE_AI_CLI=/path/to/cli`.
+another binary with `CORE_AI_CLI=/path/to/cli`. Opening a session is free, and the local catalog costs
+one call: `core-ai-cli catalog` asks the server for everything the user can reach in a single request
+(`GET /api/hub/catalog`), the same shape a sandbox script gets from the session hub. An older CLI has
+no such subcommand, and the SDK then rebuilds the catalog source by source (one listing per MCP
+server and per API app) — correct, but it costs a process start per source. Every call after the
+catalog is one subprocess (~1 s), and a tool's schema is fetched once per session.
 
 ## Writing a skill with it
 

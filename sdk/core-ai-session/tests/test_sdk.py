@@ -471,6 +471,62 @@ class CliSessionTest(unittest.TestCase):
         self.assertEqual("llm_call", opened.llm_call["seo-title-semantics"].kind)
         self.assertEqual("agent", opened.agent["review-responder"].kind)
 
+    def test_the_catalog_comes_from_one_call_when_the_cli_supports_it(self) -> None:
+        """`core-ai-cli catalog` (server `GET /api/hub/catalog`): the whole catalog in one invocation."""
+        os.environ["FAKE_CLI_CATALOG"] = "1"
+        try:
+            opened = self.open()
+            names = {tool.name for tool in opened.catalog().tools}
+            self.assertIn("google_gbp_list_reviews", names)
+            self.assertIn("restaurant_api_reviews_get_reviews", names)
+            self.assertIn("seo_title_semantics", names)
+            self.assertIn("review_responder", names)
+            self.assertEqual(1, len(self.catalog_attempts()), "one call, not one listing per source")
+            self.assertEqual([], opened.catalog_gaps)
+            kinds = {(tool.kind, tool.group) for tool in opened.catalog().tools}
+            self.assertIn(("mcp", "google-gbp"), kinds)
+            self.assertIn(("api", "restaurant-api"), kinds)
+        finally:
+            os.environ.pop("FAKE_CLI_CATALOG", None)
+
+    def test_a_stale_source_in_the_catalog_is_a_reported_gap(self) -> None:
+        os.environ["FAKE_CLI_CATALOG"] = "1"
+        os.environ["FAKE_CLI_FLAKY"] = "mcp:google-places"
+        try:
+            opened = self.open()
+            opened.catalog()
+            self.assertEqual(["mcp google-places (stale snapshot)"], opened.catalog_gaps)
+        finally:
+            os.environ.pop("FAKE_CLI_CATALOG", None)
+            os.environ.pop("FAKE_CLI_FLAKY", None)
+
+    def test_a_section_the_credentials_cannot_read_is_a_reported_gap(self) -> None:
+        os.environ["FAKE_CLI_CATALOG"] = "1"
+        os.environ["FAKE_CLI_CATALOG_SECTIONS"] = "mcp,api"
+        try:
+            opened = self.open()
+            names = {tool.name for tool in opened.catalog().tools}
+            self.assertNotIn("review_responder", names)
+            self.assertEqual(["agent list (not readable with these credentials)",
+                              "llm_call list (not readable with these credentials)"], opened.catalog_gaps)
+        finally:
+            os.environ.pop("FAKE_CLI_CATALOG", None)
+            os.environ.pop("FAKE_CLI_CATALOG_SECTIONS", None)
+
+    def test_a_cli_without_catalog_falls_back_without_trying_again(self) -> None:
+        opened = self.open()
+        names = {tool.name for tool in opened.catalog().tools}  # the fake answers a usage error
+        self.assertIn("google_gbp_list_reviews", names)
+        attempts = len(self.catalog_attempts())
+        self.assertGreaterEqual(attempts, 1)
+        opened.refresh()
+        self.assertEqual(attempts, len(self.catalog_attempts()),
+                         "a CLI without the subcommand is asked once, not on every build")
+
+    def catalog_attempts(self) -> list[dict]:
+        """The one-shot `catalog` invocations so far (see `_one_shot_catalog`)."""
+        return [call for call in self.calls() if call["argv"][:1] == ["catalog"]]
+
     def test_a_source_that_fails_once_is_retried(self) -> None:
         os.environ["FAKE_CLI_FLAKY"] = "mcp:google-places"
         os.environ["FAKE_CLI_FLAKY_FILE"] = str(Path(tempfile.mkdtemp()) / "flaky.count")

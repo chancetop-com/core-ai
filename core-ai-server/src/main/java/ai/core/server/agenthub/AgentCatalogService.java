@@ -81,6 +81,14 @@ public class AgentCatalogService {
         return matched.stream().limit(effectiveLimit).map(ScoredAgent::agent).toList();
     }
 
+    /**
+     * Every visible runnable agent and LLM_CALL definition, in the listing order a blank search
+     * uses. No page limit: the catalog surface, not a search.
+     */
+    public List<CatalogAgent> catalog(String userId) {
+        return visibleRunnable(userId, null, null).stream().sorted(this::compareForListing).toList();
+    }
+
     /** Name lookup is case/space insensitive ({@code name_key} semantics) and never ambiguous-free: names are unique per owner only. */
     public List<CatalogAgent> lookup(String userId, String name) {
         if (name == null || name.isBlank()) return List.of();

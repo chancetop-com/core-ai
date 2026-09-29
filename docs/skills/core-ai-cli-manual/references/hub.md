@@ -22,6 +22,7 @@ Prerequisites: the `core-ai-cli` binary on PATH (see "Installing core-ai-cli" in
 | Skills | `core-ai-cli skill …` | **Available** (CLI ≥ 2.0.8) | Skill Hub |
 | API tools | `core-ai-cli api-tool …` | **Available** (CLI ≥ 2.0.8) | API-Tool Hub |
 | Agents | `core-ai-cli agent …` | **Available** (CLI ≥ 2.0.10) | Agent Hub |
+| Everything at once | `core-ai-cli catalog …` | **Available** (CLI ≥ 2.0.19) | Catalog |
 
 If your installed CLI reports an unknown subcommand (exit code 2), it predates that hub — upgrade with `core-ai-cli upgrade`, or fall back to the Web UI.
 
@@ -180,6 +181,33 @@ core-ai-cli agent run <agent-id> --task-file - --context-id <context_id> < spec.
 core-ai-cli agent reply <task_id> --approve --json
 ```
 
+## Catalog (`core-ai-cli catalog`)
+
+The whole catalog in **one request**: every MCP tool, Service API operation and agent / LLM_CALL
+definition the account can call, from `GET /api/hub/catalog`. It exists because enumerating a large
+account through the per-kind commands costs one listing per MCP server and per API app — dozens of
+requests and, locally, a process start each. The `core_ai_session` SDK's local transport builds its
+catalog from this command.
+
+| Command | Purpose |
+|---------|---------|
+| `core-ai-cli catalog [--kind mcp\|api\|agent\|llm_call] [--json]` | One response with `sections`, `sources` and `tools` |
+
+- `sections` names the kinds the response covers; a kind missing from it is one these credentials may
+  not read (the three read surfaces keep their own permissions: `mcp.call`, `apitool.call`,
+  `chat.use`) — a gap to report, not an empty result to mistake for "nothing there".
+- `sources` carries the MCP servers and API apps behind the tools, including a `stale` flag for a
+  source the server could not refresh.
+- Each tool is `{kind, name, path, group, ref_id, description, stale}`; `path` is what every other
+  command addresses (`server/tool`, `app/service/operation`, or the bare name for agents).
+- Human mode prints the counts and the sources; `--json` prints the whole response — the tools
+  themselves are the machine contract.
+
+```bash
+core-ai-cli catalog --json | jq '{tools: (.tools | length), kinds: (.tools | group_by(.kind) | map({kind: .[0].kind, n: length}))}'
+core-ai-cli catalog --kind agent --json
+```
+
 ## Snippet for other agents
 
 Every hub prints the same merged snippet (`mcp | skill | api-tool | agent instructions`, `--format` only changes the heading). Current content:
@@ -307,11 +335,11 @@ files, so use the exported-catalog form there (`from_fixture` says so if it cann
 
 Export one real catalog per agent (`core-ai-sandbox catalog --json > catalog.json`) so the fake exposes the same namespaces as production.
 
-A local catalog is enumerated on the fly, so it is best effort: each source is listed separately, a
-source that errors is retried once, and one that answers with fewer tools than it advertises (a
-flapping live index), hits the page limit, or shrinks between two enumerations of the same session is
-kept but flagged. Either way the source ends up in `session.catalog_gaps` with one warning. Check that
-list before believing a local `ToolNotFoundError`; the sandbox catalogs are the authoritative ones.
+A local catalog comes from `core-ai-cli catalog` (CLI ≥ 2.0.19) — one request, the same
+everything-the-user-can-reach answer the server hands a sandbox session. An older CLI has no such
+subcommand and the SDK falls back to enumerating source by source, which is correct but costs a
+listing per MCP server and per API app. Either way the local catalog is best effort: a source the
+server could not refresh is flagged (`catalog_gaps`), and the sandbox catalogs are authoritative.
 
 `CORE_AI_HUB` always wins and there is no fallback: while it is set, `backend="cli"` is refused and a dead sandbox raises `NotBoundError` — calls never quietly re-run under your local identity. Point the SDK at another binary with `CORE_AI_CLI=/path/to/cli` (tests use this to run a fake CLI). The local backend needs `core-ai-cli` ≥ 2.0.10 (`api-tool` and `agent` subcommands); if a command is rejected, the error names the installed version and the required one.
 

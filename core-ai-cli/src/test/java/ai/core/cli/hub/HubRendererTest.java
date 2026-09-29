@@ -1,5 +1,8 @@
 package ai.core.cli.hub;
 
+import ai.core.api.server.hubcatalog.HubCatalogResponse;
+import ai.core.api.server.hubcatalog.HubCatalogSource;
+import ai.core.api.server.hubcatalog.HubCatalogTool;
 import ai.core.api.server.mcphub.HubCallResponse;
 import ai.core.api.server.mcphub.HubContentPart;
 import ai.core.api.server.mcphub.HubServerMatch;
@@ -20,6 +23,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HubRendererTest {
     private final HubRenderer renderer = new HubRenderer();
+
+    @Test
+    void catalogTextCountsKindsAndListsSources() {
+        var catalog = new HubCatalogResponse();
+        catalog.tools = List.of(
+                catalogTool("mcp", "kubernetes/pods_list", "kubernetes"),
+                catalogTool("mcp", "kubernetes/namespaces_list", "kubernetes"),
+                catalogTool("api", "order-service/orders/get_order", "order-service"),
+                catalogTool("agent", "review-responder", null));
+        var server = new HubCatalogSource();
+        server.kind = "mcp";
+        server.name = "kubernetes";
+        server.state = "CONNECTED";
+        server.count = 13;
+        server.stale = Boolean.TRUE;
+        var app = new HubCatalogSource();
+        app.kind = "api";
+        app.name = "order-service";
+        app.count = 55;
+        catalog.sources = List.of(server, app);
+
+        var text = renderer.catalogText(catalog);
+
+        assertTrue(text.startsWith("  4 tool(s)"), text);
+        assertTrue(text.contains("mcp 2"), text);
+        assertTrue(text.contains("api 1"), text);
+        assertTrue(text.contains("agent 1"), text);
+        assertTrue(text.contains("CONNECTED"));
+        assertTrue(text.contains("13"));
+        assertTrue(text.contains("(stale)"));
+        assertTrue(text.contains("order-service"));
+    }
+
+    private HubCatalogTool catalogTool(String kind, String path, String group) {
+        var tool = new HubCatalogTool();
+        tool.kind = kind;
+        tool.path = path;
+        tool.group = group;
+        return tool;
+    }
 
     @Test
     void serversTextAlignsColumnsAndShowsStateCounts() {

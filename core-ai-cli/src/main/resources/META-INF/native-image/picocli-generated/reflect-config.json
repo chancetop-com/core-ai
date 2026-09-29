@@ -288,6 +288,12 @@
     "allDeclaredFields": true
   },
   {
+    "name": "ai.core.cli.hub.catalog.CatalogCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "ai.core.cli.hub.HubCommandBase",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,

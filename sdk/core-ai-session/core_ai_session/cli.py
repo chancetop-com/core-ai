@@ -314,6 +314,7 @@ class CliSession(_SessionBase):
         self._waiting_warned: set[str] = set()
         self._unlistable: list[str] = []
         self._source_counts: dict[str, int] = {}
+        self._catalog_command = True  # until a CLI turns out not to have the one-shot `catalog`
         self._record_dir = (record or os.environ.get(RECORD_ENV) or "").strip()
         self._record_lock = threading.Lock()
         self._record_index = 0
@@ -513,8 +514,12 @@ class CliSession(_SessionBase):
         """
         return list(self._unlistable)
 
-    def _list_source(self, args: Sequence[str], label: str) -> Optional[dict[str, Any]]:
-        """``args`` retried once: one hiccup must not silently shrink the catalog."""
+    def _list_source(self, args: Sequence[str], label: str, *, record_gap: bool = True) -> Optional[dict[str, Any]]:
+        """``args`` retried once: one hiccup must not silently shrink the catalog.
+
+        ``record_gap=False`` is for a listing whose failure is expected and handled elsewhere — the
+        one-shot ``catalog`` call an older CLI cannot answer is not a hole in the catalog.
+        """
         for attempt in (1, 2):
             try:
                 return self._require(args)
@@ -525,7 +530,8 @@ class CliSession(_SessionBase):
                     LOGGER.debug("core_ai_session: %s failed once (%s); retrying", label, error)
                     continue
                 LOGGER.debug("core_ai_session: %s is not listable: %s", label, error)
-                self._unlistable.append(label)
+                if record_gap:
+                    self._unlistable.append(label)
         return None
 
     def _check_count(self, label: str, found: int, advertised: Optional[int]) -> None:
@@ -611,6 +617,67 @@ class CliSession(_SessionBase):
 
     def _build_catalog(self) -> dict[str, Any]:
         self._unlistable = []
+        one_shot = self._one_shot_catalog()
+        if one_shot is not None:
+            return self._one_shot_payload(one_shot)
+        return self._enumerated_catalog()
+
+    def _one_shot_catalog(self) -> Optional[dict[str, Any]]:
+        """The whole catalog in one CLI call, or ``None`` when this CLI cannot answer it.
+
+        ``core-ai-cli catalog`` asks the server for everything the user can reach in a single
+        request (``GET /api/hub/catalog``) instead of one listing per MCP server and per API app —
+        the same shape a sandbox script gets from the session hub. A CLI that predates the
+        subcommand answers a usage error, and the catalog is rebuilt source by source; that is
+        remembered, so a session pays for the attempt at most once.
+        """
+        if not self._catalog_command:
+            return None
+        response = self._list_source(["catalog"], "catalog", record_gap=False)
+        if response is None or not isinstance(response.get("tools"), list):
+            self._catalog_command = False
+            return None
+        return response
+
+    def _one_shot_payload(self, response: dict[str, Any]) -> dict[str, Any]:
+        """The catalog answer mapped onto the payload ``_load_catalog`` expects."""
+        tools: list[dict[str, Any]] = []
+        for item in response.get("tools") or []:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path") or item.get("name") or ""
+            if not path:
+                continue
+            tools.append(_summary(path, item.get("kind") or "", group=item.get("group") or "",
+                                  ref_id=item.get("ref_id"), description=item.get("description")))
+        sections = response.get("sections")
+        if isinstance(sections, list):  # a server too old to report its sections says nothing
+            for kind, label in (("mcp", "mcp servers"), ("api", "api apps"),
+                                ("agent", "agent list"), ("llm_call", "llm_call list")):
+                if kind not in sections:
+                    self._unlistable.append(f"{label} (not readable with these credentials)")
+        for source in response.get("sources") or []:
+            if isinstance(source, dict) and source.get("stale"):
+                self._unlistable.append(f"{source.get('kind')} {source.get('name')} (stale snapshot)")
+        if self._unlistable:
+            LOGGER.warning(
+                "core_ai_session: this local catalog is incomplete — %s. See session.catalog_gaps; the "
+                "sandbox catalogs are authoritative, this one is best effort.",
+                "; ".join(self._unlistable),
+            )
+        return {
+            "session_id": self.session_id,
+            "agent_name": "",
+            "sandbox_id": "",
+            "sandbox_state": "local",
+            "contract_version": None,
+            "groups": _groups(tools),
+            "tools": tools,
+            "datasets": self._datasets(),
+        }
+
+    def _enumerated_catalog(self) -> dict[str, Any]:
+        """The fallback build: one listing per source, for a CLI without the `catalog` subcommand."""
         tools: list[dict[str, Any]] = []
         tools.extend(self._mcp_tools())
         tools.extend(self._api_tools())
