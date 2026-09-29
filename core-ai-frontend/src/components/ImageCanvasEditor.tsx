@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { PointerEvent as ReactPointerEvent, ReactNode, SyntheticEvent } from 'react';
 import { Brush, Download, Eraser, Loader2, Trash2, Undo2, X } from 'lucide-react';
 import { api } from '../api/client';
@@ -509,7 +510,9 @@ export default function ImageCanvasEditor({ fileId, shareToken, src, blobUrl, se
     );
   }
 
-  return (
+  // a portal keeps the overlay viewport-anchored: rendered inside a chat message the message list
+  // becomes the containing block and a "fixed" child would be laid out at the message position
+  return createPortal(
     <div className="fixed inset-0 z-[1000] overflow-y-auto" style={{ background: 'rgba(0,0,0,0.8)' }}
       onClick={onClose}>
       <div className="min-h-full flex items-center justify-center p-4">
@@ -531,6 +534,7 @@ export default function ImageCanvasEditor({ fileId, shareToken, src, blobUrl, se
           {body}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

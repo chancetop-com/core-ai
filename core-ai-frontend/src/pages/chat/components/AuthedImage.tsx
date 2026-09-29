@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Lasso, Loader2, X as CloseIcon } from 'lucide-react';
 import { fetchBlob, fileIdOf, needsAuthFetch, shareTokenOf } from '../../../api/authedBlob';
 import ImageCanvasEditor from '../../../components/ImageCanvasEditor';
@@ -108,7 +109,7 @@ export default function AuthedImage({ src, alt }: Props) {
           onClose={() => setEditorOpen(false)}
         />
       )}
-      {lightboxOpen && (
+      {lightboxOpen && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -140,7 +141,8 @@ export default function AuthedImage({ src, alt }: Props) {
               <Lasso size={14} /> 圈选编辑
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
