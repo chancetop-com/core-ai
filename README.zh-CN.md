@@ -30,16 +30,18 @@ Core-AI 为你提供在终端中运行的 AI 编程助手（`core-ai-cli`）和�
 
 ```bash
 # macOS
-curl -L -o core-ai-cli https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-darwin
-chmod +x core-ai-cli && sudo mv core-ai-cli /usr/local/bin/
+curl -L https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-darwin.tar.gz | tar xz
+chmod +x core-ai-cli-darwin && sudo mv core-ai-cli-darwin /usr/local/bin/core-ai-cli
 
 # Linux
-curl -L -o core-ai-cli https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-linux
-chmod +x core-ai-cli && sudo mv core-ai-cli /usr/local/bin/
+curl -L https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-linux.tar.gz | tar xz
+chmod +x core-ai-cli-linux && sudo mv core-ai-cli-linux /usr/local/bin/core-ai-cli
 
-# Windows (PowerShell)
+# Windows (PowerShell; make sure $env:USERPROFILE\bin is on PATH)
 mkdir "$env:USERPROFILE\bin" -Force
-Invoke-WebRequest -Uri "https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-windows.exe" -OutFile "$env:USERPROFILE\bin\core-ai-cli.exe"
+Invoke-WebRequest -Uri "https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-windows.zip" -OutFile "$env:TEMP\core-ai-cli.zip"
+Expand-Archive "$env:TEMP\core-ai-cli.zip" "$env:TEMP\core-ai-cli" -Force
+Move-Item "$env:TEMP\core-ai-cli\core-ai-cli-windows.exe" "$env:USERPROFILE\bin\core-ai-cli.exe" -Force
 ```
 
 ```bash
