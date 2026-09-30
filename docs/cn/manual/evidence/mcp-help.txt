@@ -1,0 +1,11 @@
+Usage: core-ai-cli mcp [-h] [COMMAND]
+Search and call MCP tools registered on core-ai-server
+  -h, --help   Show help
+Commands:
+  servers       List MCP servers visible to the current user
+  search        Search the MCP tool catalog (query omitted: list all)
+  describe      Show one tool's detail and input schema (server/tool)
+  call          Execute an MCP tool on the server
+  status        Show server connection status and tool counts
+  instructions  Print a paste-ready guide for other agents to use core-ai-cli
+                  mcp and skill

@@ -6,7 +6,8 @@ export const sidebarCn: DefaultTheme.SidebarItem[] = [
     collapsed: false,
     items: [
       { text: '概览', link: '/cn/overview' },
-      { text: '快速开始', link: '/cn/quickstart' }
+      { text: '快速开始', link: '/cn/quickstart' },
+      { text: 'Server CLI 框架使用手册', link: '/cn/manual/' }
     ]
   },
   {

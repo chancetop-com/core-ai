@@ -1,0 +1,34 @@
+Usage: core-ai-cli agent run [-h] [--detach] [--insecure] [--json] [--quiet]
+                             [--raw] [--api-key=<apiKey>]
+                             [--context-id=<contextId>]
+                             [--max-output=<maxOutput>] [--server=<server>]
+                             [--task=<task>] [--task-file=<taskFile>]
+                             [--timeout=<timeoutSeconds>]
+                             [--attach=<attachments>]... id|name
+Run an agent with a task and wait for its result
+      id|name              Agent id, or a name unique in your catalog
+      --api-key=<apiKey>   API key (overrides CORE_AI_API_KEY / auth.json)
+      --attach=<attachments>
+                           Attachment URL (repeatable); the agent fetches it
+                             itself
+      --context-id=<contextId>
+                           Continue an earlier conversation (context_id of a
+                             previous run)
+      --detach             Submit and return immediately with status=running
+  -h, --help               Show help
+      --insecure           Skip TLS certificate verification (e.g. self-signed
+                             local server)
+      --json               Machine-readable single-line JSON output
+      --max-output=<maxOutput>
+                           Truncate printed output after N chars (default 20000)
+      --quiet              Suppress progress and metadata output on stderr
+      --raw                Call mode: print only the tool text content to stdout
+      --server=<server>    core-ai-server base URL (overrides CORE_AI_SERVER /
+                             auth.json)
+      --task=<task>        The task to send: self-contained, with all context
+                             the agent needs
+      --task-file=<taskFile>
+                           Read the task from a file ('-' for stdin); joined
+                             after --task
+      --timeout=<timeoutSeconds>
+                           Seconds to wait for the result (default 120, max 300)

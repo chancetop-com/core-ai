@@ -20,6 +20,8 @@
 
 ## 🌟 Core-AI：你的终端 AI 智能助手 & 代理服务器
 
+[中文使用手册：Server、CLI 与框架，含演示及 Windows/macOS 排错](docs/cn/manual/index.md)
+
 Core-AI 为你提供在终端中运行的 AI 编程助手（`core-ai-cli`）和可自部署的代理服务器（`core-ai-server`），附带 Web 管理界面。CLI 可独立使用（直接配置任意 LLM 提供商的 API Key），也可连接 core-ai-server 获取团队协作功能。在命令行或浏览器中与大模型对话、执行工具、编排子代理、管理知识库。
 
 ### 🚀 快速开始

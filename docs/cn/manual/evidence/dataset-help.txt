@@ -1,0 +1,8 @@
+Usage: core-ai-cli dataset [-h] [COMMAND]
+Read and write the datasets bound to a session
+  -h, --help   Show help
+Commands:
+  list     List the datasets bound to a session
+  show     Show one bound dataset: type, permission and schema
+  state    Read and write session state (SESSION datasets)
+  records  Query and write records (GENERAL datasets)

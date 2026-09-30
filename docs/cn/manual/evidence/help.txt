@@ -1,0 +1,41 @@
+Usage: core-ai-cli [-chV] [--acp-agent] [--dangerously-skip-permissions]
+                   [--debug] [--resume] [--upgrade] [--login[=server-url]]
+                   [--config=<configFile>] [--model=<model>]
+                   [--prompt=<prompt>]
+                   [--time-limit-seconds=<timeLimitSeconds>]
+                   [--upgrade-dir=<upgradeDir>] [--workspace=<workspace>]
+                   [COMMAND]
+Core-AI CLI agent
+      --acp-agent            Start in ACP (Agent Client Protocol) stdio mode
+                               for editor integration
+  -c, --continue             Resume the most recent session
+      --config=<configFile>  Config file path
+      --dangerously-skip-permissions
+                             Skip all tool approval prompts
+      --debug                Enable debug output
+  -h, --help                 Show help
+      --login[=server-url]   Login to a core-ai-server and exit (optionally
+                               pass the server URL; usable outside the REPL)
+      --model=<model>        Override LLM model name
+      --prompt=<prompt>      Send one prompt, print the response, and exit
+      --resume               Pick a recent session to resume
+      --time-limit-seconds=<timeLimitSeconds>
+                             Wall-clock time limit for agent execution.
+                               Extraction and cleanup run after the agent
+                               returns.
+      --upgrade              Download and install the latest CLI version
+      --upgrade-dir=<upgradeDir>
+                             Install directory for --upgrade (default: current
+                               binary dir or ~/.core-ai/bin/)
+  -V, --version              Show version
+      --workspace=<workspace>
+                             Set the working directory for the agent session
+Commands:
+  mcp       Search and call MCP tools registered on core-ai-server
+  skill     Discover, read and install skills registered on core-ai-server
+  api-tool  Search and call Service API operations registered on core-ai-server
+  agent     Search and run agents registered on core-ai-server
+  report    Publish local reports into core-ai-server project subjects
+  dataset   Read and write the datasets bound to a session
+  catalog   Fetch the whole hub catalog in one request (MCP tools, API
+              operations, agents)

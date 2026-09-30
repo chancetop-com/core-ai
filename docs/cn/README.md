@@ -8,6 +8,8 @@
 
 ### 📚 Select Your Language / 选择语言
 
+[中文使用手册：Server、CLI 与框架](manual/index.md)
+
 </div>
 
 ---

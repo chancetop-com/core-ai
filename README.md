@@ -20,6 +20,8 @@
 
 ## 🌟 Core-AI: AI Agent in Your Terminal & Server
 
+[Chinese usage manual for Server, CLI and framework](docs/cn/manual/index.md)
+
 Core-AI gives you an AI-powered coding agent that runs in your terminal and a self-hosted agent server with a web UI. The CLI works standalone with any LLM provider's API key, or connects to a core-ai-server for team features. Chat with LLMs, execute tools, orchestrate sub-agents, and manage knowledge — all from the command line or your browser.
 
 > 📸 **[Take a tour of the server UI →](docs/core-ai-server/README.md)** — screenshots and walkthrough for chat, agents, workflows, traces, tools, skills, datasets, and scheduling.

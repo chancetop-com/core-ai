@@ -1,0 +1,40 @@
+{
+  "source_commit": "42814ecba36881fc9c42a0eb80a286b670ec223f",
+  "runtime": "GraalVM Java 25.0.2 macOS arm64",
+  "type": "Current source compiled by javac offline; not packaged release binary",
+  "commands": [
+    [
+      "--version"
+    ],
+    [
+      "--help"
+    ],
+    [
+      "mcp",
+      "--help"
+    ],
+    [
+      "mcp",
+      "call",
+      "--help"
+    ],
+    [
+      "agent",
+      "run",
+      "--help"
+    ],
+    [
+      "dataset",
+      "--help"
+    ],
+    [
+      "report",
+      "push",
+      "--help"
+    ],
+    [
+      "catalog",
+      "--help"
+    ]
+  ]
+}
