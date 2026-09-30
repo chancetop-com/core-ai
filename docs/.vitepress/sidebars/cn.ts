@@ -17,6 +17,7 @@ export const sidebarCn: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Server 上手', link: '/cn/server' },
       { text: 'CLI 上手', link: '/cn/cli' },
+      { text: 'CLI 技能手册', link: '/skills/core-ai-cli-manual/SKILL' },
       { text: 'Java 框架上手', link: '/cn/framework' },
       { text: 'Windows / macOS 排障', link: '/cn/cli-troubleshooting' }
     ]

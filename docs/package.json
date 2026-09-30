@@ -7,7 +7,8 @@
     "dev": "vitepress dev .",
     "build": "vitepress build .",
     "preview": "vitepress preview .",
-    "check:links": "python3 scripts/check_links.py"
+    "check:links": "python3 scripts/check_links.py",
+    "package:skills": "python3 scripts/package_skills.py"
   },
   "devDependencies": {
     "vitepress": "^1.5.0"

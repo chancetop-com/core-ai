@@ -149,6 +149,8 @@ In Windows PowerShell use `.\gradlew.bat :core-ai-cli:run --args='--help'`. Nati
 
 [Quick Start](https://chancetop-com.github.io/core-ai/en/quickstart) · [Full Chinese manual](https://chancetop-com.github.io/core-ai/cn/manual/) · [Tutorials](https://chancetop-com.github.io/core-ai/en/tutorials) · [API Reference](https://chancetop-com.github.io/core-ai/en/api) · [中文官网](https://chancetop-com.github.io/core-ai/cn/)
 
+The CLI manual is also published as an installable agent skill (`core-ai-cli-manual`) for tools such as Claude Code and Codex; [download and install instructions](https://chancetop-com.github.io/core-ai/skills/).
+
 Source JVM help/version, Mock Agent and Python FakeSession were tested on macOS; current guide API fragments were compile-checked. Native installation, Windows/Linux execution, Server/Docker startup and live models were not exercised in this documentation work. The detailed operations manual is currently Chinese; English use guides and tutorials have corresponding entries.
 
 ## Contributing

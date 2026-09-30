@@ -55,4 +55,4 @@ core-ai-cli --resume
 
 ## 更多操作
 
-[Hub 发现与调用](manual/#_16-hub-先搜索再描述再调用) · [Agent / Skill / API / 报告](manual/#_17-agent-skill-api-与报告) · [数据集与退出码](manual/#_18-会话数据集与退出码) · [本地 MCP 与 hooks](manual/#_19-本地-mcp-skills-与-hooks)
+[Hub 发现与调用](manual/#_16-hub-先搜索再描述再调用) · [Agent / Skill / API / 报告](manual/#_17-agent-skill-api-与报告) · [数据集与退出码](manual/#_18-会话数据集与退出码) · [本地 MCP 与 hooks](manual/#_19-本地-mcp-skills-与-hooks) · [完整 CLI 操作手册（英文）](/skills/core-ai-cli-manual/SKILL)

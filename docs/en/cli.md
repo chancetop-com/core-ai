@@ -55,4 +55,4 @@ These Agent commands can call a model. Configure a test provider first. Use `/he
 
 ## Further operations {#更多操作}
 
-[Hub discovery (Chinese)](/cn/manual/#_16-hub-先搜索再描述再调用) · [Agents / skills / reports (Chinese)](/cn/manual/#_17-agent-skill-api-与报告) · [Datasets and exit codes (Chinese)](/cn/manual/#_18-会话数据集与退出码)
+[Hub discovery (Chinese)](/cn/manual/#_16-hub-先搜索再描述再调用) · [Agents / skills / reports (Chinese)](/cn/manual/#_17-agent-skill-api-与报告) · [Datasets and exit codes (Chinese)](/cn/manual/#_18-会话数据集与退出码) · [Full CLI manual (English)](/skills/core-ai-cli-manual/SKILL)

@@ -149,6 +149,8 @@ Windows PowerShell 使用 `.\gradlew.bat :core-ai-cli:run --args='--help'`。CLI
 
 [快速开始](https://chancetop-com.github.io/core-ai/cn/quickstart) · [完整中文手册](https://chancetop-com.github.io/core-ai/cn/manual/) · [教程索引](https://chancetop-com.github.io/core-ai/cn/tutorials) · [API 参考](https://chancetop-com.github.io/core-ai/cn/api) · [English docs](https://chancetop-com.github.io/core-ai/en/)
 
+CLI 手册同时作为 agent skill（`core-ai-cli-manual`）发布，可直接安装到 Claude Code、Codex 等工具；[下载与安装说明](https://chancetop-com.github.io/core-ai/skills/)。
+
 macOS 的源码 JVM help/version、Mock Agent 与 Python FakeSession 已验证；指南中的当前 API 片段已编译核对。发布包安装、Windows/Linux 实机、Server/Docker 启动和真实模型请求未在本次文档工作中执行。详细手册目前为中文，英文使用指南与教程提供对应入口。
 
 ## 贡献

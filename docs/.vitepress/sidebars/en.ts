@@ -18,6 +18,7 @@ export const sidebarEn: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Server', link: '/en/server' },
       { text: 'CLI', link: '/en/cli' },
+      { text: 'CLI manual (skill)', link: '/skills/core-ai-cli-manual/SKILL' },
       { text: 'Java framework', link: '/en/framework' },
       { text: 'Windows / macOS', link: '/en/cli-troubleshooting' }
     ]

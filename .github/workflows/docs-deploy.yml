@@ -50,6 +50,10 @@ jobs:
         working-directory: docs
         run: npm run build
 
+      - name: Package skill downloads
+        working-directory: docs
+        run: npm run package:skills
+
       - name: Validate documentation links
         working-directory: docs
         run: npm run check:links
