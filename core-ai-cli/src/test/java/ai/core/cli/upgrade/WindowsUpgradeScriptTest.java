@@ -6,6 +6,7 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -77,6 +78,30 @@ class WindowsUpgradeScriptTest {
     }
 
     @Test
+    void replacesBinaryWhenTheOldBackupIsStillLocked() throws Exception {
+        Path binary = fakeCli();
+        Path backup = backupFile(binary);
+        Files.copy(Path.of(System.getenv("ComSpec")), backup, StandardCopyOption.REPLACE_EXISTING);
+        long backupSize = Files.size(backup);
+        Path newFile = pendingFile(binary);
+        Process backupHolder = startFakeCli(backup, 120);
+        Process holder = startFakeCli(binary, 120);
+
+        int exitCode = runUpgradeScript(binary, newFile, 0);
+
+        assertEquals(0, exitCode);
+        assertEquals(NEW_CONTENT, Files.readString(binary));
+        assertEquals(backupSize, Files.size(backup), "the locked backup must be left alone");
+        assertEquals(2, backupFiles(binary).size(), "the displaced binary should get a timestamped backup name");
+        assertFalse(Files.exists(newFile));
+        assertFalse(Files.exists(scriptFile(binary)));
+
+        kill(backupHolder);
+        kill(holder);
+        awaitBackupRemoval(binary);
+    }
+
+    @Test
     void exitsWithoutTouchingAnythingWhenNoUpgradeIsPending() throws Exception {
         Path binary = fakeCli();
         long originalSize = Files.size(binary);
@@ -130,11 +155,22 @@ class WindowsUpgradeScriptTest {
     }
 
     private void awaitBackupRemoval(Path binary) throws Exception {
-        for (int i = 0; i < 100 && Files.exists(backupFile(binary)); i++) {
+        for (int i = 0; i < 100 && !backupFiles(binary).isEmpty(); i++) {
             UpgradeDownloader.cleanupReplacedBinaries(binary);
             Thread.sleep(100);
         }
-        assertFalse(Files.exists(backupFile(binary)), "replaced binary was not cleaned up");
+        assertTrue(backupFiles(binary).isEmpty(), "replaced binaries were not cleaned up");
+    }
+
+    private List<Path> backupFiles(Path binary) throws IOException {
+        try (var files = Files.list(binary.getParent())) {
+            return files.filter(this::isBackupFile).toList();
+        }
+    }
+
+    private boolean isBackupFile(Path path) {
+        Path name = path.getFileName();
+        return name != null && name.toString().startsWith(BINARY_NAME + ".old");
     }
 
     private void kill(Process process) {

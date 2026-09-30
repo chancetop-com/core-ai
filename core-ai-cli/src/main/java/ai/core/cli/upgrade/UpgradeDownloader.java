@@ -40,21 +40,12 @@ public final class UpgradeDownloader {
             + "$cliPid = %d%n"
             + "if (-not (Test-Path -LiteralPath $newFile)) { exit 0 }%n";
 
-    private static final String WINDOWS_SCRIPT_FUNCTIONS = "%n"
-            + "function Show-Notice([string]$text) {%n"
-            + "    try {%n"
-            + "        Set-Content -LiteralPath (Join-Path $env:TEMP 'core-ai-cli-upgrade-notice.txt') -Value $text -Encoding UTF8%n"
-            + "        $command = 'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show([System.IO.File]::ReadAllText"
-            + "((Join-Path $env:TEMP ''core-ai-cli-upgrade-notice.txt'')), ''core-ai-cli update'') | Out-Null'%n"
-            + "        Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @('-NoProfile', '-Command', $command) | Out-Null%n"
-            + "    } catch {%n"
-            + "    }%n"
-            + "}%n";
-
     private static final String WINDOWS_SCRIPT_REPLACE = "%n"
-            + "for ($i = 0; $i -lt 60; $i++) {%n"
-            + "    if (-not (Get-Process -Id $cliPid -ErrorAction SilentlyContinue)) { break }%n"
-            + "    Start-Sleep -Milliseconds 500%n"
+            + "if ($cliPid -gt 0) {%n"
+            + "    for ($i = 0; $i -lt 60; $i++) {%n"
+            + "        if (-not (Get-Process -Id $cliPid -ErrorAction SilentlyContinue)) { break }%n"
+            + "        Start-Sleep -Milliseconds 500%n"
+            + "    }%n"
             + "}%n"
             + "%n"
             + "for ($i = 1; $i -le 120; $i++) {%n"
@@ -67,8 +58,9 @@ public final class UpgradeDownloader {
             + "    }%n"
             + "    $placed = $false%n"
             + "    $backupFile = \"$targetFile" + BACKUP_SUFFIX + "\"%n"
+            + "    if (Test-Path -LiteralPath $backupFile) { Remove-Item -Force -LiteralPath $backupFile -ErrorAction SilentlyContinue }%n"
+            + "    if (Test-Path -LiteralPath $backupFile) { $backupFile = \"$backupFile.$(Get-Date -Format yyyyMMddHHmmss)\" }%n"
             + "    try {%n"
-            + "        if (Test-Path -LiteralPath $backupFile) { Remove-Item -Force -LiteralPath $backupFile -ErrorAction Stop }%n"
             + "        Move-Item -LiteralPath $targetFile -Destination $backupFile -ErrorAction Stop%n"
             + "        try {%n"
             + "            Move-Item -LiteralPath $newFile -Destination $targetFile -ErrorAction Stop%n"
@@ -87,9 +79,6 @@ public final class UpgradeDownloader {
             + "    }%n"
             + "    Start-Sleep -Seconds 1%n"
             + "}%n"
-            + "%n"
-            + "Show-Notice \"core-ai-cli update is pending: the program file is still in use.`n`n"
-            + "It will complete automatically the next time you start core-ai-cli.\"%n"
             + "exit 1%n";
 
     public static String detectPlatformSuffix() {
@@ -324,11 +313,11 @@ public final class UpgradeDownloader {
     /**
      * Windows refuses to overwrite or delete the image of a running process but still allows
      * renaming it, so a blocked replacement renames the current binary aside and puts the new
-     * one in its place. Other core-ai-cli instances keep running from the renamed file and are
-     * reported to the user only when even that does not get through.
+     * one in its place. A backup left over from an earlier replacement may itself still be in
+     * use, so a taken backup name falls back to a timestamped one instead of blocking the update.
      */
     static String buildWindowsUpgradeScript(Path newFile, Path targetFile, Path scriptFile, long cliPid) {
-        return String.format(WINDOWS_SCRIPT_HEAD + WINDOWS_SCRIPT_FUNCTIONS + WINDOWS_SCRIPT_REPLACE,
+        return String.format(WINDOWS_SCRIPT_HEAD + WINDOWS_SCRIPT_REPLACE,
                 escapeSingleQuotes(newFile), escapeSingleQuotes(targetFile),
                 escapeSingleQuotes(scriptFile), cliPid);
     }
