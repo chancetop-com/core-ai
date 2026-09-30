@@ -26,6 +26,7 @@ export default defineConfig({
   ],
 
   themeConfig: {
+    i18nRouting: false,
     logo: {
       light: '/core-ai-logo-v5-symbol-c-wordmark.svg',
       dark: '/core-ai-logo-v5-symbol-c-wordmark-dark.svg',
@@ -43,7 +44,14 @@ export default defineConfig({
       link: '/cn/',
       themeConfig: {
         nav: [
-          { text: '入门', link: '/cn/overview' },
+          { text: '快速开始', link: '/cn/quickstart' },
+          { text: '使用指南', items: [
+            { text: 'Server', link: '/cn/server' },
+            { text: 'CLI', link: '/cn/cli' },
+            { text: 'Java 框架', link: '/cn/framework' },
+            { text: '完整手册', link: '/cn/manual/' },
+            { text: '跨平台排障', link: '/cn/cli-troubleshooting' }
+          ] },
           { text: '教程', link: '/cn/tutorial-basic-agent' },
           { text: '设计文档', link: '/cn/design-server-architecture' },
           { text: 'API 参考', link: '/api/index.html', target: '_blank' }
@@ -67,7 +75,8 @@ export default defineConfig({
       link: '/en/',
       themeConfig: {
         nav: [
-          { text: 'Getting Started', link: '/en/overview' },
+          { text: 'Quick Start', link: '/en/quickstart' },
+          { text: 'Manual · 中文', link: '/cn/manual/' },
           { text: 'Tutorials', link: '/en/tutorial-basic-agent' },
           { text: 'Design', link: '/en/design-server-architecture' },
           { text: 'API Reference', link: '/api/index.html', target: '_blank' }

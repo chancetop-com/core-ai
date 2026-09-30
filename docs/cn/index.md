@@ -45,8 +45,8 @@ features:
 ## 操作示例，带着预期结果阅读
 
 <div class="demo-grid">
-  <a href="/core-ai/cn/server"><img src="./cn/manual/screenshots/server-chat.png" alt="Server Chat 历史真实界面" loading="lazy"><strong>Server：创建 Agent 并对话</strong><span>仓库历史界面 · 按步骤核对账号、模型与状态</span></a>
-  <a href="/core-ai/cn/framework#离线-agent"><img src="./cn/manual/screenshots/offline-demos.jpg" alt="Java 与 Python 离线演示真实 stdout" loading="lazy"><strong>框架：不调用模型的本地演示</strong><span>本次 Mac 实测 · Mock Agent 与 FakeSession</span></a>
+  <a href="/core-ai/cn/server"><img src="./manual/screenshots/server-chat.png" alt="Server Chat 历史真实界面" loading="lazy"><strong>Server：创建 Agent 并对话</strong><span>仓库历史界面 · 按步骤核对账号、模型与状态</span></a>
+  <a href="/core-ai/cn/framework#离线-agent"><img src="./manual/screenshots/offline-demos.jpg" alt="Java 与 Python 离线演示真实 stdout" loading="lazy"><strong>框架：不调用模型的本地演示</strong><span>本次 Mac 实测 · Mock Agent 与 FakeSession</span></a>
 </div>
 
 ## 遇到问题？从现象定位

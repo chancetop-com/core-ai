@@ -7,7 +7,9 @@ export const sidebarEn: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Overview', link: '/en/overview' },
       { text: 'Quick Start', link: '/en/quickstart' },
-      { text: 'Tutorials Index', link: '/en/tutorials' }
+      { text: 'Tutorials Index', link: '/en/tutorials' },
+      { text: 'Full Manual · 中文', link: '/cn/manual/' },
+      { text: 'CLI Troubleshooting · 中文', link: '/cn/cli-troubleshooting' }
     ]
   },
   {

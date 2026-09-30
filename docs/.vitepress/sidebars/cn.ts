@@ -7,7 +7,17 @@ export const sidebarCn: DefaultTheme.SidebarItem[] = [
     items: [
       { text: '概览', link: '/cn/overview' },
       { text: '快速开始', link: '/cn/quickstart' },
-      { text: 'Server CLI 框架使用手册', link: '/cn/manual/' }
+      { text: '完整使用手册', link: '/cn/manual/' }
+    ]
+  },
+  {
+    text: '使用指南',
+    collapsed: false,
+    items: [
+      { text: 'Server 上手', link: '/cn/server' },
+      { text: 'CLI 上手', link: '/cn/cli' },
+      { text: 'Java 框架上手', link: '/cn/framework' },
+      { text: 'Windows / macOS 排障', link: '/cn/cli-troubleshooting' }
     ]
   },
   {

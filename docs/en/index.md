@@ -1,47 +1,33 @@
 ---
 layout: home
-
 hero:
   name: core-ai
-  text: Java AI Agent Framework
-  tagline: Build intelligent agents, multi-agent systems, RAG and flow orchestration
+  text: From your first agent to team workflows
+  tagline: Manage resources with Server, work from CLI, build applications with the Java framework.
   image:
     src: /core-ai-logo-v5-symbol-c-icon.svg
     alt: core-ai
   actions:
     - theme: brand
-      text: Quick Start
+      text: Choose a starting point
       link: /en/quickstart
     - theme: alt
-      text: 中文文档
-      link: /cn/quickstart
+      text: Full manual · 中文
+      link: /cn/manual/
     - theme: alt
       text: GitHub
       link: https://github.com/chancetop-com/core-ai
-
 features:
-  - icon: 🤖
-    title: Intelligent Agents
-    details: Autonomous agents with memory, reflection and tool-calling capabilities
-  - icon: 👥
-    title: Multi-Agent Systems
-    details: A2A protocol for remote agent invocation and orchestrated collaboration
-  - icon: 🔧
-    title: Tools & MCP
-    details: JSON Schema and MCP protocol support with progressive tool disclosure
-  - icon: 📚
-    title: RAG Support
-    details: Built-in Milvus / HNSWLib integration with query rewriting and reranking
-  - icon: 🔄
-    title: Flow Orchestration
-    details: Visual workflows with conditional routing, parallel execution and state
-  - icon: 🎯
-    title: Skills System
-    details: Modular domain knowledge packages with progressive disclosure
-  - icon: 🔍
-    title: Observability
-    details: OpenTelemetry tracing compatible with Langfuse, Jaeger and others
-  - icon: ☁️
-    title: Multiple LLM Providers
-    details: Azure OpenAI, Azure AI Inference, unified abstraction for easy switching
+  - title: Server
+    details: Manage agents, tools, skills and datasets. Connect through Web, REST and SSE.
+    link: /cn/server
+    linkText: Server guide · 中文
+  - title: CLI
+    details: Install, sign in, resume sessions and discover resources. Includes Windows and macOS troubleshooting.
+    link: /cn/cli
+    linkText: CLI guide · 中文
+  - title: Java framework
+    details: Start with an offline Mock Agent, then add model providers, function tools and streaming.
+    link: /cn/framework
+    linkText: Framework guide · 中文
 ---
