@@ -89,7 +89,7 @@ public final class UpgradeDownloader {
             + "}%n"
             + "%n"
             + "Show-Notice \"core-ai-cli update is pending: the program file is still in use.`n`n"
-            + "It will complete automatically the next time you start core-ai-cli after closing all windows.\"%n"
+            + "It will complete automatically the next time you start core-ai-cli.\"%n"
             + "exit 1%n";
 
     public static String detectPlatformSuffix() {

@@ -87,7 +87,7 @@ class SessionUpgradeHandler {
                 ui.getWriter().println(" scheduled");
                 ui.getWriter().println();
                 ui.getWriter().println("  " + AnsiTheme.SUCCESS + "Update scheduled. CLI will exit now." + AnsiTheme.RESET);
-                ui.getWriter().println("  " + AnsiTheme.MUTED + "It completes automatically — close all core-ai-cli windows and start it again to use v"
+                ui.getWriter().println("  " + AnsiTheme.MUTED + "It completes automatically — restart core-ai-cli to use v"
                         + info.latestVersion() + "." + AnsiTheme.RESET);
                 ui.getWriter().flush();
                 return true;

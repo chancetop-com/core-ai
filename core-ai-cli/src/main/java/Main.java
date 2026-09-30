@@ -135,8 +135,7 @@ public class Main implements Callable<Integer> {
             if (currentBinary != null) {
                 Path replaced = UpgradeDownloader.tryReplaceCurrent(downloaded, currentBinary);
                 if (UpgradeDownloader.isUpgradeScheduled(currentBinary)) {
-                    System.out.println("Update scheduled — it completes automatically; close all core-ai-cli windows and start it again to use v"
-                            + info.latestVersion() + ".");
+                    System.out.println("Update scheduled — it completes automatically; restart to use v" + info.latestVersion() + ".");
                 } else if (replaced.equals(currentBinary)) {
                     System.out.println("Replaced " + currentBinary.getFileName() + ". Restart to use v" + info.latestVersion());
                 } else {
