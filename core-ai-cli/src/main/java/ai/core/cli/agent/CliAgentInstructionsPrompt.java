@@ -11,7 +11,7 @@ import java.util.List;
  * @author stephen
  */
 record CliAgentInstructionsPrompt(Path workspace) implements PromptInject {
-    private static final String[] PROJECT_FILES = {"instructions.md", "AGENTS.md", "CLAUDE.md"};
+    private static final String[] PROJECT_FILES = {"AGENTS.md", "instructions.md", "CLAUDE.md"};
 
     @Override
     public SectionType type() {

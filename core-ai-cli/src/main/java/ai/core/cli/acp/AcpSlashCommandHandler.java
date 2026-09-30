@@ -50,7 +50,7 @@ class AcpSlashCommandHandler {
                       /model <name>   Switch to model
                       /thinking [lvl] Show or set reasoning effort (none/low/high/max/off)
                       /debug          Toggle debug mode
-                      /init           Create .core-ai/instructions.md
+                      /init           Create .core-ai/AGENTS.md
                       /tools          List available tools
                       /stats          Show session statistics
                       /undo           Undo last turn
@@ -137,9 +137,9 @@ class AcpSlashCommandHandler {
 
     private String handleInit() {
         var dir = workspace.resolve(".core-ai");
-        var file = dir.resolve("instructions.md");
+        var file = dir.resolve("AGENTS.md");
         if (file.toFile().exists()) {
-            return ".core-ai/instructions.md already exists.";
+            return ".core-ai/AGENTS.md already exists.";
         }
         try {
             Files.createDirectories(dir);
@@ -157,7 +157,7 @@ class AcpSlashCommandHandler {
                     <!-- Add project-specific conventions -->
                     """);
             MemoryTriggerService.getInstance().ensureDirectories();
-            return "\u2713 Created .core-ai/instructions.md \u2014 edit it to customize agent behavior.";
+            return "\u2713 Created .core-ai/AGENTS.md \u2014 edit it to customize agent behavior.";
         } catch (IOException e) {
             return "Failed to create: " + e.getMessage();
         }
@@ -373,7 +373,7 @@ class AcpSlashCommandHandler {
                 new CommandInfo("/model <name>", "Switch to model"),
                 new CommandInfo("/thinking [level]", "Show or set reasoning effort (none/low/high/max/off)"),
                 new CommandInfo("/debug", "Toggle debug mode"),
-                new CommandInfo("/init", "Create .core-ai/instructions.md"),
+                new CommandInfo("/init", "Create .core-ai/AGENTS.md"),
                 new CommandInfo("/tools", "List available tools"),
                 new CommandInfo("/stats", "Show session statistics"),
                 new CommandInfo("/undo", "Undo last turn"),

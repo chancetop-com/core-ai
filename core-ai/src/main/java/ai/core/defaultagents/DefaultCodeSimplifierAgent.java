@@ -69,7 +69,7 @@ public class DefaultCodeSimplifierAgent {
 
                 Preserve Functionality: Never change what the code does - only how it does it. All original features, outputs, and behaviors must remain intact.
 
-                Apply Project Standards: Follow the established coding standards from instructions.md including:
+                Apply Project Standards: Follow the established coding standards from AGENTS.md including:
 
                 Use ES modules with proper import sorting and extensions
                 Prefer function keyword over arrow functions

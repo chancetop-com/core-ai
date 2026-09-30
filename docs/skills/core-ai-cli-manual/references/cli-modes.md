@@ -94,7 +94,7 @@ When logged in and no `litellm.api.base` is configured, the CLI uses the server 
 | `/agents` | List custom sub-agents |
 | `/agents create [name]` | Create `<workspace>/.core-ai/agents/<name>.md` from a template |
 | `/agents delete <name>` | Delete a custom agent |
-| `/init` | Create `<workspace>/.core-ai/instructions.md` |
+| `/init` | Create `<workspace>/.core-ai/AGENTS.md` |
 | `/upgrade` | Check for updates and upgrade |
 
 ## Custom Agents
@@ -131,7 +131,7 @@ Available in ACP mode (`core-ai-cli --acp-agent`):
 | `/model <name>` | Switch model |
 | `/thinking [level]` | Show or set reasoning effort (`none`/`low`/`high`/`max`/`off`) |
 | `/debug` | Toggle debug |
-| `/init` | Create `.core-ai/instructions.md` |
+| `/init` | Create `.core-ai/AGENTS.md` |
 | `/tools` | List tools |
 | `/stats` | Show stats |
 | `/undo` | Undo last turn |
@@ -160,6 +160,6 @@ core-ai-cli --time-limit-seconds 300 --prompt "Run the benchmark suite"
 | Global config | `~/.core-ai/agent.properties` (or `--config`) |
 | Auth | `~/.core-ai/auth.json` |
 | Sessions | `~/.core-ai/sessions/<workspace-dir-name>/` |
-| Instructions | `<workspace>/.core-ai/instructions.md` |
+| Instructions | `<workspace>/.core-ai/AGENTS.md` (fallback: `<workspace>/AGENTS.md`) |
 | Tool permissions | `<workspace>/.core-ai/tool-permissions.json` |
 | Upgrade install dir | `~/.core-ai/bin/` (when the binary dir is not writable) |

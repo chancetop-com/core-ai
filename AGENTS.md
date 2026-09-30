@@ -1,4 +1,4 @@
-# instructions.md
+# AGENTS.md
 
 This file provides guidance to codeAgent when working with code in this repository.
 

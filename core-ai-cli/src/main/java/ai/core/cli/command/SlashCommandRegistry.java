@@ -25,7 +25,7 @@ public final class SlashCommandRegistry {
             new SlashCommand("/memory clear", "Delete knowledge wiki pages, recreate structure"),
             new SlashCommand("/memory enable", "Enable memory (set agent.memory.enabled=true)"),
             new SlashCommand("/memory disable", "Disable memory (set agent.memory.enabled=false)"),
-            new SlashCommand("/init", "Create .core-ai/instructions.md project config"),
+            new SlashCommand("/init", "Create .core-ai/AGENTS.md project config"),
             new SlashCommand("/skill", "List loaded skills"),
             new SlashCommand("/plugins", "Manage plugins (/plugins help for more)"),
             new SlashCommand("/mcp", "Show MCP server status"),

@@ -64,9 +64,9 @@ public class ReplCommandHandler {
 
     private void initProject() {
         Path dir = Path.of(".core-ai");
-        Path file = dir.resolve("instructions.md");
+        Path file = dir.resolve("AGENTS.md");
         if (Files.exists(file)) {
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  .core-ai/instructions.md already exists.\n" + AnsiTheme.RESET);
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  .core-ai/AGENTS.md already exists.\n" + AnsiTheme.RESET);
             return;
         }
         String template = """
@@ -87,7 +87,7 @@ public class ReplCommandHandler {
             Files.writeString(file, template);
             MemoryTriggerService.getInstance().ensureDirectories();
             ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                    + " Created .core-ai/instructions.md — edit it to customize agent behavior.\n\n");
+                    + " Created .core-ai/AGENTS.md — edit it to customize agent behavior.\n\n");
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to create: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
