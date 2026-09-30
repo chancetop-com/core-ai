@@ -25,6 +25,73 @@ public final class UpgradeDownloader {
 
     private static final Path DEFAULT_INSTALL_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "bin");
 
+    private static final String PENDING_SUFFIX = ".new";
+
+    private static final String BACKUP_SUFFIX = ".old";
+
+    private static final String WINDOWS_UPGRADE_SCRIPT = "core-ai-upgrade.ps1";
+
+    private static final String UNIX_UPGRADE_SCRIPT = "core-ai-upgrade.sh";
+
+    private static final String WINDOWS_SCRIPT_HEAD = "$ErrorActionPreference = 'Stop'%n"
+            + "$newFile = '%s'%n"
+            + "$targetFile = '%s'%n"
+            + "$scriptFile = '%s'%n"
+            + "$cliPid = %d%n"
+            + "if (-not (Test-Path -LiteralPath $newFile)) { exit 0 }%n";
+
+    private static final String WINDOWS_SCRIPT_FUNCTIONS = "%n"
+            + "function Show-Notice([string]$text) {%n"
+            + "    try {%n"
+            + "        Set-Content -LiteralPath (Join-Path $env:TEMP 'core-ai-cli-upgrade-notice.txt') -Value $text -Encoding UTF8%n"
+            + "        $command = 'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show([System.IO.File]::ReadAllText"
+            + "((Join-Path $env:TEMP ''core-ai-cli-upgrade-notice.txt'')), ''core-ai-cli update'') | Out-Null'%n"
+            + "        Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @('-NoProfile', '-Command', $command) | Out-Null%n"
+            + "    } catch {%n"
+            + "    }%n"
+            + "}%n";
+
+    private static final String WINDOWS_SCRIPT_REPLACE = "%n"
+            + "for ($i = 0; $i -lt 60; $i++) {%n"
+            + "    if (-not (Get-Process -Id $cliPid -ErrorAction SilentlyContinue)) { break }%n"
+            + "    Start-Sleep -Milliseconds 500%n"
+            + "}%n"
+            + "%n"
+            + "for ($i = 1; $i -le 120; $i++) {%n"
+            + "    if (-not (Test-Path -LiteralPath $newFile)) { exit 0 }%n"
+            + "    try {%n"
+            + "        Move-Item -Force -LiteralPath $newFile -Destination $targetFile -ErrorAction Stop%n"
+            + "        Remove-Item -Force -LiteralPath $scriptFile -ErrorAction SilentlyContinue%n"
+            + "        exit 0%n"
+            + "    } catch {%n"
+            + "    }%n"
+            + "    $placed = $false%n"
+            + "    $backupFile = \"$targetFile" + BACKUP_SUFFIX + "\"%n"
+            + "    try {%n"
+            + "        if (Test-Path -LiteralPath $backupFile) { Remove-Item -Force -LiteralPath $backupFile -ErrorAction Stop }%n"
+            + "        Move-Item -LiteralPath $targetFile -Destination $backupFile -ErrorAction Stop%n"
+            + "        try {%n"
+            + "            Move-Item -LiteralPath $newFile -Destination $targetFile -ErrorAction Stop%n"
+            + "            $placed = $true%n"
+            + "        } catch {%n"
+            + "            Move-Item -LiteralPath $backupFile -Destination $targetFile -ErrorAction SilentlyContinue%n"
+            + "            throw%n"
+            + "        }%n"
+            + "    } catch {%n"
+            + "    }%n"
+            + "    if ($placed) {%n"
+            + "        Remove-Item -Force -LiteralPath $scriptFile -ErrorAction SilentlyContinue%n"
+            + "        Get-ChildItem -LiteralPath (Split-Path -Parent $targetFile) -Filter ((Split-Path -Leaf $targetFile) + '" + BACKUP_SUFFIX + "*') -ErrorAction SilentlyContinue"
+            + " | ForEach-Object { Remove-Item -Force -LiteralPath $_.FullName -ErrorAction SilentlyContinue }%n"
+            + "        exit 0%n"
+            + "    }%n"
+            + "    Start-Sleep -Seconds 1%n"
+            + "}%n"
+            + "%n"
+            + "Show-Notice \"core-ai-cli update is pending: the program file is still in use.`n`n"
+            + "It will complete automatically the next time you start core-ai-cli after closing all windows.\"%n"
+            + "exit 1%n";
+
     public static String detectPlatformSuffix() {
         String os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
         if (os.contains("win")) return "windows.exe";
@@ -173,7 +240,7 @@ public final class UpgradeDownloader {
      * Returns currentBinary on success (replacement scheduled), newFile on failure (manual fallback).
      */
     static Path scheduleReplaceOnExit(Path downloaded, Path currentBinary) throws UpgradeException {
-        Path newFile = currentBinary.resolveSibling(currentBinary.getFileName() + ".new");
+        Path newFile = pendingFile(currentBinary);
         try {
             Files.move(downloaded, newFile, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
@@ -187,13 +254,53 @@ public final class UpgradeDownloader {
         return currentBinary;
     }
 
+    static Path pendingFile(Path currentBinary) {
+        return currentBinary.resolveSibling(currentBinary.getFileName() + PENDING_SUFFIX);
+    }
+
     /**
      * Returns true if an upgrade script is pending (scheduled but not yet executed).
      */
     public static boolean isUpgradeScheduled(Path currentBinary) {
-        if (currentBinary == null) return false;
-        Path newFile = currentBinary.resolveSibling(currentBinary.getFileName() + ".new");
-        return Files.exists(newFile);
+        return currentBinary != null && Files.exists(pendingFile(currentBinary));
+    }
+
+    /**
+     * Re-spawns the replacement script for an upgrade a previous session could not apply,
+     * so a pending update finishes without the user running anything manually.
+     */
+    public static void retryScheduledUpgrade(Path currentBinary) {
+        if (!isUpgradeScheduled(currentBinary)) return;
+        try {
+            spawnUpgradeScript(pendingFile(currentBinary), currentBinary);
+        } catch (IOException e) {
+            LOGGER.warn("Cannot retry pending CLI upgrade: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Removes binaries an earlier replacement renamed aside, once no running instance holds them.
+     */
+    public static void cleanupReplacedBinaries(Path currentBinary) {
+        if (currentBinary == null) return;
+        Path parent = currentBinary.getParent();
+        Path fileName = currentBinary.getFileName();
+        if (parent == null || fileName == null) return;
+        try (var files = Files.newDirectoryStream(parent, fileName + BACKUP_SUFFIX + "*")) {
+            for (Path file : files) {
+                deleteBackupQuietly(file);
+            }
+        } catch (IOException e) {
+            LOGGER.debug("Cannot scan for replaced CLI binaries: {}", e.getMessage());
+        }
+    }
+
+    private static void deleteBackupQuietly(Path backup) {
+        try {
+            SystemUtil.deleteDirectory(backup);
+        } catch (IOException e) {
+            LOGGER.debug("Replaced binary {} is still in use: {}", backup, e.getMessage());
+        }
     }
 
     private static void spawnUpgradeScript(Path newFile, Path targetFile) throws IOException {
@@ -205,11 +312,8 @@ public final class UpgradeDownloader {
     }
 
     private static void spawnWindowsUpgradeScript(Path newFile, Path targetFile) throws IOException {
-        Path script = targetFile.resolveSibling("core-ai-upgrade.ps1");
-        String scriptContent = String.format("$ErrorActionPreference = 'Stop'%n"
-                + "Start-Sleep -Seconds 1%n"
-                + "Move-Item -Force -LiteralPath '%s' -Destination '%s'%n"
-                + "Remove-Item -Force -LiteralPath '%s'%n", newFile, targetFile, script);
+        Path script = targetFile.resolveSibling(WINDOWS_UPGRADE_SCRIPT);
+        String scriptContent = buildWindowsUpgradeScript(newFile, targetFile, script, ProcessHandle.current().pid());
         Files.writeString(script, scriptContent);
         new ProcessBuilder("cmd", "/c", "start", "/min", "", "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", script.toAbsolutePath().toString())
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
@@ -217,8 +321,24 @@ public final class UpgradeDownloader {
                 .start();
     }
 
+    /**
+     * Windows refuses to overwrite or delete the image of a running process but still allows
+     * renaming it, so a blocked replacement renames the current binary aside and puts the new
+     * one in its place. Other core-ai-cli instances keep running from the renamed file and are
+     * reported to the user only when even that does not get through.
+     */
+    static String buildWindowsUpgradeScript(Path newFile, Path targetFile, Path scriptFile, long cliPid) {
+        return String.format(WINDOWS_SCRIPT_HEAD + WINDOWS_SCRIPT_FUNCTIONS + WINDOWS_SCRIPT_REPLACE,
+                escapeSingleQuotes(newFile), escapeSingleQuotes(targetFile),
+                escapeSingleQuotes(scriptFile), cliPid);
+    }
+
+    private static String escapeSingleQuotes(Path path) {
+        return path.toString().replace("'", "''");
+    }
+
     private static void spawnUnixUpgradeScript(Path newFile, Path targetFile) throws IOException {
-        Path script = targetFile.resolveSibling("core-ai-upgrade.sh");
+        Path script = targetFile.resolveSibling(UNIX_UPGRADE_SCRIPT);
         String scriptContent = String.format("#!/bin/sh%n"
                 + "while kill -0 %d 2>/dev/null; do sleep 0.5; done%n"
                 + "sleep 0.5%n"

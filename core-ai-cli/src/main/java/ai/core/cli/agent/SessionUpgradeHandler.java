@@ -26,10 +26,16 @@ class SessionUpgradeHandler {
         if (!UPGRADE_CHECK_DONE.compareAndSet(false, true)) return;
         Thread.ofVirtual().start(() -> {
             try {
+                Path currentBinary = UpgradeDownloader.findCurrentBinary();
+                UpgradeDownloader.cleanupReplacedBinaries(currentBinary);
+                if (UpgradeDownloader.isUpgradeScheduled(currentBinary)) {
+                    UpgradeDownloader.retryScheduledUpgrade(currentBinary);
+                    ui.getWriter().println("  " + AnsiTheme.MUTED + "Applying the pending update — restart core-ai-cli to use the new version." + AnsiTheme.RESET);
+                    ui.getWriter().flush();
+                    return;
+                }
                 var info = upgradeChecker.check();
                 if (info.isNewer()) {
-                    Path currentBinary = UpgradeDownloader.findCurrentBinary();
-                    if (currentBinary != null && UpgradeDownloader.isUpgradeScheduled(currentBinary)) return;
                     ui.getWriter().println("  " + AnsiTheme.WARNING + "New version v" + info.latestVersion()
                             + " available! Type /upgrade to install." + AnsiTheme.RESET);
                     ui.getWriter().flush();
@@ -77,21 +83,23 @@ class SessionUpgradeHandler {
             ui.getWriter().print("  Replacing " + currentBinary.getFileName() + "...");
             ui.getWriter().flush();
             Path replaced = UpgradeDownloader.tryReplaceCurrent(downloaded, currentBinary);
+            if (UpgradeDownloader.isUpgradeScheduled(currentBinary)) {
+                ui.getWriter().println(" scheduled");
+                ui.getWriter().println();
+                ui.getWriter().println("  " + AnsiTheme.SUCCESS + "Update scheduled. CLI will exit now." + AnsiTheme.RESET);
+                ui.getWriter().println("  " + AnsiTheme.MUTED + "It completes automatically — close all core-ai-cli windows and start it again to use v"
+                        + info.latestVersion() + "." + AnsiTheme.RESET);
+                ui.getWriter().flush();
+                return true;
+            }
             if (replaced.equals(currentBinary)) {
-                if (UpgradeDownloader.isUpgradeScheduled(currentBinary)) {
-                    ui.getWriter().println(" scheduled");
-                    ui.getWriter().println();
-                    ui.getWriter().println("  " + AnsiTheme.SUCCESS + "Replacement scheduled. CLI will exit now." + AnsiTheme.RESET);
-                    ui.getWriter().flush();
-                    return true;
-                }
                 ui.getWriter().println(" done");
                 ui.getWriter().println("  " + AnsiTheme.SUCCESS + "Upgrade complete. Restart to use v" + info.latestVersion() + "." + AnsiTheme.RESET);
                 ui.getWriter().flush();
             } else {
-                ui.getWriter().println(" " + AnsiTheme.MUTED + "(cannot overwrite running binary)" + AnsiTheme.RESET);
+                ui.getWriter().println(" " + AnsiTheme.MUTED + "(cannot replace the running binary)" + AnsiTheme.RESET);
                 ui.getWriter().println("  Saved as " + replaced);
-                ui.getWriter().println("  To complete upgrade: replace " + currentBinary + " with " + replaced + ", then restart.");
+                ui.getWriter().println("  " + AnsiTheme.MUTED + "The update completes automatically the next time you start core-ai-cli." + AnsiTheme.RESET);
                 ui.getWriter().flush();
             }
         } catch (Exception e) {
