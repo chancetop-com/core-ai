@@ -7,276 +7,154 @@
 
 <div align="center">
 
-[![Java Version](https://img.shields.io/badge/Java-21%2B-blue.svg)](https://www.oracle.com/java/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![Documentation](https://img.shields.io/badge/Documentation-Available-brightgreen.svg)](https://chancetop-com.github.io/core-ai/)
+[![Java Source](https://img.shields.io/badge/Java%20source-25-blue.svg)](https://www.oracle.com/java/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![Documentation](https://img.shields.io/badge/Documentation-Available-brightgreen.svg)](https://chancetop-com.github.io/core-ai/cn/)
 [![GitHub Stars](https://img.shields.io/github/stars/chancetop-com/core-ai?style=social)](https://github.com/chancetop-com/core-ai)
 
 [English](README.md) | [中文](README.zh-CN.md)
 
 </div>
 
----
+# Core AI
 
-## 🌟 Core-AI：你的终端 AI 智能助手 & 代理服务器
+## 中文官网
 
-[中文使用手册：Server、CLI 与框架，含演示及 Windows/macOS 排错](docs/cn/manual/index.md)
+**[访问 Core AI 中文官网 →](https://chancetop-com.github.io/core-ai/cn/)** · **[中文使用手册：Server / CLI / 框架](https://chancetop-com.github.io/core-ai/cn/manual/)** · [English documentation](https://chancetop-com.github.io/core-ai/en/)
 
-Core-AI 为你提供在终端中运行的 AI 编程助手（`core-ai-cli`）和可自部署的代理服务器（`core-ai-server`），附带 Web 管理界面。CLI 可独立使用（直接配置任意 LLM 提供商的 API Key），也可连接 core-ai-server 获取团队协作功能。在命令行或浏览器中与大模型对话、执行工具、编排子代理、管理知识库。
+Core AI 在同一仓库中提供团队 Agent 服务、终端 CLI 和 Java 框架。先按任务选择入口，再逐步接入自己的模型、工具与运行环境。
 
-### 🚀 快速开始
+## 选择入口
 
-#### CLI 工具
+| 部分 | 用途 | 开始阅读 |
+| --- | --- | --- |
+| **core-ai-server** | 管理 Agent、工具、技能和数据集，提供 Web、REST 与 SSE | [Server 上手](https://chancetop-com.github.io/core-ai/cn/server) |
+| **core-ai-cli** | 本地 Agent、编辑器 ACP 和 Server Hub 资源命令；可独立配置模型或登录 Server | [CLI 上手](https://chancetop-com.github.io/core-ai/cn/cli) |
+| **core-ai 框架** | 在 Java 应用中构建 Agent、函数工具、上下文、记忆、RAG 与 Flow | [框架上手](https://chancetop-com.github.io/core-ai/cn/framework) |
 
-几秒内下载运行：
+Server 与 CLI 共享 `core-ai` 和 `core-ai-api`。框架 Flow 与 Server Web 工作流有不同定义，配置不能直接互换。
 
-```bash
-# macOS
-curl -L https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-darwin.tar.gz | tar xz
-chmod +x core-ai-cli-darwin && sudo mv core-ai-cli-darwin /usr/local/bin/core-ai-cli
+## 版本与环境
 
-# Linux
-curl -L https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-linux.tar.gz | tar xz
-chmod +x core-ai-cli-linux && sudo mv core-ai-cli-linux /usr/local/bin/core-ai-cli
+当前源码：CLI **2.0.21**、框架 **1.4.0-SNAPSHOT**、公共 API **1.3.0-SNAPSHOT**。版本来源为 [CLI VERSION](core-ai-cli/src/main/resources/VERSION) 与 [ProjectVersions](buildSrc/src/main/kotlin/Versions.kt)；发布包先检查自己的 `--version`。
 
-# Windows (PowerShell; make sure $env:USERPROFILE\bin is on PATH)
-mkdir "$env:USERPROFILE\bin" -Force
-Invoke-WebRequest -Uri "https://github.com/chancetop-com/core-ai/releases/latest/download/core-ai-cli-windows.zip" -OutFile "$env:TEMP\core-ai-cli.zip"
-Expand-Archive "$env:TEMP\core-ai-cli.zip" "$env:TEMP\core-ai-cli" -Force
-Move-Item "$env:TEMP\core-ai-cli\core-ai-cli-windows.exe" "$env:USERPROFILE\bin\core-ai-cli.exe" -Force
+| 路线 | 要求 |
+| --- | --- |
+| 原生 CLI 发布包 | 使用所选 release 对应的系统与架构；无需单独安装 Java |
+| Java 源码构建或 JVM 运行 | **JDK 25**，使用仓库 **Gradle Wrapper 9.3.0**；框架、API、CLI、Server 的源码构建共用 Java 25 toolchain |
+| CLI 原生编译 | **GraalVM JDK 25** 与对应平台的 native-image 构建依赖 |
+| Server 容器 | Docker / Compose、MongoDB、Redis 及自己的模型配置；宿主机无需安装 JDK |
+| Server 前端构建 | 当前发布流程使用 **Node.js 22** 与 npm |
+
+SNAPSHOT 版本常量不代表 Maven 制品已发布。仓库内优先使用 project 依赖；独立应用使用团队确认的制品或 composite build。
+
+## 快速开始
+
+### 1. 下载 CLI，先检查 help
+
+从 [Releases](https://github.com/chancetop-com/core-ai/releases) 选择版本和架构。已核对的 [v2.0.21](https://github.com/chancetop-com/core-ai/releases/tag/v2.0.21) 提供以下包；后续版本以实际资产为准：
+
+| 系统 | 压缩包 | 包内可执行文件 |
+| --- | --- | --- |
+| macOS | `core-ai-cli-darwin.tar.gz` | `core-ai-cli-darwin` |
+| Linux | `core-ai-cli-linux.tar.gz` | `core-ai-cli-linux` |
+| Windows | `core-ai-cli-windows.zip` | `core-ai-cli-windows.exe` |
+
+在下载目录解压并先确认版本。macOS：
+
+```sh
+tar -xzf core-ai-cli-darwin.tar.gz
+./core-ai-cli-darwin --version
+./core-ai-cli-darwin --help
 ```
 
-```bash
-core-ai-cli
+Linux 使用对应的 `core-ai-cli-linux.tar.gz` 和 `./core-ai-cli-linux`。Windows PowerShell：
+
+```powershell
+Expand-Archive -Path .\core-ai-cli-windows.zip -DestinationPath .\core-ai-cli
+.\core-ai-cli\core-ai-cli-windows.exe --version
+.\core-ai-cli\core-ai-cli-windows.exe --help
 ```
 
-CLI 支持两种使用模式：
+预期输出版本与参数。之后按[安装指南](https://chancetop-com.github.io/core-ai/cn/manual/#_10-macos-安装与检查)将程序命名为 `core-ai-cli` / `core-ai-cli.exe` 并加入用户 PATH；[Windows 安装](https://chancetop-com.github.io/core-ai/cn/manual/#_11-windows-安装与检查)和[跨平台排障](https://chancetop-com.github.io/core-ai/cn/cli-troubleshooting)说明路径、权限、shell 与编码差异。以下命令假设已经完成用户 PATH 配置。
 
-- **独立模式** — 直接在 `~/.core-ai/agent.properties` 中配置提供商的 API Key 即可开始对话。支持 OpenAI、DeepSeek、OpenRouter、Azure、LiteLLM 及任何兼容 OpenAI 的 API。
-- **连接服务器** — 登录 core-ai-server 自动配置 LLM 代理，共享代理和团队功能。
+### 2. 配置模型或连接 Server
 
-首次运行时如无配置，CLI 会引导你登录服务器。你可以随时通过 `/model` 命令添加或切换提供商。
+独立使用时，在 `~/.core-ai/agent.properties` 配置自己的 provider、模型与测试凭据；工作区 `.core-ai/agent.properties` 可覆盖全局配置。Windows 用户目录通常是 `%USERPROFILE%`。[配置步骤](https://chancetop-com.github.io/core-ai/cn/manual/#_13-登录-server-或独立配置模型)列出实际属性。
 
-**常用命令：**
+已有团队 Server 时，替换占位地址后交互登录，再发现可见资源：
 
-```bash
-core-ai-cli                                          # 交互式对话
-core-ai-cli --login [server-url]                      # 登录 core-ai-server（REPL 之外也可用）
-core-ai-cli --prompt "解释量子计算"                     # 单次查询
-core-ai-cli --model "openai/gpt-4o"                    # 指定模型
-core-ai-cli --workspace /path/to/project                # 设置工作目录
-core-ai-cli --continue                                  # 恢复上次会话
-core-ai-cli mcp search "create jira issue"              # 搜索服务器上注册的 MCP 工具
-core-ai-cli mcp call jira/create_issue --arg project=CORE --arg summary="修复 bug" --json
-core-ai-cli --upgrade                                   # 自动更新
+```sh
+core-ai-cli --login=https://core-ai.example.com
+core-ai-cli catalog --json
+core-ai-cli mcp search echo --json
 ```
 
-#### 服务器（Docker）
+把搜索结果的实际路径替换下面的 `SERVER/TOOL`；先查看 schema，按 schema 创建 UTF-8 `args.json` 后再调用：
 
-一行命令在本地启动 core-ai-server：
-
-**前置条件：** [Docker](https://docs.docker.com/get-docker/) 和 Docker Compose
-
-```bash
-git clone https://github.com/chancetop-com/core-ai.git
-cd core-ai
-docker compose -f docker-compose.local.yml up -d
+```sh
+core-ai-cli mcp describe SERVER/TOOL --json
+core-ai-cli mcp call SERVER/TOOL --args-file args.json --json
 ```
 
-浏览器打开 [https://localhost:8443](https://localhost:8443)。默认管理员：`admin@example.com` / `admin`
+模型配置完成后，可进入工作区、发送单次提示或恢复会话：
 
-<details>
-<summary>最简 Docker Compose 示例</summary>
-
-```yaml
-name: core-ai
-
-services:
-  mongo:
-    image: mongo:7
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ ping: 1 }).ok"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  mongo-init:
-    image: mongo:7
-    depends_on:
-      mongo:
-        condition: service_healthy
-    restart: "no"
-    entrypoint:
-      - bash
-      - -c
-      - |
-        mongosh --host mongo:27017 --quiet --eval '
-          try {
-            rs.status();
-          } catch (e) {
-            rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "mongo:27017" }] });
-          }
-        '
-
-  core-ai-server:
-    image: chancetop/core-ai-server:latest
-    depends_on:
-      mongo-init:
-        condition: service_completed_successfully
-    ports:
-      - "8080:8080"
-    environment:
-      SYS_HTTP_LISTEN: "8080"
-      SYS_MONGO_URI: "mongodb://mongo:27017/core-ai?replicaSet=rs0"
-      SYS_ADMIN_EMAIL: "admin@example.com"
-      SYS_ADMIN_PASSWORD: "admin"
-      SYS_ADMIN_NAME: "Admin"
-      LLM_MODEL: "gpt-4o"
-
-volumes:
-  mongo-data:
+```sh
+core-ai-cli --workspace /path/to/project
+core-ai-cli --prompt "Hello"
+core-ai-cli --continue
+core-ai-cli --resume
 ```
 
-</details>
+这些操作需要自己的模型/Server 环境，可能产生模型调用。会话中使用 `/help` 查看交互命令。
 
-> 💡 完整版 `docker-compose.local.yml` 包含 Redis、沙箱和 SSL。详见 [core-ai-server/README.md](core-ai-server/README.md)。
+### 3. 使用或部署 Server
 
-### ✨ 功能特性
+已有服务的读者按 [Server 指南](https://chancetop-com.github.io/core-ai/cn/server)取得账号、可用模型和资源权限，再从 Agents / Chat 开始。
 
-- **💬 终端助手** — 在终端中进行 AI 对话，支持文件操作、网页搜索、代码执行、子代理编排。独立使用，只需配置任意 LLM 提供商的 API Key
-- **🌐 代理服务器** — 自部署 Web 管理界面，支持代理管理、会话历史、多用户团队协作
-- **🧩 工具 & MCP** — 内置工具（读、写、搜索、抓取、grep、glob）加 MCP 协议支持自定义工具服务器
-- **👥 多代理协作** — 通过 A2A 协议将任务委派给子代理和远程代理
-- **🧠 记忆 & 知识库** — 持久化会话记忆、Markdown 知识库、自动提取
-- **🔌 多提供商** — 连接 OpenAI、DeepSeek、OpenRouter、Azure、LiteLLM 或任何兼容 OpenAI 的 API
-- **📋 任务管理** — 内置 Todo 追踪，支持计划/审查工作流
-- **🎯 Skills 系统** — 模块化、可复用的领域知识包，渐进式披露
+自行部署先按[Compose 步骤](https://chancetop-com.github.io/core-ai/cn/manual/#_2-使用仓库-compose)复制并编辑配置，准备 external 数据卷、MongoDB、Redis、管理员、模型与沙箱设置，然后再检查和启动自己的文件：
 
-### 💡 应用场景
-
-- **💻 编程助手** — 理解你的代码库，执行多步骤任务，管理 Todo
-- **🤖 客户支持** — 带工具集成和知识库的上下文感知代理
-- **📊 数据分析** — 查询数据、生成报告、可视化结果
-- **🔄 工作流自动化** — 通过代理流水线自动化复杂业务流程
-- **📚 知识管理** — 构建和查询企业知识库
-- **👥 团队协作** — 多用户通过服务器共享代理、会话和工具
-
-### 🔧 开发者
-
-Core-AI 同时也是用于构建自定义 AI 代理应用的 Java SDK。
-
-#### Java SDK
-
-**Maven：**
-```xml
-<dependency>
-    <groupId>com.chancetop</groupId>
-    <artifactId>core-ai</artifactId>
-    <version>1.0.24</version>
-</dependency>
+```sh
+docker compose -f docker-compose.manual.yml config --quiet
+docker compose -f docker-compose.manual.yml up -d
+docker compose -f docker-compose.manual.yml ps
 ```
 
-**Gradle：**
-```gradle
-implementation 'com.chancetop:core-ai:1.0.24'
-```
+`docker-compose.manual.yml` 是手册建议的本地配置文件名，需要先创建和配置。浏览器访问自己配置的 `SYS_PUBLIC_URL`。[Server 手册](https://chancetop-com.github.io/core-ai/cn/manual/#第一部分-core-ai-server)涵盖源码启动、REST/SSE、截图与排障。
 
-构建配置中添加仓库：
-```groovy
-repositories {
-    mavenCentral()
-    maven {
-        url = uri("https://neowu.github.io/maven-repo/")
-        content { includeGroupByRegex("core\\.framework.*") }
-    }
-    maven {
-        url = uri("https://chancetop-com.github.io/maven-repo/")
-        content { includeGroupByRegex("com\\.chancetop.*") }
-    }
+### 4. 开发 Java Agent
+
+在仓库内模块使用同 checkout 的依赖：
+
+```kotlin
+dependencies {
+    implementation(project(":core-ai"))
+    implementation(project(":core-ai-api"))
 }
 ```
 
-**基础用法：**
-```java
-AzureOpenAIConfig config = AzureOpenAIConfig.builder()
-    .endpoint("https://your-resource.openai.azure.com")
-    .apiKey("your-api-key")
-    .deploymentName("gpt-4")
-    .build();
+应用通过 `Agent.builder()` 配置 provider、模型与工具；公共调用 `agent.run(query, context)` 返回 `String`。从[离线 Mock Agent](https://chancetop-com.github.io/core-ai/cn/framework#离线-agent)获得第一个可核对结果，再阅读[基础 Agent](https://chancetop-com.github.io/core-ai/cn/tutorial-basic-agent)和[已编译 API 片段](docs/examples/GuideApiExamples.java)。离线脚本需要已有依赖缓存，其前提在指南中明确说明。
 
-LLMProvider llmProvider = new AzureOpenAILLMProvider(config);
+## 从源码运行
 
-Agent agent = Agent.builder()
-    .name("assistant")
-    .description("一个有用的 AI 助手")
-    .llmProvider(llmProvider)
-    .systemPrompt("你是一个友好且专业的 AI 助手。")
-    .build();
-
-AgentOutput output = agent.execute("今天我能为您做什么？");
-System.out.println(output.getOutput());
-```
-
-#### 架构设计
-
-```
-┌─────────────────────────────────────┐
-│        应用层（Applications）        │
-├─────────────────────────────────────┤
-│      编排层（Orchestration）         │
-│         Flow / Planning             │
-├─────────────────────────────────────┤
-│         代理层（Agents）             │
-│   Agent / Memory / Reflection       │
-├─────────────────────────────────────┤
-│       能力层（Capabilities）         │
-│  Tools / RAG / VectorStore / MCP    │
-├─────────────────────────────────────┤
-│      提供商层（Providers）           │
-│     LLM / Embeddings / Reranker     │
-└─────────────────────────────────────┘
-```
-
-#### 从源码构建
-
-**环境要求：** Java 21+、Gradle 8.0+
-
-```bash
+```sh
 git clone https://github.com/chancetop-com/core-ai.git
 cd core-ai
-
-# 构建 Java 项目
-./gradlew build
-
-# 构建 CLI native 二进制（需要 GraalVM JDK 21+）
-./gradlew :core-ai-cli:nativeCompile
-
-# 运行示例服务
-./gradlew :example-service:run
+./gradlew :core-ai-cli:run --args='--help'
 ```
 
-### 📖 文档
+Windows PowerShell 使用 `.\gradlew.bat :core-ai-cli:run --args='--help'`。CLI 原生构建任务是 `:core-ai-cli:nativeCompile`；Server 配置与 `:core-ai-server:installDist` 见[源码启动指南](https://chancetop-com.github.io/core-ai/cn/manual/#_3-配置项与源码启动)。首次构建需要访问所需依赖仓库；完整构建与服务测试有各自环境前提。
 
-- [概述](./docs/cn/overview.md) — 核心概念与架构
-- [快速开始](./docs/cn/quickstart.md) — 10 分钟快速上手
-- [构建智能代理](./docs/cn/tutorial-basic-agent.md) — 创建具有记忆和反思能力的代理
-- [记忆系统](./docs/cn/tutorial-memory.md) — 记忆与向量语义搜索
-- [工具调用](./docs/cn/tutorial-tool-calling.md) — 使用自定义工具扩展代理
-- [RAG 集成](./docs/cn/tutorial-rag.md) — 实现检索增强生成
-- [Skills 系统](./docs/cn/tutorial-skills.md) — 模块化领域知识包
-- [流程编排](./docs/cn/tutorial-flow.md) — 构建复杂工作流
+## 文档与验证范围
 
----
+[快速开始](https://chancetop-com.github.io/core-ai/cn/quickstart) · [完整中文手册](https://chancetop-com.github.io/core-ai/cn/manual/) · [教程索引](https://chancetop-com.github.io/core-ai/cn/tutorials) · [API 参考](https://chancetop-com.github.io/core-ai/cn/api) · [English docs](https://chancetop-com.github.io/core-ai/en/)
 
-<div align="center">
+macOS 的源码 JVM help/version、Mock Agent 与 Python FakeSession 已验证；指南中的当前 API 片段已编译核对。发布包安装、Windows/Linux 实机、Server/Docker 启动和真实模型请求未在本次文档工作中执行。详细手册目前为中文，英文使用指南与教程提供对应入口。
 
-### 🌐 相关链接
+## 贡献
 
-[GitHub](https://github.com/chancetop-com/core-ai) • [文档](./docs/) • [问题反馈](https://github.com/chancetop-com/core-ai/issues) • [讨论](https://github.com/chancetop-com/core-ai/discussions)
+通过 [Issues](https://github.com/chancetop-com/core-ai/issues)提交版本、复现步骤与去敏错误。代码变更遵循 [AGENTS.md](AGENTS.md)，运行相关模块检查；文档变更可在 `docs/` 使用 `npm ci`、`npm run build` 和 `npm run check:links`（当前文档 CI 使用 Node 20 与 Python 3）。请附上验证范围。
 
-</div>
+## 许可
+
+保留项目现有的 Apache 2.0 标识，并链接 [Apache License 2.0 正文](https://www.apache.org/licenses/LICENSE-2.0)。当前 checkout 没有独立 `LICENSE` 文件，正式仓库许可文件仍需维护者补齐。
