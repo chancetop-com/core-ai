@@ -7,6 +7,7 @@ export const sidebarCn: DefaultTheme.SidebarItem[] = [
     items: [
       { text: '概览', link: '/cn/overview' },
       { text: '快速开始', link: '/cn/quickstart' },
+      { text: '教程与学习路径', link: '/cn/tutorials' },
       { text: '完整使用手册', link: '/cn/manual/' }
     ]
   },
@@ -35,7 +36,7 @@ export const sidebarCn: DefaultTheme.SidebarItem[] = [
     ]
   },
   {
-    text: '设计文档',
+    text: '设计与历史记录',
     collapsed: true,
     items: [
       { text: 'Server 架构', link: '/cn/design-server-architecture' },

@@ -1,177 +1,48 @@
-# Core-AI Tutorials
+# Tutorials and Learning Path
 
-Welcome to the Core-AI tutorial series! These comprehensive guides will help you master the framework from basics to advanced features.
+<span class="legacy-anchor" id="core-ai-tutorials"></span>
+<span class="legacy-anchor" id="📚-tutorial-index"></span>
+<span class="legacy-anchor" id="🎯-getting-started"></span>
+<span class="legacy-anchor" id="🔬-deep-dive"></span>
+<span class="legacy-anchor" id="🚀-core-tutorials"></span>
+<span class="legacy-anchor" id="_1-building-intelligent-agents"></span>
+<span class="legacy-anchor" id="_2-memory-systems"></span>
+<span class="legacy-anchor" id="_3-compression-mechanism"></span>
+<span class="legacy-anchor" id="_4-rag-integration"></span>
+<span class="legacy-anchor" id="_5-tool-calling"></span>
+<span class="legacy-anchor" id="_6-flow-orchestration"></span>
+<span class="legacy-anchor" id="🎓-learning-path"></span>
+<span class="legacy-anchor" id="beginner-path"></span>
+<span class="legacy-anchor" id="intermediate-path"></span>
+<span class="legacy-anchor" id="advanced-path"></span>
+<span class="legacy-anchor" id="💡-tutorial-features"></span>
+<span class="legacy-anchor" id="🛠️-prerequisites"></span>
+<span class="legacy-anchor" id="📖-additional-resources"></span>
+<span class="legacy-anchor" id="examples"></span>
+<span class="legacy-anchor" id="documentation"></span>
+<span class="legacy-anchor" id="community"></span>
+<span class="legacy-anchor" id="🚦-ready-to-start"></span>
+<span class="legacy-anchor" id="💬-need-help"></span>
 
-## 📚 Tutorial Index
+Start with [Quick Start](quickstart.md) to choose Server, CLI or framework, then add capabilities one at a time. Source builds require Java 25 and the repository Wrapper. Offline examples do not require a model key.
 
-### 🎯 Getting Started
-If you're new to Core-AI, start here:
-1. **[Quick Start Guide](quickstart.md)** - Get up and running in 10 minutes
-2. **[Basic Agent Tutorial](tutorial-basic-agent.md)** - Create your first intelligent agent
+| Tutorial | What it covers | Additional prerequisites |
+| --- | --- | --- |
+| [Basic Agent](tutorial-basic-agent.md) | Builder, run, status and streaming contracts | A provider for live requests |
+| [Function Tools](tutorial-tool-calling.md) | Annotations, schema and conversion | Authorization for external side effects |
+| [Memory](tutorial-memory.md) | User context, MemoryStore and recall | Storage, embeddings and extraction model |
+| [Compression](tutorial-compression.md) | Switch and configuration | Summary model, context limits and cost |
+| [RAG](tutorial-rag.md) | VectorStore and RagConfig | Index, embeddings and backend dependencies |
+| [Skills](tutorial-skills.md) | SKILL.md, registry and precedence | Reviewed directories and script dependencies |
+| [Flow](tutorial-flow.md) | Nodes, edges, validation and run | Providers and data required by each node |
+| [Architecture](tutorial-architecture.md) | Server / CLI / framework boundaries | A working minimal Agent |
 
-### 🔬 Deep Dive
-For understanding core mechanisms:
-- **[Architecture & Internals](tutorial-architecture.md)** - Framework core mechanisms deep dive ⭐ NEW
+## First verifiable result {#第一个可核对的成功结果}
 
-### 🚀 Core Tutorials
+The [offline Agent](framework.md#离线-agent) returns the fixture text, `COMPLETED` and one provider call. Its script requires existing dependencies and does not guarantee an offline build from a fresh clone. The [FakeSession demo (Chinese)](/cn/manual/#_29-python-离线演示与截图) checks discovery and arguments.
 
-#### 1. [Building Intelligent Agents](tutorial-basic-agent.md)
-Learn how to create powerful AI agents with Core-AI's agent framework.
+## Example validation {#示例的验证范围}
 
-**Topics covered:**
-- Agent fundamentals and architecture
-- Creating and configuring agents
-- System prompts and dynamic templates
-- Memory systems (short-term and long-term)
-- Reflection mechanisms for self-improvement
-- State management and persistence
+Current API samples were compile-checked during this update. Live model, memory extraction and vector database calls were not executed. Offline runtime evidence is retained in the manual. Historical designs can contain earlier interfaces or proposals; consult current source.
 
-**Perfect for:** Developers starting with AI agent development
-
----
-
-#### 2. [Memory Systems](tutorial-memory.md)
-Deep dive into Core-AI's memory architecture for personalized and context-aware agents.
-
-**Topics covered:**
-- Short-term memory and conversation summarization
-- Long-term memory with vector search
-- Memory types (FACT, PREFERENCE, GOAL, EPISODE)
-- Namespace organization for multi-tenant systems
-- Unified memory lifecycle integration
-- Token budget management
-
-**Perfect for:** Building agents that remember users across sessions
-
----
-
-#### 3. [Compression Mechanism](tutorial-compression.md)
-Master in-session context management for handling long conversations.
-
-**Topics covered:**
-- Compression principles and triggers
-- Automatic context summarization
-- Message splitting strategies
-- Conversation chain protection
-- LLM-generated summaries
-- Configuration and best practices
-
-**Perfect for:** Agents handling long conversations with token limits
-
----
-
-#### 4. [RAG Integration](tutorial-rag.md)
-Implement retrieval-augmented generation to enhance your agents with external knowledge.
-
-**Topics covered:**
-- Vector store configuration (Milvus, HNSWLib)
-- Document processing and chunking
-- Embedding generation and similarity search
-- Query optimization and rewriting
-- Reranking strategies
-
-**Perfect for:** Applications requiring knowledge bases and document search
-
----
-
-#### 5. [Tool Calling](tutorial-tool-calling.md)
-Extend agent capabilities with custom tools and external integrations.
-
-**Topics covered:**
-- Creating custom tools
-- JSON Schema definitions
-- MCP protocol integration
-- Built-in tools usage
-- Tool composition and orchestration
-
-**Perfect for:** Integrating agents with external systems and APIs
-
----
-
-#### 6. [Flow Orchestration](tutorial-flow.md)
-Build complex workflows and business processes with visual flow design.
-
-**Topics covered:**
-- Flow architecture and node types
-- Conditional routing and branching
-- Parallel and async execution
-- State management and checkpointing
-- Error handling and recovery
-
-**Perfect for:** Workflow automation and complex business logic
-
----
-
-## 🎓 Learning Path
-
-### Beginner Path
-1. [Quick Start](quickstart.md) → [Basic Agent](tutorial-basic-agent.md) → [Memory Systems](tutorial-memory.md)
-
-### Intermediate Path
-1. [Tool Calling](tutorial-tool-calling.md) → [RAG Integration](tutorial-rag.md) → [Flow Orchestration](tutorial-flow.md)
-
-### Advanced Path
-1. [Architecture & Internals](tutorial-architecture.md) → [Flow Orchestration](tutorial-flow.md) → [Compression](tutorial-compression.md) → Production deployment
-
-## 💡 Tutorial Features
-
-Each tutorial includes:
-- **Conceptual overview** - Understand the theory and architecture
-- **Complete code examples** - Working Java code you can run
-- **Real-world scenarios** - Practical use cases and applications
-- **Best practices** - Production-ready patterns and tips
-- **Performance optimization** - Make your applications faster
-- **Troubleshooting guide** - Common issues and solutions
-
-## 🛠️ Prerequisites
-
-Before starting the tutorials, ensure you have:
-- Java 21+ installed
-- Basic Java programming knowledge
-- An IDE (IntelliJ IDEA recommended)
-- Gradle build tool
-- An LLM API key (Azure OpenAI or compatible)
-
-## 📖 Additional Resources
-
-### Examples
-- **[Example Service](../../example-service)** - Complete reference implementation
-- **Code Samples** - Available in each tutorial
-
-### Documentation
-- **[API Reference](../api-reference.md)** - Detailed API documentation
-- **[Configuration Guide](../configuration.md)** - Configuration options
-- **[Deployment Guide](../deployment.md)** - Production deployment
-
-### Community
-- **[GitHub Issues](https://github.com/chancetop-com/core-ai/issues)** - Report bugs or request features
-- **[Discussions](https://github.com/chancetop-com/core-ai/discussions)** - Ask questions and share ideas
-
-## 🚦 Ready to Start?
-
-Choose a tutorial based on your needs:
-
-| I want to... | Start with |
-|-------------|------------|
-| Build my first AI agent | [Basic Agent Tutorial](tutorial-basic-agent.md) |
-| Create a chatbot | [Quick Start Guide](quickstart.md) |
-| Understand framework internals | [Architecture & Internals](tutorial-architecture.md) |
-| Remember users across sessions | [Memory Systems](tutorial-memory.md) |
-| Handle long conversations | [Compression Mechanism](tutorial-compression.md) |
-| Add knowledge retrieval | [RAG Integration](tutorial-rag.md) |
-| Integrate external APIs | [Tool Calling](tutorial-tool-calling.md) |
-| Automate workflows | [Flow Orchestration](tutorial-flow.md) |
-
----
-
-<div align="center">
-
-### 💬 Need Help?
-
-If you get stuck or have questions:
-
-[Ask in Discussions](https://github.com/chancetop-com/core-ai/discussions) | [Report an Issue](https://github.com/chancetop-com/core-ai/issues)
-
-Happy learning! 🎉
-
-</div>
+[API Reference](/en/api) · [CLI Troubleshooting](cli-troubleshooting.md) · [Full manual (Chinese)](/cn/manual/) · [Report an issue](https://github.com/chancetop-com/core-ai/issues)

@@ -1,409 +1,67 @@
-# Tutorial: Compression (Context Management)
+# Context Compression
 
-This tutorial covers Core-AI's compression mechanism for managing conversation context within sessions.
+<span class="legacy-anchor" id="tutorial-compression-context-management"></span>
+<span class="legacy-anchor" id="table-of-contents"></span>
+<span class="legacy-anchor" id="overview"></span>
+<span class="legacy-anchor" id="key-features"></span>
+<span class="legacy-anchor" id="when-compression-triggers"></span>
+<span class="legacy-anchor" id="how-compression-works"></span>
+<span class="legacy-anchor" id="compression-flow"></span>
+<span class="legacy-anchor" id="message-structure-after-compression"></span>
+<span class="legacy-anchor" id="configuration"></span>
+<span class="legacy-anchor" id="basic-usage"></span>
+<span class="legacy-anchor" id="custom-configuration"></span>
+<span class="legacy-anchor" id="configuration-parameters"></span>
+<span class="legacy-anchor" id="disabling-compression"></span>
+<span class="legacy-anchor" id="compression-algorithm"></span>
+<span class="legacy-anchor" id="algorithm-design-principles"></span>
+<span class="legacy-anchor" id="core-algorithm-flow"></span>
+<span class="legacy-anchor" id="step-1-check-trigger-condition"></span>
+<span class="legacy-anchor" id="step-2-message-splitting-strategy"></span>
+<span class="legacy-anchor" id="step-3-conversation-chain-protection"></span>
+<span class="legacy-anchor" id="step-4-summary-generation"></span>
+<span class="legacy-anchor" id="step-5-result-assembly"></span>
+<span class="legacy-anchor" id="best-practices"></span>
+<span class="legacy-anchor" id="_1-choose-appropriate-threshold"></span>
+<span class="legacy-anchor" id="_2-adjust-keep-recent-turns-based-on-use-case"></span>
+<span class="legacy-anchor" id="_3-monitor-token-usage"></span>
+<span class="legacy-anchor" id="_4-combine-with-long-term-memory"></span>
+<span class="legacy-anchor" id="_5-handle-edge-cases"></span>
+<span class="legacy-anchor" id="implementation-details"></span>
+<span class="legacy-anchor" id="core-classes"></span>
+<span class="legacy-anchor" id="lifecycle-integration"></span>
+<span class="legacy-anchor" id="token-counting"></span>
+<span class="legacy-anchor" id="summary"></span>
 
-## Table of Contents
+Compression manages a single Agent's long conversation context separately from cross-session memory. Summarization can add model calls and cost.
 
-1. [Overview](#overview)
-2. [How Compression Works](#how-compression-works)
-3. [Configuration](#configuration)
-4. [Compression Algorithm](#compression-algorithm)
-5. [Best Practices](#best-practices)
+::: info Validation
+These fragments come from the [complete compile-only sample](https://github.com/chancetop-com/core-ai/blob/master/docs/examples/GuideApiExamples.java). Types were checked against current source; live models and external stores were not executed. The caller supplies parameters such as `provider` and `model`. Runtime evidence is in the [offline Agent](framework.md#离线-agent).
+:::
+## Switch and parameters {#开关与参数}
 
-## Overview
-
-Compression is Core-AI's solution for managing long conversations within token limits. When conversations become too long, compression automatically summarizes older messages while preserving recent context and important information.
-
-### Key Features
-
-- **Automatic Triggering**: Compresses when token count exceeds threshold
-- **Context Preservation**: Keeps system messages, recent turns, and current conversation chain
-- **LLM-Generated Summaries**: Uses LLM to create intelligent summaries
-- **Transparent Integration**: Works seamlessly through Agent lifecycle
-
-### When Compression Triggers
-
-```
-Token Usage Timeline:
-|========================================|
-0%                                     100% (max context)
-                      ^
-                      |
-              Trigger Point (default 80%)
-```
-
-## How Compression Works
-
-### Compression Flow
-
-```
-+------------------------------------------------------------------+
-|                       Compression Flow                            |
-+------------------------------------------------------------------+
-|                                                                  |
-|  1. Agent receives user message                                  |
-|          |                                                       |
-|          v                                                       |
-|  2. beforeModel lifecycle hook triggered                         |
-|          |                                                       |
-|          v                                                       |
-|  3. CompressionLifecycle checks token count                      |
-|     currentTokens >= maxContext * triggerThreshold?              |
-|          |                                                       |
-|     No --+-- Yes                                                 |
-|     |         |                                                  |
-|     v         v                                                  |
-|  Continue   4. Split messages:                                   |
-|  normally      - System message (always keep)                    |
-|                - Messages to compress (older)                    |
-|                - Messages to keep (recent N turns + current)     |
-|                    |                                             |
-|                    v                                             |
-|                5. Generate summary via LLM                       |
-|                    |                                             |
-|                    v                                             |
-|                6. Rebuild message list:                          |
-|                   [System] + [Summary as ToolCall] + [Recent]    |
-|                    |                                             |
-|                    v                                             |
-|                7. Continue with compressed messages              |
-|                                                                  |
-+------------------------------------------------------------------+
-```
-
-### Message Structure After Compression
-
-Before compression:
-```
-[SYSTEM]     You are a helpful assistant...
-[USER]       First question
-[ASSISTANT]  First answer
-[USER]       Second question
-[ASSISTANT]  Second answer
-... (many more messages)
-[USER]       Recent question
-[ASSISTANT]  Recent answer (with tool call)
-[TOOL]       Tool result
-```
-
-After compression:
-```
-[SYSTEM]     You are a helpful assistant...
-[ASSISTANT]  tool_call: memory_compress {}
-[TOOL]       [Previous Conversation Summary]
-             - User asked about X, assistant explained...
-             - Key decisions made: ...
-             [End Summary]
-[USER]       Recent question
-[ASSISTANT]  Recent answer (with tool call)
-[TOOL]       Tool result
-```
-
-## Configuration
-
-### Basic Usage
+The minimal Mock demo uses `.compression(false)`. Current `CompressionConfig` is a record:
 
 ```java
-import ai.core.agent.Agent;
-
-// Compression is enabled by default
-Agent agent = Agent.builder()
-    .name("assistant")
-    .llmProvider(llmProvider)
-    .build();
-```
-
-### Custom Configuration
-
-```java
-import ai.core.context.Compression;
-
-// Create compression with custom settings
-Compression compression = new Compression(
-        0.8,         // triggerThreshold: compress at 80% of max context (default)
-        5,           // keepRecentTurns: keep last 5 conversation turns (default)
-        llmProvider, // LLM provider for generating summaries
-        "gpt-4"      // model name for token counting
-);
-
-        Agent agent = Agent.builder()
-                .name("agent")
-                .llmProvider(llmProvider)
-                .compression(compression)
-                .build();
-```
-
-### Configuration Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `triggerThreshold` | 0.8 | Ratio of max context to trigger compression (0.0-1.0) |
-| `keepRecentTurns` | 5 | Number of recent conversation turns to preserve |
-| `llmProvider` | required | LLM provider for generating summaries |
-| `model` | required | Model name for determining max context tokens |
-
-### Disabling Compression
-
-```java
-Agent agent = Agent.builder()
-    .name("stateless-agent")
-    .llmProvider(llmProvider)
-    .enableCompression(false)  // Disable compression entirely
-    .build();
-```
-
-## Compression Algorithm
-
-The compression algorithm is one of Core-AI's core mechanisms, ensuring long conversations can operate effectively within LLM context window limits.
-
-### Algorithm Design Principles
-
-1. **Protect Critical Information**: System messages and current conversation chain are always protected
-2. **Intelligent Splitting**: Split by conversation turns rather than pure token count
-3. **LLM-Generated Summary**: Use LLM to generate high-quality conversation summaries
-4. **Seamless Integration**: Compression results are injected as pseudo tool calls, transparent to LLM
-
-### Core Algorithm Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                   Compression Algorithm Core Flow                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Input: messages (current message list)                         │
-│                                                                 │
-│  Step 1: Trigger Check                                          │
-│    currentTokens >= maxContext * triggerThreshold ?             │
-│    └─ No: Return original message list                          │
-│                                                                 │
-│  Step 2: Message Classification                                 │
-│    ├─ systemMsg: System message (always keep)                   │
-│    ├─ conversationMsgs: Conversation messages                   │
-│    └─ currentChain: Current incomplete chain (protected)        │
-│                                                                 │
-│  Step 3: Calculate Keep Boundary                                │
-│    keepFromIndex = min(                                         │
-│        findKeepFromIndexByTurns(),  // Recent N turns           │
-│        minKeepFromIndex             // Current chain start      │
-│    )                                                            │
-│                                                                 │
-│  Step 4: Split Messages                                         │
-│    toCompress = conversationMsgs[0:keepFromIndex]               │
-│    toKeep = conversationMsgs[keepFromIndex:]                    │
-│                                                                 │
-│  Step 5: Generate Summary                                       │
-│    summary = llmProvider.complete(summarizePrompt + toCompress) │
-│                                                                 │
-│  Step 6: Assemble Result                                        │
-│    result = [systemMsg]                                         │
-│           + [ASSISTANT: tool_call(memory_compress)]             │
-│           + [TOOL: summary]                                     │
-│           + toKeep                                              │
-│                                                                 │
-│  Output: result (compressed message list)                       │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Step 1: Check Trigger Condition
-
-```java
-boolean shouldCompress = currentTokens >= maxContextTokens * triggerThreshold;
-// Example: max 128K tokens, threshold 0.8
-// Triggers when tokens >= 102,400
-```
-
-### Step 2: Message Splitting Strategy
-
-The algorithm splits messages into three categories:
-
-```
-Original Messages:
-+-----------------------------------------------------------+
-| [SYSTEM] You are a helpful assistant...       | Always    |
-|-----------------------------------------------------------|
-| [USER] Question 1                             |           |
-| [ASSISTANT] Answer 1                          | To be     |
-| [USER] Question 2                             | Compressed|
-| [ASSISTANT] Answer 2                          |           |
-| ... more old messages ...                     |           |
-|-----------------------------------------------------------|
-| [USER] Recent question 1                      |           |
-| [ASSISTANT] Recent answer 1                   | Keep      |
-| [USER] Recent question 2                      | (recent   |
-| [ASSISTANT] tool_call: get_weather            | N turns   |
-| [TOOL] Beijing 25C                            | + chain)  |
-+-----------------------------------------------------------+
-```
-
-### Step 3: Conversation Chain Protection
-
-When the last message is not from USER (e.g., during tool execution), the current conversation chain is protected:
-
-```java
-// Find the last USER message
-boolean isCurrentChainActive = messages.getLast().role != RoleType.USER;
-if (isCurrentChainActive) {
-    // Protect entire chain starting from last USER message
-    minKeepFromIndex = lastUserIndex;
-}
-```
-
-This ensures tool call sequences are not broken:
-```
-[USER]      What's the weather?      <- Chain starts here
-[ASSISTANT] tool_call: get_weather   <- Protected
-[TOOL]      Result: 25C              <- Protected (current)
-```
-
-### Step 4: Summary Generation
-
-Summary is generated via LLM with target token count:
-
-```java
-int targetTokens = Math.min(4000, Math.max(500, maxContextTokens / 10));
-int targetWords = (int) (targetTokens * 0.75);
-```
-
-**Summary Prompt Template:**
-```
-Summarize the following conversation into a concise summary.
-Requirements:
-1. Preserve key facts, decisions, and context
-2. Keep important user preferences and goals mentioned
-3. Remove redundant back-and-forth and filler content
-4. Use bullet points for clarity
-5. Keep within {targetWords} words
-
-Conversation to summarize:
-{formatted_messages}
-
-Output summary directly:
-```
-
-### Step 5: Result Assembly
-
-The final message list structure:
-
-```java
-List<Message> result = new ArrayList<>();
-result.add(systemMessage);           // System prompt
-result.add(toolCallMessage);         // [ASSISTANT] tool_call: memory_compress
-result.add(toolResultMessage);       // [TOOL] Summary content
-result.addAll(messagesToKeep);       // Recent messages
-```
-
-## Best Practices
-
-### 1. Choose Appropriate Threshold
-
-```java
-// For models with large context (128K+)
-// Higher threshold allows more history before compression
-Compression compression = new Compression(0.85, 5, llmProvider, model);
-
-// For models with smaller context (8K-32K)
-// Lower threshold leaves more room for responses
-Compression compression = new Compression(0.7, 3, llmProvider, model);
-```
-
-### 2. Adjust Keep Recent Turns Based on Use Case
-
-```java
-// Customer support: keep more context
-Compression compression = new Compression(0.8, 8, llmProvider, model);
-
-// Quick Q&A: fewer turns needed
-Compression compression = new Compression(0.8, 3, llmProvider, model);
-```
-
-### 3. Monitor Token Usage
-
-```java
-Agent agent = Agent.builder()
-    .name("agent")
-    .llmProvider(llmProvider)
+var compression = new CompressionConfig(
+    true, 0.75, 4, 2000, null, null);
+var agent = Agent.builder()
+    .name("context-agent")
+    .llmProvider(provider)
+    .model(model)
     .compression(compression)
     .build();
-
-// After execution, check token usage
-agent.run("question", context);
-TokenUsage usage = agent.getCurrentTokenUsage();
-System.out.println("Total tokens: " + usage.getTotalTokens());
 ```
+Arguments are `enabled`, `triggerThreshold`, `keepRecentTurns`, `keepMinTokens`, `contextWindowTokens` and `summaryModel`. Values 0.75, 4 and 2000 illustrate configuration, not recommended defaults. Null retains a default. Configure the provider before passing compression settings.
 
-### 4. Combine with Long-term Memory
+## Validate compression {#验证压缩}
 
-```java
-// Compression for session context
-// Long-term memory for cross-session persistence
-Agent agent = Agent.builder()
-    .name("personalized-agent")
-    .llmProvider(llmProvider)
-    .enableCompression(true)    // Within session
-    .unifiedMemory(memory)      // Across sessions
-    .build();
-```
+Fix the input and context limit. Inspect retained recent turns, tool-call chains, summary content and Usage before and after compression. Check lost constraints or tool results, then evaluate task completion and additional model calls.
 
-### 5. Handle Edge Cases
+Live summarization was not executed. Consult [Compression source](https://github.com/chancetop-com/core-ai/blob/master/core-ai/src/main/java/ai/core/context/Compression.java) for current defaults and behavior.
 
-```java
-// Very short conversations: compression won't trigger
-// Very long single messages: may exceed threshold immediately
+[Basic Agent](tutorial-basic-agent.md) · [Memory](tutorial-memory.md) · [Context overview (Chinese)](/cn/manual/#_27-记忆-压缩-rag-与-flow)
 
-// Consider message length limits in your application
-if (userMessage.length() > MAX_MESSAGE_LENGTH) {
-    userMessage = truncate(userMessage, MAX_MESSAGE_LENGTH);
-}
-```
+## Historical long-form material
 
-## Implementation Details
-
-### Core Classes
-
-| Class | Location | Description |
-|-------|----------|-------------|
-| `Compression` | `ai.core.context` | Main compression logic |
-| `CompressionLifecycle` | `ai.core.context` | Agent lifecycle integration |
-| `MessageTokenCounter` | `ai.core.context` | Token counting utility |
-
-### Lifecycle Integration
-
-Compression integrates through the Agent lifecycle system:
-
-```java
-// In AgentBuilder.copyValue()
-if (this.compressionEnabled) {
-    agent.compression = this.compression != null
-        ? this.compression
-        : new Compression(this.llmProvider, this.model);
-    agent.agentLifecycles.add(new CompressionLifecycle(agent.compression));
-}
-```
-
-### Token Counting
-
-Token counting uses model-specific tokenizers:
-
-```java
-// MessageTokenCounter counts tokens for message list
-int currentTokens = MessageTokenCounter.count(messages);
-
-// LLMModelContextRegistry provides max input tokens per model
-int maxTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(model);
-```
-
-## Summary
-
-Key concepts covered in this tutorial:
-
-1. **Automatic Context Management**: Compression triggers automatically when token usage exceeds threshold
-2. **Intelligent Splitting**: Preserves system message, recent turns, and current conversation chain
-3. **LLM-Powered Summarization**: Uses LLM to create meaningful summaries of compressed content
-4. **Transparent Integration**: Works through Agent lifecycle without manual intervention
-5. **Configurable Behavior**: Adjustable threshold, recent turns, and can be disabled
-
-Next steps:
-- Learn about [Long-term Memory](tutorial-memory.md) for cross-session persistence
-- Explore [Tool Calling](tutorial-tool-calling.md) to extend agent capabilities
-- Build complex workflows with [Flow Orchestration](tutorial-flow.md)
+Earlier scenario analysis and extended examples are retained in the [pinned version](https://github.com/chancetop-com/core-ai/blob/cf6479d7eca83c78cd4f80765601db3f1917241b/docs/en/tutorial-compression.md). They may use older APIs; use the source-checked examples above for current development.

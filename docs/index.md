@@ -2,7 +2,7 @@
 layout: home
 hero:
   name: core-ai
-  text: 从第一个 Agent 到团队协作
+  text: 构建 Agent 应用
   tagline: 用 Server 管理资源，用 CLI 完成任务，用 Java 框架构建应用。
   image:
     src: /core-ai-logo-v5-symbol-c-icon.svg

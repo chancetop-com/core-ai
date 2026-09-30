@@ -1,136 +1,58 @@
-# Core-AI Overview
+# Core AI Overview
 
-## What is Core-AI?
+<span class="legacy-anchor" id="what-is-core-ai"></span>
+<span class="legacy-anchor" id="core-features"></span>
+<span class="legacy-anchor" id="_1-unified-llm-abstraction"></span>
+<span class="legacy-anchor" id="_2-intelligent-agents"></span>
+<span class="legacy-anchor" id="_3-tool-calling"></span>
+<span class="legacy-anchor" id="_4-rag-retrieval-augmented-generation"></span>
+<span class="legacy-anchor" id="_5-flow-orchestration"></span>
+<span class="legacy-anchor" id="_6-observability"></span>
+<span class="legacy-anchor" id="architecture-design"></span>
+<span class="legacy-anchor" id="layered-architecture"></span>
+<span class="legacy-anchor" id="modular-design"></span>
+<span class="legacy-anchor" id="design-principles"></span>
+<span class="legacy-anchor" id="_1-builder-pattern"></span>
+<span class="legacy-anchor" id="_2-async-first"></span>
+<span class="legacy-anchor" id="_3-extensibility"></span>
+<span class="legacy-anchor" id="_4-production-ready"></span>
+<span class="legacy-anchor" id="use-cases"></span>
+<span class="legacy-anchor" id="technology-stack"></span>
+<span class="legacy-anchor" id="open-source-ecosystem"></span>
+<span class="legacy-anchor" id="next-steps"></span>
 
-Core-AI is a powerful Java framework designed specifically for building intelligent agents (AI Agents) and multi-agent applications. It provides a comprehensive set of abstractions and tools that enable developers to easily integrate various Large Language Model (LLM) providers and build sophisticated AI-driven applications.
+Core AI combines a team service, a terminal client and a Java agent framework. Server and CLI share `core-ai` and `core-ai-api` within one repository, but their entry points and runtime requirements differ.
 
-## Core Features
+## Choose an entry point {#选择入口}
 
-### 1. Unified LLM Abstraction
-- **Multi-Provider Support**: Seamless integration with Azure OpenAI, Azure AI Inference, and other LLM providers
-- **Standardized Interface**: Unified API interface for easy switching between different model providers
-- **Streaming Response**: Support for real-time streaming output to enhance user experience
+| Part | Purpose | Start here |
+| --- | --- | --- |
+| Server | Manage agents, tools, skills and datasets; expose Web, REST and SSE | [Server](server.md) |
+| CLI | Local agents, editor ACP and Server Hub operations | [CLI](cli.md) |
+| Framework | Build agents, tools, context and Flow in Java applications | [Java framework](framework.md) |
 
-### 2. Intelligent Agents
-- **Autonomous Decision Making**: Agents can autonomously select tools and execution strategies based on tasks
-- **System Prompts**: Support for custom system prompts and Mustache template engine
-- **Memory Management**: Built-in short-term and long-term memory systems
-- **Reflection Capability**: Agents can reflect on execution results and self-improve
+CLI can connect directly to a model provider or sign in to Server for its model proxy. Hub commands discover and call authorized Server resources. Framework Flow and the Server workflow editor are separate layers; their configurations are not interchangeable.
 
-### 3. Tool Calling
-- **Function Calling**: Support for JSON Schema-defined function calls
-- **MCP Protocol**: Full support for Model Context Protocol for standardized tool integration
-- **Built-in Toolset**: Out-of-the-box implementation of commonly used tools
+## Environment and versions {#环境与版本}
 
-### 4. RAG (Retrieval-Augmented Generation)
-- **Vector Storage**: Integration with vector databases like Milvus and HNSWLib
-- **Intelligent Retrieval**: Support for query rewriting, similarity search, and reranking
-- **Document Processing**: Built-in document splitting and processing tools
+Source baseline: `e1afa9fa`, CLI 2.0.21, framework 1.4.0-SNAPSHOT, public API 1.3.0-SNAPSHOT. Source builds require **Java 25** and **Gradle Wrapper 9.3.0**. Native CLI releases include a runtime. Server also needs MongoDB and Redis; other infrastructure depends on enabled features.
 
-### 5. Flow Orchestration
-- **Visual Workflows**: Orchestrate complex execution flows through directed graphs
-- **Node Types**: Support for Agent, LLM, RAG, Tool, Operator, and other node types
-- **Conditional Routing**: Support for condition-based dynamic routing
-- **State Management**: Complete flow state tracking and persistence
+A SNAPSHOT constant does not establish Maven publication. Use same-checkout project dependencies or artifacts confirmed by your team. Check the source and `--help` for your actual release.
 
-### 6. Observability
-- **Distributed Tracing**: Built-in OpenTelemetry support
-- **Performance Monitoring**: Detailed execution time and token usage statistics
-- **Integration Support**: Compatible with observability platforms like Langfuse and Jaeger
+## Capabilities and prerequisites {#能力与前提}
 
-## Architecture Design
+- Agents: prompts, providers, tools and execution status.
+- Tools: annotated functions, MCP and approval handling; side effects depend on each implementation.
+- Context: compression and memory are independently configured.
+- Retrieval: RAG needs documents, embeddings, a VectorStore and its runtime dependencies.
+- Orchestration and tracing: framework Flow, Server workflows and Traces have distinct contracts.
 
-### Layered Architecture
+## Reading path {#推荐阅读路径}
 
-```
-┌─────────────────────────────────────┐
-│        Applications Layer           │
-├─────────────────────────────────────┤
-│      Orchestration Layer            │
-│         Flow / Planning             │
-├─────────────────────────────────────┤
-│         Agents Layer                │
-│   Agent / Memory / Reflection       │
-├─────────────────────────────────────┤
-│       Capabilities Layer            │
-│  Tools / RAG / VectorStore / MCP    │
-├─────────────────────────────────────┤
-│        Providers Layer              │
-│     LLM / Embeddings / Reranker     │
-└─────────────────────────────────────┘
-```
+[Quick Start](quickstart.md) → [Offline Agent](framework.md#离线-agent) → [Basic Agent](tutorial-basic-agent.md) → [Function Tools](tutorial-tool-calling.md). Continue with [Memory](tutorial-memory.md), [RAG](tutorial-rag.md), [Skills](tutorial-skills.md) or [Flow](tutorial-flow.md) as needed.
 
-### Modular Design
+The [tutorial index](tutorials.md) states prerequisites and validation limits. [API Reference](/en/api) points to current types and source. Design records explain background rather than define the current API.
 
-Core-AI adopts a highly modular design with main modules including:
+## Validation scope {#验证范围}
 
-- **core-ai-api**: API definitions and interfaces (Java 17 compatible)
-- **core-ai**: Main framework library containing all core functionality
-- **example-service**: Reference implementation demonstrating framework usage
-- **example-service-interface**: Service interface definitions
-
-## Design Principles
-
-### 1. Builder Pattern
-All core classes provide fluent builder APIs to simplify complex object creation:
-
-```java
-Agent agent = Agent.builder()
-    .name("assistant")
-    .llmProvider(provider)
-    .systemPrompt("You are a helpful assistant")
-    .enableRAG(ragConfig)
-    .build();
-```
-
-### 2. Async-First
-The framework design fully considers asynchronous execution, supporting streaming responses and concurrent processing.
-
-### 3. Extensibility
-Through interfaces and abstract classes, easily extend new LLM providers, tools, and vector stores.
-
-### 4. Production-Ready
-- Complete error handling and retry mechanisms
-- State persistence and recovery
-- Distributed tracing and monitoring
-
-## Use Cases
-
-Core-AI is suitable for building various AI-driven applications:
-
-1. **Intelligent Customer Service**: Build context-aware customer service agents that can call tools
-2. **Code Assistants**: Create development assistants that understand code and execute tasks
-3. **Data Analytics Platforms**: Build analytics agents for data querying and report generation
-4. **Workflow Automation**: Implement complex business process automation through flow orchestration
-5. **Knowledge Management Systems**: Build enterprise knowledge bases and Q&A systems using RAG
-
-## Technology Stack
-
-- **Java 21**: Leveraging the latest Java features
-- **Gradle**: Build system using Kotlin DSL
-- **core-ng framework**: Base application framework
-- **Jackson**: JSON processing
-- **Mustache**: Template engine
-- **OpenTelemetry**: Distributed tracing
-
-## Open Source Ecosystem
-
-Core-AI actively embraces the open source ecosystem with excellent integration with the following projects:
-
-- **Milvus**: Open source vector database
-- **OpenTelemetry**: Cloud-native observability framework
-- **Model Context Protocol**: Standardized model context protocol
-- **Langfuse**: Observability platform for LLM applications
-
-## Next Steps
-
-- Check out the [Quick Start Guide](quickstart.md) to get up and running quickly
-- Read the Tutorials to learn about features in depth:
-  - [Building AI Agents](tutorial-basic-agent.md) - Create intelligent agents
-  - [Memory Systems](tutorial-memory.md) - Long-term memory with vector search
-  - [Compression](tutorial-compression.md) - Session-based context management
-  - [Tool Calling](tutorial-tool-calling.md) - Extend agents with tools
-  - [RAG Integration](tutorial-rag.md) - Knowledge retrieval
-  - [Flow Orchestration](tutorial-flow.md) - Visual workflows
-- Explore the [API Documentation](api-reference.md) for detailed interfaces
-- Reference [Example Projects](examples.md) for real-world applications
+Source CLI help/version, Mock Agent and FakeSession were tested on macOS. Server startup, live model calls, Windows execution, native installation and upgrades were not verified. Expected results are separate from execution records in the [full manual (Chinese)](/cn/manual/).

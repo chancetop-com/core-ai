@@ -31,3 +31,50 @@
   .site-start h2 { font-size: 22px; margin-top: 32px; }
 }
 @media (prefers-reduced-motion: reduce) { .start-links a, .demo-grid a { transition: none; } }
+
+.VPNavBarTranslations, .VPNavScreenTranslations { display: none !important; }
+.doc-language-switch { margin-right: 18px; font-size: 13px; white-space: nowrap; color: var(--vp-c-text-2); }
+.doc-language-switch:hover { color: var(--vp-c-brand-1); }
+.doc-language-switch:focus-visible, .vp-doc img[data-doc-preview]:focus-visible, .doc-table-scroll:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 4px; }
+.VPDoc .content-container { max-width: 760px !important; }
+.vp-doc p, .vp-doc li { line-height: 1.85; }
+.vp-doc h1 { font-size: 30px; line-height: 1.4; }
+.vp-doc h2 { margin-top: 38px; padding-top: 22px; }
+.vp-doc div[class*="language-"] { margin: 20px 0; border-radius: 10px; }
+.vp-doc [class*="language-"] code { font-size: 13px; line-height: 1.7; }
+.doc-table-scroll { max-width: 100%; overflow: auto; margin: 22px 0; overscroll-behavior-x: contain; }
+.doc-table-scroll table { display: table; min-width: 560px; width: 100%; margin: 0; }
+.doc-table-scroll th { white-space: nowrap; }
+.doc-context { border-left: 3px solid var(--vp-c-brand-1); background: var(--vp-c-bg-soft); padding: 16px 20px; margin-bottom: 26px; font-size: 14px; line-height: 1.7; }
+.doc-context p { margin: 6px 0; }
+.doc-context a { color: var(--vp-c-brand-1); }
+.legacy-anchor { display: block; height: 0; scroll-margin-top: 110px; }
+.vp-doc img[data-doc-preview] { cursor: zoom-in; }
+.doc-image-dialog { width: min(1100px, 94vw); max-height: 92vh; margin: auto; padding: 20px; color: var(--vp-c-text-1); background: var(--vp-c-bg); border: 1px solid var(--vp-c-divider); border-radius: 12px; box-shadow: 0 12px 50px rgba(0,0,0,.25); }
+.doc-image-dialog::backdrop { background: rgba(0,0,0,.65); }
+.preview-heading { display: flex; align-items: center; gap: 16px; justify-content: space-between; margin-bottom: 16px; line-height: 1.5; }
+.preview-heading button { padding: 7px 12px; border: 1px solid var(--vp-c-divider); border-radius: 6px; white-space: nowrap; }
+.doc-image-dialog img { display: block; max-width: 100%; max-height: 72vh; margin: auto; object-fit: contain; }
+.doc-image-dialog p { margin-top: 14px; font-size: 13px; line-height: 1.7; }
+.doc-image-dialog a { color: var(--vp-c-brand-1); text-decoration: underline; }
+.site-start h2 { border: 0; padding-top: 0; }
+.site-start .start-links a, .site-start .demo-grid a { text-decoration: none; }
+@media (max-width: 640px) {
+  .doc-language-switch { margin-right: 10px; font-size: 12px; }
+  .vp-doc h1 { font-size: 27px; }
+  .doc-table-scroll::before { content: '↔ 左右滑动查看全部列 · Scroll horizontally'; display: block; padding: 8px 0; color: var(--vp-c-text-2); font-size: 12px; position: sticky; left: 0; }
+  .doc-image-dialog { padding: 14px; }
+  .VPHero .image-container { height: 170px; }
+  .VPHero .image-src { max-width: 150px; max-height: 150px; }
+}
+
+.architecture-map { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 24px 0; }
+.architecture-map > div { border: 1px solid var(--vp-c-divider); background: var(--vp-c-bg-soft); padding: 16px; border-radius: 8px; }
+.architecture-map strong, .architecture-map a, .architecture-map span { display: block; line-height: 1.8; }
+.architecture-map strong { margin-bottom: 8px; }
+@media (max-width: 640px) { .architecture-map { grid-template-columns: 1fr; } }
+@media (min-width: 768px) and (max-width: 1279px) {
+  .VPNavBarMenu, .VPNavBarAppearance, .VPNavBarSocialLinks, .VPNavBarExtra { display: none !important; }
+  .VPNavBarHamburger { display: flex !important; }
+  .VPNavScreen { display: block !important; }
+}

@@ -9,7 +9,17 @@ export const sidebarEn: DefaultTheme.SidebarItem[] = [
       { text: 'Quick Start', link: '/en/quickstart' },
       { text: 'Tutorials Index', link: '/en/tutorials' },
       { text: 'Full Manual · 中文', link: '/cn/manual/' },
-      { text: 'CLI Troubleshooting · 中文', link: '/cn/cli-troubleshooting' }
+      { text: 'CLI Troubleshooting', link: '/en/cli-troubleshooting' }
+    ]
+  },
+  {
+    text: 'Use Guides',
+    collapsed: false,
+    items: [
+      { text: 'Server', link: '/en/server' },
+      { text: 'CLI', link: '/en/cli' },
+      { text: 'Java framework', link: '/en/framework' },
+      { text: 'Windows / macOS', link: '/en/cli-troubleshooting' }
     ]
   },
   {
@@ -27,7 +37,7 @@ export const sidebarEn: DefaultTheme.SidebarItem[] = [
     ]
   },
   {
-    text: 'Architecture & Design',
+    text: 'Design & Historical Records',
     collapsed: true,
     items: [
       { text: 'Server Architecture', link: '/en/design-server-architecture' },

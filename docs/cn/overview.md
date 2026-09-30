@@ -1,130 +1,59 @@
-# Core-AI 概述
+# Core AI 概览
 
-## 什么是 Core-AI？
+<span class="legacy-anchor" id="core-ai-概述"></span>
+<span class="legacy-anchor" id="什么是-core-ai"></span>
+<span class="legacy-anchor" id="核心特性"></span>
+<span class="legacy-anchor" id="_1-统一的-llm-抽象"></span>
+<span class="legacy-anchor" id="_2-智能代理-agent"></span>
+<span class="legacy-anchor" id="_3-工具调用-tool-calling"></span>
+<span class="legacy-anchor" id="_4-rag-检索增强生成"></span>
+<span class="legacy-anchor" id="_5-流程编排-flow"></span>
+<span class="legacy-anchor" id="_6-可观测性"></span>
+<span class="legacy-anchor" id="架构设计"></span>
+<span class="legacy-anchor" id="分层架构"></span>
+<span class="legacy-anchor" id="模块化设计"></span>
+<span class="legacy-anchor" id="设计原则"></span>
+<span class="legacy-anchor" id="_1-构建者模式"></span>
+<span class="legacy-anchor" id="_2-异步优先"></span>
+<span class="legacy-anchor" id="_3-可扩展性"></span>
+<span class="legacy-anchor" id="_4-生产就绪"></span>
+<span class="legacy-anchor" id="使用场景"></span>
+<span class="legacy-anchor" id="技术栈"></span>
+<span class="legacy-anchor" id="开源生态"></span>
+<span class="legacy-anchor" id="下一步"></span>
 
-Core-AI 是一个强大的 Java 框架，专门用于构建智能代理（AI Agent）和多代理应用程序。它提供了一套完整的抽象层和工具，让开发者能够轻松集成各种大语言模型（LLM）提供商，构建复杂的 AI 驱动应用。
+Core AI 由团队服务、命令行和 Java 框架组成。三部分在同一仓库中共享 `core-ai` 与 `core-ai-api`，但入口和运行前提不同。
 
-## 核心特性
+## 选择入口
 
-### 1. 统一的 LLM 抽象
-- **多提供商支持**：无缝集成 Azure OpenAI、Azure AI Inference 等多个 LLM 提供商
-- **标准化接口**：统一的 API 接口，轻松切换不同的模型提供商
-- **流式响应**：支持实时流式输出，提升用户体验
+| 部分 | 解决什么问题 | 从哪里开始 |
+| --- | --- | --- |
+| Server | 管理 Agent、工具、技能和数据集，提供 Web、REST、SSE | [Server 上手](server.md) |
+| CLI | 本地 Agent、编辑器 ACP、Server Hub 资源操作 | [CLI 上手](cli.md) |
+| 框架 | 在 Java 应用内构建 Agent、工具、上下文和 Flow | [Java 框架](framework.md) |
 
-### 2. 智能代理（Agent）
-- **自主决策**：代理可以根据任务自主选择工具和执行策略
-- **系统提示**：支持自定义系统提示和 Mustache 模板引擎
-- **记忆管理**：内置短期和长期记忆系统
-- **反思能力**：代理可以反思执行结果并自我改进
+CLI 可以独立配置模型，也可以登录 Server 使用模型代理。Hub 子命令负责发现与调用 Server 资源；登录和资源授权仍由服务决定。框架 Flow 与 Server Web 工作流是不同层次，配置不能直接互换。
 
-### 3. 工具调用（Tool Calling）
-- **函数调用**：支持 JSON Schema 定义的函数调用
-- **MCP 协议**：完整支持 Model Context Protocol，实现标准化的工具集成
-- **内置工具集**：提供常用工具的开箱即用实现
+## 环境与版本
 
-### 4. RAG（检索增强生成）
-- **向量存储**：集成 Milvus 和 HNSWLib 等向量数据库
-- **智能检索**：支持查询重写、相似度搜索和重排序
-- **文档处理**：内置文档分割和处理工具
+当前文档以 `e1afa9fa` 源码为基线：CLI 2.0.21，框架 1.4.0-SNAPSHOT，公共 API 1.3.0-SNAPSHOT。Java 源码需要 **25**，Wrapper 为 **Gradle 9.3.0**；原生 CLI 发布包自带运行时。Server 还需要 MongoDB 和 Redis，其他服务按功能准备。
 
-### 5. 流程编排（Flow）
-- **可视化流程**：通过有向图编排复杂的执行流程
-- **节点类型**：支持 Agent、LLM、RAG、Tool、Operator 等多种节点
-- **条件路由**：支持基于条件的动态路由
-- **状态管理**：完整的流程状态跟踪和持久化
+版本常量不代表 SNAPSHOT 已发布到 Maven。优先使用同 checkout 的 project 依赖，或团队确认的实际制品。其他 release 先检查对应源码、资产架构及 `--help`。
 
-### 6. 可观测性
-- **分布式追踪**：内置 OpenTelemetry 支持
-- **性能监控**：详细的执行时间和令牌使用统计
-- **集成支持**：兼容 Langfuse、Jaeger 等观测平台
+## 能力与前提
 
-## 架构设计
+- Agent：系统提示、模型、工具和执行状态；从最小问答逐步增加能力。
+- 工具：函数注解、MCP 和权限审批；具体副作用由工具实现决定。
+- 上下文：压缩与记忆有独立配置，记忆不是会话目录的别名。
+- 检索：RAG 需要文档、embedding、VectorStore 及其运行依赖。
+- 编排与观测：框架 Flow、Server 工作流和 Traces 分别查看实际实现与配置。
 
-### 分层架构
+## 推荐阅读路径
 
-```
-┌─────────────────────────────────────┐
-│        应用层（Applications）        │
-├─────────────────────────────────────┤
-│      编排层（Orchestration）         │
-│         Flow / Planning             │
-├─────────────────────────────────────┤
-│         代理层（Agents）             │
-│   Agent / Memory / Reflection       │
-├─────────────────────────────────────┤
-│       能力层（Capabilities）         │
-│  Tools / RAG / VectorStore / MCP    │
-├─────────────────────────────────────┤
-│      提供商层（Providers）           │
-│     LLM / Embeddings / Reranker     │
-└─────────────────────────────────────┘
-```
+[快速开始](quickstart.md) → [离线 Agent](framework.md#离线-agent) → [基础 Agent](tutorial-basic-agent.md) → [函数工具](tutorial-tool-calling.md)。按任务需要继续 [Memory](tutorial-memory.md)、[RAG](tutorial-rag.md)、[Skills](tutorial-skills.md) 或 [Flow](tutorial-flow.md)。
 
-### 模块化设计
+[教程索引](tutorials.md)提供每项能力的前提与验证范围。[API 参考](/cn/api)指向实际类型和源码；设计记录用于了解背景，不能替代当前契约。
 
-Core-AI 采用高度模块化的设计，主要模块包括：
+## 验证范围
 
-- **core-ai-api**: API 定义和接口（Java 17 兼容）
-- **core-ai**: 主框架库，包含所有核心功能
-- **example-service**: 参考实现，展示框架使用方式
-- **example-service-interface**: 服务接口定义
-
-## 设计原则
-
-### 1. 构建者模式
-所有核心类都提供流畅的构建者 API，简化复杂对象的创建：
-
-```java
-Agent agent = Agent.builder()
-    .name("assistant")
-    .llmProvider(provider)
-    .systemPrompt("You are a helpful assistant")
-    .enableRAG(ragConfig)
-    .build();
-```
-
-### 2. 异步优先
-框架设计充分考虑异步执行，支持流式响应和并发处理。
-
-### 3. 可扩展性
-通过接口和抽象类，轻松扩展新的 LLM 提供商、工具和向量存储。
-
-### 4. 生产就绪
-- 完整的错误处理和重试机制
-- 状态持久化和恢复
-- 分布式追踪和监控
-
-## 使用场景
-
-Core-AI 适用于构建各种 AI 驱动的应用：
-
-1. **智能客服系统**：构建能够理解上下文、调用工具的客服代理
-2. **代码助手**：创建能够理解代码、执行任务的开发助手
-3. **数据分析平台**：构建能够查询数据、生成报告的分析代理
-4. **工作流自动化**：通过流程编排实现复杂的业务流程自动化
-5. **知识管理系统**：利用 RAG 构建企业知识库和问答系统
-
-## 技术栈
-
-- **Java 21**：利用最新的 Java 特性
-- **Gradle**：使用 Kotlin DSL 的构建系统
-- **core-ng framework**：基础应用框架
-- **Jackson**：JSON 处理
-- **Mustache**：模板引擎
-- **OpenTelemetry**：分布式追踪
-
-## 开源生态
-
-Core-AI 积极拥抱开源生态，与以下项目良好集成：
-
-- **Milvus**：开源向量数据库
-- **OpenTelemetry**：云原生可观测性框架
-- **Model Context Protocol**：标准化的模型上下文协议
-- **Langfuse**：LLM 应用的可观测性平台
-
-## 下一步
-
-- 查看 [快速开始指南](quickstart.md) 了解如何快速上手
-- 阅读 [教程](tutorial.md) 深入学习各项功能
-- 探索 [API 文档](api-reference.md) 了解详细接口
-- 参考 [示例项目](examples.md) 获取实际应用案例
+Mac 的源码 CLI help/version、Mock Agent 和 FakeSession 已实测。Server 启动、真实模型请求、Windows 实机、发布包安装与升级未验证。文档中的预期结果不等同于执行记录，详见[完整手册](manual/)。
