@@ -295,6 +295,15 @@ public final class GenerateImageTool extends ToolCall {
         }
     }
 
+    @Override
+    public long getTimeoutMs() {
+        // slow upstreams are synchronous here: the KIE provider polls a task for up to ten minutes (seedream
+        // high-quality multi-reference renders run past five) and then downloads the results. Keep this above that
+        // poll window, or the tool-level timeout fires first and discards the task id the provider error carries
+        // (2026-10-04: a paid seedream task was abandoned at the old five-minute default).
+        return 12 * 60 * 1000L;
+    }
+
     public interface ImageOutputSink {
         String save(String fileName, String contentType, byte[] bytes);
     }

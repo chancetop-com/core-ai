@@ -594,6 +594,7 @@ class KieMediaProviderTest {
                 () -> provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, null, null)));
 
         assertTrue(error.getMessage().contains("did not complete within"));
+        assertTrue(error.getMessage().contains("seedream/5-pro-text-to-image"), "the abandoned task is identified by model and taskId: " + error.getMessage());
     }
 
     @Test

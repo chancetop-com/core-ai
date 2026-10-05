@@ -9,6 +9,8 @@ import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
 import ai.core.utils.JsonUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -22,6 +24,7 @@ import java.util.Map;
  * @author Stephen
  */
 public class KieMediaProvider implements MediaProvider {
+    private static final Logger LOGGER = LoggerFactory.getLogger(KieMediaProvider.class);
     private static final String DEFAULT_UPLOAD_URL = "https://kieai.redpandaai.co";
 
     // docs.kie.ai model pages: seedance takes 480p/720p/1080p, wan 2.7 takes 720p/1080p
@@ -69,7 +72,9 @@ public class KieMediaProvider implements MediaProvider {
     // image tasks are async on KIE but the MediaProvider contract is synchronous, so generateImage polls;
     // package-private so tests do not have to wait on the production cadence
     Duration imagePollInterval = Duration.ofSeconds(2);
-    Duration imagePollTimeout = Duration.ofMinutes(5);
+    // seedream high-quality multi-reference tasks run past five minutes; a task dropped at the deadline is a paid render
+    // whose artifact is never collected (2026-10-04: a seedream-5-pro quality=high task was abandoned at PT5M)
+    Duration imagePollTimeout = Duration.ofMinutes(10);
 
     public KieMediaProvider(String baseUrl, String token) {
         this(baseUrl, DEFAULT_UPLOAD_URL, token, null);
@@ -219,7 +224,12 @@ public class KieMediaProvider implements MediaProvider {
                 if (images != null) return images;
             }
             if (System.nanoTime() >= deadline) {
-                throw new IllegalStateException("KIE image task did not complete within " + imagePollTimeout + ", taskId=" + taskId);
+                // the task id is logged so an abandoned task can be reconciled upstream: it may still complete (and be
+                // billed) after this call has given up, and nothing else on this path records it
+                LOGGER.warn("KIE image task did not complete within {}, model={}, taskId={} — giving up on the poll; the task may still run upstream",
+                        imagePollTimeout, model, taskId);
+                throw new IllegalStateException("KIE image task did not complete within " + imagePollTimeout
+                        + ", model=" + model + ", taskId=" + taskId);
             }
         }
     }

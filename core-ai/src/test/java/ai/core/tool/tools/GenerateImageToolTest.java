@@ -16,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -294,6 +295,13 @@ class GenerateImageToolTest {
         assertTrue(result.getResult().contains("image 2"), result.getResult());
         assertTrue(result.getResult().contains("not a standard PNG/JPEG/WEBP"), result.getResult());
         assertTrue(result.getResult().contains("sandbox_path"), "the way back must be spelled out");
+    }
+
+    @Test
+    void theToolTimeoutOutlastsTheSlowKieImagePoll() {
+        // a slow upstream must be able to finish (and hand back its task id) instead of a tool-level timeout discarding it
+        assertTrue(GenerateImageTool.builder().build().getTimeoutMs() > Duration.ofMinutes(10).toMillis(),
+                "generate_image must outwait the KIE image poll (10 minutes)");
     }
 
     private ExecutionContext context(MediaProvider provider) {
