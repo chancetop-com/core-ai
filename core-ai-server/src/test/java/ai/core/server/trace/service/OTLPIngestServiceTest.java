@@ -8,12 +8,16 @@ import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
 import com.google.protobuf.ByteString;
+import com.mongodb.MongoClientSettings;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.impl.ZonedDateTimeCodec;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.common.v1.AnyValue;
 import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.trace.v1.ResourceSpans;
 import io.opentelemetry.proto.trace.v1.ScopeSpans;
+import org.bson.BsonDocument;
+import org.bson.codecs.configuration.CodecRegistries;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -35,6 +39,35 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class OTLPIngestServiceTest {
+    @Test
+    void calculatesGpt6LunaCatalogCostAndRollsUpTraceCost() {
+        var service = service();
+        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+
+        service.ingest(request(span("chat",
+            attr("gen_ai.request.model", "gpt-6-luna"),
+            attr("gen_ai.usage.input_tokens", "1000"),
+            attr("gen_ai.usage.cached_tokens", "400"),
+            attr("gen_ai.usage.output_tokens", "200"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(service.spanCollection).insert(inserted.capture());
+        assertEquals(0.000164, inserted.getValue().costUsd, 1e-12);
+        assertEquals("model_catalog", inserted.getValue().costSource);
+        assertEquals("gpt-6-luna", inserted.getValue().pricingModelId);
+
+        var updates = ArgumentCaptor.forClass(Bson.class);
+        verify(service.traceCollection, atLeastOnce()).update(any(Bson.class), updates.capture());
+        var codecs = CodecRegistries.fromRegistries(CodecRegistries.fromCodecs(new ZonedDateTimeCodec()), MongoClientSettings.getDefaultCodecRegistry());
+        var costUpdate = updates.getAllValues().stream()
+            .map(update -> update.toBsonDocument(BsonDocument.class, codecs))
+            .map(update -> update.getDocument("$inc", new BsonDocument()))
+            .filter(update -> update.containsKey("cost_usd"))
+            .findFirst().orElseThrow();
+        assertEquals(0.000164, costUpdate.getDouble("cost_usd").getValue(), 1e-12);
+    }
+
     @Test
     void calculatesCostFromGatewayModelPrice() {
         var service = service();
