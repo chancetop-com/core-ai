@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bell, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Files, FlaskConical, FolderKanban, Gauge, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Files, FlaskConical, FolderKanban, Gauge, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -243,6 +243,16 @@ export default function Layout() {
             <Settings size={16} />
             {!collapsed && 'Settings'}
           </button>
+          <a href="https://chancetop-com.github.io/core-ai/cn/manual/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Documentation (opens in a new tab)"
+            title="Documentation (opens in a new tab)"
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
+            style={{ color: 'var(--color-text-secondary)' }}>
+            <BookOpen size={16} />
+            {!collapsed && 'Documentation'}
+          </a>
           <button onClick={toggle}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
             style={{ color: 'var(--color-text-secondary)' }}>
