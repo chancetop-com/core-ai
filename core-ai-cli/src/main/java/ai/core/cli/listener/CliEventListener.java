@@ -134,9 +134,11 @@ public class CliEventListener extends BaseEventListener {
     @Override
     public void onToolStart(ToolStartEvent event) {
         LOGGER.debug("tool start: {} callId={} args={}", event.toolName, event.callId, truncate(event.arguments));
-        panel.stopSpinnerIfActive();
-        panel.getMarkdownRenderer().flush();
-        showSkillHintIfApplicable(event);
+        if (!isBackgroundTaskTool(event.taskId, event.toolName)) {
+            panel.stopSpinnerIfActive();
+            panel.getMarkdownRenderer().flush();
+            showSkillHintIfApplicable(event);
+        }
         if (AskUserTool.TOOL_NAME.equals(event.toolName)) {
             askUserCallIds.add(event.callId);
             stopEscReader();

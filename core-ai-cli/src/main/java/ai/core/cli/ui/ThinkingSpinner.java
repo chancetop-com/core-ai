@@ -158,6 +158,10 @@ public class ThinkingSpinner {
         lastContentLen = 0;
     }
 
+    public boolean isRunning() {
+        return thread != null;
+    }
+
     public long getElapsedMs() {
         return startTime > 0 ? System.currentTimeMillis() - startTime : 0;
     }

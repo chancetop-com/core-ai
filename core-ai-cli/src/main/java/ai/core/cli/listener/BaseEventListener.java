@@ -167,7 +167,9 @@ public class BaseEventListener implements AgentEventListener {
             } else {
                 panel.toolResult(event.status, event.result);
             }
-        } else {
+        } else if (!isInBackgroundTask(event.taskId)) {
+            // foreground task tools keep the spinner alive between their lines; a background task's
+            // tools only tick the live counters and must never restart it
             panel.startSpinner();
         }
         batchCallIds.remove(event.callId);
@@ -233,10 +235,13 @@ public class BaseEventListener implements AgentEventListener {
         lastTurnComplete.set(event);
         printTurnSummary();
 
-        // Background tasks keep working between turns - keep the spinner alive so the
-        // user sees live progress (task count / tool call count) while waiting.
-        if (hasRunningBackgroundTasks()) {
-            panel.startSpinner();
+        // Background tasks keep working between turns. The animated spinner cannot stay alive
+        // for them: the CLI returns to the interactive prompt, whose line the spinner's redraws
+        // would erase (and jline would redraw it right back) — that is the reported flicker.
+        // Report the task state once, statically, instead.
+        int backgroundTasks = runningBackgroundTaskCount();
+        if (backgroundTasks > 0) {
+            panel.backgroundTasksRunning(backgroundTasks, getRunTasksToolCount());
         }
 
         if (turnFuture != null) turnFuture.complete(null);
@@ -245,13 +250,20 @@ public class BaseEventListener implements AgentEventListener {
     @Override
     public void onTaskStatus(TaskStatusEvent event) {
         removeTask(event.taskId);
-        if (!hasRunningBackgroundTasks()) {
-            panel.stopSpinnerIfActive();
-        }
     }
 
-    private boolean hasRunningBackgroundTasks() {
-        return runTasks.values().stream().anyMatch(RuntimeTask::runInBackground);
+    private int runningBackgroundTaskCount() {
+        return (int) runTasks.values().stream().filter(RuntimeTask::runInBackground).count();
+    }
+
+    /**
+     * True for tool events fired by tools running inside a background task. Those events stay
+     * invisible in the CLI (they only tick the live counters), so they must not touch the
+     * spinner: stopping/starting it around every background tool call makes the line blink.
+     */
+    protected boolean isBackgroundTaskTool(String taskId, String toolName) {
+        if (taskId == null || TaskTool.TOOL_NAME.equals(toolName)) return false;
+        return isInBackgroundTask(taskId);
     }
 
     @Override

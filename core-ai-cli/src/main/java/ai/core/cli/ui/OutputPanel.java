@@ -131,6 +131,7 @@ public class OutputPanel {
     private final StreamingMarkdownRenderer mdRenderer;
     private final ThinkingSpinner spinner;
     private final PlanTableRenderer planRenderer;
+    private final DiffRenderer diffRenderer;
     private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
     private final IntSupplier terminalWidth;
 
@@ -145,6 +146,7 @@ public class OutputPanel {
         this.mdRenderer = new StreamingMarkdownRenderer(writer, smartTerminal, terminalWidth);
         this.spinner = new ThinkingSpinner(writer, terminalWidth);
         this.planRenderer = new PlanTableRenderer(writer, terminalWidth);
+        this.diffRenderer = new DiffRenderer(writer);
         this.terminalWidth = terminalWidth;
     }
 
@@ -212,7 +214,7 @@ public class OutputPanel {
             writer.println("\n" + AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " " + summary);
             var diffResult = DiffGenerator.DiffResult.deserialize(diff);
             if (diffResult != null) {
-                renderDiff(diffResult);
+                diffRenderer.render(diffResult);
             }
         }
         writer.flush();
@@ -231,6 +233,18 @@ public class OutputPanel {
         boolean wasReasoningShown = reasoningShown;
         resetShown();
         startSpinner(wasReasoningShown);
+    }
+
+    /**
+     * Static one-line status printed when a turn ends while background tasks are still running.
+     * The animated spinner must not stay on here: the CLI returns to the interactive prompt and
+     * the spinner's redraws would erase the prompt line (and fight jline redrawing it back).
+     */
+    public void backgroundTasksRunning(int tasks, int tools) {
+        String taskText = tasks == 1 ? "1 background task" : tasks + " background tasks";
+        String toolText = tools > 0 ? " (" + (tools == 1 ? "1 tool" : tools + " tools") + ")" : "";
+        writer.println(INDENT + AnsiTheme.MUTED + "\u22EF " + taskText + " running" + toolText + AnsiTheme.RESET);
+        writer.flush();
     }
 
 
@@ -319,39 +333,6 @@ public class OutputPanel {
     private void resetShown() {
         reasoningShown = false;
         textStarted = false;
-    }
-
-    private void renderDiff(DiffGenerator.DiffResult diff) {
-        String summary = formatDiffSummary(diff.additions(), diff.deletions());
-        writer.println(INDENT + "\u23BF  " + AnsiTheme.MUTED + summary + AnsiTheme.RESET);
-
-        int maxLineNum = diff.lines().stream().mapToInt(DiffGenerator.DisplayLine::lineNumber).max().orElse(0);
-        int numWidth = Math.max(String.valueOf(maxLineNum).length(), 3);
-        String numFmt = "%" + numWidth + "d";
-
-        for (var line : diff.lines()) {
-            String num = String.format(numFmt, line.lineNumber());
-            switch (line.tag()) {
-                case DELETE -> writer.println(
-                        INDENT + "  " + AnsiTheme.SYN_DIFF_DEL + num + " -" + line.content() + AnsiTheme.RESET);
-                case INSERT -> writer.println(
-                        INDENT + "  " + AnsiTheme.SYN_DIFF_ADD + num + " +" + line.content() + AnsiTheme.RESET);
-                default -> writer.println(
-                        INDENT + "  " + AnsiTheme.MUTED + num + "  " + line.content() + AnsiTheme.RESET);
-            }
-        }
-    }
-
-    private String formatDiffSummary(int additions, int deletions) {
-        if (additions > 0 && deletions > 0) {
-            return String.format("Added %d line%s, removed %d line%s",
-                    additions, additions > 1 ? "s" : "", deletions, deletions > 1 ? "s" : "");
-        } else if (additions > 0) {
-            return String.format("Added %d line%s", additions, additions > 1 ? "s" : "");
-        } else if (deletions > 0) {
-            return String.format("Removed %d line%s", deletions, deletions > 1 ? "s" : "");
-        }
-        return "No changes";
     }
 
     public void error(String message) {
