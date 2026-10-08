@@ -95,6 +95,24 @@ class LLMModelContextRegistryTest {
     }
 
     @Test
+    void testEstimateCostUsdGpt6Luna() {
+        var cost = registry.estimateCostUsd("gpt-6-luna", 1_000, 200, 0);
+
+        assertNotNull(cost);
+        assertEquals(0.0002, cost, 1e-12);
+    }
+
+    @Test
+    void testEstimateCostUsdGpt6LunaWithCachedTokensAndProviderPrefixes() {
+        for (var model : new String[]{"gpt-6-luna", "openai/gpt-6-luna", "litellm/gpt-6-luna", "openai/responses/gpt-6-luna"}) {
+            var cost = registry.estimateCostUsd(model, 1_000, 200, 400);
+
+            assertNotNull(cost);
+            assertEquals(0.000164, cost, 1e-12, model);
+        }
+    }
+
+    @Test
     void testEstimateCostUsdDeepSeekOffPeakUsesBasePrice() {
         // 2026-08-18T12:00:00Z = Beijing 20:00, off-peak
         var cost = registry.estimateCostUsd("deepseek-v4-pro", 1_000_000, 0, 0, Instant.parse("2026-08-18T12:00:00Z"));
@@ -113,15 +131,47 @@ class LLMModelContextRegistryTest {
     }
 
     @Test
-    void testDeepSeekFlashCarriesOffPeakBasePriceWithPeakMultiplier() {
-        // Official off-peak: $0.15/M input, $0.003/M cached input, $0.6/M output; peak is twice the off-peak rate
+    void testDeepSeekFlashCarriesPeakPriceWithOffPeakWindows() {
         var info = registry.getModelInfo("deepseek-flash");
 
         assertNotNull(info);
-        assertEquals(1.5e-07, info.inputCostPerToken(), 1e-12);
-        assertEquals(3e-09, info.cacheReadInputTokenCost(), 1e-12);
-        assertEquals(6e-07, info.outputCostPerToken(), 1e-12);
-        assertEquals(2.0, info.peakPriceMultiplier(), 1e-12);
+        assertEquals(3e-07, info.inputCostPerToken(), 1e-12);
+        assertEquals(6e-09, info.cacheReadInputTokenCost(), 1e-12);
+        assertEquals(1.2e-06, info.outputCostPerToken(), 1e-12);
+        assertEquals(1.0, info.peakPriceMultiplier(), 1e-12);
+        assertNotNull(info.offPeakPricing());
+        assertEquals(1.5e-07, info.offPeakPricing().inputCostPerToken(), 1e-12);
+        assertEquals(3e-09, info.offPeakPricing().cacheReadInputTokenCost(), 1e-12);
+        assertEquals(6e-07, info.offPeakPricing().outputCostPerToken(), 1e-12);
+    }
+
+    @Test
+    void testEstimateCostUsdDeepSeekOffPeakWindowsIncludeCachedTokensAndWeekends() {
+        for (var model : new String[]{"deepseek-v4-pro", "openrouter/deepseek/deepseek-v4-pro-0813"}) {
+            for (var when : new String[]{"2026-08-18T00:00:00Z", "2026-08-18T04:00:00Z", "2026-08-18T10:00:00Z", "2026-08-22T02:00:00Z"}) {
+                var cost = registry.estimateCostUsd(model, 1_000, 200, 400, Instant.parse(when));
+
+                assertNotNull(cost);
+                assertEquals(0.0008008, cost, 1e-12, model + " at " + when);
+            }
+            for (var when : new String[]{"2026-08-18T01:00:00Z", "2026-08-18T06:00:00Z"}) {
+                var cost = registry.estimateCostUsd(model, 1_000, 200, 400, Instant.parse(when));
+
+                assertNotNull(cost);
+                assertEquals(0.0016016, cost, 1e-12, model + " at " + when);
+            }
+        }
+    }
+
+    @Test
+    void testEstimateCostUsdTencentOffPeakUsesCatalogHours() {
+        var offPeakCost = registry.estimateCostUsd("openrouter/tencent/hy3", 1_000, 200, 400, Instant.parse("2026-08-18T16:00:00Z"));
+        var peakCost = registry.estimateCostUsd("openrouter/tencent/hy3", 1_000, 200, 400, Instant.parse("2026-08-19T00:00:00Z"));
+
+        assertNotNull(offPeakCost);
+        assertNotNull(peakCost);
+        assertEquals(0.00012375, offPeakCost, 1e-12);
+        assertEquals(0.000198, peakCost, 1e-12);
     }
 
     @Test

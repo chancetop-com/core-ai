@@ -8,7 +8,12 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -86,6 +91,7 @@ public final class LLMModelContextRegistry {
                     getDoubleOrDefault(modelNode, "input_cost_per_token_cache_hit", inputCostPerToken));
                 // Optional peak-hour price multiplier (e.g. DeepSeek 2026-08 peak/off-peak pricing); 1.0 = no peak pricing.
                 var peakPriceMultiplier = getDoubleOrDefault(modelNode, "peak_price_multiplier", 1.0);
+                var offPeakPricing = readOffPeakPricing(modelNode, inputCostPerToken, outputCostPerToken, cacheReadInputTokenCost);
                 var supportsVision = getBooleanOrNull(modelNode, "supports_vision");
                 var supportsPdfInput = getBooleanOrNull(modelNode, "supports_pdf_input");
                 var supportsVideoInput = getBooleanOrNull(modelNode, "supports_video_input");
@@ -102,7 +108,7 @@ public final class LLMModelContextRegistry {
                     inputCostPerToken, outputCostPerToken, cacheReadInputTokenCost, peakPriceMultiplier,
                     supportsVision, supportsPdfInput, supportsVideoInput,
                     outputCostPerImage, outputCostPerSecond, inputCostPerImageToken, outputCostPerImageToken,
-                    outputCostPerVideoToken));
+                    outputCostPerVideoToken, offPeakPricing));
             }
 
             LOGGER.debug("Loaded {} model entries from context registry", modelInfoMap.size());
@@ -117,6 +123,45 @@ public final class LLMModelContextRegistry {
             return fieldNode.asInt();
         }
         return defaultValue;
+    }
+
+    private OffPeakPricing readOffPeakPricing(JsonNode modelNode, double inputCost, double outputCost, double cachedInputCost) {
+        var pricing = modelNode.get("off_peak_pricing");
+        if (pricing == null || !pricing.isObject()) return null;
+        var windows = new ArrayList<PricingWindow>();
+        var configuredWindows = pricing.get("windows");
+        if (configuredWindows != null && configuredWindows.isArray()) {
+            configuredWindows.forEach(window -> windows.addAll(readPricingWindows(window)));
+        } else {
+            windows.addAll(readPricingWindows(pricing));
+        }
+        return new OffPeakPricing(getDoubleOrDefault(pricing, "input_cost_per_token", inputCost),
+            getDoubleOrDefault(pricing, "output_cost_per_token", outputCost),
+            getDoubleOrDefault(pricing, "cache_read_input_token_cost", cachedInputCost), List.copyOf(windows));
+    }
+
+    private List<PricingWindow> readPricingWindows(JsonNode window) {
+        var weekdays = new ArrayList<DayOfWeek>();
+        var configuredWeekdays = window.get("weekdays");
+        if (configuredWeekdays != null && configuredWeekdays.isArray()) {
+            for (var day : configuredWeekdays) {
+                weekdays.add(day.isNumber() ? DayOfWeek.of(day.asInt()) : DayOfWeek.valueOf(day.asText().toUpperCase(Locale.ROOT)));
+            }
+        }
+        var hours = window.get("hours_utc");
+        if (hours == null) return List.of();
+        var ranges = new ArrayList<String>();
+        if (hours.isArray()) {
+            hours.forEach(range -> ranges.add(range.asText()));
+        } else {
+            ranges.add(hours.asText());
+        }
+        var windows = new ArrayList<PricingWindow>();
+        for (var range : ranges) {
+            var times = range.split("-");
+            windows.add(new PricingWindow(List.copyOf(weekdays), LocalTime.parse(times[0]), LocalTime.parse(times[1])));
+        }
+        return windows;
     }
 
     private double getDoubleOrDefault(JsonNode node, String field, double defaultValue) {
@@ -224,6 +269,12 @@ public final class LLMModelContextRegistry {
         var safeOutputTokens = Math.max(outputTokens, 0);
         var safeCachedTokens = Math.min(Math.max(cachedInputTokens, 0), safeInputTokens);
         var uncachedInputTokens = safeInputTokens - safeCachedTokens;
+        var offPeak = info.offPeakPricing();
+        if (offPeak != null && offPeak.windows().stream().anyMatch(window -> window.contains(when))) {
+            return uncachedInputTokens * offPeak.inputCostPerToken()
+                + safeCachedTokens * offPeak.cacheReadInputTokenCost()
+                + safeOutputTokens * offPeak.outputCostPerToken();
+        }
         var multiplier = info.peakPriceMultiplier() > 0 && isPeakHour(when) ? info.peakPriceMultiplier() : 1.0;
 
         return (uncachedInputTokens * info.inputCostPerToken()
@@ -340,13 +391,29 @@ public final class LLMModelContextRegistry {
             Double outputCostPerSecond,
             Double inputCostPerImageToken,
             Double outputCostPerImageToken,
-            Double outputCostPerVideoToken) {
+            Double outputCostPerVideoToken,
+            OffPeakPricing offPeakPricing) {
         public int contextWindow() {
             return maxInputTokens;
         }
     }
 
     public record MediaCostEstimate(Double costUsd, String pricingModelId, Double units, String unitType) {
+    }
+
+    public record OffPeakPricing(double inputCostPerToken, double outputCostPerToken, double cacheReadInputTokenCost,
+                                 List<PricingWindow> windows) {
+    }
+
+    public record PricingWindow(List<DayOfWeek> weekdays, LocalTime start, LocalTime end) {
+        boolean contains(Instant when) {
+            var utc = when.atZone(ZoneOffset.UTC);
+            if (!weekdays.isEmpty() && !weekdays.contains(utc.getDayOfWeek())) return false;
+            var time = utc.toLocalTime();
+            if (start.equals(end)) return true;
+            if (start.isBefore(end)) return !time.isBefore(start) && time.isBefore(end);
+            return !time.isBefore(start) || time.isBefore(end);
+        }
     }
 
     private record MediaEntry(String key, ModelInfo info) {
