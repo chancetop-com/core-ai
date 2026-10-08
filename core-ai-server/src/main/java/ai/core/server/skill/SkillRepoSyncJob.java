@@ -25,6 +25,7 @@ import java.time.ZonedDateTime;
 public class SkillRepoSyncJob implements Job {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillRepoSyncJob.class);
     private static final int MAX_ERROR_LENGTH = 500;
+    private static final int DUE_TOLERANCE_SECONDS = 30;
     public static final int TICK_MINUTES = 5;
     public static final int DEFAULT_SYNC_INTERVAL_MINUTES = 30;
 
@@ -89,6 +90,9 @@ public class SkillRepoSyncJob implements Job {
 
     private boolean sweepDue(int intervalMinutes) {
         var last = lastSweepAt;
-        return last == null || !ZonedDateTime.now().isBefore(last.plusMinutes(intervalMinutes));
+        if (last == null) return true;
+        // a check can land a moment before the exact deadline when the interval is a multiple of the tick;
+        // without the tolerance the sweep would randomly slip a whole tick
+        return !ZonedDateTime.now().plusSeconds(DUE_TOLERANCE_SECONDS).isBefore(last.plusMinutes(intervalMinutes));
     }
 }
