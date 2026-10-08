@@ -292,6 +292,7 @@ public class ChatMessageService {
             var record = new ChatMessage.EventRecord();
             record.name = event.name;
             record.data = event.data;
+            record.card = event.card;
             record.callId = event.callId;
             buffer(sessionId).events.add(record);
         }

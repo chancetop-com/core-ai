@@ -88,7 +88,42 @@ export interface SandboxTerminalSpec {
   image?: string;
 }
 
-export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment | TasksSegment | CompressionSegment;
+export interface QuickReplyOption {
+  label: string;
+  value: string;
+  description?: string;
+}
+
+/** A platform-renderable card block; fields beyond `type` are per block kind (see design-session-rich-cards.md). */
+export interface CardBlock {
+  type: string;
+  [key: string]: unknown;
+}
+
+export interface RichCard {
+  schema_version?: number;
+  title?: string;
+  blocks: CardBlock[];
+}
+
+/**
+ * The platform-standard quick_replies event (present_choices tool): rendered as quick-reply buttons,
+ * clicking one sends its value as the next user message.
+ */
+export interface QuickRepliesSegment {
+  type: 'quick_replies';
+  question?: string;
+  options: QuickReplyOption[];
+}
+
+/** A custom event that carried the optional platform renderable card. */
+export interface CardSegment {
+  type: 'card';
+  name?: string;
+  card: RichCard;
+}
+
+export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment | TasksSegment | CompressionSegment | QuickRepliesSegment | CardSegment;
 
 export interface ChatAttachment {
   url: string;

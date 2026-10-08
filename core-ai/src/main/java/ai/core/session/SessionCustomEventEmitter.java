@@ -39,18 +39,22 @@ public class SessionCustomEventEmitter implements CustomEventEmitter {
     }
 
     @Override
-    public String emit(String name, String data, String callId) {
+    public String emit(String name, String data, String card, String callId) {
         if (name == null || name.isBlank()) return "event name is required";
         if (data == null) return "event data is required";
+        if (card != null) {
+            var cardError = RichCards.validate(card);
+            if (cardError != null) return cardError;
+        }
         if (!turnActive.getAsBoolean()) return "custom events can only be sent while a turn is running";
-        var bytes = data.getBytes(StandardCharsets.UTF_8).length;
+        var bytes = data.getBytes(StandardCharsets.UTF_8).length + (card == null ? 0 : card.getBytes(StandardCharsets.UTF_8).length);
         if (bytes > MAX_EVENT_BYTES) return "event payload exceeds 256 KB; publish the content as a file and send its URL instead";
         if (turnBytes.addAndGet(bytes) > MAX_TURN_BYTES) {
             turnBytes.addAndGet(-bytes);
             return "the custom event budget for this turn (1 MB) is used up; publish the content as a file and send its URL instead";
         }
-        LOGGER.debug("custom event dispatched, name={}, bytes={}, sessionId={}", name, bytes, sessionId);
-        dispatcher.accept(CustomEvent.of(sessionId, name, data, callId));
+        LOGGER.debug("custom event dispatched, name={}, bytes={}, card={}, sessionId={}", name, bytes, card != null, sessionId);
+        dispatcher.accept(CustomEvent.of(sessionId, name, data, card, callId));
         return null;
     }
 }

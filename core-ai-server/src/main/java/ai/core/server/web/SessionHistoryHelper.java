@@ -101,6 +101,7 @@ final class SessionHistoryHelper {
             var event = new Message.EventRecord();
             event.name = record.name;
             event.data = record.data;
+            event.card = record.card;
             event.callId = record.callId;
             return event;
         }).toList();

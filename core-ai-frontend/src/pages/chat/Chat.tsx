@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } fro
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import { useCapabilities } from '../../api/capabilities';
-import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, SseTaskStatusEvent, ChatSessionSummary, SessionArtifact, SessionFeedback } from '../../api/session';
+import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, SseTaskStatusEvent, SseCustomEvent, ChatSessionSummary, SessionArtifact, SessionFeedback } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, NotificationSettings, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import type { IdName } from '../../api/session';
@@ -16,7 +16,7 @@ import type { ChatComposerHandle, ComposerAttachment } from './components/ChatCo
 import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, TasksSegment, SandboxTerminalSpec } from './types';
-import { historyToChatMessages, restoreCachedChatMessages, compressionSegment } from './utils';
+import { historyToChatMessages, restoreCachedChatMessages, compressionSegment, customEventSegments, appendCustomSegments } from './utils';
 import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn, trackStrandedTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 
@@ -1208,6 +1208,24 @@ export default function Chat() {
         });
         break;
       }
+      case 'CUSTOM':
+      case 'custom': {
+        const customEvent = event as SseCustomEvent;
+        const incoming = customEventSegments(customEvent);
+        if (incoming.length > 0) {
+          setMessages(prev => {
+            const updated = [...prev];
+            let last = updated[updated.length - 1];
+            if (!last || last.role !== 'agent') {
+              last = { role: 'agent', segments: [], timestamp: new Date().toISOString() };
+              updated.push(last);
+            }
+            updated[updated.length - 1] = { ...last, segments: appendCustomSegments(last.segments || [], incoming) };
+            return updated;
+          });
+        }
+        break;
+      }
     }
   }, [clearTurnPending, markTurnPending]);
 
@@ -1589,6 +1607,10 @@ export default function Chat() {
       showToast(`Send failed: ${msg}. Please retry.`);
     }
   }, [doStreamMessage, ensureSession, selectedAgentId, sessionId, showToast, status, variableValues]);
+
+  const handleQuickReply = useCallback((value: string) => {
+    void handleSend(value, []);
+  }, [handleSend]);
 
   const handleApproval = useCallback(async (decision: 'APPROVE' | 'DENY') => {
     if (!sessionId || !awaitInfo) return;
@@ -2033,6 +2055,7 @@ export default function Chat() {
         onApproval={handleApproval}
         showFeedback={status === 'idle' && !!sessionId && hasHadAgentReply}
         onFeedbackClick={() => setShowFeedbackModal(true)}
+        onQuickReply={handleQuickReply}
       />
 
       <ChatComposer

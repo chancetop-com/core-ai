@@ -114,6 +114,9 @@ public class ChatMessage {
         @Field(name = "data")
         public String data;
 
+        @Field(name = "card")
+        public String card;
+
         @Field(name = "call_id")
         public String callId;
     }

@@ -216,6 +216,7 @@ public class SseEventBridge implements AgentEventListener {
         var sse = new SseCustomEvent();
         sse.name = event.name;
         sse.data = event.data;
+        sse.card = event.card;
         sse.callId = event.callId;
         eventPublisher.publish(sessionId, sse);
     }

@@ -1,4 +1,4 @@
-import type { ChatMessage, CompressionSegment, MessageSegment, TextSegment } from './types';
+import type { ChatMessage, CompressionSegment, MessageSegment, QuickRepliesSegment, QuickReplyOption, RichCard, TextSegment } from './types';
 import type { HistoryMessage } from '../../api/session';
 
 export function normalizeArgs(argsJson: string | undefined): Record<string, unknown> | null {
@@ -72,6 +72,10 @@ function buildSegments(m: HistoryMessage): MessageSegment[] {
         resultStatus: t.status,
       })),
     });
+  }
+  if (m.events && m.events.length > 0) {
+    const custom = appendCustomSegments([], m.events.flatMap(event => customEventSegments(event)));
+    segments.push(...custom);
   }
   if (m.content) {
     segments.push({ type: 'text', content: m.content });
@@ -170,4 +174,67 @@ export function compressionSegment(usage: CompressionUsage): CompressionSegment 
     maxContextTokens: usage.maxContextTokens,
     triggerThreshold: usage.triggerThreshold,
   };
+}
+
+function parseJsonObject(text?: string): Record<string, unknown> | null {
+  if (!text) return null;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function quickReplyOptions(payload: Record<string, unknown> | null): QuickReplyOption[] {
+  if (!payload || !Array.isArray(payload.options)) return [];
+  const options: QuickReplyOption[] = [];
+  for (const raw of payload.options) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const option = raw as Record<string, unknown>;
+    if (typeof option.label !== 'string' || !option.label) continue;
+    options.push({
+      label: option.label,
+      value: typeof option.value === 'string' && option.value ? option.value : option.label,
+      description: typeof option.description === 'string' && option.description ? option.description : undefined,
+    });
+  }
+  return options;
+}
+
+/**
+ * Turns a custom event into renderable chat segments: the standard quick_replies event becomes buttons,
+ * any other event with the platform card companion field becomes a generic card. Unknown events render nothing.
+ */
+export function customEventSegments(event: { name: string; data?: string; card?: string }): MessageSegment[] {
+  if (event.name === 'quick_replies') {
+    const payload = parseJsonObject(event.data);
+    const options = quickReplyOptions(payload);
+    if (options.length === 0) return [];
+    const question = payload && typeof payload.question === 'string' && payload.question ? payload.question : undefined;
+    return [{ type: 'quick_replies', question, options }];
+  }
+  if (event.card) {
+    const card = parseJsonObject(event.card);
+    if (card && Array.isArray(card.blocks) && card.blocks.length > 0) {
+      return [{ type: 'card', name: event.name, card: card as unknown as RichCard }];
+    }
+  }
+  return [];
+}
+
+/** Appends incoming custom-event segments, merging consecutive identical quick_replies groups. */
+export function appendCustomSegments(segments: MessageSegment[], incoming: MessageSegment[]): MessageSegment[] {
+  const next = [...segments];
+  for (const segment of incoming) {
+    const last = next[next.length - 1];
+    if (segment.type === 'quick_replies' && last?.type === 'quick_replies' && sameQuickReplies(last, segment)) continue;
+    next.push(segment);
+  }
+  return next;
+}
+
+function sameQuickReplies(a: QuickRepliesSegment, b: QuickRepliesSegment): boolean {
+  if (a.options.length !== b.options.length) return false;
+  return a.options.every((option, idx) => option.label === b.options[idx].label && option.value === b.options[idx].value);
 }

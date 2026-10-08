@@ -47,7 +47,7 @@ class CustomEventDispatchTest {
             @Override
             public void afterModel(CompletionRequest completionRequest, CompletionResponse completionResponse, ExecutionContext executionContext) {
                 var emitter = (CustomEventEmitter) executionContext.getCustomVariables().get(CustomEventEmitter.CONTEXT_KEY);
-                emitReason.set(emitter.emit("menu_table", "{\"rows\":[1]}", null));
+                emitReason.set(emitter.emit("menu_table", "{\"rows\":[1]}", null, null));
             }
         });
 
@@ -85,7 +85,7 @@ class CustomEventDispatchTest {
             .getCustomVariables().get(CustomEventEmitter.CONTEXT_KEY);
 
         assertNotNull(emitter, "the session must install its emitter into the execution context");
-        assertNotNull(emitter.emit("menu_table", "{}", null), "an idle session cannot send custom events");
+        assertNotNull(emitter.emit("menu_table", "{}", null, null), "an idle session cannot send custom events");
         session.close();
     }
 }

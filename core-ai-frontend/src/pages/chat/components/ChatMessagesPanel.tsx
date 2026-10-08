@@ -7,13 +7,14 @@ import rehypeSanitize from 'rehype-sanitize';
 import type { PluggableList } from 'unified';
 import { AlertCircle, Bot, CheckCircle2, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, User } from 'lucide-react';
 import type { SessionArtifact } from '../../../api/session';
-import type { ChatMessage, CompressionSegment, MessageSegment, PlanTodo, SandboxSegment, SandboxTerminalSpec, TasksSegment, ToolsSegment } from '../types';
+import type { CardSegment, ChatMessage, CompressionSegment, MessageSegment, PlanTodo, QuickRepliesSegment, SandboxSegment, SandboxTerminalSpec, TasksSegment, ToolsSegment } from '../types';
 import { formatMessageTime, formatMessageTimeFull, getMessageText } from '../utils';
 import { chatSanitizeSchema } from '../markdownSanitizeSchema';
 import type { ArtifactSpec } from './artifactTypes';
 import ArtifactCard from './ArtifactCard';
 import AuthedImage from './AuthedImage';
 import CopyButton from './CopyButton';
+import { QuickReplyButtons, RichCardView } from './CustomEventBlocks';
 import PlanUpdateBlock from './PlanUpdateBlock';
 import SandboxBlock from './SandboxBlock';
 import ThinkingBlock from './ThinkingBlock';
@@ -138,6 +139,8 @@ interface ChatMessageRowProps {
   onApproval: (decision: 'APPROVE' | 'DENY') => void;
   showFeedback: boolean;
   onFeedbackClick?: () => void;
+  onQuickReply: (value: string) => void;
+  interactiveDisabled: boolean;
 }
 
 const ChatMessageRow = memo(function ChatMessageRow({
@@ -155,12 +158,15 @@ const ChatMessageRow = memo(function ChatMessageRow({
   onApproval,
   showFeedback,
   onFeedbackClick,
+  onQuickReply,
+  interactiveDisabled,
 }: ChatMessageRowProps) {
   const sandboxSeg = msg.segments?.find(s => s.type === 'sandbox') as SandboxSegment | undefined;
   const compressionSeg = msg.segments?.find(s => s.type === 'compression') as CompressionSegment | undefined;
   const tasksSeg = msg.segments?.find(s => s.type === 'tasks') as TasksSegment | undefined;
   const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
   const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
+  const customSegs = msg.segments?.filter((s): s is QuickRepliesSegment | CardSegment => s.type === 'quick_replies' || s.type === 'card') ?? [];
   const textSeg = msg.segments?.find(s => s.type === 'text');
   const generatedVideo = textSeg && msg.role === 'agent' ? extractGeneratedVideo(textSeg.content) : null;
   const attachments = msg.attachments ?? [];
@@ -202,6 +208,13 @@ const ChatMessageRow = memo(function ChatMessageRow({
         {((toolsSeg && toolsSeg.tools.length > 0) || compressionSeg) && (
           <div className="mb-3">
             <ToolsBlock tools={toolsSeg?.tools ?? []} compression={compressionSeg} />
+          </div>
+        )}
+        {customSegs.length > 0 && (
+          <div className="mb-3 flex flex-col gap-2">
+            {customSegs.map((seg, idx) => seg.type === 'quick_replies'
+              ? <QuickReplyButtons key={idx} question={seg.question} options={seg.options} disabled={interactiveDisabled} onSelect={onQuickReply} />
+              : <RichCardView key={idx} card={seg.card} disabled={interactiveDisabled} onAction={onQuickReply} />)}
           </div>
         )}
         {(hasAttachments || hasRenderableText) && (
@@ -367,6 +380,7 @@ interface ChatMessagesPanelProps {
   onApproval: (decision: 'APPROVE' | 'DENY') => void;
   showFeedback?: boolean;
   onFeedbackClick?: () => void;
+  onQuickReply: (value: string) => void;
 }
 
 const ChatMessagesPanel = memo(function ChatMessagesPanel({
@@ -395,12 +409,14 @@ const ChatMessagesPanel = memo(function ChatMessagesPanel({
   onApproval,
   showFeedback,
   onFeedbackClick,
+  onQuickReply,
 }: ChatMessagesPanelProps) {
   const renderableMessages = useMemo<VisibleMessage[]>(() => (
     messages
       .map((msg, index) => ({ msg, index }))
       .filter(({ msg, index }) => shouldRenderMessage(msg, index, messages.length, status))
   ), [messages, status]);
+  const interactiveDisabled = status === 'running';
   const lastAgentMsgIndex = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'agent') return i;
@@ -543,6 +559,8 @@ const ChatMessagesPanel = memo(function ChatMessagesPanel({
               onApproval={onApproval}
               showFeedback={showFeedback === true && index === lastAgentMsgIndex}
               onFeedbackClick={onFeedbackClick}
+              onQuickReply={onQuickReply}
+              interactiveDisabled={interactiveDisabled}
             />
           );
         })}

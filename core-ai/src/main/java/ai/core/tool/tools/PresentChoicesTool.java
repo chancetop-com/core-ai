@@ -96,7 +96,7 @@ public final class PresentChoicesTool extends ToolCall {
             payload.put("question", question);
         }
         payload.put("options", options);
-        var reason = emitter.emit(QUICK_REPLIES_EVENT, JsonUtil.toJson(payload), context.getCurrentToolCallId());
+        var reason = emitter.emit(QUICK_REPLIES_EVENT, JsonUtil.toJson(payload), null, context.getCurrentToolCallId());
         if (reason != null) {
             return ToolCallResult.failed(reason);
         }

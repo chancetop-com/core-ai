@@ -21,6 +21,10 @@ public final class SendCustomEventTool extends ToolCall {
             them, so follow the product's own instructions for the exact name and JSON structure. Use it to
             drive rich UI updates that a plain text reply cannot express.
 
+            Optionally attach `card`: a platform-renderable card ({schema_version, title?, blocks:[{type,...}]})
+            that any client can draw generically when it has no renderer for this event name. Block types:
+            text, key_values, table, image, actions, divider.
+
             Keep the payload structured and small: at most 256 KB per event and 1 MB per turn. For large
             content, publish a file and put its URL in the event instead. Events can only be sent while the
             turn is running.
@@ -63,7 +67,12 @@ public final class SendCustomEventTool extends ToolCall {
         if (dataJson == null) {
             return ToolCallResult.failed("data is required and must be a JSON object");
         }
-        var reason = emitter.emit(eventName, dataJson, context.getCurrentToolCallId());
+        var rawCard = args.get("card");
+        var cardJson = dataJson(rawCard);
+        if (cardJson == null && rawCard != null) {
+            return ToolCallResult.failed("card must be a JSON object");
+        }
+        var reason = emitter.emit(eventName, dataJson, cardJson, context.getCurrentToolCallId());
         if (reason != null) {
             return ToolCallResult.failed(reason);
         }
@@ -83,7 +92,10 @@ public final class SendCustomEventTool extends ToolCall {
                 ToolCallParameters.ParamSpec.of(String.class, "event_name",
                     "The product-defined event name, e.g. \"menu_table\".").required(),
                 ToolCallParameters.ParamSpec.of(Map.class, "data",
-                    "A JSON object carrying the event payload; its shape is defined by the product that renders the event.").required()
+                    "A JSON object carrying the event payload; its shape is defined by the product that renders the event.").required(),
+                ToolCallParameters.ParamSpec.of(Map.class, "card",
+                    "Optional platform renderable card: {schema_version: 1, title?, blocks: [{type, ...}]}. "
+                        + "Block types: text, key_values, table, image, actions, divider. Follow the product's instructions for the exact shape.").optional()
             ));
             this.needAuth(Boolean.FALSE);
             this.directReturn(Boolean.FALSE);

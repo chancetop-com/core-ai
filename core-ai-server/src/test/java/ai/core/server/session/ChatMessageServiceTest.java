@@ -158,7 +158,7 @@ class ChatMessageServiceTest {
         when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
         var listener = service.listener("s-1");
 
-        listener.onCustomEvent(CustomEvent.of("s-1", "menu_table", "{\"rows\":[]}", "call-1"));
+        listener.onCustomEvent(CustomEvent.of("s-1", "menu_table", "{\"rows\":[]}", "{\"blocks\":[{\"type\":\"divider\"}]}", "call-1"));
         listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
@@ -168,6 +168,7 @@ class ChatMessageServiceTest {
         assertEquals(1, events.size());
         assertEquals("menu_table", events.getFirst().name);
         assertEquals("{\"rows\":[]}", events.getFirst().data);
+        assertEquals("{\"blocks\":[{\"type\":\"divider\"}]}", events.getFirst().card);
         assertEquals("call-1", events.getFirst().callId);
     }
 
@@ -176,7 +177,7 @@ class ChatMessageServiceTest {
         var service = service();
         when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
         var listener = service.listener("s-1");
-        listener.onCustomEvent(CustomEvent.of("s-1", "state_update", "{}", null));
+        listener.onCustomEvent(CustomEvent.of("s-1", "state_update", "{}", null, null));
 
         service.flushPendingTurn("s-1");
 

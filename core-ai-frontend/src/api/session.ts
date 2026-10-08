@@ -116,6 +116,13 @@ export interface SseSandboxEvent extends SseBaseEvent {
   image?: string;
 }
 
+export interface SseCustomEvent extends SseBaseEvent {
+  name: string;
+  data: string;
+  card?: string;
+  call_id?: string;
+}
+
 export type SseEvent =
   | SseTextChunkEvent
   | SseReasoningChunkEvent
@@ -130,7 +137,8 @@ export type SseEvent =
   | SseEnvironmentOutputChunkEvent
   | SseCompressionEvent
   | SseSandboxEvent
-  | SseTaskStatusEvent;
+  | SseTaskStatusEvent
+  | SseCustomEvent;
 
 export interface HistoryToolCall {
   call_id: string;
@@ -156,6 +164,13 @@ export interface HistoryCompression {
   context_tokens?: number;
   max_context_tokens?: number;
   trigger_threshold?: number;
+}
+
+export interface HistoryCustomEvent {
+  name: string;
+  data?: string;
+  card?: string;
+  call_id?: string;
 }
 
 export interface ChatSessionSummary {
@@ -188,6 +203,7 @@ export interface HistoryMessage {
   tools?: HistoryToolCall[];
   sandbox?: HistorySandbox;
   compression?: HistoryCompression;
+  events?: HistoryCustomEvent[];
   seq?: number;
   trace_id?: string;
   timestamp?: string;

@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,6 +41,34 @@ class SendCustomEventToolTest {
         var payload = JSON.fromJSON(Map.class, event.data);
         assertEquals("Menu A", payload.get("title"));
         assertNull(event.callId, "without a tool executor there is no call id to attach");
+    }
+
+    @Test
+    void attachesTheCardWhenProvided() {
+        var result = tool.execute(JSON.toJSON(Map.of(
+            "event_name", "menu_table",
+            "data", Map.of("title", "Menu A"),
+            "card", Map.of("schema_version", 1, "blocks", List.of(Map.of("type", "text", "text", "hello")))
+        )), context);
+
+        assertFalse(result.isFailed());
+        var event = (CustomEvent) dispatched.getFirst();
+        assertNotNull(event.card);
+        var card = JSON.fromJSON(Map.class, event.card);
+        assertNotNull(card.get("blocks"));
+    }
+
+    @Test
+    void failsWhenTheCardIsInvalid() {
+        var result = tool.execute(JSON.toJSON(Map.of(
+            "event_name", "menu_table",
+            "data", Map.of("title", "Menu A"),
+            "card", Map.of("blocks", List.of(Map.of("type", "chart")))
+        )), context);
+
+        assertTrue(result.isFailed());
+        assertTrue(result.getResult().contains("unknown block type"));
+        assertTrue(dispatched.isEmpty());
     }
 
     @Test

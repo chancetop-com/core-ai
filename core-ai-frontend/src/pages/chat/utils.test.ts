@@ -67,6 +67,33 @@ describe('historyToChatMessages', () => {
       { type: 'text', content: 'done' },
     ]);
   });
+
+  it('restores quick_replies buttons and generic cards from persisted events', () => {
+    const card = { schema_version: 1, blocks: [{ type: 'table', columns: [{ key: 'name', label: 'Item' }], rows: [{ name: 'Pad Thai' }] }] };
+    const message: HistoryMessage = {
+      role: 'agent',
+      content: 'done',
+      events: [
+        { name: 'quick_replies', data: JSON.stringify({ question: 'Continue?', options: [{ label: 'Yes' }, { label: 'No', value: 'no thanks' }] }) },
+        { name: 'menu_table', data: '{}', card: JSON.stringify(card) },
+        { name: 'unknown_event', data: '{"x":1}' },
+      ],
+    };
+
+    expect(historyToChatMessages([message])[0].segments).toEqual([
+      { type: 'quick_replies', question: 'Continue?', options: [{ label: 'Yes', value: 'Yes' }, { label: 'No', value: 'no thanks' }] },
+      { type: 'card', name: 'menu_table', card },
+      { type: 'text', content: 'done' },
+    ]);
+  });
+
+  it('merges consecutive identical quick_replies groups', () => {
+    const quick = { name: 'quick_replies', data: JSON.stringify({ options: [{ label: 'A' }, { label: 'B' }] }) };
+    const message: HistoryMessage = { role: 'agent', content: '', events: [quick, { ...quick }] };
+
+    const segments = historyToChatMessages([message])[0].segments;
+    expect(segments.filter(s => s.type === 'quick_replies')).toHaveLength(1);
+  });
 });
 
 describe('restoreCachedChatMessages', () => {

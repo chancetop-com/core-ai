@@ -17,6 +17,9 @@ public class SseCustomEvent extends SseBaseEvent {
     @Property(name = "data")
     public String data;
 
+    @Property(name = "card")
+    public String card;
+
     @Property(name = "call_id")
     public String callId;
 }
