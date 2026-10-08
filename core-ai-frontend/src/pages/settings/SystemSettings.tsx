@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ChevronDown, CircleAlert, RefreshCw, Save, Settings } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Box, CheckCircle2, ChevronDown, CircleAlert, Cpu, Database, Image as ImageIcon, PlugZap, RefreshCw, Save, Settings } from 'lucide-react';
 import { api, type GatewayModel, type SystemSettings as SystemSettingsData } from '../../api/client';
+
+type TabKey = 'llm' | 'media' | 'storage' | 'sandbox' | 'integrations';
+
+const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
+  { key: 'llm', label: 'LLM Models', icon: <Cpu size={14} /> },
+  { key: 'media', label: 'Media & Tools', icon: <ImageIcon size={14} /> },
+  { key: 'storage', label: 'Storage', icon: <Database size={14} /> },
+  { key: 'sandbox', label: 'Sandbox', icon: <Box size={14} /> },
+  { key: 'integrations', label: 'Integrations', icon: <PlugZap size={14} /> },
+];
 
 export default function SystemSettings() {
   const [settings, setSettings] = useState<SystemSettingsData | null>(null);
@@ -27,6 +37,7 @@ export default function SystemSettings() {
   const [githubAppInstallationId, setGithubAppInstallationId] = useState('');
   const [githubAppPrivateKey, setGithubAppPrivateKey] = useState('');
   const [sandboxSnapshotEnabled, setSandboxSnapshotEnabled] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>('llm');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -212,354 +223,388 @@ export default function SystemSettings() {
         </div>
       )}
 
-      <section className="rounded-xl border" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="font-semibold">Memory Extraction</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Select the gateway chat model used by the hourly agent memory consolidation job.
-          </p>
-        </div>
-        <div className="p-5 space-y-5">
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Extraction model</span>
-            <ModelSelect
-              value={memoryExtractionModel}
-              models={chatModels}
-              defaultModel={settings?.default_memory_extraction_model}
-              onChange={setMemoryExtractionModel}
-            />
-            <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-              Only enabled gateway models that support chat completions can be selected.
-            </span>
-          </label>
+      <div className="flex flex-wrap gap-1 p-1 rounded-lg w-fit" style={{ background: 'var(--color-bg-secondary)' }}>
+        {TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            style={{
+              background: activeTab === tab.key ? 'var(--color-bg-tertiary)' : 'transparent',
+              color: activeTab === tab.key ? 'var(--color-text)' : 'var(--color-text-secondary)',
+            }}>
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-          <div className="rounded-lg p-4 text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
-            <div style={{ color: 'var(--color-text-secondary)' }}>Effective model</div>
-            <div className="font-mono mt-1">{effectiveModel || 'Not configured'}</div>
-          </div>
-        </div>
-      </section>
+      {activeTab === 'llm' && (
+        <>
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">Memory Extraction</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Select the gateway chat model used by the hourly agent memory consolidation job.
+              </p>
+            </div>
+            <div className="p-5 space-y-5">
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Extraction model</span>
+                <ModelSelect
+                  value={memoryExtractionModel}
+                  models={chatModels}
+                  defaultModel={settings?.default_memory_extraction_model}
+                  onChange={setMemoryExtractionModel}
+                />
+                <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Only enabled gateway models that support chat completions can be selected.
+                </span>
+              </label>
 
-      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="font-semibold">Default LLM Model</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            The default text model used by agents when no model is specified in the agent definition.
-            Wins over the gateway default model; falls back to gateway routing and then to agent.properties when empty.
-          </p>
-        </div>
-        <div className="p-5 space-y-5">
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Text model</span>
-            <ModelSelect
-              value={llmModel}
-              models={chatModels}
-              defaultModel={settings?.default_llm_model}
-              onChange={setLlmModel}
-            />
-          </label>
-          <div className="rounded-lg p-4 text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
-            <div style={{ color: 'var(--color-text-secondary)' }}>Effective model</div>
-            <div className="font-mono mt-1">{llmModel || gatewayDefaultModel || settings?.default_llm_model || 'Not configured'}</div>
-          </div>
-        </div>
-      </section>
+              <div className="rounded-lg p-4 text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
+                <div style={{ color: 'var(--color-text-secondary)' }}>Effective model</div>
+                <div className="font-mono mt-1">{effectiveModel || 'Not configured'}</div>
+              </div>
+            </div>
+          </section>
 
-      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="font-semibold">Default Media &amp; Tool Models</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Default models used by caption_image, summarize_pdf, image generation, video generation and video understanding
-            when no model is specified on the agent. Leave empty to fall back to gateway routing.
-          </p>
-        </div>
-        <div className="p-5 space-y-5">
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Caption image model</span>
-            <ModelSelect
-              value={captionImageModel}
-              models={captionModels}
-              defaultModel={settings?.default_caption_image_model}
-              onChange={setCaptionImageModel}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Image generation model</span>
-            <ModelSelect
-              value={imageGenerationModel}
-              models={imageGenerationModels}
-              defaultModel={settings?.default_image_generation_model}
-              onChange={setImageGenerationModel}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Video generation model</span>
-            <ModelSelect
-              value={videoGenerationModel}
-              models={videoGenerationModels}
-              defaultModel={settings?.default_video_generation_model}
-              onChange={setVideoGenerationModel}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Video understanding model</span>
-            <ModelSelect
-              value={videoUnderstandingModel}
-              models={videoUnderstandingModels}
-              defaultModel={settings?.default_video_understanding_model}
-              onChange={setVideoUnderstandingModel}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Summarize PDF model</span>
-            <ModelSelect
-              value={summarizePdfModel}
-              models={chatModels}
-              onChange={setSummarizePdfModel}
-            />
-            <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-              Model used by summarize_pdf to read PDF documents. Must support file/document input
-              (e.g. GPT-series models via the responses endpoint).
-            </span>
-          </label>
-        </div>
-      </section>
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">Default LLM Model</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                The default text model used by agents when no model is specified in the agent definition.
+                Wins over the gateway default model; falls back to gateway routing and then to agent.properties when empty.
+              </p>
+            </div>
+            <div className="p-5 space-y-5">
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Text model</span>
+                <ModelSelect
+                  value={llmModel}
+                  models={chatModels}
+                  defaultModel={settings?.default_llm_model}
+                  onChange={setLlmModel}
+                />
+              </label>
+              <div className="rounded-lg p-4 text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
+                <div style={{ color: 'var(--color-text-secondary)' }}>Effective model</div>
+                <div className="font-mono mt-1">{llmModel || gatewayDefaultModel || settings?.default_llm_model || 'Not configured'}</div>
+              </div>
+            </div>
+          </section>
 
-      {chatModels.length === 0 && (
-        <div className="mt-6 rounded-lg border px-4 py-3 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-          No enabled chat gateway models are available. Add or enable a chat model under Settings → Gateway first.
-        </div>
+          {chatModels.length === 0 && <NoChatModelsNotice />}
+        </>
       )}
 
-      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="font-semibold">Object Storage</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Provider for file uploads and artifact downloads. Leave the account key blank to keep the existing value.
-            Changes take effect immediately.
-          </p>
-        </div>
-        <div className="p-5 space-y-4">
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Provider</span>
-            <select
-              value={storageProvider}
-              onChange={e => setStorageProvider(e.target.value)}
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            >
-              <option value="">Auto (Azure first, then MinIO)</option>
-              <option value="azure">Azure Blob</option>
-              <option value="minio">MinIO / S3</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Account name</span>
-            <input
-              type="text"
-              value={azureBlobAccountName}
-              onChange={e => setAzureBlobAccountName(e.target.value)}
-              placeholder="e.g. fbrdevbostorage"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Account key</span>
-            <input
-              type="password"
-              value={azureBlobAccountKey}
-              onChange={e => setAzureBlobAccountKey(e.target.value)}
-              placeholder={settings?.has_azure_blob_account_key ? 'Already configured (leave blank to keep)' : 'Not configured'}
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Multimodal container (public)</span>
-            <input
-              type="text"
-              value={azureBlobMultimodalContainer}
-              onChange={e => setAzureBlobMultimodalContainer(e.target.value)}
-              placeholder="static"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Artifact container (private)</span>
-            <input
-              type="text"
-              value={azureBlobArtifactContainer}
-              onChange={e => setAzureBlobArtifactContainer(e.target.value)}
-              placeholder="artifacts"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Public artifact container</span>
-            <input
-              type="text"
-              value={azureBlobPublicArtifactContainer}
-              onChange={e => setAzureBlobPublicArtifactContainer(e.target.value)}
-              placeholder="public-artifacts"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-            <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-              Artifacts the agent marks public are stored here and served straight from object storage, so the
-              container must allow anonymous read. Leave blank for the default name; failed uploads fall back
-              to the private container.
-            </span>
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Public base URL</span>
-            <input
-              type="text"
-              value={azureBlobPublicBaseUrl}
-              onChange={e => setAzureBlobPublicBaseUrl(e.target.value)}
-              placeholder="https://<account>.blob.core.windows.net"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">CDN base URL (optional)</span>
-            <input
-              type="text"
-              value={azureBlobCdnBaseUrl}
-              onChange={e => setAzureBlobCdnBaseUrl(e.target.value)}
-              placeholder="https://<front-door>.azurefd.net"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-        </div>
-      </section>
+      {activeTab === 'media' && (
+        <>
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">Default Media &amp; Tool Models</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Default models used by caption_image, summarize_pdf, image generation, video generation and video understanding
+                when no model is specified on the agent. Leave empty to fall back to gateway routing.
+              </p>
+            </div>
+            <div className="p-5 space-y-5">
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Caption image model</span>
+                <ModelSelect
+                  value={captionImageModel}
+                  models={captionModels}
+                  defaultModel={settings?.default_caption_image_model}
+                  onChange={setCaptionImageModel}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Image generation model</span>
+                <ModelSelect
+                  value={imageGenerationModel}
+                  models={imageGenerationModels}
+                  defaultModel={settings?.default_image_generation_model}
+                  onChange={setImageGenerationModel}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Video generation model</span>
+                <ModelSelect
+                  value={videoGenerationModel}
+                  models={videoGenerationModels}
+                  defaultModel={settings?.default_video_generation_model}
+                  onChange={setVideoGenerationModel}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Video understanding model</span>
+                <ModelSelect
+                  value={videoUnderstandingModel}
+                  models={videoUnderstandingModels}
+                  defaultModel={settings?.default_video_understanding_model}
+                  onChange={setVideoUnderstandingModel}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Summarize PDF model</span>
+                <ModelSelect
+                  value={summarizePdfModel}
+                  models={chatModels}
+                  onChange={setSummarizePdfModel}
+                />
+                <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Model used by summarize_pdf to read PDF documents. Must support file/document input
+                  (e.g. GPT-series models via the responses endpoint).
+                </span>
+              </label>
+            </div>
+          </section>
 
-      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="font-semibold">Sandbox Resume</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Preserve /workspace and /root/.claude when a sandbox is released. This is a release checkpoint, not continuous backup.
-          </p>
-        </div>
-        <div className="p-5 space-y-4">
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={sandboxSnapshotEnabled}
-              disabled={settings?.sandbox_snapshot_deployment_allowed !== true}
-              onChange={event => setSandboxSnapshotEnabled(event.target.checked)}
-            />
-            <span>
-              <span className="block text-sm font-medium">Enable filesystem snapshot and resume</span>
-              <span className="block text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                Requires deployment authorization and configured private object storage.
-              </span>
-            </span>
-          </label>
-          <div className="grid gap-3 sm:grid-cols-3 text-sm">
-            <SnapshotStatus label="Deployment" active={settings?.sandbox_snapshot_deployment_allowed === true}
-              activeText="Allowed" inactiveText="Blocked" />
-            <SnapshotStatus label="Private storage" active={settings?.sandbox_snapshot_storage_ready === true}
-              activeText="Ready" inactiveText="Not ready" />
-            <SnapshotStatus label="Effective state" active={settings?.sandbox_snapshot_effective === true}
-              activeText="Active" inactiveText="Inactive" />
-          </div>
-        </div>
-      </section>
+          {chatModels.length === 0 && <NoChatModelsNotice />}
+        </>
+      )}
 
-      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="font-semibold">Azure Speech</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Credentials for speech token issuance. Leave the key blank to keep the existing value.
-            Changes take effect immediately.
-          </p>
-        </div>
-        <div className="p-5 space-y-4">
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Endpoint</span>
-            <input
-              type="text"
-              value={azureSpeechEndpoint}
-              onChange={e => setAzureSpeechEndpoint(e.target.value)}
-              placeholder="https://xxx.cognitiveservices.azure.com/"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Key</span>
-            <input
-              type="password"
-              value={azureSpeechKey}
-              onChange={e => setAzureSpeechKey(e.target.value)}
-              placeholder={settings?.has_azure_speech_key ? 'Already configured (leave blank to keep)' : 'Not configured'}
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Region</span>
-            <input
-              type="text"
-              value={azureSpeechRegion}
-              onChange={e => setAzureSpeechRegion(e.target.value)}
-              placeholder="eastus"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-        </div>
-      </section>
+      {activeTab === 'storage' && (
+        <>
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">Object Storage</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Provider for file uploads and artifact downloads. Leave the account key blank to keep the existing value.
+                Changes take effect immediately.
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Provider</span>
+                <select
+                  value={storageProvider}
+                  onChange={e => setStorageProvider(e.target.value)}
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  <option value="">Auto (Azure first, then MinIO)</option>
+                  <option value="azure">Azure Blob</option>
+                  <option value="minio">MinIO / S3</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Account name</span>
+                <input
+                  type="text"
+                  value={azureBlobAccountName}
+                  onChange={e => setAzureBlobAccountName(e.target.value)}
+                  placeholder="e.g. fbrdevbostorage"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Account key</span>
+                <input
+                  type="password"
+                  value={azureBlobAccountKey}
+                  onChange={e => setAzureBlobAccountKey(e.target.value)}
+                  placeholder={settings?.has_azure_blob_account_key ? 'Already configured (leave blank to keep)' : 'Not configured'}
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Multimodal container (public)</span>
+                <input
+                  type="text"
+                  value={azureBlobMultimodalContainer}
+                  onChange={e => setAzureBlobMultimodalContainer(e.target.value)}
+                  placeholder="static"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Artifact container (private)</span>
+                <input
+                  type="text"
+                  value={azureBlobArtifactContainer}
+                  onChange={e => setAzureBlobArtifactContainer(e.target.value)}
+                  placeholder="artifacts"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Public artifact container</span>
+                <input
+                  type="text"
+                  value={azureBlobPublicArtifactContainer}
+                  onChange={e => setAzureBlobPublicArtifactContainer(e.target.value)}
+                  placeholder="public-artifacts"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+                <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Artifacts the agent marks public are stored here and served straight from object storage, so the
+                  container must allow anonymous read. Leave blank for the default name; failed uploads fall back
+                  to the private container.
+                </span>
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Public base URL</span>
+                <input
+                  type="text"
+                  value={azureBlobPublicBaseUrl}
+                  onChange={e => setAzureBlobPublicBaseUrl(e.target.value)}
+                  placeholder="https://<account>.blob.core.windows.net"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">CDN base URL (optional)</span>
+                <input
+                  type="text"
+                  value={azureBlobCdnBaseUrl}
+                  onChange={e => setAzureBlobCdnBaseUrl(e.target.value)}
+                  placeholder="https://<front-door>.azurefd.net"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+            </div>
+          </section>
+        </>
+      )}
 
-      <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="font-semibold">GitHub App</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Credentials for GitHub installation token generation. Leave the private key blank to keep the existing value.
-            Changes take effect immediately.
-          </p>
-        </div>
-        <div className="p-5 space-y-4">
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">App ID</span>
-            <input
-              type="text"
-              value={githubAppId}
-              onChange={e => setGithubAppId(e.target.value)}
-              placeholder="GitHub App ID"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Installation ID</span>
-            <input
-              type="text"
-              value={githubAppInstallationId}
-              onChange={e => setGithubAppInstallationId(e.target.value)}
-              placeholder="GitHub App Installation ID"
-              className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-sm font-medium mb-2">Private key</span>
-            <textarea
-              value={githubAppPrivateKey}
-              onChange={e => setGithubAppPrivateKey(e.target.value)}
-              placeholder={settings?.has_github_app_private_key ? 'Already configured (leave blank to keep)' : '-----BEGIN RSA PRIVATE KEY-----'}
-              rows={6}
-              className="w-full px-3 py-2 rounded-lg text-sm border outline-none font-mono"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            />
-          </label>
-        </div>
-      </section>
+      {activeTab === 'sandbox' && (
+        <>
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">Sandbox Resume</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Preserve /workspace and /root/.claude when a sandbox is released. This is a release checkpoint, not continuous backup.
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={sandboxSnapshotEnabled}
+                  disabled={settings?.sandbox_snapshot_deployment_allowed !== true}
+                  onChange={event => setSandboxSnapshotEnabled(event.target.checked)}
+                />
+                <span>
+                  <span className="block text-sm font-medium">Enable filesystem snapshot and resume</span>
+                  <span className="block text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    Requires deployment authorization and configured private object storage.
+                  </span>
+                </span>
+              </label>
+              <div className="grid gap-3 sm:grid-cols-3 text-sm">
+                <SnapshotStatus label="Deployment" active={settings?.sandbox_snapshot_deployment_allowed === true}
+                  activeText="Allowed" inactiveText="Blocked" />
+                <SnapshotStatus label="Private storage" active={settings?.sandbox_snapshot_storage_ready === true}
+                  activeText="Ready" inactiveText="Not ready" />
+                <SnapshotStatus label="Effective state" active={settings?.sandbox_snapshot_effective === true}
+                  activeText="Active" inactiveText="Inactive" />
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {activeTab === 'integrations' && (
+        <>
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">Azure Speech</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Credentials for speech token issuance. Leave the key blank to keep the existing value.
+                Changes take effect immediately.
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Endpoint</span>
+                <input
+                  type="text"
+                  value={azureSpeechEndpoint}
+                  onChange={e => setAzureSpeechEndpoint(e.target.value)}
+                  placeholder="https://xxx.cognitiveservices.azure.com/"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Key</span>
+                <input
+                  type="password"
+                  value={azureSpeechKey}
+                  onChange={e => setAzureSpeechKey(e.target.value)}
+                  placeholder={settings?.has_azure_speech_key ? 'Already configured (leave blank to keep)' : 'Not configured'}
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Region</span>
+                <input
+                  type="text"
+                  value={azureSpeechRegion}
+                  onChange={e => setAzureSpeechRegion(e.target.value)}
+                  placeholder="eastus"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">GitHub App</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Credentials for GitHub installation token generation. Leave the private key blank to keep the existing value.
+                Changes take effect immediately.
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">App ID</span>
+                <input
+                  type="text"
+                  value={githubAppId}
+                  onChange={e => setGithubAppId(e.target.value)}
+                  placeholder="GitHub App ID"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Installation ID</span>
+                <input
+                  type="text"
+                  value={githubAppInstallationId}
+                  onChange={e => setGithubAppInstallationId(e.target.value)}
+                  placeholder="GitHub App Installation ID"
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Private key</span>
+                <textarea
+                  value={githubAppPrivateKey}
+                  onChange={e => setGithubAppPrivateKey(e.target.value)}
+                  placeholder={settings?.has_github_app_private_key ? 'Already configured (leave blank to keep)' : '-----BEGIN RSA PRIVATE KEY-----'}
+                  rows={6}
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none font-mono"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </label>
+            </div>
+          </section>
+        </>
+      )}
 
       <div className="flex justify-end mt-6">
         <button
@@ -571,6 +616,14 @@ export default function SystemSettings() {
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Settings'}
         </button>
       </div>
+    </div>
+  );
+}
+
+function NoChatModelsNotice() {
+  return (
+    <div className="mt-6 rounded-lg border px-4 py-3 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+      No enabled chat gateway models are available. Add or enable a chat model under Settings → Gateway first.
     </div>
   );
 }

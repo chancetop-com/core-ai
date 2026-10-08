@@ -9,6 +9,31 @@ function mockLoad(settings: SystemSettingsData) {
   vi.spyOn(api.gateway, 'listModels').mockResolvedValue({ models: [] });
 }
 
+async function openTab(name: string) {
+  await userEvent.click(await screen.findByRole('button', { name }));
+}
+
+describe('SystemSettings sub-tabs', () => {
+  it('switches between configuration sections', async () => {
+    mockLoad({});
+
+    render(<SystemSettings />);
+
+    expect(await screen.findByText('Memory Extraction')).toBeTruthy();
+    expect(screen.getByText('Default LLM Model')).toBeTruthy();
+    expect(screen.queryByText('Object Storage')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Storage' }));
+    expect(screen.getByText('Object Storage')).toBeTruthy();
+    expect(screen.queryByText('Memory Extraction')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Integrations' }));
+    expect(screen.getByText('Azure Speech')).toBeTruthy();
+    expect(screen.getByText('GitHub App')).toBeTruthy();
+    expect(screen.queryByText('Object Storage')).toBeNull();
+  });
+});
+
 describe('SystemSettings sandbox resume control', () => {
   it('shows the requested and server-authoritative runtime states', async () => {
     mockLoad({
@@ -19,6 +44,7 @@ describe('SystemSettings sandbox resume control', () => {
     });
 
     render(<SystemSettings />);
+    await openTab('Sandbox');
 
     const checkbox = await screen.findByRole<HTMLInputElement>('checkbox', { name: /enable filesystem snapshot and resume/i });
     expect(checkbox.checked).toBe(true);
@@ -36,6 +62,7 @@ describe('SystemSettings sandbox resume control', () => {
     });
 
     render(<SystemSettings />);
+    await openTab('Sandbox');
 
     const checkbox = await screen.findByRole<HTMLInputElement>('checkbox', { name: /enable filesystem snapshot and resume/i });
     expect(checkbox.disabled).toBe(true);
@@ -57,6 +84,7 @@ describe('SystemSettings sandbox resume control', () => {
     });
 
     render(<SystemSettings />);
+    await openTab('Sandbox');
     await userEvent.click(await screen.findByRole('checkbox', { name: /enable filesystem snapshot and resume/i }));
     await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
 
