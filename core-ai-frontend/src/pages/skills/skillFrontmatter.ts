@@ -36,7 +36,7 @@ function unquote(value: string): string {
  * keeps the verbatim source of every key so untouched values round-trip byte-identically on save.
  */
 export function parseFrontmatter(content: string): { keys: FrontmatterKey[]; body: string } {
-  const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
+  const match = content.match(/^---[^\S\n]*\r?\n([\s\S]*?)\r?\n---[^\S\n]*\r?\n?([\s\S]*)$/);
   if (!match) return { keys: [], body: content };
   const lines = match[1].split('\n').map(line => (line.endsWith('\r') ? line.slice(0, -1) : line));
   const keys: FrontmatterKey[] = [];

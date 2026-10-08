@@ -8,6 +8,7 @@ const FOLDED = [
   '  Run automated multi-dimensional local SEO audits on restaurant websites.',
   '  Use this skill whenever a user provides a restaurant website URL.',
   '---',
+  '',
   '# Restaurant Local SEO Audit',
   '',
   'Body line.',
@@ -56,6 +57,12 @@ describe('parseFrontmatter', () => {
 
     expect(parsed.keys).toEqual([]);
     expect(parsed.body).toBe('# Just a body');
+  });
+
+  it('keeps the blank line after the frontmatter in the body', () => {
+    const parsed = parseFrontmatter(FOLDED);
+
+    expect(parsed.body).toBe('\n# Restaurant Local SEO Audit\n\nBody line.');
   });
 });
 
