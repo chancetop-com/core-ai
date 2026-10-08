@@ -4,6 +4,7 @@ import ai.core.api.server.session.EventType;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.api.server.session.sse.SseBatchToolStartEvent;
 import ai.core.api.server.session.sse.SseCompressionEvent;
+import ai.core.api.server.session.sse.SseCustomEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SsePlanUpdateEvent;
 import ai.core.api.server.session.sse.SseReasoningChunkEvent;
@@ -42,6 +43,7 @@ public class SseEventHelper {
         TYPE_MAP.put(SseBatchToolStartEvent.class, EventType.BATCH_TOOL_START);
         TYPE_MAP.put(SseEnvironmentOutputChunkEvent.class, EventType.ENVIRONMENT_OUTPUT_CHUNK);
         TYPE_MAP.put(SseTaskStatusEvent.class, EventType.TASK_STATUS);
+        TYPE_MAP.put(SseCustomEvent.class, EventType.CUSTOM);
     }
 
     /**
@@ -62,7 +64,8 @@ public class SseEventHelper {
             Map.entry(EventType.SANDBOX, SseSandboxEvent.class),
             Map.entry(EventType.BATCH_TOOL_START, SseBatchToolStartEvent.class),
             Map.entry(EventType.ENVIRONMENT_OUTPUT_CHUNK, SseEnvironmentOutputChunkEvent.class),
-            Map.entry(EventType.TASK_STATUS, SseTaskStatusEvent.class)
+            Map.entry(EventType.TASK_STATUS, SseTaskStatusEvent.class),
+            Map.entry(EventType.CUSTOM, SseCustomEvent.class)
     );
 
     public static void initEvent(SseBaseEvent event, String sessionId) {

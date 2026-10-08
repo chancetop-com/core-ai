@@ -4,6 +4,7 @@ import ai.core.api.server.session.EventType;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.api.server.session.sse.SseBatchToolStartEvent;
+import ai.core.api.server.session.sse.SseCustomEvent;
 import ai.core.api.server.session.sse.SseEnvironmentOutputChunkEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
@@ -103,5 +104,25 @@ class SessionChannelServiceTest {
 
         assertEquals(SessionStatus.ERROR, service.status("s-1"));
         assertEquals(List.of(error, errorStatus), service.getEventBuffer("s-1"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void customEventIsTypedAndBufferedAsTurnActivity() {
+        var service = new SessionChannelService();
+        service.channelService = mock(ChannelService.class);
+        service.connect((Channel<SseBaseEvent>) mock(Channel.class), "s-1");
+
+        var running = new SseStatusChangeEvent();
+        running.status = SessionStatus.RUNNING;
+        service.send("s-1", running);
+
+        var custom = new SseCustomEvent();
+        custom.name = "menu_table";
+        custom.data = "{\"rows\":[]}";
+        service.send("s-1", custom);
+
+        assertEquals(EventType.CUSTOM, custom.type);
+        assertEquals(2, service.getEventBuffer("s-1").size());
     }
 }

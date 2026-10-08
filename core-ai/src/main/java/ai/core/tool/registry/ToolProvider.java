@@ -34,6 +34,7 @@ public interface ToolProvider {
     String BUILTIN_CODE_EXECUTION = "builtin-code-execution";
     String BUILTIN_GITHUB = "builtin-github";
     String BUILTIN_MEDIA_GENERATION = "builtin-media-generation";
+    String BUILTIN_EVENTS = "builtin-events";
 
     String BUILTIN = "builtin";
     String USER = "user-provided";

@@ -6,6 +6,7 @@ import ai.core.api.server.session.SessionHistoryResponse;
 import ai.core.server.session.ChatMessageService;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Builds the session history response (messages + artifacts) from the display-layer persistence.
@@ -27,21 +28,16 @@ final class SessionHistoryHelper {
             msg.traceId = record.traceId;
             msg.timestamp = record.createdAt != null ? record.createdAt.toInstant() : null;
             if (record.tools != null) {
-                msg.tools = record.tools.stream().map(t -> {
-                    var r = new Message.ToolCallRecord();
-                    r.callId = t.callId;
-                    r.name = t.name;
-                    r.arguments = t.arguments;
-                    r.result = t.result;
-                    r.status = t.status;
-                    return r;
-                }).toList();
+                msg.tools = toToolRecords(record.tools);
             }
             if (record.sandbox != null) {
                 msg.sandbox = toSandboxRecord(record.sandbox);
             }
             if (record.compression != null) {
                 msg.compression = toCompressionRecord(record.compression);
+            }
+            if (record.events != null) {
+                msg.events = toEventRecords(record.events);
             }
             messages.add(msg);
         }
@@ -60,6 +56,19 @@ final class SessionHistoryHelper {
             }).toList();
         }
         return response;
+    }
+
+    private static List<Message.ToolCallRecord> toToolRecords(
+            List<ai.core.server.domain.ChatMessage.ToolCallRecord> records) {
+        return records.stream().map(record -> {
+            var tool = new Message.ToolCallRecord();
+            tool.callId = record.callId;
+            tool.name = record.name;
+            tool.arguments = record.arguments;
+            tool.result = record.result;
+            tool.status = record.status;
+            return tool;
+        }).toList();
     }
 
     private static Message.SandboxRecord toSandboxRecord(
@@ -84,6 +93,17 @@ final class SessionHistoryHelper {
         compression.maxContextTokens = record.maxContextTokens;
         compression.triggerThreshold = record.triggerThreshold;
         return compression;
+    }
+
+    private static List<Message.EventRecord> toEventRecords(
+            List<ai.core.server.domain.ChatMessage.EventRecord> records) {
+        return records.stream().map(record -> {
+            var event = new Message.EventRecord();
+            event.name = record.name;
+            event.data = record.data;
+            event.callId = record.callId;
+            return event;
+        }).toList();
     }
 
     private SessionHistoryHelper() {

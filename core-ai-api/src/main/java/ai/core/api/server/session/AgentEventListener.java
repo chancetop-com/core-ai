@@ -49,5 +49,8 @@ public interface AgentEventListener {
 
     default void onTaskStatus(TaskStatusEvent event) {
     }
+
+    default void onCustomEvent(CustomEvent event) {
+    }
 }
 

@@ -12,10 +12,12 @@ import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
 import ai.core.tool.tools.PowershellCommandTool;
+import ai.core.tool.tools.PresentChoicesTool;
 import ai.core.tool.tools.PythonScriptTool;
 import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.RequireGithubInstallationTokenTool;
 import ai.core.tool.tools.ScheduledTaskTool;
+import ai.core.tool.tools.SendCustomEventTool;
 import ai.core.tool.tools.ShellCommandTool;
 import ai.core.tool.tools.SummarizePdfTool;
 import ai.core.tool.tools.TaskTool;
@@ -62,7 +64,10 @@ public final class BuiltinTools {
             GenerateVideoTool.builder().build(),
             GetVideoStatusTool.builder().build(),
             // Session scheduling
-            ScheduledTaskTool.builder().build()
+            ScheduledTaskTool.builder().build(),
+            // Custom events
+            SendCustomEventTool.builder().build(),
+            PresentChoicesTool.builder().build()
     );
 
     public static final List<ToolCall> PLANNING = List.of(
@@ -120,6 +125,11 @@ public final class BuiltinTools {
             GetVideoStatusTool.builder().build()
     );
 
+    public static final List<ToolCall> EVENTS = List.of(
+            SendCustomEventTool.builder().build(),
+            PresentChoicesTool.builder().build()
+    );
+
     public static final Map<String, List<ToolCall>> GROUPED_SETS = Map.ofEntries(
             Map.entry(ToolProvider.BUILTIN_ALL, ALL),
             Map.entry(ToolProvider.BUILTIN_PLANNING, PLANNING),
@@ -131,7 +141,8 @@ public final class BuiltinTools {
             Map.entry(ToolProvider.BUILTIN_BASH, BASH_EXECUTION),
             Map.entry(ToolProvider.BUILTIN_CODE_EXECUTION, CODE_EXECUTION),
             Map.entry(ToolProvider.BUILTIN_GITHUB, GITHUB),
-            Map.entry(ToolProvider.BUILTIN_MEDIA_GENERATION, MEDIA_GENERATION)
+            Map.entry(ToolProvider.BUILTIN_MEDIA_GENERATION, MEDIA_GENERATION),
+            Map.entry(ToolProvider.BUILTIN_EVENTS, EVENTS)
     );
 
     /**

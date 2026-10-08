@@ -3,6 +3,7 @@ package ai.core.server.web.sse;
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.CompressionEvent;
+import ai.core.api.server.session.CustomEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
@@ -18,6 +19,7 @@ import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.sse.SseBatchToolStartEvent;
 import ai.core.api.server.session.sse.SseCompressionEvent;
+import ai.core.api.server.session.sse.SseCustomEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SsePlanUpdateEvent;
 import ai.core.api.server.session.sse.SseReasoningChunkEvent;
@@ -206,6 +208,15 @@ public class SseEventBridge implements AgentEventListener {
         sse.source = event.source;
         sse.callId = event.callId;
         sse.chunk = event.chunk;
+        eventPublisher.publish(sessionId, sse);
+    }
+
+    @Override
+    public void onCustomEvent(CustomEvent event) {
+        var sse = new SseCustomEvent();
+        sse.name = event.name;
+        sse.data = event.data;
+        sse.callId = event.callId;
         eventPublisher.publish(sessionId, sse);
     }
 }

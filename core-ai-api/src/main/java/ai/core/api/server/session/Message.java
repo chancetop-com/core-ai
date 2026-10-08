@@ -28,6 +28,9 @@ public class Message {
     @Property(name = "compression")
     public CompressionRecord compression;
 
+    @Property(name = "events")
+    public List<EventRecord> events;
+
     @Property(name = "seq")
     public Long seq;
 
@@ -95,5 +98,16 @@ public class Message {
 
         @Property(name = "trigger_threshold")
         public Double triggerThreshold;
+    }
+
+    public static class EventRecord {
+        @Property(name = "name")
+        public String name;
+
+        @Property(name = "data")
+        public String data;
+
+        @Property(name = "call_id")
+        public String callId;
     }
 }

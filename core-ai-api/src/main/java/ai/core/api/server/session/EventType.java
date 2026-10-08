@@ -35,5 +35,7 @@ public enum EventType {
     @Property(name = "environment_output_chunk")
     ENVIRONMENT_OUTPUT_CHUNK,
     @Property(name = "task_status")
-    TASK_STATUS
+    TASK_STATUS,
+    @Property(name = "custom")
+    CUSTOM
 }

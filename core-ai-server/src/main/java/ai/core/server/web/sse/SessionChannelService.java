@@ -177,6 +177,8 @@ public class SessionChannelService {
             sseEvent.type = EventType.ENVIRONMENT_OUTPUT_CHUNK;
         } else if (sseEvent instanceof SseTaskStatusEvent) {
             sseEvent.type = EventType.TASK_STATUS;
+        } else if (sseEvent instanceof ai.core.api.server.session.sse.SseCustomEvent) {
+            sseEvent.type = EventType.CUSTOM;
         }
     }
 

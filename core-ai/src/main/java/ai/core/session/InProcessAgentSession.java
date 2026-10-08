@@ -10,6 +10,7 @@ import ai.core.api.server.session.AgentSession;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.CompressionEvent;
+import ai.core.api.server.session.CustomEvent;
 import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.OnToolEvent;
@@ -50,6 +51,7 @@ public class InProcessAgentSession implements AgentSession {
     // Set when RUNNING is dispatched, cleared by whoever dispatches the turn's terminal event.
     // close() races the turn thread for it so a force-closed turn still terminates exactly once.
     private final AtomicBoolean turnActive = new AtomicBoolean();
+    private final SessionCustomEventEmitter customEventEmitter;
 
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
@@ -66,6 +68,8 @@ public class InProcessAgentSession implements AgentSession {
         agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
+        this.customEventEmitter = new SessionCustomEventEmitter(sessionId, this::dispatch, turnActive::get);
+        context.getCustomVariables().put(CustomEventEmitter.CONTEXT_KEY, customEventEmitter);
         setupCompressionListener();
     }
 
@@ -87,6 +91,8 @@ public class InProcessAgentSession implements AgentSession {
         agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
+        this.customEventEmitter = new SessionCustomEventEmitter(sessionId, this::dispatch, turnActive::get);
+        context.getCustomVariables().put(CustomEventEmitter.CONTEXT_KEY, customEventEmitter);
         setupCompressionListener();
         // Skip loading when skipLoad is true (session already loaded by caller)
     }
@@ -120,6 +126,7 @@ public class InProcessAgentSession implements AgentSession {
         agent.getExecutionContext().setCancellationToken(turnToken);
         var threadUnbind = turnToken.bindThread(executingThread);
         turnActive.set(true);
+        customEventEmitter.resetTurn();
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
 
         var usageBefore = agent.getCurrentTokenUsage();
@@ -402,6 +409,7 @@ public class InProcessAgentSession implements AgentSession {
                     case EnvironmentOutputChunkEvent e -> listener.onEnvironmentOutput(e);
                     case BatchToolStartEvent e -> listener.onBatchToolStart(e);
                     case TaskStatusEvent e -> listener.onTaskStatus(e);
+                    case CustomEvent e -> listener.onCustomEvent(e);
                     default -> {
                     }
                 }

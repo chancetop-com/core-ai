@@ -40,6 +40,9 @@ public class ChatMessage {
     @Field(name = "compression")
     public CompressionRecord compression;
 
+    @Field(name = "events")
+    public List<EventRecord> events;
+
     // optional pointer for debug jump, not indexed
     @Field(name = "trace_id")
     public String traceId;
@@ -102,5 +105,16 @@ public class ChatMessage {
 
         @Field(name = "trigger_threshold")
         public Double triggerThreshold;
+    }
+
+    public static class EventRecord {
+        @Field(name = "name")
+        public String name;
+
+        @Field(name = "data")
+        public String data;
+
+        @Field(name = "call_id")
+        public String callId;
     }
 }

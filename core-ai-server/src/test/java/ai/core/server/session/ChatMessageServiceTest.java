@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.api.server.session.CompressionEvent;
+import ai.core.api.server.session.CustomEvent;
 import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
@@ -149,6 +150,41 @@ class ChatMessageServiceTest {
         when(service.sessionRegistry.get("s-1")).thenReturn(stored);
 
         assertSame(stored, service.getSessionMeta("s-1"));
+    }
+
+    @Test
+    void customEventsAreBufferedAndPersistedWithTheTurn() {
+        var service = service();
+        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        var listener = service.listener("s-1");
+
+        listener.onCustomEvent(CustomEvent.of("s-1", "menu_table", "{\"rows\":[]}", "call-1"));
+        listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
+
+        var captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(service.chatMessageCollection).insert(captor.capture());
+        var events = captor.getValue().events;
+        assertNotNull(events);
+        assertEquals(1, events.size());
+        assertEquals("menu_table", events.getFirst().name);
+        assertEquals("{\"rows\":[]}", events.getFirst().data);
+        assertEquals("call-1", events.getFirst().callId);
+    }
+
+    @Test
+    void flushPendingTurnSavesBufferedEventsFromATurnThatNeverCompleted() {
+        var service = service();
+        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        var listener = service.listener("s-1");
+        listener.onCustomEvent(CustomEvent.of("s-1", "state_update", "{}", null));
+
+        service.flushPendingTurn("s-1");
+
+        var captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(service.chatMessageCollection).insert(captor.capture());
+        var events = captor.getValue().events;
+        assertNotNull(events, "an events-only buffer must not be treated as empty");
+        assertEquals("state_update", events.getFirst().name);
     }
 
     private ChatMessageService service() {

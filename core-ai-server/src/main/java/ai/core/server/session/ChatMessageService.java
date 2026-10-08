@@ -2,6 +2,7 @@ package ai.core.server.session;
 
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.CompressionEvent;
+import ai.core.api.server.session.CustomEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.ToolResultEvent;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -218,6 +220,7 @@ public class ChatMessageService {
             msg.content = output;
             msg.thinking = buf != null ? buf.thinking : null;
             msg.tools = buf != null && !buf.tools.isEmpty() ? List.copyOf(buf.tools.values()) : null;
+            msg.events = buf != null && !buf.events.isEmpty() ? List.copyOf(buf.events) : null;
             msg.sandbox = buf != null ? buf.sandbox : null;
             msg.compression = buf != null ? buf.compression : null;
             msg.traceId = ActionLogContext.id();
@@ -285,6 +288,15 @@ public class ChatMessageService {
         }
 
         @Override
+        public void onCustomEvent(CustomEvent event) {
+            var record = new ChatMessage.EventRecord();
+            record.name = event.name;
+            record.data = event.data;
+            record.callId = event.callId;
+            buffer(sessionId).events.add(record);
+        }
+
+        @Override
         public void onTurnComplete(TurnCompleteEvent event) {
             persistAgentMessage(sessionId, event.output, bufferBySession.remove(sessionId));
         }
@@ -299,11 +311,12 @@ public class ChatMessageService {
     private static final class TurnBuffer {
         String thinking;
         final Map<String, ChatMessage.ToolCallRecord> tools = new LinkedHashMap<>();
+        final List<ChatMessage.EventRecord> events = new CopyOnWriteArrayList<>();
         ChatMessage.SandboxRecord sandbox;
         ChatMessage.CompressionRecord compression;
 
         boolean isEmpty() {
-            return thinking == null && sandbox == null && compression == null && tools.isEmpty();
+            return thinking == null && sandbox == null && compression == null && tools.isEmpty() && events.isEmpty();
         }
     }
 
