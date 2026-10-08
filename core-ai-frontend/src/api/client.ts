@@ -1843,6 +1843,8 @@ export interface SystemSettings {
   sandbox_snapshot_deployment_allowed?: boolean;
   sandbox_snapshot_storage_ready?: boolean;
   sandbox_snapshot_effective?: boolean;
+  skill_repo_sync_enabled?: boolean;
+  skill_repo_sync_interval_minutes?: number;
   created_by?: string;
   updated_by?: string;
   created_at?: string;
@@ -1872,6 +1874,8 @@ export interface SystemSettingsRequest {
   github_app_installation_id?: string | null;
   github_app_private_key?: string | null;
   sandbox_snapshot_enabled?: boolean;
+  skill_repo_sync_enabled?: boolean | null;
+  skill_repo_sync_interval_minutes?: number | null;
 }
 
 export interface NotificationView {

@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Box, CheckCircle2, ChevronDown, CircleAlert, Cpu, Database, Image as ImageIcon, PlugZap, RefreshCw, Save, Settings } from 'lucide-react';
+import { Box, CheckCircle2, ChevronDown, CircleAlert, Cpu, Database, Image as ImageIcon, PlugZap, RefreshCw, Save, Settings, Sparkles } from 'lucide-react';
 import { api, type GatewayModel, type SystemSettings as SystemSettingsData } from '../../api/client';
 
-type TabKey = 'llm' | 'media' | 'storage' | 'sandbox' | 'integrations';
+type TabKey = 'llm' | 'media' | 'storage' | 'sandbox' | 'skills' | 'integrations';
 
 const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
   { key: 'llm', label: 'LLM Models', icon: <Cpu size={14} /> },
   { key: 'media', label: 'Media & Tools', icon: <ImageIcon size={14} /> },
   { key: 'storage', label: 'Storage', icon: <Database size={14} /> },
   { key: 'sandbox', label: 'Sandbox', icon: <Box size={14} /> },
+  { key: 'skills', label: 'Skills', icon: <Sparkles size={14} /> },
   { key: 'integrations', label: 'Integrations', icon: <PlugZap size={14} /> },
 ];
 
@@ -37,6 +38,8 @@ export default function SystemSettings() {
   const [githubAppInstallationId, setGithubAppInstallationId] = useState('');
   const [githubAppPrivateKey, setGithubAppPrivateKey] = useState('');
   const [sandboxSnapshotEnabled, setSandboxSnapshotEnabled] = useState(false);
+  const [skillRepoSyncEnabled, setSkillRepoSyncEnabled] = useState(true);
+  const [skillRepoSyncIntervalMinutes, setSkillRepoSyncIntervalMinutes] = useState('30');
   const [activeTab, setActiveTab] = useState<TabKey>('llm');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -110,6 +113,8 @@ export default function SystemSettings() {
       setGithubAppInstallationId(settingsResponse.github_app_installation_id || '');
       setGithubAppPrivateKey('');
       setSandboxSnapshotEnabled(settingsResponse.sandbox_snapshot_enabled === true);
+      setSkillRepoSyncEnabled(settingsResponse.skill_repo_sync_enabled !== false);
+      setSkillRepoSyncIntervalMinutes(String(settingsResponse.skill_repo_sync_interval_minutes ?? 30));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load system settings');
     } finally {
@@ -122,6 +127,13 @@ export default function SystemSettings() {
   }, []);
 
   const save = async () => {
+    const syncInterval = Number(skillRepoSyncIntervalMinutes.trim());
+    const syncIntervalValid = Number.isInteger(syncInterval) && syncInterval >= 5 && syncInterval <= 10080;
+    if (skillRepoSyncEnabled && !syncIntervalValid) {
+      setError('Skill repo sync interval must be between 5 and 10080 minutes.');
+      setMessage('');
+      return;
+    }
     setSaving(true);
     setError('');
     setMessage('');
@@ -149,6 +161,8 @@ export default function SystemSettings() {
         github_app_installation_id: githubAppInstallationId.trim() || null,
         github_app_private_key: githubAppPrivateKey.trim() || null,
         sandbox_snapshot_enabled: sandboxSnapshotEnabled,
+        skill_repo_sync_enabled: skillRepoSyncEnabled,
+        skill_repo_sync_interval_minutes: syncIntervalValid ? syncInterval : null,
       });
       setSettings(response);
       setMemoryExtractionModel(response.memory_extraction_model || '');
@@ -173,6 +187,8 @@ export default function SystemSettings() {
       setGithubAppInstallationId(response.github_app_installation_id || '');
       setGithubAppPrivateKey('');
       setSandboxSnapshotEnabled(response.sandbox_snapshot_enabled === true);
+      setSkillRepoSyncEnabled(response.skill_repo_sync_enabled !== false);
+      setSkillRepoSyncIntervalMinutes(String(response.skill_repo_sync_interval_minutes ?? 30));
       setMessage('System settings saved. Changes take effect immediately.');
       setSaved(true);
       if (savedTimer.current) window.clearTimeout(savedTimer.current);
@@ -507,6 +523,53 @@ export default function SystemSettings() {
                 <SnapshotStatus label="Effective state" active={settings?.sandbox_snapshot_effective === true}
                   activeText="Active" inactiveText="Inactive" />
               </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {activeTab === 'skills' && (
+        <>
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">Skill Repo Sync</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Periodically pulls the latest version of skills registered from a git repository, so hub consumers never
+                see a stale catalog. Turn it off to freeze the current versions — individual skills can still be synced
+                manually from the Skills page.
+              </p>
+            </div>
+            <div className="p-5 space-y-5">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={skillRepoSyncEnabled}
+                  onChange={event => setSkillRepoSyncEnabled(event.target.checked)}
+                />
+                <span>
+                  <span className="block text-sm font-medium">Keep repo-sourced skills up to date</span>
+                  <span className="block text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    Runs on every server instance and reads the registered repositories over the network.
+                  </span>
+                </span>
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Sync interval (minutes)</span>
+                <input
+                  type="number"
+                  min={5}
+                  max={10080}
+                  value={skillRepoSyncIntervalMinutes}
+                  disabled={!skillRepoSyncEnabled}
+                  onChange={event => setSkillRepoSyncIntervalMinutes(event.target.value)}
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+                <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  How often each repository is checked for new versions — between 5 minutes and 7 days (10080).
+                  Changes take effect on the next scheduled check, no restart required.
+                </span>
+              </label>
             </div>
           </section>
         </>

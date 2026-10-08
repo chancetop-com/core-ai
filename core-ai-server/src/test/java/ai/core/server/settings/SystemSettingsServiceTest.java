@@ -7,6 +7,7 @@ import ai.core.server.domain.User;
 import ai.core.server.gateway.GatewaySecretProtector;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -17,6 +18,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -131,6 +133,70 @@ class SystemSettingsServiceTest {
         verify(models).find(query.capture());
         var filter = query.getValue().filter.toBsonDocument().toJson().replaceAll("\\s+", "");
         assertTrue(filter.contains("\"$ne\":false"), "a model without the enabled field still routes, so the settings guard must not require enabled=true: " + filter);
+    }
+
+    @Test
+    void skillRepoSyncDefaultsToEnabledEveryThirtyMinutes() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+
+        assertTrue(service.skillRepoSyncEnabled());
+        assertEquals(30, service.skillRepoSyncIntervalMinutes());
+        var view = service.get("admin");
+        assertEquals(Boolean.TRUE, view.skillRepoSyncEnabled);
+        assertEquals(30, view.skillRepoSyncIntervalMinutes);
+    }
+
+    @Test
+    void legacyDocumentWithoutSkillSyncFieldsReadsAsDefaults() {
+        var legacy = new SystemSettings();
+        legacy.id = "default";
+        when(settings.get("default")).thenReturn(Optional.of(legacy));
+
+        assertTrue(service.skillRepoSyncEnabled());
+        assertEquals(30, service.skillRepoSyncIntervalMinutes());
+    }
+
+    @Test
+    void updatePersistsSkillRepoSyncSettings() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+        var request = new SystemSettingsRequest();
+        request.skillRepoSyncEnabled = Boolean.FALSE;
+        request.skillRepoSyncIntervalMinutes = 120;
+
+        var view = service.update(request, "admin");
+
+        var entity = ArgumentCaptor.forClass(SystemSettings.class);
+        verify(settings).insert(entity.capture());
+        assertEquals(Boolean.FALSE, entity.getValue().skillRepoSyncEnabled);
+        assertEquals(120, entity.getValue().skillRepoSyncIntervalMinutes.intValue());
+        assertEquals(Boolean.FALSE, view.skillRepoSyncEnabled);
+        assertEquals(120, view.skillRepoSyncIntervalMinutes.intValue());
+    }
+
+    @Test
+    void omittedSkillRepoSyncFieldsPreserveExistingValues() {
+        var existing = new SystemSettings();
+        existing.id = "default";
+        existing.skillRepoSyncEnabled = Boolean.FALSE;
+        existing.skillRepoSyncIntervalMinutes = 15;
+        when(settings.get("default")).thenReturn(Optional.of(existing));
+
+        service.update(new SystemSettingsRequest(), "admin");
+
+        assertEquals(Boolean.FALSE, existing.skillRepoSyncEnabled);
+        assertEquals(15, existing.skillRepoSyncIntervalMinutes);
+        verify(settings).replace(existing);
+    }
+
+    @Test
+    void rejectsOutOfRangeSkillRepoSyncInterval() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+        var tooSmall = new SystemSettingsRequest();
+        tooSmall.skillRepoSyncIntervalMinutes = 1;
+        assertThrows(BadRequestException.class, () -> service.update(tooSmall, "admin"));
+        var tooLarge = new SystemSettingsRequest();
+        tooLarge.skillRepoSyncIntervalMinutes = 10081;
+        assertThrows(BadRequestException.class, () -> service.update(tooLarge, "admin"));
     }
 
     private GatewayModelConfig mediaModel(String modelId) {

@@ -30,6 +30,12 @@ public class SystemSettingsRequest {
     @Property(name = "sandbox_snapshot_enabled")
     public Boolean sandboxSnapshotEnabled;
 
+    @Property(name = "skill_repo_sync_enabled")
+    public Boolean skillRepoSyncEnabled;
+
+    @Property(name = "skill_repo_sync_interval_minutes")
+    public Integer skillRepoSyncIntervalMinutes;
+
     @Property(name = "storage_provider")
     public String storageProvider;
 

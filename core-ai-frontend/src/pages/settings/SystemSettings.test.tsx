@@ -27,6 +27,13 @@ describe('SystemSettings sub-tabs', () => {
     expect(screen.getByText('Object Storage')).toBeTruthy();
     expect(screen.queryByText('Memory Extraction')).toBeNull();
 
+    await userEvent.click(screen.getByRole('button', { name: 'Sandbox' }));
+    expect(screen.getByText('Sandbox Resume')).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Skills' }));
+    expect(screen.getByText('Skill Repo Sync')).toBeTruthy();
+    expect(screen.queryByText('Sandbox Resume')).toBeNull();
+
     await userEvent.click(screen.getByRole('button', { name: 'Integrations' }));
     expect(screen.getByText('Azure Speech')).toBeTruthy();
     expect(screen.getByText('GitHub App')).toBeTruthy();
@@ -90,5 +97,59 @@ describe('SystemSettings sandbox resume control', () => {
 
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ sandbox_snapshot_enabled: true }));
     expect(await screen.findByText('Active')).toBeTruthy();
+  });
+});
+
+describe('SystemSettings skill repo sync control', () => {
+  it('defaults to enabled with the default interval when unset', async () => {
+    mockLoad({});
+
+    render(<SystemSettings />);
+    await openTab('Skills');
+
+    const toggle = await screen.findByRole<HTMLInputElement>('checkbox', { name: /keep repo-sourced skills up to date/i });
+    expect(toggle.checked).toBe(true);
+    const interval = screen.getByRole<HTMLInputElement>('spinbutton', { name: /sync interval/i });
+    expect(interval.value).toBe('30');
+    expect(interval.disabled).toBe(false);
+  });
+
+  it('sends the switch and interval when saving', async () => {
+    mockLoad({ skill_repo_sync_enabled: true, skill_repo_sync_interval_minutes: 30 });
+    const update = vi.spyOn(api.systemSettings, 'update').mockResolvedValue({
+      skill_repo_sync_enabled: false,
+      skill_repo_sync_interval_minutes: 60,
+    });
+
+    render(<SystemSettings />);
+    await openTab('Skills');
+
+    const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /sync interval/i });
+    await userEvent.clear(interval);
+    await userEvent.type(interval, '60');
+    await userEvent.click(screen.getByRole('checkbox', { name: /keep repo-sourced skills up to date/i }));
+    expect(interval.disabled).toBe(true);
+    await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      skill_repo_sync_enabled: false,
+      skill_repo_sync_interval_minutes: 60,
+    }));
+  });
+
+  it('blocks saving an out-of-range interval while enabled', async () => {
+    mockLoad({});
+    const update = vi.spyOn(api.systemSettings, 'update').mockResolvedValue({});
+
+    render(<SystemSettings />);
+    await openTab('Skills');
+
+    const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /sync interval/i });
+    await userEvent.clear(interval);
+    await userEvent.type(interval, '3');
+    await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    expect(update).not.toHaveBeenCalled();
+    expect(await screen.findByText(/between 5 and 10080 minutes/i)).toBeTruthy();
   });
 });

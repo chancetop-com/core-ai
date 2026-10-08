@@ -27,7 +27,8 @@ public class SkillModule extends Module {
         bind(SkillToolAssembler.class);
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/skills/upload", bind(SkillUploadController.class));
-        // keep REPO-sourced skills current so hub consumers never see a stale catalog
-        schedule().fixedRate("skill-repo-sync", bind(SkillRepoSyncJob.class), Duration.ofMinutes(30));
+        // fixed wake-up tick only; the job applies the enabled switch and interval configured on the
+        // system configuration page, so admins can throttle or stop the sync without a restart
+        schedule().fixedRate("skill-repo-sync", bind(SkillRepoSyncJob.class), Duration.ofMinutes(SkillRepoSyncJob.TICK_MINUTES));
     }
 }

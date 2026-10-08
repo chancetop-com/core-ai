@@ -38,6 +38,12 @@ public class SystemSettings {
     @Field(name = "sandbox_snapshot_enabled")
     public Boolean sandboxSnapshotEnabled;
 
+    @Field(name = "skill_repo_sync_enabled")
+    public Boolean skillRepoSyncEnabled;
+
+    @Field(name = "skill_repo_sync_interval_minutes")
+    public Integer skillRepoSyncIntervalMinutes;
+
     @Field(name = "storage_provider")
     public String storageProvider;
 

@@ -7,6 +7,7 @@ import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.User;
 import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.memory.AgentMemoryConsolidationJob;
+import ai.core.server.skill.SkillRepoSyncJob;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -23,6 +24,9 @@ import java.util.Base64;
  */
 public class SystemSettingsService {
     private static final String SETTINGS_ID = "default";
+    // the sync job wakes every tick, an interval below that would silently run at tick cadence
+    static final int MIN_SKILL_REPO_SYNC_INTERVAL_MINUTES = SkillRepoSyncJob.TICK_MINUTES;
+    static final int MAX_SKILL_REPO_SYNC_INTERVAL_MINUTES = 7 * 24 * 60;
 
     public String defaultMemoryExtractionModel = AgentMemoryConsolidationJob.DEFAULT_EXTRACTION_MODEL;
     public String defaultLlmModel;
@@ -56,12 +60,14 @@ public class SystemSettingsService {
             entity.createdAt = now;
             applyModels(entity, models);
             applyIntegrations(entity, request);
+            applySkillRepoSync(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.insert(entity);
         } else {
             applyModels(entity, models);
             applyIntegrations(entity, request);
+            applySkillRepoSync(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.replace(entity);
@@ -124,6 +130,15 @@ public class SystemSettingsService {
         }
     }
 
+    private void applySkillRepoSync(SystemSettings entity, SystemSettingsRequest request) {
+        if (request.skillRepoSyncEnabled != null) {
+            entity.skillRepoSyncEnabled = request.skillRepoSyncEnabled;
+        }
+        if (request.skillRepoSyncIntervalMinutes != null) {
+            entity.skillRepoSyncIntervalMinutes = request.skillRepoSyncIntervalMinutes;
+        }
+    }
+
     private void validateIntegrations(SystemSettingsRequest request) {
         if (request.azureBlobAccountKey != null && !request.azureBlobAccountKey.isBlank()) {
             try {
@@ -138,6 +153,15 @@ public class SystemSettingsService {
         }
         validateNumeric(request.githubAppId, "githubAppId");
         validateNumeric(request.githubAppInstallationId, "githubAppInstallationId");
+        validateSkillRepoSyncInterval(request.skillRepoSyncIntervalMinutes);
+    }
+
+    private void validateSkillRepoSyncInterval(Integer interval) {
+        if (interval == null) return;
+        if (interval < MIN_SKILL_REPO_SYNC_INTERVAL_MINUTES || interval > MAX_SKILL_REPO_SYNC_INTERVAL_MINUTES) {
+            throw new BadRequestException("skill repo sync interval must be between " + MIN_SKILL_REPO_SYNC_INTERVAL_MINUTES
+                    + " and " + MAX_SKILL_REPO_SYNC_INTERVAL_MINUTES + " minutes");
+        }
     }
 
     private void validateNumeric(String value, String field) {
@@ -220,6 +244,25 @@ public class SystemSettingsService {
     public boolean sandboxSnapshotEnabled() {
         var entity = entity();
         return entity != null && Boolean.TRUE.equals(entity.sandboxSnapshotEnabled);
+    }
+
+    /** Scheduled repo sync is on unless explicitly disabled; legacy documents without the field keep it on. */
+    public boolean skillRepoSyncEnabled() {
+        return skillRepoSyncEnabled(entity());
+    }
+
+    private boolean skillRepoSyncEnabled(SystemSettings entity) {
+        return entity == null || !Boolean.FALSE.equals(entity.skillRepoSyncEnabled);
+    }
+
+    /** Interval between scheduled repo sweeps, defaulted when never configured. */
+    public int skillRepoSyncIntervalMinutes() {
+        return skillRepoSyncIntervalMinutes(entity());
+    }
+
+    private int skillRepoSyncIntervalMinutes(SystemSettings entity) {
+        var configured = entity == null ? null : entity.skillRepoSyncIntervalMinutes;
+        return configured == null ? SkillRepoSyncJob.DEFAULT_SYNC_INTERVAL_MINUTES : configured;
     }
 
     public String storageProvider() {
@@ -361,6 +404,8 @@ public class SystemSettingsService {
         view.videoGenerationModel = entity == null ? null : normalizeModel(entity.videoGenerationModel);
         view.videoUnderstandingModel = entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
         view.sandboxSnapshotEnabled = entity != null && Boolean.TRUE.equals(entity.sandboxSnapshotEnabled);
+        view.skillRepoSyncEnabled = skillRepoSyncEnabled(entity);
+        view.skillRepoSyncIntervalMinutes = skillRepoSyncIntervalMinutes(entity);
         view.storageProvider = entity == null ? null : normalizeModel(entity.storageProvider);
         view.azureBlobArtifactContainer = entity == null ? null : normalizeModel(entity.azureBlobArtifactContainer);
         view.azureBlobPublicArtifactContainer = entity == null ? null : normalizeModel(entity.azureBlobPublicArtifactContainer);
