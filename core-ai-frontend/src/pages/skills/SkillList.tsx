@@ -5,6 +5,14 @@ import { api } from '../../api/client';
 import type { SkillDefinition, MarketplaceRepoView } from '../../api/client';
 
 const DEFAULT_SEARCH_IN = 'name_description';
+const MAX_REQUEST_BYTES = 10_000_000;
+
+// Same rule as the server-side SkillLoader.isIgnoredResource: dotfiles, __pycache__ and *.pyc are not skill resources
+function isIgnoredResourcePath(path: string): boolean {
+    if (path.startsWith('.') || path.includes('/.')) return true;
+    if (path.startsWith('__pycache__/') || path.includes('/__pycache__/')) return true;
+    return path.endsWith('.pyc');
+}
 
 const SEARCH_IN_OPTIONS = [
     { value: DEFAULT_SEARCH_IN, label: 'Name & description', placeholder: 'Search names and descriptions...' },
@@ -212,13 +220,20 @@ export default function SkillList() {
             const innerPath = parts.slice(1).join('/');
             if (innerPath === 'SKILL.md') {
                 skillFile = file;
-            } else if (innerPath && !innerPath.startsWith('.') && !innerPath.includes('/.')) {
+            } else if (innerPath && !isIgnoredResourcePath(innerPath)) {
                 resourceFiles.push(new File([file], innerPath, { type: file.type }));
             }
         }
 
         if (!skillFile) {
             alert('No SKILL.md found in the selected folder');
+            e.target.value = '';
+            return;
+        }
+
+        const totalBytes = skillFile.size + resourceFiles.reduce((sum, file) => sum + file.size, 0);
+        if (totalBytes + (resourceFiles.length + 1) * 256 > MAX_REQUEST_BYTES) {
+            alert(`This folder is ${(totalBytes / 1_000_000).toFixed(1)} MB — over the 10 MB per-request limit. Remove or shrink large files and try again (build artifacts such as __pycache__ are ignored automatically).`);
             e.target.value = '';
             return;
         }

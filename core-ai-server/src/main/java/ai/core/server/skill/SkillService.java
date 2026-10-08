@@ -44,6 +44,16 @@ public class SkillService {
         return !SkillResourceWriter.unchanged(previous, current);
     }
 
+    /** Drops upload entries that are not skill resources (dotfiles, {@code __pycache__}, {@code *.pyc}). */
+    private static Map<String, byte[]> acceptedResources(Map<String, byte[]> resources) {
+        if (resources == null || resources.isEmpty()) return resources;
+        var accepted = new LinkedHashMap<String, byte[]>(resources.size());
+        for (var entry : resources.entrySet()) {
+            if (!SkillLoader.isIgnoredResource(entry.getKey())) accepted.put(entry.getKey(), entry.getValue());
+        }
+        return accepted.isEmpty() ? null : accepted;
+    }
+
     @Inject
     MongoCollection<SkillDefinition> skillCollection;
 
@@ -74,6 +84,7 @@ public class SkillService {
             throw new RuntimeException("failed to parse SKILL.md: invalid frontmatter or missing name/description");
         }
 
+        var accepted = acceptedResources(resources);
         String qualifiedName = namespace + "/" + parsed.getName();
         var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
         var entity = existing.orElseGet(SkillDefinition::new);
@@ -88,11 +99,11 @@ public class SkillService {
         entity.description = parsed.getDescription();
         entity.sourceType = SkillSourceType.UPLOAD;
         entity.content = content;
-        entity.resources = writer().toResources(entity.id, content, resources);
+        entity.resources = writer().toResources(entity.id, content, accepted);
         entity.allowedTools = parsed.getAllowedTools().isEmpty() ? null : new ArrayList<>(parsed.getAllowedTools());
         entity.metadata = parsed.getMetadata().isEmpty() ? null : Map.copyOf(parsed.getMetadata());
         entity.userId = userId;
-        entity.digest = SkillDigest.of(content, resources);
+        entity.digest = SkillDigest.of(content, accepted);
         entity.updatedAt = ZonedDateTime.now();
 
         if (existing.isPresent()) {

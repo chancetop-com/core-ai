@@ -26,6 +26,16 @@ public class SkillLoader {
     private static final String SKILL_FILE_NAME = "SKILL.md";
     private static final Pattern FRONTMATTER_PATTERN = Pattern.compile("^---\\s*\\r?\\n(.*?)\\r?\\n---\\s*\\r?\\n", Pattern.DOTALL);
 
+    /**
+     * Dot-prefixed entries and Python build artifacts ({@code __pycache__}, {@code *.pyc}) are not skill
+     * resources; shared by the directory scan and the upload path so every enumeration agrees.
+     */
+    public static boolean isIgnoredResource(String relativePath) {
+        if (relativePath.startsWith(".") || relativePath.contains("/.")) return true;
+        if (relativePath.startsWith("__pycache__/") || relativePath.contains("/__pycache__/")) return true;
+        return relativePath.endsWith(".pyc");
+    }
+
     private final int maxSkillFileSize;
 
     public SkillLoader(int maxSkillFileSize) {
@@ -188,13 +198,6 @@ public class SkillLoader {
         }
         Collections.sort(result);
         return result;
-    }
-
-    /** Dot-prefixed entries and Python build artifacts ({@code __pycache__}, {@code *.pyc}) are not skill resources. */
-    private boolean isIgnoredResource(String relativePath) {
-        if (relativePath.startsWith(".") || relativePath.contains("/.")) return true;
-        if (relativePath.startsWith("__pycache__/") || relativePath.contains("/__pycache__/")) return true;
-        return relativePath.endsWith(".pyc");
     }
 
     public SkillMetadata parseSkillMd(String content, String filePath, String directoryName) {

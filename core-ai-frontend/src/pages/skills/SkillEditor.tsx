@@ -4,6 +4,7 @@ import { ArrowLeft, Save, Sparkles, FileText, FolderOpen, Plus, Trash2, Upload, 
 import { api } from '../../api/client';
 import JSZip from 'jszip';
 import CodeMirrorEditor from '../../components/CodeMirrorEditor';
+import { parseFrontmatter, buildSkillMdContent, type FrontmatterKey } from './skillFrontmatter';
 
 interface SkillFile {
   path: string;
@@ -13,6 +14,7 @@ interface SkillFile {
 }
 
 const SKILL_MD = 'SKILL.md';
+const MAX_REQUEST_BYTES = 10_000_000;
 
 function formatSize(size?: number): string {
   if (!size) return 'unknown size';
@@ -21,18 +23,12 @@ function formatSize(size?: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function parseFrontmatter(content: string): { frontmatter: Record<string, string | string[]>; body: string } {
-  const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
-  if (!match) return { frontmatter: {}, body: content };
-  const fm: Record<string, string | string[]> = {};
-  for (const line of match[1].split('\n')) {
-    const idx = line.indexOf(':');
-    if (idx < 0) continue;
-    const key = line.slice(0, idx).trim();
-    const val = line.slice(idx + 1).trim();
-    fm[key] = val;
-  }
-  return { frontmatter: fm, body: match[2] };
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+function utf8Bytes(value: string): number {
+  return new TextEncoder().encode(value).length;
 }
 
 function groupResources(resources: SkillFile[]): { folders: Array<{ name: string; files: SkillFile[] }>; rootFiles: SkillFile[] } {
@@ -54,16 +50,6 @@ function groupResources(resources: SkillFile[]): { folders: Array<{ name: string
     .map(([name, files]) => ({ name, files }));
   rootFiles.sort((a, b) => a.path.localeCompare(b.path));
   return { folders, rootFiles };
-}
-
-function buildSkillMdContent(fm: Record<string, string | string[]>, body: string): string {
-  const lines = ['---'];
-  for (const [k, v] of Object.entries(fm)) {
-    if (v == null || v === '') continue;
-    lines.push(`${k}: ${Array.isArray(v) ? v.join(' ') : v}`);
-  }
-  lines.push('---');
-  return lines.join('\n') + '\n' + body;
 }
 
 export default function SkillEditor() {
@@ -93,6 +79,8 @@ export default function SkillEditor() {
   const [newFileDir, setNewFileDir] = useState<string>('scripts');
 
   const uploadRef = useRef<HTMLInputElement>(null);
+  const parsedRef = useRef<{ keys: FrontmatterKey[] } | null>(null);
+  const originalTextsRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!id) return;
@@ -103,17 +91,25 @@ export default function SkillEditor() {
         setSourceType(skill.source_type);
         setVersion(skill.version || '');
 
-        const { frontmatter, body } = parseFrontmatter(downloaded.content);
-        setName(String(frontmatter.name || skill.name));
-        setDescription(String(frontmatter.description || skill.description || ''));
-        const tools = frontmatter['allowed-tools'];
+        const parsed = parseFrontmatter(downloaded.content);
+        parsedRef.current = parsed;
+        const fm: Record<string, string> = {};
+        for (const item of parsed.keys) fm[item.key] = item.value;
+        setName(fm.name || skill.name);
+        setDescription(fm.description || skill.description || '');
+        const tools = fm['allowed-tools'];
         if (tools) {
-          setAllowedTools(typeof tools === 'string' ? tools.split(/\s+/).filter(Boolean) : tools);
+          setAllowedTools(tools.split(/\s+/).filter(Boolean));
         } else {
           setAllowedTools(skill.allowed_tools || []);
         }
-        setSkillBody(body);
+        setSkillBody(parsed.body);
         setResources(downloaded.resources || []);
+        const originals = new Map<string, string>();
+        for (const r of downloaded.resources || []) {
+          if (r.content != null) originals.set(r.path, r.content);
+        }
+        originalTextsRef.current = originals;
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -143,20 +139,35 @@ export default function SkillEditor() {
     setSaving(true);
     setSaveError('');
     try {
-      const fm: Record<string, string | string[]> = { name, description };
-      if (allowedTools.length > 0) fm['allowed-tools'] = allowedTools;
-      if (version) fm.version = version;
-      const fullContent = buildSkillMdContent(fm, skillBody);
+      const fullContent = buildSkillMdContent(parsedRef.current?.keys ?? [], { name, description, allowedTools, version }, skillBody);
 
-      await api.skills.update(id, {
+      // stored binaries and untouched text files are kept server-side instead of being re-sent;
+      // only changed or new files travel in the request body
+      const resourcePayload = resources.map(r => {
+        if (r.kind === 'blob') return { path: r.path, keep: true };
+        const original = originalTextsRef.current.get(r.path);
+        if (original !== undefined && original === (r.content ?? '')) return { path: r.path, keep: true };
+        return { path: r.path, content: r.content ?? '' };
+      });
+
+      const payload = {
         description,
         content: fullContent,
         allowed_tools: allowedTools.length > 0 ? allowedTools : [],
-        // stored binaries cannot be represented here: keep them unchanged instead of sending empty content
-        resources: resources.map(r => r.kind === 'blob'
-          ? { path: r.path, keep: true }
-          : { path: r.path, content: r.content ?? '' }),
-      });
+        resources: resourcePayload,
+      };
+      const bodyBytes = utf8Bytes(JSON.stringify(payload));
+      if (bodyBytes > MAX_REQUEST_BYTES) {
+        throw new Error(`This save is ${formatMegabytes(bodyBytes)} — over the 10 MB request limit (the server would reject it with a 400). Reduce the modified files and save again.`);
+      }
+
+      await api.skills.update(id, payload);
+
+      const saved = new Map<string, string>();
+      for (const r of resources) {
+        if (r.kind !== 'blob') saved.set(r.path, r.content ?? '');
+      }
+      originalTextsRef.current = saved;
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -230,10 +241,7 @@ export default function SkillEditor() {
   };
 
   const handleExport = async () => {
-    const fm: Record<string, string | string[]> = { name, description };
-    if (allowedTools.length > 0) fm['allowed-tools'] = allowedTools;
-    if (version) fm.version = version;
-    const fullContent = buildSkillMdContent(fm, skillBody);
+    const fullContent = buildSkillMdContent(parsedRef.current?.keys ?? [], { name, description, allowedTools, version }, skillBody);
 
     const blobCount = resources.filter(r => r.kind === 'blob').length;
     if (blobCount > 0) {

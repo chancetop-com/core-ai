@@ -298,6 +298,26 @@ class SkillServiceTest {
     }
 
     @Test
+    void uploadDropsEntriesThatAreNotSkillResources() {
+        var collection = skillCollection();
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
+        var service = new SkillService();
+        service.skillCollection = collection;
+        service.blobStore = mock(SkillBlobStore.class);
+        var content = "---\nname: demo\ndescription: demo\n---\n";
+        var runScript = "#!/bin/sh\necho hi\n".getBytes(StandardCharsets.UTF_8);
+
+        var entity = service.upload("u1", "Admin", content.getBytes(StandardCharsets.UTF_8), Map.of(
+                "scripts/run.sh", runScript,
+                "__pycache__/demo.cpython-314.pyc", new byte[]{0x00, (byte) 0xFF},
+                ".DS_Store", new byte[]{0x01}));
+
+        assertEquals(List.of("scripts/run.sh"), entity.resources.stream().map(resource -> resource.path).toList());
+        assertEquals(SkillDigest.of(content, Map.of("scripts/run.sh", runScript)), entity.digest);
+        verify(collection).insert(entity);
+    }
+
+    @Test
     void updateReusesDigestWhenResourcesAreKeptUnchanged() {
         var collection = skillCollection();
         var entity = skill("1", "Admin", "review", "desc");
