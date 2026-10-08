@@ -74,10 +74,14 @@ public class TraceArchiveService {
         return objectStorageResolver.resolve();
     }
 
-    private String archiveContainer() {
+    /**
+     * Container the archives are written to: the configured {@code trace.archive.container},
+     * or the private artifact container by default. Never a public container - archives hold
+     * raw prompts, completions and tool payloads.
+     */
+    String archiveContainer() {
         if (configuredContainer != null && !configuredContainer.isBlank()) return configuredContainer;
-        var container = objectStorageResolver.multimodalContainer();
-        return container == null || container.isBlank() ? "traces-archive" : container;
+        return objectStorageResolver.artifactContainer();
     }
 
     public int uploadArchive(ZonedDateTime cutoff) {

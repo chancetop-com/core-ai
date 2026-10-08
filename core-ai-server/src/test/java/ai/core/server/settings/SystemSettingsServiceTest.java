@@ -199,6 +199,60 @@ class SystemSettingsServiceTest {
         assertThrows(BadRequestException.class, () -> service.update(tooLarge, "admin"));
     }
 
+    @Test
+    void traceArchiveIntervalDefaultsToOneDayWhenUnset() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+
+        assertEquals(1440, service.get("admin").traceArchiveIntervalMinutes.intValue());
+    }
+
+    @Test
+    void legacyDocumentWithoutTraceArchiveFieldReadsAsDefault() {
+        var legacy = new SystemSettings();
+        legacy.id = "default";
+        when(settings.get("default")).thenReturn(Optional.of(legacy));
+
+        assertEquals(1440, service.get("admin").traceArchiveIntervalMinutes.intValue());
+    }
+
+    @Test
+    void updatePersistsTraceArchiveInterval() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+        var request = new SystemSettingsRequest();
+        request.traceArchiveIntervalMinutes = 120;
+
+        var view = service.update(request, "admin");
+
+        var entity = ArgumentCaptor.forClass(SystemSettings.class);
+        verify(settings).insert(entity.capture());
+        assertEquals(120, entity.getValue().traceArchiveIntervalMinutes.intValue());
+        assertEquals(120, view.traceArchiveIntervalMinutes.intValue());
+    }
+
+    @Test
+    void omittedTraceArchiveIntervalPreservesExistingValue() {
+        var existing = new SystemSettings();
+        existing.id = "default";
+        existing.traceArchiveIntervalMinutes = 120;
+        when(settings.get("default")).thenReturn(Optional.of(existing));
+
+        service.update(new SystemSettingsRequest(), "admin");
+
+        assertEquals(120, existing.traceArchiveIntervalMinutes.intValue());
+        verify(settings).replace(existing);
+    }
+
+    @Test
+    void rejectsOutOfRangeTraceArchiveInterval() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+        var tooSmall = new SystemSettingsRequest();
+        tooSmall.traceArchiveIntervalMinutes = 1;
+        assertThrows(BadRequestException.class, () -> service.update(tooSmall, "admin"));
+        var tooLarge = new SystemSettingsRequest();
+        tooLarge.traceArchiveIntervalMinutes = 10081;
+        assertThrows(BadRequestException.class, () -> service.update(tooLarge, "admin"));
+    }
+
     private GatewayModelConfig mediaModel(String modelId) {
         var config = new GatewayModelConfig();
         config.modelId = modelId;

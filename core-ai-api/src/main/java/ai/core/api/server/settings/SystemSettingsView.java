@@ -65,6 +65,9 @@ public class SystemSettingsView {
     @Property(name = "skill_repo_sync_interval_minutes")
     public Integer skillRepoSyncIntervalMinutes;
 
+    @Property(name = "trace_archive_interval_minutes")
+    public Integer traceArchiveIntervalMinutes;
+
     @Property(name = "storage_provider")
     public String storageProvider;
 

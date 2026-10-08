@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.settings.TraceArchiveSettings;
 import core.framework.module.Module;
 
 /**
@@ -11,6 +12,7 @@ public class SettingsModule extends Module {
     @Override
     protected void initialize() {
         bindGatewaySecretProtector();
+        bind(TraceArchiveSettings.class);
         bind(SystemSettingsService.class);
     }
 

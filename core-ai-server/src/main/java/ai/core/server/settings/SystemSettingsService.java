@@ -61,6 +61,7 @@ public class SystemSettingsService {
             applyModels(entity, models);
             applyIntegrations(entity, request);
             applySkillRepoSync(entity, request);
+            TraceArchiveSettings.apply(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.insert(entity);
@@ -68,6 +69,7 @@ public class SystemSettingsService {
             applyModels(entity, models);
             applyIntegrations(entity, request);
             applySkillRepoSync(entity, request);
+            TraceArchiveSettings.apply(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
             systemSettingsCollection.replace(entity);
@@ -154,6 +156,7 @@ public class SystemSettingsService {
         validateNumeric(request.githubAppId, "githubAppId");
         validateNumeric(request.githubAppInstallationId, "githubAppInstallationId");
         validateSkillRepoSyncInterval(request.skillRepoSyncIntervalMinutes);
+        TraceArchiveSettings.validate(request);
     }
 
     private void validateSkillRepoSyncInterval(Integer interval) {
@@ -406,6 +409,7 @@ public class SystemSettingsService {
         view.sandboxSnapshotEnabled = entity != null && Boolean.TRUE.equals(entity.sandboxSnapshotEnabled);
         view.skillRepoSyncEnabled = skillRepoSyncEnabled(entity);
         view.skillRepoSyncIntervalMinutes = skillRepoSyncIntervalMinutes(entity);
+        view.traceArchiveIntervalMinutes = TraceArchiveSettings.resolveIntervalMinutes(entity);
         view.storageProvider = entity == null ? null : normalizeModel(entity.storageProvider);
         view.azureBlobArtifactContainer = entity == null ? null : normalizeModel(entity.azureBlobArtifactContainer);
         view.azureBlobPublicArtifactContainer = entity == null ? null : normalizeModel(entity.azureBlobPublicArtifactContainer);

@@ -11,8 +11,8 @@ import java.time.ZoneId;
  * Archives traces older than the retention window to object storage
  * and deletes them from MongoDB.
  *
- * <p>Cutoff date = today - retentionDays. The taskId date suffix is used
- * for deduplication (one execution per day).</p>
+ * <p>Cutoff date = today - retentionDays. The job derives a taskId per due slot, so at
+ * most one pod executes a slot.</p>
  *
  * @author cyril
  */

@@ -51,7 +51,7 @@ public class TraceModule extends Module {
         schedule().fixedRate("trace-daily-maintenance", bind(TraceDailyMaintenanceJob.class), Duration.ofHours(1));
         var traceArchivingTask = bind(TraceArchivingTask.class);
         onStartup(() -> taskRunner.register(traceArchivingTask));
-        schedule().fixedRate("trace-archive", bind(TraceArchivingJob.class), Duration.ofHours(1));
+        schedule().fixedRate("trace-archive", bind(TraceArchivingJob.class), Duration.ofMinutes(TraceArchivingJob.TICK_MINUTES));
         bind(StaleRunCleanupService.class);
         schedule().fixedRate("stale-run-cleanup", bind(StaleRunCleanupJob.class), Duration.ofMinutes(10));
         registerTrace();

@@ -153,3 +153,48 @@ describe('SystemSettings skill repo sync control', () => {
     expect(await screen.findByText(/between 5 and 10080 minutes/i)).toBeTruthy();
   });
 });
+
+describe('SystemSettings trace archive interval', () => {
+  it('defaults to one day when unset', async () => {
+    mockLoad({});
+
+    render(<SystemSettings />);
+    await openTab('Storage');
+
+    const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /archive interval/i });
+    expect(interval.value).toBe('1440');
+  });
+
+  it('sends the interval when saving', async () => {
+    mockLoad({ trace_archive_interval_minutes: 1440 });
+    const update = vi.spyOn(api.systemSettings, 'update').mockResolvedValue({
+      trace_archive_interval_minutes: 60,
+    });
+
+    render(<SystemSettings />);
+    await openTab('Storage');
+
+    const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /archive interval/i });
+    await userEvent.clear(interval);
+    await userEvent.type(interval, '60');
+    await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ trace_archive_interval_minutes: 60 }));
+  });
+
+  it('blocks saving an out-of-range interval', async () => {
+    mockLoad({});
+    const update = vi.spyOn(api.systemSettings, 'update').mockResolvedValue({});
+
+    render(<SystemSettings />);
+    await openTab('Storage');
+
+    const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /archive interval/i });
+    await userEvent.clear(interval);
+    await userEvent.type(interval, '3');
+    await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    expect(update).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Trace archive interval must be between 5 and 10080 minutes/i)).toBeTruthy();
+  });
+});

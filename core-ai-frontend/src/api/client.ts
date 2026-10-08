@@ -1845,6 +1845,7 @@ export interface SystemSettings {
   sandbox_snapshot_effective?: boolean;
   skill_repo_sync_enabled?: boolean;
   skill_repo_sync_interval_minutes?: number;
+  trace_archive_interval_minutes?: number;
   created_by?: string;
   updated_by?: string;
   created_at?: string;
@@ -1876,6 +1877,7 @@ export interface SystemSettingsRequest {
   sandbox_snapshot_enabled?: boolean;
   skill_repo_sync_enabled?: boolean | null;
   skill_repo_sync_interval_minutes?: number | null;
+  trace_archive_interval_minutes?: number | null;
 }
 
 export interface NotificationView {

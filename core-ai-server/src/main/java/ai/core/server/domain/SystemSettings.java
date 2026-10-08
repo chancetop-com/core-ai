@@ -44,6 +44,9 @@ public class SystemSettings {
     @Field(name = "skill_repo_sync_interval_minutes")
     public Integer skillRepoSyncIntervalMinutes;
 
+    @Field(name = "trace_archive_interval_minutes")
+    public Integer traceArchiveIntervalMinutes;
+
     @Field(name = "storage_provider")
     public String storageProvider;
 

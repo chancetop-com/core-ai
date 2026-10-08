@@ -40,6 +40,7 @@ export default function SystemSettings() {
   const [sandboxSnapshotEnabled, setSandboxSnapshotEnabled] = useState(false);
   const [skillRepoSyncEnabled, setSkillRepoSyncEnabled] = useState(true);
   const [skillRepoSyncIntervalMinutes, setSkillRepoSyncIntervalMinutes] = useState('30');
+  const [traceArchiveIntervalMinutes, setTraceArchiveIntervalMinutes] = useState('1440');
   const [activeTab, setActiveTab] = useState<TabKey>('llm');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -115,6 +116,7 @@ export default function SystemSettings() {
       setSandboxSnapshotEnabled(settingsResponse.sandbox_snapshot_enabled === true);
       setSkillRepoSyncEnabled(settingsResponse.skill_repo_sync_enabled !== false);
       setSkillRepoSyncIntervalMinutes(String(settingsResponse.skill_repo_sync_interval_minutes ?? 30));
+      setTraceArchiveIntervalMinutes(String(settingsResponse.trace_archive_interval_minutes ?? 1440));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load system settings');
     } finally {
@@ -131,6 +133,13 @@ export default function SystemSettings() {
     const syncIntervalValid = Number.isInteger(syncInterval) && syncInterval >= 5 && syncInterval <= 10080;
     if (skillRepoSyncEnabled && !syncIntervalValid) {
       setError('Skill repo sync interval must be between 5 and 10080 minutes.');
+      setMessage('');
+      return;
+    }
+    const traceInterval = Number(traceArchiveIntervalMinutes.trim());
+    const traceIntervalValid = Number.isInteger(traceInterval) && traceInterval >= 5 && traceInterval <= 10080;
+    if (!traceIntervalValid) {
+      setError('Trace archive interval must be between 5 and 10080 minutes.');
       setMessage('');
       return;
     }
@@ -163,6 +172,7 @@ export default function SystemSettings() {
         sandbox_snapshot_enabled: sandboxSnapshotEnabled,
         skill_repo_sync_enabled: skillRepoSyncEnabled,
         skill_repo_sync_interval_minutes: syncIntervalValid ? syncInterval : null,
+        trace_archive_interval_minutes: traceInterval,
       });
       setSettings(response);
       setMemoryExtractionModel(response.memory_extraction_model || '');
@@ -189,6 +199,7 @@ export default function SystemSettings() {
       setSandboxSnapshotEnabled(response.sandbox_snapshot_enabled === true);
       setSkillRepoSyncEnabled(response.skill_repo_sync_enabled !== false);
       setSkillRepoSyncIntervalMinutes(String(response.skill_repo_sync_interval_minutes ?? 30));
+      setTraceArchiveIntervalMinutes(String(response.trace_archive_interval_minutes ?? 1440));
       setMessage('System settings saved. Changes take effect immediately.');
       setSaved(true);
       if (savedTimer.current) window.clearTimeout(savedTimer.current);
@@ -485,6 +496,35 @@ export default function SystemSettings() {
                   className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
                   style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
                 />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">Trace Archive</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Traces and spans older than the 30-day retention window are archived to private object storage, then
+                deleted from MongoDB so the trace collections stay bounded. The interval controls how often the archive
+                job checks for data that passed the window.
+              </p>
+            </div>
+            <div className="p-5 space-y-5">
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Archive interval (minutes)</span>
+                <input
+                  type="number"
+                  min={5}
+                  max={10080}
+                  value={traceArchiveIntervalMinutes}
+                  onChange={event => setTraceArchiveIntervalMinutes(event.target.value)}
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+                <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Between 5 minutes and 7 days (10080); default 1440 (one day). Changes take effect within one
+                  scheduler tick, no restart required.
+                </span>
               </label>
             </div>
           </section>
