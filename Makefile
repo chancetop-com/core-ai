@@ -66,8 +66,14 @@ cli:
 	@echo "Built: $(CLI_BUILD_DIR)/$(CLI_BINARY)"
 
 update-model-context:
-	curl -fsSL https://raw.githubusercontent.com/BerriAI/litellm/litellm_internal_staging/model_prices_and_context_window.json \
-		-o core-ai/src/main/resources/model_prices_and_context_window.json
+	@set -e; \
+		target=core-ai/src/main/resources/model_prices_and_context_window.json; \
+		temp=$$(mktemp "$$target.XXXXXX"); \
+		trap 'rm -f "$$temp"' EXIT HUP INT TERM; \
+		curl -fsSL https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json -o "$$temp"; \
+		python3 -m json.tool "$$temp" > /dev/null; \
+		chmod 644 "$$temp"; \
+		mv "$$temp" "$$target"
 	@echo "Updated model_prices_and_context_window.json from litellm"
 
 release: cli
