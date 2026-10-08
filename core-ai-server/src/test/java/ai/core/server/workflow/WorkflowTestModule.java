@@ -6,6 +6,7 @@ import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
+import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.Notification;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectSubject;
@@ -20,11 +21,15 @@ import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.blob.ObjectStorageServiceResolver;
+import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.notification.NotificationEventPublisher;
 import ai.core.server.notification.NotificationService;
 import ai.core.server.project.ProjectService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.SessionRegistry;
+import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.skill.SkillBlobStore;
 import ai.core.server.skill.SkillService;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.HumanInputExecutor;
@@ -68,6 +73,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(AgentRun.class);
         mongo.collection(AgentSchedule.class);           // project feature: ProjectArtifactBinder resolves schedule bindings
         mongo.collection(FileRecord.class);
+        mongo.collection(GatewayModelConfig.class);       // SystemSettingsService injection chain (SkillBlobStore -> resolver -> settings)
         mongo.view(ToolRef.class);                        // partial updates persist loaded ToolRef values
 
         bindWorkflowServices();
@@ -126,6 +132,12 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(WorkflowDefinitionService.class);
         bind(WorkflowAgentOptionService.class);
         bind(WorkflowPortService.class);           // import/export; shares this module so it never adds a second test context
+        // SkillService injects SkillBlobStore, which needs ObjectStorageServiceResolver and SystemSettingsService;
+        // bind the chain in dependency order because core-ng resolves @Inject eagerly at bind() time.
+        bind(new GatewaySecretProtector("wftest-secret"));
+        bind(SystemSettingsService.class);
+        bind(ObjectStorageServiceResolver.class);
+        bind(SkillBlobStore.class);
         bind(SkillService.class);
         bind(WorkflowAgentSnapshotService.class);
         bind(WorkflowPrivateAgentSafetyValidator.class);

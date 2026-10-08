@@ -900,14 +900,14 @@ export interface SkillDownloadResponse {
   name: string;
   namespace: string;
   content: string;
-  resources: { path: string; content: string }[];
+  resources: { path: string; content?: string; kind?: 'text' | 'blob'; size?: number }[];
 }
 
 export interface UpdateSkillRequest {
   description?: string;
   content?: string;
   allowed_tools?: string[];
-  resources?: { path: string; content: string }[];
+  resources?: { path: string; content?: string; keep?: boolean }[];
 }
 
 export interface ToolRegistryView {

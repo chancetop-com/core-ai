@@ -36,6 +36,9 @@ public interface ObjectStorageService {
         uploadObject(container, blobName, file);
     }
 
+    /** Server-side upload from an in-memory buffer, for bytes that are already materialized (skill resources, thumbnails). */
+    void uploadObject(String container, String blobName, byte[] data, String contentType);
+
     /** Server-side streaming download to a local file (snapshot restore path). */
     void downloadObjectToFile(String container, String blobName, java.nio.file.Path target);
 

@@ -40,8 +40,14 @@ public class SkillDownloadResponse {
         @Property(name = "path")
         public String path;
 
-        @NotNull
+        /** "text" content is returned inline; "blob" rows carry only kind and size and stay read-only. */
+        @Property(name = "kind")
+        public String kind;
+
         @Property(name = "content")
         public String content;
+
+        @Property(name = "size")
+        public Integer size;
     }
 }

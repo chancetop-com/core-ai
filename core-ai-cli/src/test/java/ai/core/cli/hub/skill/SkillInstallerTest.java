@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -29,8 +29,7 @@ class SkillInstallerTest {
     void setUp() {
         installer = new SkillInstaller();
         var content = "---\nname: code-review\ndescription: review\n---\nbody";
-        var resources = List.of(new SkillDigest.Resource("scripts/check.sh", "#!/bin/sh\n"));
-        digest = SkillDigest.of(content, resources);
+        digest = SkillDigest.of(content, Map.of("scripts/check.sh", "#!/bin/sh\n".getBytes(StandardCharsets.UTF_8)));
     }
 
     private SkillHubMarker.Marker source(String digest) {

@@ -10,12 +10,15 @@ import ai.core.api.server.skillhub.SkillHubSummary;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.skill.SkillArchiveBuilder;
+import ai.core.server.skill.SkillBlobStore;
+import ai.core.server.skill.SkillResourceLimits;
 import ai.core.server.skillhub.SkillCatalogService.CatalogSkill;
 import ai.core.server.skillhub.SkillCatalogService.SearchOutcome;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
@@ -26,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.ZonedDateTime;
+import java.util.Base64;
 import java.util.HexFormat;
 
 /**
@@ -46,6 +50,8 @@ public class SkillHubService {
     MongoCollection<SkillDefinition> skillCollection;
     @Inject
     SkillArchiveBuilder archiveBuilder;
+    @Inject
+    SkillBlobStore blobStore;
 
     public SkillHubSearchResponse search(String query, String namespace, String sourceType, Integer limit) {
         SearchOutcome outcome = catalog.search(query, namespace, sourceType, limit);
@@ -90,10 +96,23 @@ public class SkillHubService {
         }
         var response = new SkillHubResourceResponse();
         response.path = resource.path;
-        String content = resource.content == null ? "" : resource.content;
-        response.content = content;
-        response.size = content.getBytes(StandardCharsets.UTF_8).length;
-        response.sha256 = sha256(content);
+        if (resource.storagePath != null) {
+            response.kind = "blob";
+            if (resource.size == null || resource.size > SkillResourceLimits.MAX_INLINE_RESOURCE_BYTES) {
+                throw new BadRequestException("binary resource is too large for the JSON endpoint, use the archive endpoint"
+                    + " (core-ai-cli skill pull): " + path);
+            }
+            var bytes = blobStore.fetch(resource.storagePath);
+            response.content = Base64.getEncoder().encodeToString(bytes);
+            response.encoding = "base64";
+            response.size = bytes.length;
+            response.sha256 = resource.sha256 != null ? resource.sha256 : sha256(bytes);
+            return response;
+        }
+        response.kind = "text";
+        response.content = resource.content == null ? "" : resource.content;
+        response.size = sizeOf(resource);
+        response.sha256 = shaOf(resource);
         return response;
     }
 
@@ -140,13 +159,24 @@ public class SkillHubService {
             view.resources = def.resources.stream().map(resource -> {
                 var ref = new SkillHubResourceRef();
                 ref.path = resource.path;
-                String content = resource.content == null ? "" : resource.content;
-                ref.size = content.getBytes(StandardCharsets.UTF_8).length;
-                ref.sha256 = sha256(content);
+                ref.kind = resource.storagePath != null ? "blob" : "text";
+                ref.size = sizeOf(resource);
+                ref.sha256 = shaOf(resource);
                 return ref;
             }).toList();
         }
         return view;
+    }
+
+    /** Size and hash come from the stored metadata; legacy inline rows are computed on the fly. */
+    private Integer sizeOf(SkillResource resource) {
+        if (resource.size != null) return Math.toIntExact(resource.size);
+        return resource.content == null ? 0 : resource.content.getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    private String shaOf(SkillResource resource) {
+        if (resource.sha256 != null) return resource.sha256;
+        return sha256(resource.content == null ? "" : resource.content);
     }
 
     private SkillHubSummary toSummary(CatalogSkill skill, int score) {
@@ -184,9 +214,13 @@ public class SkillHubService {
     }
 
     private String sha256(String value) {
+        return sha256(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String sha256(byte[] value) {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(digest.digest(value));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }

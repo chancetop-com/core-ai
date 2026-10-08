@@ -4,11 +4,13 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.server.skill.SkillArchiveBuilder;
+import ai.core.server.skill.SkillBlobStore;
 import ai.core.server.skillhub.SkillCatalogService.CatalogSkill;
 import ai.core.server.skillhub.SkillCatalogService.ScoredSkill;
 import ai.core.server.skillhub.SkillCatalogService.SearchOutcome;
 import ai.core.utils.JsonUtil;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
@@ -17,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.time.ZonedDateTime;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,6 +27,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,6 +38,7 @@ import static org.mockito.Mockito.when;
 class SkillHubServiceTest {
     private SkillCatalogService catalog;
     private MongoCollection<SkillDefinition> collection;
+    private SkillBlobStore blobStore;
     private SkillHubService hubService;
 
     @BeforeEach
@@ -41,11 +46,13 @@ class SkillHubServiceTest {
     void setUp() {
         catalog = mock(SkillCatalogService.class);
         collection = (MongoCollection<SkillDefinition>) mock(MongoCollection.class);
+        blobStore = mock(SkillBlobStore.class);
         hubService = new SkillHubService();
         hubService.catalog = catalog;
         hubService.accessPolicy = new SkillHubAccessPolicy();
         hubService.skillCollection = collection;
         hubService.archiveBuilder = new SkillArchiveBuilder();
+        hubService.blobStore = blobStore;
     }
 
     @Test
@@ -105,9 +112,30 @@ class SkillHubServiceTest {
         assertEquals("# Code review", detail.content);
         assertEquals(1, detail.resources.size());
         assertEquals("references/style.md", detail.resources.getFirst().path);
+        assertEquals("text", detail.resources.getFirst().kind);
         assertEquals("style body".getBytes(StandardCharsets.UTF_8).length, detail.resources.getFirst().size);
         assertNotNull(detail.resources.getFirst().sha256);
         verify(collection).update(any(Bson.class), any(Bson.class));
+    }
+
+    @Test
+    void showUsesStoredMetadataAndKindForBlobResources() {
+        var def = definition("stephen", "code-review");
+        def.content = "# Code review";
+        var blob = new SkillResource();
+        blob.path = "canvas-fonts/font.ttf";
+        blob.storagePath = "artifacts/skills/id-1/resources/abc";
+        blob.size = 46_443L;
+        blob.sha256 = "hash-1";
+        def.resources = List.of(blob);
+        when(catalog.find("stephen", "code-review")).thenReturn(catalogSkill("stephen", "code-review"));
+        when(collection.get("id-1")).thenReturn(Optional.of(def));
+
+        var detail = hubService.show("stephen", "code-review");
+
+        assertEquals("blob", detail.resources.getFirst().kind);
+        assertEquals(46443, detail.resources.getFirst().size);
+        assertEquals("hash-1", detail.resources.getFirst().sha256);
     }
 
     @Test
@@ -120,11 +148,51 @@ class SkillHubServiceTest {
 
         var response = hubService.resource("stephen", "code-review", "references/style.md");
         assertEquals("style body", response.content);
+        assertEquals("text", response.kind);
+        assertNull(response.encoding);
         assertEquals(10, response.size);
         assertNotNull(response.sha256);
 
         assertThrows(NotFoundException.class, () -> hubService.resource("stephen", "code-review", "../SKILL.md"));
         assertThrows(NotFoundException.class, () -> hubService.resource("stephen", "code-review", "references/other.md"));
+    }
+
+    @Test
+    void resourceReturnsBase64ForSmallBlobResources() {
+        var def = definition("stephen", "code-review");
+        var blob = new SkillResource();
+        blob.path = "canvas-fonts/font.ttf";
+        blob.storagePath = "artifacts/skills/id-1/resources/abc";
+        blob.size = 4L;
+        def.resources = List.of(blob);
+        when(catalog.find("stephen", "code-review")).thenReturn(catalogSkill("stephen", "code-review"));
+        when(collection.get("id-1")).thenReturn(Optional.of(def));
+        var bytes = new byte[]{1, 2, 3, 4};
+        when(blobStore.fetch("artifacts/skills/id-1/resources/abc")).thenReturn(bytes);
+
+        var response = hubService.resource("stephen", "code-review", "canvas-fonts/font.ttf");
+
+        assertEquals("blob", response.kind);
+        assertEquals("base64", response.encoding);
+        assertEquals(Base64.getEncoder().encodeToString(bytes), response.content);
+        assertEquals(4, response.size);
+    }
+
+    @Test
+    void resourceRejectsLargeBlobResourcesWithArchiveGuidance() {
+        var def = definition("stephen", "code-review");
+        var blob = new SkillResource();
+        blob.path = "canvas-fonts/font.ttf";
+        blob.storagePath = "artifacts/skills/id-1/resources/abc";
+        blob.size = 2 * 1024 * 1024L;
+        def.resources = List.of(blob);
+        when(catalog.find("stephen", "code-review")).thenReturn(catalogSkill("stephen", "code-review"));
+        when(collection.get("id-1")).thenReturn(Optional.of(def));
+
+        var error = assertThrows(BadRequestException.class,
+                () -> hubService.resource("stephen", "code-review", "canvas-fonts/font.ttf"));
+
+        assertTrue(error.getMessage().contains("archive"));
     }
 
     @Test

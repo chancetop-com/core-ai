@@ -17,6 +17,7 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.skill.MarketplaceService;
 import ai.core.server.skill.SkillFilter;
+import ai.core.server.skill.SkillResourceUpdate;
 import ai.core.server.skill.SkillService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
@@ -24,12 +25,18 @@ import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
  * @author stephen
  */
 public class SkillWebServiceImpl implements SkillWebService {
+    private static Integer resourceSize(SkillResource resource) {
+        if (resource.size != null) return resource.size.intValue();
+        return resource.content == null ? null : resource.content.getBytes(StandardCharsets.UTF_8).length;
+    }
+
     @Inject
     SkillService skillService;
 
@@ -82,14 +89,11 @@ public class SkillWebServiceImpl implements SkillWebService {
     @Override
     @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public SkillDefinitionView update(String id, UpdateSkillRequest request) {
-        List<SkillResource> resources = null;
+        List<SkillResourceUpdate> resources = null;
         if (request.resources != null) {
-            resources = request.resources.stream().map(r -> {
-                var sr = new SkillResource();
-                sr.path = r.path;
-                sr.content = r.content;
-                return sr;
-            }).toList();
+            resources = request.resources.stream()
+                .map(r -> new SkillResourceUpdate(r.path, Boolean.TRUE.equals(r.keep), r.content))
+                .toList();
         }
         return toView(skillService.update(id, request.description, request.content, request.allowedTools, resources));
     }
@@ -121,6 +125,8 @@ public class SkillWebServiceImpl implements SkillWebService {
             response.resources = entity.resources.stream().map(r -> {
                 var rv = new SkillDownloadResponse.SkillResourceView();
                 rv.path = r.path;
+                rv.kind = r.storagePath != null ? "blob" : "text";
+                rv.size = resourceSize(r);
                 rv.content = r.content;
                 return rv;
             }).toList();

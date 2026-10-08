@@ -1,6 +1,8 @@
 package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillResource;
+import core.framework.inject.Inject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -11,10 +13,15 @@ import java.util.zip.ZipOutputStream;
 /**
  * Builds a ZIP archive of a skill's SKILL.md and all resources, for materialization
  * into a sandbox runtime. The sandbox runtime unpacks this into /skill/{name}/.
+ * Resource bytes stored in object storage are fetched on demand; the archive always
+ * carries the original bytes.
  *
  * @author xander
  */
 public class SkillArchiveBuilder {
+
+    @Inject
+    SkillBlobStore blobStore;
 
     public byte[] build(SkillDefinition def) {
         if (def.content == null) {
@@ -26,8 +33,7 @@ public class SkillArchiveBuilder {
             if (def.resources != null) {
                 for (var r : def.resources) {
                     if (r.path == null) continue;
-                    var bytes = r.content != null ? r.content.getBytes(StandardCharsets.UTF_8) : new byte[0];
-                    writeEntry(zip, r.path, bytes);
+                    writeEntry(zip, r.path, resourceBytes(r));
                 }
             }
             zip.finish();
@@ -35,6 +41,11 @@ public class SkillArchiveBuilder {
         } catch (IOException e) {
             throw new RuntimeException("failed to build skill archive: " + def.qualifiedName, e);
         }
+    }
+
+    private byte[] resourceBytes(SkillResource resource) {
+        if (resource.storagePath != null) return blobStore.fetch(resource.storagePath);
+        return resource.content != null ? resource.content.getBytes(StandardCharsets.UTF_8) : new byte[0];
     }
 
     private void writeEntry(ZipOutputStream zip, String path, byte[] data) throws IOException {

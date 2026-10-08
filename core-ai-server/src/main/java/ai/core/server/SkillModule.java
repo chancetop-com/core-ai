@@ -4,6 +4,7 @@ import ai.core.api.server.SkillWebService;
 import ai.core.server.skill.MarketplaceService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
+import ai.core.server.skill.SkillBlobStore;
 import ai.core.server.skill.SkillRepoSyncJob;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillToolAssembler;
@@ -20,10 +21,11 @@ import java.time.Duration;
 public class SkillModule extends Module {
     @Override
     protected void initialize() {
+        bind(SkillBlobStore.class);
         bind(SkillService.class);
         bind(MarketplaceService.class);
         bind(MongoSkillProvider.class);
-        bind(new SkillArchiveBuilder());
+        bind(SkillArchiveBuilder.class);
         bind(SkillToolAssembler.class);
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/skills/upload", bind(SkillUploadController.class));

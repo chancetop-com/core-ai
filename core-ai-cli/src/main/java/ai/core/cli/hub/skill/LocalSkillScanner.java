@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -46,29 +46,17 @@ public class LocalSkillScanner {
         return skills;
     }
 
-    /** Digest of an installed skill directory (SKILL.md plus every non-dotfile resource). */
+    /**
+     * Digest of an installed skill directory (SKILL.md plus every resource, read as raw bytes
+     * so binary files hash verbatim). Resources are enumerated by the shared
+     * {@link SkillLoader#scanResources} logic, which also keeps client and server in lockstep.
+     */
     public String digestOf(Path skillDir, String content) throws IOException {
-        var resources = new ArrayList<SkillDigest.Resource>();
-        for (String path : resourcePaths(skillDir)) {
-            String resourceContent = Files.readString(skillDir.resolve(path), StandardCharsets.UTF_8);
-            resources.add(new SkillDigest.Resource(path, resourceContent));
+        var resources = new LinkedHashMap<String, byte[]>();
+        for (String path : new SkillLoader(MAX_SKILL_FILE_SIZE).scanResources(skillDir)) {
+            resources.put(path, Files.readAllBytes(skillDir.resolve(path)));
         }
         return SkillDigest.of(content, resources);
-    }
-
-    /** Recursive resource list matching {@code SkillLoader.scanResources}: sorted, dot-prefixed entries ignored. */
-    private List<String> resourcePaths(Path skillDir) throws IOException {
-        var paths = new ArrayList<String>();
-        try (var walk = Files.walk(skillDir)) {
-            walk.filter(Files::isRegularFile).forEach(file -> {
-                var relative = skillDir.relativize(file).toString().replace('\\', '/');
-                if (relative.isEmpty() || SKILL_FILE_NAME.equals(relative)) return;
-                if (relative.startsWith(".") || relative.contains("/.")) return;
-                paths.add(relative);
-            });
-        }
-        Collections.sort(paths);
-        return paths;
     }
 
     public record LocalSkill(String name, String qualifiedName, Path skillDir, String description,

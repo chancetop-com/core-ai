@@ -26,7 +26,10 @@ public class UpdateSkillRequest {
         @Property(name = "path")
         public String path;
 
-        @NotNull
+        /** {@code keep=true} retains the stored resource (binaries cannot be edited here); otherwise {@code content} replaces it. */
+        @Property(name = "keep")
+        public Boolean keep;
+
         @Property(name = "content")
         public String content;
     }

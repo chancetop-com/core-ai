@@ -64,11 +64,19 @@ public class MongoSkillProvider {
                 throw new SkillLoadException("resource not found: " + resourcePath + " in " + skill.getQualifiedName()
                     + " (this skill has no resources; only SKILL.md is available)");
             }
-            return def.resources.stream()
-                .filter(r -> r.path.equals(resourcePath))
-                .findFirst()
-                .map(r -> r.content)
-                .orElseThrow(() -> new SkillLoadException("resource not found: " + resourcePath + " in " + skill.getQualifiedName()));
+            var resource = def.resources.stream()
+                .filter(candidate -> candidate.path.equals(resourcePath))
+                .findFirst().orElse(null);
+            if (resource == null) {
+                throw new SkillLoadException("resource not found: " + resourcePath + " in " + skill.getQualifiedName());
+            }
+            if (resource.storagePath != null) {
+                throw new SkillLoadException("resource is a binary or large file and cannot be read as text: " + resourcePath
+                    + " in " + skill.getQualifiedName()
+                    + " (read it from the sandbox at /skill/" + skill.getName() + "/" + resourcePath
+                    + " after use_skill, or pull the skill with the CLI)");
+            }
+            return resource.content;
         }
 
         @Override

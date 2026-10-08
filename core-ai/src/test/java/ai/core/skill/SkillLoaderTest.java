@@ -287,6 +287,33 @@ class SkillLoaderTest {
     }
 
     @Test
+    void scanResourcesIgnoresPythonBuildArtifacts(@TempDir Path tempDir) throws IOException {
+        var skillDir = tempDir.resolve("my-skill");
+        Files.createDirectories(skillDir.resolve("__pycache__"));
+        Files.createDirectories(skillDir.resolve("scripts"));
+        Files.writeString(skillDir.resolve("scripts/run.sh"), "#!/bin/sh");
+        Files.writeString(skillDir.resolve("mod.pyc"), "junk");
+        Files.writeString(skillDir.resolve("__pycache__/mod.cpython-311.pyc"), "junk");
+
+        var resources = loader.scanResources(skillDir);
+
+        assertEquals(List.of("scripts/run.sh"), resources);
+    }
+
+    @Test
+    void scanResourcesKeepsOrdinaryFilesSorted(@TempDir Path tempDir) throws IOException {
+        var skillDir = tempDir.resolve("my-skill");
+        Files.createDirectories(skillDir.resolve("references"));
+        Files.writeString(skillDir.resolve("references/b.md"), "b");
+        Files.writeString(skillDir.resolve("references/a.md"), "a");
+        Files.writeString(skillDir.resolve(".hidden"), "secret");
+
+        var resources = loader.scanResources(skillDir);
+
+        assertEquals(List.of("references/a.md", "references/b.md"), resources);
+    }
+
+    @Test
     void skillDirIsSetCorrectly(@TempDir Path tempDir) throws IOException {
         var skillDir = tempDir.resolve("my-skill");
         Files.createDirectories(skillDir);

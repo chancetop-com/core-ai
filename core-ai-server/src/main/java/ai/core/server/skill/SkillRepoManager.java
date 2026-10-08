@@ -2,7 +2,6 @@ package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillRepoConfig;
-import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.skill.SkillMetadata;
 import com.mongodb.client.model.Filters;
@@ -20,6 +19,7 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -96,9 +96,15 @@ class SkillRepoManager {
     }
 
     private final MongoCollection<SkillDefinition> skillCollection;
+    private final SkillBlobStore blobStore;
 
-    SkillRepoManager(MongoCollection<SkillDefinition> skillCollection) {
+    SkillRepoManager(MongoCollection<SkillDefinition> skillCollection, SkillBlobStore blobStore) {
         this.skillCollection = skillCollection;
+        this.blobStore = blobStore;
+    }
+
+    private SkillResourceWriter writer() {
+        return new SkillResourceWriter(blobStore);
     }
 
     SkillDefinition registerOrUpdate(String userId, String namespace, SkillMetadata skill, SkillRepoSource source) {
@@ -113,6 +119,7 @@ class SkillRepoManager {
 
         var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
         var entity = existing.orElseGet(SkillDefinition::new);
+        var previous = entity.resources;
         if (entity.id == null) {
             entity.id = new ObjectId().toHexString();
             entity.createdAt = ZonedDateTime.now();
@@ -123,11 +130,12 @@ class SkillRepoManager {
         entity.description = skill.getDescription();
         entity.sourceType = SkillSourceType.REPO;
         entity.content = readSkillMdFromDir(skillDir);
-        entity.resources = readResourcesFromDir(skillDir, skill.getResources());
+        var bytes = readResourceBytes(skillDir, skill.getResources());
+        entity.resources = writer().toResources(entity.id, entity.content, bytes);
         entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
         entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
         entity.userId = userId;
-        entity.digest = SkillDigest.of(entity.content, entity.resources);
+        entity.digest = SkillDigest.of(entity.content, bytes);
         entity.updatedAt = ZonedDateTime.now();
 
         var repoConfig = new SkillRepoConfig();
@@ -143,6 +151,7 @@ class SkillRepoManager {
         } else {
             skillCollection.insert(entity);
         }
+        blobStore.deleteReplaced(previous, entity.resources);
         return entity;
     }
 
@@ -154,21 +163,17 @@ class SkillRepoManager {
         }
     }
 
-    List<SkillResource> readResourcesFromDir(Path skillDir, List<String> paths) {
-        if (paths == null || paths.isEmpty()) return null;
-        var list = new ArrayList<SkillResource>(paths.size());
+    Map<String, byte[]> readResourceBytes(Path skillDir, List<String> paths) {
+        if (paths == null || paths.isEmpty()) return Map.of();
+        var result = new LinkedHashMap<String, byte[]>(paths.size());
         for (var relPath : paths) {
             try {
-                var bytes = Files.readAllBytes(skillDir.resolve(relPath));
-                var r = new SkillResource();
-                r.path = relPath;
-                r.content = new String(bytes, StandardCharsets.UTF_8);
-                list.add(r);
+                result.put(relPath, Files.readAllBytes(skillDir.resolve(relPath)));
             } catch (IOException e) {
                 LOGGER.warn("failed to read resource {} in {}", relPath, skillDir, e);
             }
         }
-        return list.isEmpty() ? null : list;
+        return result;
     }
 
     String extractRepoOwner(String repoUrl) {

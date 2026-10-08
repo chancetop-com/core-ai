@@ -124,6 +124,30 @@ public class MinioObjectStorageService implements ObjectStorageService {
     }
 
     @Override
+    public void uploadObject(String container, String blobName, byte[] data, String contentType) {
+        var result = presigner.presignedPutUrl(container, blobName, 1800);
+        try {
+            var builder = HttpRequest.newBuilder()
+                    .uri(URI.create(result.presignedUrl()))
+                    .timeout(TRANSFER_TIMEOUT)
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(data));
+            if (contentType != null && !contentType.isBlank()) {
+                builder.header("Content-Type", contentType);
+            }
+            var response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("upload failed: status=" + response.statusCode() + ", body=" + response.body());
+            }
+            LOGGER.info("uploaded object: bucket={}, key={}, size={}", container, blobName, data.length);
+        } catch (IOException e) {
+            throw new RuntimeException("failed to upload object: bucket=" + container + ", key=" + blobName, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted while uploading object", e);
+        }
+    }
+
+    @Override
     public void downloadObjectToFile(String container, String blobName, Path target) {
         var result = presigner.presignedGetUrl(container, blobName, 600);
         try {

@@ -124,6 +124,31 @@ public class AzureObjectStorageService implements ObjectStorageService {
     }
 
     @Override
+    public void uploadObject(String container, String blobName, byte[] data, String contentType) {
+        var sas = sasService.generateContainerSas(container, blobName, 30);
+        try {
+            var builder = HttpRequest.newBuilder()
+                    .uri(URI.create(sas.uploadUrl()))
+                    .timeout(TRANSFER_TIMEOUT)
+                    .header("x-ms-blob-type", "BlockBlob")
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(data));
+            if (contentType != null && !contentType.isBlank()) {
+                builder.header("x-ms-blob-content-type", contentType);
+            }
+            var response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 201) {
+                throw new RuntimeException("upload failed: status=" + response.statusCode() + ", body=" + response.body());
+            }
+            LOGGER.info("uploaded blob: container={}, blob={}, size={}", container, blobName, data.length);
+        } catch (IOException e) {
+            throw new RuntimeException("failed to upload blob: container=" + container + ", blob=" + blobName, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted while uploading blob", e);
+        }
+    }
+
+    @Override
     public void downloadObjectToFile(String container, String blobName, Path target) {
         var readSas = sasService.generateReadBlobSas(container, blobName, 10);
         try {

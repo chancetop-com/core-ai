@@ -170,13 +170,17 @@ public class SkillLoader {
         }
     }
 
-    List<String> scanResources(Path skillDir) {
+    /**
+     * Resource paths of a skill directory (relative, sorted), shared by the server repo sync
+     * and the CLI scanner so both sides enumerate exactly the same set — the digest depends on it.
+     */
+    public List<String> scanResources(Path skillDir) {
         List<String> result = new ArrayList<>();
         try (var walk = Files.walk(skillDir)) {
             walk.filter(Files::isRegularFile).forEach(f -> {
                 var rel = skillDir.relativize(f).toString().replace('\\', '/');
                 if (rel.isEmpty() || "SKILL.md".equals(rel)) return;
-                if (rel.startsWith(".") || rel.contains("/.")) return;
+                if (isIgnoredResource(rel)) return;
                 result.add(rel);
             });
         } catch (IOException e) {
@@ -184,6 +188,13 @@ public class SkillLoader {
         }
         Collections.sort(result);
         return result;
+    }
+
+    /** Dot-prefixed entries and Python build artifacts ({@code __pycache__}, {@code *.pyc}) are not skill resources. */
+    private boolean isIgnoredResource(String relativePath) {
+        if (relativePath.startsWith(".") || relativePath.contains("/.")) return true;
+        if (relativePath.startsWith("__pycache__/") || relativePath.contains("/__pycache__/")) return true;
+        return relativePath.endsWith(".pyc");
     }
 
     public SkillMetadata parseSkillMd(String content, String filePath, String directoryName) {

@@ -1,5 +1,6 @@
 package ai.core.server.domain.migration;
 
+import ai.core.server.skill.SkillDigest;
 import core.framework.mongo.Mongo;
 import org.bson.Document;
 
@@ -35,7 +36,8 @@ public class SchemaMigrationVPresetSkills implements SchemaMigration {
         // 20260917001: ai-scene-sheet — separate clean scene references instead of one 4-panel sheet; indoor/outdoor topology recipes, anchor block, drift fixes
         // 20260917002: ai-camera-language — multi-shot segmentation (timecodes vs shot labels), negative-prompt buckets, emotion→camera map, director signatures, camera replication from a reference video
         // 20260917003: research-backed English rewrite of character-sheet, scene-sheet, lighting-looks, contact-sheet, shot-language and cover-poster
-        return "20260917003";
+        // 20261008001: write digest alongside content so a content bump never leaves a stale fingerprint behind
+        return "20261008001";
     }
 
     @Override
@@ -55,6 +57,7 @@ public class SchemaMigrationVPresetSkills implements SchemaMigration {
                 .append("description", frontmatterDescription(content))
                 .append("source_type", "upload")
                 .append("content", content)
+                .append("digest", SkillDigest.of(content, null))
                 .append("version", "1.0.0")
                 .append("updated_at", now)
             ).append("$setOnInsert", new Document()

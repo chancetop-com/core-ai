@@ -7,10 +7,19 @@ import CodeMirrorEditor from '../../components/CodeMirrorEditor';
 
 interface SkillFile {
   path: string;
-  content: string;
+  content?: string;
+  kind?: 'text' | 'blob';
+  size?: number;
 }
 
 const SKILL_MD = 'SKILL.md';
+
+function formatSize(size?: number): string {
+  if (!size) return 'unknown size';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function parseFrontmatter(content: string): { frontmatter: Record<string, string | string[]>; body: string } {
   const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
@@ -118,6 +127,8 @@ export default function SkillEditor() {
   const selectedContent = selectedFile === SKILL_MD
     ? skillBody
     : resources.find(r => r.path === selectedFile)?.content || '';
+  const selectedResource = resources.find(r => r.path === selectedFile);
+  const selectedIsBlob = selectedResource?.kind === 'blob';
 
   const handleContentChange = (value: string) => {
     if (selectedFile === SKILL_MD) {
@@ -141,7 +152,10 @@ export default function SkillEditor() {
         description,
         content: fullContent,
         allowed_tools: allowedTools.length > 0 ? allowedTools : [],
-        resources: resources.map(r => ({ path: r.path, content: r.content })),
+        // stored binaries cannot be represented here: keep them unchanged instead of sending empty content
+        resources: resources.map(r => r.kind === 'blob'
+          ? { path: r.path, keep: true }
+          : { path: r.path, content: r.content ?? '' }),
       });
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed');
@@ -179,6 +193,10 @@ export default function SkillEditor() {
     const reader = new FileReader();
     reader.onload = () => {
       const content = reader.result as string;
+      if (content.includes('\uFFFD')) {
+        alert('This looks like a binary file, which cannot be edited in the browser. Add it with "core-ai-cli skill push" instead.');
+        return;
+      }
       const dir = newFileDir.trim().replace(/^\/+|\/+$/g, '');
       const path = dir ? `${dir}/${file.name}` : file.name;
       if (resources.some(r => r.path === path)) {
@@ -217,11 +235,17 @@ export default function SkillEditor() {
     if (version) fm.version = version;
     const fullContent = buildSkillMdContent(fm, skillBody);
 
+    const blobCount = resources.filter(r => r.kind === 'blob').length;
+    if (blobCount > 0) {
+      alert(`${blobCount} binary or large file(s) are not included in the export. Use "core-ai-cli skill pull" to get the full skill.`);
+    }
+
     const zip = new JSZip();
     const folder = zip.folder(name) !;
     folder.file('SKILL.md', fullContent);
     for (const r of resources) {
-      folder.file(r.path, r.content);
+      if (r.kind === 'blob') continue;
+      folder.file(r.path, r.content ?? '');
     }
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
@@ -398,11 +422,21 @@ export default function SkillEditor() {
             <span>{selectedFile}</span>
           </div>
           <div className="flex-1" style={{ minHeight: 0 }}>
-            <CodeMirrorEditor
-              key={selectedFile}
-              value={selectedContent}
-              filename={selectedFile}
-              onChange={handleContentChange} />
+            {selectedIsBlob ? (
+              <div className="h-full flex flex-col items-center justify-center gap-2 px-6 text-center text-sm"
+                style={{ color: 'var(--color-text-secondary)' }}>
+                <FileText size={28} />
+                <div>{selectedFile}</div>
+                <div>Binary or large file ({formatSize(selectedResource?.size)}) — stored in object storage and read-only here.</div>
+                <div>Pull or push it with the core-ai CLI.</div>
+              </div>
+            ) : (
+              <CodeMirrorEditor
+                key={selectedFile}
+                value={selectedContent}
+                filename={selectedFile}
+                onChange={handleContentChange} />
+            )}
           </div>
         </div>
       </div>

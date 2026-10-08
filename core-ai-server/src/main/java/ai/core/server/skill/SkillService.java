@@ -23,6 +23,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,8 +39,16 @@ public class SkillService {
         return new ForbiddenException("skill is unavailable");
     }
 
+    private static boolean digestStale(String digest, boolean contentChanged, List<SkillResource> previous, List<SkillResource> current) {
+        if (digest == null || contentChanged) return true;
+        return !SkillResourceWriter.unchanged(previous, current);
+    }
+
     @Inject
     MongoCollection<SkillDefinition> skillCollection;
+
+    @Inject
+    SkillBlobStore blobStore;
 
     private volatile Runnable catalogInvalidator = () -> {
     };
@@ -68,6 +77,7 @@ public class SkillService {
         String qualifiedName = namespace + "/" + parsed.getName();
         var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
         var entity = existing.orElseGet(SkillDefinition::new);
+        var previous = entity.resources;
         if (entity.id == null) {
             entity.id = new ObjectId().toHexString();
             entity.createdAt = ZonedDateTime.now();
@@ -78,11 +88,11 @@ public class SkillService {
         entity.description = parsed.getDescription();
         entity.sourceType = SkillSourceType.UPLOAD;
         entity.content = content;
-        entity.resources = toResources(resources);
+        entity.resources = writer().toResources(entity.id, content, resources);
         entity.allowedTools = parsed.getAllowedTools().isEmpty() ? null : new ArrayList<>(parsed.getAllowedTools());
         entity.metadata = parsed.getMetadata().isEmpty() ? null : Map.copyOf(parsed.getMetadata());
         entity.userId = userId;
-        entity.digest = SkillDigest.of(content, entity.resources);
+        entity.digest = SkillDigest.of(content, resources);
         entity.updatedAt = ZonedDateTime.now();
 
         if (existing.isPresent()) {
@@ -92,6 +102,7 @@ public class SkillService {
             skillCollection.insert(entity);
             LOGGER.info("created skill via upload, id={}, qualifiedName={}", entity.id, qualifiedName);
         }
+        blobStore.deleteReplaced(previous, entity.resources);
         invalidateCatalog();
         return entity;
     }
@@ -188,22 +199,44 @@ public class SkillService {
     }
 
     public void delete(String id) {
+        var entity = skillCollection.get(id).orElse(null);
         skillCollection.delete(id);
+        if (entity != null) blobStore.deleteReplaced(entity.resources, null);
         invalidateCatalog();
         LOGGER.info("deleted skill, id={}", id);
     }
 
-    public SkillDefinition update(String id, String description, String content, List<String> allowedTools, List<SkillResource> resources) {
+    public SkillDefinition update(String id, String description, String content, List<String> allowedTools, List<SkillResourceUpdate> updates) {
         var entity = get(id);
         if (description != null) entity.description = description;
-        if (content != null) entity.content = content;
-        if (resources != null) entity.resources = resources.isEmpty() ? null : resources;
         if (allowedTools != null) entity.allowedTools = allowedTools.isEmpty() ? null : allowedTools;
-        entity.digest = SkillDigest.of(entity.content, entity.resources);
+        if (content != null) entity.content = content;
+
+        var previous = entity.resources;
+        if (updates != null) {
+            var merged = writer().merge(id, previous, updates);
+            writer().enforceBudget(id, entity.content, merged);
+            entity.resources = merged.isEmpty() ? null : merged;
+        }
+        if (digestStale(entity.digest, content != null, previous, entity.resources)) {
+            entity.digest = SkillDigest.of(entity.content, digestBytes(entity.resources));
+        }
         entity.updatedAt = ZonedDateTime.now();
         skillCollection.replace(entity);
+        blobStore.deleteReplaced(previous, entity.resources);
         invalidateCatalog();
         return entity;
+    }
+
+    private Map<String, byte[]> digestBytes(List<SkillResource> resources) {
+        var bytes = new LinkedHashMap<String, byte[]>();
+        if (resources == null) return bytes;
+        for (var resource : resources) {
+            bytes.put(resource.path, resource.content != null
+                    ? resource.content.getBytes(StandardCharsets.UTF_8)
+                    : blobStore.fetch(resource.storagePath));
+        }
+        return bytes;
     }
 
     long sweepStaleRepoTempDirs() {
@@ -278,16 +311,19 @@ public class SkillService {
         if (skillDir == null) {
             throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
         }
+        var previous = entity.resources;
         entity.content = repoManager().readSkillMdFromDir(skillDir);
-        entity.resources = repoManager().readResourcesFromDir(skillDir, skill.getResources());
+        var bytes = repoManager().readResourceBytes(skillDir, skill.getResources());
+        entity.resources = writer().toResources(entity.id, entity.content, bytes);
         entity.description = skill.getDescription();
         entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
         entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
-        entity.digest = SkillDigest.of(entity.content, entity.resources);
+        entity.digest = SkillDigest.of(entity.content, bytes);
         if (commitHash != null) entity.repoConfig.lastCommitHash = commitHash;
         entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
         entity.updatedAt = ZonedDateTime.now();
         skillCollection.replace(entity);
+        blobStore.deleteReplaced(previous, entity.resources);
         invalidateCatalog();
     }
 
@@ -296,7 +332,11 @@ public class SkillService {
     }
 
     SkillRepoManager repoManager() {
-        return new SkillRepoManager(skillCollection);
+        return new SkillRepoManager(skillCollection, blobStore);
+    }
+
+    private SkillResourceWriter writer() {
+        return new SkillResourceWriter(blobStore);
     }
 
     public Map<String, String> batchResolve(Set<String> skillIds) {
@@ -343,17 +383,5 @@ public class SkillService {
             .metadata(def.metadata != null ? def.metadata : Collections.emptyMap())
             .resources(resourcePaths)
             .build();
-    }
-
-    private List<SkillResource> toResources(Map<String, byte[]> resources) {
-        if (resources == null || resources.isEmpty()) return null;
-        var list = new ArrayList<SkillResource>(resources.size());
-        for (var entry : resources.entrySet()) {
-            var r = new SkillResource();
-            r.path = entry.getKey();
-            r.content = new String(entry.getValue(), StandardCharsets.UTF_8);
-            list.add(r);
-        }
-        return list;
     }
 }
