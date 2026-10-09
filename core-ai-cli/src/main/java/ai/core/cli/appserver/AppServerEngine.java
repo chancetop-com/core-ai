@@ -137,6 +137,8 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("permissions/get", ignored -> permissionsGet()),
                 Map.entry("permissions/update", this::permissionsUpdate),
                 Map.entry("artifacts/list", params -> LocalArtifacts.list(bootstrap.workspace, params)),
+                Map.entry("memory/list", params -> LocalMemory.list(bootstrap.workspace, params)),
+                Map.entry("memory/read", params -> LocalMemory.read(bootstrap.workspace, params)),
                 Map.entry("skills/list", ignored -> LocalSkills.list(bootstrap.workspace)),
                 Map.entry("tools/list", this::toolsList));
     }
