@@ -4,6 +4,7 @@ import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.AgentSessionRunnerHelper;
 import ai.core.cli.upgrade.VersionUtil;
 import ai.core.llm.LLMProviderType;
+import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.tool.ToolCall;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -132,7 +133,9 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("session/export", registry::export),
                 Map.entry("session/stats", registry::stats),
                 Map.entry("model/list", ignored -> modelList()),
+                Map.entry("model/get", this::modelGet),
                 Map.entry("model/set", this::modelSet),
+                Map.entry("thinking/get", ignored -> thinkingGet()),
                 Map.entry("thinking/set", this::thinkingSet),
                 Map.entry("permissions/get", ignored -> permissionsGet()),
                 Map.entry("permissions/update", this::permissionsUpdate),
@@ -150,6 +153,44 @@ public class AppServerEngine implements EngineApi {
             var item = array.addObject();
             item.put("model", entry.model());
             item.put("provider", entry.providerType().getName());
+        }
+        return node;
+    }
+
+    /**
+     * Current model: the live session's agent when one exists (optionally a specific session),
+     * otherwise what a fresh engine would resolve from agent.properties.
+     */
+    private ObjectNode modelGet(ObjectNode params) {
+        var node = Params.object();
+        var sessionId = Params.optionalText(params, "sessionId");
+        var session = sessionId != null ? registry.find(sessionId) : registry.any();
+        if (session != null) {
+            var agent = session.agent();
+            node.put("model", agent.getModel() != null ? agent.getModel() : agent.getLLMProvider().config.getModel());
+            var type = bootstrap.result.llmProviders.getProviderType(agent.getLLMProvider());
+            if (type != null) {
+                node.put("provider", type.getName());
+            }
+            return node;
+        }
+        try {
+            var file = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
+            var props = loadAgentProperties(file);
+            var active = props.getProperty("active.provider");
+            if (active != null && !active.isBlank()) {
+                node.put("provider", active);
+                var model = props.getProperty(active + ".model");
+                var type = LLMProviderType.fromName(active);
+                if ((model == null || model.isBlank()) && type != null) {
+                    model = LLMProviders.getProviderDefaultChatModel(type);
+                }
+                if (model != null && !model.isBlank()) {
+                    node.put("model", model.trim());
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.warn("failed to read active model: {}", e.getMessage());
         }
         return node;
     }
@@ -181,6 +222,13 @@ public class AppServerEngine implements EngineApi {
         } catch (IOException e) {
             LOGGER.warn("failed to persist active model: {}", e.getMessage());
         }
+    }
+
+    private ObjectNode thinkingGet() {
+        var effort = AgentSessionRunnerHelper.loadReasoningEffortFromExtraBody();
+        var node = Params.object();
+        node.put("level", effort == null ? "off" : effort.name().toLowerCase(Locale.ROOT));
+        return node;
     }
 
     private ObjectNode thinkingSet(ObjectNode params) {
