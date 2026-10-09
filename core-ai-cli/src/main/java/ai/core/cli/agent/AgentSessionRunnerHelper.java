@@ -24,10 +24,7 @@ public class AgentSessionRunnerHelper {
     public static String persistReasoningEffortToExtraBody(ReasoningEffort level) {
         try {
             var props = loadAgentProperties();
-            String activeProvider = props.getProperty("active.provider");
-            if (activeProvider == null || activeProvider.isBlank()) {
-                return "No active.provider in agent.properties";
-            }
+            String activeProvider = resolveProviderPrefix(props);
             String key = activeProvider + ".request.extra_body";
             String existingJson = props.getProperty(key, "{}").trim();
             if (existingJson.isEmpty()) existingJson = "{}";
@@ -114,8 +111,7 @@ public class AgentSessionRunnerHelper {
     public static ReasoningEffort loadReasoningEffortFromExtraBody() {
         try {
             var props = loadAgentProperties();
-            String activeProvider = props.getProperty("active.provider");
-            if (activeProvider == null || activeProvider.isBlank()) return null;
+            String activeProvider = resolveProviderPrefix(props);
             String key = activeProvider + ".request.extra_body";
             String json = props.getProperty(key, "{}").trim();
             if (json.isEmpty() || "{}".equals(json)) return null;
@@ -129,6 +125,16 @@ public class AgentSessionRunnerHelper {
             LOGGER.warn("Failed to read reasoning effort from extra_body", e);
         }
         return null;
+    }
+
+    /**
+     * Provider prefix for effort storage: the active provider when set, otherwise the base
+     * "llm" config prefix that every provider inherits from (AgentBootstrap.setupLLMProperties),
+     * so single-provider setups without active.provider still work.
+     */
+    private static String resolveProviderPrefix(Properties props) {
+        var active = props.getProperty("active.provider");
+        return active != null && !active.isBlank() ? active : "llm";
     }
 
     private static Properties loadAgentProperties() throws IOException {

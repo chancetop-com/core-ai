@@ -53,6 +53,14 @@ public class AppServerEngine implements EngineApi {
         }
     }
 
+    private static String defaultChatModelFor(String providerName) {
+        try {
+            return LLMProviders.getProviderDefaultChatModel(LLMProviderType.fromName(providerName));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     private final Map<String, Function<ObjectNode, JsonNode>> handlers;
     private final EngineBootstrap bootstrap;
     private final EngineSessionRegistry registry;
@@ -178,16 +186,14 @@ public class AppServerEngine implements EngineApi {
             var file = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
             var props = loadAgentProperties(file);
             var active = props.getProperty("active.provider");
-            if (active != null && !active.isBlank()) {
-                node.put("provider", active);
-                var model = props.getProperty(active + ".model");
-                var type = LLMProviderType.fromName(active);
-                if ((model == null || model.isBlank()) && type != null) {
-                    model = LLMProviders.getProviderDefaultChatModel(type);
-                }
-                if (model != null && !model.isBlank()) {
-                    node.put("model", model.trim());
-                }
+            var prefix = active != null && !active.isBlank() ? active : "llm";
+            node.put("provider", prefix);
+            var model = props.getProperty(prefix + ".model");
+            if (model == null || model.isBlank()) {
+                model = defaultChatModelFor(prefix);
+            }
+            if (model != null && !model.isBlank()) {
+                node.put("model", model.trim());
             }
         } catch (IOException e) {
             LOGGER.warn("failed to read active model: {}", e.getMessage());
