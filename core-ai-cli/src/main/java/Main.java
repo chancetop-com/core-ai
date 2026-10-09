@@ -1,6 +1,7 @@
 import ai.core.cli.CliApp;
 import ai.core.cli.CliAppOptions;
 import ai.core.cli.DebugLog;
+import ai.core.cli.appserver.AppServerCommand;
 import ai.core.cli.auth.LoginCommand;
 import ai.core.cli.hub.McpCommand;
 import ai.core.cli.hub.agent.AgentCommand;
@@ -26,7 +27,7 @@ import java.util.concurrent.Callable;
  */
 @Command(name = "core-ai-cli", versionProvider = VersionProvider.class, description = "Core-AI CLI agent",
         subcommands = {McpCommand.class, SkillCommand.class, ApiToolCommand.class, AgentCommand.class,
-            ReportCommand.class, DatasetCommand.class, CatalogCommand.class})
+            ReportCommand.class, DatasetCommand.class, CatalogCommand.class, AppServerCommand.class})
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         initSlf4j();

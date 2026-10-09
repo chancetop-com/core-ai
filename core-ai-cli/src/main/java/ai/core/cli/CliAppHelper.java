@@ -21,7 +21,6 @@ import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.session.FileRuleBasedPermissionStore;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence.SessionInfo;
-import ai.core.session.ToolPermissionStore;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
@@ -150,7 +149,7 @@ public class CliAppHelper {
      * values from saved auth credentials so the server's CLI LLM endpoint is
      * used without manual configuration.
      */
-    static void injectLiteLLMFallback(PropertiesFileSource props) {
+    public static void injectLiteLLMFallback(PropertiesFileSource props) {
         if (props.property("litellm.api.base").isPresent()) return;
         var auth = AuthConfig.load();
         if (auth != null && auth.apiKey() != null) {
@@ -203,7 +202,7 @@ public class CliAppHelper {
         }
     }
 
-    static Map<String, SubAgentConfig> parseSubAgentConfig(PropertiesFileSource props, LLMProviders llmProviders) {
+    public static Map<String, SubAgentConfig> parseSubAgentConfig(PropertiesFileSource props, LLMProviders llmProviders) {
         Map<String, SubAgentConfig> configs = new HashMap<>();
         String prefix = "agent.sub.";
         for (String key : props.propertyNames()) {
@@ -239,7 +238,7 @@ public class CliAppHelper {
         }
     }
 
-    static ToolPermissionStore whiteToolsPermissionStore(Path workspace) {
+    public static FileRuleBasedPermissionStore whiteToolsPermissionStore(Path workspace) {
         var permissionStore = new FileRuleBasedPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.json"));
         permissionStore.allow(WriteTodosTool.WT_TOOL_NAME);
         permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_CREATE);
@@ -256,7 +255,7 @@ public class CliAppHelper {
         permissionStore.allow(GrepFileTool.TOOL_NAME);
         return permissionStore;
     }
-    static String defaultSessionId(String prefix) {
+    public static String defaultSessionId(String prefix) {
         return prefix + LocalDateTime.now().format(SESSION_ID_FORMAT);
     }
     static String pickSession(List<SessionInfo> sessions, SessionManager sessionManager,
@@ -309,7 +308,7 @@ public class CliAppHelper {
             // terminal cleanup failure is non-critical
         }
     }
-    static void registerMcpLoadingListener() {
+    public static void registerMcpLoadingListener() {
         McpClientManagerRegistry.addCreationListener(manager ->
                 manager.addListener((serverName, oldState, newState) -> {
                     if (newState == McpClientManager.ConnectionState.CONNECTING) {
@@ -324,7 +323,7 @@ public class CliAppHelper {
     }
 
     @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("DE_MIGHT_IGNORE")
-    static void closeShutdownResources(BootstrapResult result) {
+    public static void closeShutdownResources(BootstrapResult result) {
         for (var resource : result.shutdownResources()) {
             try {
                 resource.close();
