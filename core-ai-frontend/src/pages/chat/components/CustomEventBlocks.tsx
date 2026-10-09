@@ -1,3 +1,5 @@
+import { ExternalLink } from 'lucide-react';
+import { fetchBlob, needsAuthFetch } from '../../../api/authedBlob';
 import type { CardBlock, QuickReplyOption, RichCard } from '../types';
 import AuthedImage from './AuthedImage';
 
@@ -26,6 +28,28 @@ function record(value: unknown): Record<string, unknown> | null {
 function scalarText(value: unknown): string {
   if (value === null || value === undefined) return '';
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
+}
+
+/**
+ * Opens a card link in a new tab. Only ever called from a user click — nothing here runs on render.
+ * Platform file URLs need the bearer token, which a fresh tab cannot carry, so the content is fetched
+ * with auth first and loaded into the tab that the click already opened.
+ */
+function openLink(url: string) {
+  if (!needsAuthFetch(url)) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  const tab = window.open('', '_blank');
+  fetchBlob(url).then(blob => {
+    const blobUrl = URL.createObjectURL(blob);
+    if (tab) tab.location.href = blobUrl;
+    else window.open(blobUrl, '_blank');
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+  }).catch(err => {
+    if (tab) tab.close();
+    console.warn('[rich-card] failed to open authenticated link', err);
+  });
 }
 
 /**
@@ -142,6 +166,18 @@ function CardBlockView({ block, disabled, onAction }: {
           {options.map((option, idx) => {
             const label = str(option.label);
             if (!label) return null;
+            const url = str(option.url);
+            if (url) {
+              return (
+                <button key={idx} type="button" onClick={() => openLink(url)}
+                  title={str(option.description)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80"
+                  style={{ background: toneColor(option.tone) ?? 'var(--color-primary)', border: 'none', color: 'white' }}>
+                  {label}
+                  <ExternalLink size={12} />
+                </button>
+              );
+            }
             return (
               <button key={idx} type="button" disabled={disabled}
                 onClick={() => onAction(str(option.value) ?? label)}

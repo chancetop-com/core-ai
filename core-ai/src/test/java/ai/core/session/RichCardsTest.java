@@ -68,6 +68,20 @@ class RichCardsTest {
     }
 
     @Test
+    void validatesActionUrls() {
+        var valid = """
+            {"blocks":[{"type":"actions","options":[
+              {"label":"FAQ","url":"https://example.com/faq"},
+              {"label":"Page","url":"/api/public/artifacts/t1/content"}]}]}
+            """;
+        assertNull(RichCards.validate(valid));
+
+        assertNotNull(RichCards.validate("{\"blocks\":[{\"type\":\"actions\",\"options\":[{\"label\":\"x\",\"url\":\"javascript:alert(1)\"}]}]}"));
+        assertNotNull(RichCards.validate("{\"blocks\":[{\"type\":\"actions\",\"options\":[{\"label\":\"x\",\"url\":\"data:text/html,x\"}]}]}"));
+        assertNotNull(RichCards.validate("{\"blocks\":[{\"type\":\"actions\",\"options\":[{\"label\":\"x\",\"url\":123}]}]}"));
+    }
+
+    @Test
     void rejectsBlockSpecificShapeErrors() {
         assertNotNull(RichCards.validate("{\"blocks\":[{\"type\":\"text\"}]}"));
         assertNotNull(RichCards.validate("{\"blocks\":[{\"type\":\"text\",\"text\":\"  \"}]}"));

@@ -108,8 +108,20 @@ public final class RichCards {
             if (!(option instanceof Map<?, ?> entry) || blank(string(entry.get("label")))) return error(index, "each option needs a non-blank \"label\"");
             if (entry.get("value") != null && string(entry.get("value")) == null) return error(index, "option \"value\" must be a string");
             if (entry.get("description") != null && string(entry.get("description")) == null) return error(index, "option \"description\" must be a string");
+            var urlError = validateActionUrl(index, entry.get("url"));
+            if (urlError != null) return urlError;
             var toneError = validateTone(index, entry.get("tone"));
             if (toneError != null) return toneError;
+        }
+        return null;
+    }
+
+    private static String validateActionUrl(int index, Object url) {
+        if (url == null) return null;
+        var value = string(url);
+        if (value == null || value.isBlank()
+            || !(value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/api/"))) {
+            return error(index, "option \"url\" must be an http(s) URL or a platform /api/ link");
         }
         return null;
     }
