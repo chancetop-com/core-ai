@@ -51,6 +51,7 @@ public class InProcessAgentSession implements AgentSession {
     // Set when RUNNING is dispatched, cleared by whoever dispatches the turn's terminal event.
     // close() races the turn thread for it so a force-closed turn still terminates exactly once.
     private final AtomicBoolean turnActive = new AtomicBoolean();
+    private volatile long turnStartedAtMs;
     private final SessionCustomEventEmitter customEventEmitter;
 
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
@@ -126,6 +127,7 @@ public class InProcessAgentSession implements AgentSession {
         agent.getExecutionContext().setCancellationToken(turnToken);
         var threadUnbind = turnToken.bindThread(executingThread);
         turnActive.set(true);
+        turnStartedAtMs = System.currentTimeMillis();
         customEventEmitter.resetTurn();
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
 
@@ -133,12 +135,14 @@ public class InProcessAgentSession implements AgentSession {
         long inputBefore = usageBefore.getPromptTokens();
         long outputBefore = usageBefore.getCompletionTokens();
         double costBefore = agent.getCurrentCostUsd();
+        var detailsBefore = usageBefore.getPromptTokensDetails();
+        long cachedBefore = detailsBefore != null ? detailsBefore.cachedTokens : 0;
 
         try {
             if (batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT) {
-                executeUserInput(batch.values(), inputBefore, outputBefore, costBefore);
+                executeUserInput(batch.values(), inputBefore, outputBefore, costBefore, cachedBefore);
             } else if (batch.mode() == SessionCommandQueue.CommandMode.TASK_NOTIFICATION) {
-                executeTaskNotifications(batch.values(), inputBefore, outputBefore, costBefore);
+                executeTaskNotifications(batch.values(), inputBefore, outputBefore, costBefore, cachedBefore);
             }
         } catch (ToolCallDeniedException e) {
             debug("tool call denied: " + e.getMessage());
@@ -183,7 +187,7 @@ public class InProcessAgentSession implements AgentSession {
         }
     }
 
-    private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore) {
+    private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {
         var combined = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("agent run starting");
         String result;
@@ -202,7 +206,7 @@ public class InProcessAgentSession implements AgentSession {
                 agent.save(sessionId);
             }
             var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
-            populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
+            populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
             turnComplete.maxTurnsReached = Boolean.TRUE;
             dispatchTerminal(turnComplete, SessionStatus.IDLE);
             return;
@@ -222,11 +226,11 @@ public class InProcessAgentSession implements AgentSession {
         }
         debug("agent run completed");
         var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
-        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
+        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
         dispatchTerminal(turnComplete, SessionStatus.IDLE);
     }
 
-    private void executeTaskNotifications(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore) {
+    private void executeTaskNotifications(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {
         var xml = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("injecting task notifications");
         String result;
@@ -239,7 +243,7 @@ public class InProcessAgentSession implements AgentSession {
                 agent.save(sessionId);
             }
             var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
-            populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
+            populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
             turnComplete.maxTurnsReached = Boolean.TRUE;
             dispatchTerminal(turnComplete, SessionStatus.IDLE);
             return;
@@ -257,14 +261,16 @@ public class InProcessAgentSession implements AgentSession {
         }
         debug("task notifications processed");
         var turnComplete = TurnCompleteEvent.of(sessionId, result);
-        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore);
+        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
         dispatchTerminal(turnComplete, SessionStatus.IDLE);
     }
 
-    private void populateTokenUsage(TurnCompleteEvent event, long inputBefore, long outputBefore, double costBefore) {
+    private void populateTokenUsage(TurnCompleteEvent event, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {
         var usageAfter = agent.getCurrentTokenUsage();
         event.inputTokens = usageAfter.getPromptTokens() - inputBefore;
         event.outputTokens = usageAfter.getCompletionTokens() - outputBefore;
+        var detailsAfter = usageAfter.getPromptTokensDetails();
+        event.cachedTokens = detailsAfter != null ? detailsAfter.cachedTokens - cachedBefore : null;
         var costAfter = agent.getCurrentCostUsd();
         event.costUsd = costAfter - costBefore;
     }
@@ -384,6 +390,9 @@ public class InProcessAgentSession implements AgentSession {
      */
     private void dispatchTerminal(AgentEvent turnEnd, SessionStatus status) {
         if (!turnActive.compareAndSet(true, false)) return;
+        if (turnEnd instanceof TurnCompleteEvent turnComplete) {
+            turnComplete.durationMs = System.currentTimeMillis() - turnStartedAtMs;
+        }
         dispatch(turnEnd);
         dispatch(StatusChangeEvent.of(sessionId, status));
     }

@@ -46,11 +46,19 @@ public class TurnCompleteEvent implements AgentEvent {
     @Property(name = "max_turns_reached")
     public Boolean maxTurnsReached = Boolean.FALSE;
 
+    /** Turn wall time (RUNNING dispatch to turn end), in milliseconds. */
+    @Property(name = "duration_ms")
+    public Long durationMs;
+
     @Property(name = "input_tokens")
     public Long inputTokens;
 
     @Property(name = "output_tokens")
     public Long outputTokens;
+
+    /** Turn delta of prompt-cache hits, when the provider reports them. */
+    @Property(name = "cached_tokens")
+    public Long cachedTokens;
 
     @Property(name = "cost_usd")
     public Double costUsd;
