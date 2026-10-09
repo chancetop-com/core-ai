@@ -1,7 +1,10 @@
 package ai.core.cli.appserver;
 
+import ai.core.api.server.gateway.GatewayAvailableModelView;
 import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.AgentSessionRunnerHelper;
+import ai.core.cli.auth.AuthConfig;
+import ai.core.cli.hub.model.ModelHubClient;
 import ai.core.cli.upgrade.VersionUtil;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
@@ -32,6 +35,7 @@ import java.util.function.Function;
 public class AppServerEngine implements EngineApi {
     public static final String PROTOCOL_VERSION = "1.0";
     private static final Logger LOGGER = LoggerFactory.getLogger(AppServerEngine.class);
+    private static final long SERVER_MODELS_TTL_MS = 60_000L;
 
     private static Properties loadAgentProperties(Path file) throws IOException {
         var props = new Properties();
@@ -61,11 +65,18 @@ public class AppServerEngine implements EngineApi {
         }
     }
 
+    private static boolean loggedIn() {
+        var auth = AuthConfig.load();
+        return auth != null && auth.apiKey() != null;
+    }
+
     private final Map<String, Function<ObjectNode, JsonNode>> handlers;
     private final EngineBootstrap bootstrap;
     private final EngineSessionRegistry registry;
     private final Set<String> supportedMethods;
     private volatile NotificationSink sink = (method, params) -> { };
+    private volatile List<GatewayAvailableModelView> cachedServerModels;
+    private volatile long serverModelsFetchedAt;
 
     public AppServerEngine(Path workspace, Path configFile) {
         this.bootstrap = new EngineBootstrap(workspace, configFile);
@@ -155,7 +166,25 @@ public class AppServerEngine implements EngineApi {
     }
 
     private ObjectNode modelList() {
+        var serverModels = serverModels();
+        if (serverModels != null) {
+            var node = Params.object();
+            node.put("source", "server");
+            var array = node.putArray("models");
+            for (var model : serverModels) {
+                var item = array.addObject();
+                item.put("model", model.modelId);
+                if (model.displayName != null) item.put("displayName", model.displayName);
+                if (model.providerName != null) item.put("provider", model.providerName);
+                if (model.reasoningEfforts != null && !model.reasoningEfforts.isEmpty()) {
+                    var efforts = item.putArray("reasoningEfforts");
+                    model.reasoningEfforts.forEach(efforts::add);
+                }
+            }
+            return node;
+        }
         var node = Params.object();
+        node.put("source", "local");
         var array = node.putArray("models");
         for (var entry : bootstrap.modelRegistry.getAllEntries()) {
             var item = array.addObject();
@@ -163,6 +192,30 @@ public class AppServerEngine implements EngineApi {
             item.put("provider", entry.providerType().getName());
         }
         return node;
+    }
+
+    /**
+     * Chat models the logged-in user may use, from the hub ({@code /api/hub/models}). Null when not
+     * logged in or unreachable — the caller then falls back to the local registry. Cached briefly so
+     * an offline server cannot stall every model/list call.
+     */
+    private List<GatewayAvailableModelView> serverModels() {
+        var now = System.currentTimeMillis();
+        if (serverModelsFetchedAt != 0 && now - serverModelsFetchedAt < SERVER_MODELS_TTL_MS) {
+            return cachedServerModels;
+        }
+        List<GatewayAvailableModelView> fetched = null;
+        try {
+            var auth = AuthConfig.load();
+            if (auth != null && auth.apiKey() != null && auth.serverUrl() != null) {
+                fetched = new ModelHubClient(auth.serverUrl(), auth.apiKey(), false).models().models;
+            }
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to fetch hub models: {}", e.getMessage());
+        }
+        cachedServerModels = fetched;
+        serverModelsFetchedAt = now;
+        return fetched;
     }
 
     /**
@@ -204,6 +257,10 @@ public class AppServerEngine implements EngineApi {
     private ObjectNode modelSet(ObjectNode params) {
         var model = Params.requiredText(params, "model");
         var type = bootstrap.modelRegistry.getProviderType(model);
+        if (type == null && loggedIn()) {
+            // a server-served model: local runs go through the litellm proxy, the gateway routes it
+            type = LLMProviderType.LITELLM;
+        }
         if (type == null) {
             throw RpcException.business("MODEL_UNKNOWN", "model is not in the registry: " + model);
         }
