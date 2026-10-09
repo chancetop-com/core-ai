@@ -329,6 +329,7 @@ public class GatewayRoutingEngine {
         view.supportsVision = route.model.supportsVision;
         view.supportsVideo = route.model.supportsVideo;
         view.supportsFile = route.model.supportsFile;
+        view.reasoningEfforts = route.model.reasoningEfforts;
         return view;
     }
 

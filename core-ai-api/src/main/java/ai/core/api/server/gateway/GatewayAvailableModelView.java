@@ -28,4 +28,8 @@ public class GatewayAvailableModelView {
 
     @Property(name = "supportsFile")
     public Boolean supportsFile;
+
+    /** Reasoning-effort levels the model declares; the gateway maps requests to the closest one. */
+    @Property(name = "reasoningEfforts")
+    public List<String> reasoningEfforts;
 }
