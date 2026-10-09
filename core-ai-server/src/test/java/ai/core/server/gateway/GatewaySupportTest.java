@@ -11,6 +11,8 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -50,6 +52,89 @@ class GatewaySupportTest {
     @Test
     void clientSessionIdReturnsNullWithoutSessionHeaders() {
         assertNull(GatewaySupport.clientSessionId(requestWith("X-Claude-Code-Session-Id", null)));
+    }
+
+    @Test
+    void sessionIdPrefersClientHeaderOverDerivedId() {
+        var request = requestWith("X-Claude-Code-Session-Id", "claude-session-1");
+
+        assertEquals("claude-session-1", GatewaySupport.sessionId(request, "u1",
+                jsonBody("{\"instructions\":\"sys\",\"input\":[{\"role\":\"user\",\"content\":\"hi\"}]}")));
+    }
+
+    @Test
+    void sessionIdDerivesStableIdWhileConversationGrows() {
+        var first = "{\"instructions\":\"sys\",\"input\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+        // the client replays the opening and appends new items on every turn
+        var later = "{\"instructions\":\"sys\",\"input\":[{\"role\":\"user\",\"content\":\"hi\"},"
+                + "{\"type\":\"reasoning\"},{\"role\":\"assistant\",\"content\":\"hello\"},{\"role\":\"user\",\"content\":\"next\"}]}";
+
+        var sessionId = GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(first));
+
+        assertNotNull(sessionId);
+        assertTrue(sessionId.startsWith("fp1-"));
+        assertEquals(sessionId, GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(later)));
+    }
+
+    @Test
+    void sessionIdChangesWhenOpeningMessageChanges() {
+        var first = "{\"input\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+        var other = "{\"input\":[{\"role\":\"user\",\"content\":\"hello\"}]}";
+
+        assertNotEquals(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(first)),
+                GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(other)));
+    }
+
+    @Test
+    void sessionIdChangesWhenInstructionsChange() {
+        var first = "{\"instructions\":\"one\",\"input\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+        var other = "{\"instructions\":\"two\",\"input\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+
+        assertNotEquals(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(first)),
+                GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(other)));
+    }
+
+    @Test
+    void sessionIdChangesPerUser() {
+        var body = "{\"input\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+
+        assertNotEquals(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(body)),
+                GatewaySupport.sessionId(requestWithoutHeaders(), "u2", jsonBody(body)));
+    }
+
+    @Test
+    void sessionIdDerivesFromChatMessagesAndIgnoresTheTail() {
+        var first = "{\"messages\":[{\"role\":\"system\",\"content\":\"sys\"},{\"role\":\"user\",\"content\":\"hi\"}]}";
+        var later = "{\"messages\":[{\"role\":\"system\",\"content\":\"sys\"},{\"role\":\"user\",\"content\":\"hi\"},"
+                + "{\"role\":\"assistant\",\"content\":\"a\"},{\"role\":\"tool\",\"tool_call_id\":\"c1\",\"content\":\"r\"},"
+                + "{\"role\":\"user\",\"content\":\"b\"}]}";
+
+        assertEquals(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(first)),
+                GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(later)));
+    }
+
+    @Test
+    void sessionIdIgnoresKeyOrderAndUnrelatedFields() {
+        var first = "{\"model\":\"m1\",\"input\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+        var second = "{\"model\":\"m2\",\"stream\":true,\"input\":[{\"content\":\"hi\",\"role\":\"user\"}]}";
+
+        assertEquals(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(first)),
+                GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(second)));
+    }
+
+    @Test
+    void sessionIdReturnsNullWithoutReplayableOpening() {
+        assertNull(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody("{\"input\":\"stateful follow-up\"}")));
+        assertNull(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody("{\"messages\":[{\"role\":\"assistant\",\"content\":\"compacted\"}]}")));
+        assertNull(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody("{\"messages\":[]}")));
+        assertNull(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody("{\"model\":\"m\"}")));
+    }
+
+    @Test
+    void sessionIdReturnsNullForUnreadableBody() {
+        assertNull(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody("not json")));
+        assertNull(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", null));
+        assertNull(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", new byte[0]));
     }
 
     @Test
@@ -197,5 +282,13 @@ class GatewaySupportTest {
         var request = mock(Request.class);
         when(request.header(header)).thenReturn(Optional.ofNullable(value));
         return request;
+    }
+
+    private Request requestWithoutHeaders() {
+        return mock(Request.class);
+    }
+
+    private byte[] jsonBody(String json) {
+        return json.getBytes(StandardCharsets.UTF_8);
     }
 }

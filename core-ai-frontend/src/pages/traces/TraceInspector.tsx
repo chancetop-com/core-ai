@@ -218,6 +218,7 @@ function TraceHeader({ trace, spans, mode, onClose }: {
               </NeutralChip>
             )}
             {trace.sessionId && <NeutralChip mono>session {trace.sessionId.slice(0, 8)}</NeutralChip>}
+            {trace.sessionIdDerived && <DerivedSessionTag />}
             <span className="inline-flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
               <Clock size={12} /> {formatDuration(trace.durationMs)}
             </span>
@@ -897,6 +898,18 @@ function NeutralChip({ children, mono }: { children: ReactNode; mono?: boolean }
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs ${mono ? 'font-mono' : ''}`}
       style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
       {children}
+    </span>
+  );
+}
+
+// Marks a session id the server minted itself (see SessionIds on the server side) instead of one
+// a client terminal or proxy sent
+function DerivedSessionTag() {
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium"
+      style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}
+      title="Session id derived by the server from the conversation opening — the client sent no session id">
+      derived
     </span>
   );
 }

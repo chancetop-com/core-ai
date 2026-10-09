@@ -2,19 +2,29 @@ package ai.core.server.gateway;
 
 import ai.core.http.GatewayHeaderCodec;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.server.util.SessionIds;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.http.HTTPRequest;
 import core.framework.web.Request;
 import core.framework.web.exception.BadRequestException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 final class GatewaySupport {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GatewaySupport.class);
     static final long DEFAULT_TIMEOUT_SECONDS = 120;
     static final int MAX_SYNTHESIZED_TOOL_CALLS = 20;
 
@@ -37,6 +47,85 @@ final class GatewaySupport {
             if (hasText(sessionId)) return sessionId;
         }
         return null;
+    }
+
+    // One client conversation should merge into one trace (the ingest layer derives the trace id from
+    // the session id). Prefer the header the terminal sends; when it sends none (e.g. Reasonix), derive
+    // a stable id from the conversation itself.
+    static String sessionId(Request request, String userId, byte[] body) {
+        var headerSessionId = clientSessionId(request);
+        return headerSessionId != null ? headerSessionId : derivedSessionId(userId, body);
+    }
+
+    // The opening context of a conversation - instructions plus the messages before the model's first
+    // reply - is replayed byte-identical on every request while the conversation grows, so its content
+    // hash identifies the conversation without client cooperation or server state.
+    private static String derivedSessionId(String userId, byte[] body) {
+        if (body == null || body.length == 0) return null;
+        Map<String, Object> request;
+        try {
+            request = GatewayJson.MAPPER.readValue(body, MAP_TYPE);
+        } catch (IOException e) {
+            LOGGER.debug("gateway request body is not JSON, skipping session id derivation", e);
+            return null;
+        }
+        var opening = openingMessages(request);
+        if (opening == null) return null;
+        var fingerprint = new TreeMap<String, Object>();
+        fingerprint.put("version", 1);
+        fingerprint.put("userId", userId == null ? "" : userId);
+        fingerprint.put("instructions", request.get("instructions"));
+        fingerprint.put("opening", canonicalize(opening));
+        try {
+            return SessionIds.derivedFrom(sha256Hex(GatewayJson.MAPPER.writeValueAsString(fingerprint)).substring(0, 32));
+        } catch (JsonProcessingException e) {
+            LOGGER.debug("gateway session fingerprint is not serializable", e);
+            return null;
+        }
+    }
+
+    // Chat bodies replay history in "messages", responses bodies in "input"; the opening is the leading
+    // run of system/developer/user items (a string input carries no replayable opening).
+    private static List<Object> openingMessages(Map<String, Object> request) {
+        var items = request.get("input") != null ? request.get("input") : request.get("messages");
+        if (!(items instanceof List<?> list) || list.isEmpty()) return null;
+        var opening = new ArrayList<>();
+        for (var item : list) {
+            if (!(item instanceof Map<?, ?> message) || !isOpeningRole(string(message.get("role")))) break;
+            opening.add(item);
+        }
+        return opening.isEmpty() ? null : opening;
+    }
+
+    private static boolean isOpeningRole(String role) {
+        return "user".equals(role) || "system".equals(role) || "developer".equals(role);
+    }
+
+    // stable JSON for hashing: object keys sorted, arrays kept in order
+    private static Object canonicalize(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            var sorted = new TreeMap<String, Object>();
+            for (var entry : map.entrySet()) {
+                sorted.put(String.valueOf(entry.getKey()), canonicalize(entry.getValue()));
+            }
+            return sorted;
+        }
+        if (value instanceof List<?> list) {
+            var canonical = new ArrayList<>();
+            for (var item : list) {
+                canonical.add(canonicalize(item));
+            }
+            return canonical;
+        }
+        return value;
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     // Agent name sent by framework clients (x-agent-name) so the gateway can synthesize an agent

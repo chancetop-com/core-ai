@@ -36,6 +36,10 @@ public class TraceView {
     @Property(name = "sessionId")
     public String sessionId;
 
+    // true when the server derived the session id itself instead of receiving it from the client
+    @Property(name = "sessionIdDerived")
+    public Boolean sessionIdDerived;
+
     @Property(name = "userId")
     public String userId;
 

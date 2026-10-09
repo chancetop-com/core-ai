@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -42,6 +43,22 @@ class TraceWebServiceImplTest {
         when(service.traceAccessControl.canRead(trace, "viewer-1", false)).thenReturn(Boolean.FALSE);
 
         assertThrows(NotFoundException.class, () -> service.get("trace-1"));
+    }
+
+    @Test
+    void traceViewFlagsServerDerivedSessionIds() {
+        var service = service("viewer-1");
+        var derived = trace("trace-1", "runner-1");
+        derived.sessionId = "fp1-0123456789abcdef0123456789abcdef";
+        when(service.traceService.get("trace-1")).thenReturn(derived);
+        when(service.traceAccessControl.canRead(derived, "viewer-1", false)).thenReturn(Boolean.TRUE);
+        var clientProvided = trace("trace-2", "runner-1");
+        clientProvided.sessionId = "claude-session-1";
+        when(service.traceService.get("trace-2")).thenReturn(clientProvided);
+        when(service.traceAccessControl.canRead(clientProvided, "viewer-1", false)).thenReturn(Boolean.TRUE);
+
+        assertEquals(Boolean.TRUE, service.get("trace-1").sessionIdDerived);
+        assertEquals(Boolean.FALSE, service.get("trace-2").sessionIdDerived);
     }
 
     private TraceWebServiceImpl service(String userId) {

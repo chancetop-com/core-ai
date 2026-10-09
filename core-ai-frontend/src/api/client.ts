@@ -270,6 +270,8 @@ export interface Trace {
   agentName?: string;
   model?: string;
   sessionId: string;
+  // true when the server derived the session id itself (the client sent none)
+  sessionIdDerived?: boolean;
   userId: string;
   account?: TraceAccount;
   status: 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'ERROR';
@@ -494,6 +496,8 @@ export interface HubCallListResponse {
 
 export interface SessionSummary {
   session_id: string;
+  // true when the server derived the session id itself (the client sent none)
+  session_id_derived?: boolean;
   trace_count: number;
   total_tokens: number;
   total_cached_tokens?: number;

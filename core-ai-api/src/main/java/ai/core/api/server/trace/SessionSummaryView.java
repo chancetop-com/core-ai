@@ -9,6 +9,10 @@ public class SessionSummaryView {
     @Property(name = "session_id")
     public String sessionId;
 
+    // true when the server derived the session id itself instead of receiving it from the client
+    @Property(name = "session_id_derived")
+    public Boolean sessionIdDerived;
+
     @Property(name = "trace_count")
     public Long traceCount;
 

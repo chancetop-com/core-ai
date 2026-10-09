@@ -24,6 +24,7 @@ import ai.core.server.trace.service.TraceAccessControl;
 import ai.core.server.trace.service.TraceListFilter;
 import ai.core.server.trace.service.TracePreviewExtractor;
 import ai.core.server.trace.service.TraceService;
+import ai.core.server.util.SessionIds;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -156,6 +157,7 @@ public class TraceWebServiceImpl implements TraceWebService {
         if (summary == null) throw new NotFoundException("session summary not found");
         var view = new SessionSummaryView();
         view.sessionId = (String) summary.get("session_id");
+        view.sessionIdDerived = SessionIds.isDerived(view.sessionId);
         view.traceCount = toLong(summary.get("trace_count"));
         view.totalTokens = toLong(summary.get("total_tokens"));
         view.totalCachedTokens = toLong(summary.get("total_cached_tokens"));
@@ -299,6 +301,7 @@ public class TraceWebServiceImpl implements TraceWebService {
         view.agentName = trace.agentName;
         view.agentId = trace.agentId;
         view.sessionId = trace.sessionId;
+        view.sessionIdDerived = SessionIds.isDerived(trace.sessionId);
         view.userId = trace.userId;
         view.status = trace.status != null ? TraceStatusView.valueOf(trace.status.name()) : null;
         view.errorMessage = trace.errorMessage;

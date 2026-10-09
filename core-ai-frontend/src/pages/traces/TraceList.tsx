@@ -473,6 +473,7 @@ function SessionSummaryBar({ summary, onOpenChat, onClear }: {
         <span className="inline-flex items-center gap-1.5 text-sm font-semibold" title={summary.session_id}>
           <MessageCircle size={14} style={{ color: 'var(--color-primary)' }} />
           Session {summary.session_id.slice(0, 8)}
+          {summary.session_id_derived && <DerivedSessionTag />}
         </span>
         <span className="text-sm" style={metricStyle}>{summary.trace_count} {summary.trace_count === 1 ? 'turn' : 'turns'}</span>
         <span className="inline-flex items-center gap-1 text-sm" style={metricStyle}>
@@ -655,6 +656,7 @@ function TraceRow({ trace, selected, onSelect, onOpenSession, onFilterSession }:
                 </button>
               </span>
             )}
+            {trace.sessionIdDerived && <DerivedSessionTag />}
           </div>
           {preview && (
             <div className="text-xs mt-1 truncate max-w-[560px]" style={{ color: 'var(--color-text-secondary)' }}>
@@ -772,6 +774,18 @@ function NeutralChip({ children, mono }: { children: ReactNode; mono?: boolean }
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs ${mono ? 'font-mono' : ''}`}
       style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
       {children}
+    </span>
+  );
+}
+
+// Marks a session id the server minted itself (see SessionIds on the server side) instead of one
+// a client terminal or proxy sent
+function DerivedSessionTag() {
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium"
+      style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}
+      title="Session id derived by the server from the conversation opening — the client sent no session id">
+      derived
     </span>
   );
 }

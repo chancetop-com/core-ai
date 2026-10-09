@@ -18,8 +18,9 @@ public class GatewayChatCompletionsChannelListener implements ChannelListener<Ga
     @Override
     public void onConnect(Request request, Channel<GatewayChatCompletionsSseEvent> channel, String lastEventId) {
         var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
+        var userId = AuthContext.userId(webContext);
         gatewayProxyService.streamToChannel(body, GatewayEndpointType.CHAT_COMPLETIONS, (RawSseChannel<?>) channel,
-                AuthContext.userId(webContext), GatewaySupport.clientSessionId(request), GatewaySupport.agentName(request));
+                userId, GatewaySupport.sessionId(request, userId, body), GatewaySupport.agentName(request));
         channel.close();
     }
 }
