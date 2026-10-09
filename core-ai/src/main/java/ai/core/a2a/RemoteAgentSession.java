@@ -248,6 +248,7 @@ public class RemoteAgentSession implements AgentSession {
             var toolResultEvent = ToolResultEvent.of(sessionId, callId(metadata), stringValue(metadata, "tool"),
                     stringValue(metadata, "result_status"), stringValue(metadata, "result"));
             toolResultEvent.toolType = stringValue(metadata, "tool_type");
+            toolResultEvent.durationMs = longValue(metadata, "duration_ms");
             dispatch(toolResultEvent);
         }
     }
@@ -313,6 +314,11 @@ public class RemoteAgentSession implements AgentSession {
     private String stringValue(Map<String, Object> metadata, String key) {
         var value = metadata.get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private Long longValue(Map<String, Object> metadata, String key) {
+        var value = metadata.get(key);
+        return value instanceof Number number ? number.longValue() : null;
     }
 
     private void dispatch(AgentEvent event) {

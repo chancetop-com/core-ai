@@ -22,6 +22,10 @@ public class ReasoningCompleteEvent implements AgentEvent {
     @Property(name = "reasoning")
     public String reasoning;
 
+    /** Reasoning streaming window (first chunk to last chunk), in milliseconds. */
+    @Property(name = "durationMs")
+    public Long durationMs;
+
     @Override
     public String sessionId() {
         return sessionId;

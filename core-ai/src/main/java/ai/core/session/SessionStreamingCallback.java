@@ -24,6 +24,8 @@ public class SessionStreamingCallback implements StreamingCallback {
     private final String sessionId;
     private final Consumer<AgentEvent> dispatcher;
     private final ExecutionContext context;
+    private Long reasoningStartedAtNanos;
+    private Long reasoningLastChunkAtNanos;
 
     public SessionStreamingCallback(String sessionId, Consumer<AgentEvent> dispatcher, ExecutionContext context) {
         this.sessionId = sessionId;
@@ -38,12 +40,21 @@ public class SessionStreamingCallback implements StreamingCallback {
 
     @Override
     public void onReasoningChunk(String chunk) {
+        var now = System.nanoTime();
+        if (reasoningStartedAtNanos == null) reasoningStartedAtNanos = now;
+        reasoningLastChunkAtNanos = now;
         dispatcher.accept(ReasoningChunkEvent.of(sessionId, chunk));
     }
 
     @Override
     public void onReasoningComplete(String reasoning) {
-        dispatcher.accept(ReasoningCompleteEvent.of(sessionId, reasoning));
+        var event = ReasoningCompleteEvent.of(sessionId, reasoning);
+        if (reasoningStartedAtNanos != null && reasoningLastChunkAtNanos != null) {
+            event.durationMs = (reasoningLastChunkAtNanos - reasoningStartedAtNanos) / 1_000_000L;
+        }
+        reasoningStartedAtNanos = null;
+        reasoningLastChunkAtNanos = null;
+        dispatcher.accept(event);
     }
 
     @Override

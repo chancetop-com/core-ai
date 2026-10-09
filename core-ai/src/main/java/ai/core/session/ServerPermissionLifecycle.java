@@ -209,6 +209,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         var event = ToolResultEvent.of(sessionId, callId, toolName, status, result);
         event.taskId = (String) argMap.getOrDefault("task_id", executionContext.getTaskId());
         event.toolType = toolTypeResolver.apply(toolName);
+        event.durationMs = toolResult.getDurationMs();
         dispatcher.accept(event);
     }
 
