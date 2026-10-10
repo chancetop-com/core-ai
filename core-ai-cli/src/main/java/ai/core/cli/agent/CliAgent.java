@@ -179,7 +179,10 @@ public class CliAgent {
         List<PromptInject> sections = new ArrayList<>();
         sections.add(config.coding ? new CliAgentCodeBasePrompt() : new CliAgentBasePrompt());
         sections.add(new CliAgentPersonalityPrompt());
-        sections.add(new CliAgentEnvironmentPrompt(config.workspace));
+        sections.add(new CliAgentEnvironmentPrompt(config.workspace, config.clientType));
+        if (managedBrowser()) {
+            sections.add(new CliAgentManagedBrowserPrompt());
+        }
         sections.add(new CliAgentGitStatusPrompt(config.workspace));
         sections.add(new CliAgentInstructionsPrompt(config.workspace));
         if (config.memoryEnabled) {
@@ -188,6 +191,11 @@ public class CliAgent {
         }
         sections.add(new CliAgentHookPrompt(hookOutput));
         return sections;
+    }
+
+    /** The desktop app spawns the engine with this flag; its built-in browser pane is the only browser. */
+    private static boolean managedBrowser() {
+        return "1".equals(System.getenv("CORE_AI_BROWSER_MANAGED"));
     }
 
     private static AgentProfileRegistry buildAgentProfileRegistry(Config config) {
