@@ -1,0 +1,23 @@
+{
+  "name": "core-ai-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "core-ai desktop client: local agent sessions in a lightweight GUI",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "test": "npm run build && node --test \"test/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "electron": "^44.7.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.16",
+    "highlight.js": "^11.12.0",
+    "marked": "^18.1.0"
+  }
+}

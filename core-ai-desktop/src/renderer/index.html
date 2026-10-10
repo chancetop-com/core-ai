@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>core-ai</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <img class="brand-logo brand-logo-dark" src="logo.svg" alt="core-ai" />
+        <img class="brand-logo brand-logo-light" src="logo-light.svg" alt="core-ai" />
+        <svg class="brand-mark" viewBox="0 0 140 202" aria-hidden="true">
+          <path d="M120 24 C56 12 14 51 14 100 C14 149 56 188 120 176" fill="none" stroke="currentColor" stroke-width="26" stroke-linecap="round" />
+          <path d="M118 66 C87 60 65 76 65 100 C65 124 87 140 118 134" fill="none" stroke="currentColor" stroke-width="17" stroke-linecap="round" />
+          <circle cx="127" cy="100" r="10.5" fill="#C79A80" />
+        </svg>
+        <span class="brand-chip">local</span>
+      </div>
+      <nav id="nav"></nav>
+      <div id="sidebar-footer"></div>
+    </aside>
+    <main id="main">
+      <section id="content"></section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
