@@ -85,7 +85,7 @@ public class CliAgent {
         var auth = AuthConfig.load();
         // Login-gated, best-effort trace upload. Not logged in -> not attached -> zero overhead.
         if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
-            agent.addLifecycle(new TraceCollectorLifecycle(new HttpTraceUploader(auth.serverUrl(), auth.apiKey())));
+            agent.addLifecycle(new TraceCollectorLifecycle(new HttpTraceUploader(auth.serverUrl(), auth.apiKey()), config.clientType));
         }
         configureExecutionContext(agent, config, auth, hookOutput);
         return agent;
@@ -225,6 +225,7 @@ public class CliAgent {
                              String defaultImageModel,
                             String defaultVideoModel,
                             ai.core.schedule.ScheduledTaskStore scheduledTaskStore,
-                            ai.core.context.CompressionConfig compressionConfig) {
+                            ai.core.context.CompressionConfig compressionConfig,
+                            String clientType) {
     }
 }

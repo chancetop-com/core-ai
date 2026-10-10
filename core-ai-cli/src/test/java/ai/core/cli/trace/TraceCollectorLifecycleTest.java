@@ -33,10 +33,12 @@ class TraceCollectorLifecycleTest {
         s.startedAtEpochMs = 5L;
         var req = new CliTraceRequest();
         req.serviceName = "core-ai-cli";
+        req.clientType = "desktop";
         req.spans = List.of(s);
 
         var map = HttpTraceUploader.toMap(req);
         assertEquals("core-ai-cli", map.get("serviceName"));
+        assertEquals("desktop", map.get("clientType"));
         var spans = (List<?>) map.get("spans");
         assertEquals(1, spans.size());
         var sm = (java.util.Map<?, ?>) spans.get(0);
@@ -48,11 +50,22 @@ class TraceCollectorLifecycleTest {
         var json = ai.core.utils.JsonUtil.toJson(map);
         assertTrue(json.contains("\"traceId\":\"t1\""));
         assertTrue(json.contains("\"inputTokens\":10"));
+        assertTrue(json.contains("\"clientType\":\"desktop\""));
+    }
+
+    @Test
+    void uploadCarriesDeclaredClientType() {
+        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "desktop");
+        lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
+        lifecycle.afterAgentRun("hi", new AtomicReference<>("done"), null);
+
+        assertNotNull(captured);
+        assertEquals("desktop", captured.clientType, "desktop sessions must not be attributed to the CLI");
     }
 
     @Test
     void buildsNestedSpanTreeForOneTurn() {
-        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req);
+        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
 
         lifecycle.beforeAgentRun(new AtomicReference<>("hello"), null);
 
@@ -68,6 +81,7 @@ class TraceCollectorLifecycleTest {
         lifecycle.afterAgentRun("hello", new AtomicReference<>("done"), null);
 
         assertNotNull(captured, "a batch should be uploaded at turn end");
+        assertEquals("cli", captured.clientType);
         var spans = captured.spans;
         assertEquals(3, spans.size(), "root + llm + tool");
 
@@ -90,7 +104,7 @@ class TraceCollectorLifecycleTest {
 
     @Test
     void marksRootErrorOnFailure() {
-        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req);
+        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
         lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
         lifecycle.afterAgentFailed("hi", null, new RuntimeException("boom"));
 
@@ -102,7 +116,7 @@ class TraceCollectorLifecycleTest {
     @Test
     void llmSpanSurvivesNullMessagesWithoutBreakingTurn() {
         // req.messages == null must NOT throw out of the hook (JsonUtil.toJson(null) throws Error).
-        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req);
+        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
         lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
         var request = CompletionRequest.of(null, null, 0.8, "gpt-4o", "agent");
         lifecycle.afterModel(request, CompletionResponse.of(List.of(), new Usage(1, 1, 2)), null);
@@ -116,7 +130,7 @@ class TraceCollectorLifecycleTest {
 
     @Test
     void failingToolMarksToolSpanError() {
-        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req);
+        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
         lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
         lifecycle.afterModel(CompletionRequest.of(new ArrayList<>(), null, 0.8, "m", "a"),
                 CompletionResponse.of(List.of(), new Usage(1, 1, 2)), null);
@@ -131,7 +145,7 @@ class TraceCollectorLifecycleTest {
 
     @Test
     void llmSpanCapturesDurationFromBeforeModel() throws InterruptedException {
-        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req);
+        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
         lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
         var request = CompletionRequest.of(new ArrayList<>(), null, 0.8, "m", "a");
         lifecycle.beforeModel(request, null);
@@ -148,7 +162,7 @@ class TraceCollectorLifecycleTest {
 
     @Test
     void multipleToolsNestUnderSameLlmSpan() {
-        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req);
+        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
         lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
         lifecycle.afterModel(CompletionRequest.of(new ArrayList<>(), null, 0.8, "m", "a"),
                 CompletionResponse.of(List.of(), new Usage(1, 1, 2)), null);

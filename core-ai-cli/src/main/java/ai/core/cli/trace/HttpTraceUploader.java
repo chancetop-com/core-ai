@@ -46,6 +46,7 @@ public class HttpTraceUploader implements TraceUploader {
         m.put("serviceName", request.serviceName);
         m.put("serviceVersion", request.serviceVersion);
         m.put("environment", request.environment);
+        m.put("clientType", request.clientType);
         m.put("spans", spans);
         return m;
     }

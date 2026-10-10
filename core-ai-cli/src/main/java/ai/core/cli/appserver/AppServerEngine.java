@@ -36,6 +36,13 @@ public class AppServerEngine implements EngineApi {
     public static final String PROTOCOL_VERSION = "1.0";
     private static final Logger LOGGER = LoggerFactory.getLogger(AppServerEngine.class);
     private static final long SERVER_MODELS_TTL_MS = 60_000L;
+    // Trace origins for clients that declare themselves in the initialize handshake; extend this table when a
+    // new client ships. Clients that send no name (or an unknown one) trace as "cli".
+    private static final Map<String, String> TRACE_CLIENT_TYPES = Map.of("core-ai-desktop", "desktop");
+
+    static String traceClientType(String clientName) {
+        return clientName == null ? "cli" : TRACE_CLIENT_TYPES.getOrDefault(clientName, "cli");
+    }
 
     private static Properties loadAgentProperties(Path file) throws IOException {
         var props = new Properties();
@@ -109,6 +116,7 @@ public class AppServerEngine implements EngineApi {
             throw RpcException.invalidParams("unknown approvalPolicy: " + policy);
         }
         registry.setApprovalPolicy(policy);
+        registry.setClientType(traceClientType(params.path("client").path("name").asText(null)));
         var node = Params.object();
         node.put("engineVersion", VersionUtil.getCurrentVersion());
         node.put("protocolVersion", PROTOCOL_VERSION);

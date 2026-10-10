@@ -78,7 +78,9 @@ public class TraceModule extends Module {
         http().route(HTTPMethod.POST, "/api/public/otel/v1/traces", otlpController::receive);
         http().route(HTTPMethod.POST, "/api/ingest/spans", ingestController::ingestSpans);
         // Authenticated ingest for CLI/SDK: AuthInterceptor resolves userId from Bearer (not whitelisted),
-        // server overrides user attribution and stamps source=cli. Distinct HTTP method from GET /api/traces/:traceId.
+        // server overrides user attribution and stamps source from the clientType the client declared
+        // (cli by default, desktop when the desktop app drives the engine). Distinct HTTP method from
+        // GET /api/traces/:traceId.
         http().route(HTTPMethod.POST, "/api/traces/ingest", ingestController::ingestAuthed);
     }
 

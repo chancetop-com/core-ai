@@ -19,6 +19,8 @@ public class CliTraceRequest {
     public String serviceVersion;
     @Property(name = "environment")
     public String environment;
+    @Property(name = "clientType")
+    public String clientType;
     @Property(name = "spans")
     public List<CliTraceSpan> spans;
 }

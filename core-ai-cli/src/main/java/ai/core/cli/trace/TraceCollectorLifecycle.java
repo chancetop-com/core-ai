@@ -62,9 +62,11 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     }
 
     private final TraceUploader uploader;
+    private final String clientType;
 
-    public TraceCollectorLifecycle(TraceUploader uploader) {
+    public TraceCollectorLifecycle(TraceUploader uploader, String clientType) {
         this.uploader = uploader;
+        this.clientType = clientType;
     }
 
     @Override
@@ -182,6 +184,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
         request.serviceName = SERVICE_NAME;
         request.serviceVersion = SERVICE_VERSION;
         request.environment = ENVIRONMENT;
+        request.clientType = clientType;
         request.spans = spans;
         uploader.upload(request);
     }

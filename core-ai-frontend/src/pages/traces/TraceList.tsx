@@ -40,6 +40,7 @@ const SOURCE_OPTIONS: { key: string; label: string }[] = [
   { key: 'scheduled', label: 'Scheduled' },
   { key: 'workflow', label: 'Workflow' },
   { key: 'cli', label: 'CLI' },
+  { key: 'desktop', label: 'Desktop' },
   { key: 'channel', label: 'Channel' },
   { key: 'gateway', label: 'Gateway' },
   { key: 'system', label: 'System' },

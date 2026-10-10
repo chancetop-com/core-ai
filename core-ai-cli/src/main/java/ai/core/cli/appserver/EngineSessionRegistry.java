@@ -58,6 +58,7 @@ public class EngineSessionRegistry {
     private final Map<String, EngineSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, CachedTitle> titleCache = new ConcurrentHashMap<>();
     private volatile String approvalPolicy = "ask";
+    private volatile String clientType = "cli";
     private volatile WorkspaceAutoPermissionStore workspaceAutoStore;
 
     public EngineSessionRegistry(EngineBootstrap bootstrap, Supplier<NotificationSink> sinkSupplier) {
@@ -69,6 +70,11 @@ public class EngineSessionRegistry {
 
     public void setApprovalPolicy(String policy) {
         this.approvalPolicy = policy;
+    }
+
+    /** Trace origin declared by the connected client; sessions built afterwards upload under it. */
+    public void setClientType(String clientType) {
+        this.clientType = clientType;
     }
 
     public ObjectNode list(ObjectNode params) {
@@ -284,7 +290,7 @@ public class EngineSessionRegistry {
                 sessionId, bootstrap.remoteAgents, bootstrap.remoteServers, bootstrap.subAgentConfigs,
                 bootstrap.a2aAutoDiscover, bootstrap.mediaProvider, bootstrap.imageMediaProvider,
                 bootstrap.videoMediaProvider, bootstrap.defaultImageModel, bootstrap.defaultVideoModel,
-                bootstrap.scheduledTaskStore, bootstrap.compressionConfig);
+                bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType);
         var agent = CliAgent.of(agentConfig);
         if (load && agent.hasPersistenceProvider()) {
             agent.load(sessionId);

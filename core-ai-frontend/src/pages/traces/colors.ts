@@ -42,6 +42,7 @@ export function sourceColors(source?: string): SourcePalette {
     case 'gateway':  return { label: 'Gateway',   color: '#0d9488' };
     case 'external': return { label: 'External',  color: '#64748b' };
     case 'cli':      return { label: 'CLI',       color: '#14b8a6' };
+    case 'desktop':  return { label: 'Desktop',   color: '#7c3aed' };
     case 'channel':  return { label: 'Channel',   color: '#f97316' };
     case 'system':   return { label: 'System',    color: '#06b6d4' };
     default:         return { label: 'Unknown',   color: '#94a3b8' };

@@ -240,7 +240,7 @@ public class CliApp {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
         }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.a2aAutoDiscover(),
                 ctx.mediaProvider(), ctx.imageMediaProvider(), ctx.videoMediaProvider(), ctx.defaultImageModel(), ctx.defaultVideoModel(), scheduledTaskStore,
-                CliAppHelper.compressionConfig(ctx.props()));
+                CliAppHelper.compressionConfig(ctx.props()), "cli");
         var agent = CliAgent.of(agentConfig);
         var registry = agent.getExecutionContext().getAgentProfileRegistry();
         if (registry != null) {

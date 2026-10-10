@@ -210,7 +210,7 @@ public class AcpAgentRunner {
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
                     Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null,
-                    ctx.compressionConfig());
+                    ctx.compressionConfig(), "cli");
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -251,7 +251,7 @@ public class AcpAgentRunner {
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
                 Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null,
-                ctx.compressionConfig());
+                ctx.compressionConfig(), "cli");
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
