@@ -22,8 +22,11 @@ import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.github.GitHubTokenProvider;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,8 +51,6 @@ class ToolRefResolutionService {
             case API -> ToolSourceType.API;
         };
     }
-
-
     // ── Fields ───────────────────────────────────────────────────────────────────
 
     private final Map<String, ToolRegistryEntry> tools;
@@ -199,6 +200,7 @@ class ToolRefResolutionService {
             }
         }
 
+        var mcpSelections = new LinkedHashMap<String, Set<String>>();
         for (var ref : toolRefs) {
             if (ref == null) continue;
             if (AgentDependencyAccessPolicy.isLlmCallRef(ref)) {
@@ -210,15 +212,19 @@ class ToolRefResolutionService {
             if (type != null) {
                 switch (type) {
                     case BUILTIN -> registerBuiltinProvider(registry, ref);
-                    case MCP -> registerMcpProvider(registry, ref, sessionMgr);
+                    case MCP -> collectMcpSelection(mcpSelections, ref);
                     case API -> registerApiProvider(registry, ref);
                     case AGENT -> LOGGER.debug("skipping AGENT tool ref at registry level, id={}", ref.id);
                     case LLM_CALL -> registerLLMCallProvider(registry, ref, callerUserId);
                     default -> LOGGER.warn("unknown tool source type, id={}, type={}", ref.id, type);
                 }
             } else {
-                registerLegacyProvider(registry, ref, sessionMgr);
+                registerLegacyProvider(registry, ref, mcpSelections);
             }
+        }
+        for (var selection : mcpSelections.entrySet()) {
+            var includes = selection.getValue() == null ? null : List.copyOf(selection.getValue());
+            registerMcpByName(registry, selection.getKey(), includes, sessionMgr);
         }
         return registry;
     }
@@ -294,11 +300,14 @@ class ToolRefResolutionService {
         if (!matched.isEmpty()) registry.registerProvider(new ListToolProvider("dynamic:" + ref.id, matched));
     }
 
-    private void registerMcpProvider(ToolRegistry registry, ToolRef ref,
-                                     McpClientManager sessionMgr) {
+    private void collectMcpSelection(Map<String, Set<String>> selections, ToolRef ref) {
         var parsed = ToolRef.parseMcpToolId(ref.id, ref.source);
         if (parsed != null) {
-            registerMcpFromParsed(registry, parsed, sessionMgr);
+            if (parsed.serverId() != null) {
+                var name = resolveMcpServerName(parsed.serverId());
+                var includes = parsed.toolName() != null ? List.of(parsed.toolName()) : null;
+                mergeMcpSelection(selections, name, includes);
+            }
             return;
         }
 
@@ -307,17 +316,13 @@ class ToolRefResolutionService {
         if (name == null) {
             name = ref.source != null ? ref.source : ref.id;
         }
-        registerMcpByName(registry, name, null, sessionMgr);
+        mergeMcpSelection(selections, name, null);
     }
 
-    private void registerMcpFromParsed(ToolRegistry registry, ToolRef.McpToolId parsed,
-                                       McpClientManager sessionMgr) {
-        var refServerName = parsed.serverId();
-        if (refServerName != null) {
-            var name = resolveMcpServerName(refServerName);
-            var includes = parsed.toolName() != null ? List.of(parsed.toolName()) : null;
-            registerMcpByName(registry, name, includes, sessionMgr);
-        }
+    private void mergeMcpSelection(Map<String, Set<String>> selections, String lookupKey, List<String> includes) {
+        if (includes == null) selections.put(lookupKey, null);
+        else if (!selections.containsKey(lookupKey)) selections.put(lookupKey, new LinkedHashSet<>(includes));
+        else if (selections.get(lookupKey) != null) selections.get(lookupKey).addAll(includes);
     }
 
     private void registerMcpByName(ToolRegistry registry, String lookupKey, List<String> includes,
@@ -376,11 +381,11 @@ class ToolRefResolutionService {
     }
 
     private void registerLegacyProvider(ToolRegistry registry, ToolRef ref,
-                                        McpClientManager sessionMgr) {
+                                        Map<String, Set<String>> mcpSelections) {
         var entry = lookupToolEntry(ref.id);
         if (entry == null) return;
         switch (entry.type) {
-            case MCP -> registerMcpProvider(registry, ref, sessionMgr);
+            case MCP -> collectMcpSelection(mcpSelections, ref);
             case BUILTIN -> registerBuiltinProvider(registry, ref);
             case API -> registerApiProvider(registry, ref);
             default -> LOGGER.warn("unknown tool type in legacy ref, id={}, type={}", ref.id, entry.type);
@@ -416,7 +421,7 @@ class ToolRefResolutionService {
     }
 
     private List<ToolRegistryEntry> collectSandboxHostedEntries(List<ToolRef> toolRefs) {
-        var seen = new java.util.LinkedHashSet<String>();
+        var seen = new LinkedHashSet<String>();
         var result = new ArrayList<ToolRegistryEntry>();
         for (var ref : toolRefs) {
             if (ref == null || ref.id == null) continue;

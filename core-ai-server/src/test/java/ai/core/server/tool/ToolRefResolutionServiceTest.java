@@ -1,5 +1,8 @@
 package ai.core.server.tool;
 
+import ai.core.agent.ExecutionContext;
+import ai.core.mcp.client.McpClientManager;
+import ai.core.sandbox.Sandbox;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DefinitionType;
@@ -9,16 +12,20 @@ import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
 import ai.core.server.gateway.GatewayEndpointType;
 import ai.core.server.run.LLMCallExecutor;
+import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandboxhub.SandboxHubCatalog;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.MediaModelHint;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,6 +38,206 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ToolRefResolutionServiceTest {
+    @Test
+    void multipleSelectedMcpToolsRemainCallableAndVisibleWithoutExposingUnselectedTools() {
+        var manager = mock(McpClientManager.class);
+        when(manager.hasServer("gbp-id")).thenReturn(Boolean.TRUE);
+        when(manager.safeListTools("gbp-id")).thenReturn(List.of(
+                mcpTool("list_locations"), mcpTool("get_reviews"), mcpTool("delete_location")));
+        when(manager.safeCallTool("gbp-id", "list_locations", "{}"))
+                .thenReturn(ToolCallResult.completed("locations"));
+        when(manager.safeCallTool("gbp-id", "get_reviews", "{}"))
+                .thenReturn(ToolCallResult.completed("reviews"));
+        var service = mcpService(manager);
+
+        var registry = service.resolveToToolRegistry(List.of(
+                ToolRef.of("mcp-tool:gbp-id:list_locations", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:gbp-id:get_reviews", ToolSourceType.MCP)), null);
+
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(registry));
+        var dispatch = registry.materialize().getDispatchMap();
+        assertEquals(Set.of("list_locations", "get_reviews"), dispatch.keySet());
+        assertEquals("locations", dispatch.get("list_locations").execute("{}").getResult());
+        assertEquals("reviews", dispatch.get("get_reviews").execute("{}").getResult());
+        var context = ExecutionContext.empty();
+        context.setToolRegistry(registry);
+        var catalog = SandboxHubCatalog.of(context);
+        assertEquals(List.of("mcp:google-gbp:get_reviews", "mcp:google-gbp:list_locations"),
+                catalog.entries().stream().map(SandboxHubCatalog.Entry::refId).toList());
+        assertTrue(catalog.entries().stream().allMatch(SandboxHubCatalog.Entry::callable));
+    }
+
+    @Test
+    void duplicateMcpSelectionsDoNotChangeTheSelectedSetWhenOrderIsReversed() {
+        var service = mcpService(mcpManager(List.of("list_locations", "get_reviews", "delete_location")));
+        var locations = ToolRef.of("mcp-tool:gbp-id:list_locations", ToolSourceType.MCP);
+        var reviews = ToolRef.of("mcp-tool:gbp-id:get_reviews", ToolSourceType.MCP);
+
+        var forward = service.resolveToToolRegistry(List.of(locations, reviews, locations), null);
+        var reverse = service.resolveToToolRegistry(List.of(reviews, locations, reviews), null);
+
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(forward));
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(reverse));
+
+        var nextResolution = service.resolveToToolRegistry(List.of(locations), null);
+        assertEquals(List.of("list_locations"), toolNames(nextResolution));
+    }
+
+    @Test
+    void mcpSelectionsStayWithinTheirOwnServerInProvidersAndCatalog() {
+        var manager = mock(McpClientManager.class);
+        when(manager.hasServer("gbp-id")).thenReturn(Boolean.TRUE);
+        when(manager.hasServer("brightlocal-id")).thenReturn(Boolean.TRUE);
+        when(manager.safeListTools("gbp-id")).thenReturn(List.of(
+                mcpTool("list_locations"), mcpTool("get_reviews"), mcpTool("delete_location")));
+        when(manager.safeListTools("brightlocal-id")).thenReturn(List.of(
+                mcpTool("list_reports"), mcpTool("get_rankings"), mcpTool("delete_report")));
+        var gbp = new ToolRegistryEntry();
+        gbp.id = "gbp-id";
+        gbp.name = "google-gbp";
+        gbp.type = ToolType.MCP;
+        gbp.config = Map.of();
+        var brightlocal = new ToolRegistryEntry();
+        brightlocal.id = "brightlocal-id";
+        brightlocal.name = "brightlocal";
+        brightlocal.type = ToolType.MCP;
+        brightlocal.config = Map.of();
+        var applicationManager = new ApplicationMcpManager();
+        applicationManager.set(manager);
+        var dependencies = new McpResolutionDependencies(null, null, applicationManager);
+        var service = new ToolRefResolutionService(Map.of(gbp.id, gbp, brightlocal.id, brightlocal),
+                Map.of(), dependencies, null, null, null);
+
+        var registry = service.resolveToToolRegistry(List.of(
+                ToolRef.of("mcp-tool:gbp-id:list_locations", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:brightlocal-id:list_reports", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:gbp-id:get_reviews", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:brightlocal-id:get_rankings", ToolSourceType.MCP)), null);
+
+        assertEquals(Set.of("mcp:google-gbp", "mcp:brightlocal"), registry.providers().keySet());
+        assertEquals(Set.of("list_locations", "get_reviews"), registry.getProvider("mcp:google-gbp").provide().keySet());
+        assertEquals(Set.of("list_reports", "get_rankings"), registry.getProvider("mcp:brightlocal").provide().keySet());
+        var context = ExecutionContext.empty();
+        context.setToolRegistry(registry);
+        assertEquals(List.of("mcp:brightlocal:get_rankings", "mcp:brightlocal:list_reports",
+                        "mcp:google-gbp:get_reviews", "mcp:google-gbp:list_locations"),
+                SandboxHubCatalog.of(context).entries().stream().map(SandboxHubCatalog.Entry::refId).toList());
+    }
+
+    @Test
+    void configuredMcpServerSelectionsMergeAcrossPrefixedAndUnprefixedLookupKeys() {
+        var manager = mock(McpClientManager.class);
+        when(manager.hasServer("google-gbp")).thenReturn(Boolean.TRUE);
+        when(manager.safeListTools("google-gbp")).thenReturn(List.of(
+                mcpTool("list_locations"), mcpTool("get_reviews"), mcpTool("delete_location")));
+        var entry = new ToolRegistryEntry();
+        entry.id = "config:google-gbp";
+        entry.name = "google-gbp";
+        entry.type = ToolType.MCP;
+        entry.config = Map.of();
+        var applicationManager = new ApplicationMcpManager();
+        applicationManager.set(manager);
+        var dependencies = new McpResolutionDependencies(null, null, applicationManager);
+        var service = new ToolRefResolutionService(Map.of(entry.id, entry), Map.of(), dependencies, null, null, null);
+
+        var registry = service.resolveToToolRegistry(List.of(
+                ToolRef.of("mcp-tool:config:google-gbp:list_locations", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:get_reviews", ToolSourceType.MCP, "google-gbp")), null);
+
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(registry));
+    }
+
+    @Test
+    void wholeMcpServerSelectionIsNotNarrowedByIndividualSelectionInEitherOrder() {
+        var service = mcpService(mcpManager(List.of("list_locations", "get_reviews", "delete_location")));
+        var whole = ToolRef.of("gbp-id", ToolSourceType.MCP);
+        var selected = ToolRef.of("mcp-tool:gbp-id:list_locations", ToolSourceType.MCP);
+
+        var wholeFirst = service.resolveToToolRegistry(List.of(whole, selected), null);
+        var wholeLast = service.resolveToToolRegistry(List.of(selected, whole), null);
+
+        assertEquals(List.of("delete_location", "get_reviews", "list_locations"), toolNames(wholeFirst));
+        assertEquals(List.of("delete_location", "get_reviews", "list_locations"), toolNames(wholeLast));
+    }
+
+    @Test
+    void legacyWholeMcpServerSelectionIsNotNarrowedInEitherOrder() {
+        var service = mcpService(mcpManager(List.of("list_locations", "get_reviews", "delete_location")));
+        var whole = ToolRef.fromLegacyToolId("gbp-id");
+        var selected = ToolRef.of("mcp-tool:gbp-id:list_locations", ToolSourceType.MCP);
+
+        var wholeFirst = service.resolveToToolRegistry(List.of(whole, selected), null);
+        var wholeLast = service.resolveToToolRegistry(List.of(selected, whole), null);
+
+        assertEquals(List.of("delete_location", "get_reviews", "list_locations"), toolNames(wholeFirst));
+        assertEquals(List.of("delete_location", "get_reviews", "list_locations"), toolNames(wholeLast));
+    }
+
+    @Test
+    void wholeApplicationMcpServerStillDiscoversNewToolsAfterMergingSelections() {
+        var manager = mcpManager(List.of("list_locations"));
+        var service = mcpService(manager);
+        var registry = service.resolveToToolRegistry(List.of(
+                ToolRef.of("gbp-id", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:gbp-id:get_reviews", ToolSourceType.MCP)), null);
+        assertEquals(List.of("list_locations"), toolNames(registry));
+
+        when(manager.safeListTools("gbp-id")).thenReturn(List.of(
+                mcpTool("list_locations"), mcpTool("get_reviews"), mcpTool("new_tool")));
+
+        assertEquals(List.of("get_reviews", "list_locations", "new_tool"), toolNames(registry));
+    }
+
+    @Test
+    void mergedMcpSelectionsExecuteThroughTheirOwnSessionManager() {
+        var application = mcpManager(List.of("list_locations", "get_reviews"));
+        var firstSession = mcpManager(List.of("list_locations", "get_reviews"));
+        var secondSession = mcpManager(List.of("list_locations", "get_reviews"));
+        when(application.safeCallTool("gbp-id", "list_locations", "{}"))
+                .thenReturn(ToolCallResult.completed("application locations"));
+        when(firstSession.safeCallTool("gbp-id", "list_locations", "{}"))
+                .thenReturn(ToolCallResult.completed("first session locations"));
+        when(secondSession.safeCallTool("gbp-id", "list_locations", "{}"))
+                .thenReturn(ToolCallResult.completed("second session locations"));
+        var service = sessionMcpService(application, Map.of("first", firstSession, "second", secondSession));
+        var refs = List.of(ToolRef.of("mcp-tool:gbp-id:list_locations", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:gbp-id:get_reviews", ToolSourceType.MCP));
+
+        var firstRegistry = service.resolveToToolRegistry(refs, "first");
+        var secondRegistry = service.resolveToToolRegistry(refs, "second");
+        var applicationRegistry = service.resolveToToolRegistry(refs, null);
+
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(firstRegistry));
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(secondRegistry));
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(applicationRegistry));
+        assertEquals("first session locations", firstRegistry.materialize().getDispatchMap()
+                .get("list_locations").execute("{}").getResult());
+        assertEquals("second session locations", secondRegistry.materialize().getDispatchMap()
+                .get("list_locations").execute("{}").getResult());
+        assertEquals("application locations", applicationRegistry.materialize().getDispatchMap()
+                .get("list_locations").execute("{}").getResult());
+    }
+
+    @Test
+    void mergedSessionMcpSelectionRefreshesOnlyAfterItsRegistryIsInvalidated() {
+        var firstSession = mcpManager(List.of("list_locations", "get_reviews"));
+        var secondSession = mcpManager(List.of("list_locations", "get_reviews"));
+        var service = sessionMcpService(mcpManager(List.of()), Map.of("first", firstSession, "second", secondSession));
+        var refs = List.of(ToolRef.of("mcp-tool:gbp-id:list_locations", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:gbp-id:get_reviews", ToolSourceType.MCP));
+        var firstRegistry = service.resolveToToolRegistry(refs, "first");
+        var secondRegistry = service.resolveToToolRegistry(refs, "second");
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(firstRegistry));
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(secondRegistry));
+
+        when(firstSession.safeListTools("gbp-id")).thenReturn(List.of(mcpTool("get_reviews"), mcpTool("unselected_tool")));
+
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(firstRegistry));
+        firstRegistry.invalidateCache("mcp:google-gbp");
+        assertEquals(List.of("get_reviews"), toolNames(firstRegistry));
+        assertEquals(List.of("get_reviews", "list_locations"), toolNames(secondRegistry));
+    }
+
     @Test
     void callerAwareRegistryResolutionPassesCallerToLlmCallLookup() {
         var definition = new AgentDefinition();
@@ -133,7 +340,7 @@ class ToolRefResolutionServiceTest {
 
         var provider = registry.getProvider("dynamic:builtin:short-drama");
         assertNotNull(provider);
-        assertEquals(java.util.Set.of("drama_list_shots", "drama_note"),
+        assertEquals(Set.of("drama_list_shots", "drama_note"),
                 provider.provide().values().stream().map(ToolCall::getName).collect(java.util.stream.Collectors.toSet()));
     }
 
@@ -164,6 +371,48 @@ class ToolRefResolutionServiceTest {
 
     private String imageToolDescription(ToolRegistry registry) {
         return registry.materialize().getDispatchMap().get("generate_image").getDescription();
+    }
+
+    private List<String> toolNames(ToolRegistry registry) {
+        return registry.getToolCalls().stream().map(ToolCall::getName).sorted().toList();
+    }
+
+    private McpSchema.Tool mcpTool(String name) {
+        return McpSchema.Tool.builder().name(name).description(name).build();
+    }
+
+    private McpClientManager mcpManager(List<String> toolNames) {
+        var manager = mock(McpClientManager.class);
+        when(manager.hasServer("gbp-id")).thenReturn(Boolean.TRUE);
+        when(manager.safeListTools("gbp-id")).thenReturn(toolNames.stream().map(this::mcpTool).toList());
+        return manager;
+    }
+
+    private ToolRefResolutionService mcpService(McpClientManager manager) {
+        var applicationManager = new ApplicationMcpManager();
+        applicationManager.set(manager);
+        return mcpService(new McpResolutionDependencies(null, null, applicationManager), Map.of());
+    }
+
+    private ToolRefResolutionService mcpService(McpResolutionDependencies dependencies, Map<String, String> config) {
+        var entry = new ToolRegistryEntry();
+        entry.id = "gbp-id";
+        entry.name = "google-gbp";
+        entry.type = ToolType.MCP;
+        entry.config = config;
+        return new ToolRefResolutionService(Map.of(entry.id, entry), Map.of(), dependencies, null, null, null);
+    }
+
+    private ToolRefResolutionService sessionMcpService(McpClientManager application, Map<String, McpClientManager> sessions) {
+        var applicationManager = new ApplicationMcpManager();
+        applicationManager.set(application);
+        var sandboxService = mock(SandboxService.class);
+        for (var entry : sessions.entrySet()) {
+            when(sandboxService.getSandbox(entry.getKey())).thenReturn(mock(Sandbox.class));
+            when(sandboxService.getOrCreateSessionMcpManager(entry.getKey())).thenReturn(entry.getValue());
+        }
+        var dependencies = new McpResolutionDependencies(mock(McpServerConnectionManager.class), sandboxService, applicationManager);
+        return mcpService(dependencies, Map.of("transport", "sandbox_hosted"));
     }
 
     private ToolRefResolutionService service(AgentDefinitionService definitions) {
