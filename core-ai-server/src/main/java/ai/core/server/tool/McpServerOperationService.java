@@ -231,6 +231,7 @@ class McpServerOperationService {
         if (entity == null || entity.type != ToolType.MCP) {
             throw new RuntimeException("mcp server not found or not MCP type, id=" + serverId);
         }
+        if (!Boolean.TRUE.equals(entity.enabled)) return List.of();
         var mcpManager = applicationMcpManager.get();
         if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
             return List.of();
@@ -246,6 +247,7 @@ class McpServerOperationService {
     List<McpSchema.Tool> listMcpServerToolDetails(String serverId) {
         var watch = new StopWatch();
         var entity = requireMcpEntity(serverId);
+        if (!Boolean.TRUE.equals(entity.enabled)) return List.of();
 
         var cached = toolDetailsCache.get(serverId);
         if (cached != null && System.nanoTime() - cached.createdAtNanos() < TOOL_DETAILS_CACHE_TTL_NANOS) {
@@ -362,6 +364,7 @@ class McpServerOperationService {
 
     ToolCallResult callMcpServerTool(String serverId, String toolName, String argumentsJson) {
         var entity = requireMcpEntity(serverId);
+        if (!Boolean.TRUE.equals(entity.enabled)) throw new RuntimeException("mcp server is disabled, id=" + serverId);
         if (isSandboxHosted(entity)) {
             mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
         }

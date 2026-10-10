@@ -327,10 +327,11 @@ class ToolRefResolutionService {
 
     private void registerMcpByName(ToolRegistry registry, String lookupKey, List<String> includes,
                                    McpClientManager sessionMgr) {
+        var entry = findMcpEntryByLookupKey(lookupKey);
+        if (entry != null && !Boolean.TRUE.equals(entry.enabled)) return;
         var mgr = pickMcpManager(lookupKey, sessionMgr);
         if (mgr == null || !mgr.hasServer(lookupKey)) return;
         var sandbox = sessionMgr != null && sessionMgr.hasServer(lookupKey);
-        var entry = findMcpEntryByLookupKey(lookupKey);
         var serverName = entry != null ? entry.name : lookupKey;
         registry.registerProvider(new McpToolProvider(lookupKey, serverName, mgr, includes, sandbox ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
     }
@@ -392,8 +393,6 @@ class ToolRefResolutionService {
         }
     }
 
-    // ── Session MCP startup ──────────────────────────────────────────────────────
-
     private McpClientManager prepareSessionMcpServers(List<ToolRef> toolRefs, String sessionId, Sandbox sandbox) {
         var sandboxHostedEntries = collectSandboxHostedEntries(toolRefs);
         if (sandboxHostedEntries.isEmpty()) return null;
@@ -426,7 +425,8 @@ class ToolRefResolutionService {
         for (var ref : toolRefs) {
             if (ref == null || ref.id == null) continue;
             var entry = findMcpEntryForRef(ref);
-            if (entry != null && "sandbox_hosted".equalsIgnoreCase(entry.config.get("transport")) && seen.add(entry.id)) {
+            if (entry != null && Boolean.TRUE.equals(entry.enabled)
+                    && "sandbox_hosted".equalsIgnoreCase(entry.config.get("transport")) && seen.add(entry.id)) {
                 result.add(entry);
             }
         }

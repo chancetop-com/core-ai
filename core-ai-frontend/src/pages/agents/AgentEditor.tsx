@@ -491,7 +491,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
     return toolRef.id;
   };
 
-  const mcpServers = allTools.filter(t => t.type === 'MCP');
+  const mcpServers = allTools.filter(t => t.type === 'MCP' && t.enabled);
 
   const getApiToolDisplayName = (toolRef: ToolRef): string => {
     if (toolRef.id.startsWith('api-app:')) return toolRef.id.substring('api-app:'.length);

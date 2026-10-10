@@ -1,6 +1,7 @@
 package ai.core.server.tool;
 
 import ai.core.api.server.run.LLMCallRequest;
+import ai.core.mcp.client.McpClientManager;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DefinitionType;
@@ -12,6 +13,7 @@ import ai.core.server.llmcall.LLMCallTool;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -21,11 +23,48 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ToolRefResolverTest {
+    @Test
+    void disabledMcpReferencesDoNotResolveThroughResidualApplicationClient() {
+        assertDisabledMcpReferencesExcluded(false);
+    }
+
+    @Test
+    void disabledMcpReferencesDoNotResolveThroughResidualSessionClient() {
+        assertDisabledMcpReferencesExcluded(true);
+    }
+
+    @Test
+    void disabledConfiguredMcpReferencesDoNotResolveThroughShortName() {
+        var entry = new ToolRegistryEntry();
+        entry.id = "config:google-gbp";
+        entry.name = "google-gbp";
+        entry.type = ToolType.MCP;
+        entry.enabled = Boolean.FALSE;
+        entry.config = Map.of();
+        var manager = mock(McpClientManager.class);
+        when(manager.hasServer("google-gbp")).thenReturn(Boolean.TRUE);
+        when(manager.safeListTools("google-gbp")).thenReturn(List.of(
+                McpSchema.Tool.builder().name("list_locations").description("locations").build()));
+        var applicationManager = new ApplicationMcpManager();
+        applicationManager.set(manager);
+        var resolver = new ToolRefResolver(Map.of(entry.id, entry), null, Map.of(), null, null, applicationManager);
+
+        for (var ref : List.of(ToolRef.of(entry.id, ToolSourceType.MCP),
+                ToolRef.of("google-gbp", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:list_locations", ToolSourceType.MCP, "google-gbp"),
+                ToolRef.fromLegacyToolId(entry.id))) {
+            assertTrue(resolver.resolve(List.of(ref)).isEmpty(), ref.id);
+        }
+
+        verify(manager, never()).safeListTools("google-gbp");
+    }
+
     @Test
     void declaredTypeMismatchWithRegistryFailsClosed() {
         var registry = new ToolRegistryEntry();
@@ -211,5 +250,29 @@ class ToolRefResolverTest {
         tool.setName(name);
         tool.setParameters(List.of());
         return tool;
+    }
+
+    private void assertDisabledMcpReferencesExcluded(boolean sessionScoped) {
+        var entry = new ToolRegistryEntry();
+        entry.id = "gbp-id";
+        entry.name = "google-gbp";
+        entry.type = ToolType.MCP;
+        entry.enabled = Boolean.FALSE;
+        entry.config = Map.of();
+        var manager = mock(McpClientManager.class);
+        when(manager.hasServer(entry.id)).thenReturn(Boolean.TRUE);
+        when(manager.safeListTools(entry.id)).thenReturn(List.of(
+                McpSchema.Tool.builder().name("list_locations").description("locations").build()));
+        var applicationManager = new ApplicationMcpManager();
+        applicationManager.set(sessionScoped ? mock(McpClientManager.class) : manager);
+        var resolver = new ToolRefResolver(Map.of(entry.id, entry), null, Map.of(), null, null, applicationManager);
+
+        for (var ref : List.of(ToolRef.of(entry.id, ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:gbp-id:list_locations", ToolSourceType.MCP),
+                ToolRef.fromLegacyToolId(entry.id))) {
+            assertTrue(resolver.resolve(List.of(ref), sessionScoped ? manager : null).isEmpty(), ref.id);
+        }
+
+        verify(manager, never()).safeListTools(entry.id);
     }
 }

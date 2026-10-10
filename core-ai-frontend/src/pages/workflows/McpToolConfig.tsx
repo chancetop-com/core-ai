@@ -53,12 +53,13 @@ export default function McpToolConfig({ config, onConfig, nodes, edges, selfId }
       <label style={label}>MCP server</label>
       <select value={serverId} onChange={(e) => selectServer(e.target.value)} style={input}>
         <option value="">— select an MCP server —</option>
-        {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        {servers.map((s) => <option key={s.id} value={s.id} disabled={!s.enabled}>{s.name}{s.enabled ? '' : ' (disabled)'}</option>)}
       </select>
 
       <label style={label}>Tool</label>
-      <select value={toolName} onChange={(e) => selectTool(e.target.value)} style={input} disabled={!serverId || loadingTools}>
+      <select value={toolName} onChange={(e) => selectTool(e.target.value)} style={input} disabled={!serverId || loadingTools || servers.some((s) => s.id === serverId && !s.enabled)}>
         <option value="">{loadingTools ? 'Loading…' : '— select a tool —'}</option>
+        {toolName && !tools.some((t) => t.name === toolName) && <option value={toolName} disabled>{toolName} (unavailable)</option>}
         {tools.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
       </select>
 

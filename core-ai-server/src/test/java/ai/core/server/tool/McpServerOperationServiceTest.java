@@ -3,6 +3,7 @@ package ai.core.server.tool;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolType;
 import ai.core.mcp.client.McpClientManager;
+import io.modelcontextprotocol.spec.McpSchema;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,9 +19,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class McpServerOperationServiceTest {
@@ -232,6 +236,48 @@ class McpServerOperationServiceTest {
         verify(connectionManager).unregisterMcpServer(entity.id);
         verify(connectionManager).registerMcpServer(entity);
         verify(manager).getClient(entity.id);
+    }
+
+    @Test
+    void disabledSandboxDoesNotExposeCachedToolDetailsOrRestartDiscovery() {
+        var entity = sandboxServer();
+        var manager = mock(McpClientManager.class);
+        when(applicationMcpManager.get()).thenReturn(manager);
+        when(manager.hasServer(entity.id)).thenReturn(Boolean.TRUE);
+        var tool = McpSchema.Tool.builder().name("get_reports").description("Read reports").build();
+        when(manager.safeListTools(entity.id)).thenReturn(List.of(tool));
+        assertEquals(List.of(tool), service.listMcpServerToolDetails(entity.id));
+        clearInvocations(connectionManager, manager);
+        entity.enabled = Boolean.FALSE;
+
+        assertTrue(service.listMcpServerToolDetails(entity.id).isEmpty());
+        verifyNoInteractions(connectionManager, manager);
+    }
+
+    @Test
+    void disabledSandboxCannotExecuteToolOrRestartDiscovery() {
+        var entity = sandboxServer();
+        entity.enabled = Boolean.FALSE;
+        var manager = mock(McpClientManager.class);
+        when(applicationMcpManager.get()).thenReturn(manager);
+        when(manager.hasServer(entity.id)).thenReturn(Boolean.TRUE);
+
+        var error = assertThrows(RuntimeException.class,
+                () -> service.callMcpServerTool(entity.id, "get_reports", "{}"));
+
+        assertTrue(error.getMessage().contains("disabled"));
+        verifyNoInteractions(connectionManager, manager);
+    }
+
+    private ToolRegistryEntry sandboxServer() {
+        var entity = new ToolRegistryEntry();
+        entity.id = "sandbox";
+        entity.name = "sandbox";
+        entity.type = ToolType.MCP;
+        entity.enabled = Boolean.TRUE;
+        entity.config = Map.of("transport", "sandbox_hosted", "command", "uvx");
+        tools.put(entity.id, entity);
+        return entity;
     }
 
 }

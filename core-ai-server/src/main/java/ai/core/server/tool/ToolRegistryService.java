@@ -198,18 +198,19 @@ public class ToolRegistryService {
     }
 
     private void loadDatabaseTools() {
-        for (var entry : toolRegistryCollection.find(Filters.eq("enabled", Boolean.TRUE))) {
+        for (var entry : toolRegistryCollection.find(Filters.or(
+                Filters.eq("enabled", Boolean.TRUE), Filters.eq("type", ToolType.MCP.name())))) {
             if (tools.containsKey(entry.id)) {
                 LOGGER.debug("skipping duplicate tool: {}", entry.id);
                 continue;
             }
             tools.put(entry.id, entry);
-            if (entry.type == ToolType.MCP) mcpConnectionManager.registerMcpServer(entry);
+            if (entry.type == ToolType.MCP && Boolean.TRUE.equals(entry.enabled)) mcpConnectionManager.registerMcpServer(entry);
         }
     }
 
     public void syncDatabaseTools() {
-        var dbEntries = toolRegistryCollection.find(Filters.eq("enabled", Boolean.TRUE));
+        var dbEntries = toolRegistryCollection.find(Filters.eq("type", ToolType.MCP.name()));
         var dbEntryIds = new HashSet<String>();
 
         for (var dbEntry : dbEntries) {
@@ -219,9 +220,9 @@ public class ToolRegistryService {
             var memEntry = tools.get(dbEntry.id);
             if (memEntry == null) {
                 tools.put(dbEntry.id, dbEntry);
-                if (McpServerOperationService.isSandboxHosted(dbEntry)) {
+                if (Boolean.TRUE.equals(dbEntry.enabled) && McpServerOperationService.isSandboxHosted(dbEntry)) {
                     mcpConnectionManager.ensureRegisteredOnDiscovery(dbEntry);
-                } else {
+                } else if (Boolean.TRUE.equals(dbEntry.enabled)) {
                     mcpConnectionManager.registerMcpServer(dbEntry);
                     mcpConnectionManager.warmupMcpServer(dbEntry.id);
                 }

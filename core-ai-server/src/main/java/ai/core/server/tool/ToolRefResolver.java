@@ -275,8 +275,21 @@ public class ToolRefResolver {
     // has adopted a sandbox-hosted MCP). Fall back to the global manager for normal
     // STDIO/HTTP servers and for any sandbox-hosted server not in this session.
     private McpClientManager pickManager(String serverName, McpClientManager sessionMgr) {
+        var entry = findMcpEntry(serverName);
+        if (entry != null && !Boolean.TRUE.equals(entry.enabled)) return null;
         if (sessionMgr != null && serverName != null && sessionMgr.hasServer(serverName)) return sessionMgr;
         return applicationMcpManager != null ? applicationMcpManager.get() : null;
+    }
+
+    private ToolRegistryEntry findMcpEntry(String serverName) {
+        if (serverName == null) return null;
+        var entry = toolRegistry.get(serverName);
+        if (entry != null && entry.type == ToolType.MCP) return entry;
+        entry = toolRegistry.get(CONFIG_PREFIX + serverName);
+        if (entry != null && entry.type == ToolType.MCP) return entry;
+        return toolRegistry.values().stream()
+                .filter(candidate -> candidate.type == ToolType.MCP && serverName.equals(candidate.name))
+                .findFirst().orElse(null);
     }
 
     private void resolveApiRef(ToolRef toolRef, List<ToolCall> result) {

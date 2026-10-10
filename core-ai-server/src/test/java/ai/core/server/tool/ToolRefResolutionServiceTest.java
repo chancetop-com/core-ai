@@ -33,11 +33,84 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ToolRefResolutionServiceTest {
+    @Test
+    void disabledMcpReferencesStayOutOfRegistryWithResidualApplicationClient() {
+        var manager = mcpManager(List.of("list_locations"));
+        var entry = disabledMcpEntry();
+        var applicationManager = new ApplicationMcpManager();
+        applicationManager.set(manager);
+        var dependencies = new McpResolutionDependencies(null, null, applicationManager);
+        var service = new ToolRefResolutionService(Map.of(entry.id, entry), Map.of(), dependencies, null, null, null);
+
+        for (var ref : disabledMcpRefs()) {
+            var registry = service.resolveToToolRegistry(List.of(ref), null);
+            assertTrue(registry.providers().isEmpty(), ref.id);
+            assertTrue(toolNames(registry).isEmpty(), ref.id);
+        }
+
+        verify(manager, never()).safeListTools(entry.id);
+    }
+
+    @Test
+    void disabledMcpReferencesStayOutOfRegistryWithResidualSessionClient() {
+        var entry = disabledMcpEntry();
+        entry.config = Map.of("transport", "sandbox_hosted");
+        var enabled = new ToolRegistryEntry();
+        enabled.id = "enabled-id";
+        enabled.name = "enabled-mcp";
+        enabled.type = ToolType.MCP;
+        enabled.enabled = Boolean.TRUE;
+        enabled.config = Map.of("transport", "sandbox_hosted");
+        var applicationManager = new ApplicationMcpManager();
+        applicationManager.set(mock(McpClientManager.class));
+        var sessionManager = mcpManager(List.of("list_locations"));
+        when(sessionManager.hasServer(enabled.id)).thenReturn(Boolean.TRUE);
+        when(sessionManager.safeListTools(enabled.id)).thenReturn(List.of(mcpTool("enabled_tool")));
+        var sandbox = mock(Sandbox.class);
+        var sandboxService = mock(SandboxService.class);
+        when(sandboxService.getSandbox("session-1")).thenReturn(sandbox);
+        when(sandboxService.getOrCreateSessionMcpManager("session-1")).thenReturn(sessionManager);
+        var connectionManager = mock(McpServerConnectionManager.class);
+        var dependencies = new McpResolutionDependencies(connectionManager, sandboxService, applicationManager);
+        var service = new ToolRefResolutionService(Map.of(entry.id, entry, enabled.id, enabled),
+                Map.of(), dependencies, null, null, null);
+
+        for (var ref : disabledMcpRefs()) {
+            var registry = service.resolveToToolRegistry(List.of(ref, ToolRef.of(enabled.id, ToolSourceType.MCP)), "session-1");
+            assertEquals(Set.of("mcp:enabled-mcp"), registry.providers().keySet(), ref.id);
+            assertEquals(List.of("enabled_tool"), toolNames(registry), ref.id);
+        }
+
+        verify(sessionManager, never()).safeListTools(entry.id);
+    }
+
+    @Test
+    void disabledSandboxMcpReferencesDoNotStartSessionServers() {
+        var entry = disabledMcpEntry();
+        entry.config = Map.of("transport", "sandbox_hosted");
+        var sandboxService = mock(SandboxService.class);
+        var sessionManager = mcpManager(List.of("list_locations"));
+        when(sandboxService.getSandbox("session-1")).thenReturn(mock(Sandbox.class));
+        when(sandboxService.getOrCreateSessionMcpManager("session-1")).thenReturn(sessionManager);
+        var connectionManager = mock(McpServerConnectionManager.class);
+        var applicationManager = new ApplicationMcpManager();
+        var dependencies = new McpResolutionDependencies(connectionManager, sandboxService, applicationManager);
+        var service = new ToolRefResolutionService(Map.of(entry.id, entry), Map.of(), dependencies, null, null, null);
+
+        assertTrue(toolNames(service.resolveToToolRegistry(disabledMcpRefs(), "session-1")).isEmpty());
+        assertTrue(service.resolveToolRefs(disabledMcpRefs(), "session-1").isEmpty());
+
+        verifyNoInteractions(connectionManager);
+        verify(sandboxService, never()).ensureSandboxReady("session-1");
+        verify(sandboxService, never()).getOrCreateSessionMcpManager("session-1");
+    }
+
     @Test
     void multipleSelectedMcpToolsRemainCallableAndVisibleWithoutExposingUnselectedTools() {
         var manager = mock(McpClientManager.class);
@@ -96,11 +169,13 @@ class ToolRefResolutionServiceTest {
         gbp.id = "gbp-id";
         gbp.name = "google-gbp";
         gbp.type = ToolType.MCP;
+        gbp.enabled = Boolean.TRUE;
         gbp.config = Map.of();
         var brightlocal = new ToolRegistryEntry();
         brightlocal.id = "brightlocal-id";
         brightlocal.name = "brightlocal";
         brightlocal.type = ToolType.MCP;
+        brightlocal.enabled = Boolean.TRUE;
         brightlocal.config = Map.of();
         var applicationManager = new ApplicationMcpManager();
         applicationManager.set(manager);
@@ -134,6 +209,7 @@ class ToolRefResolutionServiceTest {
         entry.id = "config:google-gbp";
         entry.name = "google-gbp";
         entry.type = ToolType.MCP;
+        entry.enabled = Boolean.TRUE;
         entry.config = Map.of();
         var applicationManager = new ApplicationMcpManager();
         applicationManager.set(manager);
@@ -373,6 +449,22 @@ class ToolRefResolutionServiceTest {
         return registry.materialize().getDispatchMap().get("generate_image").getDescription();
     }
 
+    private ToolRegistryEntry disabledMcpEntry() {
+        var entry = new ToolRegistryEntry();
+        entry.id = "gbp-id";
+        entry.name = "google-gbp";
+        entry.type = ToolType.MCP;
+        entry.enabled = Boolean.FALSE;
+        entry.config = Map.of();
+        return entry;
+    }
+
+    private List<ToolRef> disabledMcpRefs() {
+        return List.of(ToolRef.of("gbp-id", ToolSourceType.MCP),
+                ToolRef.of("mcp-tool:gbp-id:list_locations", ToolSourceType.MCP),
+                ToolRef.fromLegacyToolId("gbp-id"));
+    }
+
     private List<String> toolNames(ToolRegistry registry) {
         return registry.getToolCalls().stream().map(ToolCall::getName).sorted().toList();
     }
@@ -399,6 +491,7 @@ class ToolRefResolutionServiceTest {
         entry.id = "gbp-id";
         entry.name = "google-gbp";
         entry.type = ToolType.MCP;
+        entry.enabled = Boolean.TRUE;
         entry.config = config;
         return new ToolRefResolutionService(Map.of(entry.id, entry), Map.of(), dependencies, null, null, null);
     }

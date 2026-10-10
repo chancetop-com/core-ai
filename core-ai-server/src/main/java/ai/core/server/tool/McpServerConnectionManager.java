@@ -63,6 +63,7 @@ class McpServerConnectionManager {
     // they're picked up lazily by ensureRegisteredOnDiscovery (tool browsing UI) or
     // registerOnSession (agent run).
     void registerMcpServer(ToolRegistryEntry entry) {
+        if (!Boolean.TRUE.equals(entry.enabled)) return;
         if (isSandboxHosted(entry.config)) return;
         var mcpManager = getOrCreateGlobalMcpManager();
         if (mcpManager.hasServer(entry.id)) return;
@@ -76,6 +77,7 @@ class McpServerConnectionManager {
     // Idempotently start a sandbox-hosted MCP on the discovery sandbox and register
     // it in the global manager. Used by the frontend's connect / list-tools flow.
     boolean ensureRegisteredOnDiscovery(ToolRegistryEntry entry) {
+        if (!Boolean.TRUE.equals(entry.enabled)) return false;
         if (!isSandboxHosted(entry.config)) return false;
         var mcpManager = getOrCreateGlobalMcpManager();
         if (mcpManager.hasServer(entry.id)) return true;
@@ -148,6 +150,7 @@ class McpServerConnectionManager {
     // Register with a specific startup timeout — session creation uses a shorter timeout
     // so a stuck MCP server does not block session creation for minutes.
     boolean registerOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox, int startupTimeoutSeconds) {
+        if (!Boolean.TRUE.equals(entry.enabled)) return false;
         if (!isSandboxHosted(entry.config)) return false;
         if (sessionManager.hasServer(entry.id)) return true;
         try {
