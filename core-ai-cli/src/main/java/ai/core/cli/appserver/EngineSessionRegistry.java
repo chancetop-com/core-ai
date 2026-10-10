@@ -1,10 +1,14 @@
 package ai.core.cli.appserver;
 
 import ai.core.api.server.session.ApprovalDecision;
+import ai.core.api.server.session.CustomEvent;
+import ai.core.agent.Agent;
 import ai.core.agent.AttachedContent;
 import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.memory.MemoryExtractionReport;
+import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.utils.PathUtils;
 import ai.core.llm.LLMProviderType;
 import ai.core.session.InProcessAgentSession;
@@ -66,6 +70,9 @@ public class EngineSessionRegistry {
         this.sinkSupplier = sinkSupplier;
         this.titles = new SessionTitleStore(Path.of(PathUtils.sessionsDir(bootstrap.workspace)));
         this.memoryProvider = bootstrap.memoryEnabled ? new MdMemoryProvider(bootstrap.workspace) : null;
+        if (bootstrap.memoryEnabled) {
+            MemoryTriggerService.getInstance().addActivityListener(this::publishMemoryActivity);
+        }
     }
 
     public void setApprovalPolicy(String policy) {
@@ -281,6 +288,26 @@ public class EngineSessionRegistry {
             }
         }
         sessions.clear();
+    }
+
+    /**
+     * Routes a memory extraction report to the session whose agent the run was forked from, as a
+     * {@code memory} custom event. Reports for agents no live session owns are dropped.
+     */
+    private void publishMemoryActivity(Agent agent, MemoryExtractionReport report) {
+        sessions.values().stream()
+                .filter(session -> session.agent().equals(agent))
+                .findFirst()
+                .ifPresent(session -> dispatchMemoryActivity(session, report));
+    }
+
+    private void dispatchMemoryActivity(EngineSession session, MemoryExtractionReport report) {
+        try {
+            var data = MemoryActivityJson.payload(report).toString();
+            session.inProcess().dispatchEvent(CustomEvent.of(session.id(), "memory", data, null, null));
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to publish memory activity, sessionId={}, error={}", session.id(), e.getMessage());
+        }
     }
 
     private EngineSession build(String sessionId, boolean load) {

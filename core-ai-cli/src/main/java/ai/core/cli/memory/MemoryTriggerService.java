@@ -17,7 +17,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -39,8 +38,6 @@ public final class MemoryTriggerService {
     private static final int LOCK_PROCESSING_MAX_TURNS = 15;
     private static final int IDLE_CHECK_INTERVAL_SECONDS = 30;
     private static final float EXTRACTION_TEMPERATURE = 0.3f;
-
-    private static final String LOCK_SUFFIX = ".lock";
 
     private static final ThreadLocal<Boolean> EXTRACTION_THREAD = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
@@ -68,32 +65,12 @@ public final class MemoryTriggerService {
         return instance;
     }
 
-    private static void deleteRecursive(Path path) throws IOException {
-        if (!Files.exists(path)) return;
-        try (Stream<Path> stream = Files.walk(path)) {
-            stream.sorted(Comparator.reverseOrder()).forEach(MemoryTriggerService::tryDelete);
-        }
-    }
-
-    private static void tryDelete(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException ignored) {
-            LOGGER.debug("Failed to delete {}: {}", path, ignored.getMessage());
-        }
-    }
-
-    private static boolean isLockFile(Path p) {
-        if (!Files.isRegularFile(p)) return false;
-        Path fn = p.getFileName();
-        return fn != null && fn.toString().endsWith(LOCK_SUFFIX);
-    }
-
     // ---- instance fields ----
 
     private final Path workspace;
     private final Path dailyLogsDir;
     private final MdMemoryProvider memoryProvider;
+    private final MemoryActivityPublisher activity = new MemoryActivityPublisher();
     private final AtomicInteger turnCount = new AtomicInteger(0);
     private final AtomicReference<Instant> lastActivity = new AtomicReference<>(Instant.now());
     private final AtomicBoolean extractionInProgress = new AtomicBoolean(false);
@@ -115,6 +92,10 @@ public final class MemoryTriggerService {
     public void setDailyLogsEnabled(boolean enabled) {
         this.dailyLogsEnabled = enabled;
         MemoryExtractionTool.setDirectMode(!enabled);
+    }
+
+    public void addActivityListener(MemoryActivityListener listener) {
+        activity.addListener(listener);
     }
 
     // ---- public instance methods ----
@@ -174,10 +155,10 @@ public final class MemoryTriggerService {
         var knowledgeDir = workspace.resolve(".core-ai/knowledge");
         try {
             if (Files.exists(knowledgeDir)) {
-                deleteRecursive(knowledgeDir);
+                MemoryFiles.deleteRecursive(knowledgeDir);
             }
             Files.deleteIfExists(workspace.resolve(".core-ai/MEMORY.md"));
-            deleteRecursive(workspace.resolve(".core-ai/memory"));
+            MemoryFiles.deleteRecursive(workspace.resolve(".core-ai/memory"));
             ensureDirectories();
             Files.createFile(workspace.resolve(".core-ai/knowledge/MEMORY.md"));
         } catch (IOException e) {
@@ -228,7 +209,7 @@ public final class MemoryTriggerService {
             return;
         }
         try {
-            runExtractionAgent();
+            runExtractionAgent(MemoryExtractionReport.Trigger.PROMPT);
         } finally {
             extractionInProgress.set(false);
         }
@@ -249,7 +230,7 @@ public final class MemoryTriggerService {
         }
         try {
             pendingExplicitRequest = explicitRequest;
-            runExtractionAgent();
+            runExtractionAgent(MemoryExtractionReport.Trigger.EXPLICIT);
         } finally {
             pendingExplicitRequest = null;
             extractionInProgress.set(false);
@@ -286,7 +267,7 @@ public final class MemoryTriggerService {
         int current = turnCount.incrementAndGet();
         if (current >= EXTRACTION_TURN_TRIGGER) {
             LOGGER.debug("Turn trigger: {} turns reached", current);
-            scheduler.execute(this::runIncrementalExtraction);
+            scheduler.execute(() -> runIncrementalExtraction(MemoryExtractionReport.Trigger.TURN));
             turnCount.set(0);
         }
     }
@@ -337,7 +318,7 @@ public final class MemoryTriggerService {
                     // history is append-only — compression does not move the extraction cursor
                     MemorySectionManager.reloadAgentMemorySection(mainAgent, memoryProvider);
                 } else if (scheduler != null && report.phase() == CompressionReport.Phase.STARTED && !extractionInProgress.get()) {
-                    scheduler.execute(this::runIncrementalExtraction);
+                    scheduler.execute(() -> runIncrementalExtraction(MemoryExtractionReport.Trigger.COMPRESSION));
                 }
             });
         }
@@ -386,31 +367,38 @@ public final class MemoryTriggerService {
         long idleSeconds = Instant.now().getEpochSecond() - lastActivity.get().getEpochSecond();
         if (idleSeconds >= EXTRACTION_IDLE_SECONDS && !extractionInProgress.get() && turnCount.get() > 2) {
             LOGGER.debug("Idle trigger: {}s without activity", idleSeconds);
-            runIncrementalExtraction();
+            runIncrementalExtraction(MemoryExtractionReport.Trigger.IDLE);
             turnCount.set(0);
         }
     }
 
-    private void runIncrementalExtraction() {
+    private void runIncrementalExtraction(MemoryExtractionReport.Trigger trigger) {
         if (!extractionInProgress.compareAndSet(false, true)) {
             LOGGER.debug("Extraction already in progress, skipping");
             return;
         }
         try {
-            runExtractionAgent();
+            runExtractionAgent(trigger);
         } finally {
             extractionInProgress.set(false);
         }
     }
 
-    private void runExtractionAgent() {
+    private void runExtractionAgent(MemoryExtractionReport.Trigger trigger) {
         String explicitRequest = pendingExplicitRequest;
+        var sourceAgent = mainAgent;
         EXTRACTION_THREAD.set(Boolean.TRUE);
+        var observer = new MemoryExtractionObserver();
+        String runId = Long.toHexString(System.nanoTime());
+        long startedAt = System.currentTimeMillis();
+        activity.publish(sourceAgent, new MemoryExtractionReport(runId, MemoryExtractionReport.Phase.STARTED, trigger,
+                0, -1, List.of(), List.of(), null));
         try {
             int cursor = readCursor();
-            int totalMessages = mainAgent.getHistory().size();
+            int totalMessages = sourceAgent.getHistory().size();
             extractionTargetCount.set(totalMessages);
-            var agent = AgentFork.fork(mainAgent, new AgentFork.ForkConfig("extraction", EXTRACTION_MAX_TURNS, (double) EXTRACTION_TEMPERATURE, false, null));
+            var agent = AgentFork.fork(sourceAgent, new AgentFork.ForkConfig("extraction", EXTRACTION_MAX_TURNS, (double) EXTRACTION_TEMPERATURE, false, null));
+            agent.addLifecycle(observer);
             agent.injectUserMessage(buildExtractionPrompt(cursor, totalMessages, EXTRACTION_MAX_TURNS, explicitRequest));
             agent.continueWithInjectedMessage();
         } catch (Exception e) {
@@ -419,6 +407,8 @@ public final class MemoryTriggerService {
             pendingExplicitRequest = null;
             extractionTargetCount.set(-1);
             EXTRACTION_THREAD.remove();
+            activity.publish(sourceAgent, new MemoryExtractionReport(runId, MemoryExtractionReport.Phase.COMPLETED, trigger,
+                    System.currentTimeMillis() - startedAt, extractionCursor.get(), observer.added(), observer.updated(), observer.note()));
         }
     }
 
@@ -433,7 +423,7 @@ public final class MemoryTriggerService {
         if (!Files.isDirectory(dailyLogsDir)) return List.of();
         try (Stream<Path> stream = Files.list(dailyLogsDir)) {
             return stream
-                    .filter(MemoryTriggerService::isLockFile)
+                    .filter(MemoryFiles::isLockFile)
                     .sorted()
                     .toList();
         } catch (IOException e) {
