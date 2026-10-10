@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } fro
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import { useCapabilities } from '../../api/capabilities';
+import { useAuth } from '../../api/auth';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, SseTaskStatusEvent, SseCustomEvent, ChatSessionSummary, SessionArtifact, SessionFeedback } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, NotificationSettings, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
@@ -17,6 +18,7 @@ import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, TasksSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages, restoreCachedChatMessages, compressionSegment, customEventSegments, appendCustomSegments } from './utils';
+import { adoptCachedChat, chatCacheKeys } from './cache';
 import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn, trackStrandedTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 
@@ -108,9 +110,13 @@ function configuredSubAgentIds(agent?: AgentDefinition): string[] {
 
 export default function Chat() {
   const { sandboxTerminal: terminalEnabled } = useCapabilities();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  // The cached chat belongs to the account that wrote it: a cache left behind by a
+  // previous user on this tab (sessionStorage survives logout) must never be restored here.
+  const [cachedChatUsable] = useState(() => adoptCachedChat(user?.userId));
   const [messages, setMessages] = useState<ChatMessage[]>(
-    () => restoreCachedChatMessages(sessionStorage.getItem('chat_messages')),
+    () => cachedChatUsable ? restoreCachedChatMessages(sessionStorage.getItem(chatCacheKeys.messages)) : [],
   );
   const [optimisticSession, setOptimisticSession] = useState<ChatSessionSummary | null>(null);
   const [visibleMessageLimit, setVisibleMessageLimit] = useState(INITIAL_VISIBLE_MESSAGES);
@@ -123,8 +129,8 @@ export default function Chat() {
   const [myAgents, setMyAgents] = useState<AgentDefinition[]>([]);
   const [otherAgents, setOtherAgents] = useState<AgentDefinition[]>([]);
   const [favoriteAgents, setFavoriteAgents] = useState<AgentDefinition[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>(() => sessionStorage.getItem('chat_agentId') || '');
-  const [sessionId, setSessionId] = useState<string | null>(() => sessionStorage.getItem('chat_sessionId'));
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(() => (cachedChatUsable ? sessionStorage.getItem(chatCacheKeys.agentId) : null) || '');
+  const [sessionId, setSessionId] = useState<string | null>(() => cachedChatUsable ? sessionStorage.getItem(chatCacheKeys.sessionId) : null);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
   // Loaded tools/skills (confirmed on server)
@@ -162,7 +168,8 @@ export default function Chat() {
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
   const [activeSandboxTerminal, setActiveSandboxTerminal] = useState<SandboxTerminalSpec | null>(null);
   const [sessionArtifacts, setSessionArtifacts] = useState<SessionArtifact[]>(() => {
-    try { const s = sessionStorage.getItem('chat_artifacts'); return s ? JSON.parse(s) : []; } catch { return []; }
+    if (!cachedChatUsable) return [];
+    try { const s = sessionStorage.getItem(chatCacheKeys.artifacts); return s ? JSON.parse(s) : []; } catch { return []; }
   });
   const openArtifact = useCallback((spec: ArtifactSpec) => {
     setShowVoiceSidebar(false);
@@ -389,19 +396,19 @@ export default function Chat() {
 
   // Persist chat state
   useEffect(() => {
-    if (messages.length > 0) sessionStorage.setItem('chat_messages', JSON.stringify(messages));
-    else sessionStorage.removeItem('chat_messages');
+    if (messages.length > 0) sessionStorage.setItem(chatCacheKeys.messages, JSON.stringify(messages));
+    else sessionStorage.removeItem(chatCacheKeys.messages);
   }, [messages]);
   useEffect(() => {
-    if (sessionArtifacts.length > 0) sessionStorage.setItem('chat_artifacts', JSON.stringify(sessionArtifacts));
-    else sessionStorage.removeItem('chat_artifacts');
+    if (sessionArtifacts.length > 0) sessionStorage.setItem(chatCacheKeys.artifacts, JSON.stringify(sessionArtifacts));
+    else sessionStorage.removeItem(chatCacheKeys.artifacts);
   }, [sessionArtifacts]);
   useEffect(() => {
-    if (sessionId) sessionStorage.setItem('chat_sessionId', sessionId);
-    else sessionStorage.removeItem('chat_sessionId');
+    if (sessionId) sessionStorage.setItem(chatCacheKeys.sessionId, sessionId);
+    else sessionStorage.removeItem(chatCacheKeys.sessionId);
   }, [sessionId]);
   useEffect(() => {
-    if (selectedAgentId) sessionStorage.setItem('chat_agentId', selectedAgentId);
+    if (selectedAgentId) sessionStorage.setItem(chatCacheKeys.agentId, selectedAgentId);
   }, [selectedAgentId]);
 
   useEffect(() => {
@@ -1679,9 +1686,9 @@ export default function Chat() {
     setShowAgentPicker(false);
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
-    sessionStorage.removeItem('chat_messages');
-    sessionStorage.removeItem('chat_sessionId');
-    sessionStorage.removeItem('chat_artifacts');
+    sessionStorage.removeItem(chatCacheKeys.messages);
+    sessionStorage.removeItem(chatCacheKeys.sessionId);
+    sessionStorage.removeItem(chatCacheKeys.artifacts);
   }, [abortSSE, clearTurnPending, createDraftSession]);
 
   const handleSelectAgent = useCallback((id: string, agent?: AgentDefinition) => {

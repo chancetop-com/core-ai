@@ -8,6 +8,7 @@ import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
 import type { AuthUser } from './api/auth';
 import { authApi } from './api/client';
+import { clearCachedChat } from './pages/chat/cache';
 
 const TraceList = lazy(() => import('./pages/traces/TraceList'));
 const TraceDetail = lazy(() => import('./pages/traces/TraceDetail'));
@@ -120,6 +121,9 @@ export default function App() {
     // Invalidate the server session (cookie) so the browser can't resume it
     authApi.logout().catch(() => {});
     clearUser();
+    // The chat page caches its conversation in sessionStorage for reload recovery;
+    // it must not survive into the next account that signs in on this tab.
+    clearCachedChat();
     setUser(null);
   }, []);
 
