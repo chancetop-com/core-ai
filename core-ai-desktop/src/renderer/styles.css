@@ -463,7 +463,7 @@ select:hover, .btn:hover { border-color: var(--accent); }
   padding: 9px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
-  min-height: 40px;
+  height: 40px;
 }
 
 .chat-header .chat-title { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -475,6 +475,10 @@ select:hover, .btn:hover { border-color: var(--accent); }
 
 .browser-panel { position: relative; display: flex; flex-direction: column; width: 50vw; min-width: 360px; border-left: 1px solid var(--border); min-height: 0; background: var(--bg); }
 .browser-panel[hidden] { display: none; }
+.browser-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; height: 22px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; cursor: default; flex: 0 0 auto; }
+.browser-toggle[hidden] { display: none; }
+.browser-toggle:hover { background: var(--bg-elev); color: var(--text); }
+.browser-toggle .ic { width: 13px; height: 13px; }
 .browser-toolbar { display: flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 40px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
 .browser-tool { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: default; flex: 0 0 auto; }
 .browser-tool .ic { width: 14px; height: 14px; }
@@ -502,7 +506,6 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .browser-frame { position: absolute; inset: 0; }
 .browser-hint { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--faint); font-size: 12px; }
 .browser-hint[hidden] { display: none; }
-.btn.browser-on { border-color: var(--green, #4caf7d); color: var(--green, #4caf7d); }
 
 .transcript { flex: 1; overflow-y: auto; padding: 18px 22px; }
 

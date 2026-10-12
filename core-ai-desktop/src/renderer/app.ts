@@ -219,7 +219,6 @@ let composerAutoGrow: (() => void) | null = null;
 let chatTitleEl: HTMLElement | null = null;
 let statusChip: HTMLElement | null = null;
 let stopButton: HTMLButtonElement | null = null;
-let browserButton: HTMLButtonElement | null = null;
 let browserPanelEl: HTMLElement | null = null;
 let browserBodyEl: HTMLElement | null = null;
 let browserAddressEl: HTMLInputElement | null = null;
@@ -230,6 +229,7 @@ let browserBackEl: HTMLButtonElement | null = null;
 let browserForwardEl: HTMLButtonElement | null = null;
 let browserReloadEl: HTMLButtonElement | null = null;
 let browserOpenExternalEl: HTMLButtonElement | null = null;
+let browserToggleEl: HTMLButtonElement | null = null;
 let browserBoundsTimer: number | null = null;
 let browserBoundsValue: string | null = null;
 let browserResizeObserver: ResizeObserver | null = null;
@@ -1177,13 +1177,8 @@ function renderComposerControls(): void {
   };
   composerControlsEl.append(stopButton);
 
-  browserButton = el('button', 'btn small', 'Browser');
-  browserButton.title = 'Embedded browser — click, scroll and sign in here; the agent drives the same tabs';
-  browserButton.onclick = () => void toggleBrowser();
-  composerControlsEl.append(browserButton);
   statusChip = el('span', `composer-status ${state.status}`, state.status);
   composerControlsEl.append(statusChip);
-  updateBrowserButton();
 }
 
 async function chooseWorkspace(): Promise<void> {
@@ -1396,7 +1391,8 @@ function buildChatView(): void {
 
   const header = el('div', 'chat-header');
   chatTitleEl = el('span', 'chat-title', 'no session selected');
-  header.append(chatTitleEl);
+  browserToggleEl = buildBrowserToggle();
+  header.append(chatTitleEl, browserToggleEl);
 
   const transcript = el('div', 'transcript');
   transcriptEl = transcript;
@@ -1479,7 +1475,7 @@ function buildBrowserPanel(): HTMLElement {
   });
   browserDotEl = el('span', 'browser-dot');
   const stop = el('button', 'btn small', 'Stop');
-  stop.title = 'Close the embedded browser';
+  stop.title = 'Stop the embedded browser (closes every tab)';
   stop.onclick = () => void stopBrowser();
   toolbar.append(browserBackEl, browserForwardEl, browserReloadEl, browserAddressEl, browserOpenExternalEl, browserDotEl, stop);
 
@@ -1502,6 +1498,15 @@ function buildBrowserPanel(): HTMLElement {
   renderBrowserPanel();
   scheduleBrowserBounds();
   return panel;
+}
+
+/** The single browser button: parked at the right of the chat header bar, hiding the pane never stops the browser. */
+function buildBrowserToggle(): HTMLButtonElement {
+  const button = el('button', 'browser-toggle') as HTMLButtonElement;
+  browserToggleEl = button;
+  button.onclick = () => void toggleBrowser();
+  renderBrowserToggle(Boolean(state.browserStatus?.running));
+  return button;
 }
 
 function browserToolButton(iconName: keyof typeof ICONS, title: string, action: () => void): HTMLButtonElement {
@@ -1561,6 +1566,7 @@ function renderBrowserPanel(): void {
   browserPanelEl.hidden = !state.browserPanelOpen;
   syncSidebarWithBrowserPanel();
   if (browserDotEl) browserDotEl.className = running ? 'browser-dot on' : 'browser-dot';
+  renderBrowserToggle(running);
   if (browserBackEl) browserBackEl.disabled = !running || !status?.canGoBack;
   if (browserForwardEl) browserForwardEl.disabled = !running || !status?.canGoForward;
   if (browserReloadEl) browserReloadEl.title = status?.loading ? 'Stop loading' : 'Reload';
@@ -1573,7 +1579,6 @@ function renderBrowserPanel(): void {
   }
   renderBrowserTabs();
   if (browserHintEl) browserHintEl.hidden = running;
-  updateBrowserButton();
   scheduleBrowserBounds();
 }
 
@@ -1605,11 +1610,26 @@ function renderBrowserTabs(): void {
   browserTabsEl.append(add);
 }
 
-function updateBrowserButton(): void {
-  if (!browserButton) return;
-  const running = Boolean(state.browserStatus?.running);
-  browserButton.textContent = running ? 'Browser ●' : 'Browser';
-  browserButton.classList.toggle('browser-on', running);
+/**
+ * The single browser button (chat header, rightmost): 'Browser' starts it; while running it shows
+ * a status dot and a chevron pointing where the pane moves — collapsing never stops the browser.
+ */
+function renderBrowserToggle(running: boolean): void {
+  if (!browserToggleEl) return;
+  if (!running) {
+    browserToggleEl.title = 'Embedded browser — start it; the agent drives the same tabs';
+    browserToggleEl.replaceChildren(el('span', 'browser-toggle-label', 'Browser'));
+    return;
+  }
+  const open = state.browserPanelOpen;
+  browserToggleEl.title = open
+    ? 'Collapse the browser pane — the browser keeps running'
+    : 'Expand the browser pane — the browser keeps running';
+  browserToggleEl.replaceChildren(
+    el('span', 'browser-toggle-label', 'Browser'),
+    el('span', 'browser-dot on'),
+    icon(open ? 'chevron-right' : 'chevron-left'),
+  );
 }
 
 /** Opening the panel narrows the chat column, so the sidebar yields automatically. */
@@ -1660,11 +1680,17 @@ function applyBrowserStatus(status: BrowserStatus | null): void {
 
 async function toggleBrowser(): Promise<void> {
   if (state.browserStatus?.running) {
-    state.browserPanelOpen = !state.browserPanelOpen;
-    renderBrowserPanel();
+    setBrowserPanelOpen(!state.browserPanelOpen);
     return;
   }
   await startBrowser();
+}
+
+/** Hiding the pane is not stopping the browser: the tabs stay alive for the user and the agent. */
+function setBrowserPanelOpen(open: boolean): void {
+  if (state.browserPanelOpen === open) return;
+  state.browserPanelOpen = open;
+  renderBrowserPanel();
 }
 
 async function startBrowser(): Promise<void> {

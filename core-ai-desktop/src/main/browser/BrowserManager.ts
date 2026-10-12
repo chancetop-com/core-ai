@@ -260,13 +260,20 @@ export class BrowserManager implements BrowserHost {
     const tab = this.requireTab(targetId);
     this.warnOnZeroSize(tab);
     this.ensureDebugger(tab);
-    let forwarded = params;
-    if (method === 'Page.captureScreenshot' && !this.isShown(tab)) {
-      // A hidden view has no compositor surface: the default surface capture waits for one that
-      // never comes and hangs the caller; capturing from the renderer view returns the same pixels.
-      forwarded = { ...params, fromSurface: false };
-    }
-    return tab.view.webContents.debugger.sendCommand(method, forwarded);
+    // Input and screenshots need a compositor frame, and a collapsed pane stops producing them
+    // (input is dropped, capture never returns). Nudge the renderer to reopen the pane first, then
+    // give it the beat to lay out before dispatching; reads and navigations work while collapsed.
+    const restoring = needsSurface(method) && this.restorePaneForAgent();
+    const dispatch = (): Promise<unknown> => {
+      let forwarded = params;
+      if (method === 'Page.captureScreenshot' && !this.isShown(tab)) {
+        // A hidden view has no compositor surface: the default surface capture waits for one that
+        // never comes and hangs the caller; capturing from the renderer view returns the same pixels.
+        forwarded = { ...params, fromSurface: false };
+      }
+      return tab.view.webContents.debugger.sendCommand(method, forwarded);
+    };
+    return restoring ? this.waitForPane().then(dispatch) : dispatch();
   }
 
   subscribe(targetId: string, listener: (method: string, params: unknown) => void): () => void {
@@ -296,6 +303,25 @@ export class BrowserManager implements BrowserHost {
     this.zeroSizeWarned.add(tab.id);
     console.error(`[browser] tab ${tab.id} has a zero-size view — the panel has not reported bounds yet; `
       + 'clicks/typing will not land until it does');
+  }
+
+  /**
+   * A frame-dependent agent call while the user has the pane collapsed (design §4.9): a hidden
+   * view stops producing frames, so the pane must come back for input/screenshots to work at all.
+   */
+  private restorePaneForAgent(): boolean {
+    if (this.panelVisible) return false;
+    this.options.onNeedsPanel();
+    return true;
+  }
+
+  /** Bounded wait for the renderer to hand the pane back, plus one beat for the first frame. */
+  private async waitForPane(): Promise<void> {
+    const deadline = Date.now() + 2_500;
+    while (!this.panelVisible && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (this.panelVisible) await new Promise((resolve) => setTimeout(resolve, 200));
   }
 
   // ---------- internals ----------
@@ -495,6 +521,11 @@ export function isAllowedNavigation(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** CDP calls that need a compositor frame: without one, input is dropped and screenshots never return. */
+function needsSurface(method: string): boolean {
+  return method === 'Page.captureScreenshot' || method === 'Page.captureSnapshot' || method.startsWith('Input.');
 }
 
 /** Address-bar input: URL as typed, http(s) upgrade heuristics, otherwise a web search. */
