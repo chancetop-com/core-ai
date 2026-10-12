@@ -83,6 +83,24 @@ interface BrowserBounds {
   height: number;
 }
 
+interface ComputerStep {
+  step: string;
+  ok: boolean;
+  detail: string;
+}
+
+interface ComputerStatus {
+  enabled: boolean;
+  ready: boolean;
+  problems: string[];
+  cli: { present: boolean; path: string | null; version: string | null };
+  consent: boolean;
+  host: { configured: boolean; installed: boolean; running: boolean; mode: string | null; directUrl: string | null };
+  target: { host: boolean };
+  token: boolean;
+  skill: { installed: boolean; managed: boolean; upToDate: boolean; detail: string; targetDir: string };
+}
+
 interface CoreAiBridge {
   call(workspace: string, method: string, params: Record<string, unknown>): Promise<Envelope>;
   chooseWorkspace(): Promise<string | null>;
@@ -107,6 +125,11 @@ interface CoreAiBridge {
   browserNewTab(url?: string): Promise<BrowserStatus | null>;
   browserCloseTab(id: string): Promise<BrowserStatus | null>;
   browserSelectTab(id: string): Promise<BrowserStatus | null>;
+  computerStatus(): Promise<ComputerStatus | null>;
+  computerInstallCli(): Promise<{ ok: boolean; detail: string }>;
+  computerEnable(): Promise<{ ok: boolean; steps: ComputerStep[] }>;
+  computerDisable(): Promise<ComputerStatus | null>;
+  computerRemoveService(): Promise<{ ok: boolean; detail: string }>;
   onBrowserState(callback: (status: BrowserStatus) => void): () => void;
   onBrowserNeedPanel(callback: () => void): () => void;
   info(): Promise<any>;
@@ -888,6 +911,14 @@ async function restartWorkspaceEngine(): Promise<void> {
     const resumed = await call('session/resume', { sessionId });
     if (resumed) setStatus(String(resumed.status ?? 'idle'));
   }
+}
+
+/** Computer use enable/disable restart engines too; the open session must be resumed before it sends again. */
+async function resumeOpenSession(): Promise<void> {
+  const sessionId = state.sessionId;
+  if (!sessionId || !state.workspace) return;
+  const resumed = await call('session/resume', { sessionId });
+  if (resumed && sessionId === state.sessionId) setStatus(String(resumed.status ?? 'idle'));
 }
 
 function withCount(label: string, workspace: string | null): string {
@@ -2866,7 +2897,142 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
     pre.textContent = `allow:\n${(permissions.allow ?? []).join('\n')}\n\ndeny:\n${(permissions.deny ?? []).join('\n')}`;
     body.append(pre);
   }
+
+  body.append(await renderComputerUseSection());
   return root;
+}
+
+/**
+ * Settings → Computer use (design §4.10, CUA CLI route): status of the cua CLI, the local
+ * cua-spacesd service, the host target and the gui-automation skill, plus the one-time
+ * enablement. Enabling is what advertises computer use to the engine; without it agents are
+ * never told the desktop is available.
+ */
+async function renderComputerUseSection(): Promise<HTMLElement> {
+  const section = el('div');
+  section.append(el('h2', undefined, 'Computer use'));
+  section.append(el('div', 'hint', 'Agents operate native apps through the CUA CLI (cua do): screenshots, clicks, '
+    + 'typing, windows. Enabling grants desktop consent, installs CUA\'s local cua-spacesd service '
+    + '(loopback 127.0.0.1:3211) and the gui-automation skill. It is the last resort behind shell, files and the browser pane.'));
+  const status = await window.coreai.computerStatus();
+  if (!status) {
+    section.append(el('div', 'notice error', 'Computer use is unavailable in this build.'));
+    return section;
+  }
+
+  const grid = el('dl', 'settings-grid');
+  const row = (label: string, value: string): void => {
+    grid.append(el('dt', undefined, label));
+    grid.append(el('dd', undefined, value));
+  };
+  row('CUA CLI', status.cli.present
+    ? `${status.cli.version ? `v${status.cli.version}` : 'installed'} - ${status.cli.path ?? ''}`
+    : 'not installed');
+  const access: string[] = [];
+  access.push(status.consent ? 'consent granted' : 'consent missing');
+  access.push(status.host.running ? `service running (${status.host.mode ?? 'unknown'} mode)` : status.host.configured ? 'service stopped' : 'service not set up');
+  row('Desktop access', access.join(' - '));
+  row('Host target', `${status.target.host ? 'selected' : 'not selected'} - ${status.token ? 'access token stored' : 'no access token'}`);
+  row('gui-automation skill', `${status.skill.detail} (${status.skill.targetDir})`);
+  row('Status', status.enabled ? (status.ready ? 'enabled and ready' : 'enabled, setup incomplete') : 'disabled');
+  section.append(grid);
+
+  if (status.problems.length > 0) {
+    const problems = el('div', 'notice');
+    problems.append(el('div', undefined, 'Setup needed:'));
+    for (const problem of status.problems) problems.append(el('div', undefined, `- ${problem}`));
+    section.append(problems);
+  }
+
+  const actions = el('div');
+  actions.style.display = 'flex';
+  actions.style.gap = '8px';
+  actions.style.margin = '10px 0 18px';
+
+  const rerender = async (): Promise<HTMLElement> => {
+    const fresh = await renderComputerUseSection();
+    section.replaceWith(fresh);
+    return fresh;
+  };
+
+  const refresh = el('button', 'btn small', 'Refresh');
+  refresh.onclick = () => void rerender();
+  actions.append(refresh);
+
+  if (!status.cli.present) {
+    const install = el('button', 'btn small', 'Install CUA CLI');
+    install.onclick = async () => {
+      const confirmed = window.confirm('Install the CUA CLI from cua.ai with the official installer?\n\n'
+        + 'It downloads the CLI to %LOCALAPPDATA%\\Programs\\cua\\bin and adds it to your user PATH.\n'
+        + 'No sign-in, no VMs, CLI only.');
+      if (!confirmed) return;
+      install.disabled = true;
+      install.textContent = 'Installing…';
+      const result = await window.coreai.computerInstallCli();
+      toast(result.ok ? `CUA CLI installed: ${result.detail}` : `CUA CLI install failed: ${result.detail}`);
+      await rerender();
+    };
+    actions.append(install);
+  }
+
+  if (!status.enabled) {
+    const enable = el('button', 'btn small primary', 'Enable computer use');
+    enable.onclick = async () => {
+      const confirmed = window.confirm('Enable computer use for this app?\n\n'
+        + '- install the CUA CLI if missing\n'
+        + '- grant desktop consent (cua do-host-consent)\n'
+        + '- install CUA\'s local cua-spacesd service on loopback 127.0.0.1:3211\n'
+        + '- install the gui-automation skill into ~/.core-ai/skills\n\n'
+        + 'Agents in this app can then operate your desktop through the cua CLI.');
+      if (!confirmed) return;
+      enable.disabled = true;
+      enable.textContent = 'Enabling…';
+      const result = await window.coreai.computerEnable();
+      toast(result.ok ? 'Computer use enabled - new sessions can drive the desktop via the CUA CLI'
+        : 'Computer use could not be fully enabled - see the step list in Settings');
+      await resumeOpenSession();
+      const fresh = await rerender();
+      if (!result.ok && result.steps.length > 0) {
+        const list = el('div', 'notice error');
+        for (const step of result.steps) {
+          list.append(el('div', undefined, `${step.ok ? 'ok' : 'failed'} - ${step.step}: ${step.detail}`));
+        }
+        fresh.append(list);
+      }
+    };
+    actions.append(enable);
+  } else {
+    const disable = el('button', 'btn small', 'Disable');
+    disable.onclick = async () => {
+      const confirmed = window.confirm('Disable computer use?\n\nAgents will no longer be told the desktop is available. '
+        + 'The CUA service and desktop consent stay installed - remove the service separately if you want it gone.');
+      if (!confirmed) return;
+      disable.disabled = true;
+      await window.coreai.computerDisable();
+      toast('Computer use disabled');
+      await resumeOpenSession();
+      await rerender();
+    };
+    actions.append(disable);
+  }
+
+  if (status.host.configured) {
+    const remove = el('button', 'btn small danger', 'Remove CUA service…');
+    remove.onclick = async () => {
+      const confirmed = window.confirm('Remove CUA\'s local desktop service (cua host remove)?\n\n'
+        + 'Desktop access stops until computer use is enabled again.');
+      if (!confirmed) return;
+      remove.disabled = true;
+      const result = await window.coreai.computerRemoveService();
+      toast(result.ok ? 'CUA service removed' : `Remove failed: ${result.detail}`);
+      await resumeOpenSession();
+      await rerender();
+    };
+    actions.append(remove);
+  }
+
+  section.append(actions);
+  return section;
 }
 
 // ---------- content router ----------

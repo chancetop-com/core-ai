@@ -22,6 +22,8 @@ const targets = [
   { entryPoints: ['src/preload/preload.ts'], outfile: 'dist/preload.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },
   { entryPoints: ['src/main/engine/RpcClient.ts'], outfile: 'dist/test/rpcClient.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/browser/CdpBridge.ts'], outfile: 'dist/test/cdpBridge.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/computer/managedSkill.ts'], outfile: 'dist/test/managedSkill.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/computer/CuaManager.ts'], outfile: 'dist/test/cuaManager.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/app.ts'], outfile: 'dist/renderer/app.js', platform: 'browser', target: 'chrome120', format: 'iife' },
 ];
 

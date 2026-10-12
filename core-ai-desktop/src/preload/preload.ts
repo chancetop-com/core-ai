@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld('coreai', {
   browserNewTab: (url?: string) => ipcRenderer.invoke('browser:newTab', url),
   browserCloseTab: (id: string) => ipcRenderer.invoke('browser:closeTab', id),
   browserSelectTab: (id: string) => ipcRenderer.invoke('browser:selectTab', id),
+  computerStatus: () => ipcRenderer.invoke('computer:status'),
+  computerInstallCli: () => ipcRenderer.invoke('computer:installCli'),
+  computerEnable: () => ipcRenderer.invoke('computer:enable'),
+  computerDisable: () => ipcRenderer.invoke('computer:disable'),
+  computerRemoveService: () => ipcRenderer.invoke('computer:removeService'),
   onBrowserState: (callback: (status: unknown) => void) => {
     const listener = (_event: unknown, payload: unknown) => callback(payload);
     ipcRenderer.on('browser:state', listener);

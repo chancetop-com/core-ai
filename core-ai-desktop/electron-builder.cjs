@@ -15,6 +15,8 @@ const path = require('node:path');
 const version = readFileSync(path.join(__dirname, 'VERSION'), 'utf8').trim();
 // The pinned engine (scripts/stage-engine.mjs) is staged per release build; local dev builds may skip it.
 const engineDir = path.join(__dirname, 'engine');
+// Vendored agent skills the app installs itself (e.g. gui-automation for computer use).
+const skillsDir = path.join(__dirname, 'skills');
 
 module.exports = {
   appId: 'com.chancetop.core-ai',
@@ -26,7 +28,10 @@ module.exports = {
   // Generates latest.yml / latest-mac.yml for the update feed; CI passes --publish never and the
   // release job uploads the files itself (the repo latest slot stays with the CLI).
   publish: [{ provider: 'github', owner: 'chancetop-com', repo: 'core-ai' }],
-  ...(existsSync(engineDir) ? { extraResources: [{ from: 'engine', to: 'engine' }] } : {}),
+  extraResources: [
+    ...(existsSync(engineDir) ? [{ from: 'engine', to: 'engine' }] : []),
+    ...(existsSync(skillsDir) ? [{ from: 'skills', to: 'skills' }] : []),
+  ],
   win: {
     target: [{ target: 'nsis', arch: ['x64'] }],
     icon: 'src/assets/logo.png',

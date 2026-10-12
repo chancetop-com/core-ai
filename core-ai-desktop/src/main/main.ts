@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import os from 'node:os';
 import path from 'node:path';
 import { BrowserManager } from './browser/BrowserManager';
+import { CuaManager } from './computer/CuaManager';
 import { EngineSupervisor } from './engine/EngineSupervisor';
 import { RpcCallError } from './engine/RpcClient';
 
@@ -42,6 +43,8 @@ interface DesktopSettings {
   colorScheme?: string;
   windowBounds?: WindowBounds;
   windowMaximized?: boolean;
+  /** Computer use (design §4.10): the user enabled the CUA CLI host wiring for the engine. */
+  computerUse?: boolean;
 }
 
 interface CallEnvelope {
@@ -92,6 +95,7 @@ const clientVersion = __APP_VERSION__;
 let mainWindow: BrowserWindow | null = null;
 let supervisor: EngineSupervisor | null = null;
 let browserManager: BrowserManager | null = null;
+let cuaManager: CuaManager | null = null;
 let settings: DesktopSettings = {};
 let quitting = false;
 
@@ -519,6 +523,14 @@ function resolveEnginePath(): string {
   return path.join(repoRoot, 'build', 'core-ai-cli', 'install', 'core-ai-cli', 'bin', name);
 }
 
+/** Vendored skills the app installs itself (electron-builder ships skills/ as extraResources). */
+function resolveSkillSourceDir(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'skills', 'gui-automation');
+  }
+  return path.resolve(app.getAppPath(), 'skills', 'gui-automation');
+}
+
 function send(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
 }
@@ -684,6 +696,41 @@ function registerIpc(): void {
 
   ipcMain.handle('browser:selectTab', (_event, id: string) => browserManager?.selectTab(String(id ?? '')) ?? null);
 
+  ipcMain.handle('computer:status', () => cuaManager?.status(settings.computerUse === true) ?? null);
+
+  ipcMain.handle('computer:installCli', () => cuaManager?.installCli() ?? { ok: false, detail: 'computer use manager unavailable' });
+
+  /** Enabling restarts engines: the computer-use flag and PATH only apply to fresh spawns. */
+  ipcMain.handle('computer:enable', async () => {
+    if (!cuaManager) return { ok: false, steps: [] };
+    const result = await cuaManager.enable();
+    if (result.ok) {
+      settings.computerUse = true;
+      saveSettings();
+      await supervisor?.shutdownAll();
+    }
+    return result;
+  });
+
+  ipcMain.handle('computer:disable', async () => {
+    settings.computerUse = false;
+    saveSettings();
+    await supervisor?.shutdownAll();
+    return cuaManager?.status(false) ?? null;
+  });
+
+  /** Removing the service leaves nothing to advertise: the flag goes off and engines restart. */
+  ipcMain.handle('computer:removeService', async () => {
+    if (!cuaManager) return { ok: false, detail: 'computer use manager unavailable' };
+    const result = await cuaManager.removeService();
+    if (result.ok) {
+      settings.computerUse = false;
+      saveSettings();
+      await supervisor?.shutdownAll();
+    }
+    return result;
+  });
+
   ipcMain.handle('engine:call', async (_event, workspace: string, method: string, params: Record<string, unknown>): Promise<CallEnvelope> => {
     if (!supervisor) return { ok: false, error: { code: 0, message: 'engine supervisor not ready' } };
     try {
@@ -753,10 +800,18 @@ if (!gotLock) {
       onState: (status) => send('browser:state', status),
       onNeedsPanel: () => send('browser:needPanel', {}),
     });
+    cuaManager = new CuaManager({
+      skillSourceDir: resolveSkillSourceDir(),
+      desktopVersion: clientVersion,
+    });
     supervisor = new EngineSupervisor({
       enginePath: resolveEnginePath(),
       clientVersion,
-      extraEnv: () => browserManager?.engineEnv() ?? {},
+      extraEnv: () => ({
+        ...(browserManager?.engineEnv() ?? {}),
+        // Computer use rides the same spawn-time env: the flag appears only while enabled and ready.
+        ...(cuaManager?.engineEnv(settings.computerUse === true) ?? {}),
+      }),
       onEvent: (workspace, method, params) => send('engine:event', { workspace, method, params }),
       onLog: (workspace, line) => {
         console.error(`[engine ${workspace}] ${line}`);
