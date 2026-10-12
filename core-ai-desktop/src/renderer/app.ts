@@ -1408,9 +1408,7 @@ async function openSession(sessionId: string): Promise<void> {
   setStatus(String(resumed?.status ?? 'idle'));
   const history = await call('session/history', { sessionId, limit: 300 });
   if (history?.messages) {
-    for (const message of history.messages) {
-      addMessageBubble(message.role === 'user' ? 'user' : 'assistant', message.text ?? '');
-    }
+    renderHistoryMessages(history.messages);
   }
   scrollTranscript(true);
   void refreshModelState();
@@ -1962,6 +1960,29 @@ function systemReminderText(text: string): string | null {
   const leftover = trimmed.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim();
   if (leftover) return null;
   return matches.map((match) => match[1].trim()).filter(Boolean).join('\n');
+}
+
+/**
+ * History stores one assistant message per model round while a live turn renders as a single
+ * bubble. Reload folds consecutive assistant messages back into that same grouping, keeping each
+ * round's text its own paragraph — the same shape the live transcript streams into.
+ */
+function renderHistoryMessages(messages: Array<{ role?: string; text?: string }>): void {
+  let segments: string[] = [];
+  const flushAssistant = (): void => {
+    if (!segments.length) return;
+    addMessageBubble('assistant', segments.join('\n\n'));
+    segments = [];
+  };
+  for (const message of messages) {
+    if (message.role === 'user') {
+      flushAssistant();
+      addMessageBubble('user', message.text ?? '');
+    } else {
+      segments.push(message.text ?? '');
+    }
+  }
+  flushAssistant();
 }
 
 function addMessageBubble(role: 'user' | 'assistant', text: string, attachments: PendingAttachment[] = []): HTMLElement {
