@@ -32,6 +32,16 @@ contextBridge.exposeInMainWorld('coreai', {
   computerEnable: () => ipcRenderer.invoke('computer:enable'),
   computerDisable: () => ipcRenderer.invoke('computer:disable'),
   computerRemoveService: () => ipcRenderer.invoke('computer:removeService'),
+  updateStatus: () => ipcRenderer.invoke('update:status'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdateState: (callback: (state: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => callback(payload);
+    ipcRenderer.on('update:state', listener);
+    return () => {
+      ipcRenderer.removeListener('update:state', listener);
+    };
+  },
   onBrowserState: (callback: (status: unknown) => void) => {
     const listener = (_event: unknown, payload: unknown) => callback(payload);
     ipcRenderer.on('browser:state', listener);

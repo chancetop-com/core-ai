@@ -101,6 +101,19 @@ interface ComputerStatus {
   skill: { installed: boolean; managed: boolean; upToDate: boolean; detail: string; targetDir: string };
 }
 
+interface UpdateState {
+  phase: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'installing' | 'ready' | 'error';
+  currentVersion: string;
+  latestVersion: string | null;
+  releaseUrl: string | null;
+  installMode: 'install' | 'download' | 'manual';
+  assetName: string | null;
+  transferred: number;
+  total: number;
+  error: string | null;
+  devMode: boolean;
+}
+
 interface CoreAiBridge {
   call(workspace: string, method: string, params: Record<string, unknown>): Promise<Envelope>;
   chooseWorkspace(): Promise<string | null>;
@@ -130,6 +143,10 @@ interface CoreAiBridge {
   computerEnable(): Promise<{ ok: boolean; steps: ComputerStep[] }>;
   computerDisable(): Promise<ComputerStatus | null>;
   computerRemoveService(): Promise<{ ok: boolean; detail: string }>;
+  updateStatus(): Promise<UpdateState | null>;
+  updateCheck(): Promise<UpdateState | null>;
+  updateInstall(): Promise<UpdateState | null>;
+  onUpdateState(callback: (state: UpdateState) => void): () => void;
   onBrowserState(callback: (status: BrowserStatus) => void): () => void;
   onBrowserNeedPanel(callback: () => void): () => void;
   info(): Promise<any>;
@@ -202,6 +219,7 @@ const state: {
   sidebarCollapsed: boolean;
   sidebarAutoCollapsed: boolean;
   colorScheme: string;
+  update: UpdateState | null;
 } = {
   info: null,
   approvalPolicy: 'ask',
@@ -231,6 +249,7 @@ const state: {
   sidebarCollapsed: false,
   sidebarAutoCollapsed: false,
   colorScheme: 'system',
+  update: null,
 };
 
 let chatView: HTMLElement | null = null;
@@ -2862,7 +2881,6 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   const rows: Array<[string, string]> = [
     ['Workspace', state.workspace ? workspaceLabel(state.workspace) : 'default (not created yet)'],
     ['Engine path', `${info.enginePath}${info.engineExists ? '' : '  (missing — run :core-ai-cli:installDist)'}`],
-    ['Desktop', `v${info.desktopVersion} (electron ${info.electron}, node ${info.node})`],
     ['Settings file', info.userData],
   ];
   for (const [key, value] of rows) {
@@ -2899,6 +2917,7 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   }
 
   body.append(await renderComputerUseSection());
+  body.append(renderAboutSection());
   return root;
 }
 
@@ -3035,6 +3054,135 @@ async function renderComputerUseSection(): Promise<HTMLElement> {
   return section;
 }
 
+// ---------- about & updates ----------
+
+interface AboutUpdateNodes {
+  root: HTMLElement;
+  status: HTMLElement;
+  bar: HTMLElement;
+  fill: HTMLElement;
+  check: HTMLButtonElement;
+  action: HTMLButtonElement;
+  notes: HTMLButtonElement;
+}
+
+let aboutUpdateNodes: AboutUpdateNodes | null = null;
+
+/**
+ * Settings → About: version, update check and the one-click upgrade (design §4.7). The update
+ * work itself lives in the main process; this section only renders the pushed state.
+ */
+function renderAboutSection(): HTMLElement {
+  const section = el('div');
+  section.append(el('h2', undefined, 'About'));
+  section.append(el('div', 'hint', 'Version and updates. Checks the GitHub release feed and, on a new version, '
+    + 'downloads the installer (sha512-verified) and installs it.'));
+  const grid = el('dl', 'settings-grid');
+  const info = state.info;
+  grid.append(el('dt', undefined, 'Version'));
+  grid.append(el('dd', undefined, `v${info?.desktopVersion ?? '?'} (electron ${info?.electron ?? '?'}, node ${info?.node ?? '?'})`));
+  section.append(grid);
+
+  const status = el('div', 'notice');
+  const bar = el('div', 'update-bar');
+  const fill = el('div', 'update-fill');
+  bar.append(fill);
+  bar.style.display = 'none';
+  const actions = el('div', 'update-actions');
+  const check = el('button', 'btn small', 'Check for updates') as HTMLButtonElement;
+  const action = el('button', 'btn small primary', 'Install update') as HTMLButtonElement;
+  action.style.display = 'none';
+  const notes = el('button', 'linkish', 'Release notes') as HTMLButtonElement;
+  notes.style.display = 'none';
+  actions.append(check, action, notes);
+  section.append(status, bar, actions);
+
+  const nodes: AboutUpdateNodes = { root: section, status, bar, fill, check, action, notes };
+  aboutUpdateNodes = nodes;
+
+  check.onclick = async () => {
+    try {
+      const next = await window.coreai.updateCheck();
+      if (next) applyUpdateState(next);
+    } catch (error) {
+      toast(`Update check failed: ${cleanIpcError(error)}`);
+    }
+  };
+  action.onclick = async () => {
+    if (state.update?.installMode === 'manual') {
+      if (state.update.releaseUrl) await window.coreai.openExternal(state.update.releaseUrl);
+      return;
+    }
+    action.disabled = true;
+    try {
+      const next = await window.coreai.updateInstall();
+      if (next) applyUpdateState(next);
+    } catch (error) {
+      toast(`Update install failed: ${cleanIpcError(error)}`);
+    } finally {
+      action.disabled = false;
+    }
+  };
+  notes.onclick = () => {
+    const url = state.update?.releaseUrl;
+    if (url) void window.coreai.openExternal(url);
+  };
+
+  if (state.update) {
+    paintUpdate(nodes, state.update);
+  } else {
+    void window.coreai.updateStatus().then((current) => {
+      if (current) applyUpdateState(current);
+    }).catch(() => undefined);
+  }
+  return section;
+}
+
+/** Stores the pushed state and repaints the About section when it is on screen. */
+function applyUpdateState(next: UpdateState): void {
+  state.update = next;
+  if (aboutUpdateNodes && aboutUpdateNodes.root.isConnected) paintUpdate(aboutUpdateNodes, next);
+}
+
+function paintUpdate(nodes: AboutUpdateNodes, current: UpdateState): void {
+  const busy = current.phase === 'checking' || current.phase === 'downloading' || current.phase === 'installing';
+  nodes.check.disabled = busy;
+  nodes.check.textContent = current.phase === 'checking' ? 'Checking…' : 'Check for updates';
+  nodes.action.style.display = 'none';
+  nodes.notes.style.display = 'none';
+  nodes.bar.style.display = 'none';
+  nodes.status.className = 'notice';
+
+  const latest = current.latestVersion ? `v${current.latestVersion}` : 'the new version';
+  if (current.phase === 'idle') {
+    nodes.status.textContent = 'Not checked yet.';
+  } else if (current.phase === 'checking') {
+    nodes.status.textContent = 'Checking for updates…';
+  } else if (current.phase === 'up-to-date') {
+    nodes.status.textContent = `Up to date — v${current.currentVersion} is the latest version.`;
+  } else if (current.phase === 'available') {
+    nodes.status.textContent = current.devMode
+      ? `New version ${latest} available (current v${current.currentVersion}). This build runs from source — installs apply to packaged builds.`
+      : `New version ${latest} available (current v${current.currentVersion}).`;
+    nodes.action.style.display = '';
+    nodes.action.textContent = current.installMode === 'install' ? 'Download & install'
+      : current.installMode === 'download' ? 'Download update' : 'Open release page';
+    nodes.notes.style.display = '';
+  } else if (current.phase === 'downloading') {
+    const percent = current.total > 0 ? Math.floor((current.transferred / current.total) * 100) : 0;
+    nodes.status.textContent = `Downloading ${latest}… ${percent}% (${fmtBytes(current.transferred)} / ${fmtBytes(current.total)})`;
+    nodes.bar.style.display = '';
+    nodes.fill.style.width = `${percent}%`;
+  } else if (current.phase === 'installing') {
+    nodes.status.textContent = `Installing ${latest} — the app will restart automatically.`;
+  } else if (current.phase === 'ready') {
+    nodes.status.textContent = `Downloaded ${current.assetName ?? 'the update'} and opened it — drag core-ai to Applications to finish.`;
+  } else {
+    nodes.status.className = 'notice error';
+    nodes.status.textContent = current.error ?? 'Update failed.';
+  }
+}
+
 // ---------- content router ----------
 
 let contentRenderToken = 0;
@@ -3124,6 +3272,10 @@ async function bootstrap(): Promise<void> {
     } else if (payload.method === 'engine/ready') {
       setStatus('idle');
     }
+  });
+
+  window.coreai.onUpdateState((next: UpdateState) => {
+    if (next) applyUpdateState(next);
   });
 
   window.coreai.onBrowserState((status: BrowserStatus) => {

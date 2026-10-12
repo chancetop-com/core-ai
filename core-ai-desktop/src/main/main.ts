@@ -1,6 +1,7 @@
 // Electron main: window + IPC + engine supervision. Agent work (loops, file IO, compression)
 // stays in the engine child process; this process only routes.
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell } from 'electron';
+import { spawn } from 'node:child_process';
 import http from 'node:http';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -9,6 +10,7 @@ import { BrowserManager } from './browser/BrowserManager';
 import { CuaManager } from './computer/CuaManager';
 import { EngineSupervisor } from './engine/EngineSupervisor';
 import { RpcCallError } from './engine/RpcClient';
+import { installArgs, UpdateService } from './update/UpdateService';
 
 // The app is often launched from a terminal that can close while the window stays open (or from a
 // killed shell); a log write to that dead pipe raises EPIPE and used to take down the main process
@@ -96,6 +98,7 @@ let mainWindow: BrowserWindow | null = null;
 let supervisor: EngineSupervisor | null = null;
 let browserManager: BrowserManager | null = null;
 let cuaManager: CuaManager | null = null;
+let updateService: UpdateService | null = null;
 let settings: DesktopSettings = {};
 let quitting = false;
 
@@ -531,6 +534,25 @@ function resolveSkillSourceDir(): string {
   return path.resolve(app.getAppPath(), 'skills', 'gui-automation');
 }
 
+/**
+ * One-click upgrade (Windows): stop local work, hand the verified installer over — silent, update
+ * mode, forced relaunch (the same contract electron-updater uses) — and exit. The installer brings
+ * the new version up by itself, so nothing here relaunches the app.
+ */
+async function runDesktopInstaller(installerPath: string): Promise<void> {
+  await browserManager?.stop();
+  await supervisor?.shutdownAll();
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(installerPath, installArgs(), { detached: true, stdio: 'ignore' });
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
+    child.once('error', reject);
+  });
+  app.exit(0);
+}
+
 function send(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
 }
@@ -731,6 +753,12 @@ function registerIpc(): void {
     return result;
   });
 
+  ipcMain.handle('update:status', () => updateService?.snapshot() ?? null);
+
+  ipcMain.handle('update:check', async () => updateService?.check() ?? null);
+
+  ipcMain.handle('update:install', async () => updateService?.install() ?? null);
+
   ipcMain.handle('engine:call', async (_event, workspace: string, method: string, params: Record<string, unknown>): Promise<CallEnvelope> => {
     if (!supervisor) return { ok: false, error: { code: 0, message: 'engine supervisor not ready' } };
     try {
@@ -803,6 +831,16 @@ if (!gotLock) {
     cuaManager = new CuaManager({
       skillSourceDir: resolveSkillSourceDir(),
       desktopVersion: clientVersion,
+    });
+    updateService = new UpdateService({
+      currentVersion: clientVersion,
+      isPackaged: app.isPackaged,
+      downloadDir: path.join(app.getPath('temp'), 'core-ai-desktop-updates'),
+      onState: (state) => send('update:state', state),
+      install: (installerPath) => runDesktopInstaller(installerPath),
+      openFile: async (filePath) => {
+        await shell.openPath(filePath);
+      },
     });
     supervisor = new EngineSupervisor({
       enginePath: resolveEnginePath(),
