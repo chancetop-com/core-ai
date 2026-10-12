@@ -183,6 +183,9 @@ public class CliAgent {
         if (managedBrowser()) {
             sections.add(new CliAgentManagedBrowserPrompt());
         }
+        if (computerUseEnabled()) {
+            sections.add(new CliAgentComputerUsePrompt());
+        }
         sections.add(new CliAgentGitStatusPrompt(config.workspace));
         sections.add(new CliAgentInstructionsPrompt(config.workspace));
         if (config.memoryEnabled) {
@@ -196,6 +199,11 @@ public class CliAgent {
     /** The desktop app spawns the engine with this flag; its built-in browser pane is the only browser. */
     private static boolean managedBrowser() {
         return "1".equals(System.getenv("CORE_AI_BROWSER_MANAGED"));
+    }
+
+    /** The desktop app enables this after the user turns on Computer use in Settings. */
+    private static boolean computerUseEnabled() {
+        return "1".equals(System.getenv("CORE_AI_COMPUTER_USE"));
     }
 
     private static AgentProfileRegistry buildAgentProfileRegistry(Config config) {
