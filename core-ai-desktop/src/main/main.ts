@@ -1,11 +1,12 @@
 // Electron main: window + IPC + engine supervision. Agent work (loops, file IO, compression)
 // stays in the engine child process; this process only routes.
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, screen, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { removeStaged, stageAttachments, sweepStaging, type StagedAttachment } from './attachments/AttachmentStager';
 import { BrowserManager } from './browser/BrowserManager';
 import { CuaManager } from './computer/CuaManager';
 import { EngineSupervisor } from './engine/EngineSupervisor';
@@ -568,7 +569,7 @@ function createWindow(): void {
     minHeight: WINDOW_MIN.height,
     show: false,
     backgroundColor: windowBackground(),
-    title: 'core-ai',
+    title: 'core-ai-desktop',
     icon: existsSync(windowIcon) ? windowIcon : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -596,6 +597,41 @@ function createWindow(): void {
     mainWindow = null;
     browserManager?.attachWindow(null);
   });
+}
+
+// ---------- composer attachments ----------
+
+/** Mirrors EngineSessionRegistry.stagingDir: the only outside-workspace place session/send reads. */
+function stagingRoot(): string {
+  return path.join(os.homedir(), '.core-ai', 'app-server', 'staging');
+}
+
+const ATTACHMENT_FILTERS = [
+  {
+    name: 'Images and documents',
+    extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'md', 'txt', 'log', 'json', 'yaml', 'yml',
+      'toml', 'csv', 'xml', 'html', 'css', 'js', 'ts', 'py', 'java', 'go', 'sh', 'ps1', 'sql'],
+  },
+  { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] },
+  { name: 'Documents', extensions: ['pdf', 'md', 'txt', 'log', 'json', 'yaml', 'yml', 'csv', 'xml'] },
+  { name: 'All files', extensions: ['*'] },
+];
+
+/** Data-URL image previews for the composer tiles and the sent bubbles; failures keep the icon. */
+async function attachPreviews(attachments: StagedAttachment[]): Promise<void> {
+  await Promise.all(attachments.map(async (attachment) => {
+    if (attachment.kind !== 'image') return;
+    try {
+      const image = await nativeImage.createThumbnailFromPath(attachment.path, { width: 1024, height: 1024 });
+      if (image.isEmpty()) return;
+      const jpeg = image.toJPEG(82);
+      attachment.preview = jpeg.length
+        ? `data:image/jpeg;base64,${jpeg.toString('base64')}`
+        : image.toDataURL();
+    } catch {
+      // no preview available — the chip falls back to the generic icon
+    }
+  }));
 }
 
 function registerIpc(): void {
@@ -690,6 +726,34 @@ function registerIpc(): void {
     if (typeof workspace === 'string' && workspace) {
       await supervisor?.restart(workspace);
     }
+  });
+
+  ipcMain.handle('attachments:pick', async () => {
+    // E2E hook: the native file dialog cannot be scripted over CDP.
+    const preset = process.env.COREAI_TEST_PICK_FILES;
+    if (preset) return { paths: preset.split(';').map((entry) => entry.trim()).filter(Boolean) };
+    const options = {
+      title: 'Attach files',
+      properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+      filters: ATTACHMENT_FILTERS,
+    };
+    const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+    return { paths: result.canceled ? [] : result.filePaths };
+  });
+
+  ipcMain.handle('attachments:stage', async (_event, sessionId: string, paths: string[]) => {
+    const id = String(sessionId ?? '').trim();
+    if (!id) return { attachments: [], skipped: [{ name: '', reason: 'no session is open yet' }] };
+    const files = Array.isArray(paths)
+      ? paths.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      : [];
+    const result = await stageAttachments(stagingRoot(), id, files);
+    await attachPreviews(result.attachments);
+    return result;
+  });
+
+  ipcMain.handle('attachments:remove', async (_event, stagedPath: string) => {
+    await removeStaged(stagingRoot(), String(stagedPath ?? ''));
   });
 
   ipcMain.handle('browser:start', async () => browserManager?.start() ?? null);
@@ -857,6 +921,12 @@ if (!gotLock) {
       },
     });
     registerIpc();
+    // Attachment staging is only read at send time, so a stale session directory is disposable.
+    void sweepStaging(stagingRoot(), 7 * 24 * 60 * 60 * 1000)
+      .then((removed) => {
+        if (removed > 0) console.log(`[attachments] swept ${removed} stale staging dir(s)`);
+      })
+      .catch(() => undefined);
     createWindow();
     browserManager.attachWindow(mainWindow);
     if (process.env.COREAI_BROWSER_AUTOSTART === '1') {

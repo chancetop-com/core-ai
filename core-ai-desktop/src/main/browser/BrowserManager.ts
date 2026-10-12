@@ -109,7 +109,7 @@ export class BrowserManager implements BrowserHost {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`cannot listen on 127.0.0.1:${CDP_PORT} for the embedded browser (${message}) - `
-        + 'another core-ai instance or a leftover debug browser may hold that port; close it and retry');
+        + 'another core-ai-desktop instance or a leftover debug browser may hold that port; close it and retry');
     }
     this.bridge = bridge;
     try {

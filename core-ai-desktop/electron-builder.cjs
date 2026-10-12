@@ -19,8 +19,10 @@ const engineDir = path.join(__dirname, 'engine');
 const skillsDir = path.join(__dirname, 'skills');
 
 module.exports = {
+  // appId is the install identity (NSIS uninstall GUID, shortcut AppUserModelID, mac bundle id) and
+  // stays stable across renames; productName is the displayed name (installer, shortcut, exe, taskbar).
   appId: 'com.chancetop.core-ai',
-  productName: 'core-ai',
+  productName: 'core-ai-desktop',
   artifactName: 'core-ai-desktop-${os}-${arch}.${ext}',
   directories: { output: 'release' },
   files: ['dist/**/*', '!dist/test/**'],

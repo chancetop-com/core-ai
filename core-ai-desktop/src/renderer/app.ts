@@ -114,6 +114,19 @@ interface UpdateState {
   devMode: boolean;
 }
 
+interface PendingAttachment {
+  path: string;
+  name: string;
+  kind: 'image' | 'file' | 'pdf';
+  size: number;
+  preview?: string | null;
+}
+
+interface StagedAttachmentResult {
+  attachments: PendingAttachment[];
+  skipped: Array<{ name: string; reason: string }>;
+}
+
 interface CoreAiBridge {
   call(workspace: string, method: string, params: Record<string, unknown>): Promise<Envelope>;
   chooseWorkspace(): Promise<string | null>;
@@ -126,6 +139,9 @@ interface CoreAiBridge {
   authLoginWithKey(serverUrl: string, apiKey: string): Promise<AuthStatus>;
   authLogout(): Promise<AuthStatus>;
   restartEngine(workspace: string): Promise<void>;
+  pickAttachments(): Promise<{ paths: string[] }>;
+  stageAttachments(sessionId: string, paths: string[]): Promise<StagedAttachmentResult>;
+  removeAttachment(stagedPath: string): Promise<void>;
   browserStart(): Promise<BrowserStatus | null>;
   browserStop(): Promise<BrowserStatus | null>;
   browserStatus(): Promise<BrowserStatus | null>;
@@ -257,7 +273,10 @@ let sessionItemsEl: HTMLElement | null = null;
 let transcriptEl: HTMLElement | null = null;
 let composerInput: HTMLTextAreaElement | null = null;
 let composerControlsEl: HTMLElement | null = null;
+let composerAttachEl: HTMLElement | null = null;
 let composerAutoGrow: (() => void) | null = null;
+/** Attachments staged for the open session and not yet sent; cleared when the session changes. */
+let pendingAttachments: PendingAttachment[] = [];
 let chatTitleEl: HTMLElement | null = null;
 let statusChip: HTMLElement | null = null;
 let stopButton: HTMLButtonElement | null = null;
@@ -422,6 +441,8 @@ const ICONS = {
   cpu: '<rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>',
   lightbulb: '<circle cx="12" cy="9.5" r="5"/><path d="M9.8 15h4.4"/><path d="M10.3 18h3.4"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  file: '<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
 };
 
 function icon(name: keyof typeof ICONS): SVGElement {
@@ -1245,6 +1266,7 @@ async function connect(workspace: string): Promise<void> {
   state.sessionCursor = null;
   state.hasMoreSessions = false;
   state.toolMap.clear();
+  clearPendingAttachments();
   resetStreaming();
   chatView = null;
   transcriptEl = null;
@@ -1272,6 +1294,7 @@ async function enterDefaultMode(): Promise<void> {
   state.sessionCursor = null;
   state.hasMoreSessions = false;
   state.toolMap.clear();
+  clearPendingAttachments();
   resetStreaming();
   chatView = null;
   transcriptEl = null;
@@ -1320,6 +1343,7 @@ async function startNewConversation(): Promise<void> {
   state.sessionId = null;
   state.sessionTitle = '';
   state.toolMap.clear();
+  clearPendingAttachments();
   resetStreaming();
   removeApprovalBar();
   setStatus('idle');
@@ -1371,6 +1395,7 @@ async function openSession(sessionId: string): Promise<void> {
   state.sessionId = sessionId;
   state.sessionTitle = state.sessions.find((session) => session.sessionId === sessionId)?.title ?? sessionId;
   state.toolMap.clear();
+  clearPendingAttachments();
   resetStreaming();
   removeApprovalBar();
   renderSessionItems();
@@ -1480,12 +1505,151 @@ function buildComposer(): HTMLElement {
     composerInput.style.height = `${Math.min(composerInput.scrollHeight, 360)}px`;
   };
   composerInput.oninput = () => composerAutoGrow?.();
+  // The + sits at the top-left corner of the input box, before the text.
+  const inputRow = el('div', 'composer-input-row');
+  const attach = el('button', 'composer-attach-btn') as HTMLButtonElement;
+  attach.append(icon('plus'));
+  attach.title = 'Attach images or files';
+  attach.onclick = () => void chooseAttachments();
+  inputRow.append(attach, composerInput);
+  composerAttachEl = el('div', 'composer-attachments');
+  composerAttachEl.hidden = true;
   composerControlsEl = el('div', 'composer-controls');
-  card.append(composerInput, composerControlsEl);
+  card.append(inputRow, composerAttachEl, composerControlsEl);
   composer.append(card);
   composerAutoGrow();
+  renderComposerAttachments();
   renderComposerControls();
   return composer;
+}
+
+// --- composer attachments (design §8): files are staged by the main process into the engine's
+// per-session staging directory, shown as chips, and sent as image / pdf / file parts.
+
+function baseNameOf(filePath: string): string {
+  const parts = filePath.split(/[\\/]/);
+  return parts[parts.length - 1] || filePath;
+}
+
+function attachmentChipEl(attachment: PendingAttachment, removable: boolean): HTMLElement {
+  if (attachment.kind === 'image' && attachment.preview) {
+    return imageTileEl(attachment, removable);
+  }
+  const chip = el('div', 'attachment-chip');
+  chip.title = attachment.path;
+  chip.append(icon('file'));
+  chip.append(el('span', 'attachment-name', attachment.name));
+  chip.append(el('span', 'attachment-size', fmtBytes(attachment.size)));
+  if (removable) {
+    const remove = el('button', 'attachment-remove') as HTMLButtonElement;
+    remove.append(icon('x'));
+    remove.title = 'Remove attachment';
+    remove.onclick = () => removePendingAttachment(attachment);
+    chip.append(remove);
+  }
+  return chip;
+}
+
+/** Attached images show as a real preview tile (click to enlarge), not just a file name. */
+function imageTileEl(attachment: PendingAttachment, removable: boolean): HTMLElement {
+  const tile = el('div', 'attachment-image-tile');
+  tile.title = `${attachment.name} · ${fmtBytes(attachment.size)}`;
+  const img = el('img', undefined) as HTMLImageElement;
+  img.src = attachment.preview as string;
+  img.alt = attachment.name;
+  img.onclick = () => openAttachmentLightbox(attachment.preview as string, attachment.name, attachment.size);
+  tile.append(img);
+  if (removable) {
+    const remove = el('button', 'attachment-remove') as HTMLButtonElement;
+    remove.append(icon('x'));
+    remove.title = 'Remove attachment';
+    remove.onclick = (event) => {
+      event.stopPropagation();
+      removePendingAttachment(attachment);
+    };
+    tile.append(remove);
+  }
+  return tile;
+}
+
+/** Full-size preview overlay; appended to the body so it covers the window, not the message flow. */
+function openAttachmentLightbox(src: string, name: string, size: number): void {
+  const overlay = el('div', 'attachment-lightbox');
+  const inner = el('div', 'lightbox-inner');
+  const figure = el('figure', 'lightbox-figure');
+  const image = el('img', undefined) as HTMLImageElement;
+  image.src = src;
+  image.alt = name;
+  figure.append(image);
+  figure.append(el('figcaption', 'lightbox-caption', `${name} · ${fmtBytes(size)}`));
+  inner.append(figure);
+  overlay.append(inner);
+  document.body.append(overlay);
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') close();
+  };
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('click', close);
+}
+
+function renderComposerAttachments(): void {
+  if (!composerAttachEl) return;
+  composerAttachEl.replaceChildren();
+  composerAttachEl.hidden = pendingAttachments.length === 0;
+  for (const attachment of pendingAttachments) {
+    composerAttachEl.append(attachmentChipEl(attachment, true));
+  }
+}
+
+async function chooseAttachments(): Promise<void> {
+  let picked: { paths?: string[] } | null = null;
+  try {
+    picked = await window.coreai.pickAttachments();
+  } catch (error) {
+    toast(`Attach failed: ${cleanIpcError(error)}`, 'error');
+    return;
+  }
+  const paths = (picked?.paths ?? []).filter((entry) => typeof entry === 'string' && entry.trim());
+  if (!paths.length) return;
+  if (!state.sessionId) {
+    // session/send only reads attachment paths inside the session's staging directory, so the
+    // conversation must exist before the copy is made.
+    if (!(await startNewSession(baseNameOf(paths[0])))) return;
+  }
+  let staged: StagedAttachmentResult | null = null;
+  try {
+    staged = await window.coreai.stageAttachments(state.sessionId as string, paths);
+  } catch (error) {
+    toast(`Attach failed: ${cleanIpcError(error)}`, 'error');
+    return;
+  }
+  for (const skip of staged?.skipped ?? []) {
+    toast(`Skipped ${skip.name || 'file'}: ${skip.reason}`, 'error');
+  }
+  for (const attachment of staged?.attachments ?? []) {
+    if (!pendingAttachments.some((entry) => entry.path === attachment.path)) {
+      pendingAttachments.push(attachment);
+    }
+  }
+  renderComposerAttachments();
+  composerInput?.focus();
+}
+
+function removePendingAttachment(attachment: PendingAttachment): void {
+  pendingAttachments = pendingAttachments.filter((entry) => entry.path !== attachment.path);
+  renderComposerAttachments();
+  void window.coreai.removeAttachment(attachment.path).catch(() => undefined);
+}
+
+/** Staged copies stay on disk (removed by the age sweep); only the composer chips are dropped. */
+function clearPendingAttachments(): void {
+  if (pendingAttachments.length === 0) return;
+  pendingAttachments = [];
+  renderComposerAttachments();
 }
 
 // --- Embedded browser (design §4.9 P2): the panel IS a real Chromium view (a WebContentsView
@@ -1800,7 +1964,7 @@ function systemReminderText(text: string): string | null {
   return matches.map((match) => match[1].trim()).filter(Boolean).join('\n');
 }
 
-function addMessageBubble(role: 'user' | 'assistant', text: string): HTMLElement {
+function addMessageBubble(role: 'user' | 'assistant', text: string, attachments: PendingAttachment[] = []): HTMLElement {
   if (role === 'user') {
     const reminder = systemReminderText(text);
     if (reminder !== null) {
@@ -1818,7 +1982,12 @@ function addMessageBubble(role: 'user' | 'assistant', text: string): HTMLElement
     renderMarkdownInto(body, text);
     bubble.append(body);
   } else {
-    bubble.textContent = text;
+    if (text) bubble.textContent = text;
+    if (attachments.length) {
+      const row = el('div', 'attachment-row');
+      for (const attachment of attachments) row.append(attachmentChipEl(attachment, false));
+      bubble.append(row);
+    }
   }
   wrapper.append(bubble);
   transcriptEl?.append(wrapper);
@@ -1846,16 +2015,24 @@ function appendNotice(text: string, kind = '', parent?: HTMLElement): void {
 
 async function sendCurrent(): Promise<void> {
   const text = composerInput?.value ?? '';
-  if (!text.trim()) return;
-  if (!state.sessionId && !(await startNewSession(text.trim()))) return;
+  const attachments = [...pendingAttachments];
+  if (!text.trim() && attachments.length === 0) return;
+  if (!state.sessionId && !(await startNewSession(text.trim() || baseNameOf(attachments[0]?.path ?? '')))) return;
   composerInput!.value = '';
   composerAutoGrow?.();
-  addMessageBubble('user', text.trim());
+  addMessageBubble('user', text.trim(), attachments);
   scrollTranscript(true);
   resetStreaming();
   turnClock = { startedAt: Date.now(), tick: null, chip: null };
-  const sent = await call('session/send', { sessionId: state.sessionId, parts: [{ type: 'text', text: text.trim() }] });
-  if (!sent) stopTurnClock();
+  const parts: Array<{ type: string; text?: string; path?: string }> = [];
+  if (text.trim()) parts.push({ type: 'text', text: text.trim() });
+  for (const attachment of attachments) parts.push({ type: attachment.kind, path: attachment.path });
+  const sent = await call('session/send', { sessionId: state.sessionId, parts });
+  if (!sent) {
+    stopTurnClock();
+    return;
+  }
+  clearPendingAttachments();
 }
 
 // ---------- live events ----------
@@ -3176,7 +3353,7 @@ function paintUpdate(nodes: AboutUpdateNodes, current: UpdateState): void {
   } else if (current.phase === 'installing') {
     nodes.status.textContent = `Installing ${latest} — the app will restart automatically.`;
   } else if (current.phase === 'ready') {
-    nodes.status.textContent = `Downloaded ${current.assetName ?? 'the update'} and opened it — drag core-ai to Applications to finish.`;
+    nodes.status.textContent = `Downloaded ${current.assetName ?? 'the update'} and opened it — drag core-ai-desktop to Applications to finish.`;
   } else {
     nodes.status.className = 'notice error';
     nodes.status.textContent = current.error ?? 'Update failed.';
@@ -3198,7 +3375,7 @@ async function renderContent(): Promise<void> {
   if (!info.engineExists) {
     content.replaceChildren();
     const empty = el('div', 'empty-state');
-    empty.append(el('div', 'big', 'core-ai desktop'));
+    empty.append(el('div', 'big', 'core-ai-desktop'));
     empty.append(el('div', 'notice error', `Engine not found: ${info.enginePath} — run .\\gradlew.bat :core-ai-cli:installDist first`));
     content.append(empty);
     return;

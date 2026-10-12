@@ -695,14 +695,16 @@ select:hover, .btn:hover { border-color: var(--accent); }
 
 .composer textarea {
   box-sizing: border-box;
-  min-height: 140px;
+  flex: 1;
+  min-width: 0;
+  min-height: 120px;
   max-height: 360px;
   resize: none;
   overflow-y: auto;
   background: transparent;
   color: var(--text);
   border: 0;
-  padding: 12px 12px 8px;
+  padding: 1px 4px 10px 0;
   font: inherit;
 }
 
@@ -743,6 +745,100 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .composer-controls .model-select { width: 75px; }
 .composer-controls .thinking-select { width: 80px; }
 .composer-controls .policy-select { width: 80px; }
+
+/* ---------- composer attachments ---------- */
+
+/* The + sits at the top-left corner of the input box, before the text. */
+.composer-input-row { display: flex; align-items: flex-start; gap: 8px; padding: 10px 10px 0; }
+
+.composer-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 1px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.composer-attach-btn:hover { background: var(--bg-elev); color: var(--text); border-color: var(--accent); }
+.composer-attach-btn .ic { width: 15px; height: 15px; }
+
+.composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
+.composer-attachments[hidden] { display: none; }
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  padding: 3px 6px 3px 3px;
+}
+
+.attachment-chip .ic { width: 16px; height: 16px; margin: 0 4px; color: var(--faint); flex: 0 0 auto; }
+.attachment-chip .attachment-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.attachment-chip .attachment-size { font-size: 11px; color: var(--faint); white-space: nowrap; flex: 0 0 auto; }
+
+/* attached images render as real preview tiles, not file names */
+.attachment-image-tile { position: relative; width: 56px; height: 56px; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; cursor: zoom-in; flex: 0 0 auto; background: var(--bg-input); }
+.attachment-image-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.attachment-image-tile .attachment-remove { position: absolute; top: 3px; right: 3px; width: 17px; height: 17px; background: rgba(10, 12, 16, 0.65); color: #e8eaee; }
+.attachment-image-tile .attachment-remove:hover { background: rgba(10, 12, 16, 0.9); color: #fff; }
+
+/* inside a message bubble the same image shows at a readable size */
+.msg .bubble .attachment-image-tile { width: auto; height: auto; max-width: 260px; max-height: 260px; }
+.msg .bubble .attachment-image-tile img { width: auto; height: auto; max-width: 260px; max-height: 260px; object-fit: contain; }
+
+.attachment-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.attachment-remove:hover { background: var(--bg-input); color: var(--text); }
+.attachment-remove .ic { width: 12px; height: 12px; }
+
+.attachment-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+.msg.user .bubble > .attachment-row:first-child { margin-top: 0; }
+
+/* chips ride on the user bubble's light surface in dark mode */
+.msg.user .bubble .attachment-chip { background: rgba(255, 255, 255, 0.65); border-color: rgba(23, 26, 31, 0.18); color: #171a1f; }
+.msg.user .bubble .attachment-chip .attachment-size { color: #5c6470; }
+.msg.user .bubble .attachment-image-tile { border-color: rgba(23, 26, 31, 0.2); }
+
+/* full-size preview overlay (appended to the body so it covers the window) */
+.attachment-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(6, 8, 12, 0.85);
+  overflow-y: auto;
+  cursor: zoom-out;
+}
+
+.attachment-lightbox .lightbox-inner { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 28px; }
+.attachment-lightbox .lightbox-figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.attachment-lightbox img { max-width: min(92vw, 1200px); max-height: 82vh; border-radius: 10px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55); }
+.attachment-lightbox .lightbox-caption { color: #c3c8d1; font-size: 12.5px; }
 
 /* ---------- panels ---------- */
 
