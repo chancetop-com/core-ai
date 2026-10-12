@@ -44,7 +44,7 @@ public class SkillInstaller {
             OverwriteDecision decision = overwriteDecision(existing, source.digest(), force);
             if (decision == OverwriteDecision.UP_TO_DATE) return new InstallOutcome(targetDir, false, 0);
             if (decision == OverwriteDecision.FORBIDDEN) {
-                throw new IllegalStateException(existing.marker() == null
+                throw new SkillInstallConflictException(existing.marker() == null
                         ? "target exists without a hub marker, use --force to overwrite: " + targetDir
                         : "skill was modified locally, use --force to overwrite: " + targetDir);
             }

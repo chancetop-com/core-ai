@@ -27,8 +27,9 @@ import java.util.function.Function;
 
 /**
  * Real app-server engine: one-time config bootstrap, then the v1 method surface (sessions, model /
- * thinking control, permissions, local artifacts / skills). Turns run on each session's own driver
- * thread; this class stays on the dispatch thread.
+ * thinking control, permissions, local artifacts / skills) plus the hub bridge (server capability
+ * catalog and skill pull). Turns run on each session's own driver thread; this class stays on the
+ * dispatch thread.
  *
  * @author stephen
  */
@@ -80,6 +81,7 @@ public class AppServerEngine implements EngineApi {
     private final Map<String, Function<ObjectNode, JsonNode>> handlers;
     private final EngineBootstrap bootstrap;
     private final EngineSessionRegistry registry;
+    private final HubBridge hubBridge = new HubBridge();
     private final Set<String> supportedMethods;
     private volatile NotificationSink sink = (method, params) -> { };
     private volatile List<GatewayAvailableModelView> cachedServerModels;
@@ -170,7 +172,10 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("memory/list", params -> LocalMemory.list(bootstrap.workspace, params)),
                 Map.entry("memory/read", params -> LocalMemory.read(bootstrap.workspace, params)),
                 Map.entry("skills/list", ignored -> LocalSkills.list(bootstrap.workspace)),
-                Map.entry("tools/list", this::toolsList));
+                Map.entry("tools/list", this::toolsList),
+                Map.entry("hub/catalog", ignored -> hubBridge.catalog()),
+                Map.entry("hub/skills", hubBridge::skills),
+                Map.entry("hub/skills/pull", hubBridge::pullSkill));
     }
 
     private ObjectNode modelList() {

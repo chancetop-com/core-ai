@@ -766,6 +766,34 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .settings-grid dt { color: var(--muted); }
 .settings-grid dd { margin: 0; word-break: break-all; }
 
+/* ---------- hub panel ---------- */
+
+.hub-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
+.hub-search { flex: 1; min-width: 220px; max-width: 420px; background: var(--bg-input); color: var(--text); border: 1px solid var(--border-strong); border-radius: 7px; padding: 6px 10px; font: inherit; font-size: 13px; }
+.hub-search:focus { outline: none; border-color: var(--accent); }
+.hub-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hub-chip { border: 1px solid var(--border-strong); background: transparent; color: var(--muted); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.hub-chip:hover { border-color: var(--accent); color: var(--text); }
+.hub-chip.active { border-color: var(--accent); color: var(--accent); }
+.hub-refresh { margin-left: auto; }
+
+.hub-section { display: flex; align-items: baseline; gap: 8px; margin: 16px 0 6px; }
+.hub-section-title { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.hub-section-count { color: var(--faint); font-size: 12px; }
+
+.hub-row { padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 6px; }
+.hub-row:hover { background: var(--bg-elev); }
+.hub-row-head { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.hub-row-name { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-row-meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hub-row-actions { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.hub-installed { color: var(--green); font-size: 11.5px; border: 1px solid var(--green); border-radius: 999px; padding: 1px 8px; }
+.hub-row-desc { color: var(--faint); font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.hub-footer { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+.hub-link { color: var(--accent); text-decoration: none; }
+.hub-link:hover { text-decoration: underline; }
+
 .empty-state { margin: auto; text-align: center; color: var(--muted); padding: 40px; }
 .empty-state .big { font-size: 18px; color: var(--text); margin-bottom: 8px; }
 

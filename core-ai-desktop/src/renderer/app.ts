@@ -125,7 +125,7 @@ declare global {
   }
 }
 
-type NavKey = 'sessions' | 'artifacts' | 'skills' | 'memory' | 'settings';
+type NavKey = 'sessions' | 'hub' | 'artifacts' | 'skills' | 'memory' | 'settings';
 
 interface SessionRow { sessionId: string; title?: string; updatedAt?: string; status?: string }
 interface UiTool {
@@ -146,6 +146,7 @@ const NAV: Array<{ key: NavKey; label: string; icon: keyof typeof ICONS }> = [
   { key: 'artifacts', label: 'Artifacts', icon: 'artifacts' },
   { key: 'skills', label: 'Skills', icon: 'skills' },
   { key: 'memory', label: 'Memory', icon: 'memory' },
+  { key: 'hub', label: 'Hub', icon: 'hub' },
   { key: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -361,6 +362,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 /** Inline SVG set (feather-style, 24px grid, stroke = currentColor) for the nav and sidebar chrome. */
 const ICONS = {
   sessions: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  hub: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>',
   artifacts: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
   skills: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
   memory: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
@@ -455,6 +457,12 @@ async function call(method: string, params: Record<string, unknown> = {}): Promi
   const message = envelope.error?.message ?? 'engine call failed';
   toast(`✗ ${method}: ${message}`, 'error');
   return null;
+}
+
+/** Raw envelope for panels that render their own failure states (e.g. the Hub's not-connected view). */
+async function callEnvelope(method: string, params: Record<string, unknown> = {}): Promise<Envelope> {
+  if (!state.workspace) return { ok: false, error: { code: 0, message: 'no workspace connected' } };
+  return window.coreai.call(state.workspace, method, params);
 }
 
 function toast(text: string, kind = ''): void {
@@ -712,7 +720,7 @@ async function switchEnvironment(serverUrl: string): Promise<void> {
   }
 }
 
-function openLoginDialog(): void {
+function openLoginDialog(onSuccess?: () => void): void {
   closeProfileMenu();
   const overlay = el('div', 'overlay');
   const dialog = el('div', 'login-dialog');
@@ -782,6 +790,7 @@ function openLoginDialog(): void {
       applyAuth(next);
       toast(`Signed in as ${next?.name ?? next?.userId ?? serverUrl}`);
       close();
+      onSuccess?.();
     } catch (error) {
       browserButton.disabled = false;
       keyButton.disabled = false;
@@ -2401,6 +2410,308 @@ function panel(title: string, hint: string): { root: HTMLElement; body: HTMLElem
   return { root, body };
 }
 
+// ---------- hub panel ----------
+// Server capability bridge: MCP tools / API operations / agents / LLM_CALL definitions come from
+// the one-shot hub catalog, skills from the skill hub (pull installs the same managed copy as
+// `core-ai-cli skill pull`). Discovery is read-only; management stays in the web console.
+
+type HubKind = 'mcp' | 'api' | 'agent' | 'llm_call' | 'skill';
+type HubFilter = 'all' | HubKind;
+
+interface HubRow {
+  kind: HubKind;
+  name: string;
+  group: string | null;
+  description: string | null;
+  namespace: string | null;
+  qualifiedName: string | null;
+  resourceCount: number | null;
+  stale: boolean;
+}
+
+const HUB_KIND_LABELS: Record<HubKind, string> = {
+  mcp: 'MCP',
+  api: 'API tool',
+  agent: 'Agent',
+  llm_call: 'LLM call',
+  skill: 'Skill',
+};
+
+const HUB_FILTERS: Array<[HubFilter, string]> = [
+  ['all', 'All'],
+  ['mcp', 'MCP'],
+  ['api', 'API tools'],
+  ['agent', 'Agents'],
+  ['llm_call', 'LLM calls'],
+  ['skill', 'Skills'],
+];
+
+const HUB_SECTION_CAP = 50;
+
+function hubSignInState(retry?: () => void): HTMLElement {
+  const empty = el('div', 'empty-state');
+  empty.append(el('div', 'big', 'Not connected'));
+  empty.append(el('div', 'notice', 'Sign in to browse server capabilities — MCP tools, API tools, agents and skills your account can use. Local sessions work without it.'));
+  const button = el('button', 'btn primary', 'Sign in');
+  button.style.marginTop = '10px';
+  button.onclick = () => openLoginDialog(retry);
+  empty.append(button);
+  return empty;
+}
+
+function hubUnreachableState(detail: string, retry: () => Promise<void>): HTMLElement {
+  const empty = el('div', 'empty-state');
+  empty.append(el('div', 'big', 'Server unreachable'));
+  empty.append(el('div', 'notice', detail));
+  const button = el('button', 'btn', 'Retry');
+  button.style.marginTop = '10px';
+  button.onclick = () => void retry();
+  empty.append(button);
+  return empty;
+}
+
+function hubRows(catalogData: any, skillsData: any): HubRow[] {
+  const rows: HubRow[] = [];
+  const kinds = HUB_FILTERS.map(([key]) => key);
+  for (const tool of catalogData?.tools ?? []) {
+    const kind = String(tool.kind ?? '') as HubKind;
+    if (!kinds.includes(kind)) continue;
+    rows.push({
+      kind,
+      name: String(tool.path || tool.name || ''),
+      group: tool.group ? String(tool.group) : null,
+      description: tool.description ? String(tool.description) : null,
+      namespace: null,
+      qualifiedName: null,
+      resourceCount: null,
+      stale: Boolean(tool.stale),
+    });
+  }
+  for (const skill of skillsData?.skills ?? []) {
+    rows.push({
+      kind: 'skill',
+      name: String(skill.name ?? ''),
+      group: skill.namespace ? String(skill.namespace) : null,
+      description: skill.description ? String(skill.description) : null,
+      namespace: skill.namespace ? String(skill.namespace) : null,
+      qualifiedName: skill.qualifiedName ? String(skill.qualifiedName) : null,
+      resourceCount: typeof skill.resourceCount === 'number' ? skill.resourceCount : null,
+      stale: false,
+    });
+  }
+  return rows;
+}
+
+/** Where `core-ai-cli skill pull` puts a hub skill; used to mark rows already installed locally. */
+function hubLocalKey(row: HubRow): string {
+  const home = String(state.info?.homedir ?? '').replace(/\\/g, '/').toLowerCase();
+  return `${home}/.core-ai/skills/${(row.namespace ?? '').toLowerCase()}/${row.name.toLowerCase()}`;
+}
+
+function hubInstalledSet(local: Envelope): Set<string> {
+  const set = new Set<string>();
+  for (const skill of local.ok ? local.result?.skills ?? [] : []) {
+    set.add(String(skill?.path ?? '').replace(/\\/g, '/').toLowerCase());
+  }
+  return set;
+}
+
+function buildHubRow(row: HubRow, installed: Set<string>, onPulled: (row: HubRow, actions: HTMLElement) => void): HTMLElement {
+  const item = el('div', 'hub-row');
+  const head = el('div', 'hub-row-head');
+  head.append(el('span', 'hub-row-name', row.name));
+  let meta = HUB_KIND_LABELS[row.kind];
+  if (row.group) meta += ` · ${row.group}`;
+  if (row.kind === 'skill' && row.resourceCount != null) meta += ` · ${row.resourceCount} files`;
+  head.append(el('span', 'hub-row-meta', meta));
+  if (row.stale) head.append(el('span', 'chip', 'stale'));
+  head.append(el('span', 'spacer'));
+  if (row.kind === 'skill') {
+    const actions = el('span', 'hub-row-actions');
+    if (installed.has(hubLocalKey(row))) actions.append(el('span', 'hub-installed', 'installed'));
+    const pull = el('button', 'btn small', 'Pull');
+    pull.title = `Pull ${row.qualifiedName ?? row.name} into ~/.core-ai/skills`;
+    pull.onclick = () => void pullHubSkill(row, pull, actions, onPulled);
+    actions.append(pull);
+    head.append(actions);
+  }
+  item.append(head);
+  if (row.description) {
+    const desc = el('div', 'hub-row-desc', row.description);
+    desc.title = row.description;
+    item.append(desc);
+  }
+  return item;
+}
+
+async function pullHubSkill(
+  row: HubRow,
+  button: HTMLButtonElement,
+  actions: HTMLElement,
+  onPulled: (row: HubRow, actions: HTMLElement) => void,
+): Promise<void> {
+  const label = row.qualifiedName ?? `${row.namespace ?? ''}/${row.name}`;
+  const params: Record<string, unknown> = { namespace: row.namespace, name: row.name };
+  button.disabled = true;
+  button.textContent = 'Pulling…';
+  let outcome = await callEnvelope('hub/skills/pull', params);
+  if (!outcome.ok && outcome.error?.data?.code === 'SKILL_CONFLICT') {
+    const confirmed = window.confirm(`${label} exists locally without a hub marker, or was modified locally.\n\nOverwrite the local copy?`);
+    if (confirmed) {
+      outcome = await callEnvelope('hub/skills/pull', { ...params, force: true });
+    }
+  }
+  if (outcome.ok) {
+    toast(outcome.result?.status === 'up_to_date'
+      ? `Skill ${label} is already up to date`
+      : `Pulled ${label} → ${displayPath(outcome.result?.dir ?? '')}`);
+    button.textContent = 'Pulled';
+    button.disabled = false;
+    onPulled(row, actions);
+    return;
+  }
+  toast(`✗ Pull failed: ${outcome.error?.message ?? 'unknown error'}`, 'error');
+  button.textContent = 'Pull';
+  button.disabled = false;
+}
+
+function renderHubFooter(footer: HTMLElement, counts: Record<HubKind, number>, sections: string[] | null, generatedAt: string | null): void {
+  footer.replaceChildren();
+  const totals = `${counts.mcp} MCP tools · ${counts.api} API operations · ${counts.agent} agents · ${counts.llm_call} LLM calls · ${counts.skill} skills`;
+  footer.append(el('div', 'hint', generatedAt ? `${totals} · catalog generated ${fmtTime(generatedAt)}` : totals));
+  const missing = sections == null ? [] : HUB_FILTERS
+    .filter(([key]) => key !== 'all' && key !== 'skill' && !sections.includes(key))
+    .map(([key]) => HUB_KIND_LABELS[key as HubKind]);
+  if (missing.length) {
+    footer.append(el('div', 'notice', `No read access to: ${missing.join(', ')}`));
+  }
+  const line = el('div', 'notice', 'Read-only discovery — managing servers, agents and skills stays in the web console. ');
+  if (state.auth?.serverUrl) {
+    const link = el('a', 'hub-link', 'Open web console ↗');
+    link.href = state.auth.serverUrl;
+    link.onclick = (event) => {
+      event.preventDefault();
+      void window.coreai.openExternal(state.auth?.serverUrl as string);
+    };
+    line.append(link);
+  }
+  footer.append(line);
+}
+
+async function renderHubPanel(): Promise<HTMLElement> {
+  const host = hostOf(state.auth?.serverUrl);
+  const { root, body } = panel('Hub', host
+    ? `Server capabilities via the hub — signed in to ${host}. Read-only discovery: managing content stays in the web console.`
+    : 'Server capabilities via the hub — MCP tools, API tools, agents and skills.');
+
+  const view: { filter: HubFilter; query: string } = { filter: 'all', query: '' };
+
+  const build = async (): Promise<void> => {
+    if (!state.auth?.loggedIn) {
+      body.replaceChildren(hubSignInState(() => void build()));
+      return;
+    }
+    body.replaceChildren(el('div', 'notice', 'Loading the capability catalog…'));
+    const [catalog, skills, local] = await Promise.all([
+      callEnvelope('hub/catalog'),
+      callEnvelope('hub/skills', { limit: 200 }),
+      callEnvelope('skills/list'),
+    ]);
+    const catalogData = catalog.ok ? catalog.result ?? {} : null;
+    const skillsData = skills.ok ? skills.result ?? {} : null;
+    if (catalogData?.reason === 'not_logged_in' || skillsData?.reason === 'not_logged_in') {
+      body.replaceChildren(hubSignInState(() => void build()));
+      return;
+    }
+    const catalogError = !catalog.ok
+      ? catalog.error?.message ?? 'request failed'
+      : catalogData?.connected === false ? String(catalogData.message ?? catalogData.reason) : null;
+    const skillsError = !skills.ok
+      ? skills.error?.message ?? 'request failed'
+      : skillsData?.connected === false ? String(skillsData.message ?? skillsData.reason) : null;
+    if (catalogError && skillsError) {
+      body.replaceChildren(hubUnreachableState(String(catalogError), build));
+      return;
+    }
+
+    const rows = hubRows(catalogData, skillsData);
+    const installed = hubInstalledSet(local);
+    const counts: Record<HubKind, number> = { mcp: 0, api: 0, agent: 0, llm_call: 0, skill: 0 };
+    for (const row of rows) counts[row.kind] += 1;
+
+    const toolbar = el('div', 'hub-toolbar');
+    const search = el('input', 'hub-search') as HTMLInputElement;
+    search.type = 'search';
+    search.placeholder = 'Search tools, agents, skills…';
+    search.value = view.query;
+    toolbar.append(search);
+    const chips = el('div', 'hub-chips');
+    const chipEls = new Map<HubFilter, HTMLButtonElement>();
+    for (const [key, label] of HUB_FILTERS) {
+      const chip = el('button', 'hub-chip', `${label} ${key === 'all' ? rows.length : counts[key]}`);
+      chipEls.set(key, chip);
+      chip.onclick = () => {
+        view.filter = key;
+        render();
+      };
+      chips.append(chip);
+    }
+    toolbar.append(chips);
+    const refresh = el('button', 'btn small hub-refresh', 'Refresh');
+    refresh.title = 'Fetch the catalog and skill list again';
+    refresh.onclick = () => void build();
+    toolbar.append(refresh);
+
+    const list = el('div', 'hub-list');
+    const footer = el('div', 'hub-footer');
+
+    const onPulled = (row: HubRow, actions: HTMLElement): void => {
+      installed.add(hubLocalKey(row));
+      if (!actions.querySelector('.hub-installed')) {
+        actions.prepend(el('span', 'hub-installed', 'installed'));
+      }
+    };
+
+    const render = (): void => {
+      for (const [key, chip] of chipEls) chip.classList.toggle('active', view.filter === key);
+      const query = view.query.trim().toLowerCase();
+      const visible = rows.filter((row) => (view.filter === 'all' || row.kind === view.filter)
+        && (!query || `${row.name} ${row.group ?? ''} ${row.description ?? ''}`.toLowerCase().includes(query)));
+      list.replaceChildren();
+      if (catalogError) list.append(el('div', 'notice error', `Capability catalog unavailable: ${catalogError}`));
+      if (skillsError) list.append(el('div', 'notice error', `Skill catalog unavailable: ${skillsError}`));
+      for (const [key] of HUB_FILTERS) {
+        if (key === 'all') continue;
+        const sectionRows = visible.filter((row) => row.kind === key);
+        if (!sectionRows.length) continue;
+        const header = el('div', 'hub-section');
+        header.append(el('span', 'hub-section-title', HUB_KIND_LABELS[key]));
+        header.append(el('span', 'hub-section-count', String(sectionRows.length)));
+        list.append(header);
+        for (const row of sectionRows.slice(0, HUB_SECTION_CAP)) {
+          list.append(buildHubRow(row, installed, onPulled));
+        }
+        if (sectionRows.length > HUB_SECTION_CAP) {
+          list.append(el('div', 'notice', `showing first ${HUB_SECTION_CAP} of ${sectionRows.length} — refine the search to narrow`));
+        }
+      }
+      if (!visible.length) list.append(el('div', 'notice', 'No matches.'));
+      renderHubFooter(footer, counts, catalogError ? null : catalogData?.sections ?? [], catalogData?.generatedAt ?? null);
+    };
+
+    search.oninput = () => {
+      view.query = search.value;
+      render();
+    };
+    body.replaceChildren(toolbar, list, footer);
+    render();
+  };
+
+  await build();
+  return root;
+}
+
+
 async function renderArtifactsPanel(): Promise<HTMLElement> {
   const { root, body } = panel('Artifacts', 'Local outputs: .core-ai/media (images/videos) and .core-ai/tasks (sub-agent output)');
   const listed = await call('artifacts/list', { limit: 200 });
@@ -2574,7 +2885,9 @@ async function renderContent(): Promise<void> {
     return;
   }
   let panel: HTMLElement;
-  if (state.nav === 'artifacts') {
+  if (state.nav === 'hub') {
+    panel = await renderHubPanel();
+  } else if (state.nav === 'artifacts') {
     panel = await renderArtifactsPanel();
   } else if (state.nav === 'skills') {
     panel = await renderSkillsPanel();
