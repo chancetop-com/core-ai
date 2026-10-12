@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -50,6 +51,23 @@ class SendPartsTest {
         assertEquals("image/png", attachment.mediaType);
         assertEquals("img.png", attachment.filename);
         assertTrue(attachment.isBase64());
+    }
+
+    @Test
+    void imageOnlyPartHasContentWithoutText() throws Exception {
+        Files.write(workspace.resolve("img.png"), new byte[]{1, 2, 3});
+        var parsed = SendParts.parse(parts("{\"type\":\"image\",\"path\":\"img.png\"}"), workspace, staging);
+        assertTrue(parsed.text().isBlank());
+        assertEquals(1, parsed.attachments().size());
+        assertTrue(parsed.hasContent());
+    }
+
+    @Test
+    void blankTextWithoutAttachmentsHasNoContent() {
+        var parsed = SendParts.parse(parts("{\"type\":\"text\",\"text\":\"  \"}"), workspace, staging);
+        assertTrue(parsed.text().isBlank());
+        assertTrue(parsed.attachments().isEmpty());
+        assertFalse(parsed.hasContent());
     }
 
     @Test

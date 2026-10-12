@@ -128,5 +128,10 @@ public final class SendParts {
     private SendParts() {
     }
 
-    public record Parsed(String text, List<AttachedContent> attachments) { }
+    public record Parsed(String text, List<AttachedContent> attachments) {
+        /** A send may carry attachments only (image / PDF with no typed text), like the web chat. */
+        public boolean hasContent() {
+            return !text.isBlank() || !attachments.isEmpty();
+        }
+    }
 }

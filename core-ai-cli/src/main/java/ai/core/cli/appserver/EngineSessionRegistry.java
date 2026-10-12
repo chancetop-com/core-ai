@@ -159,8 +159,8 @@ public class EngineSessionRegistry {
     public ObjectNode send(ObjectNode params) {
         var session = requireSession(params);
         var parsed = SendParts.parse(params, bootstrap.workspace, stagingDir(session.id()));
-        if (parsed.text().isBlank()) {
-            throw RpcException.invalidParams("message text is empty");
+        if (!parsed.hasContent()) {
+            throw RpcException.invalidParams("message must contain text or attachments");
         }
         boolean queued = session.running();
         List<AttachedContent> attachments = parsed.attachments().isEmpty() ? null : parsed.attachments();
