@@ -1,23 +1,30 @@
 {
   "name": "core-ai-desktop",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "private": true,
   "description": "core-ai desktop client: local agent sessions in a lightweight GUI",
+  "author": "Chancetop",
   "main": "dist/main.js",
+  "coreAi": {
+    "pinnedEngine": "2.0.35"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "start": "npm run build && electron .",
-    "test": "npm run build && node --test \"test/**/*.test.mjs\""
+    "test": "npm run build && node --test \"test/**/*.test.mjs\"",
+    "check": "tsc --noEmit",
+    "stage:engine": "node scripts/stage-engine.mjs",
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:dir": "npm run build && electron-builder --dir --publish never"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
-    "electron": "^44.7.0",
-    "esbuild": "^0.28.2",
-    "typescript": "^7.0.2"
-  },
-  "dependencies": {
     "dompurify": "^3.4.16",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "highlight.js": "^11.12.0",
-    "marked": "^18.1.0"
+    "marked": "^18.1.0",
+    "typescript": "^7.0.2"
   }
 }

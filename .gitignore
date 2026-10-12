@@ -72,3 +72,7 @@ core-ai-benchmark/harbor/.harbor-jobs/
 docs/superpowers/
 .worktrees/
 tmp/
+
+# core-ai-desktop packaging (staged pinned engine + electron-builder output)
+core-ai-desktop/engine/
+core-ai-desktop/release/

@@ -85,7 +85,10 @@ interface AuthServerEntry {
   loginAt: string | null;
 }
 
-const clientVersion = '0.1.0';
+// Injected at bundle time from VERSION (scripts/build.mjs) — keep the app version off hardcoded literals.
+declare const __APP_VERSION__: string;
+
+const clientVersion = __APP_VERSION__;
 let mainWindow: BrowserWindow | null = null;
 let supervisor: EngineSupervisor | null = null;
 let browserManager: BrowserManager | null = null;
@@ -507,6 +510,10 @@ function saveSettings(): void {
 
 function resolveEnginePath(): string {
   if (process.env.CORE_AI_ENGINE_PATH) return process.env.CORE_AI_ENGINE_PATH;
+  // Installed app: the engine staged by the release build (scripts/stage-engine.mjs, design §4.2).
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'engine', process.platform === 'win32' ? 'core-ai-cli.exe' : 'core-ai-cli');
+  }
   const repoRoot = path.resolve(app.getAppPath(), '..');
   const name = process.platform === 'win32' ? 'core-ai-cli.bat' : 'core-ai-cli';
   return path.join(repoRoot, 'build', 'core-ai-cli', 'install', 'core-ai-cli', 'bin', name);

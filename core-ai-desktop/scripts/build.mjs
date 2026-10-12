@@ -1,7 +1,10 @@
 // Bundles the desktop app with esbuild: main + preload (Electron, cjs), renderer (browser, iife)
 // and the engine client for the node:test suite. No watch mode: `npm start` rebuilds first.
 import { build } from 'esbuild';
-import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+
+// VERSION is the release's single source of truth (packaging reads it too, see electron-builder.cjs).
+const version = readFileSync('VERSION', 'utf8').trim();
 
 rmSync('dist', { recursive: true, force: true });
 mkdirSync('dist/renderer', { recursive: true });
@@ -11,6 +14,7 @@ const shared = {
   bundle: true,
   sourcemap: true,
   logLevel: 'warning',
+  define: { __APP_VERSION__: JSON.stringify(version) },
 };
 
 const targets = [
