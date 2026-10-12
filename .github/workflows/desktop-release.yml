@@ -26,6 +26,7 @@ jobs:
             target: win
             artifacts: |
               core-ai-desktop/release/*.exe
+              core-ai-desktop/release/*.zip
               core-ai-desktop/release/latest.yml
           - os: macos-latest
             target: mac

@@ -28,7 +28,12 @@ module.exports = {
   publish: [{ provider: 'github', owner: 'chancetop-com', repo: 'core-ai' }],
   ...(existsSync(engineDir) ? { extraResources: [{ from: 'engine', to: 'engine' }] } : {}),
   win: {
-    target: [{ target: 'nsis', arch: ['x64'] }],
+    // The zip is the unpacked app for users who prefer no installer (portable); it also downloads
+    // as a plain archive when an installer policy blocks .exe files.
+    target: [
+      { target: 'nsis', arch: ['x64'] },
+      { target: 'zip', arch: ['x64'] },
+    ],
     icon: 'src/assets/logo.png',
   },
   nsis: {
